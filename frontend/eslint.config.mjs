@@ -75,6 +75,18 @@ export default defineConfig([
 
   // ── Unicorn anti-patterns ─────────────────────────────────────────────────
   unicornPlugin.configs.recommended,
+  {
+    // The data/server layer interfaces with Postgres/Supabase, where `null` is the
+    // canonical absent value: the generated DB types are `T | null`, `.is(col, null)`
+    // generates `IS NULL`, and clearing a nullable column requires writing `null`.
+    // Keep `unicorn/no-null` ON for UI code (prefer `undefined` for React state) but
+    // off in the null-aware data/server layer. Deliberate project-rule decision (the
+    // data model is null-native), NOT a reaction-to-red-check weakening.
+    files: ['lib/**', 'app/api/**'],
+    rules: {
+      'unicorn/no-null': 'off',
+    },
+  },
 
   // ── React ─────────────────────────────────────────────────────────────────
   {
