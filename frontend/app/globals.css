@@ -1,26 +1,98 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ── Dark-mode variant driven by .dark class on <html> ───────────────────── */
+@custom-variant dark (&:where(.dark, .dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+/* ── shadcn/ui semantic variables ────────────────────────────────────────── */
+/* These are plain CSS variables. Map to @theme inline below so Tailwind
+   utility classes (bg-background, text-foreground, etc.) resolve at runtime
+   and respect any future .dark overrides. */
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Core palette */
+    --background: #0a0e17;
+    --foreground: #e8edf5;
+    --surface: #0f1626;
+    --border: #1e2a3f;
+    --muted-foreground: #8a96a8;
+
+    /* shadcn/ui semantic aliases */
+    --card: #0f1626;
+    --card-foreground: #e8edf5;
+    --popover: #0f1626;
+    --popover-foreground: #e8edf5;
+    --primary: #4fd1e0;
+    --primary-foreground: #0a0e17;
+    --secondary: #1e2a3f;
+    --secondary-foreground: #e8edf5;
+    --muted: #1e2a3f;
+    --accent: #4fd1e0;
+    --accent-foreground: #0a0e17;
+    --destructive: #f87171;
+    --destructive-foreground: #0a0e17;
+    --input: #1e2a3f;
+    --ring: #4fd1e0;
+
+    --radius: 0.5rem;
   }
 }
 
+/* ── Map semantic vars → Tailwind utilities (inline = runtime resolution) ── */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* shadcn/ui token mapping */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Named accent tokens — generate text-accent-teal, bg-accent-teal, etc. */
+  --color-accent-teal: #4fd1e0;
+  --color-accent-green: #34d399;
+  --color-accent-blue: #60a5fa;
+  --color-accent-amber: #f0b429;
+
+  /* Font tokens wired from CSS variables set in layout.tsx.
+     The --font-instrument-serif variable is injected by next/font at runtime;
+     fall back to Georgia so the design still reads well if fonts are unavailable. */
+  --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-instrument-serif, Georgia, 'Times New Roman', serif);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ── Reusable glow utilities (variant-aware) ─────────────────────────────── */
+@utility glow-teal {
+  box-shadow: 0 0 16px 2px rgba(79, 209, 224, 0.15);
+}
+@utility glow-green {
+  box-shadow: 0 0 16px 2px rgba(52, 211, 153, 0.15);
+}
+@utility glow-blue {
+  box-shadow: 0 0 16px 2px rgba(96, 165, 250, 0.15);
+}
+@utility glow-amber {
+  box-shadow: 0 0 16px 2px rgba(240, 180, 41, 0.15);
+}
+
+/* ── Base body styles ────────────────────────────────────────────────────── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
