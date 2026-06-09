@@ -1,0 +1,571 @@
+'use client';
+
+import { ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { DropdownMenu } from 'radix-ui';
+import * as React from 'react';
+
+import { CaptureBox } from '@/components/tasks/capture-box';
+import { CascadeModal } from '@/components/tasks/cascade-modal';
+import { Button } from '@/components/ui/button';
+import { completeTask, deleteItem, moveToInbox, updateItem } from '@/lib/api-client';
+import type { ItemNode } from '@/lib/tree';
+import { getDescendantIds } from '@/lib/tree';
+import type { Folder } from '@/lib/types';
+import { cn } from '@/lib/utilities';
+
+interface TaskRowProperties {
+  node: ItemNode;
+  folders: Folder[];
+  depth?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers (outer scope to satisfy unicorn/consistent-function-scoping)
+// ---------------------------------------------------------------------------
+
+const MONTHS: readonly string[] = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+function formatDueDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const todayString = now.toDateString();
+  const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (date.toDateString() === todayString) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  if (diffDays === -1) return 'Yesterday';
+  return `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
+}
+
+function isDueDateOverdue(iso: string): boolean {
+  return new Date(iso) < new Date(new Date().toDateString());
+}
+
+/**
+ * A single task row, recursively rendering its children.
+ *
+ * Features:
+ * - Expand/collapse subtask tree
+ * - Checkbox to complete (cascade modal for tasks with children)
+ * - Inline due date + notes edit
+ * - "Add subtask" affordance
+ * - Move-to-folder dropdown
+ * - Delete
+ */
+export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
+  const router = useRouter();
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [showAddSubtask, setShowAddSubtask] = React.useState(false);
+  const [showCascadeModal, setShowCascadeModal] = React.useState(false);
+  const [isCompletePending, setIsCompletePending] = React.useState(false);
+  const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
+  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
+  const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
+  const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
+  const [isMetaOpen, setIsMetaOpen] = React.useState(false);
+
+  const hasChildren = node.children.length > 0;
+  const descendantCount = getDescendantIds(node).length;
+
+  // Indentation driven by depth; avoid template literal number errors by converting to string
+  const indentLeft = `${String(depth * 1.25 + 0.75)}rem`;
+  const metaIndentLeft = `${String(depth * 1.25 + 2.5)}rem`;
+
+  const handleToggleComplete = async () => {
+    if (hasChildren) {
+      setShowCascadeModal(true);
+      return;
+    }
+    setIsCompletePending(true);
+    try {
+      await completeTask(node.id);
+      router.refresh();
+    } finally {
+      setIsCompletePending(false);
+    }
+  };
+
+  const handleCascadeConfirm = async () => {
+    setIsCompletePending(true);
+    try {
+      await completeTask(node.id);
+      setShowCascadeModal(false);
+      router.refresh();
+    } finally {
+      setIsCompletePending(false);
+    }
+  };
+
+  const handleSaveDueDate = async () => {
+    setIsEditingDueDate(false);
+    const newValue = draftDueDate.trim();
+    const currentValue = node.due_date ?? '';
+    if (newValue === currentValue) return;
+    try {
+      // exactOptionalPropertyTypes: only include the field if it has a value.
+      // An empty string means "clear the due date" — pass the field as absent.
+      await (newValue ? updateItem(node.id, { due_date: newValue }) : updateItem(node.id, {}));
+      router.refresh();
+    } catch {
+      setDraftDueDate(node.due_date ?? '');
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    setIsEditingNotes(false);
+    const newValue = draftNotes.trim();
+    const currentValue = node.notes ?? '';
+    if (newValue === currentValue) return;
+    try {
+      // exactOptionalPropertyTypes: only include the field if it has a value.
+      await (newValue ? updateItem(node.id, { notes: newValue }) : updateItem(node.id, {}));
+      router.refresh();
+    } catch {
+      setDraftNotes(node.notes ?? '');
+    }
+  };
+
+  const handleMoveToFolder = async (targetFolderId?: string) => {
+    try {
+      // moveToInbox lives in lib/ (null-aware data layer) because the PATCH body
+      // needs `folder_id: null` which is only valid outside component code.
+      await (targetFolderId === undefined
+        ? moveToInbox(node.id)
+        : updateItem(node.id, { folder_id: targetFolderId }));
+      router.refresh();
+    } catch {
+      // silently ignore — router.refresh will re-sync
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteItem(node.id);
+      router.refresh();
+    } catch {
+      // silently ignore
+    }
+  };
+
+  return (
+    <li className="group/row list-none">
+      {/* Main row */}
+      <div
+        className={cn(
+          'flex items-center gap-2 rounded-sm py-2 pr-2',
+          'hover:bg-secondary/30 transition-colors duration-100 motion-reduce:transition-none',
+        )}
+        style={{ paddingLeft: indentLeft }}
+      >
+        {/* Expand/collapse toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsExpanded((v) => !v);
+          }}
+          aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
+          aria-expanded={isExpanded}
+          className={cn(
+            'flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+            'transition-colors duration-100 hover:text-foreground motion-reduce:transition-none',
+            !hasChildren && 'invisible pointer-events-none',
+          )}
+        >
+          <ChevronRight
+            size={14}
+            className={cn(
+              'transition-transform duration-150 motion-reduce:transition-none',
+              isExpanded && 'rotate-90',
+            )}
+          />
+        </button>
+
+        {/* Completion checkbox */}
+        <button
+          type="button"
+          onClick={() => {
+            void handleToggleComplete();
+          }}
+          disabled={isCompletePending}
+          aria-label={`Mark "${node.title}" complete`}
+          className={cn(
+            'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+            'transition-colors duration-100 hover:border-accent-teal motion-reduce:transition-none',
+            isCompletePending && 'opacity-50 cursor-wait',
+          )}
+        >
+          {isCompletePending && (
+            <span className="h-2 w-2 rounded-full bg-accent-teal opacity-60 animate-pulse motion-reduce:animate-none" />
+          )}
+        </button>
+
+        {/* Title */}
+        <span className="flex-1 text-sm text-foreground truncate">{node.title}</span>
+
+        {/* Due date chip */}
+        {node.due_date && !isEditingDueDate && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsEditingDueDate(true);
+              setIsMetaOpen(true);
+            }}
+            aria-label={`Due date: ${node.due_date}`}
+            className={cn(
+              'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors motion-reduce:transition-none',
+              isDueDateOverdue(node.due_date)
+                ? 'border-accent-amber/50 text-accent-amber hover:border-accent-amber'
+                : 'border-accent-blue/50 text-accent-blue hover:border-accent-blue',
+            )}
+          >
+            {formatDueDate(node.due_date)}
+          </button>
+        )}
+
+        {/* Children count badge */}
+        {hasChildren && !isExpanded && (
+          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+            {node.children.length}
+          </span>
+        )}
+
+        {/* Row actions — visible on hover */}
+        <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
+          {/* Add subtask */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddSubtask((v) => !v);
+              setIsExpanded(true);
+            }}
+            aria-label="Add subtask"
+            className={cn(
+              'flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-accent-teal',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+              'transition-colors duration-100 motion-reduce:transition-none',
+            )}
+          >
+            <Plus size={12} />
+          </button>
+
+          {/* More actions dropdown */}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label="More actions"
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                  'transition-colors duration-100 motion-reduce:transition-none',
+                )}
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className={cn(
+                  'z-50 min-w-40 rounded-xl border border-border bg-surface p-1',
+                  'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
+                  'data-[state=open]:animate-in data-[state=closed]:animate-out',
+                  'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+                  'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+                  'motion-reduce:animate-none',
+                )}
+                align="end"
+                sideOffset={4}
+              >
+                {/* Edit due date */}
+                <DropdownMenu.Item
+                  className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                  onSelect={() => {
+                    setIsEditingDueDate(true);
+                    setIsMetaOpen(true);
+                    setIsExpanded(true);
+                  }}
+                >
+                  {node.due_date ? 'Edit due date' : 'Set due date'}
+                </DropdownMenu.Item>
+
+                {/* Edit notes */}
+                <DropdownMenu.Item
+                  className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                  onSelect={() => {
+                    setIsEditingNotes(true);
+                    setIsMetaOpen(true);
+                    setIsExpanded(true);
+                  }}
+                >
+                  {node.notes ? 'Edit notes' : 'Add notes'}
+                </DropdownMenu.Item>
+
+                {/* Move to folder */}
+                {folders.length > 0 && (
+                  <DropdownMenu.Sub>
+                    <DropdownMenu.SubTrigger className="flex cursor-pointer select-none items-center justify-between rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary">
+                      Move to…
+                      <ChevronRight size={12} className="text-muted-foreground" />
+                    </DropdownMenu.SubTrigger>
+                    <DropdownMenu.Portal>
+                      <DropdownMenu.SubContent
+                        className={cn(
+                          'z-50 min-w-36 rounded-xl border border-border bg-surface p-1',
+                          'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
+                          'motion-reduce:animate-none',
+                        )}
+                        sideOffset={4}
+                      >
+                        <DropdownMenu.Item
+                          className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                          onSelect={() => {
+                            void handleMoveToFolder();
+                          }}
+                        >
+                          Inbox
+                        </DropdownMenu.Item>
+                        {folders.map((folder) => (
+                          <DropdownMenu.Item
+                            key={folder.id}
+                            className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                            onSelect={() => {
+                              void handleMoveToFolder(folder.id);
+                            }}
+                          >
+                            {folder.name}
+                          </DropdownMenu.Item>
+                        ))}
+                      </DropdownMenu.SubContent>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Sub>
+                )}
+
+                <DropdownMenu.Separator className="my-1 h-px bg-border" />
+
+                {/* Delete */}
+                <DropdownMenu.Item
+                  className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-destructive outline-none hover:bg-secondary focus:bg-secondary"
+                  onSelect={() => {
+                    void handleDelete();
+                  }}
+                >
+                  Delete
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
+      </div>
+
+      {/* Inline meta panel (due date + notes) — opens when requested */}
+      {isMetaOpen && (
+        <div
+          className="rounded-sm border border-border/50 bg-surface/50 px-3 py-3 space-y-3 mr-2"
+          style={{ marginLeft: metaIndentLeft }}
+        >
+          {/* Due date field */}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor={`due-date-${node.id}`}
+              className="text-xs font-semibold tracking-widest uppercase text-muted-foreground"
+            >
+              Due date
+            </label>
+            {isEditingDueDate ? (
+              <div className="flex items-center gap-2">
+                <input
+                  id={`due-date-${node.id}`}
+                  type="date"
+                  value={draftDueDate}
+                  onChange={(event_) => {
+                    setDraftDueDate(event_.target.value);
+                  }}
+                  onBlur={() => {
+                    void handleSaveDueDate();
+                  }}
+                  className={cn(
+                    'rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                    '[color-scheme:dark]',
+                  )}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void handleSaveDueDate();
+                  }}
+                  className="text-accent-teal hover:bg-accent-teal/10"
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setIsEditingDueDate(false);
+                    setDraftDueDate(node.due_date ?? '');
+                  }}
+                  className="text-muted-foreground"
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <button
+                id={`due-date-${node.id}`}
+                type="button"
+                onClick={() => {
+                  setIsEditingDueDate(true);
+                }}
+                className="text-left text-sm text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+              >
+                {node.due_date ? (
+                  formatDueDate(node.due_date)
+                ) : (
+                  <span className="text-muted-foreground">Set a due date…</span>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Notes field */}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor={`notes-${node.id}`}
+              className="text-xs font-semibold tracking-widest uppercase text-muted-foreground"
+            >
+              Notes
+            </label>
+            {isEditingNotes ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  id={`notes-${node.id}`}
+                  value={draftNotes}
+                  onChange={(event_) => {
+                    setDraftNotes(event_.target.value);
+                  }}
+                  rows={3}
+                  className={cn(
+                    'w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground',
+                    'placeholder:text-muted-foreground',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                  )}
+                  placeholder="Add notes…"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      void handleSaveNotes();
+                    }}
+                    className="text-accent-teal hover:bg-accent-teal/10"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsEditingNotes(false);
+                      setDraftNotes(node.notes ?? '');
+                    }}
+                    className="text-muted-foreground"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                id={`notes-${node.id}`}
+                type="button"
+                onClick={() => {
+                  setIsEditingNotes(true);
+                }}
+                className="text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+              >
+                {node.notes ? (
+                  <span className="whitespace-pre-wrap text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none">
+                    {node.notes}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none">
+                    Add notes…
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsMetaOpen(false);
+              setIsEditingDueDate(false);
+              setIsEditingNotes(false);
+            }}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none focus:outline-none focus-visible:underline"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {/* Children */}
+      {isExpanded && (hasChildren || showAddSubtask) && (
+        <ul aria-label="Subtasks">
+          {/* Add subtask inline form */}
+          {showAddSubtask && (
+            <li
+              className="list-none py-1"
+              style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+            >
+              <CaptureBox
+                parentId={node.id}
+                folderId={node.folder_id}
+                compact
+                onCapture={() => {
+                  setShowAddSubtask(false);
+                }}
+              />
+            </li>
+          )}
+
+          {/* Child task rows */}
+          {node.children.map((child) => (
+            <TaskRow key={child.id} node={child} folders={folders} depth={depth + 1} />
+          ))}
+        </ul>
+      )}
+
+      {/* Cascade completion modal */}
+      <CascadeModal
+        open={showCascadeModal}
+        onOpenChange={setShowCascadeModal}
+        taskTitle={node.title}
+        subtaskCount={descendantCount}
+        onConfirm={() => {
+          void handleCascadeConfirm();
+        }}
+        isPending={isCompletePending}
+      />
+    </li>
+  );
+}
