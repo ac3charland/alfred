@@ -3,6 +3,8 @@ node_modules/
 # Build & tool caches
 .eslintcache
 *.tsbuildinfo
+# Extracted sandbox chromium binary (browser tooling artifact — never commit)
+.chromium/
 dist/
 .next/
 coverage/
