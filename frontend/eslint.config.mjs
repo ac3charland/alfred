@@ -42,7 +42,18 @@ export default defineConfig([
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          // Allow files not picked up by tsconfig.json's project service:
+          // .storybook/ TS files, scripts/, and root-level config JS/MJS files.
+          allowDefaultProject: [
+            '.storybook/*.ts',
+            '.storybook/*.tsx',
+            'scripts/*.mjs',
+            '*.mjs',
+            '*.cjs',
+            '*.js',
+          ],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -87,14 +98,15 @@ export default defineConfig([
   jsxA11y.flatConfigs.recommended,
 
   // ── Storybook (stories files only) ────────────────────────────────────────
-  {
-    files: ['**/*.stories.{ts,tsx}', '**/*.story.{ts,tsx}'],
-    ...storybookPlugin.configs['flat/recommended'],
-  },
+  // flat/recommended exports an array of config objects (plugin, stories rules,
+  // story-type rules). Spread it directly — each item already scopes to the
+  // correct files globs internally.
+  ...storybookPlugin.configs['flat/recommended'],
 
-  // ── Jest + Testing Library + jest-dom (test files only) ───────────────────
+  // ── Jest + Testing Library + jest-dom (test files only, excluding e2e) ─────
   {
     files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    ignores: ['e2e/**', 'tests/**'],
     ...jestPlugin.configs['flat/recommended'],
     ...jestDomPlugin.configs['flat/recommended'],
     ...testingLibrary.configs['flat/react'],
@@ -113,17 +125,33 @@ export default defineConfig([
   {
     files: ['**/*.{js,cjs,mjs}'],
     ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      // Add Node.js globals (process, require, module, __dirname, etc.)
+      // so plain JS/CJS/MJS scripts don't get `no-undef` false positives.
+      globals: {
+        ...globals.node,
+      },
+    },
   },
 
-  // ── Config-file-only: silence a false positive ────────────────────────────
-  // typescript-eslint's documented `import tseslint from 'typescript-eslint'` +
-  // `tseslint.configs.*` usage trips import/no-named-as-default-member (the module
-  // also has a named `configs` export). It's correct usage; scope the rule off for
-  // config files only (app/source code keeps the rule). Honors the no-warn ethos.
+  // ── Config-file-only: silence false positives ────────────────────────────
+  // 1. typescript-eslint's `import tseslint` usage trips import/no-named-as-default-member
+  //    (the module also has a named `configs` export). Correct usage; disable for config files.
+  // 2. CJS config files (e.g. test-runner-jest.config.js) need require() — disable for .cjs/.js.
   {
     files: ['**/*.{js,cjs,mjs}'],
     rules: {
       'import/no-named-as-default-member': 'off',
+    },
+  },
+  {
+    files: ['**/*.{js,cjs}'],
+    rules: {
+      // CJS require() / module.exports are valid in plain .js/.cjs config files.
+      // unicorn/prefer-module wants ESM everywhere, but some tooling (jest configs)
+      // must remain CJS — use .cjs extension to signal intent and scope the rule off.
+      '@typescript-eslint/no-require-imports': 'off',
+      'unicorn/prefer-module': 'off',
     },
   },
 
