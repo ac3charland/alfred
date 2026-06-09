@@ -76,14 +76,15 @@ export default defineConfig([
   // ── Unicorn anti-patterns ─────────────────────────────────────────────────
   unicornPlugin.configs.recommended,
   {
-    // The data/server layer interfaces with Postgres/Supabase, where `null` is the
-    // canonical absent value: the generated DB types are `T | null`, `.is(col, null)`
-    // generates `IS NULL`, and clearing a nullable column requires writing `null`.
-    // Keep `unicorn/no-null` ON for UI code (prefer `undefined` for React state) but
-    // off in the null-aware data/server layer. Deliberate project-rule decision (the
-    // data model is null-native), NOT a reaction-to-red-check weakening.
-    files: ['lib/**', 'app/api/**'],
     rules: {
+      // alfred is a Postgres/Supabase app: `null` is the canonical absent value at the
+      // data boundary, and it shows up EVERYWHERE — the generated DB types are `T | null`,
+      // rows render with null fields, `.is(col, null)` generates SQL `IS NULL`, clearing a
+      // column / test fixtures all require literal `null`. The strict TYPES (`T | null` vs
+      // `T | undefined`) already enforce correct nullability; `unicorn/no-null` was redundant
+      // and, worse, repeatedly pushed agents toward an `undefined as unknown as null` hack
+      // that BREAKS at runtime. Deliberate project decision: off globally. (By convention,
+      // still prefer `undefined` for purely-UI absent state, e.g. React `useState`.)
       'unicorn/no-null': 'off',
     },
   },
