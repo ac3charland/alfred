@@ -192,4 +192,28 @@ The `@supabase/ssr` cookie API changed from the single-method `get/set/remove` s
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (browser-safe) | Authenticated by RLS policies |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only — never `NEXT_PUBLIC_` | Bypass RLS in trusted server scripts only |
 
+### New API key format (`sb_publishable_…` / `sb_secret_…`)
+
+As of the alfred project's Supabase project (provisioned June 2026), Supabase issues
+**new-format API keys** that replace the legacy JWT anon/service_role keys:
+
+- **Publishable key** `sb_publishable_…` → use as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  (the browser-safe client key; replaces the legacy `anon` JWT). Works with
+  `createBrowserClient` / `createServerClient` exactly where the anon key did.
+- **Secret key** `sb_secret_…` → use as `SUPABASE_SERVICE_ROLE_KEY` (server-only;
+  replaces the legacy `service_role` JWT). Bypasses RLS — never `NEXT_PUBLIC_`.
+- The **legacy `service_role` JWT** (`eyJ…`) still works and is occasionally needed by
+  older tooling; alfred keeps it in `SUPABASE_SERVICE_ROLE_JWT` (server-only) as a fallback.
+
+Keep the env-var *names* canonical (`NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`) so app code stays generic; only the *values* are the new format.
+
+### Applying migrations / generating types without a personal access token
+
+`supabase gen types typescript --db-url "<postgres-connection-string>"` introspects the
+live DB directly — no `--project-id` + personal access token needed. Likewise, plain SQL
+migrations can be applied over the **session pooler** connection string (port 5432) with
+any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable for
+multi-statement DDL — prefer the session pooler or direct connection for migrations.
+
 > See `references/` for detailed SQL patterns: `references/rls-policies.md` for policy templates, `references/recursive-subtasks.md` for the WITH RECURSIVE CTE.

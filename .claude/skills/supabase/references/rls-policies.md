@@ -4,6 +4,25 @@
 > Source: Supabase Row Level Security docs (supabase.com/docs/guides/database/postgres/row-level-security)
 > Confirmed June 2026.
 
+## PROJECT RULE — RLS is mandatory (treat as a §9.4 guardrail)
+
+The alfred Supabase project has **automatic / deny-by-default RLS enabled at project
+creation**. This is a deliberate security decision, not a default to optimize away:
+
+- **Every new table MUST `ENABLE ROW LEVEL SECURITY` and have an explicit policy.** A
+  table without a policy is fully inaccessible via the Data API (deny by default).
+- **WHY:** the publishable key ships to the browser and is public. RLS — not the Next.js
+  auth gate — is what stops a leaked publishable key from reading/writing Postgres
+  directly through the Data API. The auth gate only guards the UI.
+- **Single-user → role-based, not row-based.** items/folders have **no `user_id` column**
+  (intentional). Use the `authenticated full access` (`using (true) with check (true)`)
+  variant below. Do NOT add `user_id` / `auth.uid() = user_id` policies.
+- **The secret key bypasses RLS by design.** Server-side code (API routes, Workers) uses
+  the secret key and ignores all policies. RLS only protects the publishable-key/browser
+  path. This asymmetry is intentional — do NOT disable RLS or delete policies because
+  "the server bypasses them anyway."
+- **Never disable RLS or remove a policy to make something work.** Fix the access path.
+
 ## Core concepts
 
 **Row Level Security (RLS)** filters rows at the Postgres level before they reach the application. When enabled on a table, every query from a non-superuser role passes through the policies before returning data.
