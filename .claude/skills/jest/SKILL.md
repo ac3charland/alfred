@@ -147,6 +147,8 @@ setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 ```
 Where `jest.setup.ts` contains `import '@testing-library/jest-dom'`. RTL is a separate skill — see integration note below.
 
+**Route Handler tests need `@jest-environment node` docblock.** The `frontend/jest.config.ts` sets `testEnvironment: 'jsdom'` for all tests. But Next.js Route Handler tests use the Web Fetch API (`Request`, `Response`) which jsdom does not provide. Add `/** @jest-environment node */` as the first line of each Route Handler test file. Node.js 18+ provides `Request` and `Response` globally, so the test runs correctly in the `node` environment. The per-file docblock overrides the global config without modifying shared tooling.
+
 **Frontend `@/*` alias: no `src/` subdir.** The `frontend/` package has no `src/` directory — files live at the package root. The tsconfig `paths` uses `"@/*": ["./*"]` (not `./src/*`). The jest `moduleNameMapper` must match:
 ```typescript
 moduleNameMapper: {

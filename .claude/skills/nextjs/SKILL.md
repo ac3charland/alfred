@@ -195,8 +195,18 @@ Is it a data read that can be cached / ISR?
 ## Version Gotchas (Next.js 16 — alfred's installed version)
 
 alfred is scaffolded on **Next.js 16** (React 19) via `create-next-app@latest`. Hard-won
-notes from the Phase 0 bootstrap:
+notes from the Phase 0 + feature bootstrap:
 
+- **The `middleware` file convention is DEPRECATED → use `proxy`.** Next 16 prints
+  `⚠ The "middleware" file convention is deprecated. Please use "proxy" instead`
+  (nextjs.org/docs/messages/middleware-to-proxy). More importantly, **`export const config
+  = { matcher: [...] }` in `middleware.ts` now hard-FAILS `next build`** with `⨯ Invalid
+  segment configuration export detected`. Two fixes: (a) migrate to `proxy.ts` (the new
+  convention), or (b) keep `middleware.ts` (still functional, just deprecated) but DROP the
+  `export const config` and do static-asset exclusion *inside* the middleware function
+  (early-return on `/_next/static`, `/_next/image`, `favicon.ico`, image extensions). alfred
+  currently does (b) — see `frontend/middleware.ts`. `tsc` and ESLint do NOT catch this; only
+  `next build` (i.e. `check:slow`) does, so always run a build before pushing middleware changes.
 - **`create-next-app` writes an `AGENTS.md` warning that "This is NOT the Next.js you
   know."** Next 16 has breaking changes vs. pre-16 training data. The authoritative,
   version-exact docs are **bundled in `node_modules/next/dist/docs/`** after install — read
