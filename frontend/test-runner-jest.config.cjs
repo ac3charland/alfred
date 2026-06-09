@@ -14,6 +14,9 @@ const sandboxChromium = existsSync('/tmp/chromium') ? '/tmp/chromium' : undefine
 module.exports = {
   ...config,
   testTimeout: 30_000,
+  // Sandbox chromium is single-process + SwiftShader; run stories serially so only one
+  // page is live at a time (avoids cumulative browser-memory "Browser closed" crashes).
+  ...(sandboxChromium ? { maxWorkers: 1 } : {}),
   ...(sandboxChromium
     ? {
         testEnvironmentOptions: {
@@ -23,9 +26,12 @@ module.exports = {
             launchOptions: {
               executablePath: sandboxChromium,
               args: [
-                '--single-process',
+                // NOT --single-process: jest-playwright reuses one browser across test
+                // files, and single-process chromium exits when its first page closes,
+                // breaking suite #2+ with "Browser closed". Multi-process survives.
+                // /dev/shm is tiny in sandboxes; use /tmp to avoid "Browser closed" crashes.
+                '--disable-dev-shm-usage',
                 '--no-sandbox',
-                '--no-zygote',
                 '--disable-setuid-sandbox',
                 '--disable-gpu',
                 '--font-render-hinting=none',

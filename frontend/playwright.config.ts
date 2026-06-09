@@ -35,7 +35,12 @@ export default defineConfig({
           ? {
               launchOptions: {
                 executablePath: sandboxChromium,
-                args: [...chromiumPkg.args, '--no-sandbox', '--disable-setuid-sandbox'],
+                args: [
+                  ...chromiumPkg.args,
+                  '--no-sandbox',
+                  '--disable-setuid-sandbox',
+                  '--disable-dev-shm-usage',
+                ],
                 env: {
                   ...process.env,
                   LD_LIBRARY_PATH: '/tmp:' + (process.env['LD_LIBRARY_PATH'] ?? ''),
