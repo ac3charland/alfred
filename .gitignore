@@ -1,1 +1,18 @@
 node_modules/
+
+# Build & tool caches
+.eslintcache
+*.tsbuildinfo
+dist/
+.next/
+coverage/
+storybook-static/
+playwright-report/
+test-results/
+
+# Local env files — real secrets, never commit. Tracked: *.example
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.*.example

@@ -2,12 +2,20 @@
   "name": "alfred",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "workers",
+    "database"
+  ],
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "check": "npm run check:fast && npm run check:slow",
+    "check:fast": "npm run check:fast --workspaces --if-present",
+    "check:slow": "npm run check:slow --workspaces --if-present"
   },
   "repository": {
     "type": "git",
@@ -19,6 +27,8 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
-    "husky": "^9.1.7"
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.4"
   }
 }
