@@ -30,6 +30,8 @@ export default defineConfig([
       'node_modules/**',
       // Next.js generated file — do not lint
       'next-env.d.ts',
+      // Supabase-generated schema types (regenerated via `supabase gen types`)
+      'lib/database.types.ts',
     ],
   },
 
@@ -152,6 +154,18 @@ export default defineConfig([
       // must remain CJS — use .cjs extension to signal intent and scope the rule off.
       '@typescript-eslint/no-require-imports': 'off',
       'unicorn/prefer-module': 'off',
+    },
+  },
+
+  // ── Ambient declaration files (.d.ts) ─────────────────────────────────────
+  // These mirror external/ambient names (e.g. Node's `ProcessEnv`) and use
+  // conventional short filenames — the abbreviation/filename rules don't apply
+  // to type-contract files. (Scoped off only here; real source keeps both rules.)
+  {
+    files: ['**/*.d.ts'],
+    rules: {
+      'unicorn/prevent-abbreviations': 'off',
+      'unicorn/filename-case': 'off',
     },
   },
 
