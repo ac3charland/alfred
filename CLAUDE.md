@@ -55,7 +55,7 @@ aware that every commit and push is gated.
 
 ---
 
-## Workflow: committing & pushing
+## Workflow: committing, pushing & PR
 
 When you finish a task, **unless the user tells you not to**, wrap it up like this:
 
@@ -67,10 +67,20 @@ When you finish a task, **unless the user tells you not to**, wrap it up like th
    Conventional Commits: subject + scope **required**, body and footer **always
    empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
 3. **Push** the branch to the remote.
+4. **Open a pull request** from the feature branch into `main` once the full
+   feature is done.
 
 The pre-commit (`check:fast`) and pre-push (`check:slow`) hooks gate each step
 automatically — fix any failures in the **code**, never with `--no-verify` or by
 weakening config (see the hard rules above).
+
+### Skipping steps
+
+Being told to skip a step implies skipping all later steps as well:
+
+- Skip committing → also skip pushing and opening a PR.
+- Skip pushing → also skip opening a PR.
+- Skip opening a PR → does **not** imply skipping committing or pushing.
 
 ---
 
