@@ -7,15 +7,16 @@
 //
 // The interface MUST be named `ProcessEnv` to merge with Node's `NodeJS.ProcessEnv`;
 // `unicorn/prevent-abbreviations` is scoped off for `**/*.d.ts` so it doesn't try to
-// rename this external/ambient contract.
+// rename this external/ambient contract. Not `readonly` — process.env is mutable and
+// tests toggle vars. `INGEST_API_KEY` is optional (the ingress key may be unset).
 
 declare namespace NodeJS {
   interface ProcessEnv {
-    readonly NEXT_PUBLIC_SUPABASE_URL: string;
-    readonly NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
-    readonly SUPABASE_SERVICE_ROLE_KEY: string;
-    readonly SUPABASE_SERVICE_ROLE_JWT?: string;
-    readonly INGEST_API_KEY: string;
-    readonly BASE_URL?: string;
+    NEXT_PUBLIC_SUPABASE_URL: string;
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
+    SUPABASE_SERVICE_ROLE_KEY: string;
+    SUPABASE_SERVICE_ROLE_JWT?: string;
+    INGEST_API_KEY?: string;
+    BASE_URL?: string;
   }
 }
