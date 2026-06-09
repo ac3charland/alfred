@@ -24,8 +24,9 @@ Supabase (PostgreSQL) schema for alfred. See `docs/SPEC.md` §3 for the data mod
 
 ## Applying to the hosted project
 
-Env values live in `frontend/.env.local` (gitignored). Use the **session pooler**
-connection string (port 5432) or the direct connection — the transaction pooler (6543)
+Env values live in `frontend/.env.local` (gitignored). Prefer the **Direct connection**
+URI (it's IPv6 and works from a normal machine). If your network is IPv4-only, use the
+**Session pooler** string (port 5432) instead — not the transaction pooler (6543), which
 is unreliable for multi-statement DDL.
 
 ```bash
