@@ -239,12 +239,106 @@ test.beforeEach(async ({ page }) => {
 
 ---
 
+## Air-gapped / CDN-blocked Environments
+
+In environments where the Playwright browser CDN (storage.googleapis.com) is unreachable
+(Docker containers, CI sandboxes, certain corporate networks), `playwright install chromium`
+will fail with `ENETUNREACH`. The alternative is `@sparticuz/chromium` — an npm package
+that bundles a serverless-compatible Chromium binary as a compressed `.br` file. Since the
+npm registry is always reachable, it installs cleanly.
+
+**Setup pattern:**
+
+1. Install `@sparticuz/chromium` as a production dep (it runs at test time, not just build):
+   ```
+   npm install @sparticuz/chromium
+   ```
+
+2. Write a `scripts/setup-chromium.mjs` that calls `inflate()` to extract to `/tmp`:
+   ```js
+   import { inflate } from '@sparticuz/chromium';
+   import { join } from 'node:path';  // use default import (unicorn/import-style)
+   await inflate('/path/to/chromium.br');  // extracted to /tmp/chromium
+   ```
+   Check `existsSync('/tmp/chromium')` before inflating to avoid re-extraction.
+
+3. Configure `playwright.config.ts` to use the extracted binary:
+   ```ts
+   launchOptions: {
+     executablePath: process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] ?? '/tmp/chromium',
+     args: [...chromiumPkg.args, '--no-sandbox', '--disable-setuid-sandbox'],
+     // CRITICAL: pass LD_LIBRARY_PATH in launchOptions.env — not just in the shell.
+     // Playwright may override the process environment for the launched browser.
+     env: {
+       ...process.env,
+       LD_LIBRARY_PATH: '/tmp:' + (process.env['LD_LIBRARY_PATH'] ?? ''),
+     },
+   }
+   ```
+
+4. NSS/NSPR stub libraries: sparticuz chromium requires `libnspr4.so`, `libnss3.so`,
+   `libnssutil3.so` with GNU versioned symbols. If not present, compile stubs:
+   ```c
+   // nss-stub.c — provides NSS_3.x, NSSUTIL_3.x, NSPR_4.0 versioned symbols
+   // compile: gcc -shared -fPIC --version-script=nss.map -o /tmp/libnss3.so nss-stub.c
+   ```
+   Then put them in `/tmp/` and include `/tmp` in `LD_LIBRARY_PATH`.
+
+5. Wire `setup:chromium` before every test script so it always runs first:
+   ```json
+   "test:e2e": "node scripts/setup-chromium.mjs && playwright test"
+   ```
+
+**The sparticuz args do NOT include `--use-gl=angle --use-angle=swiftshader`.** Those
+are Playwright's internal defaults for Chromium. sparticuz provides its own SwiftShader
+build via `chromiumPkg.args` — use those, not Playwright's defaults.
+
+**Use `worers: 1` in playwright.config.ts** when using `@sparticuz/chromium` in
+single-process mode (the `--single-process` arg in `chromiumPkg.args`) — multiple
+workers spawning multiple Chromium processes in single-process mode causes crashes.
+
+**Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
+`process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
+`env['BASE_URL']` is correct; `env.BASE_URL` gives TS4111 error.
+
+---
+
+## Storybook test-runner with sparticuz chromium
+
+The Storybook test-runner has its own Jest-Playwright integration. To use sparticuz with
+`test-storybook`:
+
+1. Create `test-runner-jest.config.cjs` (must be `.cjs` not `.js` — see ESLint section):
+   ```js
+   const { getJestConfig } = require('@storybook/test-runner');
+   const config = getJestConfig();
+   module.exports = {
+     ...config,
+     testEnvironmentOptions: {
+       ...config.testEnvironmentOptions,
+       'jest-playwright': {
+         launchOptions: {
+           executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/tmp/chromium',
+           args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', ...],
+           env: { ...process.env, LD_LIBRARY_PATH: '/tmp:' + (process.env.LD_LIBRARY_PATH || '') },
+         },
+       },
+     },
+   };
+   ```
+   The test-runner discovers this config via glob `test-runner-jest*` — both `.js` and `.cjs`
+   work.
+
+2. Run sequence: `setup:chromium` → `storybook:build` → serve static build → `test-storybook --ci`.
+
+---
+
 ## playwright.config.ts Reference for alfred
 
 ```typescript
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env['BASE_URL'] ?? 'http://localhost:3000';
 
 export default defineConfig({
   testDir: './e2e',

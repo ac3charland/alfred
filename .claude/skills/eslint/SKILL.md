@@ -135,7 +135,40 @@ earlier ones for the same rule key. This means:
 
 **TypeScript config files outside `tsconfig.json` include with `allowDefaultProject`**
 
-- `jest.config.ts` lives at the package root but is not included in the `tsconfig.json` `include` array (which only covers `src/`). When `projectService: true` is set, ESLint errors on that file: *"was not found by the project service"*. Fix: use `projectService: { allowDefaultProject: ['*.ts'] }` instead of `projectService: true`. This makes the project service apply a default tsconfig for any `.ts` files not matched by the main tsconfig.
+- Files not matched by `tsconfig.json`'s `include` globs (e.g. `.storybook/*.ts`, `scripts/*.mjs`, root `eslint.config.mjs`, `test-runner-jest.config.cjs`) trigger: *"was not found by the project service"*. Fix: use `projectService: { allowDefaultProject: ['*.mjs', '*.cjs', '*.js', '.storybook/*.ts', 'scripts/*.mjs'] }` to list all the patterns that should use the default tsconfig. Wildcards like `*.mjs` match root-level files only; subdirectories need explicit patterns.
+
+**Scoping Jest/RTL rules to exclude E2E test files**
+
+- The glob `**/*.spec.{ts,tsx}` matches both Jest component specs AND Playwright E2E files (`e2e/home.spec.ts`). Applying Jest/RTL rules to Playwright tests produces false `testing-library/prefer-screen-queries` errors. Fix: add `ignores: ['e2e/**', 'tests/**']` inside the Jest config object alongside `files`:
+  ```js
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    ignores: ['e2e/**', 'tests/**'],
+    ...jestPlugin.configs['flat/recommended'],
+    ...testingLibrary.configs['flat/react'],
+  }
+  ```
+
+**CJS config files (`.cjs`): `require`/`module` need two rule disables**
+
+- Plain CJS config files (e.g. `test-runner-jest.config.cjs`) need two rule overrides to avoid false positives:
+  1. `@typescript-eslint/no-require-imports: 'off'` — typescript-eslint strict mode forbids `require()` style imports
+  2. `unicorn/prefer-module: 'off'` — unicorn wants all files to be ESM
+
+- Scope both via `files: ['**/*.{js,cjs}']` override. Use `.cjs` extension for Jest configs that must remain CJS — the extension signals intent and lets you target the override precisely.
+
+- Never use `.js` for a CJS config when the project has `"type": "module"` in `package.json` — Node treats `.js` files as ESM in that context and CJS `require()` will throw at runtime. Use `.cjs` extension explicitly.
+
+**Node.js globals for `.mjs` and `.cjs` scripts**
+
+- ESLint's `no-undef` fires for `process`, `require`, `module`, `__dirname` in script files when no `languageOptions.globals` is set. Fix: add `globals.node` to the override for all non-TS script files:
+  ```js
+  {
+    files: ['**/*.{js,cjs,mjs}'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: { globals: { ...globals.node } },
+  }
+  ```
 
 > Source: ESLint team, "Migrate to ESLint 9.x", eslint.org/docs, 2024
 > Source: typescript-eslint team, "Announcing typescript-eslint v8", typescript-eslint.io/blog, 2024

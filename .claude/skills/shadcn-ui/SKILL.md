@@ -177,6 +177,20 @@ Use this when:
 
 ---
 
+## `lib/utils.ts` → `lib/utilities.ts` (unicorn/prevent-abbreviations)
+
+shadcn/ui's default CLI output creates `lib/utils.ts` for the `cn()` helper. In alfred, the
+`unicorn/prevent-abbreviations` ESLint rule treats `utils` as an abbreviation of `utilities`
+and reports an error on the filename AND any variable named `utils`.
+
+**Fix:**
+1. Name the file `lib/utilities.ts` (not `lib/utils.ts`)
+2. In `components.json`, set `"utils": "@/lib/utilities"` (not `"@/lib/utils"`)
+3. Every import in component files must use `from '@/lib/utilities'` not `from '@/lib/utils'`
+
+This affects the CLI's default `--utils` alias. When adding components manually or via the
+CLI, check and correct the path.
+
 ## Version Gotchas
 
 ### CLI package name (agents trained pre-2023 get this wrong)

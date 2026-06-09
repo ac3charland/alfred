@@ -279,5 +279,10 @@ several patterns that are now wrong or deprecated:
   Alfred's Route Handlers call Supabase (Node.js client), which is incompatible with the
   Edge runtime. Keep default Node.js runtime.
 
-- **`next/font`** — valid for production performance but not relevant to the current
-  implementation tasks.
+- **`next/font`** — `next/font/google` downloads fonts at build time from `fonts.googleapis.com`.
+  In air-gapped environments (CI sandboxes, Docker without Google access) this fails the build.
+  Solution: use `next/font/local` with font files committed to `public/fonts/`. Geist Sans and
+  Geist Mono woff2 files are bundled inside `next/dist/next-devtools/server/font/` and can be
+  copied to `public/fonts/` at project setup time. The `--font-sans` and `--font-mono` CSS
+  variables still work; Instrument Serif can fall back to Georgia/serif via CSS:
+  `var(--font-instrument-serif, Georgia, 'Times New Roman', serif)`.
