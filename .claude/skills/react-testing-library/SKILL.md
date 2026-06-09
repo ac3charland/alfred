@@ -240,6 +240,57 @@ This keeps tests free of provider boilerplate without hiding what providers exis
 
 ---
 
+## Mocking API Clients in alfred Tests
+
+The alfred frontend uses a thin `lib/api-client.ts` module. To avoid `@typescript-eslint/no-unsafe-return` errors in module factory functions, use the `jest.mocked()` pattern instead of inline arrow wrappers:
+
+```ts
+// WRONG — causes no-unsafe-return (mock() return is `any`)
+jest.mock('@/lib/api-client', () => ({
+  createItem: (...args: unknown[]) => mockCreateItem(...args), // unsafe return
+}));
+
+// CORRECT — jest.mock + jest.mocked()
+import * as apiClient from '@/lib/api-client';
+jest.mock('@/lib/api-client');
+const mockCreateItem = jest.mocked(apiClient.createItem);
+// jest auto-mocks all exports with jest.fn(); jest.mocked() gives typed access
+```
+
+This approach:
+- Avoids the `no-unsafe-return` error from wrapping `any` mock return values
+- Gives full TypeScript types on the mock (`.mockResolvedValue` checks the return type)
+- Works with `jest.clearAllMocks()` in `beforeEach`
+
+**DB null fields in test fixtures (unicorn/no-null)**
+
+`ItemNode` and other DB row types have `string | null` nullable fields (from generated Supabase types). Since `unicorn/no-null` forbids `null` literals in test files, use the `DB_NULL` sentinel:
+
+```ts
+const DB_NULL = undefined as unknown as null;
+
+const fixture: ItemNode = {
+  notes: DB_NULL,      // satisfies `string | null` type without null literal
+  folder_id: DB_NULL,  // same
+  // ...
+};
+```
+
+**Storybook stories with required callback props (no-empty-function)**
+
+`@typescript-eslint/no-empty-function` forbids `() => {}` in stories. And `() => undefined` gets auto-fixed to `() => {}` by ESLint. Use named stub functions with a non-trivial body:
+
+```ts
+function handleOpenChange(open: boolean) {
+  return open; // references the param — not empty
+}
+function handleConfirm() {
+  return undefined; // explicit return — not empty
+}
+```
+
+Inline arrow with discarded parameter: `(_open: boolean) => undefined` triggers `no-unused-vars`. Named function is cleaner.
+
 ## What Was Deliberately Left Out
 
 - **`render` return value beyond `rerender`/`unmount`** — the `container`, `baseElement`, and `asFragment` return values are valid but rarely needed; using them is often a sign you should use a screen query instead. The `no-container` ESLint rule prevents the most common misuse.

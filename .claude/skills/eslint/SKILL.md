@@ -149,6 +149,34 @@ earlier ones for the same rule key. This means:
   }
   ```
 
+**`unicorn/no-array-reduce` + `unicorn/no-array-sort` + `toSorted` circular constraint**
+
+When you have both `unicorn/no-array-sort` (forbids `.sort()`) AND `unicorn/no-array-reduce` (forbids `.reduce()`), and `tsconfig` targets ES2022 (so `toSorted` is not in the lib), you get a circular constraint: can't use `.sort()`, can't use `.reduce()`, can't use `.toSorted()`. The escape hatch is an explicit insertion-sort `for` loop:
+
+```ts
+const sorted: T[] = [];
+for (const item of items) {
+  const insertAt = sorted.findIndex((existing) => compare(existing, item) > 0);
+  if (insertAt === -1) sorted.push(item);
+  else sorted.splice(insertAt, 0, item);
+}
+```
+
+This creates a new array (satisfies `.sort()` mutation concern) using a loop (not `.reduce()`) and works in ES2022 (no `toSorted` needed).
+
+**`unicorn/prefer-ternary` on `if/else` with `await`**
+
+When a function has an `if/else` where both branches `await` different things, ESLint's `unicorn/prefer-ternary` wants them collapsed to `await (condition ? a() : b())`. This is valid TypeScript and works:
+
+```ts
+// Before — triggers unicorn/prefer-ternary
+if (cond) await foo();
+else await bar();
+
+// After — compiles fine, no lint error
+await (cond ? foo() : bar());
+```
+
 **CJS config files (`.cjs`): `require`/`module` need two rule disables**
 
 - Plain CJS config files (e.g. `test-runner-jest.config.cjs`) need two rule overrides to avoid false positives:

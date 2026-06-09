@@ -297,6 +297,18 @@ build via `chromiumPkg.args` — use those, not Playwright's defaults.
 single-process mode (the `--single-process` arg in `chromiumPkg.args`) — multiple
 workers spawning multiple Chromium processes in single-process mode causes crashes.
 
+**`Browser closed` crashes — two fixes (Storybook test-runner especially):**
+- **Always add `--disable-dev-shm-usage`.** In sandboxes/containers `/dev/shm` is tiny;
+  Chromium runs out of shared memory mid-run and dies with `page.evaluate: Browser closed`.
+  This flag makes it use `/tmp` instead. Add it to BOTH the Playwright launchOptions args and
+  the Storybook `test-runner-jest.config.cjs` launchOptions args.
+- **Do NOT use `--single-process` for the Storybook test-runner.** jest-playwright reuses ONE
+  browser across test FILES; a single-process Chromium exits when its first page closes, so
+  suite #2+ fails with `browserContext.newPage: Browser closed`. A single test file works, but
+  multiple story files don't. Drop `--single-process` (and `--no-zygote`) so the browser
+  process persists across files; keep `maxWorkers: 1` for memory headroom. (Playwright E2E with
+  one spec file is fine with single-process — the multi-file reuse is what breaks.)
+
 **Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
 `process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
 `env['BASE_URL']` is correct; `env.BASE_URL` gives TS4111 error.
