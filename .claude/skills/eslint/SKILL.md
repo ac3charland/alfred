@@ -125,6 +125,18 @@ earlier ones for the same rule key. This means:
 
 - Must be listed in the `plugins` array in prettier config (not installed and auto-discovered). Without explicit registration it does nothing silently.
 
+**`@next/eslint-plugin-next` flat config API**
+
+- The skill template showed `nextPlugin.flatConfig.coreWebVitals` — this path does NOT exist in the actual package (confirmed v16.2.7). The correct access is `nextPlugin.configs['core-web-vitals']`. Check available keys with `Object.keys(nextPlugin.configs)` — they are `'recommended-legacy'`, `'core-web-vitals-legacy'`, `'recommended'`, and `'core-web-vitals'`. Use `nextPlugin.configs['core-web-vitals']` for the Next.js flat-config entry.
+
+**`next-env.d.ts` triggers `unicorn/prevent-abbreviations`**
+
+- Next.js generates `next-env.d.ts` at the package root (abbreviation "env" in the filename). The `unicorn/prevent-abbreviations` rule fires an error on this file. It cannot be renamed. Fix: add `'next-env.d.ts'` to the global `ignores` array in `eslint.config.mjs` (not as a `// unicorn-ignore` comment, which is forbidden per CLAUDE.md).
+
+**TypeScript config files outside `tsconfig.json` include with `allowDefaultProject`**
+
+- `jest.config.ts` lives at the package root but is not included in the `tsconfig.json` `include` array (which only covers `src/`). When `projectService: true` is set, ESLint errors on that file: *"was not found by the project service"*. Fix: use `projectService: { allowDefaultProject: ['*.ts'] }` instead of `projectService: true`. This makes the project service apply a default tsconfig for any `.ts` files not matched by the main tsconfig.
+
 > Source: ESLint team, "Migrate to ESLint 9.x", eslint.org/docs, 2024
 > Source: typescript-eslint team, "Announcing typescript-eslint v8", typescript-eslint.io/blog, 2024
 > Source: eslint-plugin-react-hooks GitHub issue #28313, facebook/react, 2024

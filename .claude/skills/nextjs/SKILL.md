@@ -192,6 +192,27 @@ Is it a data read that can be cached / ISR?
 
 ---
 
+## Version Gotchas (Next.js 16 — alfred's installed version)
+
+alfred is scaffolded on **Next.js 16** (React 19) via `create-next-app@latest`. Hard-won
+notes from the Phase 0 bootstrap:
+
+- **`create-next-app` writes an `AGENTS.md` warning that "This is NOT the Next.js you
+  know."** Next 16 has breaking changes vs. pre-16 training data. The authoritative,
+  version-exact docs are **bundled in `node_modules/next/dist/docs/`** after install — read
+  the relevant guide there before writing non-trivial Next code, rather than trusting memory.
+- **Tailwind v4 is the default** in the `app-tw` template (CSS-first `@import "tailwindcss"`
+  + `@theme inline` in `globals.css`, `@tailwindcss/postcss` in `postcss.config.mjs`). No
+  `tailwind.config.js` is generated — see the tailwindcss skill.
+- **Turbopack is the default bundler** for `next dev` and `next build` in 16. For Playwright's
+  `webServer`, `next dev` works; a production smoke can use `next build && next start`.
+- **The generated ESLint config is `eslint.config.mjs`** using `eslint-config-next/core-web-vitals`
+  + `eslint-config-next/typescript` (flat). alfred replaces this with the aggressive flat
+  config from the eslint skill (which uses `@next/eslint-plugin-next` directly).
+- **`create-next-app` also drops a `CLAUDE.md` that just `@import`s `AGENTS.md`.** alfred
+  removes both to keep governance centralized in the root `CLAUDE.md` + skills; the key
+  insight (read bundled docs) is recorded here instead.
+
 ## Version Gotchas (Next.js 15 vs 13/14)
 
 Agents trained on content before Next.js 15 (released Oct 2024) will confidently write
