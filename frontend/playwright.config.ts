@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 import chromiumPkg from '@sparticuz/chromium';
 
-const BASE_URL = process.env['BASE_URL'] ?? 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
 // In CDN-restricted sandboxes, scripts/setup-chromium.mjs extracts a
 // @sparticuz/chromium binary to <tmpdir>/chromium. When that file exists, point
