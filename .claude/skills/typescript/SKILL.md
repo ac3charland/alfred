@@ -129,6 +129,15 @@ rules, these are forbidden. Fix the type error in the code.
 This includes `Record<string, T>` and any object with an index signature. It does NOT affect
 for-of loops, destructuring, or `.map()`/`.filter()` callbacks — those stay `T`.
 
+**Don't write `arr[0] as T` under strict lint — two autofixes fight and leave you stuck.**
+With `noUncheckedIndexedAccess`, `arr[0]` is `T | undefined`, so `arr[0] as T`
+trips `@typescript-eslint/non-nullable-type-assertion-style`, whose autofix rewrites it
+to `arr[0]!` — which then trips `@typescript-eslint/no-non-null-assertion` (forbidden,
+no autofix). The escape is to **restructure, not assert**: assert on the whole value
+(`expect(arr).toEqual([...])` instead of `expect(arr[0] as T)`), destructure
+(`const [first] = arr` then guard `first`), or narrow with an explicit
+`if (first === undefined) …`. Common when indexing a parsed array in a test.
+
 **`exactOptionalPropertyTypes` makes `undefined` and "missing" different.**
 You cannot pass `{ field: undefined }` where `{ field?: string }` is expected — `undefined` is not
 the same as "not present". When building partial update objects via spread: use
