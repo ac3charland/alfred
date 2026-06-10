@@ -1,5 +1,6 @@
 'use client';
 
+import { Loader2 } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -32,29 +33,41 @@ export function CaptureBox({
   onCapture,
 }: CaptureBoxProperties) {
   const [value, setValue] = React.useState('');
-  const [isPending, setIsPending] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
   const { addTask } = useTaskActions();
   const textareaReference = React.useRef<HTMLTextAreaElement>(null);
+  // Number of saves still in flight. A ref, not state, because the count itself never
+  // drives the UI — only the derived "did the user get ahead of the network?" flag does.
+  const inFlightReference = React.useRef(0);
 
   const handleSubmit = async (event_?: React.SyntheticEvent) => {
     event_?.preventDefault();
     const trimmed = value.trim();
-    if (!trimmed || isPending) return;
+    if (!trimmed) return;
 
-    setIsPending(true);
+    // Optimistically clear and keep the box live so the next thought can be captured
+    // immediately, while the store inserts an optimistic node and saves this one in the
+    // background (reconciling with the saved row, or rolling back on failure).
+    setValue('');
     setErrorMessage(undefined);
 
+    // If a previous capture is still saving, the user out-typed the network — surface the
+    // spinner and hold it until every in-flight save has drained.
+    if (inFlightReference.current > 0) setIsSaving(true);
+    inFlightReference.current += 1;
+
     try {
-      // The store inserts an optimistic node immediately and reconciles with the
-      // saved row; on failure it rolls back and re-throws so we can surface the error.
       await addTask({ text: trimmed, folderId, parentId });
-      setValue('');
       onCapture?.();
     } catch {
       setErrorMessage('Failed to save. Try again.');
+      // Don't lose the capture: restore the failed text unless the user already started
+      // typing the next one.
+      setValue((current) => (current === '' ? trimmed : current));
     } finally {
-      setIsPending(false);
+      inFlightReference.current -= 1;
+      if (inFlightReference.current === 0) setIsSaving(false);
     }
   };
 
@@ -99,18 +112,21 @@ export function CaptureBox({
             'flex-1 rounded-sm border border-border bg-input px-3 py-1.5 text-sm text-foreground',
             'placeholder:text-muted-foreground',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-            'disabled:cursor-not-allowed disabled:opacity-50',
           )}
-          disabled={isPending}
         />
         <Button
           type="submit"
           size="sm"
           variant="ghost"
-          disabled={isPending || !value.trim()}
+          aria-label="Add"
+          disabled={!value.trim()}
           className="shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal"
         >
-          {isPending ? '…' : 'Add'}
+          {isSaving ? (
+            <Loader2 size={14} className="animate-spin" role="status" aria-label="Saving" />
+          ) : (
+            'Add'
+          )}
         </Button>
       </form>
     );
@@ -153,9 +169,7 @@ export function CaptureBox({
             'text-base text-foreground',
             'focus:outline-none',
             'placeholder:text-muted-foreground',
-            'disabled:opacity-50',
           )}
-          disabled={isPending}
         />
         <div className="absolute bottom-3 right-3 flex items-center gap-2">
           {errorMessage && (
@@ -169,10 +183,15 @@ export function CaptureBox({
           <Button
             type="submit"
             size="sm"
-            disabled={isPending || !value.trim()}
+            aria-label="Capture"
+            disabled={!value.trim()}
             className="bg-accent-teal text-background hover:bg-accent-teal/90 disabled:opacity-40"
           >
-            {isPending ? '…' : 'Capture'}
+            {isSaving ? (
+              <Loader2 size={14} className="animate-spin" role="status" aria-label="Saving" />
+            ) : (
+              'Capture'
+            )}
           </Button>
         </div>
       </div>

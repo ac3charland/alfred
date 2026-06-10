@@ -80,16 +80,62 @@ describe('CaptureBox', () => {
     });
   });
 
-  it('shows an error message when createItem fails', async () => {
-    mockCreateItem.mockRejectedValue(new Error('Network error'));
+  it('optimistically clears and keeps the textarea enabled before the save resolves', async () => {
+    // The save never resolves, so we observe the box's state mid-flight.
+    mockCreateItem.mockImplementation(() => new Promise(() => {}));
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    const textarea = screen.getByRole('textbox', { name: /capture box/i });
+    await user.type(textarea, 'Buy milk');
+    await user.keyboard('{Enter}');
+
+    expect(textarea).toHaveValue('');
+    expect(textarea).toBeEnabled();
+  });
+
+  it('does not show a saving spinner for a single in-flight capture', async () => {
+    mockCreateItem.mockImplementation(() => new Promise(() => {}));
 
     const user = userEvent.setup();
     renderWithProviders(<CaptureBox />);
 
     await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
-    await user.click(screen.getByRole('button', { name: /capture/i }));
+    await user.keyboard('{Enter}');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('shows a saving spinner when a new item is captured before the previous one saves', async () => {
+    // Both saves stay in flight, so the second capture overlaps the first.
+    mockCreateItem.mockImplementation(() => new Promise(() => {}));
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    const textarea = screen.getByRole('textbox', { name: /capture box/i });
+    await user.type(textarea, 'First');
+    await user.keyboard('{Enter}');
+    await user.type(textarea, 'Second');
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+  });
+
+  it('shows an error message and restores the text when createItem fails', async () => {
+    mockCreateItem.mockRejectedValue(new Error('Network error'));
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    const textarea = screen.getByRole('textbox', { name: /capture box/i });
+    await user.type(textarea, 'Buy milk');
+    await user.keyboard('{Enter}');
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to save/i);
+    // The optimistic clear must not lose the capture — the failed text is restored.
+    expect(textarea).toHaveValue('Buy milk');
   });
 
   it('calls onCapture callback after successful capture in compact mode', async () => {
