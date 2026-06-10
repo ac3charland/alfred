@@ -1,4 +1,4 @@
-import { requireSession } from '@/lib/api/auth';
+import { getSessionOrUnauthorized } from '@/lib/api/auth';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createFolderSchema } from '@/lib/api/schemas';
 
@@ -7,8 +7,8 @@ import { createFolderSchema } from '@/lib/api/schemas';
 // ---------------------------------------------------------------------------
 
 export async function GET(): Promise<Response> {
-  const session = await requireSession();
-  if (!session) return jsonError(401, 'Unauthorized');
+  const session = await getSessionOrUnauthorized();
+  if (session instanceof Response) return session;
 
   const { supabase } = session;
 
@@ -27,8 +27,8 @@ export async function GET(): Promise<Response> {
 // ---------------------------------------------------------------------------
 
 export async function POST(request: Request): Promise<Response> {
-  const session = await requireSession();
-  if (!session) return jsonError(401, 'Unauthorized');
+  const session = await getSessionOrUnauthorized();
+  if (session instanceof Response) return session;
 
   const { supabase } = session;
 

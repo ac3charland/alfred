@@ -1,4 +1,4 @@
-import { requireSession } from '@/lib/api/auth';
+import { getSessionOrUnauthorized } from '@/lib/api/auth';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { updateFolderSchema } from '@/lib/api/schemas';
 
@@ -10,8 +10,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await requireSession();
-  if (!session) return jsonError(401, 'Unauthorized');
+  const session = await getSessionOrUnauthorized();
+  if (session instanceof Response) return session;
 
   const { id } = await context.params;
   const { supabase } = session;
@@ -48,8 +48,8 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await requireSession();
-  if (!session) return jsonError(401, 'Unauthorized');
+  const session = await getSessionOrUnauthorized();
+  if (session instanceof Response) return session;
 
   const { id } = await context.params;
   const { supabase } = session;

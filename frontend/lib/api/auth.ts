@@ -53,6 +53,18 @@ export async function requireSession(): Promise<Session | undefined> {
 }
 
 /**
+ * Returns an authenticated session or a 401 Response.
+ *
+ * Prefer this over `requireSession()` in Route Handlers: check `instanceof Response`
+ * to short-circuit, then destructure the session directly.
+ */
+export async function getSessionOrUnauthorized(): Promise<Session | Response> {
+  const session = await requireSession();
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  return session;
+}
+
+/**
  * Resolves the Supabase client to use for a POST /api/items request:
  *
  * - Valid API key present → `createAdminClient()` (bypasses RLS, trusted ingress)
