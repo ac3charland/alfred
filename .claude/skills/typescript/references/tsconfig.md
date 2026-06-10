@@ -102,7 +102,7 @@ All of `strict: true` (8 flags) plus:
 | `noImplicitReturns` | Function branches that don't return a value |
 | `noPropertyAccessFromIndexSignature` | `obj.dynamicKey` on index-signature types (must use `obj["key"]`) |
 | `noUnusedLocals` | Declared but never-read variables |
-| `noUnusedParameters` | Function parameters that are never read (prefix with `_` to suppress) |
+| `noUnusedParameters` | Function parameters that are never read (prefix with `_` to suppress — ESLint's `@typescript-eslint/no-unused-vars` is configured with `argsIgnorePattern: '^_'` to match) |
 | `allowUnreachableCode: false` | Code after `return`/`throw` that can never run |
 | `allowUnusedLabels: false` | Labeled statements that are never `break`-ed to |
 | `isolatedModules: true` | Type-only re-exports must use `export type`; required by esbuild/SWC |
