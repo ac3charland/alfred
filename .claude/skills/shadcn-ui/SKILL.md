@@ -167,6 +167,13 @@ Use this when:
   component. If it should not be visible, use `className="sr-only"`. Omitting it fails the Radix
   accessibility check and breaks screen readers.
 
+- **In a reusable `<label>` atom, pull `htmlFor` out of the props and apply it explicitly** —
+  `({ htmlFor, ...properties }) => <label htmlFor={htmlFor} {...properties} />`. If `htmlFor`
+  only reaches the element through the `{...properties}` spread, `jsx-a11y/label-has-associated-control`
+  can't see it statically and errors with "A form label must be associated with a control", even
+  though every caller passes `htmlFor`. Destructuring it so the attribute is literally present on
+  the JSX satisfies the rule (and is the correct contract for a field label).
+
 - **Never** fetch component source files from GitHub raw URLs. Always use
   `npx shadcn@latest add <name> --dry-run` or `--view` to inspect what will change. The CLI
   resolves the correct registry, file paths, and CSS diffs automatically.
