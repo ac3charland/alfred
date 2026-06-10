@@ -57,6 +57,8 @@ function makeMockSupabase(user: { id: string } | undefined, result: MockResult) 
   };
 }
 
+const STUB_CONTEXT = { params: Promise.resolve({}) };
+
 function makeRequest(url: string, init?: RequestInit): Request {
   return new Request(url, init);
 }
@@ -70,7 +72,7 @@ describe('GET /api/items', () => {
     const mockSupabase = makeMockSupabase(undefined, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET(makeRequest('http://localhost/api/items'));
+    const response = await GET(makeRequest('http://localhost/api/items'), STUB_CONTEXT);
     expect(response.status).toBe(401);
   });
 
@@ -79,7 +81,7 @@ describe('GET /api/items', () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: items, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET(makeRequest('http://localhost/api/items'));
+    const response = await GET(makeRequest('http://localhost/api/items'), STUB_CONTEXT);
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual(items);
@@ -89,7 +91,7 @@ describe('GET /api/items', () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    await GET(makeRequest('http://localhost/api/items?inbox=true'));
+    await GET(makeRequest('http://localhost/api/items?inbox=true'), STUB_CONTEXT);
 
     const chain = mockSupabase._chain;
     // Verify .is('folder_id', null) was called — the route must use .is() not .eq()
@@ -102,7 +104,7 @@ describe('GET /api/items', () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET(makeRequest('http://localhost/api/items?status=invalid'));
+    const response = await GET(makeRequest('http://localhost/api/items?status=invalid'), STUB_CONTEXT);
     expect(response.status).toBe(400);
   });
 
@@ -113,7 +115,7 @@ describe('GET /api/items', () => {
     });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET(makeRequest('http://localhost/api/items'));
+    const response = await GET(makeRequest('http://localhost/api/items'), STUB_CONTEXT);
     expect(response.status).toBe(500);
   });
 });

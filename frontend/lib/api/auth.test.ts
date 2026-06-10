@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { createClient } from '@/lib/supabase/server';
 
-import { getSessionOrUnauthorized } from './auth';
+import { withSession } from './auth';
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
@@ -12,31 +12,40 @@ jest.mock('@/lib/supabase/admin', () => ({
 
 const mockCreateClient = jest.mocked(createClient);
 
+const STUB_CONTEXT = { params: Promise.resolve({}) };
+
 function makeSupabaseMock(user?: { id: string }) {
   return {
     auth: { getUser: jest.fn().mockResolvedValue({ data: { user } }) },
   };
 }
 
-describe('getSessionOrUnauthorized', () => {
-  it('returns a 401 Response when unauthenticated', async () => {
+describe('withSession', () => {
+  it('returns 401 without calling the handler when unauthenticated', async () => {
     mockCreateClient.mockResolvedValue(makeSupabaseMock() as never);
+    const handler = jest.fn();
 
-    const result = await getSessionOrUnauthorized();
+    const route = withSession(handler);
+    const response = await route(new Request('http://localhost/'), STUB_CONTEXT);
 
-    expect(result).toBeInstanceOf(Response);
-    expect((result as Response).status).toBe(401);
-    const body: unknown = await (result as Response).json();
-    expect(body).toStrictEqual({ error: 'Unauthorized' });
+    expect(response.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
   });
 
-  it('returns the session when authenticated', async () => {
+  it('calls the handler with the session when authenticated', async () => {
     const user = { id: 'user-123' };
-    mockCreateClient.mockResolvedValue(makeSupabaseMock(user) as never);
+    const mockSupabase = makeSupabaseMock(user);
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+    const handler = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
 
-    const result = await getSessionOrUnauthorized();
+    const route = withSession(handler);
+    const response = await route(new Request('http://localhost/'), STUB_CONTEXT);
 
-    expect(result).not.toBeInstanceOf(Response);
-    expect((result as { user: typeof user }).user).toStrictEqual(user);
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ user }),
+      expect.any(Request),
+      STUB_CONTEXT,
+    );
   });
 });

@@ -53,15 +53,18 @@ export async function requireSession(): Promise<Session | undefined> {
 }
 
 /**
- * Returns an authenticated session or a 401 Response.
- *
- * Prefer this over `requireSession()` in Route Handlers: check `instanceof Response`
- * to short-circuit, then destructure the session directly.
+ * Wraps a Route Handler with session auth. The handler receives the resolved
+ * session as its first argument; unauthenticated requests are rejected with 401
+ * before the handler is called.
  */
-export async function getSessionOrUnauthorized(): Promise<Session | Response> {
-  const session = await requireSession();
-  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  return session;
+export function withSession<P = Record<string, string>>(
+  handler: (session: Session, request: Request, context: { params: Promise<P> }) => Promise<Response>,
+) {
+  return async (request: Request, context: { params: Promise<P> }): Promise<Response> => {
+    const session = await requireSession();
+    if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    return handler(session, request, context);
+  };
 }
 
 /**

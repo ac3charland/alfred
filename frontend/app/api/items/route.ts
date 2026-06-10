@@ -1,4 +1,4 @@
-import { getSessionOrUnauthorized, resolveIngestClient } from '@/lib/api/auth';
+import { resolveIngestClient, withSession } from '@/lib/api/auth';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createItemSchema, listItemsQuerySchema } from '@/lib/api/schemas';
 
@@ -6,10 +6,7 @@ import { createItemSchema, listItemsQuerySchema } from '@/lib/api/schemas';
 // GET /api/items
 // ---------------------------------------------------------------------------
 
-export async function GET(request: Request): Promise<Response> {
-  const session = await getSessionOrUnauthorized();
-  if (session instanceof Response) return session;
-
+export const GET = withSession(async (session, request) => {
   const { supabase } = session;
 
   const url = new URL(request.url);
@@ -46,7 +43,7 @@ export async function GET(request: Request): Promise<Response> {
   if (error) return jsonError(500, error.message);
 
   return jsonOk(data);
-}
+});
 
 // ---------------------------------------------------------------------------
 // POST /api/items
