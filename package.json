@@ -12,7 +12,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "prepare": "husky",
+    "prepare": "node -e \"if (!process.env.CI) require('child_process').execSync('husky', {stdio: 'inherit'})\"",
     "check": "npm run check:fast && npm run check:slow",
     "check:fast": "npm run check:fast --workspaces --if-present",
     "check:slow": "npm run check:slow --workspaces --if-present"
