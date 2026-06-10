@@ -116,3 +116,16 @@ as $$
   where id in (select id from subtree)
   returning *;
 $$;
+
+-- ── Privileges (§7) ──────────────────────────────────────────────────────────
+-- RLS (above) gates *which rows* a role sees; table GRANTs gate whether the role
+-- may touch the table at all. Supabase's auto-grant default privileges don't
+-- reliably cover objects created by `postgres` over the connection pooler (raw
+-- `psql -f` instead of `supabase db push`), so grant DML explicitly. anon stays
+-- locked out by RLS (no policy), authenticated gets the full-access policy, and
+-- service_role bypasses RLS for the trusted Siri/external ingress.
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on items, folders
+  to anon, authenticated, service_role;
+grant execute on function get_subtree(uuid), complete_subtree(uuid)
+  to anon, authenticated, service_role;
