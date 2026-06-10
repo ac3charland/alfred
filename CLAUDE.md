@@ -25,7 +25,9 @@ fanning out to every package via `npm run <script> --workspaces --if-present`.
 
 Before committing or pushing, make sure you've installed node_modules.
 
-**Always use `npm ci` over `npm install`** unless you're adding/removing dependencies. 
+**Always use `npm ci` over `npm install`** unless you're adding/removing dependencies.
+
+If `package-lock.json` shows changes after running commands but no packages were added or removed, **revert those changes** before committing — they are spurious metadata drift (e.g. `"dev": true` annotations) that npm regenerates non-deterministically and should not be committed.
 
 ---
 
