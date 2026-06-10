@@ -278,18 +278,18 @@ const fixture: ItemNode = {
 
 **Storybook stories with required callback props (no-empty-function)**
 
-`@typescript-eslint/no-empty-function` forbids `() => {}` in stories. And `() => undefined` gets auto-fixed to `() => {}` by ESLint. Use named stub functions with a non-trivial body:
+`@typescript-eslint/no-empty-function` forbids `() => {}` in stories, and `() => undefined` gets auto-fixed to `() => {}` by ESLint — so a stub still needs a non-empty body. Use a named stub with a `_`-prefixed unused param (or no param) and an explicit `return;`:
 
 ```ts
-function handleOpenChange(open: boolean) {
-  return open; // references the param — not empty
+function handleOpenChange(_open: boolean) {
+  return; // body isn't empty — satisfies no-empty-function
 }
 function handleConfirm() {
-  return undefined; // explicit return — not empty
+  return;
 }
 ```
 
-Inline arrow with discarded parameter: `(_open: boolean) => undefined` triggers `no-unused-vars`. Named function is cleaner.
+The `_`-prefix honestly marks the param as deliberately unused — the project's `@typescript-eslint/no-unused-vars` is configured with `argsIgnorePattern: '^_'`, so it no longer fires. Don't fake-use the param (e.g. `return open`) just to dodge the linter; and if the param is trailing/only, you can drop it entirely. When a story needs to **assert** a callback fired, use `fn()` from `'storybook/test'` instead of a stub (see the storybook skill).
 
 ## What Was Deliberately Left Out
 
