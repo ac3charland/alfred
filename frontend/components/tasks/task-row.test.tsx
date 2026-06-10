@@ -24,21 +24,19 @@ const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 
-const DB_NULL = undefined as unknown as null;
-
 const BASE_ITEM: ItemNode = {
   id: 'item-1',
   title: 'Write tests',
-  notes: DB_NULL,
-  source_url: DB_NULL,
+  notes: null,
+  source_url: null,
   item_type: 'task',
   created_at: '2025-01-01T10:00:00Z',
-  raw_capture: DB_NULL,
-  due_date: DB_NULL,
+  raw_capture: null,
+  due_date: null,
   status: 'active',
-  completed_at: DB_NULL,
-  folder_id: DB_NULL,
-  parent_id: DB_NULL,
+  completed_at: null,
+  folder_id: null,
+  parent_id: null,
   children: [],
 };
 
@@ -138,7 +136,7 @@ describe('TaskRow', () => {
   // ---------------------------------------------------------------------------
 
   it('dismisses the task immediately on checkbox click before API resolves', async () => {
-    mockCompleteTask.mockReturnValue(Promise.race([]));
+    mockCompleteTask.mockImplementation(() => new Promise(() => {}));
 
     const user = userEvent.setup();
     render(<TaskRow node={BASE_ITEM} folders={[]} />);
@@ -216,7 +214,7 @@ describe('TaskRow', () => {
   });
 
   it('dismisses the task immediately when uncompleting before API resolves', async () => {
-    mockUpdateItem.mockReturnValue(Promise.race([]));
+    mockUpdateItem.mockImplementation(() => new Promise(() => {}));
 
     const user = userEvent.setup();
     render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);

@@ -162,6 +162,13 @@ export default defineConfig([
     ...jestPlugin.configs['flat/recommended'],
     ...jestDomPlugin.configs['flat/recommended'],
     ...testingLibrary.configs['flat/react'],
+    rules: {
+      // Tests routinely need never-resolving promise executors and other inert
+      // stubs (e.g. `new Promise(() => {})`). These are intentional test
+      // harness patterns — `@typescript-eslint/no-empty-function` adds noise
+      // without safety benefit in test files.
+      '@typescript-eslint/no-empty-function': 'off',
+    },
   },
 
   // ── Playwright (e2e test files only) ──────────────────────────────────────
