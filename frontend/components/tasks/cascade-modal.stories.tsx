@@ -2,27 +2,17 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { CascadeModal } from './cascade-modal';
 
-// Storybook action stubs — the actions addon logs invocations in the panel, so
-// these handlers only need to exist. The `_`-prefixed param mirrors the
-// `onOpenChange` signature while marking it deliberately unused.
-function handleOpenChange(_open: boolean) {
-  return;
-}
-
-function handleConfirm() {
-  return;
-}
-
 const meta = {
   title: 'Tasks/CascadeModal',
   component: CascadeModal,
   tags: ['autodocs'],
   args: {
+    // Inert no-op stubs — these stories don't assert on the callbacks.
     open: true,
-    onOpenChange: handleOpenChange,
+    onOpenChange: () => {},
     taskTitle: 'Plan the product launch',
     subtaskCount: 3,
-    onConfirm: handleConfirm,
+    onConfirm: () => {},
     isPending: false,
   },
 } satisfies Meta<typeof CascadeModal>;
