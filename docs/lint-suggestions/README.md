@@ -54,4 +54,13 @@ and which packages it should apply to. Include the snippet if you can.
 ## Workaround used meanwhile
 What you did to pass the gate in the current code, so the reviewer can see the
 cost the rule is imposing.
+
+## Workarounds to rip out if the rule changes
+A checklist of every place that exists *only* to satisfy the current rule and must
+be reverted the moment it changes — so a follow-up agent can clean them all up in
+one pass and leave no kludge behind. One entry per location: `path/to/file` + what
+the workaround is and the clean form it should revert to. Keep this list growing as
+more code hits the same rule.
+
+- [ ] `path/to/file.ts` — <the workaround, and what it becomes once the rule changes>
 ```
