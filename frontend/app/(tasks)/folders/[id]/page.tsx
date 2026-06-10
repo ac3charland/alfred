@@ -2,9 +2,8 @@ import { notFound } from 'next/navigation';
 import * as React from 'react';
 
 import { TaskList } from '@/components/tasks/task-list';
-import { createClient } from '@/lib/supabase/server';
-import { buildTree } from '@/lib/tree';
-import type { Folder, Item } from '@/lib/types';
+import { getFolder, getFolders } from '@/lib/data/folders';
+import { getFolderItems } from '@/lib/data/items';
 
 interface FolderPageProperties {
   params: Promise<{ id: string }>;
@@ -15,28 +14,16 @@ interface FolderPageProperties {
  */
 export default async function FolderPage({ params }: FolderPageProperties) {
   const { id } = await params;
-  const supabase = await createClient();
 
-  const [folderResult, itemsResult, foldersResult] = await Promise.all([
-    supabase.from('folders').select('*').eq('id', id).maybeSingle(),
-    supabase
-      .from('items')
-      .select('*')
-      .eq('folder_id', id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false }),
-    supabase.from('folders').select('*').order('created_at', { ascending: true }),
+  const [folder, tree, folders] = await Promise.all([
+    getFolder(id),
+    getFolderItems(id),
+    getFolders(),
   ]);
 
-  if (!folderResult.data) {
+  if (!folder) {
     notFound();
   }
-
-  const folder: Folder = folderResult.data;
-  const items: Item[] = itemsResult.data ?? [];
-  const folders: Folder[] = foldersResult.data ?? [];
-
-  const tree = buildTree(items);
 
   return (
     <>

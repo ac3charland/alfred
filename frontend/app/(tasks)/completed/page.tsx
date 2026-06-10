@@ -1,30 +1,20 @@
 import * as React from 'react';
 
 import { TaskList } from '@/components/tasks/task-list';
-import { createClient } from '@/lib/supabase/server';
-import { buildTree } from '@/lib/tree';
-import type { Folder, Item } from '@/lib/types';
+import { getFolders } from '@/lib/data/folders';
+import { getCompletedItems } from '@/lib/data/items';
+import { getDescendantIds } from '@/lib/tree';
 
 /**
  * Completed view — shows all completed tasks across inbox and folders.
  * Read-only: no capture box here (completed tasks are done).
  */
 export default async function CompletedPage() {
-  const supabase = await createClient();
+  const [tree, folders] = await Promise.all([getCompletedItems(), getFolders()]);
 
-  const [itemsResult, foldersResult] = await Promise.all([
-    supabase
-      .from('items')
-      .select('*')
-      .eq('status', 'completed')
-      .order('completed_at', { ascending: false }),
-    supabase.from('folders').select('*').order('created_at', { ascending: true }),
-  ]);
-
-  const items: Item[] = itemsResult.data ?? [];
-  const folders: Folder[] = foldersResult.data ?? [];
-
-  const tree = buildTree(items);
+  // Total completed tasks = every node in the forest (roots + all descendants).
+  let count = 0;
+  for (const root of tree) count += 1 + getDescendantIds(root).length;
 
   return (
     <>
@@ -36,7 +26,7 @@ export default async function CompletedPage() {
 
       <div className="mb-8">
         <p className="text-sm text-muted-foreground">
-          {items.length} completed task{items.length === 1 ? '' : 's'}
+          {count} completed task{count === 1 ? '' : 's'}
         </p>
       </div>
 

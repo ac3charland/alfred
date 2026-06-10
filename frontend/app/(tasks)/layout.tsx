@@ -6,8 +6,7 @@ import { FolderNav } from '@/components/tasks/folder-nav';
 import { Button } from '@/components/ui/button';
 import { signOut } from '@/lib/auth/actions';
 import { requireUser } from '@/lib/auth/require-user';
-import { createClient } from '@/lib/supabase/server';
-import type { Folder } from '@/lib/types';
+import { getFolders } from '@/lib/data/folders';
 
 /**
  * Tasks module layout (Server Component).
@@ -20,13 +19,7 @@ export default async function TasksLayout({ children }: { children: React.ReactN
   // Real auth gate — redirects to /login if no session
   await requireUser();
 
-  const supabase = await createClient();
-  const { data: folders } = await supabase
-    .from('folders')
-    .select('*')
-    .order('created_at', { ascending: true });
-
-  const resolvedFolders: Folder[] = folders ?? [];
+  const folders = await getFolders();
 
   return (
     <div className="flex h-full min-h-screen bg-background">
@@ -42,7 +35,7 @@ export default async function TasksLayout({ children }: { children: React.ReactN
           </Link>
         </div>
         <div className="flex-1 overflow-y-auto px-2">
-          <FolderNav folders={resolvedFolders} />
+          <FolderNav folders={folders} />
         </div>
       </aside>
 
@@ -52,7 +45,7 @@ export default async function TasksLayout({ children }: { children: React.ReactN
         <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
           {/* Mobile: hamburger + wordmark */}
           <div className="flex items-center gap-3 md:hidden">
-            <MobileNavClient folders={resolvedFolders} />
+            <MobileNavClient folders={folders} />
             <Link
               href="/"
               aria-label="alfred — back to capture"
