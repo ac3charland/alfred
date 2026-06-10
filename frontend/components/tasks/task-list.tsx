@@ -3,27 +3,25 @@
 import * as React from 'react';
 
 import { TaskRow } from '@/components/tasks/task-row';
-import type { ItemNode } from '@/lib/tree';
-import type { Folder } from '@/lib/types';
+import type { TaskScope } from '@/lib/stores/tasks-store';
+import { useScopedTasks } from '@/lib/stores/tasks-store';
 import { cn } from '@/lib/utils';
 
 interface TaskListProperties {
-  nodes: ItemNode[];
-  folders: Folder[];
+  /** Which view to render (inbox / a folder / completed) — filters the shared store. */
+  scope: TaskScope;
   emptyMessage?: string;
-  isCompleted?: boolean;
 }
 
 /**
- * Renders the top-level task list. Each TaskRow handles its own recursive
- * subtree rendering.
+ * Renders one view's task forest, derived from the shared TasksProvider store by `scope`.
+ * Each TaskRow handles its own recursive subtree rendering and reads folders from the
+ * FoldersProvider.
  */
-export function TaskList({
-  nodes,
-  folders,
-  emptyMessage = 'No tasks yet',
-  isCompleted = false,
-}: TaskListProperties) {
+export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListProperties) {
+  const nodes = useScopedTasks(scope);
+  const isCompleted = scope.type === 'completed';
+
   if (nodes.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -43,7 +41,7 @@ export function TaskList({
       )}
     >
       {nodes.map((node) => (
-        <TaskRow key={node.id} node={node} folders={folders} isCompleted={isCompleted} />
+        <TaskRow key={node.id} node={node} isCompleted={isCompleted} />
       ))}
     </ul>
   );

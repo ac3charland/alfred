@@ -1,20 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { renderWithProviders } from '@/lib/test-utils';
 
 import { CaptureBox } from './capture-box';
 
-// Mock next/navigation so router.refresh() doesn't throw in jsdom.
-const mockRefresh = jest.fn();
-jest.mock('next/navigation', () => ({
-  useRouter() {
-    return { refresh: mockRefresh };
-  },
-}));
-
-// Mock the api-client so tests never hit the network.
+// The store calls api-client under the hood; mock it so tests never hit the network.
 jest.mock('@/lib/api-client');
 const mockCreateItem = jest.mocked(apiClient.createItem);
 
@@ -24,41 +17,41 @@ describe('CaptureBox', () => {
   });
 
   it('renders the textarea and capture button in full mode', () => {
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     expect(screen.getByRole('textbox', { name: /capture box/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /capture/i })).toBeInTheDocument();
   });
 
   it('renders a text input and Add button in compact mode', () => {
-    render(<CaptureBox compact />);
+    renderWithProviders(<CaptureBox compact />);
 
     expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add/i })).toBeInTheDocument();
   });
 
   it('submit button is disabled when input is empty', () => {
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     expect(screen.getByRole('button', { name: /capture/i })).toBeDisabled();
   });
 
   it('submit button is enabled when there is text', async () => {
     const user = userEvent.setup();
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
 
     expect(screen.getByRole('button', { name: /capture/i })).toBeEnabled();
   });
 
-  it('calls createItem and refreshes on submit', async () => {
+  it('calls createItem (via the store) on submit', async () => {
     mockCreateItem.mockResolvedValue({ id: '1', title: 'Buy milk' } as Awaited<
       ReturnType<typeof apiClient.createItem>
     >);
 
     const user = userEvent.setup();
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
     await user.click(screen.getByRole('button', { name: /capture/i }));
@@ -67,7 +60,6 @@ describe('CaptureBox', () => {
       expect(mockCreateItem).toHaveBeenCalledWith(
         expect.objectContaining({ text: 'Buy milk', item_type: 'unclassified' }),
       );
-      expect(mockRefresh).toHaveBeenCalled();
     });
   });
 
@@ -77,7 +69,7 @@ describe('CaptureBox', () => {
     >);
 
     const user = userEvent.setup();
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     const textarea = screen.getByRole('textbox', { name: /capture box/i });
     await user.type(textarea, 'Buy milk');
@@ -92,7 +84,7 @@ describe('CaptureBox', () => {
     mockCreateItem.mockRejectedValue(new Error('Network error'));
 
     const user = userEvent.setup();
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
     await user.click(screen.getByRole('button', { name: /capture/i }));
@@ -107,7 +99,7 @@ describe('CaptureBox', () => {
 
     const onCapture = jest.fn();
     const user = userEvent.setup();
-    render(<CaptureBox compact onCapture={onCapture} />);
+    renderWithProviders(<CaptureBox compact onCapture={onCapture} />);
 
     await user.type(screen.getByPlaceholderText(/add subtask/i), 'Subtask');
     await user.click(screen.getByRole('button', { name: /add/i }));
@@ -123,7 +115,7 @@ describe('CaptureBox', () => {
     >);
 
     const user = userEvent.setup();
-    render(<CaptureBox folderId="folder-123" />);
+    renderWithProviders(<CaptureBox folderId="folder-123" />);
 
     await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Task');
     await user.click(screen.getByRole('button', { name: /capture/i }));
@@ -141,7 +133,7 @@ describe('CaptureBox', () => {
     >);
 
     const user = userEvent.setup();
-    render(<CaptureBox />);
+    renderWithProviders(<CaptureBox />);
 
     await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Task');
     await user.click(screen.getByRole('button', { name: /capture/i }));

@@ -105,6 +105,8 @@ earlier ones for the same rule key. This means:
 - **Never omit `importPlugin.flatConfigs.typescript`** in TS packages. Without it, the import resolver doesn't know about `.ts`/`.tsx` extensions and reports false "module not found" errors.
 - **Unicorn requires ESM** (`"type": "module"` in `package.json` or `.mjs` config file). If your `eslint.config.js` is CommonJS, unicorn's flat config will fail to import.
 - **`tseslint.config()` is now deprecated** in favor of `defineConfig` from `eslint/config` (as of 2025 ESLint blog). Either still works; avoid mixing them.
+- **`as T` for a non-null cast collides with `no-non-null-assertion`.** `eslint --fix` rewrites `value as ItemNode` (when the only difference is nullability) into `value!` via `@typescript-eslint/non-nullable-type-assertion-style`, but `@typescript-eslint/no-non-null-assertion` then **errors** on that `!`. Don't fight it with a disable — narrow instead. In tests, a tiny helper does it: `function defined<T>(v: T \| undefined): T { if (v === undefined) throw new Error('expected'); return v }`, then `defined(arr[0])`. (See `lib/tree.test.ts`, `lib/stores/tasks-store.test.tsx`.)
+- **`react-hooks/refs` (recommended-latest) forbids writing `ref.current` during render.** A `ref.current = state` in the component body errors. Sync the ref in an effect: `useEffect(() => { ref.current = state }, [state])` — see the optimistic stores in `lib/stores/*`.
 
 ---
 

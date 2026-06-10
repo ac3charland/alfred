@@ -2,41 +2,23 @@ import { notFound } from 'next/navigation';
 import * as React from 'react';
 
 import { TaskList } from '@/components/tasks/task-list';
-import { createClient } from '@/lib/supabase/server';
-import { buildTree } from '@/lib/tree';
-import type { Folder, Item } from '@/lib/types';
+import { getFolder } from '@/lib/data/folders';
 
 interface FolderPageProperties {
   params: Promise<{ id: string }>;
 }
 
 /**
- * Folder view — shows active items scoped to this folder.
+ * Folder view — active items scoped to this folder, filtered from the shared store.
+ * Only the folder itself is fetched here (for the title + a real 404).
  */
 export default async function FolderPage({ params }: FolderPageProperties) {
   const { id } = await params;
-  const supabase = await createClient();
 
-  const [folderResult, itemsResult, foldersResult] = await Promise.all([
-    supabase.from('folders').select('*').eq('id', id).maybeSingle(),
-    supabase
-      .from('items')
-      .select('*')
-      .eq('folder_id', id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false }),
-    supabase.from('folders').select('*').order('created_at', { ascending: true }),
-  ]);
-
-  if (!folderResult.data) {
+  const folder = await getFolder(id);
+  if (!folder) {
     notFound();
   }
-
-  const folder: Folder = folderResult.data;
-  const items: Item[] = itemsResult.data ?? [];
-  const folders: Folder[] = foldersResult.data ?? [];
-
-  const tree = buildTree(items);
 
   return (
     <>
@@ -46,7 +28,10 @@ export default async function FolderPage({ params }: FolderPageProperties) {
         </span>
       </div>
 
-      <TaskList nodes={tree} folders={folders} emptyMessage={`No tasks in ${folder.name}`} />
+      <TaskList
+        scope={{ type: 'folder', folderId: id }}
+        emptyMessage={`No tasks in ${folder.name}`}
+      />
     </>
   );
 }

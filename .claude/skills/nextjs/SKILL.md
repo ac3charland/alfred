@@ -84,8 +84,10 @@ Does it need useState / useEffect / browser APIs / event handlers?
   → "use client" Client Component
 
 Is it a mutation triggered by a user action inside your own UI?
-  → Server Action (inline "use server" or lib/actions.ts)
-  → Do NOT use a Route Handler for internal UI mutations
+  → Generic Next.js: a Server Action ("use server").
+  → In alfred: an optimistic store action → lib/api-client → a Route Handler (see the
+    data-flow skill). alfred routes UI mutations through the same app/api/** endpoints as
+    external ingress, not Server Actions — keep that path. (signOut is the auth exception.)
 
 Is it an endpoint called by an external caller (webhook, Cloudflare Worker, API key client)?
   → Route Handler (app/api/.../route.ts)
@@ -111,12 +113,12 @@ Is it a data read that can be cached / ISR?
 | "Add a new page/screen for the tasks module" | `app/(tasks)/page.tsx` — default export async Server Component | Route group `(tasks)` is transparent in the URL; `/` maps here. Keep `app/(tasks)/layout.tsx` for module-level chrome. |
 | "Add a new future module (reader, etc.)" | `app/(reader)/layout.tsx` + `app/(reader)/page.tsx` | Each route group gets its own layout without affecting URLs. Root `app/layout.tsx` wraps all modules — put only truly global things (fonts, auth check) there. |
 | "Show shared nav or persistent sidebar" | `app/layout.tsx` (root) or the module's `layout.tsx` | Layouts survive navigation — state is preserved. Use layout, not a per-page import, for anything that must not remount. |
-| "Fetch data to render this page" | `async function Page() { const data = await supabaseClient.from(...) }` in a Server Component | Direct Supabase call in a Server Component is preferred over calling your own Route Handler. No fetch boilerplate, no extra hop. Use the server-side Supabase client from `lib/supabase/server.ts`. |
+| "Fetch data to render this page" | `async function Page() { const items = await getAllItems() }` — call a **server-only `lib/data/*`** reader, then seed it into a store | In alfred, Server Components read through `lib/data/*` (which wraps `lib/supabase/server.ts`), **not** inline `supabase.from(...)`. One home for read queries. See the data-flow skill. |
 | "This component needs a click handler / useState / useEffect" | Add `"use client"` at the top of the file | Only add at the lowest subtree that needs it. The parent can remain a Server Component and pass data as props. Never add `"use client"` to a layout — it severs the server subtree for all routes. |
 | "Pass server-fetched data into an interactive component" | Fetch in Server Component parent, pass as props to `"use client"` child | Server Components can import and render Client Components. Client Components cannot import Server Components (but can receive them as `children`). |
 | "Add a GET/POST endpoint for the Supabase data layer (later re-pointed at Cloudflare)" | `app/api/items/route.ts` with named exports `GET`, `POST` using Web `Request`/`Response` | Route Handlers use the Fetch API (`Request`, `Response`, `NextResponse`), not Express-style `(req, res)`. Export named HTTP method functions only. |
 | "Validate an API key on the ingest endpoint" | Read `Authorization` header in the Route Handler; compare to `process.env.INGEST_API_KEY` | Never use `NEXT_PUBLIC_` prefix for secrets. Server-only env vars are available in Route Handlers and Server Components with no prefix. |
-| "Mutate data from a form or button in the UI" | Server Action: `"use server"` function in `lib/actions.ts`, called directly from component | Faster than a Route Handler round-trip for UI mutations. No manual fetch() in the component. Use `useTransition` for loading state. |
+| "Mutate data from a form or button in the UI" | An **optimistic store action** (`useFolderActions` / `useTaskActions`) → `lib/api-client` → Route Handler | alfred fronts its shared Route Handlers with an optimistic Context store — no `router.refresh()`, no Server Action for app data. See the data-flow skill. (`signOut` in `lib/auth/actions.ts` is a Server Action; auth is the exception.) |
 | "Show a loading skeleton while the page fetches" | `app/(tasks)/loading.tsx` — automatic Suspense wrapper | `loading.tsx` wraps the page in `<Suspense>` automatically. For finer-grained streaming, use explicit `<Suspense fallback={<Skeleton />}>` around slow sub-components. |
 | "Handle a 404 for a task that doesn't exist" | Call `notFound()` from `next/navigation` in the Server Component; add `app/(tasks)/not-found.tsx` for the UI | `notFound()` throws internally — call it after a null check on the fetched data. `error.tsx` must be `"use client"` and handles thrown errors; `not-found.tsx` handles explicit 404s. |
 | "Redirect unauthenticated users to login" | Check session in `app/layout.tsx` (Server Component), call `redirect('/login')` from `next/navigation` | **Never rely on middleware alone** — always re-verify auth in Server Components / Route Handlers before touching data. The `x-middleware-subrequest` CVE-2025-29927 (CVSS 9.1, March 2025) proved middleware can be bypassed. |
@@ -156,8 +158,9 @@ Is it a data read that can be cached / ISR?
   server output as `children` is fine; importing is not.
 
 - **Never add `"use client"` to `app/layout.tsx`.** It would force the entire app tree
-  client-side, defeating RSC. If you need a context provider (theme, auth state), create a
-  thin `"use client"` wrapper component in `components/` and render it inside the layout.
+  client-side, defeating RSC. If you need a context provider, create a thin `"use client"`
+  wrapper and render it inside the (Server Component) layout, seeded with server-fetched data
+  as props — exactly how `app/(tasks)/layout.tsx` mounts `FoldersProvider` (see data-flow).
 
 - **Never read server-only env vars in Client Components.** Variables without `NEXT_PUBLIC_`
   are replaced with `undefined` in the browser bundle — silently, with no build error.

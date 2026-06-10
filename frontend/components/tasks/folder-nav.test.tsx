@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { renderWithProviders } from '@/lib/test-utils';
 import type { Folder } from '@/lib/types';
 
 import { FolderNav } from './folder-nav';
@@ -10,11 +11,10 @@ import { FolderNav } from './folder-nav';
 // Mock next/navigation
 const mockPathname = jest.fn<string, []>(() => '/');
 const mockPush = jest.fn();
-const mockRefresh = jest.fn();
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
   useRouter() {
-    return { push: mockPush, refresh: mockRefresh };
+    return { push: mockPush };
   },
 }));
 
@@ -49,7 +49,7 @@ describe('FolderNav', () => {
   });
 
   it('renders Inbox, Completed links, and folder names', () => {
-    render(<FolderNav folders={FOLDERS} />);
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     expect(screen.getByRole('link', { name: /inbox/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /completed/i })).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe('FolderNav', () => {
   });
 
   it('renders with no folders when the list is empty', () => {
-    render(<FolderNav folders={[]} />);
+    renderWithProviders(<FolderNav />, { folders: [] });
 
     expect(screen.getByRole('link', { name: /inbox/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /work/i })).not.toBeInTheDocument();
@@ -66,33 +66,36 @@ describe('FolderNav', () => {
 
   it('shows the new folder form when the create button is clicked', async () => {
     const user = userEvent.setup();
-    render(<FolderNav folders={FOLDERS} />);
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     await user.click(screen.getByRole('button', { name: /create folder/i }));
 
     expect(screen.getByPlaceholderText(/folder name/i)).toBeInTheDocument();
   });
 
-  it('calls createFolder and refreshes when a new folder name is submitted', async () => {
-    mockCreateFolder.mockResolvedValue({ id: 'f3', name: 'Projects', created_at: '' });
+  it('adds a folder optimistically and calls createFolder', async () => {
+    mockCreateFolder.mockResolvedValue({
+      id: 'f3',
+      name: 'Projects',
+      created_at: '2025-01-03T00:00:00Z',
+    });
 
     const user = userEvent.setup();
-    render(<FolderNav folders={FOLDERS} />);
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     await user.click(screen.getByRole('button', { name: /create folder/i }));
     await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
     await user.click(screen.getByRole('button', { name: /save folder/i }));
 
-    await waitFor(() => {
-      expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
-      expect(mockRefresh).toHaveBeenCalled();
-    });
+    // The store updates the list immediately — no router.refresh().
+    expect(await screen.findByRole('link', { name: /projects/i })).toBeInTheDocument();
+    expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
   });
 
   it('calls onClose when a nav link is clicked and onClose is provided', async () => {
     const onClose = jest.fn();
     const user = userEvent.setup();
-    render(<FolderNav folders={FOLDERS} onClose={onClose} />);
+    renderWithProviders(<FolderNav onClose={onClose} />, { folders: FOLDERS });
 
     await user.click(screen.getByRole('link', { name: /inbox/i }));
 
@@ -103,10 +106,12 @@ describe('FolderNav', () => {
     mockDeleteFolder.mockResolvedValue({ success: true });
 
     const user = userEvent.setup();
-    render(<FolderNav folders={FOLDERS} />);
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     await user.click(screen.getByRole('button', { name: /delete work/i }));
 
+    // Optimistic removal — the folder vanishes from the nav immediately.
+    expect(screen.queryByRole('link', { name: /work/i })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mockDeleteFolder).toHaveBeenCalledWith('f1');
     });
@@ -117,7 +122,7 @@ describe('FolderNav', () => {
     mockPathname.mockReturnValue('/folders/f1');
 
     const user = userEvent.setup();
-    render(<FolderNav folders={FOLDERS} />);
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     await user.click(screen.getByRole('button', { name: /delete work/i }));
 

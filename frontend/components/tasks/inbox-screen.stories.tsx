@@ -36,10 +36,9 @@ const meta = {
   tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
-  },
-  args: {
-    nodes: NODES,
-    folders: [],
+    // The inbox list is read from the TasksProvider store (seeded by the page);
+    // seed it here so the revealed list shows tasks.
+    store: { tasks: NODES },
   },
 } satisfies Meta<typeof InboxScreen>;
 

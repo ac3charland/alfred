@@ -1,9 +1,12 @@
 /**
- * Tree-building helpers for the items adjacency list.
+ * Tree helpers for the items adjacency list.
  *
- * The API returns a flat Item[] with parent_id linking. These helpers convert
- * that flat list into a tree (forest) for recursive rendering in the UI.
+ * Items are stored flat (a single `Item[]` in the tasks store). The API and the store
+ * both work with that flat list; these helpers derive the per-view forest for rendering
+ * (`buildTree`), walk a subtree (`getDescendantIds` / `collectSubtree`), and mint
+ * optimistic placeholders (`makeOptimisticItem`).
  */
+import type { CreateItemInput } from '@/lib/api-client';
 import type { Item } from '@/lib/types';
 
 export type ItemNode = Item & {
@@ -15,7 +18,8 @@ export type ItemNode = Item & {
  *
  * Top-level items (parent_id === null) become root nodes. Their children are
  * nested recursively. Items whose parent_id references an id not present in the
- * list are treated as roots (graceful fallback for partial loads).
+ * list are treated as roots (graceful fallback for filtered/partial lists — e.g. a
+ * completed subtask whose active parent isn't in the completed view).
  */
 export function buildTree(items: Item[]): ItemNode[] {
   const nodeMap = new Map<string, ItemNode>();
@@ -28,10 +32,7 @@ export function buildTree(items: Item[]): ItemNode[] {
   const roots: ItemNode[] = [];
 
   // Second pass: wire parent → children; collect roots.
-  // Avoid ! assertion (no-non-null-assertion) by using a lookup-and-check pattern.
   for (const node of nodeMap.values()) {
-    // parent_id is null for Inbox items (top-level), or may reference an id not in the
-    // current fetch (e.g. cross-folder subtask edge case). Treat both as roots.
     const parentNode = node.parent_id === null ? undefined : nodeMap.get(node.parent_id);
     if (parentNode === undefined) {
       roots.push(node);
@@ -45,9 +46,8 @@ export function buildTree(items: Item[]): ItemNode[] {
 
 /** Sort a copy of nodes by created_at descending, then recursively sort children. */
 function sortForest(nodes: ItemNode[]): ItemNode[] {
-  // unicorn/no-array-sort forbids mutating .sort(); unicorn/no-array-reduce forbids reduce;
-  // toSorted() requires ES2023 but tsconfig targets ES2022 — so we use an explicit
-  // insertion-sort loop to build a fresh sorted array without any of those APIs.
+  // unicorn/no-array-sort forbids mutating .sort(); toSorted() requires ES2023 but
+  // tsconfig targets ES2022 — so we use an explicit insertion-sort loop.
   const sorted: ItemNode[] = [];
   for (const node of nodes) {
     const insertAt = sorted.findIndex((existing) => existing.created_at < node.created_at);
@@ -60,7 +60,7 @@ function sortForest(nodes: ItemNode[]): ItemNode[] {
   return sorted.map((node): ItemNode => ({ ...node, children: sortForest(node.children) }));
 }
 
-/** Collect all descendant ids (not including the root itself). */
+/** Collect all descendant ids of a built node (not including the node itself). */
 export function getDescendantIds(node: ItemNode): string[] {
   const ids: string[] = [];
   const walk = (n: ItemNode) => {
@@ -71,4 +71,65 @@ export function getDescendantIds(node: ItemNode): string[] {
   };
   walk(node);
   return ids;
+}
+
+/**
+ * From a FLAT list, collect the item with `rootId` plus all its descendants (the items
+ * themselves). Used by the store for cascade operations (complete/move/delete a subtree)
+ * and to capture the affected rows for rollback. Returns [] if `rootId` is absent.
+ */
+export function collectSubtree(items: Item[], rootId: string): Item[] {
+  const childrenByParent = new Map<string, Item[]>();
+  for (const item of items) {
+    if (item.parent_id !== null) {
+      const siblings = childrenByParent.get(item.parent_id) ?? [];
+      siblings.push(item);
+      childrenByParent.set(item.parent_id, siblings);
+    }
+  }
+
+  const root = items.find((item) => item.id === rootId);
+  if (root === undefined) return [];
+
+  const result: Item[] = [];
+  const stack: Item[] = [root];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === undefined) continue;
+    result.push(current);
+    for (const child of childrenByParent.get(current.id) ?? []) {
+      stack.push(child);
+    }
+  }
+  return result;
+}
+
+/** Prefix marking a client-generated id that has not yet been reconciled with the server. */
+export const TEMP_ID_PREFIX = 'temp-';
+
+/** True if `id` is a client-side optimistic id (not yet reconciled to a server row). */
+export function isTempId(id: string): boolean {
+  return id.startsWith(TEMP_ID_PREFIX);
+}
+
+/**
+ * Build a complete optimistic Item from a capture input, mirroring the server's
+ * POST /api/items defaults (title falls back to text, raw_capture to text, status
+ * active). The id is a temp id (see isTempId) until reconciled with the server row.
+ */
+export function makeOptimisticItem(input: CreateItemInput): Item {
+  return {
+    id: `${TEMP_ID_PREFIX}${crypto.randomUUID()}`,
+    title: input.title ?? input.text ?? '',
+    notes: input.notes ?? null,
+    source_url: input.source_url ?? null,
+    raw_capture: input.raw_capture ?? input.text ?? null,
+    item_type: input.item_type ?? 'unclassified',
+    due_date: input.due_date ?? null,
+    folder_id: input.folder_id ?? null,
+    parent_id: input.parent_id ?? null,
+    status: 'active',
+    completed_at: null,
+    created_at: new Date().toISOString(),
+  };
 }

@@ -5,23 +5,26 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
-import { createFolder, deleteFolder, updateFolder } from '@/lib/api-client';
-import type { Folder } from '@/lib/types';
+import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { cn } from '@/lib/utils';
 
 interface FolderNavProperties {
-  folders: Folder[];
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
 }
 
 /**
  * Sidebar navigation: Inbox link, folder list with CRUD, Completed link.
- * Handles folder creation, rename, and delete inline.
+ *
+ * Reads the folder list from the FoldersProvider store and mutates through its
+ * optimistic actions — the list updates instantly and reconciles with the server
+ * (no router.refresh()).
  */
-export function FolderNav({ folders, onClose }: FolderNavProperties) {
+export function FolderNav({ onClose }: FolderNavProperties) {
   const pathname = usePathname();
   const router = useRouter();
+  const folders = useFolders();
+  const { addFolder, renameFolder, removeFolder } = useFolderActions();
 
   const [isCreating, setIsCreating] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState('');
@@ -41,10 +44,11 @@ export function FolderNav({ folders, onClose }: FolderNavProperties) {
     if (!name || isPending) return;
     setIsPending(true);
     try {
-      await createFolder(name);
+      await addFolder(name);
       setNewFolderName('');
       setIsCreating(false);
-      router.refresh();
+    } catch {
+      // The store already rolled back; keep the form open so the user can retry.
     } finally {
       setIsPending(false);
     }
@@ -55,9 +59,10 @@ export function FolderNav({ folders, onClose }: FolderNavProperties) {
     if (!name || isPending) return;
     setIsPending(true);
     try {
-      await updateFolder(id, name);
+      await renameFolder(id, name);
       setEditingFolderId(undefined);
-      router.refresh();
+    } catch {
+      // The store already restored the previous name.
     } finally {
       setIsPending(false);
     }
@@ -66,13 +71,15 @@ export function FolderNav({ folders, onClose }: FolderNavProperties) {
   const handleDeleteFolder = async (id: string) => {
     if (isPending) return;
     setIsPending(true);
+    const wasActive = pathname === `/folders/${id}`;
     try {
-      await deleteFolder(id);
-      // Navigate to inbox if we were in the deleted folder
-      if (pathname === `/folders/${id}`) {
+      await removeFolder(id);
+      // Leave the deleted folder's page only once the delete succeeds.
+      if (wasActive) {
         router.push('/');
       }
-      router.refresh();
+    } catch {
+      // The store already restored the folder.
     } finally {
       setIsPending(false);
     }

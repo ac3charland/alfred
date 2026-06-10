@@ -1,10 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
-import { createItem } from '@/lib/api-client';
+import { useTaskActions } from '@/lib/stores/tasks-store';
 import { cn } from '@/lib/utils';
 
 interface CaptureBoxProperties {
@@ -35,7 +34,7 @@ export function CaptureBox({
   const [value, setValue] = React.useState('');
   const [isPending, setIsPending] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
-  const router = useRouter();
+  const { addTask } = useTaskActions();
   const textareaReference = React.useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async (event_?: React.SyntheticEvent) => {
@@ -47,19 +46,10 @@ export function CaptureBox({
     setErrorMessage(undefined);
 
     try {
-      // exactOptionalPropertyTypes: conditionally spread optional fields so we
-      // never pass `undefined` where only `string` is accepted.
-      const resolvedFolderId = folderId ?? undefined;
-      const resolvedParentId = parentId ?? undefined;
-      await createItem({
-        text: trimmed,
-        raw_capture: trimmed,
-        item_type: 'unclassified',
-        ...(resolvedFolderId !== undefined && { folder_id: resolvedFolderId }),
-        ...(resolvedParentId !== undefined && { parent_id: resolvedParentId }),
-      });
+      // The store inserts an optimistic node immediately and reconciles with the
+      // saved row; on failure it rolls back and re-throws so we can surface the error.
+      await addTask({ text: trimmed, folderId, parentId });
       setValue('');
-      router.refresh();
       onCapture?.();
     } catch {
       setErrorMessage('Failed to save. Try again.');
