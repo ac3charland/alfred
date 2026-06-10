@@ -58,7 +58,11 @@ export async function requireSession(): Promise<Session | undefined> {
  * before the handler is called.
  */
 export function withSession<P = Record<string, string>>(
-  handler: (session: Session, request: Request, context: { params: Promise<P> }) => Promise<Response>,
+  handler: (
+    session: Session,
+    request: Request,
+    context: { params: Promise<P> },
+  ) => Promise<Response>,
 ) {
   return async (request: Request, context: { params: Promise<P> }): Promise<Response> => {
     const session = await requireSession();

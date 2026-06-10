@@ -104,7 +104,10 @@ describe('GET /api/items', () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET(makeRequest('http://localhost/api/items?status=invalid'), STUB_CONTEXT);
+    const response = await GET(
+      makeRequest('http://localhost/api/items?status=invalid'),
+      STUB_CONTEXT,
+    );
     expect(response.status).toBe(400);
   });
 
