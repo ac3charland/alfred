@@ -89,6 +89,30 @@ export default defineConfig([
     },
   },
 
+  // ── Project rule tuning ───────────────────────────────────────────────────
+  {
+    rules: {
+      // Honor the `_`-prefix convention for deliberately-unused bindings: unused
+      // function args, caught errors, destructured-array holes, and locals. This
+      // mirrors TypeScript's own `noUnusedParameters`, which already exempts
+      // `_`-prefixed params, so compiler and linter agree. `args: 'all'` means a
+      // leading unused arg must be `_`-prefixed to be intentional — the prefix is
+      // the marker, not silently ignored.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'all',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+
   // ── React ─────────────────────────────────────────────────────────────────
   {
     files: ['**/*.{jsx,tsx}'],
