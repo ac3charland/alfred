@@ -40,7 +40,7 @@ export default async function CompletedPage() {
         </p>
       </div>
 
-      <TaskList nodes={tree} folders={folders} emptyMessage="Nothing completed yet" />
+      <TaskList nodes={tree} folders={folders} emptyMessage="Nothing completed yet" isCompleted />
     </>
   );
 }

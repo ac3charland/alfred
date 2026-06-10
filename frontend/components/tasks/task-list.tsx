@@ -11,13 +11,19 @@ interface TaskListProperties {
   nodes: ItemNode[];
   folders: Folder[];
   emptyMessage?: string;
+  isCompleted?: boolean;
 }
 
 /**
  * Renders the top-level task list. Each TaskRow handles its own recursive
  * subtree rendering.
  */
-export function TaskList({ nodes, folders, emptyMessage = 'No tasks yet' }: TaskListProperties) {
+export function TaskList({
+  nodes,
+  folders,
+  emptyMessage = 'No tasks yet',
+  isCompleted = false,
+}: TaskListProperties) {
   if (nodes.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -37,7 +43,7 @@ export function TaskList({ nodes, folders, emptyMessage = 'No tasks yet' }: Task
       )}
     >
       {nodes.map((node) => (
-        <TaskRow key={node.id} node={node} folders={folders} />
+        <TaskRow key={node.id} node={node} folders={folders} isCompleted={isCompleted} />
       ))}
     </ul>
   );
