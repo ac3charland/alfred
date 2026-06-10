@@ -7,6 +7,10 @@ const STATIC_ASSET = /\.(?:svg|png|jpg|jpeg|gif|webp|ico)$/;
 
 function isPublicPath(pathname: string): boolean {
   return (
+    // API routes self-authenticate (session OR the INGEST_API_KEY ingress) and must
+    // return JSON 401 — never an HTML redirect. Gating them here would 302 the Siri /
+    // external capture path (valid x-api-key, no session) to /login before the handler runs.
+    pathname.startsWith('/api') ||
     pathname.startsWith('/_next/static') ||
     pathname.startsWith('/_next/image') ||
     pathname === '/favicon.ico' ||
