@@ -276,21 +276,6 @@ const fixture: ItemNode = {
 };
 ```
 
-**Storybook stories with required callback props**
-
-Stories need inert no-op props for required callbacks. The project scopes `@typescript-eslint/no-empty-function` **off** for `**/*.stories.{ts,tsx}` (see `frontend/eslint.config.mjs`), so just use an empty arrow — no named stub, no throwaway body:
-
-```ts
-const meta = {
-  args: {
-    onOpenChange: () => {},
-    onConfirm: () => {},
-  },
-} satisfies Meta<typeof CascadeModal>;
-```
-
-Don't reach for the old kludge of a named stub with a `_`-prefixed param and an explicit `return;` to dodge `no-empty-function` — that predates the stories-scoped exception. When a story needs to **assert** a callback fired, use `fn()` from `'storybook/test'` instead of a no-op (see the storybook skill).
-
 ## What Was Deliberately Left Out
 
 - **`render` return value beyond `rerender`/`unmount`** — the `container`, `baseElement`, and `asFragment` return values are valid but rarely needed; using them is often a sign you should use a screen query instead. The `no-container` ESLint rule prevents the most common misuse.
