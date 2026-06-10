@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
@@ -18,6 +18,7 @@ interface TaskRowProperties {
   node: ItemNode;
   folders: Folder[];
   depth?: number;
+  isCompleted?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,12 +66,13 @@ function isDueDateOverdue(iso: string): boolean {
  * - Move-to-folder dropdown
  * - Delete
  */
-export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
+export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskRowProperties) {
   const router = useRouter();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [showAddSubtask, setShowAddSubtask] = React.useState(false);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
   const [isCompletePending, setIsCompletePending] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(false);
   const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
   const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
@@ -89,25 +91,43 @@ export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
       setShowCascadeModal(true);
       return;
     }
+    setDismissed(true);
     setIsCompletePending(true);
     try {
       await completeTask(node.id);
       router.refresh();
-    } finally {
+    } catch {
+      setDismissed(false);
       setIsCompletePending(false);
     }
   };
 
   const handleCascadeConfirm = async () => {
+    setDismissed(true);
     setIsCompletePending(true);
     try {
       await completeTask(node.id);
       setShowCascadeModal(false);
       router.refresh();
-    } finally {
+    } catch {
+      setDismissed(false);
       setIsCompletePending(false);
     }
   };
+
+  const handleToggleUncomplete = async () => {
+    setDismissed(true);
+    setIsCompletePending(true);
+    try {
+      await updateItem(node.id, { status: 'active' });
+      router.refresh();
+    } catch {
+      setDismissed(false);
+      setIsCompletePending(false);
+    }
+  };
+
+  if (dismissed) return null;
 
   const handleSaveDueDate = async () => {
     setIsEditingDueDate(false);
@@ -202,19 +222,25 @@ export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
         <button
           type="button"
           onClick={() => {
-            void handleToggleComplete();
+            if (isCompleted) {
+              void handleToggleUncomplete();
+            } else {
+              void handleToggleComplete();
+            }
           }}
           disabled={isCompletePending}
-          aria-label={`Mark "${node.title}" complete`}
+          aria-label={isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`}
           className={cn(
-            'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-border',
+            'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-            'transition-colors duration-100 hover:border-accent-teal motion-reduce:transition-none',
+            isCompleted || isCompletePending
+              ? 'bg-accent-teal border-accent-teal'
+              : 'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
             isCompletePending && 'opacity-50 cursor-wait',
           )}
         >
-          {isCompletePending && (
-            <span className="h-2 w-2 rounded-full bg-accent-teal opacity-60 animate-pulse motion-reduce:animate-none" />
+          {(isCompleted || isCompletePending) && (
+            <Check size={10} className="text-background" strokeWidth={3} />
           )}
         </button>
 
@@ -554,7 +580,13 @@ export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
 
           {/* Child task rows */}
           {node.children.map((child) => (
-            <TaskRow key={child.id} node={child} folders={folders} depth={depth + 1} />
+            <TaskRow
+              key={child.id}
+              node={child}
+              folders={folders}
+              depth={depth + 1}
+              isCompleted={isCompleted}
+            />
           ))}
         </ul>
       )}

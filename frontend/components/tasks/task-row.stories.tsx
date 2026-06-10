@@ -109,3 +109,26 @@ export const WithAllMetadata: Story = {
     },
   },
 };
+
+export const Completed: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      status: 'completed',
+      completed_at: '2025-01-02T09:00:00Z',
+    },
+    isCompleted: true,
+  },
+};
+
+export const CompletedWithChildren: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      status: 'completed',
+      completed_at: '2025-01-02T09:00:00Z',
+      children: [{ ...CHILD_NODE, status: 'completed', completed_at: '2025-01-02T09:00:00Z' }],
+    },
+    isCompleted: true,
+  },
+};
