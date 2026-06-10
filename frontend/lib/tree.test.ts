@@ -4,6 +4,7 @@ import {
   TEMP_ID_PREFIX,
   buildTree,
   collectSubtree,
+  getAncestorTitles,
   getDescendantIds,
   isTempId,
   makeOptimisticItem,
@@ -96,6 +97,42 @@ describe('collectSubtree', () => {
 
   it('returns an empty list for an absent id', () => {
     expect(collectSubtree(flatItems(), 'missing')).toStrictEqual([]);
+  });
+});
+
+// A → B → C chain (A is the root/oldest, C the deepest), plus an unrelated root.
+function ancestorChain(): Item[] {
+  return [
+    item({ id: 'a', title: 'A', parent_id: null }),
+    item({ id: 'b', title: 'B', parent_id: 'a' }),
+    item({ id: 'c', title: 'C', parent_id: 'b' }),
+    item({ id: 'other', title: 'Other', parent_id: null }),
+  ];
+}
+
+describe('getAncestorTitles', () => {
+  it('lists ancestor titles oldest → youngest from a starting parent_id', () => {
+    // Starting from C's parent (b): walk b → a, returned root-first.
+    expect(getAncestorTitles(ancestorChain(), 'b')).toStrictEqual(['A', 'B']);
+  });
+
+  it('returns an empty array for a null parent_id (top-level item)', () => {
+    expect(getAncestorTitles(ancestorChain(), null)).toStrictEqual([]);
+  });
+
+  it('stops gracefully when an ancestor is absent from the list', () => {
+    expect(
+      getAncestorTitles([item({ id: 'b', title: 'B', parent_id: 'gone' })], 'b'),
+    ).toStrictEqual(['B']);
+  });
+
+  it('does not loop forever on a cyclic parent_id', () => {
+    const cyclic = [
+      item({ id: 'x', title: 'X', parent_id: 'y' }),
+      item({ id: 'y', title: 'Y', parent_id: 'x' }),
+    ];
+    // Walks x → y, then y → x is already seen, so it halts.
+    expect(getAncestorTitles(cyclic, 'x')).toStrictEqual(['Y', 'X']);
   });
 });
 

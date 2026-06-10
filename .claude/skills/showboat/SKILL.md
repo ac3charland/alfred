@@ -32,6 +32,30 @@ command. Build one as part of finishing any user-facing or behavioral change.
 in git. It works identically on a local machine, Claude Code for web, and the
 claude-sandbox Docker image with **no environment-specific setup**.
 
+## Choosing your evidence: show the change, don't re-test it
+
+A demo must show the **new behavior actually happening**. Pick the evidence that
+*shows* it — and match the evidence to whether the change has a visual surface:
+
+- **Anything visual — a screen, a component, a layout/styling/copy tweak → the
+  primary evidence is a screenshot of the rendered UI.** The reviewer should *see*
+  the change. Drive to the exact state the change affects (the right view, the
+  right data) and shoot it. See the screenshot recipe below.
+- **Only a change with no visual surface — an API route, a data-layer function, a
+  migration, a CLI/tooling change → uses CLI/`exec` output** as its evidence: the
+  request + response, the query result, the command's output.
+
+**Do not demo a UI change by re-running the unit / integration suite.** The `check`
+suites already run in the pre-commit and pre-push hooks — replaying their green
+output in a demo proves nothing the gates didn't, and shows the reviewer *nothing
+they can see*. The demo's job is the part the gates *don't* do: make the new
+behavior visible and reproducible.
+
+Tell-tale sign you're capturing the wrong layer: if you're piping, `grep`-ing, or
+JSON-parsing test output to wrangle it into something "presentable" for a demo,
+stop — that effort is the symptom. Screenshot the UI instead (for a visual change)
+or capture a real request/response (for a non-visual one).
+
 ## Running it
 
 Always go through the root script (never call the tool directly):
@@ -63,32 +87,69 @@ run through the system shell; `node`/`js`/`javascript` run via `node -e`;
 `python`/`python3` via `python3 -c`. Prefer `bash` and `node` so `verify` works in
 every environment.
 
-## A typical demo
+## A typical demo (non-visual change — CLI evidence)
+
+For a change with **no visual surface** (here, an API endpoint), the evidence is a
+real request and its response:
 
 ```bash
-DOC=docs/demos/inline-subtasks.md
-npm run demo -- init "$DOC" "Inline subtask rows"
-npm run demo -- note "$DOC" "The tasks API now returns nested subtasks."
-npm run demo -- exec "$DOC" bash "npm run test -w frontend -- subtasks 2>&1 | tail -5"
-npm run demo -- exec "$DOC" bash "curl -s localhost:3000/api/tasks | head -c 400"
+DOC=docs/demos/items-endpoint.md
+npm run demo -- init "$DOC" "Items endpoint returns nested subtasks"
+npm run demo -- note "$DOC" "GET /api/items now nests children under each parent."
+npm run demo -- exec "$DOC" bash "curl -s localhost:3000/api/items | head -c 400"
 npm run demo -- verify "$DOC"        # confirm it reproduces before you commit
 ```
 
-Commit the doc under `docs/demos/` and link it in the PR description.
+Commit the doc under `docs/demos/` and link it in the PR description. For a
+**visual** change, the centrepiece is a screenshot instead — see below.
 
-## Embedding a live-UI screenshot (reuses Playwright)
+## Screenshotting the UI (the evidence for any visual change)
 
-alfred is a Next.js app, so UI changes should *show* the screen. Reuse the
-sandbox-aware Chromium the E2E suite already installs — no new dependency:
+Reuse the sandbox-aware Chromium the E2E suite installs (`npm run setup:chromium`
+extracts it to `/tmp/chromium`) via the `screenshot` helper
+(`frontend/scripts/screenshot.mjs`). `verify` **skips image entries**, so
+screenshots never make verification flaky. There are two ways to put the rendered
+UI in front of it — reach for **Storybook first**; it's the one that always works
+here.
+
+### Storybook — preferred (no auth, no data seeding, always reproducible)
+
+Components render in isolation, **outside the Supabase auth gate**, with per-story
+store seeds (`parameters.store.{folders,tasks}` — see `.storybook/preview.ts`). If
+no story exercises the exact state your change affects, **add one** — it doubles as
+a Storybook snapshot test. Build the static Storybook, serve it, and shoot the
+story's `iframe.html`:
 
 ```bash
-npm run dev -w frontend &                                    # start the app
-npm run screenshot -w frontend -- http://localhost:3000 /tmp/shot.png
+npm run storybook:build -w frontend           # also run setup:chromium once if /tmp/chromium is absent
+npm run serve:storybook -w frontend &         # http-server on :6006
+npx wait-on http://127.0.0.1:6006
+# story id = kebab(title)--kebab(exportName), e.g. title 'Tasks/TaskRow' + export
+# 'CompletedInFolder' → tasks-taskrow--completed-in-folder
+npm run screenshot -w frontend -- \
+  "http://127.0.0.1:6006/iframe.html?id=tasks-taskrow--completed-in-folder&viewMode=story" /tmp/shot.png
 npm run demo -- image docs/demos/<doc>.md /tmp/shot.png
 ```
 
-`verify` **skips image entries**, so screenshots never make verification flaky.
-The `screenshot` helper lives at `frontend/scripts/screenshot.mjs`.
+Then **look at the PNG** (Read it) to confirm it actually shows the change before
+embedding — a green screenshot of the wrong state is worse than no screenshot.
+
+**Kill the serve before you push.** `serve:storybook` binds port **6006** — the same
+port the pre-push hook's `test:storybook` uses. A background server left running
+makes the hook die with `EADDRINUSE: address already in use 0.0.0.0:6006` and blocks
+the push. After screenshotting, stop it (`pkill -f http-server`) and confirm 6006 is
+free before `git push`.
+
+### The live app route — only with real Supabase creds + seeded data
+
+`npm run dev -w frontend &` then screenshotting `localhost:3000/<route>` *seems*
+simplest, but **every protected route is auth-gated**. With no real Supabase env (a
+fresh sandbox / Claude Code on web) `getUser()` returns null and the middleware
+redirects to `/login` — so you'd screenshot the login page, not your screen (this
+is exactly what `e2e/home.spec.ts` asserts). Driving the real route needs real
+credentials *and* seeded rows for the view, and is **not reproducible in CI or the
+web sandbox**. Prefer Storybook unless you specifically have a live, authenticated,
+data-seeded environment.
 
 ## How `verify` works (and how to keep it green)
 

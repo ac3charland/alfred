@@ -60,6 +60,30 @@ function sortForest(nodes: ItemNode[]): ItemNode[] {
   return sorted.map((node): ItemNode => ({ ...node, children: sortForest(node.children) }));
 }
 
+/**
+ * Walk the ancestor chain from a starting `parentId` up a FLAT list, returning the
+ * ancestor titles ordered oldest → youngest (root first, immediate parent last).
+ * Pass the node's own `parent_id` as the start — the node itself need not be in the
+ * list, only its ancestors (which may be active items filtered out of a view, e.g.
+ * the completed view's breadcrumb). Returns [] for a null start or an absent chain,
+ * and halts on a cycle (a `seen` set guards against an infinite loop).
+ */
+export function getAncestorTitles(items: Item[], parentId: string | null): string[] {
+  const byId = new Map(items.map((item) => [item.id, item] as const));
+  const titles: string[] = [];
+  const seen = new Set<string>();
+  let currentId = parentId;
+  while (currentId !== null && !seen.has(currentId)) {
+    seen.add(currentId);
+    const parent = byId.get(currentId);
+    if (parent === undefined) break;
+    // Walk youngest → oldest but prepend, so the result is oldest-first with no reverse().
+    titles.unshift(parent.title);
+    currentId = parent.parent_id;
+  }
+  return titles;
+}
+
 /** Collect all descendant ids of a built node (not including the node itself). */
 export function getDescendantIds(node: ItemNode): string[] {
   const ids: string[] = [];

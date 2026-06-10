@@ -48,6 +48,7 @@ const GRANDCHILD_ITEM: Item = {
 };
 
 const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
+const COMPLETED_FOLDER_ITEM: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-1' };
 
 const FOLDER: Folder = { id: 'folder-1', name: 'Work', created_at: '2025-01-01T09:00:00Z' };
 
@@ -199,6 +200,67 @@ describe('TaskRow', () => {
     await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
 
     expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Completed view — parent context label
+  // ---------------------------------------------------------------------------
+
+  it('shows the folder name under a completed root item', () => {
+    renderTasks([COMPLETED_FOLDER_ITEM], { ...COMPLETED, folders: [FOLDER] });
+    expect(screen.getByText('Work')).toBeInTheDocument();
+  });
+
+  it('shows "Inbox" under a completed root item with no folder', () => {
+    renderTasks([COMPLETED_ITEM], COMPLETED);
+    expect(screen.getByText('Inbox')).toBeInTheDocument();
+  });
+
+  it('does not show parent label in the inbox view', () => {
+    renderTasks([BASE_ITEM], { folders: [FOLDER] });
+    expect(screen.queryByText('Work')).not.toBeInTheDocument();
+    expect(screen.queryByText('Inbox')).not.toBeInTheDocument();
+  });
+
+  it('shows the full ancestor breadcrumb under a deeply nested completed item', () => {
+    // A → B → C → D → E → F are active (filtered out of the completed view); G is the
+    // completed leaf shown as a root row. Its breadcrumb lists every ancestor oldest → youngest.
+    const ancestors: Item[] = ['A', 'B', 'C', 'D', 'E', 'F'].map((title, index) => ({
+      ...BASE_ITEM,
+      id: `anc-${String(index)}`,
+      title,
+      parent_id: index === 0 ? null : `anc-${String(index - 1)}`,
+      status: 'active',
+      created_at: `2025-01-01T0${String(index)}:00:00Z`,
+    }));
+    const leaf: Item = {
+      ...BASE_ITEM,
+      id: 'leaf-g',
+      title: 'G',
+      parent_id: 'anc-5',
+      status: 'completed',
+    };
+
+    renderTasks([...ancestors, leaf], COMPLETED);
+
+    expect(screen.getByText('A > B > C > D > E > F')).toBeInTheDocument();
+  });
+
+  it('prefers the ancestor breadcrumb over the folder name for a nested completed item', () => {
+    const parent: Item = { ...BASE_ITEM, id: 'p', title: 'Parent', folder_id: 'folder-1' };
+    const child: Item = {
+      ...BASE_ITEM,
+      id: 'ch',
+      title: 'Child',
+      parent_id: 'p',
+      folder_id: 'folder-1',
+      status: 'completed',
+    };
+
+    renderTasks([parent, child], { ...COMPLETED, folders: [FOLDER] });
+
+    expect(screen.getByText('Parent')).toBeInTheDocument();
+    expect(screen.queryByText('Work')).not.toBeInTheDocument();
   });
 
   it('restores the task when updateItem fails while uncompleting', async () => {
