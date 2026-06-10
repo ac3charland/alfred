@@ -192,6 +192,37 @@ Is it a data read that can be cached / ISR?
 
 ---
 
+## Version Gotchas (Next.js 16 — alfred's installed version)
+
+alfred is scaffolded on **Next.js 16** (React 19) via `create-next-app@latest`. Hard-won
+notes from the Phase 0 + feature bootstrap:
+
+- **The `middleware` file convention is DEPRECATED → use `proxy`.** Next 16 prints
+  `⚠ The "middleware" file convention is deprecated. Please use "proxy" instead`
+  (nextjs.org/docs/messages/middleware-to-proxy). More importantly, **`export const config
+  = { matcher: [...] }` in `middleware.ts` now hard-FAILS `next build`** with `⨯ Invalid
+  segment configuration export detected`. Two fixes: (a) migrate to `proxy.ts` (the new
+  convention), or (b) keep `middleware.ts` (still functional, just deprecated) but DROP the
+  `export const config` and do static-asset exclusion *inside* the middleware function
+  (early-return on `/_next/static`, `/_next/image`, `favicon.ico`, image extensions). alfred
+  currently does (b) — see `frontend/middleware.ts`. `tsc` and ESLint do NOT catch this; only
+  `next build` (i.e. `check:slow`) does, so always run a build before pushing middleware changes.
+- **`create-next-app` writes an `AGENTS.md` warning that "This is NOT the Next.js you
+  know."** Next 16 has breaking changes vs. pre-16 training data. The authoritative,
+  version-exact docs are **bundled in `node_modules/next/dist/docs/`** after install — read
+  the relevant guide there before writing non-trivial Next code, rather than trusting memory.
+- **Tailwind v4 is the default** in the `app-tw` template (CSS-first `@import "tailwindcss"`
+  + `@theme inline` in `globals.css`, `@tailwindcss/postcss` in `postcss.config.mjs`). No
+  `tailwind.config.js` is generated — see the tailwindcss skill.
+- **Turbopack is the default bundler** for `next dev` and `next build` in 16. For Playwright's
+  `webServer`, `next dev` works; a production smoke can use `next build && next start`.
+- **The generated ESLint config is `eslint.config.mjs`** using `eslint-config-next/core-web-vitals`
+  + `eslint-config-next/typescript` (flat). alfred replaces this with the aggressive flat
+  config from the eslint skill (which uses `@next/eslint-plugin-next` directly).
+- **`create-next-app` also drops a `CLAUDE.md` that just `@import`s `AGENTS.md`.** alfred
+  removes both to keep governance centralized in the root `CLAUDE.md` + skills; the key
+  insight (read bundled docs) is recorded here instead.
+
 ## Version Gotchas (Next.js 15 vs 13/14)
 
 Agents trained on content before Next.js 15 (released Oct 2024) will confidently write
@@ -258,5 +289,10 @@ several patterns that are now wrong or deprecated:
   Alfred's Route Handlers call Supabase (Node.js client), which is incompatible with the
   Edge runtime. Keep default Node.js runtime.
 
-- **`next/font`** — valid for production performance but not relevant to the current
-  implementation tasks.
+- **`next/font`** — `next/font/google` downloads fonts at build time from `fonts.googleapis.com`.
+  In air-gapped environments (CI sandboxes, Docker without Google access) this fails the build.
+  Solution: use `next/font/local` with font files committed to `public/fonts/`. Geist Sans and
+  Geist Mono woff2 files are bundled inside `next/dist/next-devtools/server/font/` and can be
+  copied to `public/fonts/` at project setup time. The `--font-sans` and `--font-mono` CSS
+  variables still work; Instrument Serif can fall back to Georgia/serif via CSS:
+  `var(--font-instrument-serif, Georgia, 'Times New Roman', serif)`.

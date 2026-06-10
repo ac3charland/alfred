@@ -28,7 +28,15 @@ import globals from 'globals';
 export default defineConfig([
   // ── Global ignores ──────────────────────────────────────────────────────
   {
-    ignores: ['.next/**', 'dist/**', 'out/**', '*.gen.ts', 'node_modules/**'],
+    ignores: [
+      '.next/**',
+      'dist/**',
+      'out/**',
+      '*.gen.ts',
+      'node_modules/**',
+      // Next.js generated file — do not lint
+      'next-env.d.ts',
+    ],
   },
 
   // ── Base JS rules ────────────────────────────────────────────────────────
@@ -79,7 +87,9 @@ export default defineConfig([
   reactHooks.configs.flat['recommended-latest'],
 
   // ── Next.js ────────────────────────────────────────────────────────────────
-  nextPlugin.flatConfig.coreWebVitals,
+  // NOTE: nextPlugin.flatConfig.coreWebVitals does NOT exist in @next/eslint-plugin-next.
+  // The correct path is nextPlugin.configs['core-web-vitals'] (confirmed v16.2.7+).
+  nextPlugin.configs['core-web-vitals'],
 
   // ── Accessibility ──────────────────────────────────────────────────────────
   jsxA11y.flatConfigs.recommended,
@@ -141,7 +151,12 @@ export default defineConfig([
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        // allowDefaultProject covers root-level TS files (e.g. jest.config.ts) not
+        // included in tsconfig.json's "include": ["src"]. Without this, ESLint errors:
+        // "was not found by the project service".
+        projectService: {
+          allowDefaultProject: ['*.ts', '*.tsx'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {

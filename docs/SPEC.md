@@ -230,7 +230,7 @@ Single user, but **no security-by-obscurity**.
 
 - **Frontend gate:** **Supabase Auth** with a single user account (the owner). The Next.js shell requires login; no data is visible until authenticated. Supabase handles sessions.
 - **Downstream of the frontend:** secure Supabase and Cloudflare Workers using **API keys stored in environment variables** (Vercel env vars; Worker secrets via Wrangler). The frontend/Workers present the key when calling protected services; Workers also validate an API key on inbound calls (e.g., the capture endpoint).
-- Supabase **Row-Level Security** is available to tighten further if desired, but env vars + API keys + the auth gate are sufficient for a single-user app.
+- Supabase **Row-Level Security** is **mandatory** — the project has deny-by-default RLS enabled at creation. Every new table must `ENABLE ROW LEVEL SECURITY` and carry an explicit policy, or it will be fully inaccessible via the Data API. This is a deliberate security decision: the publishable key ships to the browser and is public — RLS (not the auth gate) is what prevents a leaked key from reading/writing Postgres directly. Use the `authenticated full access` pattern (`using (true) with check (true)`) — no `user_id` column is needed and none should be added (single-user app, role-based not row-based). Server-side code (API routes, Workers) uses the secret key and bypasses RLS by design; never disable RLS or remove a policy because of this asymmetry.
 
 ---
 

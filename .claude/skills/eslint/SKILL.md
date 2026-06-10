@@ -35,6 +35,13 @@ earlier ones for the same rule key. This means:
    namespace to avoid confusion.
 5. **The alfred philosophy: `error` not `warn`.** Warnings are noise; everything actionable must
    be `error`. Never weaken a rule to make a failing file pass — fix the code instead.
+6. **If a rule (or a *combination* of rules) genuinely doesn't fit a context, file a lint
+   suggestion — don't silently work around it.** Make the code pass the gate as it stands, then
+   add one markdown file describing the issue and a concrete suggested change to the inbox at
+   `docs/lint-suggestions/` (see its `README.md`), the same turn you hit the friction. A
+   deliberate, scoped rule change (like a `files`-scoped override) is a *separate, reviewed*
+   task — never an ad-hoc reaction to a red check. The two changes this repo already made
+   (`_`-prefixed unused vars; empty stubs in stories) came from exactly this kind of friction.
 
 > Source: ESLint team, "New Config System, Part 2: Introduction to Flat Config", eslint.org/blog, 2022
 > Source: typescript-eslint team, "Announcing typescript-eslint v8", typescript-eslint.io/blog, 2024
@@ -124,6 +131,80 @@ earlier ones for the same rule key. This means:
 **@trivago/prettier-plugin-sort-imports**
 
 - Must be listed in the `plugins` array in prettier config (not installed and auto-discovered). Without explicit registration it does nothing silently.
+
+**`@next/eslint-plugin-next` flat config API**
+
+- The skill template showed `nextPlugin.flatConfig.coreWebVitals` — this path does NOT exist in the actual package (confirmed v16.2.7). The correct access is `nextPlugin.configs['core-web-vitals']`. Check available keys with `Object.keys(nextPlugin.configs)` — they are `'recommended-legacy'`, `'core-web-vitals-legacy'`, `'recommended'`, and `'core-web-vitals'`. Use `nextPlugin.configs['core-web-vitals']` for the Next.js flat-config entry.
+
+**`unicorn/prevent-abbreviations` is OFF project-wide (deliberate decision)**
+
+- This rule is disabled in both `frontend/` and `workers/` configs (in the unicorn rule-tuning block, alongside `unicorn/no-null`). It forced ecosystem-hostile renames — `utils` → `utilities` (shadcn/ui ships `lib/utils.ts` and its CLI writes that path), `env`/`props`/`params` → verbose forms — that cut against the grain of the libraries the project uses. **Do not re-enable it**, and do not rename identifiers to "fix" abbreviations.
+- `next-env.d.ts` (Next.js generated, at the package root) stays in the global `ignores` array — but because it is *generated output we never lint*, not because of this rule.
+
+**TypeScript config files outside `tsconfig.json` include with `allowDefaultProject`**
+
+- Files not matched by `tsconfig.json`'s `include` globs (e.g. `.storybook/*.ts`, `scripts/*.mjs`, root `eslint.config.mjs`, `test-runner-jest.config.cjs`) trigger: *"was not found by the project service"*. Fix: use `projectService: { allowDefaultProject: ['*.mjs', '*.cjs', '*.js', '.storybook/*.ts', 'scripts/*.mjs'] }` to list all the patterns that should use the default tsconfig. Wildcards like `*.mjs` match root-level files only; subdirectories need explicit patterns.
+
+**Scoping Jest/RTL rules to exclude E2E test files**
+
+- The glob `**/*.spec.{ts,tsx}` matches both Jest component specs AND Playwright E2E files (`e2e/home.spec.ts`). Applying Jest/RTL rules to Playwright tests produces false `testing-library/prefer-screen-queries` errors. Fix: add `ignores: ['e2e/**', 'tests/**']` inside the Jest config object alongside `files`:
+  ```js
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    ignores: ['e2e/**', 'tests/**'],
+    ...jestPlugin.configs['flat/recommended'],
+    ...testingLibrary.configs['flat/react'],
+  }
+  ```
+
+**`unicorn/no-array-reduce` + `unicorn/no-array-sort` + `toSorted` circular constraint**
+
+When you have both `unicorn/no-array-sort` (forbids `.sort()`) AND `unicorn/no-array-reduce` (forbids `.reduce()`), and `tsconfig` targets ES2022 (so `toSorted` is not in the lib), you get a circular constraint: can't use `.sort()`, can't use `.reduce()`, can't use `.toSorted()`. The escape hatch is an explicit insertion-sort `for` loop:
+
+```ts
+const sorted: T[] = [];
+for (const item of items) {
+  const insertAt = sorted.findIndex((existing) => compare(existing, item) > 0);
+  if (insertAt === -1) sorted.push(item);
+  else sorted.splice(insertAt, 0, item);
+}
+```
+
+This creates a new array (satisfies `.sort()` mutation concern) using a loop (not `.reduce()`) and works in ES2022 (no `toSorted` needed).
+
+**`unicorn/prefer-ternary` on `if/else` with `await`**
+
+When a function has an `if/else` where both branches `await` different things, ESLint's `unicorn/prefer-ternary` wants them collapsed to `await (condition ? a() : b())`. This is valid TypeScript and works:
+
+```ts
+// Before — triggers unicorn/prefer-ternary
+if (cond) await foo();
+else await bar();
+
+// After — compiles fine, no lint error
+await (cond ? foo() : bar());
+```
+
+**CJS config files (`.cjs`): `require`/`module` need two rule disables**
+
+- Plain CJS config files (e.g. `test-runner-jest.config.cjs`) need two rule overrides to avoid false positives:
+  1. `@typescript-eslint/no-require-imports: 'off'` — typescript-eslint strict mode forbids `require()` style imports
+  2. `unicorn/prefer-module: 'off'` — unicorn wants all files to be ESM
+
+- Scope both via `files: ['**/*.{js,cjs}']` override. Use `.cjs` extension for Jest configs that must remain CJS — the extension signals intent and lets you target the override precisely.
+
+- Never use `.js` for a CJS config when the project has `"type": "module"` in `package.json` — Node treats `.js` files as ESM in that context and CJS `require()` will throw at runtime. Use `.cjs` extension explicitly.
+
+**Node.js globals for `.mjs` and `.cjs` scripts**
+
+- ESLint's `no-undef` fires for `process`, `require`, `module`, `__dirname` in script files when no `languageOptions.globals` is set. Fix: add `globals.node` to the override for all non-TS script files:
+  ```js
+  {
+    files: ['**/*.{js,cjs,mjs}'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: { globals: { ...globals.node } },
+  }
+  ```
 
 > Source: ESLint team, "Migrate to ESLint 9.x", eslint.org/docs, 2024
 > Source: typescript-eslint team, "Announcing typescript-eslint v8", typescript-eslint.io/blog, 2024

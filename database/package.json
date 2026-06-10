@@ -1,0 +1,6 @@
+{
+  "name": "database",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Supabase migrations, SQL schema, and generated TypeScript types for alfred."
+}

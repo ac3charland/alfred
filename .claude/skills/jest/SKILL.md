@@ -129,7 +129,7 @@ const config: Config = {
 
   // Clear call history and restore spies automatically
   clearMocks: true,
-  restoreAllMocks: true,
+  restoreMocks: true,   // ← Jest 30: was "restoreAllMocks" in v29; renamed in v30
 
   // Path aliases must mirror tsconfig paths
   moduleNameMapper: {
@@ -146,6 +146,29 @@ testEnvironment: 'jsdom',
 setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 ```
 Where `jest.setup.ts` contains `import '@testing-library/jest-dom'`. RTL is a separate skill — see integration note below.
+
+**Route Handler tests need `@jest-environment node` docblock.** The `frontend/jest.config.ts` sets `testEnvironment: 'jsdom'` for all tests. But Next.js Route Handler tests use the Web Fetch API (`Request`, `Response`) which jsdom does not provide. Add `/** @jest-environment node */` as the first line of each Route Handler test file. Node.js 18+ provides `Request` and `Response` globally, so the test runs correctly in the `node` environment. The per-file docblock overrides the global config without modifying shared tooling.
+
+**Frontend `@/*` alias: no `src/` subdir.** The `frontend/` package has no `src/` directory — files live at the package root. The tsconfig `paths` uses `"@/*": ["./*"]` (not `./src/*`). The jest `moduleNameMapper` must match:
+```typescript
+moduleNameMapper: {
+  '^@/(.*)$': '<rootDir>/$1',  // No /src/ segment
+},
+```
+
+**ts-jest JSX override for Next.js.** `frontend/tsconfig.json` sets `jsx: "preserve"` (required for the Next.js compiler). But ts-jest needs `jsx: "react-jsx"` to compile `.tsx` test files. Fix: override in the `transform` entry in `jest.config.ts` — do NOT change the tsconfig:
+```typescript
+transform: {
+  '^.+\\.[tj]sx?$': [
+    'ts-jest',
+    {
+      tsconfig: {
+        jsx: 'react-jsx',
+      },
+    },
+  ],
+},
+```
 
 **ts-jest vs babel-jest vs @swc/jest:**
 - `ts-jest`: Transforms TS with the TypeScript compiler. Slow on large suites but catches some type-level issues at transform time.
@@ -192,6 +215,7 @@ Jest 30 was released June 2025. alfred may be on v29 or v30 — check `package.j
 - **Minimum TypeScript 5.4** for Jest 30. ts-jest versions must match.
 - **glob v10**: Pattern matching for `testMatch` is stricter. If tests suddenly don't run after upgrade, double-check glob patterns.
 - **`using` keyword for spies** (Jest 30 + TS 5.4+): `using spy = jest.spyOn(obj, 'method')` auto-restores when the block exits (explicit resource management). Optional but clean.
+- **`restoreAllMocks` config key renamed to `restoreMocks` in Jest 30.** Writing `restoreAllMocks: true` in `jest.config.ts` causes a TypeScript error (`Object literal may only specify known properties`) under `@tsconfig/strictest`. Use `restoreMocks: true`. Same behavior — the name changed to match the `clearMocks` / `resetMocks` naming pattern.
 
 > Source: Jest team, "Jest 30: Faster, Leaner, Better" (June 2025) and "From v29 to v30" migration guide, jestjs.io
 

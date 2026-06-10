@@ -226,6 +226,36 @@ cleanup (the returned function) always runs when navigating away — use this fo
   path is the **test-runner** (for browser-side DOM snapshots) or **portable stories +
   `composeStories`** (for Jest/JSDOM snapshots). alfred uses the test-runner.
 
+### `eslint-plugin-storybook` flat config: `flat/recommended` is an array, not an object
+
+`storybookPlugin.configs['flat/recommended']` exports an **array of three config objects**:
+one for plugins, one for story file rules, one for main/preview rules. It is NOT a single
+config object.
+
+**WRONG — causes "Unexpected key '0'" ConfigError:**
+```js
+// This tries to merge an array into an object — numeric keys become invalid ESLint config keys
+{ files: ['**/*.stories.tsx'], ...storybookPlugin.configs['flat/recommended'] }
+```
+
+**CORRECT — spread the array directly into defineConfig:**
+```js
+// Each element already carries its own internal `files` globs — no need to wrap in files:
+...storybookPlugin.configs['flat/recommended'],
+```
+
+The internal config objects in the array already scope themselves to `*.stories.*` and
+`.storybook/` files via their own `files` keys. Spreading directly is the right pattern.
+
+### `@storybook/addon-docs` must be installed separately
+
+`@storybook/addon-docs` is listed as an addon in `.storybook/main.ts` but is NOT
+automatically installed by `@storybook/nextjs`. It must be added explicitly:
+```
+npm install --save-dev @storybook/addon-docs
+```
+ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lint time.
+
 ### Storybook 10.0 (October 2025) — Breaking changes and new defaults
 
 - **ESM-only.** `main.ts`, `preview.ts`, and any preset files must be valid ESM. CommonJS

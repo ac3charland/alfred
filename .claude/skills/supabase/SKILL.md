@@ -23,6 +23,8 @@ description: >
 > - PostgreSQL docs 18: §7.8 WITH Queries (postgresql.org/docs/current/queries-with.html)
 > - Supabase auth-helpers deprecation notice (github.com/supabase/auth-helpers/DEPRECATED.md, April 2024)
 > - VibeAppScanner service_role exposure report (vibeappscanner.com, January 2026)
+> - Supabase first-party agent skill `supabase/agent-skills` (skills.sh, v0.1.2 — security
+>   checklist, Data-API-exposure principle, and CLI/changelog operating rules folded in here)
 
 ---
 
@@ -138,6 +140,20 @@ useEffect(() => {
 
 - **RLS `UPDATE` policies need both `USING` (which rows can be seen) and `WITH CHECK` (what the updated row must satisfy).** A policy with only `USING` allows reading the row but may silently fail writes that would move a row out of the policy's scope.
 
+### Security traps
+
+These are Supabase-specific footguns that silently create vulnerabilities. alfred is single-user, so several are low-stakes here — but they apply the moment the schema grows a second user or a new table/view/function.
+
+- **Never use `user_metadata` / `raw_user_meta_data` in authorization decisions.** It is **user-editable** and can appear in `auth.jwt()`, so anyone can rewrite it. Put authorization data in `app_metadata` / `raw_app_meta_data` (server-controlled) instead — never in an RLS policy keyed off `user_metadata`.
+
+- **`SECURITY DEFINER` bypasses RLS — never reach for it to silence a permission error.** A definer function runs as its creator (usually a `bypassrls` role like `postgres`), so it silently removes access control instead of fixing the cause (the cause is almost always a missing GRANT — see the Data-API section above). alfred's `get_subtree` / `complete_subtree` are deliberately `SECURITY INVOKER` so the caller's RLS still applies — keep them that way. Also note Postgres grants `EXECUTE` to `PUBLIC` by default, so any `SECURITY DEFINER` function in `public` is callable by `anon`/`authenticated` with no extra grant — keep such functions out of exposed schemas and add an `auth.uid()` check in the body.
+
+- **Views bypass RLS by default.** A plain view runs with the *view owner's* privileges, leaking rows past the underlying table's RLS. On Postgres 15+ create them `WITH (security_invoker = true)`; on older versions revoke `anon`/`authenticated` access or put the view in an unexposed schema. (alfred uses RPC functions, not views, today — apply this if a view is ever added.)
+
+- **`auth.role()` is deprecated — target the role with the policy's `TO` clause instead.** Beyond deprecation, `auth.role() = 'authenticated'` passes for anonymous sign-in users (they carry the `authenticated` Postgres role), so it silently fails open if anonymous auth is ever enabled.
+
+- **Deleting an auth user does not invalidate their existing access tokens.** Revoke sessions / sign out first; rely on short JWT expiry. (Single-user alfred rarely deletes its one user, but worth knowing before any account-management feature.)
+
 ---
 
 ## Version Gotchas
@@ -191,5 +207,82 @@ The `@supabase/ssr` cookie API changed from the single-method `get/set/remove` s
 | `NEXT_PUBLIC_SUPABASE_URL` | Public (browser-safe) | PostgREST and Auth endpoint |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (browser-safe) | Authenticated by RLS policies |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only — never `NEXT_PUBLIC_` | Bypass RLS in trusted server scripts only |
+
+### New API key format (`sb_publishable_…` / `sb_secret_…`)
+
+As of the alfred project's Supabase project (provisioned June 2026), Supabase issues
+**new-format API keys** that replace the legacy JWT anon/service_role keys:
+
+- **Publishable key** `sb_publishable_…` → use as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  (the browser-safe client key; replaces the legacy `anon` JWT). Works with
+  `createBrowserClient` / `createServerClient` exactly where the anon key did.
+- **Secret key** `sb_secret_…` → use as `SUPABASE_SERVICE_ROLE_KEY` (server-only;
+  replaces the legacy `service_role` JWT). Bypasses RLS — never `NEXT_PUBLIC_`.
+- The **legacy `service_role` JWT** (`eyJ…`) still works and is occasionally needed by
+  older tooling; alfred keeps it in `SUPABASE_SERVICE_ROLE_JWT` (server-only) as a fallback.
+
+Keep the env-var *names* canonical (`NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`) so app code stays generic; only the *values* are the new format.
+
+### Operating note: Supabase moves fast — verify, don't trust training data
+
+Function signatures, `config.toml` keys, and CLI subcommands change between Supabase
+versions. Before implementing an unfamiliar feature, skim `https://supabase.com/changelog.md`
+for relevant `breaking-change` tags and fetch the specific docs page (append `.md` to any
+docs URL for the markdown version). Discover CLI commands with `--help` rather than guessing,
+and always **verify a change with a follow-up query** — a fix without verification is incomplete.
+
+### Applying migrations / generating types without a personal access token
+
+`supabase gen types typescript --db-url "<postgres-connection-string>"` introspects the
+live DB directly — no `--project-id` + personal access token needed. Likewise, plain SQL
+migrations can be applied over the **session pooler** connection string (port 5432) with
+any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable for
+multi-statement DDL — prefer the session pooler or direct connection for migrations.
+
+**Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
+`DATABASE_URL` from the dashboard's *Direct connection* tab points at
+`db.<ref>.supabase.co`, which publishes **only an AAAA (IPv6) record**. On an IPv4-only
+machine (most home/CI networks) `psql` fails with `could not translate host name … to
+address`. Fix: use the **Session pooler** URI, which is IPv4-proxied for free:
+
+```
+postgresql://postgres.<project-ref>:<password>@aws-1-<region>.pooler.supabase.com:5432/postgres
+```
+
+The pooler user is `postgres.<project-ref>` (not bare `postgres`), and the host is
+`aws-0-` **or** `aws-1-<region>` — try both; the wrong tenant prefix errors with
+`Tenant or user not found`. If you don't know the region, map the project's IPv6 (from
+`nslookup -type=AAAA db.<ref>.supabase.co`) against AWS's published `ip-ranges.json`, or
+just read it off the dashboard's Session-pooler string. alfred stores the pooler URI in
+`frontend/.env.local` as `DATABASE_URL` (gitignored).
+
+### Raw `psql -f migration.sql` does NOT get Supabase's auto-grants
+
+When you apply a migration through `supabase db push` or the dashboard SQL editor,
+Supabase auto-grants table privileges to `anon` / `authenticated` / `service_role`. When
+you apply the **same SQL with raw `psql` as the pooler `postgres` user**, those roles get
+only `REFERENCES, TRIGGER, TRUNCATE` — **not** `SELECT/INSERT/UPDATE/DELETE`. Symptom: the
+app and the service-role ingress both 500 with **`permission denied for table items`**
+even though RLS policies look correct (RLS gates *which rows*; table GRANTs gate *whether
+the role may touch the table at all* — you need both). Every migration applied via `psql`
+must therefore include explicit grants, e.g.:
+
+```sql
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on items, folders to anon, authenticated, service_role;
+grant execute on function get_subtree(uuid), complete_subtree(uuid) to anon, authenticated, service_role;
+```
+
+`anon` stays locked out by RLS (no policy), `authenticated` is gated by its policy, and
+`service_role` bypasses RLS — so granting DML to all three is safe. GRANTs are idempotent,
+so it's fine to re-run them on an already-provisioned DB.
+
+Supabase frames this as **Data API exposure**: a table created by raw SQL is only reachable
+through PostgREST once the API roles have been GRANTed access, and the project's *Data API
+settings* (dashboard → Integrations → Data API) decide whether new tables are auto-exposed.
+This is **separate from RLS** — GRANTs decide whether a role may touch the table at all; RLS
+decides which rows it sees once it can. Always pair public grants with RLS enabled. See
+[Exposing a Table to the Data API](https://supabase.com/docs/guides/api/securing-your-api.md).
 
 > See `references/` for detailed SQL patterns: `references/rls-policies.md` for policy templates, `references/recursive-subtasks.md` for the WITH RECURSIVE CTE.

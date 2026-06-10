@@ -1,0 +1,9 @@
+# Build output & tool artifacts (generated — don't format)
+dist/
+node_modules/
+*.tsbuildinfo
+
+# Generated source — reproduced verbatim by its generator, never hand-formatted.
+# (Mirrors the ESLint global ignores; see CLAUDE.md.)
+*.gen.ts
+worker-configuration.d.ts
