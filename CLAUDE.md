@@ -130,16 +130,10 @@ Every change to the app's functionality should impact **at least one** test. Not
 
 When you finish a task, **unless the user tells you not to**, wrap it up like this:
 
-1. **Never commit on `main`.** Check the current branch first; if it's `main`,
-   create a feature branch and switch to it before committing.
-2. **Commit your changes, grouped by concern.** Don't dump everything into one
-   commit — stage and commit related changes together so each commit is a single
-   logical unit. Every message follows the commitlint format (one-line
-   Conventional Commits: subject + scope **required**, body and footer **always
-   empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
+1. **Never commit on `main`.** Check the current branch first; if it's `main`, create a feature branch and switch to it before committing.
+2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
 3. **Push** the branch to the remote.
-4. **Open a pull request** from the feature branch into `main` once the full
-   feature is done.
+4. **Open a pull request** from the feature branch into `main` once the full feature is done. If a pull request for the branch already exists, **update its description** to include your change.
 
 The pre-commit (`check:fast`) and pre-push (`check:slow`) hooks gate each step
 automatically — fix any failures in the **code**, never with `--no-verify` or by
