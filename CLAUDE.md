@@ -12,6 +12,8 @@ npm workspaces, one repo so agents have full context:
 - `frontend/` — Next.js (App Router) → Vercel. Owns `check:fast` + `check:slow`.
 - `workers/` — Cloudflare Workers (Wrangler). Owns `check:fast` (no `check:slow`).
 - `database/` — Supabase migrations / SQL schema.
+- `tools/` — repo-local dev tooling. `tools/showboat` is the self-contained demo-doc
+  CLI (run via `npm run demo`; see the `showboat` skill). Owns `check:fast`.
 - `.husky/` — root git hooks (one `.git/hooks` for the whole repo).
 - `.claude/skills/` — the compounding skill library (see §10.2 rule below).
 
@@ -128,14 +130,36 @@ When implementing work, unless told explicitly not to, use Red/Green TDD.
 
 Every change to the app's functionality should impact **at least one** test. Not necessarily always unit tests, but either a unit, Storkybook, or e2e test. We aren't aiming for 100% unit test coverage, but we **ARE** aiming for 100% confidence in the behavior of our app when we run the `check` commands. That means every requirement of the app must be expressed somewhere, either explicitly or implicitly, in a test. If you were to make a change without updating tests and nothing broke, that would be a failure of our testing strategy.
 
+### Demonstrating changes: the demo doc
+
+Tests prove a change **doesn't regress**; a **demo doc** proves the new behavior
+**actually happens** — and lets a reviewer reproduce it with one command. Unless told
+otherwise, once a user-facing or behavioral change is working and `check` is green,
+capture it as a demo doc at `docs/demos/<feature-or-branch>.md` using the
+self-contained demo CLI (no extra runtime, works the same locally, in Claude Code for
+web, and in the sandbox):
+
+- `npm run demo -- init docs/demos/<name>.md "<title>"` to start it.
+- `npm run demo -- note …` to narrate; `npm run demo -- exec <file> <lang> "<cmd>"` to
+  run the relevant commands / tests / requests and capture their output.
+- For UI changes, screenshot the running app with
+  `npm run screenshot -w frontend -- <url> shot.png` and embed it via
+  `npm run demo -- image …`.
+- Confirm it reproduces with `npm run demo -- verify docs/demos/<name>.md` before you
+  wrap up.
+
+**Read the `showboat` skill first** for the full command set and authoring tips
+(keep `exec` blocks deterministic so `verify` stays green). Trivial,
+non-behavioral changes (pure refactors, docs, config) don't need a demo doc.
+
 ### End of Workflow: committing, pushing & PR
 
 When you finish a task, **unless the user tells you not to**, wrap it up like this:
 
 1. **Never commit on `main`.** Check the current branch first; if it's `main`, create a feature branch and switch to it before committing.
-2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
+2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
 3. **Push** the branch to the remote.
-4. **Open a pull request** from the feature branch into `main` once the full feature is done. If a pull request for the branch already exists, **update its description** to include your change.
+4. **Open a pull request** from the feature branch into `main` once the full feature is done. **Link the demo doc** (`docs/demos/…`) in the description so reviewers can see — and re-run — the change working. If a pull request for the branch already exists, **update its description** to include your change.
 
 The pre-commit (`check:fast`) and pre-push (`check:slow`) hooks gate each step
 automatically — fix any failures in the **code**, never with `--no-verify` or by
@@ -148,6 +172,7 @@ Being told to skip a step implies skipping all later steps as well:
 - Skip committing → also skip pushing and opening a PR.
 - Skip pushing → also skip opening a PR.
 - Skip opening a PR → does **not** imply skipping committing or pushing.
+- Skip the demo doc → still commit / push / open the PR as normal, just without it.
 
 ---
 
