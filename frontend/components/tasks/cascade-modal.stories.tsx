@@ -2,28 +2,17 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { CascadeModal } from './cascade-modal';
 
-// Storybook action stubs — Storybook replaces these at render time via the
-// `actions` addon, so a no-op that logs is good enough for static stories.
-function handleOpenChange(open: boolean) {
-  // Storybook action stub — logs open state for the actions panel
-  // eslint will flag this if empty, so we reference the arg:
-  return open;
-}
-
-function handleConfirm() {
-  return;
-}
-
 const meta = {
   title: 'Tasks/CascadeModal',
   component: CascadeModal,
   tags: ['autodocs'],
   args: {
+    // Inert no-op stubs — these stories don't assert on the callbacks.
     open: true,
-    onOpenChange: handleOpenChange,
+    onOpenChange: () => {},
     taskTitle: 'Plan the product launch',
     subtaskCount: 3,
-    onConfirm: handleConfirm,
+    onConfirm: () => {},
     isPending: false,
   },
 } satisfies Meta<typeof CascadeModal>;

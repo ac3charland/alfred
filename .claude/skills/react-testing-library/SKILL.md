@@ -276,21 +276,6 @@ const fixture: ItemNode = {
 };
 ```
 
-**Storybook stories with required callback props (no-empty-function)**
-
-`@typescript-eslint/no-empty-function` forbids `() => {}` in stories. And `() => undefined` gets auto-fixed to `() => {}` by ESLint. Use named stub functions with a non-trivial body:
-
-```ts
-function handleOpenChange(open: boolean) {
-  return open; // references the param — not empty
-}
-function handleConfirm() {
-  return undefined; // explicit return — not empty
-}
-```
-
-Inline arrow with discarded parameter: `(_open: boolean) => undefined` triggers `no-unused-vars`. Named function is cleaner.
-
 ## What Was Deliberately Left Out
 
 - **`render` return value beyond `rerender`/`unmount`** — the `container`, `baseElement`, and `asFragment` return values are valid but rarely needed; using them is often a sign you should use a screen query instead. The `no-container` ESLint rule prevents the most common misuse.

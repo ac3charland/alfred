@@ -35,6 +35,13 @@ earlier ones for the same rule key. This means:
    namespace to avoid confusion.
 5. **The alfred philosophy: `error` not `warn`.** Warnings are noise; everything actionable must
    be `error`. Never weaken a rule to make a failing file pass — fix the code instead.
+6. **If a rule (or a *combination* of rules) genuinely doesn't fit a context, file a lint
+   suggestion — don't silently work around it.** Make the code pass the gate as it stands, then
+   add one markdown file describing the issue and a concrete suggested change to the inbox at
+   `docs/lint-suggestions/` (see its `README.md`), the same turn you hit the friction. A
+   deliberate, scoped rule change (like a `files`-scoped override) is a *separate, reviewed*
+   task — never an ad-hoc reaction to a red check. The two changes this repo already made
+   (`_`-prefixed unused vars; empty stubs in stories) came from exactly this kind of friction.
 
 > Source: ESLint team, "New Config System, Part 2: Introduction to Flat Config", eslint.org/blog, 2022
 > Source: typescript-eslint team, "Announcing typescript-eslint v8", typescript-eslint.io/blog, 2024
@@ -81,6 +88,8 @@ earlier ones for the same rule key. This means:
 | "Add Storybook lint rules" | `...storybook.configs['flat/recommended']` | This is an array — spread with `...`. Scope with `files: ['**/*.stories.{ts,tsx}', '**/*.story.{ts,tsx}']` to avoid story-rule false positives in app code. |
 | "Add Playwright lint rules" | `{ files: ['tests/**', 'e2e/**'], ...playwright.configs['flat/recommended'], rules: { ...playwright.configs['flat/recommended'].rules } }` | Must duplicate `.rules` inside the object when adding `files` scoping alongside the spread — otherwise `files` from the plugin config wins. |
 | "Ignore generated files and build output" | Top-level config object: `{ ignores: ['.next/**', 'dist/**', 'node_modules/**', '*.gen.ts'] }` | `ignores` without a `files` key is a global ignore. Never use `.eslintignore` — it's a legacy eslintrc concept. |
+| "Allow unused vars/args prefixed with `_`" | A rules block **after** `strictTypeChecked` setting `'@typescript-eslint/no-unused-vars'` to `['error', { args: 'all', argsIgnorePattern: '^_', caughtErrors: 'all', caughtErrorsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }]` | Project convention in **both** packages. `strictTypeChecked` enables `@typescript-eslint/no-unused-vars` and turns the core `no-unused-vars` **off** — configure the TS rule, never the core one (re-enabling core on TS files double-reports). `args: 'all'` makes `_` the *required* marker for an intentional unused arg, including leading ones, and mirrors TS `noUnusedParameters` (which also exempts `_`) so compiler and linter agree. Prefer **dropping** a trailing/only unused param over `_`-prefixing it; reach for `_` when a fixed signature forces an unused param before a used one (e.g. a route handler's `_request` before `context`). |
+| "Allow empty stub functions in Storybook stories" | A `files: ['**/*.stories.{ts,tsx}', '**/*.story.{ts,tsx}']` override (after the storybook config) with `rules: { '@typescript-eslint/no-empty-function': 'off' }` | Stories need inert no-op callback props (`onConfirm={() => {}}`); the rule would otherwise force named stubs with throwaway `return;` bodies. Scope it to story files only — real source keeps the rule. Turn off the **TS** variant (`strictTypeChecked` enables it and disables the core `no-empty-function`). To *assert* a callback fired, use `fn()` from `'storybook/test'` instead of an empty stub. |
 | "Run lint with auto-fix and cache" | `eslint --fix --cache --cache-location .eslintcache` | The `--cache` flag skips unchanged files. In `check:fast`, run ESLint first (fix), then Prettier (`prettier --write --cache`). |
 
 ---
