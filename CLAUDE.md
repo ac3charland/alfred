@@ -53,6 +53,24 @@ The hooks enforce the suites automatically, so you do **not** need to run
 You may run `check:fast`, `check:slow`, or `check` anytime to iterate. Just be
 aware that every commit and push is gated.
 
+### Always run checks through an `npm run` script — never a tool binary directly
+
+Every check must take the form of `npm run <script>` in some directory — the
+**root** (fans out to all packages) or a **specific package** (`npm run lint -w
+frontend`). **Never invoke a tool binary directly** — no `npx eslint <file>`, no
+`./node_modules/.bin/prettier --check <file>`, no bare `tsc`/`jest`. Doing so
+bypasses the package's configured scope and ignore lists, so it reports
+misleading results: e.g. running Prettier straight at a path flags files that
+are deliberately outside any package's format scope (the `.claude/skills/*.md`
+prose lives at the repo root and no package formats it), producing "failures"
+that the real gates never see. The `npm run <script>` indirection **is** the
+source of truth for what each check covers.
+
+If you need a check over a particular set of files and no script gives you that,
+**add or modify a `package.json` script** so the capability is reproducible and
+shared — then run that. Adding the script you needed is the correct move; reaching
+for the raw binary is not.
+
 ### Generated files are excluded from formatting & linting
 
 Generated output is the generator's to own, not ours. **Never hand-edit or
