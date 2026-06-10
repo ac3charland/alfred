@@ -1,0 +1,209 @@
+---
+name: stryker
+description: >
+  Use when running, configuring, or reasoning about Stryker mutation testing
+  (StrykerJS) in the alfred monorepo. Covers: what mutation testing measures
+  (test-assertion quality, not line coverage), the per-package stryker.config.json
+  setup wired to Jest + ts-jest, the `npm run mutation` script, coverageAnalysis
+  choices, mutant states + the mutation-score formula, interpreting survived
+  mutants, the npm-workspaces sandbox/node_modules gotcha, the ts-jest
+  disableTypeChecks interaction, and why mutation testing is a standalone audit
+  (NOT wired into check:fast / check:slow). Trigger on: "mutation testing",
+  "stryker", "stryker run", "npm run mutation", "mutation score", "survived
+  mutant", "killed mutant", "@stryker-mutator", "stryker.config.json", or "why
+  did this mutant survive".
+---
+
+# StrykerJS mutation testing (alfred monorepo)
+
+Sources used:
+- StrykerJS official docs — stryker-mutator.io / `stryker-mutator/stryker-js` repo `docs/` (introduction, configuration, jest-runner, getting-started, troubleshooting) — maintainer org
+- `@stryker-mutator/core` + `@stryker-mutator/jest-runner` package.json (v9.6.1, Node ≥22) — maintainer org
+- "Supported mutators" — stryker-mutator.io/docs/mutation-testing-elements/supported-mutators — maintainer org
+- Verified live in this repo: `npm run mutation -w frontend -- --mutate lib/tree.ts` → 87.65% score (see `docs/demos/stryker-mutation-testing.md`)
+
+---
+
+## Mental Model: tests grading your tests
+
+Line/branch coverage tells you a line **ran** during the test suite. It says
+nothing about whether any assertion would **notice** if that line were wrong.
+Mutation testing closes that gap. Stryker:
+
+1. Parses your source and generates **mutants** — single, deliberate breakages
+   (`a + b` → `a - b`, `>` → `>=`, `'x'` → `''`, `??` → `&&`, remove a `return`).
+2. For each mutant, runs the tests that cover that line.
+3. Records the outcome: if **a test fails, the mutant is _killed_** (good — your
+   suite caught the bug). If **all tests still pass, the mutant _survived_**
+   (bad — a real bug here would ship green).
+
+The **mutation score** is the percentage of detectable mutants that were killed.
+A survived mutant is a precise, reproducible pointer at a missing or weak
+assertion — not a missing line of coverage. That's the whole value: it audits
+the *quality* of assertions, the one thing coverage can't see.
+
+**The non-obvious part:** mutation testing is **expensive** — it re-runs (a
+subset of) the test suite once *per mutant*, so a single file can mean dozens of
+test runs. Stryker makes this tractable with **coverage analysis** (only run the
+tests that actually cover each mutant) and **concurrency** (worker processes).
+This cost is why it is an *occasional audit*, never a per-commit gate.
+
+### How a run executes (so you can debug it)
+
+`source → instrument/mutate → copy package to a sandbox (.stryker-tmp) → run the
+test runner per mutant → report`. Stryker copies the package into a sandbox
+directory and runs Jest there, restoring nothing in your real tree. Most
+"it doesn't work" problems are sandbox problems (module resolution, missing
+files) — see Pitfalls.
+
+---
+
+## Decision Tree
+
+**Which `coverageAnalysis`?** (set in `stryker.config.json`)
+- `perTest` *(our default)* → Stryker maps which test covers which mutant and
+  runs only those tests. Fastest. Requires a test runner that reports per-test
+  coverage — the Jest runner does. **Use this** unless something forces otherwise.
+- `all` → run the whole file's covering tests, no per-test mapping. Use only if
+  `perTest` misbehaves (e.g. global state shared across tests).
+- `off` → run the *entire* suite for every mutant. Slowest; last resort.
+
+**What should `mutate` cover?**
+- **Pure logic** (`lib/**` helpers, reducers, schema/validation, API route
+  handlers) → **yes, prime targets.** High signal, fast, deterministic.
+- **React components / Next pages** (`*.tsx`) → mutable, but slower and noisier;
+  many "survived" mutants are cosmetic. Mutate deliberately, not by default.
+- **Generated files** (`lib/database.types.ts`, `*.gen.ts`) → **never** — exclude
+  with a `!` glob.
+- **Side-effecting glue** (the Supabase client factories, middleware) → low value;
+  little branching logic to mutate.
+
+**Do you need the TypeScript checker plugin (`checkers: ["typescript"]`)?**
+- Default: **no.** It compiles each mutant and discards type-uncompilable ones
+  before running tests — more accurate, but much slower and needs a tsconfig that
+  `include`s every mutated file. Skip it unless survived-but-uncompilable mutants
+  are skewing your score. (Not installed in this repo.)
+
+**Which package do I run in?** Stryker is configured **per workspace**
+(`frontend/`, `workers/`, `tools/showboat/`), each with its own
+`stryker.config.json` pointing at that package's `jest.config.ts`. Run it for one
+package at a time: `npm run mutation -w <package>`.
+
+---
+
+## Plain-English → Pattern Table
+
+| When you want to… | Do this | Key things to know |
+| --- | --- | --- |
+| Mutation-test one file (the fast feedback loop) | `npm run mutation -w frontend -- --mutate lib/tree.ts` | `--mutate <glob>` overrides the config's `mutate` array; cwd is the workspace, so the path is package-relative |
+| Mutation-test a whole package | `npm run mutation -w frontend` | Uses the config's `mutate` globs; can be slow for `*.tsx` — scope it |
+| Add Stryker to a new package | `npm i -D -w <pkg> @stryker-mutator/core @stryker-mutator/jest-runner`, add `stryker.config.json` + a `"mutation": "stryker run"` script | Mirror an existing package's config; point `jest.configFile` at that package's `jest.config.ts` |
+| See *which* assertions are missing | Open the HTML report: `<pkg>/reports/mutation/mutation.html` | Lists every survived mutant with file:line and the exact mutation; gitignored |
+| Speed up a slow run | Lower `concurrency`, narrow `mutate`, keep `coverageAnalysis: "perTest"` | `concurrency` defaults to CPU-cores−1; memory pressure → set it lower (e.g. 4) |
+| Stop a known-pointless mutant from counting against the score | Add a `// Stryker disable next-line <mutator>: <reason>` comment **in the source** | This is the *one* sanctioned in-source directive for Stryker; it's not an ESLint/TS bypass. Use sparingly, always with a reason |
+| Fail CI/locally below a score | Set `thresholds.break` in the config | `break: null` by default (never fails). Leave it null here — mutation is an audit, not a gate |
+| Run an ESM/native-TS package (showboat) | Already wired: `testRunnerNodeArgs: ["--experimental-vm-modules"]` in its config | Mirrors that package's `NODE_OPTIONS=--experimental-vm-modules` test script |
+| Re-run faster after small edits | `incremental: true` (opt-in) | Caches results in `reports/stryker-incremental.json`; re-tests only changed mutants |
+
+---
+
+## Mutant states & the score (read the report correctly)
+
+Every mutant lands in exactly one state:
+
+- **Killed** — a test failed. ✅ The suite caught it.
+- **Survived** — all tests passed despite the mutation. ❌ Assertion gap. **This
+  is the actionable output** — add/strengthen an assertion to kill it.
+- **No coverage** — no test ran this code at all. A *coverage* gap (weaker signal
+  than survived; fix with any test that exercises the line).
+- **Timeout** — the mutant caused an infinite loop / hang; counted as killed
+  (the suite "detected" it by diverging). Controlled by `timeoutMS` + `timeoutFactor`.
+- **Runtime error / Compile error** — the mutant couldn't run; **excluded** from
+  the score entirely (neither killed nor survived).
+- **Ignored** — excluded by a `// Stryker disable` comment or `mutator` config.
+
+**Score formula** (Stryker prints two columns):
+```
+mutation score          = (killed + timeout) / (killed + timeout + survived + no-coverage) × 100
+mutation score covered  = (killed + timeout) / (killed + timeout + survived)               × 100
+```
+`covered` ignores no-coverage mutants — it answers "of the code my tests *touch*,
+how well do they assert?" Default `thresholds`: `{ high: 80, low: 60, break: null }`
+(colour-coding only; `break` is what would fail a run, and we keep it `null`).
+
+**Supported mutators** (what gets broken): Arithmetic, Array Declaration,
+Assignment, Block Statement, Boolean Literal, Conditional Expression, Equality
+Operator, Logical Operator, Method Expression, Object Literal, Optional Chaining,
+Regex, String Literal, Unary Operator, Update Operator. (Confirmed against the
+maintainer "supported mutators" page.)
+
+---
+
+## Common Pitfalls (hard rules)
+
+- **Never wire `mutation` into `check:fast` / `check:slow` or the husky hooks.**
+  It re-runs the suite per mutant — minutes, not seconds. It is a standalone
+  `npm run mutation` audit, by design. (The user confirmed this scoping.)
+- **In this npm-workspaces monorepo, hoisted deps live at the repo-root
+  `node_modules`.** Stryker's sandbox sits *inside* the package
+  (`<pkg>/.stryker-tmp/sandbox-*`), so Node resolution walks up to the root
+  `node_modules` and the default sandbox run works. **If you ever see "Cannot find
+  module" inside the sandbox, switch that package's config to `"inPlace": true`**
+  (mutates files in place, no sandbox copy, restored on completion) rather than
+  fighting symlinks.
+- **ts-jest type-checks by default; mutants routinely produce type errors.**
+  Stryker's `disableTypeChecks` defaults to `true`, injecting `// @ts-nocheck`
+  into each mutated file so ts-jest runs the mutant as plain JS instead of failing
+  to compile it. Leave it on. If mutated files outside `src`/`lib`/`test` throw
+  `"Cannot assign to 'stryNS_…'"`, widen it to a glob:
+  `"disableTypeChecks": "{app,components,lib}/**/*.{ts,tsx}"`.
+- **Keep `coverageAnalysis: "perTest"` with the Jest runner.** The runner also
+  uses `--findRelatedTests`, so a single-file run only executes that file's tests.
+- **Jest multi-`projects` config is unsupported by the runner.** Our packages use
+  single-project Jest configs — keep it that way for any package you mutate.
+- **A survived mutant is a finding, not a failure to silence.** Fix it by adding
+  an assertion in the **test**, never by deleting the mutator or disabling it
+  (unless the mutation is genuinely equivalent/meaningless — then a documented
+  `// Stryker disable next-line` comment is acceptable).
+- **The generated report is a generated artifact.** `<pkg>/reports/mutation/` is
+  gitignored *and* prettier-ignored, and `.stryker-tmp/` is eslint-ignored. Never
+  hand-edit or format them. (Adding those ignores when a package first gets
+  Stryker is the expected config change.)
+- **`ignorePatterns` ≠ `.gitignore` semantics.** It is a list of globs of files
+  *not to copy into the sandbox* (speed), not a mutate filter. We exclude `.next`,
+  `storybook-static`, `coverage`, etc. To exclude files from *mutation*, use a
+  `!` entry in `mutate`.
+
+---
+
+## Version Gotchas (StrykerJS v9.x)
+
+- **Node ≥ 22 is required** (`@stryker-mutator/core@9` engines). This repo runs
+  Node 22.x — fine. Agents trained on older Stryker may assume Node 16/18.
+- **Scaffold with `npm init stryker@latest`**, not a long-dead global install. It
+  emits a `stryker.config.mjs`; this repo standardised on `stryker.config.json`
+  (no lint/format surface, valid for every package). Both are supported config
+  forms (`.json` / `.mjs` / `.cjs` / `.js`).
+- **`coverageAnalysis: "perTest"` is the modern default** and the Jest runner
+  supports it natively — don't downgrade to `"off"` out of caution.
+- **The default HTML report path is `reports/mutation/mutation.html`** in v9 (older
+  content says `reports/mutation.html`); our ignore patterns cover both.
+- **The package is `@stryker-mutator/*`** (the old `stryker` / `@stryker-mutator/
+  javascript-mutator` packages are obsolete — don't install them).
+
+---
+
+## What Was Deliberately Left Out (and why)
+
+- **`@stryker-mutator/typescript-checker`** — accurate but slow and needs tsconfig
+  `include` to cover every mutated file. Not installed; revisit only if
+  uncompilable mutants skew a score. (See the Decision Tree.)
+- **The Stryker Dashboard reporter / mutation-testing.com upload** — that's a
+  hosted-CI/badge workflow; this is a single-user, run-locally audit.
+- **CI gating on mutation score (`thresholds.break`)** — explicitly out of scope:
+  mutation testing here is a manual audit, not a pre-push gate. Left `null`.
+- **`create-react-app` / Angular / Karma / Vitest / Mocha runner setups** — this
+  monorepo is Jest-only; only the `jest-runner` is documented to avoid an agent
+  reaching for the wrong runner.
+- **Custom Babel `mutator.plugins` overrides** — only needed for exotic syntax
+  (legacy decorators, Vue SFCs); our TS/TSX parses with Stryker's defaults.
