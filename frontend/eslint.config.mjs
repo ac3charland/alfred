@@ -142,6 +142,19 @@ export default defineConfig([
   // correct files globs internally.
   ...storybookPlugin.configs['flat/recommended'],
 
+  // ── Storybook stories: allow empty stub functions ─────────────────────────
+  // Stories routinely need inert no-op callback props (e.g. `onConfirm={() => {}}`).
+  // These are fixtures, not logic — `@typescript-eslint/no-empty-function` would
+  // otherwise force kludgey named stubs with throwaway `return;` bodies. Scoped to
+  // story files only; real source keeps the rule. (To *assert* a callback fired,
+  // use `fn()` from `'storybook/test'` instead of an empty stub.)
+  {
+    files: ['**/*.stories.{ts,tsx}', '**/*.story.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-empty-function': 'off',
+    },
+  },
+
   // ── Jest + Testing Library + jest-dom (test files only, excluding e2e) ─────
   {
     files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
