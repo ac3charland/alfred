@@ -1,8 +1,9 @@
 'use client';
 
-import { Loader2 } from 'lucide-react';
 import * as React from 'react';
 
+import { Spinner } from '@/components/atoms/spinner';
+import { TextField } from '@/components/atoms/text-field';
 import { Button } from '@/components/ui/button';
 import { useTaskActions } from '@/lib/stores/tasks-store';
 import { cn } from '@/lib/utils';
@@ -98,8 +99,7 @@ export function CaptureBox({
         }}
         className="flex items-center gap-2"
       >
-        <input
-          type="text"
+        <TextField
           value={value}
           onChange={(event_) => {
             setValue(event_.target.value);
@@ -108,11 +108,7 @@ export function CaptureBox({
           placeholder="Add subtask…"
           // autoFocus intentionally omitted — jsx-a11y/no-autofocus
           // The compact box is shown inline; focus is managed by the parent toggle.
-          className={cn(
-            'flex-1 rounded-sm border border-border bg-input px-3 py-1.5 text-sm text-foreground',
-            'placeholder:text-muted-foreground',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-          )}
+          className="flex-1 px-3 py-1.5"
         />
         <Button
           type="submit"
@@ -122,11 +118,7 @@ export function CaptureBox({
           disabled={!value.trim()}
           className="shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal"
         >
-          {isSaving ? (
-            <Loader2 size={14} className="animate-spin" role="status" aria-label="Saving" />
-          ) : (
-            'Add'
-          )}
+          {isSaving ? <Spinner label="Saving" /> : 'Add'}
         </Button>
       </form>
     );
@@ -187,11 +179,7 @@ export function CaptureBox({
             disabled={!value.trim()}
             className="bg-accent-teal text-background hover:bg-accent-teal/90 disabled:opacity-40"
           >
-            {isSaving ? (
-              <Loader2 size={14} className="animate-spin" role="status" aria-label="Saving" />
-            ) : (
-              'Capture'
-            )}
+            {isSaving ? <Spinner label="Saving" /> : 'Capture'}
           </Button>
         </div>
       </div>

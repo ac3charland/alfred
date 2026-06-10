@@ -4,6 +4,8 @@ import { Check, ChevronRight, ListCheck, MoreHorizontal, Plus } from 'lucide-rea
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
+import { FieldLabel } from '@/components/atoms/field-label';
+import { IconButton } from '@/components/atoms/icon-button';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { Button } from '@/components/ui/button';
@@ -210,19 +212,14 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
         style={{ paddingLeft: indentLeft }}
       >
         {/* Expand/collapse toggle */}
-        <button
-          type="button"
+        <IconButton
+          size="sm"
           onClick={() => {
             setIsExpanded((v) => !v);
           }}
           aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
           aria-expanded={isExpanded}
-          className={cn(
-            'flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-            'transition-colors duration-100 hover:text-foreground motion-reduce:transition-none',
-            !hasChildren && 'invisible pointer-events-none',
-          )}
+          className={cn('shrink-0', !hasChildren && 'invisible pointer-events-none')}
         >
           <ChevronRight
             size={14}
@@ -231,7 +228,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
               isExpanded && 'rotate-90',
             )}
           />
-        </button>
+        </IconButton>
 
         {/* Completion checkbox */}
         <button
@@ -339,36 +336,24 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
         {/* Row actions — visible on hover */}
         <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
           {/* Add subtask */}
-          <button
-            type="button"
+          <IconButton
+            size="md"
+            tone="accent"
             onClick={() => {
               setShowAddSubtask((v) => !v);
               setIsExpanded(true);
             }}
             aria-label="Add subtask"
-            className={cn(
-              'flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-accent-teal',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-              'transition-colors duration-100 motion-reduce:transition-none',
-            )}
           >
             <Plus size={12} />
-          </button>
+          </IconButton>
 
           {/* More actions dropdown */}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                aria-label="More actions"
-                className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground',
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                  'transition-colors duration-100 motion-reduce:transition-none',
-                )}
-              >
+              <IconButton size="md" aria-label="More actions">
                 <MoreHorizontal size={14} />
-              </button>
+              </IconButton>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content
@@ -472,12 +457,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
         >
           {/* Due date field */}
           <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`due-date-${node.id}`}
-              className="text-xs font-semibold tracking-widest uppercase text-muted-foreground"
-            >
-              Due date
-            </label>
+            <FieldLabel htmlFor={`due-date-${node.id}`}>Due date</FieldLabel>
             {isEditingDueDate ? (
               <div className="flex items-center gap-2">
                 <input
@@ -538,12 +518,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
 
           {/* Notes field */}
           <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`notes-${node.id}`}
-              className="text-xs font-semibold tracking-widest uppercase text-muted-foreground"
-            >
-              Notes
-            </label>
+            <FieldLabel htmlFor={`notes-${node.id}`}>Notes</FieldLabel>
             {isEditingNotes ? (
               <div className="flex flex-col gap-2">
                 <textarea
