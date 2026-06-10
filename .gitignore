@@ -11,6 +11,11 @@ coverage/
 storybook-static/
 playwright-report/
 test-results/
+# Stryker mutation testing (sandbox, log, and generated reports — in any package)
+.stryker-tmp/
+stryker.log
+**/reports/mutation.html
+**/reports/mutation/
 
 # Local env files — real secrets, never commit. Tracked: *.example
 .env

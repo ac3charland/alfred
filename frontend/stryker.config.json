@@ -1,0 +1,19 @@
+{
+  "testRunner": "jest",
+  "jest": {
+    "projectType": "custom",
+    "configFile": "jest.config.ts"
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "app/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "lib/**/*.ts",
+    "!**/*.test.{ts,tsx}",
+    "!**/*.stories.{ts,tsx}",
+    "!lib/database.types.ts"
+  ],
+  "ignorePatterns": [".next", "storybook-static", "coverage", "playwright-report", "test-results"],
+  "reporters": ["html", "clear-text", "progress"],
+  "concurrency": 4
+}
