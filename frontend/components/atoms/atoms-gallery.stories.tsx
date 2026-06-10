@@ -24,29 +24,77 @@ type Story = StoryObj<typeof meta>;
 
 const TONES = ['neutral', 'accent', 'affirm', 'danger'] as const;
 
+/**
+ * The text colour each tone resolves to on hover. Forced via className here so the
+ * static gallery can preview the hover state that's otherwise only visible on
+ * pointer-over — at rest neutral, accent and danger all share the muted tint.
+ */
+const HOVER_PREVIEW: Record<(typeof TONES)[number], string> = {
+  neutral: 'text-foreground',
+  accent: 'text-accent-teal',
+  affirm: 'text-accent-teal',
+  danger: 'text-destructive',
+};
+
 export const Library: Story = {
   render: () => (
     <div className="flex max-w-md flex-col gap-8">
       <section className="flex flex-col gap-3">
         <FieldLabel>Icon buttons</FieldLabel>
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-[4.5rem_2.5rem_2.5rem_2.5rem_3rem] items-center gap-x-3 gap-y-3">
+          {/* Column headers */}
+          <span />
+          <span className="text-center text-[10px] uppercase tracking-wider text-muted-foreground/50">
+            sm
+          </span>
+          <span className="text-center text-[10px] uppercase tracking-wider text-muted-foreground/50">
+            md
+          </span>
+          <span className="text-center text-[10px] uppercase tracking-wider text-muted-foreground/50">
+            lg
+          </span>
+          <span className="text-center text-[10px] uppercase tracking-wider text-accent-teal/70">
+            hover
+          </span>
+
           {TONES.map((tone) => (
-            <div key={tone} className="flex items-center gap-4">
-              <span className="w-16 text-xs uppercase tracking-widest text-muted-foreground/70">
+            <React.Fragment key={tone}>
+              <span className="text-xs uppercase tracking-widest text-muted-foreground/70">
                 {tone}
               </span>
-              <IconButton tone={tone} size="sm" aria-label={`${tone} small`}>
-                <MoreHorizontal size={12} />
-              </IconButton>
-              <IconButton tone={tone} size="md" aria-label={`${tone} medium`}>
-                <Plus size={14} />
-              </IconButton>
-              <IconButton tone={tone} size="lg" aria-label={`${tone} large`}>
-                <Check size={16} />
-              </IconButton>
-            </div>
+              <span className="flex justify-center">
+                <IconButton tone={tone} size="sm" aria-label={`${tone} small`}>
+                  <MoreHorizontal size={12} />
+                </IconButton>
+              </span>
+              <span className="flex justify-center">
+                <IconButton tone={tone} size="md" aria-label={`${tone} medium`}>
+                  <Plus size={14} />
+                </IconButton>
+              </span>
+              <span className="flex justify-center">
+                <IconButton tone={tone} size="lg" aria-label={`${tone} large`}>
+                  <Check size={16} />
+                </IconButton>
+              </span>
+              {/* Forced-hover preview (md) */}
+              <span className="flex justify-center">
+                <IconButton
+                  tone={tone}
+                  size="md"
+                  className={HOVER_PREVIEW[tone]}
+                  aria-label={`${tone} hover`}
+                >
+                  <Plus size={14} />
+                </IconButton>
+              </span>
+            </React.Fragment>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground/60">
+          The rightmost column previews each tone&rsquo;s hover colour — at rest neutral, accent and
+          danger share the muted tint and only diverge on hover.
+        </p>
       </section>
 
       <section className="flex flex-col gap-2">

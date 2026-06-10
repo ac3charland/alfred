@@ -4,7 +4,7 @@
 
 The frontend's repeated UI primitives — square ghost icon buttons, inline text inputs, the saving spinner, and the uppercase field-label eyebrow — were copy-pasted across task rows, the folder nav, the capture box, and the mobile nav. They are now four reusable atoms in `frontend/components/atoms/`, each with unit tests and Storybook stories, and the consumers compose them instead of repeating raw markup.
 
-The component library at a glance — `IconButton` (four tones × three sizes; affirm is teal), `TextField`, `Spinner`, and `FieldLabel`, rendered together from the `Atoms/Gallery` Storybook story on the app's dark theme:
+The component library at a glance — `IconButton` (four tones × three sizes, plus a forced-hover column since at rest neutral/accent/danger share the muted tint and only diverge on hover), `TextField`, `Spinner`, and `FieldLabel`, rendered together from the `Atoms/Gallery` Storybook story on the app's dark theme:
 
 ![](shared-ui-atoms-image-1.png)
 
