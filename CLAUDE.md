@@ -53,6 +53,23 @@ The hooks enforce the suites automatically, so you do **not** need to run
 You may run `check:fast`, `check:slow`, or `check` anytime to iterate. Just be
 aware that every commit and push is gated.
 
+### Generated files are excluded from formatting & linting
+
+Generated output is the generator's to own, not ours. **Never hand-edit or
+reformat a generated file** — reproduce it by re-running its generator and commit
+that raw output verbatim. Every generated artifact must be ignored by **both**
+ESLint and Prettier so the guardrails don't fight the generator:
+
+- Supabase schema types — `frontend/lib/database.types.ts` (regenerate with
+  `supabase gen types`).
+- Anything matching `*.gen.ts`.
+- Framework-emitted files — e.g. `next-env.d.ts`, `worker-configuration.d.ts`.
+
+Keep the ESLint `ignores` and the `.prettierignore` lists in sync when a new
+generated artifact appears. Adding a newly-generated file to those ignore lists
+is the expected, deliberate config change — **not** a guardrail bypass (the "don't
+weaken config" rule above is about silencing a check on _hand-written_ code).
+
 ---
 
 ## Workflow: committing, pushing & PR

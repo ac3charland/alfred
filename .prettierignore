@@ -12,3 +12,9 @@ test-results/
 
 # Lockfile is npm-managed
 package-lock.json
+
+# Generated source — reproduced verbatim by its generator, never hand-formatted.
+# (Mirrors the ESLint global ignores; see CLAUDE.md.)
+**/lib/database.types.ts
+*.gen.ts
+next-env.d.ts
