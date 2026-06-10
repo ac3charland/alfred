@@ -86,6 +86,12 @@ export default defineConfig([
       // that BREAKS at runtime. Deliberate project decision: off globally. (By convention,
       // still prefer `undefined` for purely-UI absent state, e.g. React `useState`.)
       'unicorn/no-null': 'off',
+      // `unicorn/prevent-abbreviations` fights established ecosystem conventions far more
+      // than it helps: it pushes `utils` → `utilities` (shadcn/ui ships `lib/utils.ts` and
+      // its CLI writes that path), `env`/`props`/`params`/`ref`/`dir` → verbose forms, etc.
+      // The renames actively cut against the grain of the libraries we use. Deliberate
+      // project decision: off globally. Clear, conventional names are reviewed by humans.
+      'unicorn/prevent-abbreviations': 'off',
     },
   },
 
@@ -215,13 +221,12 @@ export default defineConfig([
   },
 
   // ── Ambient declaration files (.d.ts) ─────────────────────────────────────
-  // These mirror external/ambient names (e.g. Node's `ProcessEnv`) and use
-  // conventional short filenames — the abbreviation/filename rules don't apply
-  // to type-contract files. (Scoped off only here; real source keeps both rules.)
+  // These use conventional short filenames (e.g. `env.d.ts`) — the filename-case
+  // rule doesn't apply to type-contract files. (Scoped off only here; real source
+  // keeps the rule.)
   {
     files: ['**/*.d.ts'],
     rules: {
-      'unicorn/prevent-abbreviations': 'off',
       'unicorn/filename-case': 'off',
     },
   },

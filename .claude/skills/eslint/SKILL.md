@@ -136,9 +136,10 @@ earlier ones for the same rule key. This means:
 
 - The skill template showed `nextPlugin.flatConfig.coreWebVitals` — this path does NOT exist in the actual package (confirmed v16.2.7). The correct access is `nextPlugin.configs['core-web-vitals']`. Check available keys with `Object.keys(nextPlugin.configs)` — they are `'recommended-legacy'`, `'core-web-vitals-legacy'`, `'recommended'`, and `'core-web-vitals'`. Use `nextPlugin.configs['core-web-vitals']` for the Next.js flat-config entry.
 
-**`next-env.d.ts` triggers `unicorn/prevent-abbreviations`**
+**`unicorn/prevent-abbreviations` is OFF project-wide (deliberate decision)**
 
-- Next.js generates `next-env.d.ts` at the package root (abbreviation "env" in the filename). The `unicorn/prevent-abbreviations` rule fires an error on this file. It cannot be renamed. Fix: add `'next-env.d.ts'` to the global `ignores` array in `eslint.config.mjs` (not as a `// unicorn-ignore` comment, which is forbidden per CLAUDE.md).
+- This rule is disabled in both `frontend/` and `workers/` configs (in the unicorn rule-tuning block, alongside `unicorn/no-null`). It forced ecosystem-hostile renames — `utils` → `utilities` (shadcn/ui ships `lib/utils.ts` and its CLI writes that path), `env`/`props`/`params` → verbose forms — that cut against the grain of the libraries the project uses. **Do not re-enable it**, and do not rename identifiers to "fix" abbreviations.
+- `next-env.d.ts` (Next.js generated, at the package root) stays in the global `ignores` array — but because it is *generated output we never lint*, not because of this rule.
 
 **TypeScript config files outside `tsconfig.json` include with `allowDefaultProject`**
 

@@ -34,7 +34,7 @@ export default defineConfig([
       'out/**',
       '*.gen.ts',
       'node_modules/**',
-      // Next.js generated file — unicorn/prevent-abbreviations fires on "env" abbreviation
+      // Next.js generated file — do not lint
       'next-env.d.ts',
     ],
   },

@@ -48,6 +48,15 @@ export default defineConfig([
 
   // ── Unicorn anti-patterns ─────────────────────────────────────────────────
   unicornPlugin.configs.recommended,
+  {
+    rules: {
+      // `unicorn/prevent-abbreviations` fights established ecosystem conventions
+      // (`utils` → `utilities`, `env`/`props`/`params`/`ref` → verbose forms) far
+      // more than it helps. Deliberate project decision: off globally, matching
+      // the frontend package. Clear, conventional names are reviewed by humans.
+      'unicorn/prevent-abbreviations': 'off',
+    },
+  },
 
   // ── Project rule tuning ───────────────────────────────────────────────────
   {
