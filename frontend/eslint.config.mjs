@@ -89,6 +89,30 @@ export default defineConfig([
     },
   },
 
+  // ── Project rule tuning ───────────────────────────────────────────────────
+  {
+    rules: {
+      // Honor the `_`-prefix convention for deliberately-unused bindings: unused
+      // function args, caught errors, destructured-array holes, and locals. This
+      // mirrors TypeScript's own `noUnusedParameters`, which already exempts
+      // `_`-prefixed params, so compiler and linter agree. `args: 'all'` means a
+      // leading unused arg must be `_`-prefixed to be intentional — the prefix is
+      // the marker, not silently ignored.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'all',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+
   // ── React ─────────────────────────────────────────────────────────────────
   {
     files: ['**/*.{jsx,tsx}'],
@@ -117,6 +141,19 @@ export default defineConfig([
   // story-type rules). Spread it directly — each item already scopes to the
   // correct files globs internally.
   ...storybookPlugin.configs['flat/recommended'],
+
+  // ── Storybook stories: allow empty stub functions ─────────────────────────
+  // Stories routinely need inert no-op callback props (e.g. `onConfirm={() => {}}`).
+  // These are fixtures, not logic — `@typescript-eslint/no-empty-function` would
+  // otherwise force kludgey named stubs with throwaway `return;` bodies. Scoped to
+  // story files only; real source keeps the rule. (To *assert* a callback fired,
+  // use `fn()` from `'storybook/test'` instead of an empty stub.)
+  {
+    files: ['**/*.stories.{ts,tsx}', '**/*.story.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-empty-function': 'off',
+    },
+  },
 
   // ── Jest + Testing Library + jest-dom (test files only, excluding e2e) ─────
   {
