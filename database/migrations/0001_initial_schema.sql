@@ -105,10 +105,11 @@ language sql
 security invoker
 as $$
   with recursive subtree as (
-    select id from items where id = root_id
+    select id, 0 as depth from items where id = root_id
     union all
-    select c.id from items c
+    select c.id, s.depth + 1 from items c
     inner join subtree s on c.parent_id = s.id
+    where s.depth < 50  -- guard against parent_id cycles (matches get_subtree)
   )
   update items
   set status = 'completed', completed_at = now()
