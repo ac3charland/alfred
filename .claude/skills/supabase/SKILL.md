@@ -218,4 +218,42 @@ migrations can be applied over the **session pooler** connection string (port 54
 any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable for
 multi-statement DDL — prefer the session pooler or direct connection for migrations.
 
+**Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
+`DATABASE_URL` from the dashboard's *Direct connection* tab points at
+`db.<ref>.supabase.co`, which publishes **only an AAAA (IPv6) record**. On an IPv4-only
+machine (most home/CI networks) `psql` fails with `could not translate host name … to
+address`. Fix: use the **Session pooler** URI, which is IPv4-proxied for free:
+
+```
+postgresql://postgres.<project-ref>:<password>@aws-1-<region>.pooler.supabase.com:5432/postgres
+```
+
+The pooler user is `postgres.<project-ref>` (not bare `postgres`), and the host is
+`aws-0-` **or** `aws-1-<region>` — try both; the wrong tenant prefix errors with
+`Tenant or user not found`. If you don't know the region, map the project's IPv6 (from
+`nslookup -type=AAAA db.<ref>.supabase.co`) against AWS's published `ip-ranges.json`, or
+just read it off the dashboard's Session-pooler string. alfred stores the pooler URI in
+`frontend/.env.local` as `DATABASE_URL` (gitignored).
+
+### Raw `psql -f migration.sql` does NOT get Supabase's auto-grants
+
+When you apply a migration through `supabase db push` or the dashboard SQL editor,
+Supabase auto-grants table privileges to `anon` / `authenticated` / `service_role`. When
+you apply the **same SQL with raw `psql` as the pooler `postgres` user**, those roles get
+only `REFERENCES, TRIGGER, TRUNCATE` — **not** `SELECT/INSERT/UPDATE/DELETE`. Symptom: the
+app and the service-role ingress both 500 with **`permission denied for table items`**
+even though RLS policies look correct (RLS gates *which rows*; table GRANTs gate *whether
+the role may touch the table at all* — you need both). Every migration applied via `psql`
+must therefore include explicit grants, e.g.:
+
+```sql
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on items, folders to anon, authenticated, service_role;
+grant execute on function get_subtree(uuid), complete_subtree(uuid) to anon, authenticated, service_role;
+```
+
+`anon` stays locked out by RLS (no policy), `authenticated` is gated by its policy, and
+`service_role` bypasses RLS — so granting DML to all three is safe. GRANTs are idempotent,
+so it's fine to re-run them on an already-provisioned DB.
+
 > See `references/` for detailed SQL patterns: `references/rls-policies.md` for policy templates, `references/recursive-subtasks.md` for the WITH RECURSIVE CTE.
