@@ -52,6 +52,26 @@ describe('updateItemSchema', () => {
     const result = updateItemSchema.safeParse({ status: 'archived' });
     expect(result.success).toBe(false);
   });
+
+  it('accepts a date-only due_date from <input type="date">', () => {
+    // Regression: the UI date picker yields "YYYY-MM-DD"; a datetime-only schema
+    // would 400, silently breaking the whole due-date feature.
+    expect(updateItemSchema.safeParse({ due_date: '2026-12-31' }).success).toBe(true);
+  });
+
+  it('accepts a full ISO datetime due_date', () => {
+    expect(updateItemSchema.safeParse({ due_date: '2026-12-31T00:00:00Z' }).success).toBe(true);
+  });
+
+  it('accepts null to clear nullable fields (due_date, notes, folder_id)', () => {
+    expect(
+      updateItemSchema.safeParse({ due_date: null, notes: null, folder_id: null }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a non-date due_date string', () => {
+    expect(updateItemSchema.safeParse({ due_date: 'not-a-date' }).success).toBe(false);
+  });
 });
 
 describe('createFolderSchema', () => {

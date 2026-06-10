@@ -8,6 +8,13 @@ const itemType = z.enum(['unclassified', 'task', 'code', 'knowledge']);
 const itemStatus = z.enum(['active', 'completed']);
 const uuid = z.uuid();
 const nullableUuid = z.uuid().nullable();
+// Accept a date-only string ("2026-06-15", from <input type="date">) OR a full ISO
+// datetime with offset. Postgres coerces the date to a timestamptz at midnight.
+// Nullable so a PATCH can clear the column.
+const dueDate = z.iso
+  .date()
+  .or(z.iso.datetime({ offset: true }))
+  .nullable();
 
 // ---------------------------------------------------------------------------
 // Items
@@ -30,7 +37,7 @@ export const createItemSchema = z
     source_url: z.url().nullable().optional(),
     raw_capture: z.string().nullable().optional(),
     item_type: itemType.optional(),
-    due_date: z.iso.datetime({ offset: true }).nullable().optional(),
+    due_date: dueDate.optional(),
     folder_id: nullableUuid.optional(),
     parent_id: nullableUuid.optional(),
   })
@@ -48,7 +55,7 @@ export const updateItemSchema = z.object({
   title: z.string().min(1).optional(),
   notes: z.string().nullable().optional(),
   source_url: z.url().nullable().optional(),
-  due_date: z.iso.datetime({ offset: true }).nullable().optional(),
+  due_date: dueDate.optional(),
   folder_id: nullableUuid.optional(),
   parent_id: nullableUuid.optional(),
   item_type: itemType.optional(),

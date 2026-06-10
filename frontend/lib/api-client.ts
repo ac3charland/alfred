@@ -72,11 +72,12 @@ export function createItem(input: CreateItemInput): Promise<Item> {
 
 export interface UpdateItemInput {
   title?: string;
-  notes?: string;
-  source_url?: string;
-  due_date?: string;
-  folder_id?: string;
-  parent_id?: string;
+  // Nullable DB columns accept `null` to CLEAR them (e.g. remove a due date).
+  notes?: string | null;
+  source_url?: string | null;
+  due_date?: string | null;
+  folder_id?: string | null;
+  parent_id?: string | null;
   item_type?: 'unclassified' | 'task' | 'code' | 'knowledge';
   status?: 'active' | 'completed';
 }

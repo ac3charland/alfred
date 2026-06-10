@@ -115,9 +115,8 @@ export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
     const currentValue = node.due_date ?? '';
     if (newValue === currentValue) return;
     try {
-      // exactOptionalPropertyTypes: only include the field if it has a value.
-      // An empty string means "clear the due date" — pass the field as absent.
-      await (newValue ? updateItem(node.id, { due_date: newValue }) : updateItem(node.id, {}));
+      // Empty string clears the due date (PATCH { due_date: null }).
+      await updateItem(node.id, { due_date: newValue === '' ? null : newValue });
       router.refresh();
     } catch {
       setDraftDueDate(node.due_date ?? '');
@@ -130,8 +129,8 @@ export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
     const currentValue = node.notes ?? '';
     if (newValue === currentValue) return;
     try {
-      // exactOptionalPropertyTypes: only include the field if it has a value.
-      await (newValue ? updateItem(node.id, { notes: newValue }) : updateItem(node.id, {}));
+      // Empty string clears the notes (PATCH { notes: null }).
+      await updateItem(node.id, { notes: newValue === '' ? null : newValue });
       router.refresh();
     } catch {
       setDraftNotes(node.notes ?? '');
