@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
+import { IconButton } from '@/components/atoms/icon-button';
 import { FolderNav } from '@/components/tasks/folder-nav';
 import { cn } from '@/lib/utils';
 
@@ -18,17 +19,9 @@ export default function MobileNavClient() {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button
-          type="button"
-          aria-label="Open navigation"
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-            'transition-colors motion-reduce:transition-none',
-          )}
-        >
+        <IconButton size="lg" aria-label="Open navigation">
           <Menu size={18} />
-        </button>
+        </IconButton>
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none" />

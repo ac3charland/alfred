@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
+import { IconButton } from '@/components/atoms/icon-button';
+import { TextField } from '@/components/atoms/text-field';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +14,16 @@ interface FolderNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
 }
+
+/** Shared styling for a nav link, highlighted when it points at the active route. */
+const navLinkClass = (active: boolean) =>
+  cn(
+    'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors duration-100 motion-reduce:transition-none',
+    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+    active
+      ? 'bg-secondary text-foreground font-medium'
+      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
+  );
 
 /**
  * Sidebar navigation: Inbox link, folder list with CRUD, Completed link.
@@ -85,15 +97,6 @@ export function FolderNav({ onClose }: FolderNavProperties) {
     }
   };
 
-  const navLinkClass = (active: boolean) =>
-    cn(
-      'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors duration-100 motion-reduce:transition-none',
-      'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-      active
-        ? 'bg-secondary text-foreground font-medium'
-        : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
-    );
-
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
       {/* Inbox — reveals the inbox list on the landing route */}
@@ -108,20 +111,15 @@ export function FolderNav({ onClose }: FolderNavProperties) {
           <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
             Folders
           </span>
-          <button
-            type="button"
+          <IconButton
+            size="sm"
             onClick={() => {
               setIsCreating(true);
             }}
             aria-label="Create folder"
-            className={cn(
-              'flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-              'transition-colors motion-reduce:transition-none',
-            )}
           >
             <Plus size={13} />
-          </button>
+          </IconButton>
         </div>
 
         {/* New folder form */}
@@ -132,8 +130,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
             }}
             className="flex items-center gap-1 px-2 py-1"
           >
-            <input
-              type="text"
+            <TextField
               value={newFolderName}
               onChange={(event_) => {
                 setNewFolderName(event_.target.value);
@@ -146,24 +143,16 @@ export function FolderNav({ onClose }: FolderNavProperties) {
               }}
               placeholder="Folder name…"
               // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-              className={cn(
-                'flex-1 rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
-                'placeholder:text-muted-foreground',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-              )}
+              className="flex-1"
             />
-            <button
+            <IconButton
               type="submit"
+              tone="affirm"
               disabled={isPending || !newFolderName.trim()}
               aria-label="Save folder"
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded text-accent-teal',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal',
-                'disabled:opacity-40',
-              )}
             >
               <Check size={13} />
-            </button>
+            </IconButton>
           </form>
         )}
 
@@ -179,8 +168,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                   }}
                   className="flex flex-1 items-center gap-1 pl-3"
                 >
-                  <input
-                    type="text"
+                  <TextField
                     value={editingName}
                     onChange={(event_) => {
                       setEditingName(event_.target.value);
@@ -191,19 +179,16 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                       }
                     }}
                     // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-                    className={cn(
-                      'flex-1 rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                    )}
+                    className="flex-1"
                   />
-                  <button
+                  <IconButton
                     type="submit"
+                    tone="affirm"
                     disabled={isPending}
                     aria-label="Save rename"
-                    className="flex h-6 w-6 items-center justify-center rounded text-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal disabled:opacity-40"
                   >
                     <Check size={13} />
-                  </button>
+                  </IconButton>
                 </form>
               ) : (
                 <>
@@ -221,27 +206,26 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
                   {/* Folder actions — on hover */}
                   <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
-                    <button
-                      type="button"
+                    <IconButton
+                      size="sm"
                       onClick={() => {
                         setEditingFolderId(folder.id);
                         setEditingName(folder.name);
                       }}
                       aria-label={`Rename ${folder.name}`}
-                      className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
                     >
                       <MoreHorizontal size={12} />
-                    </button>
-                    <button
-                      type="button"
+                    </IconButton>
+                    <IconButton
+                      size="sm"
+                      tone="danger"
                       onClick={() => {
                         void handleDeleteFolder(folder.id);
                       }}
                       aria-label={`Delete ${folder.name}`}
-                      className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </IconButton>
                   </div>
                 </>
               )}
