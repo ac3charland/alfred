@@ -217,6 +217,8 @@ test.beforeEach(async ({ page }) => {
 
 **Never commit `playwright/.auth/*.json` files.** They contain session cookies. Add `playwright/.auth/` to `.gitignore`.
 
+**The `webServer` must be able to boot, or every E2E times out with `Timed out waiting Nms from config.webServer`.** In alfred the server is `npm run build && npm run start`, and the Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` are absent ("Your project's URL and Key are required to create a Supabase client!") — so a fresh sandbox with no env fails the pre-push hook (`check:slow`) even though no test code is wrong. Fix: create a **gitignored** `frontend/.env.local` with *placeholder* values (`NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co`, `NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_placeholder`). With those set, the server boots and the unreachable Supabase host makes `getUser()` return null → middleware redirects to `/login`, which is exactly the deterministic behavior `e2e/home.spec.ts` asserts. This is environment setup, not a guardrail bypass — the hook still runs in full.
+
 ---
 
 ## Version Gotchas (as of v1.50–v1.60, current as of June 2026)
