@@ -21,6 +21,14 @@ fanning out to every package via `npm run <script> --workspaces --if-present`.
 
 ---
 
+## Installing Packages
+
+Before committing or pushing, make sure you've installed node_modules.
+
+**Always use `npm ci` over `npm install`** unless you're adding/removing dependencies. 
+
+---
+
 ## Back-pressure: hard rules (guardrail integrity)
 
 The deterministic suites (type-check, lint/format, unit, snapshot, E2E) are the
@@ -72,7 +80,15 @@ weaken config" rule above is about silencing a check on _hand-written_ code).
 
 ---
 
-## Workflow: committing, pushing & PR
+## Workflow: 
+
+### Implemenation: TDD
+
+When implementing work, unless told explicitly not to, use Red/Green TDD.
+
+Every change to the app's functionality should impact **at least one** test. Not necessarily always unit tests, but either a unit, Storkybook, or e2e test. We aren't aiming for 100% unit test coverage, but we **ARE** aiming for 100% confidence in the behavior of our app when we run the `check` commands. That means every requirement of the app must be expressed somewhere, either explicitly or implicitly, in a test. If you were to make a change without updating tests and nothing broke, that would be a failure of our testing strategy.
+
+### End of Workflow: committing, pushing & PR
 
 When you finish a task, **unless the user tells you not to**, wrap it up like this:
 
@@ -91,7 +107,7 @@ The pre-commit (`check:fast`) and pre-push (`check:slow`) hooks gate each step
 automatically — fix any failures in the **code**, never with `--no-verify` or by
 weakening config (see the hard rules above).
 
-### Skipping steps
+#### Skipping steps
 
 Being told to skip a step implies skipping all later steps as well:
 
