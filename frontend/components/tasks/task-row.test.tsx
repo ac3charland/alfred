@@ -183,9 +183,9 @@ describe('TaskRow', () => {
 
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledTimes(1);
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
         expect(mockRefresh).toHaveBeenCalled();
       });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
     });
 
     it('calls updateItem for parent and all descendants when moving to a folder', async () => {
@@ -203,11 +203,11 @@ describe('TaskRow', () => {
 
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledTimes(3);
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-2', { folder_id: 'folder-1' });
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-3', { folder_id: 'folder-1' });
         expect(mockRefresh).toHaveBeenCalled();
       });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-3', { folder_id: 'folder-1' });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-2', { folder_id: 'folder-1' });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
     });
 
     it('calls moveToInbox once when moving a leaf task to the inbox', async () => {
@@ -221,9 +221,9 @@ describe('TaskRow', () => {
 
       await waitFor(() => {
         expect(mockMoveToInbox).toHaveBeenCalledTimes(1);
-        expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
         expect(mockRefresh).toHaveBeenCalled();
       });
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
     });
 
     it('calls moveToInbox for parent and all descendants when moving to the inbox', async () => {
@@ -241,11 +241,11 @@ describe('TaskRow', () => {
 
       await waitFor(() => {
         expect(mockMoveToInbox).toHaveBeenCalledTimes(3);
-        expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
-        expect(mockMoveToInbox).toHaveBeenCalledWith('item-2');
-        expect(mockMoveToInbox).toHaveBeenCalledWith('item-3');
         expect(mockRefresh).toHaveBeenCalled();
       });
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-3');
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-2');
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
     });
   });
 
