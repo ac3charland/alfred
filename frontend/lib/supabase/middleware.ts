@@ -15,6 +15,18 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // Start with a response that passes through the request.
   let response = NextResponse.next({ request });
 
+  // createServerClient throws synchronously when the URL or key is empty.
+  // Guard for environments without Supabase credentials (e.g. Playwright E2E
+  // sandbox without .env.local): treat every request as unauthenticated.
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    if (!request.nextUrl.pathname.startsWith('/login')) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      return NextResponse.redirect(loginUrl);
+    }
+    return response;
+  }
+
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
