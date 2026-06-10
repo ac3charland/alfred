@@ -48,10 +48,12 @@ for the *next* render. Reading state immediately after `setState` gives you the
 old value. Use functional updaters (`setState(prev => ...)`) when the next
 value depends on the previous one.
 
-**In alfred specifically:** data lives in the backend; components are thin
-display shells that receive items as props and fire API calls via event
-handlers. Resist adding local state that mirrors server data — derive from
-props or fetch fresh.
+**In alfred specifically:** the backend is the source of truth, surfaced to
+components through two Context stores (see the **`data-flow`** skill). Components
+read via `useFolders()` / `useTasks()` and mutate via store actions (optimistic +
+reconcile) — they do **not** receive server data as drilled props, call the API
+client directly, or `router.refresh()`. Local state is only for transient UI
+(expanded row, input draft); never mirror store data in `useState`.
 
 ---
 
@@ -102,7 +104,7 @@ Does a deep subtree need shared data without prop drilling?
 | "expensive filter/sort of the task list" | `useMemo(() => items.filter(...), [items, filter])` | Only add useMemo after you've measured — premature memoization hurts readability for no gain; React Compiler v1.0 handles most cases automatically |
 | "pass a stable callback to a memoized child" | `useCallback(fn, [deps])` — only if the child is wrapped in `memo()` | `useCallback` is useless if the child is not memoized; it just adds verbosity |
 | "two sibling components need the same state" | Lift state to their closest common parent; pass down as props + setter | Do NOT duplicate state in both children and try to sync them |
-| "read the previous value of a prop/state" | Store in a ref: `prevRef.current = value` at end of render | Do not do this in an effect — reading `ref.current` in the render body (assignment only, not for display) is the accepted pattern |
+| "read the previous value of a prop/state" | Sync it in an effect: `useEffect(() => { prevRef.current = value }, [value])` | `react-hooks/refs` (recommended-latest) **errors on a render-body `ref.current = …` write**. Assign refs only in effects/handlers — e.g. the stores' rollback ref in `lib/stores/*` |
 
 ---
 
@@ -188,9 +190,9 @@ Does a deep subtree need shared data without prop drilling?
 ## What Was Deliberately Left Out (and Why)
 
 - **Class components.** This project uses function components exclusively. Including class-component patterns would invite the wrong pattern.
-- **`useReducer` deep-dive.** Covered only in the decision tree entry. In alfred the state is simple (thin components, data in backend); `useReducer` is rarely needed. Add it to this skill if a complex local state machine emerges.
+- **`useReducer` deep-dive.** Covered in the decision tree entry. The folders/tasks Context stores use `useReducer` over the pure `lib/tree.ts` forest helpers — see the **`data-flow`** skill for that store/reducer pattern; this skill stays focused on hook mechanics.
 - **`useImperativeHandle`.** An advanced escape hatch for exposing DOM methods through a ref. Not a pattern this project needs; including it would invite overuse.
-- **`useSyncExternalStore`.** The right API for subscribing to external stores (Redux, Zustand). Alfred uses Supabase directly via API calls, not a client-side store. Document in a Supabase skill if a client store is adopted.
+- **`useSyncExternalStore`.** The right API for subscribing to an *external* store (Redux, Zustand). Alfred's client cache is a React **Context** store (`useReducer` + Context, see the **`data-flow`** skill), not an external store, so this hook isn't needed for it. It IS used in `inbox-screen.tsx` to subscribe to `matchMedia` (a genuine external source).
 - **`useEffectEvent` / `useEvent`.** A hook for non-reactive effect logic (reads latest props without re-running). Still marked experimental as of mid-2026; do not use in production code. Monitor react.dev for stabilization.
 - **Server Components / Client Components boundary.** Covered in the Next.js skill. This skill is React-only: hooks, state, composition, refs, context. The `"use client"` directive and RSC data-fetching patterns belong there.
 - **React 18 concurrent features (`startTransition`, `useDeferredValue`).** Not needed at alfred's scale (hundreds of tasks). If list rendering becomes noticeably slow, add these to the skill then.

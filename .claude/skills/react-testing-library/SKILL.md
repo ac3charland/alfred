@@ -205,36 +205,32 @@ Agents trained before 2022 will write v13 patterns. The alfred project uses **us
 
 ## Rendering With Providers
 
-Alfred components often depend on React Context (e.g., task store, folder context). Do not test these with a naked `render()` — it will throw or silently use an undefined context value.
+Alfred components read from the `FoldersProvider` / `TasksProvider` Context stores (see
+the **`data-flow`** skill). A naked `render()` throws on the missing context. Use the real
+shared helper — `renderWithProviders` in **`frontend/lib/test-utils.tsx`** — which wraps the
+UI in both providers and seeds them:
 
-**Pattern: shared `renderWithProviders` utility**
+```tsx
+import { renderWithProviders } from '@/lib/test-utils';
 
-```ts
-// frontend/__tests__/test-utils.tsx
-import { render, type RenderOptions } from '@testing-library/react';
-import { TaskProvider } from '@/context/TaskContext';
-
-const AllProviders = ({ children }: { children: React.ReactNode }) => (
-  <TaskProvider>
-    {children}
-  </TaskProvider>
-);
-
-const renderWithProviders = (
-  ui: React.ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'>
-) => render(ui, { wrapper: AllProviders, ...options });
-
-export * from '@testing-library/react'; // re-export screen, within, waitFor, etc.
-export { renderWithProviders as render };
+// seed the stores per test
+renderWithProviders(<FolderNav />, { folders: FOLDERS });
+renderWithProviders(<CaptureBox />, { tasks: [] });
 ```
 
-Then tests import from `test-utils` instead of `@testing-library/react`:
-```ts
-import { render, screen } from '@/__tests__/test-utils';
+**Gotcha — store-driven removal needs the list, not a lone row.** With the optimistic
+store, completing/deleting/moving a task removes it from the forest; the row unmounts because
+**`TaskList`** re-renders from `useTasks()`. A standalone `<TaskRow node={…} />` is prop-driven
+and won't remove itself. So test those behaviors through `TaskList` seeded with the tree:
+
+```tsx
+renderWithProviders(<TaskList isCompleted={false} />, { tasks: [BASE_ITEM], folders: [FOLDER] });
+// click complete → assert the row is gone; reject the api mock → assert it reappears (rollback)
 ```
 
-This keeps tests free of provider boilerplate without hiding what providers exist.
+To assert the optimistic frame before the request settles, make the `api-client` mock return a
+never-resolving promise (`mockImplementation(() => new Promise(() => {}))`); for reconcile use
+`mockResolvedValue`, for rollback `mockRejectedValue`.
 
 > Source: Testing Library official setup docs (testing-library.com/docs/react-testing-library/setup); Redux docs "Writing Tests" section (redux.js.org/usage/writing-tests)
 
