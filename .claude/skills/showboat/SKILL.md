@@ -134,6 +134,12 @@ npm run demo -- image docs/demos/<doc>.md /tmp/shot.png
 Then **look at the PNG** (Read it) to confirm it actually shows the change before
 embedding — a green screenshot of the wrong state is worse than no screenshot.
 
+**Kill the serve before you push.** `serve:storybook` binds port **6006** — the same
+port the pre-push hook's `test:storybook` uses. A background server left running
+makes the hook die with `EADDRINUSE: address already in use 0.0.0.0:6006` and blocks
+the push. After screenshotting, stop it (`pkill -f http-server`) and confirm 6006 is
+free before `git push`.
+
 ### The live app route — only with real Supabase creds + seeded data
 
 `npm run dev -w frontend &` then screenshotting `localhost:3000/<route>` *seems*
