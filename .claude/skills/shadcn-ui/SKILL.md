@@ -177,18 +177,6 @@ Use this when:
 
 ---
 
-## `lib/utils.ts` is the standard path — keep it
-
-shadcn/ui's default CLI output creates `lib/utils.ts` for the `cn()` helper, and
-`components.json` aliases `"utils": "@/lib/utils"`. **Keep this default** — the CLI writes that
-path, every shadcn example uses it, and imports read `from '@/lib/utils'`. Do not rename it.
-
-> Historical note: alfred once renamed this to `lib/utilities.ts` to satisfy
-> `unicorn/prevent-abbreviations` (which treats `utils` as an abbreviation). That rule was
-> deliberately disabled project-wide because the renames it forces (`utils` → `utilities`,
-> `env`/`props`/`params` → verbose forms) cut against ecosystem conventions. The standard
-> `lib/utils.ts` is back. See the eslint skill for the rule decision.
-
 ## Version Gotchas
 
 ### CLI package name (agents trained pre-2023 get this wrong)
