@@ -2,12 +2,11 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { CascadeModal } from './cascade-modal';
 
-// Storybook action stubs — Storybook replaces these at render time via the
-// `actions` addon, so a no-op that logs is good enough for static stories.
-function handleOpenChange(open: boolean) {
-  // Storybook action stub — logs open state for the actions panel
-  // eslint will flag this if empty, so we reference the arg:
-  return open;
+// Storybook action stubs — the actions addon logs invocations in the panel, so
+// these handlers only need to exist. The `_`-prefixed param mirrors the
+// `onOpenChange` signature while marking it deliberately unused.
+function handleOpenChange(_open: boolean) {
+  return;
 }
 
 function handleConfirm() {
