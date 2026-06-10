@@ -12,6 +12,7 @@
     "test": "jest --passWithNoTests",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
+    "serve:storybook": "http-server storybook-static -p 6006 --silent",
     "setup:chromium": "node scripts/setup-chromium.mjs",
     "screenshot": "node scripts/screenshot.mjs",
     "test:storybook": "npm run setup:chromium && npm run storybook:build && concurrently --kill-others --success=first \"http-server storybook-static -p 6006 --silent\" \"wait-on http://127.0.0.1:6006 && test-storybook --ci --url http://127.0.0.1:6006\"",
