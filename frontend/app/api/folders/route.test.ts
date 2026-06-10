@@ -15,6 +15,9 @@ const mockCreateClient = jest.mocked(createClient);
 const TEST_USER = { id: 'user-123' };
 const TEST_FOLDER = { id: 'folder-1', name: 'Work', created_at: '2026-01-01T00:00:00Z' };
 
+const STUB_REQUEST = new Request('http://localhost/api/folders');
+const STUB_CONTEXT = { params: Promise.resolve({}) };
+
 interface MockResult {
   data: unknown;
   error: { message: string } | undefined;
@@ -47,7 +50,7 @@ describe('GET /api/folders', () => {
     const mockSupabase = makeMockSupabase(undefined, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET();
+    const response = await GET(STUB_REQUEST, STUB_CONTEXT);
     expect(response.status).toBe(401);
   });
 
@@ -56,7 +59,7 @@ describe('GET /api/folders', () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: folders, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET();
+    const response = await GET(STUB_REQUEST, STUB_CONTEXT);
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual(folders);
@@ -69,7 +72,7 @@ describe('GET /api/folders', () => {
     });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await GET();
+    const response = await GET(STUB_REQUEST, STUB_CONTEXT);
     expect(response.status).toBe(500);
   });
 });
@@ -89,6 +92,7 @@ describe('POST /api/folders', () => {
         body: JSON.stringify({ name: 'Work' }),
         headers: { 'Content-Type': 'application/json' },
       }),
+      STUB_CONTEXT,
     );
     expect(response.status).toBe(401);
   });
@@ -103,6 +107,7 @@ describe('POST /api/folders', () => {
         body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
       }),
+      STUB_CONTEXT,
     );
     expect(response.status).toBe(400);
   });
@@ -117,6 +122,7 @@ describe('POST /api/folders', () => {
         body: JSON.stringify({ name: 'Work' }),
         headers: { 'Content-Type': 'application/json' },
       }),
+      STUB_CONTEXT,
     );
     expect(response.status).toBe(201);
     const body: unknown = await response.json();
