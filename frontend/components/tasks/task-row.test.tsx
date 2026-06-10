@@ -47,6 +47,17 @@ const CHILD_ITEM: ItemNode = {
   children: [],
 };
 
+const GRANDCHILD_ITEM: ItemNode = {
+  ...BASE_ITEM,
+  id: 'item-3',
+  title: 'Write edge case tests',
+  parent_id: 'item-2',
+  created_at: '2025-01-01T12:00:00Z',
+  children: [],
+};
+
+const FOLDER = { id: 'folder-1', name: 'Work', created_at: '2025-01-01T09:00:00Z' };
+
 describe('TaskRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -150,11 +161,96 @@ describe('TaskRow', () => {
     expect(screen.getByRole('button', { name: /due date/i })).toBeInTheDocument();
   });
 
-  // Prevent unused variable warnings on mocks that aren't exercised yet
-  it('exports mockUpdateItem and mockDeleteItem and mockMoveToInbox for future tests', () => {
-    // Type-only assertions to satisfy lint (the mocks are imported for future use)
-    expect(mockUpdateItem).toBeDefined();
+  describe('move to folder', () => {
+    // Radix DropdownMenu portals set pointer-events:none on the body, which blocks
+    // userEvent.click() on portal items. Keyboard navigation bypasses this.
+    //
+    // Focus lands on the menu container after open (not the first item), so:
+    //   ArrowDown×1 moves to the first item ("Set due date")
+    //   ArrowDown×2 moves to the second item ("Add notes")
+    //   ArrowDown×3 reaches "Move to…" (the SubTrigger)
+    //   ArrowRight opens the submenu with "Inbox" auto-focused
+    //   ArrowDown optionally moves to the next folder, Enter selects
+
+    it('calls updateItem once when moving a leaf task to a folder', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[FOLDER]} />);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledTimes(1);
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
+    });
+
+    it('calls updateItem for parent and all descendants when moving to a folder', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
+      const nodeWithDescendants: ItemNode = {
+        ...BASE_ITEM,
+        children: [{ ...CHILD_ITEM, children: [GRANDCHILD_ITEM] }],
+      };
+      const user = userEvent.setup();
+      render(<TaskRow node={nodeWithDescendants} folders={[FOLDER]} />);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledTimes(3);
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-3', { folder_id: 'folder-1' });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-2', { folder_id: 'folder-1' });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
+    });
+
+    it('calls moveToInbox once when moving a leaf task to the inbox', async () => {
+      mockMoveToInbox.mockResolvedValue(BASE_ITEM);
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[FOLDER]} />);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][Enter]');
+
+      await waitFor(() => {
+        expect(mockMoveToInbox).toHaveBeenCalledTimes(1);
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
+    });
+
+    it('calls moveToInbox for parent and all descendants when moving to the inbox', async () => {
+      mockMoveToInbox.mockResolvedValue(BASE_ITEM);
+      const nodeWithDescendants: ItemNode = {
+        ...BASE_ITEM,
+        children: [{ ...CHILD_ITEM, children: [GRANDCHILD_ITEM] }],
+      };
+      const user = userEvent.setup();
+      render(<TaskRow node={nodeWithDescendants} folders={[FOLDER]} />);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][Enter]');
+
+      await waitFor(() => {
+        expect(mockMoveToInbox).toHaveBeenCalledTimes(3);
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-3');
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-2');
+      expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
+    });
+  });
+
+  // Prevent unused variable warning on mockDeleteItem — available for delete tests
+  it('exports mockDeleteItem for future tests', () => {
     expect(mockDeleteItem).toBeDefined();
-    expect(mockMoveToInbox).toBeDefined();
   });
 });

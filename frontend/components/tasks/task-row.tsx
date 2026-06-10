@@ -141,9 +141,14 @@ export function TaskRow({ node, folders, depth = 0 }: TaskRowProperties) {
     try {
       // moveToInbox lives in lib/ (null-aware data layer) because the PATCH body
       // needs `folder_id: null` which is only valid outside component code.
-      await (targetFolderId === undefined
-        ? moveToInbox(node.id)
-        : updateItem(node.id, { folder_id: targetFolderId }));
+      const allIds = [node.id, ...getDescendantIds(node)];
+      await Promise.all(
+        allIds.map((id) =>
+          targetFolderId === undefined
+            ? moveToInbox(id)
+            : updateItem(id, { folder_id: targetFolderId }),
+        ),
+      );
       router.refresh();
     } catch {
       // silently ignore — router.refresh will re-sync
