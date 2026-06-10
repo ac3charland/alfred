@@ -3,8 +3,7 @@ import * as React from 'react';
 
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
-import type { ItemNode } from '@/lib/tree';
-import type { Folder } from '@/lib/types';
+import type { Folder, Item } from '@/lib/types';
 
 /**
  * Render a component inside the alfred data providers (FoldersProvider +
@@ -14,7 +13,7 @@ import type { Folder } from '@/lib/types';
  */
 interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   folders?: Folder[];
-  tasks?: ItemNode[];
+  tasks?: Item[];
 }
 
 export function renderWithProviders(

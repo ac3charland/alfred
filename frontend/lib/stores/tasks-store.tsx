@@ -4,29 +4,19 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import type { ItemNode } from '@/lib/tree';
-import {
-  findNode,
-  getDescendantIds,
-  insertChild,
-  insertRoot,
-  insertSubtree,
-  makeOptimisticItem,
-  removeNode,
-  updateNode,
-} from '@/lib/tree';
+import { buildTree, collectSubtree, makeOptimisticItem } from '@/lib/tree';
 import type { Item } from '@/lib/types';
 
 /**
- * Tasks store — the central, optimistic source of truth for one route's task forest.
+ * Tasks store — the central, optimistic source of truth for ALL items.
  *
- * The tree is scoped per route (inbox / folder / completed), so this provider lives
- * in each page and is seeded from that page's server-built tree. Mutations edit the
- * tree instantly and reconcile with the server row(s), rolling back on error.
+ * The whole item set is held flat in one provider (mounted once at the layout, like
+ * folders) and seeded from `getAllItems()`. Each view derives its own forest by filtering
+ * this list (`useScopedTasks`), so there is no per-page fetch or re-seeding. Mutations edit
+ * the flat list instantly and reconcile with the server row(s), rolling back on error.
  *
- * Removal semantics match the scoped views: completing, moving, or deleting a task
- * takes it out of the current list immediately (it has left this scope). State and
- * actions are split into two contexts so the recursive TaskRow tree doesn't re-render
- * from action-only consumers.
+ * State and actions are split into two contexts so components that only mutate don't
+ * re-render when the list changes.
  */
 
 interface AddTaskInput {
@@ -43,54 +33,60 @@ type TaskFieldPatch = Pick<api.UpdateItemInput, 'title' | 'due_date' | 'notes'>;
 interface TaskActions {
   /** Optimistically add a task (root or subtask), then reconcile with the saved row. */
   addTask: (input: AddTaskInput) => Promise<void>;
-  /** Complete a task and its subtree, removing it from this scope. */
+  /** Complete a task and its subtree (status → completed), then reconcile. */
   completeTask: (id: string) => Promise<void>;
-  /** Reactivate a completed task, removing it from the completed scope. */
+  /** Reactivate a completed task (status → active). */
   uncompleteTask: (id: string) => Promise<void>;
   /** Optimistically patch a task's editable fields, rolling back on failure. */
   updateTask: (id: string, patch: TaskFieldPatch) => Promise<void>;
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
-  /** Delete a task and its subtree. */
+  /** Delete a task and its subtree (the DB cascades the children). */
   deleteTask: (id: string) => Promise<void>;
 }
 
 type TaskAction =
-  | { type: 'insertRoot'; node: ItemNode }
-  | { type: 'insertChild'; parentId: string; node: ItemNode }
-  | { type: 'patch'; id: string; patch: Partial<Item> }
+  | { type: 'insert'; item: Item }
   | { type: 'replace'; id: string; item: Item }
-  | { type: 'remove'; id: string }
-  | { type: 'restore'; removed: ItemNode; parentId: string | null; index: number };
+  | { type: 'patch'; ids: string[]; patch: Partial<Item> }
+  | { type: 'upsert'; items: Item[] }
+  | { type: 'remove'; ids: string[] };
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled task action: ${JSON.stringify(value)}`);
 }
 
 /**
- * Pure reducer over the task forest, delegating to the lib/tree helpers. `patch` and
- * `replace` are no-ops when the id is absent (the race rule); `replace` keeps the
- * node's locally-accumulated children (the reconcile invariant).
+ * Pure reducer over the flat item list.
+ * - `replace` swaps a single item by id (temp → server); no-op if absent.
+ * - `patch` shallow-merges `patch` into every item in `ids` (single edit or cascade); the
+ *   race rule falls out for free — ids no longer present are skipped.
+ * - `upsert` replaces present items by id and appends any missing ones: it serves both
+ *   reconcile-many (server rows) and rollback (re-apply the captured originals).
+ * - `remove` drops every item in `ids`.
  */
-export function tasksReducer(state: ItemNode[], action: TaskAction): ItemNode[] {
+export function tasksReducer(state: Item[], action: TaskAction): Item[] {
   switch (action.type) {
-    case 'insertRoot': {
-      return insertRoot(state, action.node);
-    }
-    case 'insertChild': {
-      return insertChild(state, action.parentId, action.node);
-    }
-    case 'patch': {
-      return updateNode(state, action.id, action.patch);
+    case 'insert': {
+      return [...state, action.item];
     }
     case 'replace': {
-      return updateNode(state, action.id, action.item);
+      return state.map((item) => (item.id === action.id ? action.item : item));
+    }
+    case 'patch': {
+      const ids = new Set(action.ids);
+      return state.map((item) => (ids.has(item.id) ? { ...item, ...action.patch } : item));
+    }
+    case 'upsert': {
+      const byId = new Map(action.items.map((item) => [item.id, item] as const));
+      const replaced = state.map((item) => byId.get(item.id) ?? item);
+      const presentIds = new Set(state.map((item) => item.id));
+      const added = action.items.filter((item) => !presentIds.has(item.id));
+      return [...replaced, ...added];
     }
     case 'remove': {
-      return removeNode(state, action.id).forest;
-    }
-    case 'restore': {
-      return insertSubtree(state, action.removed, action.parentId, action.index);
+      const ids = new Set(action.ids);
+      return state.filter((item) => !ids.has(item.id));
     }
     default: {
       return assertNever(action);
@@ -98,22 +94,22 @@ export function tasksReducer(state: ItemNode[], action: TaskAction): ItemNode[] 
   }
 }
 
-const TasksStateContext = React.createContext<ItemNode[] | undefined>(undefined);
+const TasksStateContext = React.createContext<Item[] | undefined>(undefined);
 const TasksActionsContext = React.createContext<TaskActions | undefined>(undefined);
 
 export function TasksProvider({
   initialTasks,
   children,
 }: {
-  initialTasks: ItemNode[];
+  initialTasks: Item[];
   children: React.ReactNode;
 }) {
   const [tasks, dispatch] = React.useReducer(tasksReducer, initialTasks);
 
-  // Latest forest, readable inside the stable action closures so they can capture the
-  // pre-mutation subtree + position for rollback without going stale. Synced via an
-  // effect (not a render-body write, which react-hooks/refs forbids); actions fire
-  // from user events after commit, so the ref is current by the time they run.
+  // Latest list, readable inside the stable action closures so they can capture the
+  // pre-mutation rows for rollback without going stale. Synced via an effect (not a
+  // render-body write, which react-hooks/refs forbids); actions fire from user events
+  // after commit, so the ref is current by the time they run.
   const tasksRef = React.useRef(tasks);
   React.useEffect(() => {
     tasksRef.current = tasks;
@@ -132,84 +128,82 @@ export function TasksProvider({
           ...(parentId !== undefined && { parent_id: parentId }),
         };
         const optimistic = makeOptimisticItem(createInput);
-        dispatch(
-          parentId === undefined
-            ? { type: 'insertRoot', node: optimistic }
-            : { type: 'insertChild', parentId, node: optimistic },
-        );
+        dispatch({ type: 'insert', item: optimistic });
         try {
           const saved = await api.createItem(createInput);
           dispatch({ type: 'replace', id: optimistic.id, item: saved });
         } catch (error) {
-          dispatch({ type: 'remove', id: optimistic.id });
+          dispatch({ type: 'remove', ids: [optimistic.id] });
           throw error;
         }
       },
       async completeTask(id) {
-        const { removed, parentId, index } = removeNode(tasksRef.current, id);
-        if (removed === undefined) return;
-        dispatch({ type: 'remove', id });
+        const affected = collectSubtree(tasksRef.current, id);
+        if (affected.length === 0) return;
+        const ids = affected.map((item) => item.id);
+        dispatch({
+          type: 'patch',
+          ids,
+          patch: { status: 'completed', completed_at: new Date().toISOString() },
+        });
         try {
-          await api.completeTask(id);
+          const rows = await api.completeTask(id);
+          dispatch({ type: 'upsert', items: rows });
         } catch (error) {
-          dispatch({ type: 'restore', removed, parentId, index });
+          dispatch({ type: 'upsert', items: affected });
           throw error;
         }
       },
       async uncompleteTask(id) {
-        const { removed, parentId, index } = removeNode(tasksRef.current, id);
-        if (removed === undefined) return;
-        dispatch({ type: 'remove', id });
+        const previous = tasksRef.current.find((item) => item.id === id);
+        if (previous === undefined) return;
+        dispatch({ type: 'patch', ids: [id], patch: { status: 'active', completed_at: null } });
         try {
-          await api.updateItem(id, { status: 'active' });
+          const saved = await api.updateItem(id, { status: 'active' });
+          dispatch({ type: 'upsert', items: [saved] });
         } catch (error) {
-          dispatch({ type: 'restore', removed, parentId, index });
+          dispatch({ type: 'upsert', items: [previous] });
           throw error;
         }
       },
       async updateTask(id, patch) {
-        const previous = findNode(tasksRef.current, id);
-        dispatch({ type: 'patch', id, patch });
+        const previous = tasksRef.current.find((item) => item.id === id);
+        dispatch({ type: 'patch', ids: [id], patch });
         try {
           const saved = await api.updateItem(id, patch);
-          dispatch({ type: 'replace', id, item: saved });
+          dispatch({ type: 'upsert', items: [saved] });
         } catch (error) {
-          if (previous) {
-            const rollback: Partial<Item> = {};
-            for (const key of Object.keys(patch)) {
-              (rollback as Record<string, unknown>)[key] = previous[key as keyof Item];
-            }
-            dispatch({ type: 'patch', id, patch: rollback });
-          }
+          if (previous) dispatch({ type: 'upsert', items: [previous] });
           throw error;
         }
       },
       async moveTask(id, folderId) {
-        const { removed, parentId, index } = removeNode(tasksRef.current, id);
-        if (removed === undefined) return;
-        const ids = [id, ...getDescendantIds(removed)];
-        dispatch({ type: 'remove', id });
+        const affected = collectSubtree(tasksRef.current, id);
+        if (affected.length === 0) return;
+        const ids = affected.map((item) => item.id);
+        dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
         try {
-          await Promise.all(
+          const rows = await Promise.all(
             ids.map((itemId) =>
               folderId === null
                 ? api.moveToInbox(itemId)
                 : api.updateItem(itemId, { folder_id: folderId }),
             ),
           );
+          dispatch({ type: 'upsert', items: rows });
         } catch (error) {
-          dispatch({ type: 'restore', removed, parentId, index });
+          dispatch({ type: 'upsert', items: affected });
           throw error;
         }
       },
       async deleteTask(id) {
-        const { removed, parentId, index } = removeNode(tasksRef.current, id);
-        if (removed === undefined) return;
-        dispatch({ type: 'remove', id });
+        const affected = collectSubtree(tasksRef.current, id);
+        if (affected.length === 0) return;
+        dispatch({ type: 'remove', ids: affected.map((item) => item.id) });
         try {
           await api.deleteItem(id);
         } catch (error) {
-          dispatch({ type: 'restore', removed, parentId, index });
+          dispatch({ type: 'upsert', items: affected });
           throw error;
         }
       },
@@ -224,13 +218,34 @@ export function TasksProvider({
   );
 }
 
-/** Read the current task forest. Throws if used outside a TasksProvider. */
-export function useTasks(): ItemNode[] {
+/** The view a TaskList renders. Serializable so Server Components can pass it as a prop. */
+export type TaskScope =
+  | { type: 'inbox' }
+  | { type: 'folder'; folderId: string }
+  | { type: 'completed' };
+
+/** Read the full (flat) item list. Throws if used outside a TasksProvider. */
+export function useTasks(): Item[] {
   const context = React.useContext(TasksStateContext);
   if (context === undefined) {
     throw new Error('useTasks must be used within a TasksProvider');
   }
   return context;
+}
+
+/** Derive the forest for one view by filtering the store, then building the tree. */
+export function useScopedTasks(scope: TaskScope): ItemNode[] {
+  const items = useTasks();
+  const scopeType = scope.type;
+  const folderId = scope.type === 'folder' ? scope.folderId : null;
+  return React.useMemo(() => {
+    const filtered = items.filter((item) => {
+      if (scopeType === 'completed') return item.status === 'completed';
+      if (scopeType === 'folder') return item.status === 'active' && item.folder_id === folderId;
+      return item.status === 'active' && item.folder_id === null; // inbox
+    });
+    return buildTree(filtered);
+  }, [items, scopeType, folderId]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */

@@ -1,8 +1,6 @@
 import * as React from 'react';
 
 import { InboxScreen } from '@/components/tasks/inbox-screen';
-import { getInboxTree } from '@/lib/data/items';
-import { TasksProvider } from '@/lib/stores/tasks-store';
 
 interface InboxPageProperties {
   /** `?view=inbox` reveals the inbox list; absent = the bare landing (capture box only). */
@@ -20,13 +18,6 @@ export default async function InboxPage({ searchParams }: InboxPageProperties) {
   const { view } = await searchParams;
   const open = view === 'inbox';
 
-  const tree = await getInboxTree();
-
-  // No `key` here: the inbox provider must persist across the `?view` toggle so the
-  // user's optimistic edits survive opening/closing the list (the list stays mounted).
-  return (
-    <TasksProvider initialTasks={tree}>
-      <InboxScreen open={open} />
-    </TasksProvider>
-  );
+  // Items come from the layout-level TasksProvider; the inbox view filters them client-side.
+  return <InboxScreen open={open} />;
 }

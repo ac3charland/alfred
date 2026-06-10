@@ -1,49 +1,24 @@
 import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
-import type { ItemNode } from '@/lib/tree';
-import { buildTree } from '@/lib/tree';
+import type { Item } from '@/lib/types';
 
 /**
- * Server-only read layer for items, returning the built subtask forest.
+ * Server-only read layer for items.
  *
- * Each reader scopes the same way the routes/pages did inline (inbox = no folder +
- * active; folder = that folder + active; completed = done) and returns a tree via
- * buildTree, ready to seed a page's TasksProvider. Client components never import
- * this — they read from the TasksProvider store and mutate via lib/api-client.
+ * The whole item set is fetched once (at the layout level, alongside folders) and seeded
+ * into the tasks store; each view filters it client-side (inbox / folder / completed).
+ * Volume is small for the foreseeable future, so a single fetch beats per-view round-trips
+ * and per-navigation re-seeding. Revisit (scoped/paginated reads) only if the list grows
+ * large enough to matter.
  */
 
-/** Active, folder-less items (the Inbox), newest first, as a forest. */
-export async function getInboxTree(): Promise<ItemNode[]> {
+/** Every item, newest first. Filtered per view in the client (see lib/stores/tasks-store). */
+export async function getAllItems(): Promise<Item[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('items')
     .select('*')
-    .is('folder_id', null)
-    .eq('status', 'active')
     .order('created_at', { ascending: false });
-  return buildTree(data ?? []);
-}
-
-/** Active items in a given folder, newest first, as a forest. */
-export async function getFolderItems(folderId: string): Promise<ItemNode[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('items')
-    .select('*')
-    .eq('folder_id', folderId)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false });
-  return buildTree(data ?? []);
-}
-
-/** Completed items across all folders, most recently completed first, as a forest. */
-export async function getCompletedItems(): Promise<ItemNode[]> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('items')
-    .select('*')
-    .eq('status', 'completed')
-    .order('completed_at', { ascending: false });
-  return buildTree(data ?? []);
+  return data ?? [];
 }

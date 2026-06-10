@@ -3,23 +3,24 @@
 import * as React from 'react';
 
 import { TaskRow } from '@/components/tasks/task-row';
-import { useTasks } from '@/lib/stores/tasks-store';
+import type { TaskScope } from '@/lib/stores/tasks-store';
+import { useScopedTasks } from '@/lib/stores/tasks-store';
 import { cn } from '@/lib/utils';
 
 interface TaskListProperties {
+  /** Which view to render (inbox / a folder / completed) — filters the shared store. */
+  scope: TaskScope;
   emptyMessage?: string;
-  isCompleted?: boolean;
 }
 
 /**
- * Renders the top-level task list from the TasksProvider store. Each TaskRow handles
- * its own recursive subtree rendering and reads folders from the FoldersProvider.
+ * Renders one view's task forest, derived from the shared TasksProvider store by `scope`.
+ * Each TaskRow handles its own recursive subtree rendering and reads folders from the
+ * FoldersProvider.
  */
-export function TaskList({
-  emptyMessage = 'No tasks yet',
-  isCompleted = false,
-}: TaskListProperties) {
-  const nodes = useTasks();
+export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListProperties) {
+  const nodes = useScopedTasks(scope);
+  const isCompleted = scope.type === 'completed';
 
   if (nodes.length === 0) {
     return (

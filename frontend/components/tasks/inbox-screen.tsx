@@ -108,7 +108,7 @@ export function InboxScreen({ open }: InboxScreenProperties) {
               Inbox
             </span>
           </div>
-          <TaskList emptyMessage="Your inbox is empty" />
+          <TaskList scope={{ type: 'inbox' }} emptyMessage="Your inbox is empty" />
         </div>
       )}
     </>

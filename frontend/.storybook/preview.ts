@@ -4,13 +4,12 @@ import React from 'react';
 import '../app/globals.css';
 import { FoldersProvider } from '../lib/stores/folders-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
-import type { ItemNode } from '../lib/tree';
-import type { Folder } from '../lib/types';
+import type { Folder, Item } from '../lib/types';
 
 /** Per-story seeds for the data providers, set via `parameters.store`. */
 interface StoreSeed {
   folders?: Folder[];
-  tasks?: ItemNode[];
+  tasks?: Item[];
 }
 
 const preview: Preview = {

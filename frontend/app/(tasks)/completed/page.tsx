@@ -1,23 +1,15 @@
 import * as React from 'react';
 
+import { CompletedCount } from '@/components/tasks/completed-count';
 import { TaskList } from '@/components/tasks/task-list';
-import { getCompletedItems } from '@/lib/data/items';
-import { TasksProvider } from '@/lib/stores/tasks-store';
-import { getDescendantIds } from '@/lib/tree';
 
 /**
- * Completed view — shows all completed tasks across inbox and folders.
- * Read-only: no capture box here (completed tasks are done).
+ * Completed view — all completed tasks across inbox and folders, filtered from the
+ * shared store. Read-only: no capture box here (completed tasks are done).
  */
-export default async function CompletedPage() {
-  const tree = await getCompletedItems();
-
-  // Total completed tasks = every node in the forest (roots + all descendants).
-  let count = 0;
-  for (const root of tree) count += 1 + getDescendantIds(root).length;
-
+export default function CompletedPage() {
   return (
-    <TasksProvider initialTasks={tree}>
+    <>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           Completed
@@ -25,12 +17,10 @@ export default async function CompletedPage() {
       </div>
 
       <div className="mb-8">
-        <p className="text-sm text-muted-foreground">
-          {count} completed task{count === 1 ? '' : 's'}
-        </p>
+        <CompletedCount />
       </div>
 
-      <TaskList emptyMessage="Nothing completed yet" isCompleted />
-    </TasksProvider>
+      <TaskList scope={{ type: 'completed' }} emptyMessage="Nothing completed yet" />
+    </>
   );
 }

@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import type { TaskScope } from '@/lib/stores/tasks-store';
 import { renderWithProviders } from '@/lib/test-utils';
-import type { ItemNode } from '@/lib/tree';
-import type { Folder } from '@/lib/types';
+import type { Folder, Item } from '@/lib/types';
 
 import { TaskList } from './task-list';
 
@@ -16,7 +16,7 @@ const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 
-const BASE_ITEM: ItemNode = {
+const BASE_ITEM: Item = {
   id: 'item-1',
   title: 'Write tests',
   notes: null,
@@ -29,43 +29,41 @@ const BASE_ITEM: ItemNode = {
   completed_at: null,
   folder_id: null,
   parent_id: null,
-  children: [],
 };
 
-const CHILD_ITEM: ItemNode = {
+const CHILD_ITEM: Item = {
   ...BASE_ITEM,
   id: 'item-2',
   title: 'Write unit tests',
   parent_id: 'item-1',
   created_at: '2025-01-01T11:00:00Z',
-  children: [],
 };
 
-const GRANDCHILD_ITEM: ItemNode = {
+const GRANDCHILD_ITEM: Item = {
   ...BASE_ITEM,
   id: 'item-3',
   title: 'Write edge case tests',
   parent_id: 'item-2',
   created_at: '2025-01-01T12:00:00Z',
-  children: [],
 };
+
+const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
 
 const FOLDER: Folder = { id: 'folder-1', name: 'Work', created_at: '2025-01-01T09:00:00Z' };
 
 /**
- * Render rows through TaskList seeded into the stores. Rows come from the TasksProvider,
- * so optimistic removals (complete/move/delete) actually unmount the row — as they do
- * in the app. `folders` seeds the move-to-folder menu via FoldersProvider.
+ * Render rows through TaskList, seeding the flat item list into the store. Rows come from
+ * the scoped selector, so changing an item's status/folder (complete/move) filters it out
+ * of the view — exactly as in the app. Defaults to the inbox view.
  */
-function renderTasks(
-  nodes: ItemNode[],
-  options: { folders?: Folder[]; isCompleted?: boolean } = {},
-) {
-  return renderWithProviders(<TaskList isCompleted={options.isCompleted ?? false} />, {
-    tasks: nodes,
+function renderTasks(items: Item[], options: { folders?: Folder[]; scope?: TaskScope } = {}) {
+  return renderWithProviders(<TaskList scope={options.scope ?? { type: 'inbox' }} />, {
+    tasks: items,
     folders: options.folders ?? [],
   });
 }
+
+const COMPLETED = { scope: { type: 'completed' } as const };
 
 describe('TaskRow', () => {
   it('renders the task title', () => {
@@ -80,13 +78,13 @@ describe('TaskRow', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders checkbox with "active" label when isCompleted is true', () => {
-    renderTasks([BASE_ITEM], { isCompleted: true });
+  it('renders checkbox with "active" label in the completed view', () => {
+    renderTasks([COMPLETED_ITEM], COMPLETED);
     expect(screen.getByRole('button', { name: /mark "Write tests" active/i })).toBeInTheDocument();
   });
 
-  it('renders checkbox as checked (teal fill) when isCompleted is true', () => {
-    renderTasks([BASE_ITEM], { isCompleted: true });
+  it('renders checkbox as checked (teal fill) in the completed view', () => {
+    renderTasks([COMPLETED_ITEM], COMPLETED);
     expect(screen.getByRole('button', { name: /mark "Write tests" active/i })).toHaveClass(
       'bg-accent-teal',
     );
@@ -98,13 +96,13 @@ describe('TaskRow', () => {
   });
 
   it('expand toggle is visible when node has children', () => {
-    renderTasks([{ ...BASE_ITEM, children: [CHILD_ITEM] }]);
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
     expect(screen.getByRole('button', { name: /expand subtasks/i })).not.toHaveClass('invisible');
   });
 
   it('shows child tasks when the expand toggle is clicked', async () => {
     const user = userEvent.setup();
-    renderTasks([{ ...BASE_ITEM, children: [CHILD_ITEM] }]);
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
 
@@ -113,7 +111,7 @@ describe('TaskRow', () => {
 
   it('hides child tasks when expanded and then collapsed', async () => {
     const user = userEvent.setup();
-    renderTasks([{ ...BASE_ITEM, children: [CHILD_ITEM] }]);
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
     expect(screen.getByText('Write unit tests')).toBeInTheDocument();
@@ -123,10 +121,10 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Active task completion — optimistic removal
+  // Active task completion — optimistic, filtered out of the view
   // ---------------------------------------------------------------------------
 
-  it('removes the task immediately on checkbox click before the API resolves', async () => {
+  it('removes the task from the view immediately on checkbox click', async () => {
     mockCompleteTask.mockImplementation(() => new Promise(() => {}));
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
@@ -160,7 +158,7 @@ describe('TaskRow', () => {
 
   it('opens the cascade modal when checkbox is clicked on a task with children', async () => {
     const user = userEvent.setup();
-    renderTasks([{ ...BASE_ITEM, children: [CHILD_ITEM] }]);
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
 
@@ -169,7 +167,7 @@ describe('TaskRow', () => {
 
   it('does NOT call completeTask directly when the cascade modal opens', async () => {
     const user = userEvent.setup();
-    renderTasks([{ ...BASE_ITEM, children: [CHILD_ITEM] }]);
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
     await screen.findByText(/complete with subtasks/i);
@@ -178,13 +176,13 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Completed task (isCompleted) — uncomplete
+  // Completed view — uncomplete
   // ---------------------------------------------------------------------------
 
   it('calls updateItem with status:active when uncompleting', async () => {
-    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, status: 'active' });
+    mockUpdateItem.mockResolvedValue({ ...COMPLETED_ITEM, status: 'active' });
     const user = userEvent.setup();
-    renderTasks([BASE_ITEM], { isCompleted: true });
+    renderTasks([COMPLETED_ITEM], COMPLETED);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
 
@@ -193,10 +191,10 @@ describe('TaskRow', () => {
     });
   });
 
-  it('removes the task immediately when uncompleting before the API resolves', async () => {
+  it('removes the task from the completed view immediately when uncompleting', async () => {
     mockUpdateItem.mockImplementation(() => new Promise(() => {}));
     const user = userEvent.setup();
-    renderTasks([BASE_ITEM], { isCompleted: true });
+    renderTasks([COMPLETED_ITEM], COMPLETED);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
 
@@ -206,7 +204,7 @@ describe('TaskRow', () => {
   it('restores the task when updateItem fails while uncompleting', async () => {
     mockUpdateItem.mockRejectedValue(new Error('Network error'));
     const user = userEvent.setup();
-    renderTasks([BASE_ITEM], { isCompleted: true });
+    renderTasks([COMPLETED_ITEM], COMPLETED);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
 
@@ -241,13 +239,8 @@ describe('TaskRow', () => {
   describe('move to folder', () => {
     // Radix DropdownMenu portals set pointer-events:none on the body, which blocks
     // userEvent.click() on portal items. Keyboard navigation bypasses this.
-    //
-    // Focus lands on the menu container after open (not the first item), so:
-    //   ArrowDown×1 moves to "Set due date"
-    //   ArrowDown×2 moves to "Add notes"
-    //   ArrowDown×3 reaches "Move to…" (the SubTrigger)
-    //   ArrowRight opens the submenu with "Inbox" auto-focused
-    //   ArrowDown optionally moves to the next folder, Enter selects
+    //   ArrowDown×1 → "Set due date", ×2 → "Add notes", ×3 → "Move to…" (SubTrigger)
+    //   ArrowRight opens the submenu with "Inbox" auto-focused; ArrowDown → first folder.
 
     it('calls updateItem once when moving a leaf task to a folder', async () => {
       mockUpdateItem.mockResolvedValue(BASE_ITEM);
@@ -266,12 +259,8 @@ describe('TaskRow', () => {
 
     it('calls updateItem for parent and all descendants when moving to a folder', async () => {
       mockUpdateItem.mockResolvedValue(BASE_ITEM);
-      const nodeWithDescendants: ItemNode = {
-        ...BASE_ITEM,
-        children: [{ ...CHILD_ITEM, children: [GRANDCHILD_ITEM] }],
-      };
       const user = userEvent.setup();
-      renderTasks([nodeWithDescendants], { folders: [FOLDER] });
+      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM], { folders: [FOLDER] });
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
@@ -302,12 +291,8 @@ describe('TaskRow', () => {
 
     it('calls moveToInbox for parent and all descendants when moving to the inbox', async () => {
       mockMoveToInbox.mockResolvedValue(BASE_ITEM);
-      const nodeWithDescendants: ItemNode = {
-        ...BASE_ITEM,
-        children: [{ ...CHILD_ITEM, children: [GRANDCHILD_ITEM] }],
-      };
       const user = userEvent.setup();
-      renderTasks([nodeWithDescendants], { folders: [FOLDER] });
+      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM], { folders: [FOLDER] });
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
