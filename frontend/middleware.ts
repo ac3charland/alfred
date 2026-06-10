@@ -13,7 +13,7 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith('/api') ||
     pathname.startsWith('/_next/static') ||
     pathname.startsWith('/_next/image') ||
-    pathname === '/favicon.ico' ||
+    pathname === '/favicon.svg' ||
     STATIC_ASSET.test(pathname)
   );
 }
