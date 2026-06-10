@@ -1,18 +1,26 @@
 import * as React from 'react';
 
-import { CaptureBox } from '@/components/tasks/capture-box';
-import { TaskList } from '@/components/tasks/task-list';
+import { InboxScreen } from '@/components/tasks/inbox-screen';
 import { createClient } from '@/lib/supabase/server';
 import { buildTree } from '@/lib/tree';
 import type { Folder, Item } from '@/lib/types';
 
+interface InboxPageProperties {
+  /** `?view=inbox` reveals the inbox list; absent = the bare landing (capture box only). */
+  searchParams: Promise<{ view?: string }>;
+}
+
 /**
- * Inbox page — default view.
+ * Landing + Inbox page — one route.
  *
- * Fetches active inbox items (folder_id = null, status = active) and all folders
- * server-side. Passes them to client components for interactive rendering.
+ * The bare landing shows only the capture box. `?view=inbox` reveals the inbox
+ * task list below it with a fade transition (see InboxScreen). Items are always
+ * fetched so they're ready to fade in without a second round-trip.
  */
-export default async function InboxPage() {
+export default async function InboxPage({ searchParams }: InboxPageProperties) {
+  const { view } = await searchParams;
+  const open = view === 'inbox';
+
   const supabase = await createClient();
 
   const [itemsResult, foldersResult] = await Promise.all([
@@ -30,21 +38,5 @@ export default async function InboxPage() {
 
   const tree = buildTree(items);
 
-  return (
-    <>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
-          Inbox
-        </span>
-      </div>
-
-      {/* Capture box — the hero */}
-      <div className="mb-8">
-        <CaptureBox />
-      </div>
-
-      {/* Task list */}
-      <TaskList nodes={tree} folders={folders} emptyMessage="Your inbox is empty" />
-    </>
-  );
+  return <InboxScreen open={open} nodes={tree} folders={folders} />;
 }

@@ -89,8 +89,8 @@ export function FolderNav({ folders, onClose }: FolderNavProperties) {
 
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
-      {/* Inbox */}
-      <Link href="/" className={navLinkClass(isActive('/'))} {...closeProperty}>
+      {/* Inbox — reveals the inbox list on the landing route */}
+      <Link href="/?view=inbox" className={navLinkClass(isActive('/'))} {...closeProperty}>
         <Inbox size={15} className="shrink-0" />
         <span>Inbox</span>
       </Link>
