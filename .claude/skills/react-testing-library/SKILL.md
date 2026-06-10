@@ -276,20 +276,20 @@ const fixture: ItemNode = {
 };
 ```
 
-**Storybook stories with required callback props (no-empty-function)**
+**Storybook stories with required callback props**
 
-`@typescript-eslint/no-empty-function` forbids `() => {}` in stories, and `() => undefined` gets auto-fixed to `() => {}` by ESLint — so a stub still needs a non-empty body. Use a named stub with a `_`-prefixed unused param (or no param) and an explicit `return;`:
+Stories need inert no-op props for required callbacks. The project scopes `@typescript-eslint/no-empty-function` **off** for `**/*.stories.{ts,tsx}` (see `frontend/eslint.config.mjs`), so just use an empty arrow — no named stub, no throwaway body:
 
 ```ts
-function handleOpenChange(_open: boolean) {
-  return; // body isn't empty — satisfies no-empty-function
-}
-function handleConfirm() {
-  return;
-}
+const meta = {
+  args: {
+    onOpenChange: () => {},
+    onConfirm: () => {},
+  },
+} satisfies Meta<typeof CascadeModal>;
 ```
 
-The `_`-prefix honestly marks the param as deliberately unused — the project's `@typescript-eslint/no-unused-vars` is configured with `argsIgnorePattern: '^_'`, so it no longer fires. Don't fake-use the param (e.g. `return open`) just to dodge the linter; and if the param is trailing/only, you can drop it entirely. When a story needs to **assert** a callback fired, use `fn()` from `'storybook/test'` instead of a stub (see the storybook skill).
+Don't reach for the old kludge of a named stub with a `_`-prefixed param and an explicit `return;` to dodge `no-empty-function` — that predates the stories-scoped exception. When a story needs to **assert** a callback fired, use `fn()` from `'storybook/test'` instead of a no-op (see the storybook skill).
 
 ## What Was Deliberately Left Out
 
