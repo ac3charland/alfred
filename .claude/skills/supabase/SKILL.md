@@ -124,8 +124,6 @@ useEffect(() => {
 
 - **Never use `.eq('column', null)` to find NULL rows.** PostgREST maps `eq` to `= null` which always returns zero rows. Always use `.is('column', null)`.
 
-- **`.is('column', null)` conflicts with `unicorn/no-null` when the rule has `checkArguments: true`.** The Supabase `.is()` type signature is `(column: string, value: boolean | null): this` — `null` is mandatory. If the project's ESLint config has `unicorn/no-null` with `checkArguments: true` and you cannot use `eslint-disable`, use `const DB_NULL = undefined as unknown as null` and pass `DB_NULL` instead. This preserves the correct runtime value while satisfying the linter. Flag to the project lead so the ESLint config can be updated to either `checkArguments: false` or add an exception for the Supabase API layer.
-
 - **Never expose `SUPABASE_SERVICE_ROLE_KEY` as a `NEXT_PUBLIC_` variable.** It bypasses all RLS and grants full database control to anyone who can read your client bundle. 11% of public Supabase apps have been found to have this key exposed (VibeAppScanner, January 2026). Use it only in server-only env vars.
 
 - **Always add `.select()` after `.insert()`, `.update()`, and `.upsert()` if you need the row back.** In supabase-js v2 these methods return `{ data: null }` by default — no row data unless you chain `.select()`.
@@ -142,7 +140,7 @@ useEffect(() => {
 
 - **RLS `UPDATE` policies need both `USING` (which rows can be seen) and `WITH CHECK` (what the updated row must satisfy).** A policy with only `USING` allows reading the row but may silently fail writes that would move a row out of the policy's scope.
 
-### Security traps (folded in from Supabase's first-party skill)
+### Security traps
 
 These are Supabase-specific footguns that silently create vulnerabilities. alfred is single-user, so several are low-stakes here — but they apply the moment the schema grows a second user or a new table/view/function.
 
