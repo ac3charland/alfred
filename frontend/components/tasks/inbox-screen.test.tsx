@@ -1,9 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 
-import type { ItemNode } from '@/lib/tree';
-import type { Folder } from '@/lib/types';
-
 import { InboxScreen } from './inbox-screen';
 
 // Mock next/link as a plain anchor so we can assert on hrefs.
@@ -33,9 +30,6 @@ jest.mock('./task-list', () => ({
   },
 }));
 
-const NODES: ItemNode[] = [];
-const FOLDERS: Folder[] = [];
-
 /** Force a `prefers-reduced-motion` result for the duration of a test. */
 function mockReducedMotion(matches: boolean): void {
   const mql = {
@@ -52,7 +46,7 @@ function mockReducedMotion(matches: boolean): void {
 describe('InboxScreen', () => {
   describe('landing screen (closed)', () => {
     it('shows only the capture box and a subtle "View inbox" link, no list', () => {
-      render(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      render(<InboxScreen open={false} />);
 
       expect(screen.getByTestId('capture-box')).toBeInTheDocument();
 
@@ -68,7 +62,7 @@ describe('InboxScreen', () => {
 
   describe('inbox screen (open)', () => {
     it('reveals the inbox list (faded in) and a Close link', () => {
-      render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      render(<InboxScreen open />);
 
       expect(screen.getByTestId('capture-box')).toBeInTheDocument();
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
@@ -86,10 +80,10 @@ describe('InboxScreen', () => {
 
   describe('toggling between landing and inbox', () => {
     it('reveals the list with a fade-in when toggled open', () => {
-      const { rerender } = render(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      const { rerender } = render(<InboxScreen open={false} />);
       expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
 
-      rerender(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      rerender(<InboxScreen open />);
 
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
       expect(screen.getByTestId('inbox-reveal')).toHaveClass('animate-fade-in');
@@ -100,10 +94,10 @@ describe('InboxScreen', () => {
     it('keeps the list mounted (fading out) when toggled closed, then unmounts on animation end', () => {
       mockReducedMotion(false); // motion allowed → real fade-out
 
-      const { rerender } = render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      const { rerender } = render(<InboxScreen open />);
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
-      rerender(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      rerender(<InboxScreen open={false} />);
 
       // Still mounted so the exit animation can play, now in its fade-out state.
       const reveal = screen.getByTestId('inbox-reveal');
@@ -122,8 +116,8 @@ describe('InboxScreen', () => {
     it('ignores animationEnd bubbling up from a child so the panel is not collapsed early', () => {
       mockReducedMotion(false);
 
-      const { rerender } = render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
-      rerender(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      const { rerender } = render(<InboxScreen open />);
+      rerender(<InboxScreen open={false} />);
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
       // A descendant's animation ending must NOT unmount the panel (only the
@@ -137,10 +131,10 @@ describe('InboxScreen', () => {
     it('unmounts the list immediately on close when reduced motion is preferred', () => {
       mockReducedMotion(true); // no fade-out animation will run
 
-      const { rerender } = render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      const { rerender } = render(<InboxScreen open />);
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
-      rerender(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      rerender(<InboxScreen open={false} />);
 
       // No animationEnd is fired, yet the list is gone right away.
       expect(screen.queryByTestId('inbox-reveal')).not.toBeInTheDocument();

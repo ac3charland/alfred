@@ -1,22 +1,20 @@
 'use client';
 
 import { Check, ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { Button } from '@/components/ui/button';
-import { completeTask, deleteItem, moveToInbox, updateItem } from '@/lib/api-client';
+import { useFolders } from '@/lib/stores/folders-store';
+import { useTaskActions } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
 import { getDescendantIds } from '@/lib/tree';
-import type { Folder } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface TaskRowProperties {
   node: ItemNode;
-  folders: Folder[];
   depth?: number;
   isCompleted?: boolean;
 }
@@ -66,13 +64,12 @@ function isDueDateOverdue(iso: string): boolean {
  * - Move-to-folder dropdown
  * - Delete
  */
-export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskRowProperties) {
-  const router = useRouter();
+export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowProperties) {
+  const folders = useFolders();
+  const { completeTask, uncompleteTask, updateTask, moveTask, deleteTask } = useTaskActions();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [showAddSubtask, setShowAddSubtask] = React.useState(false);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
-  const [isCompletePending, setIsCompletePending] = React.useState(false);
-  const [dismissed, setDismissed] = React.useState(false);
   const [isEditingTitle, setIsEditingTitle] = React.useState(false);
   const [draftTitle, setDraftTitle] = React.useState(node.title);
   const titleInputRef = React.useRef<HTMLInputElement>(null);
@@ -93,48 +90,37 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
   const indentLeft = `${String(depth * 1.25 + 0.75)}rem`;
   const metaIndentLeft = `${String(depth * 1.25 + 2.5)}rem`;
 
+  // All mutations go through the optimistic tasks store: the change shows instantly
+  // and the store reconciles with the server (rolling back — which remounts this row —
+  // on failure). No router.refresh(), no local dismiss/pending state.
+
   const handleToggleComplete = async () => {
     if (hasChildren) {
       setShowCascadeModal(true);
       return;
     }
-    setDismissed(true);
-    setIsCompletePending(true);
     try {
       await completeTask(node.id);
-      router.refresh();
     } catch {
-      setDismissed(false);
-      setIsCompletePending(false);
+      // The store already restored the row.
     }
   };
 
   const handleCascadeConfirm = async () => {
-    setDismissed(true);
-    setIsCompletePending(true);
     try {
       await completeTask(node.id);
-      setShowCascadeModal(false);
-      router.refresh();
     } catch {
-      setDismissed(false);
-      setIsCompletePending(false);
+      // The store already restored the row.
     }
   };
 
   const handleToggleUncomplete = async () => {
-    setDismissed(true);
-    setIsCompletePending(true);
     try {
-      await updateItem(node.id, { status: 'active' });
-      router.refresh();
+      await uncompleteTask(node.id);
     } catch {
-      setDismissed(false);
-      setIsCompletePending(false);
+      // The store already restored the row.
     }
   };
-
-  if (dismissed) return null;
 
   const handleSaveTitle = async () => {
     const newValue = draftTitle.trim();
@@ -144,10 +130,10 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
       return;
     }
     try {
-      await updateItem(node.id, { title: newValue });
+      await updateTask(node.id, { title: newValue });
       setIsEditingTitle(false);
-      router.refresh();
     } catch {
+      // The store reverted the title; keep editing so the user can retry.
       setDraftTitle(node.title);
     }
   };
@@ -159,8 +145,7 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
     if (newValue === currentValue) return;
     try {
       // Empty string clears the due date (PATCH { due_date: null }).
-      await updateItem(node.id, { due_date: newValue === '' ? null : newValue });
-      router.refresh();
+      await updateTask(node.id, { due_date: newValue === '' ? null : newValue });
     } catch {
       setDraftDueDate(node.due_date ?? '');
     }
@@ -173,8 +158,7 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
     if (newValue === currentValue) return;
     try {
       // Empty string clears the notes (PATCH { notes: null }).
-      await updateItem(node.id, { notes: newValue === '' ? null : newValue });
-      router.refresh();
+      await updateTask(node.id, { notes: newValue === '' ? null : newValue });
     } catch {
       setDraftNotes(node.notes ?? '');
     }
@@ -182,28 +166,18 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
 
   const handleMoveToFolder = async (targetFolderId?: string) => {
     try {
-      // moveToInbox lives in lib/ (null-aware data layer) because the PATCH body
-      // needs `folder_id: null` which is only valid outside component code.
-      const allIds = [node.id, ...getDescendantIds(node)];
-      await Promise.all(
-        allIds.map((id) =>
-          targetFolderId === undefined
-            ? moveToInbox(id)
-            : updateItem(id, { folder_id: targetFolderId }),
-        ),
-      );
-      router.refresh();
+      // undefined target = move to the Inbox (folder_id null).
+      await moveTask(node.id, targetFolderId ?? null);
     } catch {
-      // silently ignore — router.refresh will re-sync
+      // The store already restored the subtree.
     }
   };
 
   const handleDelete = async () => {
     try {
-      await deleteItem(node.id);
-      router.refresh();
+      await deleteTask(node.id);
     } catch {
-      // silently ignore
+      // The store already restored the row.
     }
   };
 
@@ -251,20 +225,16 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
               void handleToggleComplete();
             }
           }}
-          disabled={isCompletePending}
           aria-label={isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`}
           className={cn(
             'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-            isCompleted || isCompletePending
+            isCompleted
               ? 'bg-accent-teal border-accent-teal'
               : 'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
-            isCompletePending && 'opacity-50 cursor-wait',
           )}
         >
-          {(isCompleted || isCompletePending) && (
-            <Check size={10} className="text-background" strokeWidth={3} />
-          )}
+          {isCompleted && <Check size={10} className="text-background" strokeWidth={3} />}
         </button>
 
         {/* Title */}
@@ -648,13 +618,7 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
 
           {/* Child task rows */}
           {node.children.map((child) => (
-            <TaskRow
-              key={child.id}
-              node={child}
-              folders={folders}
-              depth={depth + 1}
-              isCompleted={isCompleted}
-            />
+            <TaskRow key={child.id} node={child} depth={depth + 1} isCompleted={isCompleted} />
           ))}
         </ul>
       )}
@@ -668,7 +632,7 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
         onConfirm={() => {
           void handleCascadeConfirm();
         }}
-        isPending={isCompletePending}
+        isPending={false}
       />
     </li>
   );

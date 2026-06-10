@@ -6,15 +6,11 @@ import * as React from 'react';
 
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { TaskList } from '@/components/tasks/task-list';
-import type { ItemNode } from '@/lib/tree';
-import type { Folder } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface InboxScreenProperties {
   /** Whether the inbox list is revealed. Driven by the `?view=inbox` search param. */
   open: boolean;
-  nodes: ItemNode[];
-  folders: Folder[];
 }
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
@@ -50,7 +46,7 @@ const toggleLinkClass = cn(
  * return the user to the landing screen simply by linking to `/`. The list stays
  * mounted through its fade-out so the exit animation can finish before it unmounts.
  */
-export function InboxScreen({ open, nodes, folders }: InboxScreenProperties) {
+export function InboxScreen({ open }: InboxScreenProperties) {
   const prefersReducedMotion = React.useSyncExternalStore(
     subscribeReducedMotion,
     getReducedMotionSnapshot,
@@ -112,7 +108,7 @@ export function InboxScreen({ open, nodes, folders }: InboxScreenProperties) {
               Inbox
             </span>
           </div>
-          <TaskList nodes={nodes} folders={folders} emptyMessage="Your inbox is empty" />
+          <TaskList emptyMessage="Your inbox is empty" />
         </div>
       )}
     </>

@@ -1,8 +1,8 @@
 import * as React from 'react';
 
 import { TaskList } from '@/components/tasks/task-list';
-import { getFolders } from '@/lib/data/folders';
 import { getCompletedItems } from '@/lib/data/items';
+import { TasksProvider } from '@/lib/stores/tasks-store';
 import { getDescendantIds } from '@/lib/tree';
 
 /**
@@ -10,14 +10,14 @@ import { getDescendantIds } from '@/lib/tree';
  * Read-only: no capture box here (completed tasks are done).
  */
 export default async function CompletedPage() {
-  const [tree, folders] = await Promise.all([getCompletedItems(), getFolders()]);
+  const tree = await getCompletedItems();
 
   // Total completed tasks = every node in the forest (roots + all descendants).
   let count = 0;
   for (const root of tree) count += 1 + getDescendantIds(root).length;
 
   return (
-    <>
+    <TasksProvider initialTasks={tree}>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           Completed
@@ -30,7 +30,7 @@ export default async function CompletedPage() {
         </p>
       </div>
 
-      <TaskList nodes={tree} folders={folders} emptyMessage="Nothing completed yet" isCompleted />
-    </>
+      <TaskList emptyMessage="Nothing completed yet" isCompleted />
+    </TasksProvider>
   );
 }

@@ -31,12 +31,14 @@ import type { Item } from '@/lib/types';
 
 interface AddTaskInput {
   text: string;
-  folderId?: string | null;
-  parentId?: string | null;
+  // Explicit `| undefined` so callers may pass through an absent folder/parent prop
+  // directly under exactOptionalPropertyTypes.
+  folderId?: string | null | undefined;
+  parentId?: string | null | undefined;
 }
 
-/** The inline-editable scalar fields of a task (due date + notes). */
-type TaskFieldPatch = Pick<api.UpdateItemInput, 'due_date' | 'notes'>;
+/** The inline-editable scalar fields of a task (title, due date, notes). */
+type TaskFieldPatch = Pick<api.UpdateItemInput, 'title' | 'due_date' | 'notes'>;
 
 interface TaskActions {
   /** Optimistically add a task (root or subtask), then reconcile with the saved row. */

@@ -46,7 +46,6 @@ const meta = {
     layout: 'padded',
   },
   args: {
-    folders: [],
     depth: 0,
   },
 } satisfies Meta<typeof TaskRow>;
@@ -92,10 +91,14 @@ export const DeepNesting: Story = {
 export const WithFolders: Story = {
   args: {
     node: BASE_NODE,
-    folders: [
-      { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
-      { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
-    ],
+  },
+  parameters: {
+    store: {
+      folders: [
+        { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
+        { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
+      ],
+    },
   },
 };
 
