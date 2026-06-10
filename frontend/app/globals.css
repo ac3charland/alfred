@@ -85,7 +85,7 @@
    (mount → fade-in / fade-out → unmount) pattern these are built for. */
 @theme {
   --animate-fade-in: fade-in 200ms ease-out;
-  --animate-fade-out: fade-out 150ms ease-in;
+  --animate-fade-out: fade-out 150ms ease-in forwards;
 
   @keyframes fade-in {
     from {

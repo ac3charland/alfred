@@ -202,6 +202,12 @@ Why each piece:
   during render (the reveal pattern). An effect both lags by a frame and trips the
   `react-hooks/set-state-in-effect` rule.
 
+- **`--animate-fade-out` must include `animation-fill-mode: forwards`.** Without it, CSS
+  resets the element to its natural opacity (1 = fully visible) the instant the animation
+  ends — before React has a chance to process `onAnimationEnd` and unmount the element.
+  That one-frame snap-back is visible as a flash. The token is defined as
+  `fade-out 150ms ease-in forwards`; keep the `forwards` when adjusting timing/easing.
+
 - **`globalThis.matchMedia` is typed as always-defined** in the DOM lib, so `matchMedia?.(…)`
   and `… ?? false` are flagged by `@typescript-eslint/no-unnecessary-condition`. Call it
   directly inside effects / store snapshots (which only run client-side anyway).
