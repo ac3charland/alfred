@@ -155,3 +155,32 @@ export const CompletedInFolder: Story = {
     },
   },
 };
+
+// A → B → C → D → E → F: the active ancestor chain (filtered out of the completed view),
+// seeded into the store so the completed leaf "G" can render its full breadcrumb.
+const ANCESTOR_CHAIN: ItemNode[] = ['A', 'B', 'C', 'D', 'E', 'F'].map((title, index) => ({
+  ...BASE_NODE,
+  id: `chain-${String(index)}`,
+  title,
+  parent_id: index === 0 ? null : `chain-${String(index - 1)}`,
+  children: [],
+}));
+
+// A deeply nested completed item shows every ancestor, oldest → youngest, joined by " > ".
+export const CompletedNested: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      title: 'Finalize the launch checklist',
+      status: 'completed',
+      completed_at: '2025-01-02T09:00:00Z',
+      parent_id: 'chain-5',
+    },
+    isCompleted: true,
+  },
+  parameters: {
+    store: {
+      tasks: ANCESTOR_CHAIN,
+    },
+  },
+};
