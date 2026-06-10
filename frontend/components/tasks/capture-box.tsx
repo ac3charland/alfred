@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { createItem } from '@/lib/api-client';
-import { cn } from '@/lib/utilities';
+import { cn } from '@/lib/utils';
 
 interface CaptureBoxProperties {
   /** The folder to scope the capture to. Undefined means Inbox (no folder). */

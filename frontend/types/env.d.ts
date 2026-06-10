@@ -5,10 +5,9 @@
 // the browser bundle, and (b) passing the strict `noPropertyAccessFromIndexSignature`
 // tsconfig rule (dot-access on an index signature is otherwise an error).
 //
-// The interface MUST be named `ProcessEnv` to merge with Node's `NodeJS.ProcessEnv`;
-// `unicorn/prevent-abbreviations` is scoped off for `**/*.d.ts` so it doesn't try to
-// rename this external/ambient contract. Not `readonly` — process.env is mutable and
-// tests toggle vars. `INGEST_API_KEY` is optional (the ingress key may be unset).
+// The interface MUST be named `ProcessEnv` to merge with Node's `NodeJS.ProcessEnv`.
+// Not `readonly` — process.env is mutable and tests toggle vars. `INGEST_API_KEY` is
+// optional (the ingress key may be unset).
 
 declare namespace NodeJS {
   interface ProcessEnv {

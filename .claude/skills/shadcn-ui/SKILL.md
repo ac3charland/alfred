@@ -177,19 +177,17 @@ Use this when:
 
 ---
 
-## `lib/utils.ts` → `lib/utilities.ts` (unicorn/prevent-abbreviations)
+## `lib/utils.ts` is the standard path — keep it
 
-shadcn/ui's default CLI output creates `lib/utils.ts` for the `cn()` helper. In alfred, the
-`unicorn/prevent-abbreviations` ESLint rule treats `utils` as an abbreviation of `utilities`
-and reports an error on the filename AND any variable named `utils`.
+shadcn/ui's default CLI output creates `lib/utils.ts` for the `cn()` helper, and
+`components.json` aliases `"utils": "@/lib/utils"`. **Keep this default** — the CLI writes that
+path, every shadcn example uses it, and imports read `from '@/lib/utils'`. Do not rename it.
 
-**Fix:**
-1. Name the file `lib/utilities.ts` (not `lib/utils.ts`)
-2. In `components.json`, set `"utils": "@/lib/utilities"` (not `"@/lib/utils"`)
-3. Every import in component files must use `from '@/lib/utilities'` not `from '@/lib/utils'`
-
-This affects the CLI's default `--utils` alias. When adding components manually or via the
-CLI, check and correct the path.
+> Historical note: alfred once renamed this to `lib/utilities.ts` to satisfy
+> `unicorn/prevent-abbreviations` (which treats `utils` as an abbreviation). That rule was
+> deliberately disabled project-wide because the renames it forces (`utils` → `utilities`,
+> `env`/`props`/`params` → verbose forms) cut against ecosystem conventions. The standard
+> `lib/utils.ts` is back. See the eslint skill for the rule decision.
 
 ## Version Gotchas
 

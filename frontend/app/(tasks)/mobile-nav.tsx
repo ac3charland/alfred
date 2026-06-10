@@ -6,7 +6,7 @@ import * as React from 'react';
 
 import { FolderNav } from '@/components/tasks/folder-nav';
 import type { Folder } from '@/lib/types';
-import { cn } from '@/lib/utilities';
+import { cn } from '@/lib/utils';
 
 interface MobileNavClientProperties {
   folders: Folder[];

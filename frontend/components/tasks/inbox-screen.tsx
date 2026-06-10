@@ -8,7 +8,7 @@ import { CaptureBox } from '@/components/tasks/capture-box';
 import { TaskList } from '@/components/tasks/task-list';
 import type { ItemNode } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
-import { cn } from '@/lib/utilities';
+import { cn } from '@/lib/utils';
 
 interface InboxScreenProperties {
   /** Whether the inbox list is revealed. Driven by the `?view=inbox` search param. */

@@ -7,7 +7,7 @@ import * as React from 'react';
 
 import { createFolder, deleteFolder, updateFolder } from '@/lib/api-client';
 import type { Folder } from '@/lib/types';
-import { cn } from '@/lib/utilities';
+import { cn } from '@/lib/utils';
 
 interface FolderNavProperties {
   folders: Folder[];

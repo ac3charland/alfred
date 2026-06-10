@@ -5,7 +5,7 @@ import * as React from 'react';
 import { TaskRow } from '@/components/tasks/task-row';
 import type { ItemNode } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
-import { cn } from '@/lib/utilities';
+import { cn } from '@/lib/utils';
 
 interface TaskListProperties {
   nodes: ItemNode[];

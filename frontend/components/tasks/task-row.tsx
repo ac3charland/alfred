@@ -12,7 +12,7 @@ import { completeTask, deleteItem, moveToInbox, updateItem } from '@/lib/api-cli
 import type { ItemNode } from '@/lib/tree';
 import { getDescendantIds } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
-import { cn } from '@/lib/utilities';
+import { cn } from '@/lib/utils';
 
 interface TaskRowProperties {
   node: ItemNode;
