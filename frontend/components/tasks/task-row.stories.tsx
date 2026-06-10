@@ -135,3 +135,23 @@ export const CompletedWithChildren: Story = {
     isCompleted: true,
   },
 };
+
+// A completed root item shows its parent folder (or "Inbox") in low-contrast text
+// beneath the title, prefixed with the list-check icon — the Completed-screen context label.
+export const CompletedInFolder: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      title: 'Ship the onboarding email',
+      status: 'completed',
+      completed_at: '2025-01-02T09:00:00Z',
+      folder_id: 'f1',
+    },
+    isCompleted: true,
+  },
+  parameters: {
+    store: {
+      folders: [{ id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' }],
+    },
+  },
+};
