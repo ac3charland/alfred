@@ -1,3 +1,5 @@
+'use client';
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
@@ -22,19 +24,21 @@ const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 
+const DB_NULL = undefined as unknown as null;
+
 const BASE_ITEM: ItemNode = {
   id: 'item-1',
   title: 'Write tests',
-  notes: null,
-  source_url: null,
+  notes: DB_NULL,
+  source_url: DB_NULL,
   item_type: 'task',
   created_at: '2025-01-01T10:00:00Z',
-  raw_capture: null,
-  due_date: null,
+  raw_capture: DB_NULL,
+  due_date: DB_NULL,
   status: 'active',
-  completed_at: null,
-  folder_id: null,
-  parent_id: null,
+  completed_at: DB_NULL,
+  folder_id: DB_NULL,
+  parent_id: DB_NULL,
   children: [],
 };
 
@@ -69,12 +73,25 @@ describe('TaskRow', () => {
     expect(screen.getByText('Write tests')).toBeInTheDocument();
   });
 
-  it('renders the completion checkbox button', () => {
+  it('renders the completion checkbox with "complete" label for active tasks', () => {
     render(<TaskRow node={BASE_ITEM} folders={[]} />);
 
     expect(
       screen.getByRole('button', { name: /mark "Write tests" complete/i }),
     ).toBeInTheDocument();
+  });
+
+  it('renders checkbox with "active" label when isCompleted is true', () => {
+    render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);
+
+    expect(screen.getByRole('button', { name: /mark "Write tests" active/i })).toBeInTheDocument();
+  });
+
+  it('renders checkbox as checked (teal fill) when isCompleted is true', () => {
+    render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);
+
+    const checkbox = screen.getByRole('button', { name: /mark "Write tests" active/i });
+    expect(checkbox).toHaveClass('bg-accent-teal');
   });
 
   it('expand/collapse toggle is invisible when there are no children', () => {
@@ -116,6 +133,21 @@ describe('TaskRow', () => {
     expect(screen.queryByText('Write unit tests')).not.toBeInTheDocument();
   });
 
+  // ---------------------------------------------------------------------------
+  // Active task completion — optimistic dismiss
+  // ---------------------------------------------------------------------------
+
+  it('dismisses the task immediately on checkbox click before API resolves', async () => {
+    mockCompleteTask.mockReturnValue(Promise.race([]));
+
+    const user = userEvent.setup();
+    render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+  });
+
   it('calls completeTask and refreshes when checkbox is clicked (no children)', async () => {
     mockCompleteTask.mockResolvedValue([]);
 
@@ -128,6 +160,18 @@ describe('TaskRow', () => {
       expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
       expect(mockRefresh).toHaveBeenCalled();
     });
+  });
+
+  it('restores the task when completeTask fails', async () => {
+    mockCompleteTask.mockRejectedValue(new Error('Network error'));
+
+    const user = userEvent.setup();
+    render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+    // Task should reappear after the API error
+    expect(await screen.findByText('Write tests')).toBeInTheDocument();
   });
 
   it('opens the cascade modal when checkbox is clicked on a task with children', async () => {
@@ -152,6 +196,51 @@ describe('TaskRow', () => {
 
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
+
+  // ---------------------------------------------------------------------------
+  // Completed task (isCompleted) — uncomplete
+  // ---------------------------------------------------------------------------
+
+  it('calls updateItem with status:active and refreshes when uncompleting', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, status: 'completed' });
+
+    const user = userEvent.setup();
+    render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { status: 'active' });
+      expect(mockRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it('dismisses the task immediately when uncompleting before API resolves', async () => {
+    mockUpdateItem.mockReturnValue(Promise.race([]));
+
+    const user = userEvent.setup();
+    render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
+
+    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+  });
+
+  it('restores the task when updateItem fails while uncompleting', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('Network error'));
+
+    const user = userEvent.setup();
+    render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
+
+    // Task should reappear after the API error
+    expect(await screen.findByText('Write tests')).toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Other
+  // ---------------------------------------------------------------------------
 
   it('shows due date chip when due_date is present', () => {
     const nodeWithDue = { ...BASE_ITEM, due_date: '2099-12-31' };
