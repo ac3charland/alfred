@@ -219,12 +219,13 @@ renderWithProviders(<CaptureBox />, { tasks: [] });
 ```
 
 **Gotcha — store-driven removal needs the list, not a lone row.** With the optimistic
-store, completing/deleting/moving a task removes it from the forest; the row unmounts because
-**`TaskList`** re-renders from `useTasks()`. A standalone `<TaskRow node={…} />` is prop-driven
-and won't remove itself. So test those behaviors through `TaskList` seeded with the tree:
+store, completing/deleting/moving a task changes its status/folder (or removes it), so it
+drops out of the scoped view; the row unmounts because **`TaskList`** re-renders from
+`useScopedTasks(scope)`. A standalone `<TaskRow node={…} />` is prop-driven and won't remove
+itself. So test those behaviors through `TaskList` seeded with the flat item list + a scope:
 
 ```tsx
-renderWithProviders(<TaskList isCompleted={false} />, { tasks: [BASE_ITEM], folders: [FOLDER] });
+renderWithProviders(<TaskList scope={{ type: 'inbox' }} />, { tasks: [BASE_ITEM], folders: [FOLDER] });
 // click complete → assert the row is gone; reject the api mock → assert it reappears (rollback)
 ```
 

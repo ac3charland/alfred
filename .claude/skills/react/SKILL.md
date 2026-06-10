@@ -190,7 +190,7 @@ Does a deep subtree need shared data without prop drilling?
 ## What Was Deliberately Left Out (and Why)
 
 - **Class components.** This project uses function components exclusively. Including class-component patterns would invite the wrong pattern.
-- **`useReducer` deep-dive.** Covered in the decision tree entry. The folders/tasks Context stores use `useReducer` over the pure `lib/tree.ts` forest helpers — see the **`data-flow`** skill for that store/reducer pattern; this skill stays focused on hook mechanics.
+- **`useReducer` deep-dive.** Covered in the decision tree entry. The folders/tasks Context stores use `useReducer` over flat arrays + the pure `lib/tree.ts` helpers — see the **`data-flow`** skill for that store/reducer pattern; this skill stays focused on hook mechanics.
 - **`useImperativeHandle`.** An advanced escape hatch for exposing DOM methods through a ref. Not a pattern this project needs; including it would invite overuse.
 - **`useSyncExternalStore`.** The right API for subscribing to an *external* store (Redux, Zustand). Alfred's client cache is a React **Context** store (`useReducer` + Context, see the **`data-flow`** skill), not an external store, so this hook isn't needed for it. It IS used in `inbox-screen.tsx` to subscribe to `matchMedia` (a genuine external source).
 - **`useEffectEvent` / `useEvent`.** A hook for non-reactive effect logic (reads latest props without re-running). Still marked experimental as of mid-2026; do not use in production code. Monitor react.dev for stabilization.

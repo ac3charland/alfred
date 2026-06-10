@@ -1,176 +1,164 @@
 ---
 name: data-flow
 description: >
-  Use whenever you read, fetch, store, or mutate app data in the alfred frontend —
-  folders, tasks/items, or any future entity — or decide where data should live.
-  Covers the layered data flow (server-only lib/data read layer → Server Components →
-  Context stores → lib/api-client → route handlers), the optimistic-store pattern with
-  reconcile/rollback, and the anti-patterns this architecture exists to prevent. Trigger
-  on: "fetch data", "state management", "where should this data live", "prop vs context",
-  "add a query / endpoint", "optimistic update", "reconcile", "rollback", "router.refresh",
-  "create a supabase client", "useFolders / useTasks", "FoldersProvider / TasksProvider",
+  Use whenever you read, fetch, store, or mutate app data in the alfred frontend — any
+  entity (folders, tasks/items, and whatever comes next) — or decide where data should
+  live. Owns the general data-flow architecture (database → API → context store →
+  components on read; components → store action → API → database on write), the
+  optimistic-store pattern with reconcile/rollback, the "fetch-all then filter
+  client-side" choice, and the anti-patterns this design prevents. Trigger on: "fetch
+  data", "state management", "where should this data live", "prop vs context", "add a
+  query / endpoint", "optimistic update", "reconcile", "rollback", "router.refresh",
+  "create a supabase client", "useTasks / useFolders / a store", "client-side filter",
   "lib/data", or refactoring a hard-refresh mutation. Pairs with the supabase skill
-  (client creation / queries), the nextjs skill (Server vs Client boundary), and the
-  react skill (context + hooks).
+  (client/queries), the nextjs skill (Server vs Client boundary), and the react skill
+  (context + hooks).
 ---
 
 # Data Flow & State Management (alfred frontend)
 
-> Source: the alfred codebase itself — `frontend/lib/{data,stores,tree.ts,api-client.ts}`,
-> `frontend/app/(tasks)/**`, and the components under `frontend/components/tasks/`. This is
-> the project's intended architecture; keep it and this skill in sync when it changes.
+> Source: the alfred codebase — `frontend/lib/{data,stores,tree.ts,api-client.ts}`,
+> `frontend/app/(tasks)/**`, `frontend/components/tasks/`. This is the project's intended
+> architecture; keep it and this skill in sync when it changes.
 
 ## Mental Model
 
-**The database is the source of truth. The client holds an _optimistic session cache_ of
-it.** Data flows in one direction on read and a tight loop on write:
+Data moves through four layers, the same way for every entity:
 
 ```
-                 READ (server)                         WRITE (client)
-  Supabase ─▶ lib/data/* ─▶ Server Component ─┐   store action ─▶ lib/api-client ─▶ route handler ─▶ Supabase
- (server client)  (server-only)    │ seeds    │        │ optimistic            (server client)
-                                    ▼          │        ▼ reconcile / rollback
-                          FoldersProvider / TasksProvider  (Context store)
-                                    │ useFolders() / useTasks() (read)
-                                    │ useFolderActions() / useTaskActions() (mutate)
-                                    ▼
-                          components (FolderNav, TaskList, TaskRow, CaptureBox)
+  READ                                            WRITE
+  database                                        component event
+    │  (supabase server client)                      │  store action
+    ▼                                                 ▼
+  lib/data/*  (server-only readers)               optimistic update to the store
+    │  returns plain rows                            │  then await…
+    ▼                                                 ▼
+  Server Component  ── seeds (props) ──▶  CONTEXT STORE  ◀── reconcile / rollback
+                                          │                    │  lib/api-client
+                                          │ read hooks         ▼
+                                          ▼                  route handler ─▶ database
+                                       components            (app/api/**)
 ```
 
-Two stores, because the data has two scopes:
+- **The database is the source of truth; the store is an optimistic client cache of it.**
+- **Read:** a Server Component calls a `lib/data/*` reader and seeds the result into a
+  Context store. Components read from the store via hooks — never fetch, never touch
+  Supabase.
+- **Write:** a component calls a **store action**. The action applies the change to the
+  store immediately, calls `lib/api-client` (→ a route handler → the DB), then **reconciles**
+  with the server response or **rolls back** on error. No `router.refresh()`.
 
-- **`FoldersProvider`** — folders are global across the `(tasks)` group, so it lives in
-  `app/(tasks)/layout.tsx`, wrapping the whole layout body, **seeded once** from
-  `getFolders()`. It is the session source of truth for folders (single-user, no realtime;
-  a hard reload re-seeds).
-- **`TasksProvider`** — the task forest is per-route, so it lives in **each page**, seeded
-  from that page's tree (`getInboxTree()` / `getFolderItems(id)` / `getCompletedItems()`).
+The current entities are **folders** (`FoldersProvider`) and **tasks/items**
+(`TasksProvider`) — but the layering is the rule; those are just the first two instances.
+A new entity follows the same path: a `lib/data` reader, a Context store with optimistic
+actions, `lib/api-client` wrappers, and route handlers.
 
-Every mutation is **optimistic**: apply the predicted change to the store instantly, call
-`lib/api-client`, then **reconcile** with the returned row(s) on success or **roll back** on
-failure. There is no `router.refresh()` in the mutation path.
+## Where data lives: fetch-all, filter client-side
+
+Both stores are mounted **once at the layout** (`app/(tasks)/layout.tsx`) and **seeded
+once** from the server. The tasks store holds the **entire flat `Item[]`** (via
+`getAllItems()`); each view (inbox / a folder / completed) is derived **client-side** by
+filtering that list and building its tree — see `useScopedTasks(scope)` in
+`tasks-store.tsx`, which does `buildTree(items.filter(predicateForScope))`.
+
+This is a deliberate choice for a small, single-user dataset: **one fetch beats per-view
+round-trips and per-navigation re-seeding**, and a single seed-once store sidesteps stale
+re-seed bugs entirely. Pages pass a serializable `scope` to `TaskList`; the filtering
+happens in the client. **Revisit** (scoped/paginated server reads, or a normalized cache)
+only when the dataset grows large enough that filtering everything in memory hurts.
 
 ## Decision Tree
 
 ```
-Need to READ data in a component?
-  → useFolders() / useTasks(). Never fetch in a client component, never create a supabase client.
-
-Need to READ data in a Server Component (page/layout)?
-  → call a function in lib/data/* (getFolders, getInboxTree, getFolderItems, getCompletedItems, getFolder).
-    Never inline supabase.from('...') in a page/layout.
-
-Need to MUTATE data?
-  → call a store action (useFolderActions / useTaskActions). It is optimistic + reconciles.
-    Never call lib/api-client directly from a component, and never follow a mutation with router.refresh().
-
-Need a NEW read?
-  → add a function to lib/data/* (server-only) and call it from the Server Component.
-
-Need a NEW write?
-  → 1. add/extend a route handler under app/api/**   2. add a typed wrapper in lib/api-client.ts
-    3. add a store action that applies it optimistically (see the recipe below)   4. call the action from the component.
-
-Auth (login / signInWithPassword)?
-  → the ONE allowed exception: components/auth/login-form.tsx uses the browser supabase client directly.
+Read data in a component?            → a store read hook (useTasks/useScopedTasks/useFolders).
+                                       Never fetch or create a supabase client in a component.
+Read data in a Server Component?     → call a lib/data/* reader (server-only). Never inline supabase.from(...).
+Mutate data?                         → call a store action (optimistic + reconcile). Never call api-client
+                                       directly or router.refresh() after a mutation.
+Derive a filtered view of a store?   → a selector hook (e.g. useScopedTasks) with useMemo. Don't refetch.
+New read?                            → add a lib/data/* function; seed it into the store at the layout.
+New write?                           → 1) route handler under app/api/**  2) lib/api-client wrapper
+                                       3) optimistic store action (recipe below)  4) call it from the component.
+Auth (login)?                        → the ONE exception: components/auth/login-form.tsx uses the browser
+                                       supabase client directly.
 ```
-
-## Plain-English → Pattern Table
-
-| When you need to… | Do this | Not this |
-|---|---|---|
-| show the folder list anywhere | `const folders = useFolders()` | a `folders` prop drilled through the tree |
-| show the task tree on a route | wrap the page in `<TasksProvider initialTasks={tree}>`, render `<TaskList />` (reads `useTasks()`) | pass `nodes` down through props |
-| add a task / subtask | `useTaskActions().addTask({ text, folderId?, parentId? })` | `createItem()` + `router.refresh()` |
-| complete / delete / move a task | `completeTask(id)` / `deleteTask(id)` / `moveTask(id, folderId\|null)` | `completeTask()` + `router.refresh()` + a local `dismissed` flag |
-| edit a task field (title/due/notes) | `updateTask(id, { title }\|{ due_date }\|{ notes })` | `updateItem()` + `router.refresh()` |
-| create / rename / delete a folder | `useFolderActions().addFolder / renameFolder / removeFolder` | `createFolder()` + `router.refresh()` |
-| read items/folders server-side | `await getInboxTree()` / `await getFolders()` in the page | `await supabase.from('items')…` inline |
-| 404 on a missing folder | page calls `notFound()` after `getFolder(id)` returns `null` | put `notFound()` inside the data layer |
-| test a store-reading component | `renderWithProviders(ui, { folders, tasks })` from `lib/test-utils` | naked `render()` (throws on missing context) |
 
 ## The Optimistic Mutation Recipe (reusable)
 
-Every store action follows the same shape. Use it when adding a new mutation **or
-refactoring an existing hard-refresh one**. The pure forest edits live in `lib/tree.ts`
-(`updateNode`, `removeNode`, `insertSubtree`, `insertChild`, `insertRoot`,
-`makeOptimisticItem`, `findNode`); the store reducer just delegates to them.
+Every store action follows the same shape — use it for a new mutation **or when
+refactoring a hard-refresh one**. Stores hold flat arrays; the pure helpers live in
+`lib/tree.ts` (`buildTree`, `collectSubtree`, `makeOptimisticItem`). A small reducer
+exposes five moves: `insert`, `replace` (swap one by id), `patch` (merge into a set of
+ids — single edit or cascade), `upsert` (replace present + add missing), `remove`.
 
-1. **Capture** the pre-mutation value for rollback (read the latest state from a ref —
-   see the ref pattern below). For removals, `removeNode` returns
-   `{ removed, parentId, index }`; for edits, grab the previous node via `findNode`.
-2. **Dispatch the optimistic change** synchronously (insert temp node / patch / remove).
-   For a create, build the placeholder with `makeOptimisticItem` (a `temp-…` id).
+1. **Capture** the rows you're about to change for rollback — read the latest state from a
+   ref (`tasksRef.current`). For a subtree op, `collectSubtree(items, rootId)` returns the
+   affected rows.
+2. **Apply the optimistic change** synchronously (`insert` a `makeOptimisticItem` placeholder
+   / `patch` the ids / `remove` them).
 3. `await` the **`lib/api-client`** call.
-4. On success, **reconcile**: dispatch a `replace` with the returned row (swaps the temp id
-   for the server id, applies server-canonical fields).
-5. On failure, **roll back** the exact change (re-insert the captured subtree at its index /
-   restore the previous field value) and **re-throw** so the caller can react (e.g. keep an
-   edit form open, show an error).
+4. On success, **reconcile**: `upsert` the returned row(s) — swaps client values for
+   server-canonical ones (and `replace` a temp id for the saved id on create).
+5. On failure, **roll back**: `upsert` the captured rows (re-applies the originals, re-adding
+   any that were removed) and **re-throw** so the caller can react (keep an edit form open,
+   show an error).
 
-Reference implementations: `tasks-store.tsx` (`addTask`, `completeTask`, `updateTask`,
-`moveTask`, `deleteTask`) and `folders-store.tsx`.
+Reference: `tasks-store.tsx` (`addTask`/`completeTask`/`updateTask`/`moveTask`/`deleteTask`)
+and `folders-store.tsx`. Views update because the **selector filters the changed list** —
+completing a task flips its `status`, so it drops out of the active views automatically.
 
 ### Non-negotiable invariants
 
-- **Reconcile replaces scalar fields and KEEPS the node's `children`.** The API returns a
-  flat `Item` (no `children` key), so `updateNode(forest, id, serverRow)` preserves the
-  locally-accumulated subtree — without this, a fast create-parent-then-create-child loses
-  the child on reconcile.
-- **Reconcile is a no-op for an id no longer in the store.** `updateNode`/`replace` add
-  nothing when the id is gone — this is the race rule that stops an out-of-order reconcile
-  from resurrecting a node a later action removed. Rollback is **per-id and targeted**,
-  never a whole-tree snapshot restore (which would clobber a concurrent success).
+- **Reconcile/patch is a no-op for ids not in the store** — the race rule: an out-of-order
+  reconcile can't resurrect a row a later action removed. Roll back **per-id** (capture the
+  affected rows), never with a whole-store snapshot.
 - **Split state and actions into two contexts.** Actions are memoized (`useMemo([])`) and
-  stable, so components that only mutate don't re-render when the tree changes — this
-  matters for the recursive `TaskRow`.
-- **Read latest state for rollback via a `useEffect`-synced ref**, never a render-body
-  write: `react-hooks/refs` forbids `ref.current = x` during render. Use
-  `useEffect(() => { ref.current = state }, [state])`; actions fire from user events after
-  commit, so the ref is current when they run.
-- **Seed-once vs remount-by-key.** `FoldersProvider` seeds once at layout mount and is
-  authoritative for the session — **no key, no prop-sync effect** (both would wipe
-  optimistic state on navigation). `TasksProvider` is per-route; the **folder page uses
-  `key={id}`** to re-seed on folder→folder navigation, but the **inbox provider must NOT
-  key on `?view`** — the inbox list stays mounted across the open/close toggle, so keying on
-  `view` would discard the user's optimistic edits. (Next's client Router Cache may serve a
-  briefly-stale RSC payload on back-navigation; acceptable for a single-user app.)
+  stable, so mutate-only components don't re-render when the data changes.
+- **Read latest state for rollback via a `useEffect`-synced ref**, never a render-body write
+  (`react-hooks/refs` forbids `ref.current = x` during render).
+- **Seed once at the layout; no key, no prop-sync effect.** The provider is the session
+  source of truth (single-user, no realtime; a hard reload re-seeds). A prop-sync effect or
+  a remount `key` would wipe optimistic state on navigation.
+- **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
+  folderId])`), and take a **serializable** scope so Server Components can pass it as a prop.
 
-## Common Pitfalls (the anti-patterns this architecture removes)
+## Common Pitfalls (the anti-patterns this design removes)
 
-- **Never create a supabase client in a component** (`createClient()` from
-  `lib/supabase/*`). The only exception is auth in `login-form.tsx`. Components read from
-  the stores and mutate via store actions.
-- **Never inline `supabase.from('…')` in a Server Component.** Add/clarify a `lib/data/*`
-  reader instead — that module is the single home for read queries.
-- **Never call `lib/api-client` directly from a component, and never `router.refresh()`
-  after a mutation.** Both are the old hard-refresh pattern; route through a store action so
-  the change is optimistic and reconciles locally. (If you find a `router.refresh()` in a
-  mutation handler, that's a refactor target — wire it to a store action.)
-- **Never prop-drill `folders` or `nodes`.** They come from `useFolders()` / `useTasks()`.
-- **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row while a
-  request is in flight. The store removes it from the forest and the list re-renders; a
-  rollback remounts it.
-- **Never mirror server data in ad-hoc `useState`.** The store is the cache. Local state is
-  only for transient UI (which row is expanded, the current input draft).
+- **Never create a supabase client in a component** (except auth in `login-form.tsx`).
+- **Never inline `supabase.from('…')` in a Server Component** — add/clarify a `lib/data/*`
+  reader.
+- **Never call `lib/api-client` from a component or `router.refresh()` after a mutation** —
+  route through a store action so the change is optimistic and reconciles locally. A
+  `router.refresh()` in a mutation handler is a refactor target.
+- **Never prop-drill entity lists or refetch per view.** Read the store and derive with a
+  selector.
+- **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row mid-flight
+  — change the data; the filtered view updates, and a rollback brings it back.
+- **Never mirror store data in ad-hoc `useState`.** Local state is only for transient UI
+  (expanded row, input draft).
 
 ## File Map
 
-- `frontend/lib/data/{folders,items}.ts` — server-only read layer (`import 'server-only'`).
-- `frontend/lib/stores/{folders-store,tasks-store}.tsx` — Context stores + optimistic actions.
-- `frontend/lib/tree.ts` — pure forest edits the reducers delegate to.
+- `frontend/lib/data/{folders,items}.ts` — server-only readers (`getFolders`, `getAllItems`,
+  `getFolder`).
+- `frontend/lib/stores/{folders-store,tasks-store}.tsx` — Context stores, optimistic actions,
+  and selector hooks (`useScopedTasks`).
+- `frontend/lib/tree.ts` — pure helpers: `buildTree`, `collectSubtree`, `getDescendantIds`,
+  `makeOptimisticItem`.
 - `frontend/lib/api-client.ts` — typed `fetch` wrappers over the `app/api/**` route handlers.
 - `frontend/app/api/**/route.ts` — the HTTP write boundary (auth + validation + Supabase).
-- `frontend/app/(tasks)/layout.tsx` — mounts `FoldersProvider` (seed-once).
-- `frontend/app/(tasks)/{page,completed/page,folders/[id]/page}.tsx` — mount `TasksProvider` per route.
-- `frontend/lib/test-utils.tsx` — `renderWithProviders` for store-reading component tests.
+- `frontend/app/(tasks)/layout.tsx` — fetches folders + all items once, mounts both stores.
+- `frontend/app/(tasks)/{page,completed/page,folders/[id]/page}.tsx` — render `TaskList` with a
+  `scope`; the store is already provided by the layout.
+- `frontend/lib/test-utils.tsx` — `renderWithProviders({ folders, tasks })` for store-reading
+  component tests.
 
 ## What's Deliberately Left Out
 
-- **Realtime / multi-device sync.** Single-user; the store is the session cache and a hard
-  reload re-seeds. Add Supabase realtime here only if multi-device live sync becomes a goal.
-- **A third-party state library (Zustand/Jotai/Redux/react-query).** Deliberately not used —
-  Context + `useReducer` + the pure `lib/tree.ts` helpers cover the need with zero deps.
-  `useSyncExternalStore` would be the integration point if an external store is ever adopted.
-- **Mutations from Server Components (Server Actions).** Writes go through `lib/api-client`
-  → route handlers so the same endpoints serve external ingress (e.g. Siri) and the client.
+- **Realtime / multi-device sync.** Single-user; a hard reload re-seeds. Add Supabase realtime
+  only if live multi-device sync becomes a goal.
+- **A third-party state library (Zustand/Jotai/Redux/react-query) and a normalized cache.**
+  Context + `useReducer` + flat arrays + `buildTree` cover the need with zero deps at this
+  scale. `useSyncExternalStore` is the integration seam if an external store is ever adopted.
+- **Mutations from Server Components (Server Actions).** Writes go through `lib/api-client` →
+  route handlers so the same endpoints serve external ingress (e.g. Siri) and the client.
