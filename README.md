@@ -21,6 +21,12 @@ One repo, one root `package.json`, one lockfile. The root `check` / `check:fast`
 
 ## First-time setup
 
+> **Want to automate most of this?** Hand
+> [`docs/finish-setup-agent-prompt.md`](docs/finish-setup-agent-prompt.md) to a Claude Code
+> agent running on a normal (un-firewalled) machine — it applies the schema, regenerates
+> types, verifies/creates the auth user, runs live end-to-end smoke tests, and deploys to
+> Vercel, asking you only for secrets and the iPhone-only Siri step.
+
 ### 1. Install
 
 ```bash
