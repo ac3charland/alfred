@@ -77,6 +77,35 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ── Motion tokens — reusable fade in/out animations ─────────────────────── */
+/* Plain @theme (not inline): these don't depend on dark-mode vars. Each
+   --animate-* token emits an `animate-<name>` utility (animate-fade-in /
+   animate-fade-out). Always pair their use with `motion-reduce:animate-none`
+   to honour prefers-reduced-motion. See the `motion` skill for the toggle
+   (mount → fade-in / fade-out → unmount) pattern these are built for. */
+@theme {
+  --animate-fade-in: fade-in 200ms ease-out;
+  --animate-fade-out: fade-out 150ms ease-in;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
+
 /* ── Reusable glow utilities (variant-aware) ─────────────────────────────── */
 @utility glow-teal {
   box-shadow: 0 0 16px 2px rgba(79, 209, 224, 0.15);

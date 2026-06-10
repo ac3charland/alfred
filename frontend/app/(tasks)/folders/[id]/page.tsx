@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import * as React from 'react';
 
-import { CaptureBox } from '@/components/tasks/capture-box';
 import { TaskList } from '@/components/tasks/task-list';
 import { createClient } from '@/lib/supabase/server';
 import { buildTree } from '@/lib/tree';
@@ -45,11 +44,6 @@ export default async function FolderPage({ params }: FolderPageProperties) {
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           {folder.name}
         </span>
-      </div>
-
-      {/* Capture box scoped to this folder */}
-      <div className="mb-8">
-        <CaptureBox folderId={folder.id} />
       </div>
 
       <TaskList nodes={tree} folders={folders} emptyMessage={`No tasks in ${folder.name}`} />
