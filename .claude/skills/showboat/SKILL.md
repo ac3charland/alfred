@@ -104,6 +104,11 @@ reproducible:
   don't need to.
 - If a command legitimately changes, re-run `verify --output` and commit the
   refreshed doc.
+- **Don't put a triple-backtick fenced code block inside a `note`.** Notes are raw
+  markdown, so an embedded fence is reparsed as an `exec` block on the next load —
+  it injects a stray empty `output` block, and `verify` will then try to *run* that
+  text. Show a command you're only mentioning with **inline** backticks; run a
+  command for real with `exec`.
 
 ## Markdown format
 
