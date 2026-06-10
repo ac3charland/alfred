@@ -222,6 +222,47 @@ describe('TaskRow', () => {
     expect(screen.queryByText('Inbox')).not.toBeInTheDocument();
   });
 
+  it('shows the full ancestor breadcrumb under a deeply nested completed item', () => {
+    // A → B → C → D → E → F are active (filtered out of the completed view); G is the
+    // completed leaf shown as a root row. Its breadcrumb lists every ancestor oldest → youngest.
+    const ancestors: Item[] = ['A', 'B', 'C', 'D', 'E', 'F'].map((title, index) => ({
+      ...BASE_ITEM,
+      id: `anc-${String(index)}`,
+      title,
+      parent_id: index === 0 ? null : `anc-${String(index - 1)}`,
+      status: 'active',
+      created_at: `2025-01-01T0${String(index)}:00:00Z`,
+    }));
+    const leaf: Item = {
+      ...BASE_ITEM,
+      id: 'leaf-g',
+      title: 'G',
+      parent_id: 'anc-5',
+      status: 'completed',
+    };
+
+    renderTasks([...ancestors, leaf], COMPLETED);
+
+    expect(screen.getByText('A > B > C > D > E > F')).toBeInTheDocument();
+  });
+
+  it('prefers the ancestor breadcrumb over the folder name for a nested completed item', () => {
+    const parent: Item = { ...BASE_ITEM, id: 'p', title: 'Parent', folder_id: 'folder-1' };
+    const child: Item = {
+      ...BASE_ITEM,
+      id: 'ch',
+      title: 'Child',
+      parent_id: 'p',
+      folder_id: 'folder-1',
+      status: 'completed',
+    };
+
+    renderTasks([parent, child], { ...COMPLETED, folders: [FOLDER] });
+
+    expect(screen.getByText('Parent')).toBeInTheDocument();
+    expect(screen.queryByText('Work')).not.toBeInTheDocument();
+  });
+
   it('restores the task when updateItem fails while uncompleting', async () => {
     mockUpdateItem.mockRejectedValue(new Error('Network error'));
     const user = userEvent.setup();

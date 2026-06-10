@@ -8,9 +8,9 @@ import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { Button } from '@/components/ui/button';
 import { useFolders } from '@/lib/stores/folders-store';
-import { useTaskActions } from '@/lib/stores/tasks-store';
+import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
-import { getDescendantIds } from '@/lib/tree';
+import { getAncestorTitles, getDescendantIds } from '@/lib/tree';
 import { cn } from '@/lib/utils';
 
 interface TaskRowProperties {
@@ -66,6 +66,7 @@ function isDueDateOverdue(iso: string): boolean {
  */
 export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowProperties) {
   const folders = useFolders();
+  const allTasks = useTasks();
   const { completeTask, uncompleteTask, updateTask, moveTask, deleteTask } = useTaskActions();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [showAddSubtask, setShowAddSubtask] = React.useState(false);
@@ -86,12 +87,22 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
 
-  const parentLabel =
-    isCompleted && depth === 0
-      ? node.folder_id
+  // On the Completed screen, each root row carries a context label showing where the
+  // task lives: its ancestor breadcrumb (oldest → youngest) when it's a nested subtask,
+  // otherwise its folder name (or "Inbox"). Ancestors are resolved from the full task
+  // list because they may be active items filtered out of the completed view.
+  const isContextRow = isCompleted && depth === 0;
+  const ancestorTitles = React.useMemo(
+    () => (isContextRow ? getAncestorTitles(allTasks, node.parent_id) : []),
+    [isContextRow, allTasks, node.parent_id],
+  );
+  const contextLabel = isContextRow
+    ? ancestorTitles.length > 0
+      ? ancestorTitles.join(' > ')
+      : node.folder_id
         ? (folders.find((f) => f.id === node.folder_id)?.name ?? 'Unknown')
         : 'Inbox'
-      : null;
+    : null;
 
   // Indentation driven by depth; avoid template literal number errors by converting to string
   const indentLeft = `${String(depth * 1.25 + 0.75)}rem`;
@@ -289,10 +300,10 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
             }}
           >
             <span className="text-sm text-foreground truncate cursor-text">{node.title}</span>
-            {parentLabel !== null && (
+            {contextLabel !== null && (
               <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
                 <ListCheck size={10} className="shrink-0" />
-                <span className="truncate">{parentLabel}</span>
+                <span className="truncate">{contextLabel}</span>
               </span>
             )}
           </div>
