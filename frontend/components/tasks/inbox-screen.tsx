@@ -98,6 +98,7 @@ export function InboxScreen({ open, nodes, folders }: InboxScreenProperties) {
 
       {rendered && (
         <div
+          data-testid="inbox-reveal"
           className={cn(
             'mt-6',
             open ? 'animate-fade-in' : 'animate-fade-out',

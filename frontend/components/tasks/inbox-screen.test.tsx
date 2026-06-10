@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 
 import type { ItemNode } from '@/lib/tree';
@@ -36,29 +36,115 @@ jest.mock('./task-list', () => ({
 const NODES: ItemNode[] = [];
 const FOLDERS: Folder[] = [];
 
+/** Force a `prefers-reduced-motion` result for the duration of a test. */
+function mockReducedMotion(matches: boolean): void {
+  const mql = {
+    matches,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  } as unknown as MediaQueryList;
+  jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
+}
+
 describe('InboxScreen', () => {
-  it('shows only the capture box and a subtle "View inbox" link on the landing screen', () => {
-    render(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+  describe('landing screen (closed)', () => {
+    it('shows only the capture box and a subtle "View inbox" link, no list', () => {
+      render(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
 
-    expect(screen.getByTestId('capture-box')).toBeInTheDocument();
+      expect(screen.getByTestId('capture-box')).toBeInTheDocument();
 
-    const viewLink = screen.getByRole('link', { name: /view inbox/i });
-    expect(viewLink).toHaveAttribute('href', '/?view=inbox');
+      const viewLink = screen.getByRole('link', { name: /view inbox/i });
+      expect(viewLink).toHaveAttribute('href', '/?view=inbox');
 
-    // The inbox list is not revealed on the bare landing screen.
-    expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /close inbox/i })).not.toBeInTheDocument();
+      // The inbox list is not revealed on the bare landing screen.
+      expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('inbox-reveal')).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /close inbox/i })).not.toBeInTheDocument();
+    });
   });
 
-  it('reveals the inbox list and a Close link when open', () => {
-    render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+  describe('inbox screen (open)', () => {
+    it('reveals the inbox list (faded in) and a Close link', () => {
+      render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
 
-    expect(screen.getByTestId('capture-box')).toBeInTheDocument();
-    expect(screen.getByTestId('task-list')).toBeInTheDocument();
+      expect(screen.getByTestId('capture-box')).toBeInTheDocument();
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
-    const closeLink = screen.getByRole('link', { name: /close inbox/i });
-    expect(closeLink).toHaveAttribute('href', '/');
+      const reveal = screen.getByTestId('inbox-reveal');
+      expect(reveal).toHaveClass('animate-fade-in');
+      expect(reveal).toHaveAttribute('aria-hidden', 'false');
 
-    expect(screen.queryByRole('link', { name: /view inbox/i })).not.toBeInTheDocument();
+      const closeLink = screen.getByRole('link', { name: /close inbox/i });
+      expect(closeLink).toHaveAttribute('href', '/');
+
+      expect(screen.queryByRole('link', { name: /view inbox/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('toggling between landing and inbox', () => {
+    it('reveals the list with a fade-in when toggled open', () => {
+      const { rerender } = render(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+
+      rerender(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-reveal')).toHaveClass('animate-fade-in');
+      // The View-inbox affordance is swapped for the Close affordance.
+      expect(screen.getByRole('link', { name: /close inbox/i })).toBeInTheDocument();
+    });
+
+    it('keeps the list mounted (fading out) when toggled closed, then unmounts on animation end', () => {
+      mockReducedMotion(false); // motion allowed → real fade-out
+
+      const { rerender } = render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+      rerender(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+
+      // Still mounted so the exit animation can play, now in its fade-out state.
+      const reveal = screen.getByTestId('inbox-reveal');
+      expect(reveal).toHaveClass('animate-fade-out');
+      expect(reveal).toHaveAttribute('aria-hidden', 'true');
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
+      // The landing affordance is already back.
+      expect(screen.getByRole('link', { name: /view inbox/i })).toBeInTheDocument();
+
+      // When the fade-out animation finishes, the list unmounts.
+      fireEvent.animationEnd(reveal);
+      expect(screen.queryByTestId('inbox-reveal')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+    });
+
+    it('ignores animationEnd bubbling up from a child so the panel is not collapsed early', () => {
+      mockReducedMotion(false);
+
+      const { rerender } = render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      rerender(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+      // A descendant's animation ending must NOT unmount the panel (only the
+      // container's own fade-out should). The eyebrow label lives inside the panel.
+      fireEvent.animationEnd(screen.getByText('Inbox'));
+
+      expect(screen.getByTestId('inbox-reveal')).toBeInTheDocument();
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
+    });
+
+    it('unmounts the list immediately on close when reduced motion is preferred', () => {
+      mockReducedMotion(true); // no fade-out animation will run
+
+      const { rerender } = render(<InboxScreen open nodes={NODES} folders={FOLDERS} />);
+      expect(screen.getByTestId('task-list')).toBeInTheDocument();
+
+      rerender(<InboxScreen open={false} nodes={NODES} folders={FOLDERS} />);
+
+      // No animationEnd is fired, yet the list is gone right away.
+      expect(screen.queryByTestId('inbox-reveal')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+    });
   });
 });
