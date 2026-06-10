@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, ChevronRight, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
@@ -85,6 +85,13 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
 
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
+
+  const parentLabel =
+    isCompleted && depth === 0
+      ? node.folder_id
+        ? (folders.find((f) => f.id === node.folder_id)?.name ?? 'Unknown')
+        : 'Inbox'
+      : null;
 
   // Indentation driven by depth; avoid template literal number errors by converting to string
   const indentLeft = `${String(depth * 1.25 + 0.75)}rem`;
@@ -275,14 +282,20 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
             </button>
           </>
         ) : (
-          <span
-            className="flex-1 text-sm text-foreground truncate cursor-text"
+          <div
+            className="flex-1 flex flex-col min-w-0"
             onDoubleClick={() => {
               setIsEditingTitle(true);
             }}
           >
-            {node.title}
-          </span>
+            <span className="text-sm text-foreground truncate cursor-text">{node.title}</span>
+            {parentLabel !== null && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
+                <ListCheck size={10} className="shrink-0" />
+                <span className="truncate">{parentLabel}</span>
+              </span>
+            )}
+          </div>
         )}
 
         {/* Due date chip */}

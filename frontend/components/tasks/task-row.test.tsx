@@ -48,6 +48,7 @@ const GRANDCHILD_ITEM: Item = {
 };
 
 const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
+const COMPLETED_FOLDER_ITEM: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-1' };
 
 const FOLDER: Folder = { id: 'folder-1', name: 'Work', created_at: '2025-01-01T09:00:00Z' };
 
@@ -199,6 +200,26 @@ describe('TaskRow', () => {
     await user.click(screen.getByRole('button', { name: /mark "Write tests" active/i }));
 
     expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Completed view — parent context label
+  // ---------------------------------------------------------------------------
+
+  it('shows the folder name under a completed root item', () => {
+    renderTasks([COMPLETED_FOLDER_ITEM], { ...COMPLETED, folders: [FOLDER] });
+    expect(screen.getByText('Work')).toBeInTheDocument();
+  });
+
+  it('shows "Inbox" under a completed root item with no folder', () => {
+    renderTasks([COMPLETED_ITEM], COMPLETED);
+    expect(screen.getByText('Inbox')).toBeInTheDocument();
+  });
+
+  it('does not show parent label in the inbox view', () => {
+    renderTasks([BASE_ITEM], { folders: [FOLDER] });
+    expect(screen.queryByText('Work')).not.toBeInTheDocument();
+    expect(screen.queryByText('Inbox')).not.toBeInTheDocument();
   });
 
   it('restores the task when updateItem fails while uncompleting', async () => {
