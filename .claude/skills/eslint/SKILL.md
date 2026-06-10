@@ -35,6 +35,13 @@ earlier ones for the same rule key. This means:
    namespace to avoid confusion.
 5. **The alfred philosophy: `error` not `warn`.** Warnings are noise; everything actionable must
    be `error`. Never weaken a rule to make a failing file pass — fix the code instead.
+6. **If a rule (or a *combination* of rules) genuinely doesn't fit a context, file a lint
+   suggestion — don't silently work around it.** Make the code pass the gate as it stands, then
+   add one markdown file describing the issue and a concrete suggested change to the inbox at
+   `docs/lint-suggestions/` (see its `README.md`), the same turn you hit the friction. A
+   deliberate, scoped rule change (like a `files`-scoped override) is a *separate, reviewed*
+   task — never an ad-hoc reaction to a red check. The two changes this repo already made
+   (`_`-prefixed unused vars; empty stubs in stories) came from exactly this kind of friction.
 
 > Source: ESLint team, "New Config System, Part 2: Introduction to Flat Config", eslint.org/blog, 2022
 > Source: typescript-eslint team, "Announcing typescript-eslint v8", typescript-eslint.io/blog, 2024

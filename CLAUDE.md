@@ -39,6 +39,24 @@ guardrails.** The following are strictly forbidden:
 - **Do not bypass the hooks** — never `git commit --no-verify` or
   `git push --no-verify`.
 
+### When a rule seems wrong, file a lint suggestion — don't silently work around it
+
+Sometimes a rule, or a *combination* of rules, fights you in a context where it
+genuinely doesn't make sense. The hard rules above still hold — you do **not**
+disable it, weaken config, or add an ignore directive on your own. Instead:
+
+1. **Make your code pass the gate as it stands.** (A legitimate, deliberate
+   project-rule change is its own task — never a reaction to a red check.)
+2. **Drop a note in the lint-suggestion inbox** at
+   [`docs/lint-suggestions/`](docs/lint-suggestions/) — **one markdown file per
+   issue**, named for the problem (e.g. `no-empty-function-in-stories.md`),
+   following the template in that folder's `README.md`. Explain the rule(s), the
+   context where they don't fit, and a concrete suggested change. **Add this file
+   before moving on** — the same turn you hit the friction.
+
+This keeps the guardrails intact while routing real friction toward a deliberate,
+reviewed decision instead of an ad-hoc bypass.
+
 ### How the gates run
 
 The hooks enforce the suites automatically, so you do **not** need to run
