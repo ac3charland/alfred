@@ -73,6 +73,13 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
   const [isCompletePending, setIsCompletePending] = React.useState(false);
   const [dismissed, setDismissed] = React.useState(false);
+  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+  const [draftTitle, setDraftTitle] = React.useState(node.title);
+  const titleInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (isEditingTitle) titleInputRef.current?.focus();
+  }, [isEditingTitle]);
   const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
   const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
@@ -128,6 +135,22 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
   };
 
   if (dismissed) return null;
+
+  const handleSaveTitle = async () => {
+    const newValue = draftTitle.trim();
+    if (newValue === node.title || newValue === '') {
+      setDraftTitle(node.title);
+      setIsEditingTitle(false);
+      return;
+    }
+    try {
+      await updateItem(node.id, { title: newValue });
+      setIsEditingTitle(false);
+      router.refresh();
+    } catch {
+      setDraftTitle(node.title);
+    }
+  };
 
   const handleSaveDueDate = async () => {
     setIsEditingDueDate(false);
@@ -245,7 +268,52 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
         </button>
 
         {/* Title */}
-        <span className="flex-1 text-sm text-foreground truncate">{node.title}</span>
+        {isEditingTitle ? (
+          <>
+            <input
+              ref={titleInputRef}
+              aria-label="Edit title"
+              type="text"
+              value={draftTitle}
+              onChange={(event_) => {
+                setDraftTitle(event_.target.value);
+              }}
+              onKeyDown={(event_) => {
+                if (event_.key === 'Enter') void handleSaveTitle();
+                if (event_.key === 'Escape') {
+                  setDraftTitle(node.title);
+                  setIsEditingTitle(false);
+                }
+              }}
+              className={cn(
+                'flex-1 min-w-0 rounded-sm border border-border bg-input px-2 py-0.5 text-sm text-foreground',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+              )}
+            />
+            <button
+              type="button"
+              aria-label="Confirm title"
+              onClick={() => {
+                void handleSaveTitle();
+              }}
+              className={cn(
+                'flex h-5 w-5 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+              )}
+            >
+              <Check size={10} className="text-background" strokeWidth={3} />
+            </button>
+          </>
+        ) : (
+          <span
+            className="flex-1 text-sm text-foreground truncate cursor-text"
+            onDoubleClick={() => {
+              setIsEditingTitle(true);
+            }}
+          >
+            {node.title}
+          </span>
+        )}
 
         {/* Due date chip */}
         {node.due_date && !isEditingDueDate && (
