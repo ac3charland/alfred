@@ -18,25 +18,21 @@ export async function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://127.0.0.1:1';
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
-  return createServerClient<Database>(
-    url,
-    key,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, options);
-            }
-          } catch {
-            // Called from a Server Component, which cannot set cookies. Safe to
-            // ignore when middleware is refreshing the session on every request.
+  return createServerClient<Database>(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          for (const { name, value, options } of cookiesToSet) {
+            cookieStore.set(name, value, options);
           }
-        },
+        } catch {
+          // Called from a Server Component, which cannot set cookies. Safe to
+          // ignore when middleware is refreshing the session on every request.
+        }
       },
     },
-  );
+  });
 }
