@@ -12,6 +12,7 @@ interface TaskListProperties {
   folders: Folder[];
   emptyMessage?: string;
   isCompleted?: boolean;
+  parentTitleMap?: Map<string, string>;
 }
 
 /**
@@ -23,6 +24,7 @@ export function TaskList({
   folders,
   emptyMessage = 'No tasks yet',
   isCompleted = false,
+  parentTitleMap,
 }: TaskListProperties) {
   if (nodes.length === 0) {
     return (
@@ -42,9 +44,20 @@ export function TaskList({
         'overflow-hidden',
       )}
     >
-      {nodes.map((node) => (
-        <TaskRow key={node.id} node={node} folders={folders} isCompleted={isCompleted} />
-      ))}
+      {nodes.map((node) => {
+        const resolvedParentTitle = node.parent_id
+          ? parentTitleMap?.get(node.parent_id)
+          : undefined;
+        return (
+          <TaskRow
+            key={node.id}
+            node={node}
+            folders={folders}
+            isCompleted={isCompleted}
+            {...(resolvedParentTitle !== undefined && { parentTitle: resolvedParentTitle })}
+          />
+        );
+      })}
     </ul>
   );
 }

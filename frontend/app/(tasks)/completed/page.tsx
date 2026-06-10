@@ -26,6 +26,26 @@ export default async function CompletedPage() {
 
   const tree = buildTree(items);
 
+  // Collect IDs of active parents for root-level completed items whose parent wasn't completed
+  const completedIds = new Set(items.map((i) => i.id));
+  const orphanParentIds: string[] = [];
+  for (const node of tree) {
+    if (node.parent_id !== null && !completedIds.has(node.parent_id)) {
+      orphanParentIds.push(node.parent_id);
+    }
+  }
+
+  let parentTitleMap: Map<string, string> | undefined;
+  if (orphanParentIds.length > 0) {
+    const parentsResult = await supabase
+      .from('items')
+      .select('id, title')
+      .in('id', orphanParentIds);
+    if (parentsResult.data) {
+      parentTitleMap = new Map(parentsResult.data.map((p) => [p.id, p.title]));
+    }
+  }
+
   return (
     <>
       <div className="mb-2 flex items-center gap-2">
@@ -40,7 +60,13 @@ export default async function CompletedPage() {
         </p>
       </div>
 
-      <TaskList nodes={tree} folders={folders} emptyMessage="Nothing completed yet" isCompleted />
+      <TaskList
+        nodes={tree}
+        folders={folders}
+        emptyMessage="Nothing completed yet"
+        isCompleted
+        {...(parentTitleMap !== undefined && { parentTitleMap })}
+      />
     </>
   );
 }

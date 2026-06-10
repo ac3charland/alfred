@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, ChevronRight, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
@@ -19,6 +19,7 @@ interface TaskRowProperties {
   folders: Folder[];
   depth?: number;
   isCompleted?: boolean;
+  parentTitle?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,7 +67,13 @@ function isDueDateOverdue(iso: string): boolean {
  * - Move-to-folder dropdown
  * - Delete
  */
-export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskRowProperties) {
+export function TaskRow({
+  node,
+  folders,
+  depth = 0,
+  isCompleted = false,
+  parentTitle,
+}: TaskRowProperties) {
   const router = useRouter();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [showAddSubtask, setShowAddSubtask] = React.useState(false);
@@ -305,14 +312,20 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
             </button>
           </>
         ) : (
-          <span
-            className="flex-1 text-sm text-foreground truncate cursor-text"
+          <div
+            className="flex-1 min-w-0 flex flex-col cursor-text"
             onDoubleClick={() => {
               setIsEditingTitle(true);
             }}
           >
-            {node.title}
-          </span>
+            <span className="text-sm text-foreground truncate">{node.title}</span>
+            {isCompleted && parentTitle && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground/60">
+                <ListCheck size={10} className="shrink-0" />
+                <span className="truncate">{parentTitle}</span>
+              </span>
+            )}
+          </div>
         )}
 
         {/* Due date chip */}
@@ -654,6 +667,7 @@ export function TaskRow({ node, folders, depth = 0, isCompleted = false }: TaskR
               folders={folders}
               depth={depth + 1}
               isCompleted={isCompleted}
+              {...(isCompleted && { parentTitle: node.title })}
             />
           ))}
         </ul>

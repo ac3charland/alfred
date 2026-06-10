@@ -342,6 +342,44 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Completed view — parent name label
+  // ---------------------------------------------------------------------------
+
+  describe('parent name label', () => {
+    it('shows the parent title with list-check icon when isCompleted and parentTitle are set', () => {
+      render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted parentTitle="My Project" />);
+
+      expect(screen.getByText('My Project')).toBeInTheDocument();
+    });
+
+    it('does not show the parent label when isCompleted is false', () => {
+      render(<TaskRow node={BASE_ITEM} folders={[]} parentTitle="My Project" />);
+
+      expect(screen.queryByText('My Project')).not.toBeInTheDocument();
+    });
+
+    it('does not show the parent label when parentTitle is undefined', () => {
+      render(<TaskRow node={BASE_ITEM} folders={[]} isCompleted />);
+
+      // Only the task title should be present, no extra label
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+    });
+
+    it('passes parentTitle to child TaskRow when isCompleted', async () => {
+      const nodeWithChild = { ...BASE_ITEM, children: [CHILD_ITEM] };
+      const user = userEvent.setup();
+      render(<TaskRow node={nodeWithChild} folders={[]} isCompleted />);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      // 'Write tests' appears twice: once as the parent task title, once as the child's parent label
+      expect(screen.getAllByText('Write tests')).toHaveLength(2);
+      // The child's own title is also shown
+      expect(screen.getByText('Write unit tests')).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Inline title editing
   // ---------------------------------------------------------------------------
 
