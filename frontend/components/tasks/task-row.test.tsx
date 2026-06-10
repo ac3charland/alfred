@@ -340,4 +340,115 @@ describe('TaskRow', () => {
   it('exports mockDeleteItem for future tests', () => {
     expect(mockDeleteItem).toBeDefined();
   });
+
+  // ---------------------------------------------------------------------------
+  // Inline title editing
+  // ---------------------------------------------------------------------------
+
+  describe('inline title editing', () => {
+    it('enters edit mode on double-click of the title', async () => {
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toBeInTheDocument();
+    });
+
+    it('shows the current title value in the edit input', async () => {
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveValue('Write tests');
+    });
+
+    it('saves the title and calls updateItem when Enter is pressed', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, title: 'Updated title' });
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Updated title');
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { title: 'Updated title' });
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+    });
+
+    it('saves the title when the confirm button is clicked', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, title: 'Updated title' });
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Updated title');
+      await user.click(screen.getByRole('button', { name: /confirm title/i }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { title: 'Updated title' });
+        expect(mockRefresh).toHaveBeenCalled();
+      });
+    });
+
+    it('cancels the edit on Escape without calling updateItem', async () => {
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Should not save');
+      await user.keyboard('[Escape]');
+
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+    });
+
+    it('does not call updateItem when the title is unchanged', async () => {
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      await user.keyboard('[Enter]');
+
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+
+    it('reverts to the original title if updateItem fails', async () => {
+      mockUpdateItem.mockRejectedValue(new Error('Network error'));
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Broken title');
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveValue('Write tests');
+      });
+    });
+
+    it('exits edit mode after a successful save', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, title: 'New title' });
+      const user = userEvent.setup();
+      render(<TaskRow node={BASE_ITEM} folders={[]} />);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+      });
+    });
+  });
 });
