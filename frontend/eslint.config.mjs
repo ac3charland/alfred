@@ -26,6 +26,8 @@ export default defineConfig([
       'storybook-static/**',
       'playwright-report/**',
       'test-results/**',
+      // Stryker mutation testing — transient sandbox copy of source (never lint)
+      '.stryker-tmp/**',
       '*.gen.ts',
       'node_modules/**',
       // Next.js generated file — do not lint

@@ -10,6 +10,12 @@ test-results/
 .chromium/
 *.tsbuildinfo
 
+# Stryker mutation testing — transient sandbox + generated reports (don't format)
+.stryker-tmp/
+stryker.log
+**/reports/mutation.html
+**/reports/mutation/
+
 # Lockfile is npm-managed
 package-lock.json
 

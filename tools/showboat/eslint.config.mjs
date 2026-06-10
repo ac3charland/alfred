@@ -10,7 +10,7 @@ import tseslint from 'typescript-eslint';
 export default defineConfig([
   // ── Global ignores ──────────────────────────────────────────────────────
   {
-    ignores: ['dist/**', 'node_modules/**', '*.gen.ts'],
+    ignores: ['dist/**', 'node_modules/**', '.stryker-tmp/**', '*.gen.ts'],
   },
 
   // ── Base JS rules ────────────────────────────────────────────────────────

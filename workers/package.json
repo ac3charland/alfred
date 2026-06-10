@@ -8,11 +8,14 @@
     "lint": "eslint --fix --cache --cache-location .eslintcache .",
     "format": "prettier --write --cache .",
     "test": "jest --passWithNoTests",
+    "mutation": "stryker run",
     "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.1",
     "@eslint/js": "^9.39.4",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/jest-runner": "^9.6.1",
     "@tsconfig/strictest": "^2.0.8",
     "@types/jest": "^30.0.0",
     "eslint": "^9.39.4",

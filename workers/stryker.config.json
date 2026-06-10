@@ -1,0 +1,11 @@
+{
+  "testRunner": "jest",
+  "jest": {
+    "projectType": "custom",
+    "configFile": "jest.config.ts"
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": ["src/**/*.ts", "!src/**/*.test.ts"],
+  "reporters": ["html", "clear-text", "progress"],
+  "concurrency": 4
+}
