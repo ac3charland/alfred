@@ -5,18 +5,14 @@ import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
 import { FolderNav } from '@/components/tasks/folder-nav';
-import type { Folder } from '@/lib/types';
 import { cn } from '@/lib/utils';
-
-interface MobileNavClientProperties {
-  folders: Folder[];
-}
 
 /**
  * Mobile hamburger nav — a Dialog-based slide-in drawer for narrow viewports.
- * The FolderNav inside closes the sheet when a link is clicked (via onClose).
+ * The FolderNav inside reads folders from the store and closes the sheet when a
+ * link is clicked (via onClose).
  */
-export default function MobileNavClient({ folders }: MobileNavClientProperties) {
+export default function MobileNavClient() {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -50,7 +46,6 @@ export default function MobileNavClient({ folders }: MobileNavClientProperties) 
           </div>
           <div className="overflow-y-auto px-2">
             <FolderNav
-              folders={folders}
               onClose={() => {
                 setOpen(false);
               }}

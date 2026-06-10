@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { signOut } from '@/lib/auth/actions';
 import { requireUser } from '@/lib/auth/require-user';
 import { getFolders } from '@/lib/data/folders';
+import { FoldersProvider } from '@/lib/stores/folders-store';
 
 /**
  * Tasks module layout (Server Component).
@@ -22,60 +23,62 @@ export default async function TasksLayout({ children }: { children: React.ReactN
   const folders = await getFolders();
 
   return (
-    <div className="flex h-full min-h-screen bg-background">
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
-        <div className="flex h-14 items-center px-4 border-b border-border">
-          <Link
-            href="/"
-            aria-label="alfred — back to capture"
-            className="font-serif text-xl text-foreground tracking-tight transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
-          >
-            alfred
-          </Link>
-        </div>
-        <div className="flex-1 overflow-y-auto px-2">
-          <FolderNav folders={folders} />
-        </div>
-      </aside>
-
-      {/* Main content area */}
-      <div className="flex flex-1 flex-col min-w-0">
-        {/* Header */}
-        <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
-          {/* Mobile: hamburger + wordmark */}
-          <div className="flex items-center gap-3 md:hidden">
-            <MobileNavClient folders={folders} />
+    <FoldersProvider initialFolders={folders}>
+      <div className="flex h-full min-h-screen bg-background">
+        {/* Desktop sidebar */}
+        <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
+          <div className="flex h-14 items-center px-4 border-b border-border">
             <Link
               href="/"
               aria-label="alfred — back to capture"
-              className="font-serif text-xl text-foreground transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+              className="font-serif text-xl text-foreground tracking-tight transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
             >
               alfred
             </Link>
           </div>
+          <div className="flex-1 overflow-y-auto px-2">
+            <FolderNav />
+          </div>
+        </aside>
 
-          {/* Desktop: spacer (wordmark is in sidebar) */}
-          <div className="hidden md:block" />
+        {/* Main content area */}
+        <div className="flex flex-1 flex-col min-w-0">
+          {/* Header */}
+          <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
+            {/* Mobile: hamburger + wordmark */}
+            <div className="flex items-center gap-3 md:hidden">
+              <MobileNavClient />
+              <Link
+                href="/"
+                aria-label="alfred — back to capture"
+                className="font-serif text-xl text-foreground transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+              >
+                alfred
+              </Link>
+            </div>
 
-          {/* Sign out */}
-          <form action={signOut}>
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground"
-            >
-              Sign out
-            </Button>
-          </form>
-        </header>
+            {/* Desktop: spacer (wordmark is in sidebar) */}
+            <div className="hidden md:block" />
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-4 py-8">{children}</div>
-        </main>
+            {/* Sign out */}
+            <form action={signOut}>
+              <Button
+                type="submit"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Sign out
+              </Button>
+            </form>
+          </header>
+
+          {/* Page content */}
+          <main className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-3xl px-4 py-8">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
+    </FoldersProvider>
   );
 }
