@@ -1,8 +1,12 @@
 import { expect, test } from '@playwright/test';
 
+// This spec verifies the logged-OUT behavior, so it opts out of the shared
+// authenticated session that the chromium project applies by default.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 // With the Supabase auth gate active, an unauthenticated visitor to any protected
-// route is redirected to /login by the middleware. (This is also the deterministic
-// behavior when Supabase is unreachable: getUser() returns null → redirect.)
+// route is redirected to /login by the middleware. (With no session cookie,
+// getUser() short-circuits to null without even contacting the backend.)
 test('unauthenticated visit to / is gated to the login page', async ({ page }) => {
   // getUser() runs server-side on the redirect + login render; allow headroom.
   test.setTimeout(60_000);
