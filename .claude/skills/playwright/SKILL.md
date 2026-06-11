@@ -241,75 +241,36 @@ The Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_U
 
 ---
 
-## Air-gapped / CDN-blocked Environments
+## Browser availability: Claude Code on the web (CDN-blocked sandboxes)
 
-In environments where the Playwright browser CDN (storage.googleapis.com) is unreachable
-(Docker containers, CI sandboxes, certain corporate networks), `playwright install chromium`
-will fail with `ENETUNREACH`. The alternative is `@sparticuz/chromium` — an npm package
-that bundles a serverless-compatible Chromium binary as a compressed `.br` file. Since the
-npm registry is always reachable, it installs cleanly.
+Playwright downloads its managed Chromium from `cdn.playwright.dev`. In some environments that
+host is blocked — most notably the **default "Trusted" network policy in Claude Code on the
+web**, whose allowlist covers npm + Ubuntu apt mirrors but NOT the Playwright browser CDN
+(confirmed: `curl -I https://cdn.playwright.dev/` → HTTP 403 under Trusted, while the apt and npm
+hosts return 200). There, `playwright install chromium` fails.
 
-**Setup pattern:**
+**Preferred fix — open the CDN, don't bundle a fallback.** Configure a custom cloud environment
+that allowlists the CDN and installs the browser at setup:
+- **Network access: Custom**, "include defaults" ticked, plus `cdn.playwright.dev` (and
+  `*.playwright.dev`). Fall back to **Full** only if a download redirect host is still blocked.
+- **Setup script** (runs as root, so `apt` works; cached across sessions):
+  `npm exec -w frontend -- playwright install --with-deps chromium`.
 
-1. Install `@sparticuz/chromium` as a production dep (it runs at test time, not just build):
-   ```
-   npm install @sparticuz/chromium
-   ```
+See [`docs/cloud-environment.md`](../../../docs/cloud-environment.md). alfred uses exactly this:
+`scripts/setup-chromium.mjs` then just runs the standard `playwright install chromium`, guarded
+by an `existsSync(chromium.executablePath())` check so it skips the download when the browser is
+already present.
 
-2. Write a `scripts/setup-chromium.mjs` that calls `inflate()` to extract to `/tmp`:
-   ```js
-   import { inflate } from '@sparticuz/chromium';
-   import { join } from 'node:path';  // use default import (unicorn/import-style)
-   await inflate('/path/to/chromium.br');  // extracted to /tmp/chromium
-   ```
-   Check `existsSync('/tmp/chromium')` before inflating to avoid re-extraction.
+**General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
+`launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
+`page.evaluate: Browser closed`.
 
-3. Configure `playwright.config.ts` to use the extracted binary:
-   ```ts
-   launchOptions: {
-     executablePath: process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] ?? '/tmp/chromium',
-     args: [...chromiumPkg.args, '--no-sandbox', '--disable-setuid-sandbox'],
-     // CRITICAL: pass LD_LIBRARY_PATH in launchOptions.env — not just in the shell.
-     // Playwright may override the process environment for the launched browser.
-     env: {
-       ...process.env,
-       LD_LIBRARY_PATH: '/tmp:' + (process.env['LD_LIBRARY_PATH'] ?? ''),
-     },
-   }
-   ```
-
-4. NSS/NSPR stub libraries: sparticuz chromium requires `libnspr4.so`, `libnss3.so`,
-   `libnssutil3.so` with GNU versioned symbols. If not present, compile stubs:
-   ```c
-   // nss-stub.c — provides NSS_3.x, NSSUTIL_3.x, NSPR_4.0 versioned symbols
-   // compile: gcc -shared -fPIC --version-script=nss.map -o /tmp/libnss3.so nss-stub.c
-   ```
-   Then put them in `/tmp/` and include `/tmp` in `LD_LIBRARY_PATH`.
-
-5. Wire `setup:chromium` before every test script so it always runs first:
-   ```json
-   "test:e2e": "node scripts/setup-chromium.mjs && playwright test"
-   ```
-
-**The sparticuz args do NOT include `--use-gl=angle --use-angle=swiftshader`.** Those
-are Playwright's internal defaults for Chromium. sparticuz provides its own SwiftShader
-build via `chromiumPkg.args` — use those, not Playwright's defaults.
-
-**Use `worers: 1` in playwright.config.ts** when using `@sparticuz/chromium` in
-single-process mode (the `--single-process` arg in `chromiumPkg.args`) — multiple
-workers spawning multiple Chromium processes in single-process mode causes crashes.
-
-**`Browser closed` crashes — two fixes (Storybook test-runner especially):**
-- **Always add `--disable-dev-shm-usage`.** In sandboxes/containers `/dev/shm` is tiny;
-  Chromium runs out of shared memory mid-run and dies with `page.evaluate: Browser closed`.
-  This flag makes it use `/tmp` instead. Add it to BOTH the Playwright launchOptions args and
-  the Storybook `test-runner-jest.config.cjs` launchOptions args.
-- **Do NOT use `--single-process` for the Storybook test-runner.** jest-playwright reuses ONE
-  browser across test FILES; a single-process Chromium exits when its first page closes, so
-  suite #2+ fails with `browserContext.newPage: Browser closed`. A single test file works, but
-  multiple story files don't. Drop `--single-process` (and `--no-zygote`) so the browser
-  process persists across files; keep `maxWorkers: 1` for memory headroom. (Playwright E2E with
-  one spec file is fine with single-process — the multi-file reuse is what breaks.)
+**Last resort (truly air-gapped CI where the CDN is unreachable at all):**
+`@sparticuz/chromium` bundles a serverless Chromium `.br` you `inflate()` to `/tmp`, point
+Playwright at via `launchOptions.executablePath`, and back with hand-compiled NSS/NSPR stub
+`.so` libraries on `LD_LIBRARY_PATH`. It's fragile (single-process crashes, missing shared libs,
+SwiftShader args) — prefer the allowlist approach above. alfred carried this until the
+custom-environment switch and no longer needs it.
 
 **Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
 `process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
@@ -317,33 +278,19 @@ workers spawning multiple Chromium processes in single-process mode causes crash
 
 ---
 
-## Storybook test-runner with sparticuz chromium
+## Storybook test-runner browser
 
-The Storybook test-runner has its own Jest-Playwright integration. To use sparticuz with
-`test-storybook`:
-
-1. Create `test-runner-jest.config.cjs` (must be `.cjs` not `.js` — see ESLint section):
-   ```js
-   const { getJestConfig } = require('@storybook/test-runner');
-   const config = getJestConfig();
-   module.exports = {
-     ...config,
-     testEnvironmentOptions: {
-       ...config.testEnvironmentOptions,
-       'jest-playwright': {
-         launchOptions: {
-           executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/tmp/chromium',
-           args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', ...],
-           env: { ...process.env, LD_LIBRARY_PATH: '/tmp:' + (process.env.LD_LIBRARY_PATH || '') },
-         },
-       },
-     },
-   };
-   ```
-   The test-runner discovers this config via glob `test-runner-jest*` — both `.js` and `.cjs`
-   work.
-
-2. Run sequence: `setup:chromium` → `storybook:build` → serve static build → `test-storybook --ci`.
+The Storybook test-runner runs on Playwright's managed Chromium. With a real browser available
+(see the section above), `test-runner-jest.config.cjs` just spreads `getJestConfig()` and sets a
+timeout — no custom `launchOptions`:
+```js
+const { getJestConfig } = require('@storybook/test-runner');
+const config = getJestConfig();
+module.exports = { ...config, testTimeout: 30_000 };
+```
+Must be `.cjs`, not `.js` (see ESLint section); the runner discovers it via the
+`test-runner-jest*` glob. Run sequence: `setup:chromium` → `storybook:build` → serve static
+build → `test-storybook --ci`.
 
 ---
 
