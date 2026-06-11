@@ -24,8 +24,17 @@ jest.mock('./capture-box', () => ({
   },
 }));
 
+// Capture the last-rendered scope so tests can assert on it.
+let lastTaskListScope: unknown;
 jest.mock('./task-list', () => ({
-  TaskList: function MockTaskList({ emptyMessage }: { emptyMessage?: string }) {
+  TaskList: function MockTaskList({
+    emptyMessage,
+    scope,
+  }: {
+    emptyMessage?: string;
+    scope?: unknown;
+  }) {
+    lastTaskListScope = scope;
     return <div data-testid="task-list">{emptyMessage}</div>;
   },
 }));
@@ -139,6 +148,72 @@ describe('InboxScreen', () => {
       // No animationEnd is fired, yet the list is gone right away.
       expect(screen.queryByTestId('inbox-reveal')).not.toBeInTheDocument();
       expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('reduced-motion subscription wiring', () => {
+    it('subscribes to matchMedia using the prefers-reduced-motion query string', () => {
+      // Verify the exact media query string used — killing the REDUCED_MOTION_QUERY mutation.
+      const spy = jest.spyOn(globalThis, 'matchMedia');
+      render(<InboxScreen open={false} />);
+
+      // useSyncExternalStore calls subscribe immediately and the snapshot getter.
+      // Both should use the correct query string.
+      expect(spy).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
+    });
+
+    it('adds a change event listener to the matchMedia query on mount', () => {
+      const addEventListenerMock = jest.fn();
+      const removeEventListenerMock = jest.fn();
+      const mql = {
+        matches: false,
+        media: '(prefers-reduced-motion: reduce)',
+        onchange: null,
+        addEventListener: addEventListenerMock,
+        removeEventListener: removeEventListenerMock,
+        dispatchEvent: jest.fn(),
+      } as unknown as MediaQueryList;
+      jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
+
+      render(<InboxScreen open={false} />);
+
+      // The subscribe function must wire up a 'change' listener (not '').
+      expect(addEventListenerMock).toHaveBeenCalledWith('change', expect.any(Function));
+    });
+
+    it('removes the change event listener on unmount (cleanup)', () => {
+      const addEventListenerMock = jest.fn();
+      const removeEventListenerMock = jest.fn();
+      const mql = {
+        matches: false,
+        media: '(prefers-reduced-motion: reduce)',
+        onchange: null,
+        addEventListener: addEventListenerMock,
+        removeEventListener: removeEventListenerMock,
+        dispatchEvent: jest.fn(),
+      } as unknown as MediaQueryList;
+      jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
+
+      const { unmount } = render(<InboxScreen open={false} />);
+      unmount();
+
+      // The cleanup must remove the 'change' listener (not '').
+      expect(removeEventListenerMock).toHaveBeenCalledWith('change', expect.any(Function));
+    });
+  });
+
+  describe('TaskList prop wiring', () => {
+    it('passes the inbox scope to TaskList', () => {
+      render(<InboxScreen open />);
+
+      // Verify scope={{ type: 'inbox' }} is passed — kills the ObjectLiteral and StringLiteral mutants.
+      expect(lastTaskListScope).toEqual({ type: 'inbox' });
+    });
+
+    it('passes the empty message to TaskList', () => {
+      render(<InboxScreen open />);
+
+      expect(screen.getByTestId('task-list')).toHaveTextContent('Your inbox is empty');
     });
   });
 });

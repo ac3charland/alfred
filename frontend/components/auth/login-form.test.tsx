@@ -84,4 +84,59 @@ describe('LoginForm', () => {
     // Should NOT navigate away.
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it('does not show an alert when there is no error', () => {
+    render(<LoginForm />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('disables inputs and button while sign-in is pending', async () => {
+    // Never resolves so the component stays in isPending=true state
+    mockSignInWithPassword.mockImplementation(() => new Promise(() => {}));
+
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText(/email/i), 'owner@example.com');
+    await user.type(screen.getByLabelText(/password/i), 'supersecret');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(screen.getByLabelText(/email/i)).toBeDisabled();
+    expect(screen.getByLabelText(/password/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: /signing in/i })).toBeDisabled();
+  });
+
+  it('re-enables the button after a failed sign-in', async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      error: { message: 'Invalid login credentials' },
+    });
+
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText(/email/i), 'owner@example.com');
+    await user.type(screen.getByLabelText(/password/i), 'wrongpass');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    // After the async failure completes, the button should be re-enabled
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: /sign in/i })).not.toBeDisabled();
+  });
+
+  it('re-enables the button after a successful sign-in', async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: undefined });
+
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText(/email/i), 'owner@example.com');
+    await user.type(screen.getByLabelText(/password/i), 'supersecret');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/');
+    });
+    expect(screen.getByRole('button', { name: /sign in/i })).not.toBeDisabled();
+  });
 });

@@ -18,7 +18,9 @@ interface FolderNavProperties {
 /** Shared styling for a nav link, highlighted when it points at the active route. */
 const navLinkClass = (active: boolean) =>
   cn(
+    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
     'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors duration-100 motion-reduce:transition-none',
+    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
     active
       ? 'bg-secondary text-foreground font-medium'
@@ -41,6 +43,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const [isCreating, setIsCreating] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState('');
   const [editingFolderId, setEditingFolderId] = React.useState<string | undefined>();
+  // Stryker disable next-line StringLiteral: AT_CEILING — editingName's initial value is always overwritten by setEditingName(folder.name) in the same onClick that sets editingFolderId, before the rename input ever renders; never observable — equivalent.
   const [editingName, setEditingName] = React.useState('');
   const [isPending, setIsPending] = React.useState(false);
 
@@ -51,6 +54,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const closeProperty = onClose ? { onClick: onClose } : {};
 
   const handleCreateFolder = async (event_?: React.SyntheticEvent) => {
+    // Stryker disable next-line OptionalChaining: AT_CEILING — handleCreateFolder's only caller is the form onSubmit (line ~131), which always passes a defined SyntheticEvent; the optional chain never short-circuits in reachable code — equivalent.
     event_?.preventDefault();
     const name = newFolderName.trim();
     if (!name || isPending) return;
@@ -196,6 +200,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                     href={`/folders/${folder.id}`}
                     className={cn(
                       navLinkClass(isActive(`/folders/${folder.id}`)),
+                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                       'flex-1 min-w-0',
                     )}
                     {...closeProperty}

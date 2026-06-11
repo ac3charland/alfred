@@ -70,4 +70,52 @@ describe('IconButton', () => {
     expect(link).toHaveClass('inline-flex');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
+
+  it('defaults to type="button" to avoid accidental form submission', () => {
+    render(<IconButton aria-label="Close" />);
+
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveAttribute('type', 'button');
+  });
+
+  it('respects an explicit type prop (e.g. type="submit")', () => {
+    render(<IconButton aria-label="Submit" type="submit" />);
+
+    expect(screen.getByRole('button', { name: 'Submit' })).toHaveAttribute('type', 'submit');
+  });
+
+  it('applies neutral tone classes by default', () => {
+    render(<IconButton aria-label="Menu" />);
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toHaveClass(
+      'text-muted-foreground',
+      'hover:text-foreground',
+    );
+  });
+
+  it('applies the accent tone classes', () => {
+    render(<IconButton aria-label="Star" tone="accent" />);
+
+    expect(screen.getByRole('button', { name: 'Star' })).toHaveClass('hover:text-accent-teal');
+  });
+
+  it('applies the affirm tone classes', () => {
+    render(<IconButton aria-label="Check" tone="affirm" />);
+
+    expect(screen.getByRole('button', { name: 'Check' })).toHaveClass(
+      'text-accent-teal',
+      'focus-visible:ring-accent-teal',
+    );
+  });
+
+  it('applies md size classes by default', () => {
+    render(<IconButton aria-label="Menu" />);
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toHaveClass('h-6', 'w-6');
+  });
+
+  it('applies sm size classes when size="sm"', () => {
+    render(<IconButton aria-label="Menu" size="sm" />);
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toHaveClass('h-5', 'w-5');
+  });
 });
