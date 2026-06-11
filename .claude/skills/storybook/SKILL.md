@@ -319,6 +319,32 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
 - The gate (`check:slow` → `test:storybook`) runs `test-storybook --ci`, which **fails**
   on a missing or mismatched baseline instead of silently writing one.
 
+**When an intentional change moves a baseline — capture the diff, then approve (don't
+make me do it manually).** A failing visual snapshot is not automatically a bug: if *you*
+changed the component on purpose, the baseline is simply stale. On any mismatch,
+`jest-image-snapshot` auto-writes a **3-panel diff** — baseline | highlighted changed
+pixels (red) | received — to
+`frontend/__image_snapshots__/__diff_output__/<story-id>-diff.png` (gitignored, transient).
+Turn that failure into a reviewable, self-approving event:
+
+1. **Confirm the change is intended** by looking at the diff image. If the diff shows
+   something you did *not* intend, it's a real regression — fix the code, don't re-baseline.
+2. **Embed the diff in the demo doc** so the reviewer sees exactly what moved:
+   `npm run demo -- image docs/demos/<doc>.md frontend/__image_snapshots__/__diff_output__/<story-id>-diff.png`
+   (Add a `note` first describing the intended change. The diff *is* the demo evidence for
+   a visual change — see the showboat skill.)
+3. **Approve the new render** — this regenerates the baselines, rewriting **only** the
+   mismatched PNGs: `npm run test:storybook:update -w frontend`.
+4. **Commit the regenerated baseline PNG(s) together with the demo doc** (e.g.
+   `test(<scope>): rebaseline <component> visual snapshot`). The regenerated PNG is the
+   approval; the embedded diff is the proof. **Never hand-edit a baseline PNG** — only the
+   generator (the update script) may write it.
+
+Do not silently re-run `:update` and move on — without the diff in the demo doc the
+baseline change is invisible to review. This is the whole point: the agent approves its
+own intended visual changes, with evidence, so a human doesn't have to drive the
+accept-baseline dance by hand.
+
 **Opt-in per story, not blanket.** `postVisit` screenshots a story only when it sets
 `parameters.visualTest`; every other story (molecules, organisms) is still smoke-tested
 and runs its play function, just without a screenshot. This keeps the baseline set small
@@ -433,9 +459,9 @@ augmentation comes from the `@types` package, so no import of `expect` is needed
 - **MDX stories and custom Docs pages**: alfred writes stories in `.tsx` files only. MDX is valid
   but adds authoring overhead with no benefit for this use case.
 
-- **Chromatic visual diffing**: alfred does **not** use Chromatic specifically (its baselines
-  live in the cloud). It **does** do visual regression, self-hosted, with baselines committed
-  to git — see §7. Don't reach for Chromatic / the `@chromatic-com/storybook` addon.
+- **Chromatic / `@chromatic-com/storybook`**: alfred does visual regression self-hosted with
+  git-committed baselines (§7), so the hosted Chromatic service and its addon are intentionally
+  not used.
 
 - **`composeStories` portable stories in Jest**: alfred uses the test-runner for story-based
   testing. The portable stories / JSDOM path is the migration route from Storyshots and is

@@ -145,6 +145,11 @@ web, and in the sandbox):
 - For UI changes, screenshot the running app with
   `npm run screenshot -w frontend -- <url> shot.png` and embed it via
   `npm run demo -- image …`.
+- For a change that **moves a committed visual snapshot** (the Storybook atoms), the demo
+  evidence is the **diff image** the snapshot gate auto-emits — embed it, then **approve**
+  the new baseline (`npm run test:storybook:update -w frontend`) and commit the regenerated
+  PNG(s) with the demo doc. See the `storybook` skill (§7) for the full capture-then-approve
+  flow; never hand-edit a baseline.
 - Confirm it reproduces with `npm run demo -- verify docs/demos/<name>.md` before you
   wrap up.
 
@@ -159,7 +164,7 @@ When you finish a task, **unless the user tells you not to**, wrap it up like th
 1. **Never commit on `main`.** Check the current branch first; if it's `main`, create a feature branch and switch to it before committing.
 2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
 3. **Push** the branch to the remote.
-4. **Open a pull request** from the feature branch into `main` once the full feature is done. **Link the demo doc** (`docs/demos/…`) in the description so reviewers can see — and re-run — the change working. If a pull request for the branch already exists, **update its description** to include your change.
+4. **Open a pull request** from the feature branch into `main` once the full feature is done. **Link the demo doc as a _live, clickable_ link** in the description — a full GitHub blob URL on the PR's head branch (`https://github.com/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md`), **not** a bare path, so reviewers can open it and see the embedded screenshots/diffs rendered. See the `showboat` skill for the exact format. If a pull request for the branch already exists, **update its description** to include your change.
 
 The pre-commit (`check:fast`) and pre-push (`check:slow`) hooks gate each step
 automatically — fix any failures in the **code**, never with `--no-verify` or by
