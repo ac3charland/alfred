@@ -105,8 +105,8 @@ Commit the doc under `docs/demos/` and link it in the PR description. For a
 
 ## Screenshotting the UI (the evidence for any visual change)
 
-Reuse the sandbox-aware Chromium the E2E suite installs (`npm run setup:chromium`
-extracts it to `/tmp/chromium`) via the `screenshot` helper
+Reuse the Playwright-managed Chromium the E2E suite installs (`npm run setup:chromium`,
+which skips the download when the browser is already present) via the `screenshot` helper
 (`frontend/scripts/screenshot.mjs`). `verify` **skips image entries**, so
 screenshots never make verification flaky. There are two ways to put the rendered
 UI in front of it — reach for **Storybook first**; it's the one that always works
@@ -121,7 +121,7 @@ a Storybook snapshot test. Build the static Storybook, serve it, and shoot the
 story's `iframe.html`:
 
 ```bash
-npm run storybook:build -w frontend           # also run setup:chromium once if /tmp/chromium is absent
+npm run storybook:build -w frontend           # also run setup:chromium once if Chromium isn't installed yet
 npm run serve:storybook -w frontend &         # http-server on :6006
 npx wait-on http://127.0.0.1:6006
 # story id = kebab(title)--kebab(exportName), e.g. title 'Tasks/TaskRow' + export
