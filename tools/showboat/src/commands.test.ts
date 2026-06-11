@@ -23,6 +23,16 @@ describe('init', () => {
     expect(document.timestamp).toBe('2026-06-10T12:00:00.000Z');
     expect(document.entries).toEqual([]);
   });
+
+  it('creates a doc with exactly zero entries — serialized file contains nothing beyond header', () => {
+    const { file } = tempDoc();
+    init(file, 'Empty', new Date('2026-01-01T00:00:00.000Z'));
+    const raw = readFileSync(file, 'utf8');
+    // Exact expected serialization: header line, blank line, italic timestamp, trailing newline.
+    // If entries were non-empty (e.g. ["Stryker was here"]), join() would add \n\n + the stringified
+    // entry (undefined → empty string) resulting in a longer file.
+    expect(raw).toBe('# Empty\n\n*2026-01-01T00:00:00.000Z*\n');
+  });
 });
 
 describe('note', () => {
@@ -31,6 +41,36 @@ describe('note', () => {
     init(file, 'D');
     note(file, 'hello world');
     expect(entriesOf(file)).toEqual([{ kind: 'note', text: 'hello world' }]);
+  });
+
+  it('strips a single trailing newline', () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    note(file, 'trimmed\n');
+    expect(entriesOf(file)).toEqual([{ kind: 'note', text: 'trimmed' }]);
+  });
+
+  it('strips multiple consecutive trailing newlines, not just one', () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    note(file, 'trimmed\n\n\n');
+    // After stripping ALL trailing newlines, the serialized file ends with "trimmed\n" (one newline
+    // from serializeDocument's trailing \n). With /\n$/ as the mutant (strips only one newline),
+    // "trimmed\n\n" remains in the entry → file ends with "trimmed\n\n\n", not "trimmed\n".
+    const raw = readFileSync(file, 'utf8');
+    expect(raw).toMatch(/trimmed\n$/);
+  });
+
+  it('preserves a mid-string newline while stripping only the trailing ones', () => {
+    const { file } = tempDoc();
+    init(file, 'D');
+    note(file, 'line one\nline two\n');
+    const entries = entriesOf(file);
+    expect(entries).toHaveLength(1);
+    // Mid-string newline must be preserved
+    expect((entries[0] as { text: string }).text).toContain('\n');
+    // But trailing newline must be gone
+    expect((entries[0] as { text: string }).text).not.toMatch(/\n$/);
   });
 });
 
@@ -63,6 +103,44 @@ describe('exec', () => {
     init(file, 'D');
     const result = exec(file, 'bash', 'pwd', directory);
     expect(result.output.endsWith(path.basename(directory))).toBe(true);
+  });
+
+  it('strips a single trailing newline from code before serializing', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    exec(file, 'bash', 'echo hi\n', directory);
+    expect(entriesOf(file)).toEqual([
+      { kind: 'exec', lang: 'bash', code: 'echo hi', output: 'hi' },
+    ]);
+    // Check raw serialized content: the fenced code block must not have a trailing blank line
+    // before the closing fence. With the trailing newline stripped, the block is:
+    //   ```bash\necho hi\n```
+    // With a trailing newline NOT stripped, makeFence's trimTrailingNewlines would catch it,
+    // so for a single trailing newline both paths converge — verified via parse round-trip above.
+  });
+
+  it('strips multiple consecutive trailing newlines from code, not just one', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    exec(file, 'bash', 'echo hi\n\n\n', directory);
+    // The parsed entry must still have code='echo hi' (makeFence trims trailing newlines too,
+    // so this is consistent with AT_CEILING for the /\n$/ mutant which only removes one \n)
+    expect(entriesOf(file)).toEqual([
+      { kind: 'exec', lang: 'bash', code: 'echo hi', output: 'hi' },
+    ]);
+  });
+
+  it('preserves a mid-code newline while stripping only the trailing ones', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    exec(file, 'bash', 'echo line1\necho line2\n', directory);
+    const entries = entriesOf(file);
+    expect(entries).toHaveLength(1);
+    const entry = entries[0] as { kind: string; code: string };
+    // Mid-string newline must be preserved
+    expect(entry.code).toContain('\n');
+    // But trailing newline must be gone
+    expect(entry.code).not.toMatch(/\n$/);
   });
 });
 
@@ -99,6 +177,91 @@ describe('image', () => {
       { kind: 'image', alt: 'home page', path: 'demo-image-1.png' },
     ]);
   });
+
+  it('uses an empty string for alt when the markdown alt is empty', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const source = path.join(directory, 'shot.png');
+    writeFileSync(source, 'x');
+    image(file, `![](${source})`);
+    const entries = entriesOf(file);
+    expect(entries[0]).toMatchObject({ kind: 'image', alt: '' });
+  });
+
+  it('does not match markdown embedded after a prefix — regex must be anchored at the start', () => {
+    // Without a ^ anchor, "prefix![alt](src)" would be parsed as markdown and alt would be "alt".
+    // With ^, it is treated as a bare path, so alt="" and copyFileSync uses the whole string as path.
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const source = path.join(directory, 'shot.png');
+    writeFileSync(source, 'x');
+    // "prefix![alt](source)" — with ^ anchor, no regex match → treated as bare path → ENOENT
+    // Without ^ anchor → matches, copies correctly, alt="alt"
+    expect(() => {
+      image(file, `prefix![alt](${source})`);
+    }).toThrow(/ENOENT/);
+  });
+
+  it('does not match markdown followed by trailing text — regex must be anchored at the end', () => {
+    // Without a $ anchor, "![alt](src)suffix" would match and extract src correctly.
+    // With $, it is treated as a bare path → ENOENT (the whole string is used as path).
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const source = path.join(directory, 'shot.png');
+    writeFileSync(source, 'x');
+    // "![alt](source)suffix" — with $ anchor, no match → bare path → ENOENT
+    // Without $ anchor → matches, copies from real source, alt="alt"
+    expect(() => {
+      image(file, `![alt](${source})suffix`);
+    }).toThrow(/ENOENT/);
+  });
+
+  it('strips surrounding whitespace from argument before matching markdown', () => {
+    // trim() is called before the regex. Without trim(), "  ![alt](src)  " would not match ^.
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const source = path.join(directory, 'trimmed.png');
+    writeFileSync(source, 'x');
+    image(file, `  ![trim test](${source})  `);
+    expect(entriesOf(file)[0]).toMatchObject({ kind: 'image', alt: 'trim test' });
+  });
+
+  it('uses .png as extension fallback for sources without an extension', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const source = path.join(directory, 'screenshot');
+    writeFileSync(source, 'x');
+    image(file, source);
+    const entries = entriesOf(file);
+    expect(entries[0]).toMatchObject({ kind: 'image', path: 'demo-image-1.png' });
+  });
+
+  it('increments the image count for the second image in the document', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const src1 = path.join(directory, 'a.png');
+    const src2 = path.join(directory, 'b.png');
+    writeFileSync(src1, 'x');
+    writeFileSync(src2, 'x');
+    image(file, src1);
+    image(file, src2);
+    const entries = entriesOf(file);
+    expect(entries[0]).toMatchObject({ path: 'demo-image-1.png' });
+    expect(entries[1]).toMatchObject({ path: 'demo-image-2.png' });
+  });
+
+  it('counts only existing image entries, not all entries', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    // Add a note entry first — it must NOT count toward the image numbering
+    note(file, 'some note');
+    const src = path.join(directory, 'shot.png');
+    writeFileSync(src, 'x');
+    image(file, src);
+    const entries = entriesOf(file);
+    // The image is the second entry (after the note), but it should be numbered "1"
+    expect(entries[1]).toMatchObject({ kind: 'image', path: 'demo-image-1.png' });
+  });
 });
 
 describe('verify', () => {
@@ -133,6 +296,20 @@ describe('verify', () => {
     expect(readFileSync(file, 'utf8')).toContain('9'); // original left tampered
     expect(readFileSync(out, 'utf8')).toContain('4'); // refreshed has the real output
   });
+
+  it('skips note and image entries and only counts exec blocks', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    note(file, 'some narration');
+    exec(file, 'bash', 'echo counted', directory);
+    // Add an image entry manually by writing raw markdown into the file
+    const raw = readFileSync(file, 'utf8');
+    writeFileSync(file, raw + '\n![alt](demo-image-1.png)\n');
+    const result = verify(file, directory);
+    // Only the exec block is checked; note and image are skipped
+    expect(result.checked).toBe(1);
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('extract', () => {
@@ -146,5 +323,34 @@ describe('extract', () => {
       String.raw`showboat note 'copy.md' 'it'\''s fine'`,
       "showboat exec 'copy.md' 'bash' 'echo hi'",
     ]);
+  });
+
+  it('includes image entries as showboat image commands', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'Title');
+    const src = path.join(directory, 'shot.png');
+    writeFileSync(src, 'x');
+    image(file, `![the caption](${src})`);
+    const lines = extract(file, 'out.md').split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe("showboat init 'out.md' 'Title'");
+    expect(lines[1]).toBe("showboat image 'out.md' '![the caption](demo-image-1.png)'");
+  });
+
+  it('falls back to bash when the exec lang is empty', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'Title');
+    exec(file, '', 'echo hi', directory);
+    const lines = extract(file, 'out.md').split('\n');
+    // lang should be 'bash' not ''
+    expect(lines[1]).toBe("showboat exec 'out.md' 'bash' 'echo hi'");
+  });
+
+  it('preserves the actual lang when lang is not empty', () => {
+    const { file, directory } = tempDoc();
+    init(file, 'Title');
+    exec(file, 'node', 'console.log(1)', directory);
+    const lines = extract(file, 'out.md').split('\n');
+    expect(lines[1]).toBe("showboat exec 'out.md' 'node' 'console.log(1)'");
   });
 });

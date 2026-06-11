@@ -159,12 +159,56 @@ maintainer "supported mutators" page.)
   `"disableTypeChecks": "{app,components,lib}/**/*.{ts,tsx}"`.
 - **Keep `coverageAnalysis: "perTest"` with the Jest runner.** The runner also
   uses `--findRelatedTests`, so a single-file run only executes that file's tests.
+- **Inline `/** @jest-environment node */` pragmas break the run — point them at
+  the Stryker env instead.** For `perTest` coverage the runner swaps the
+  *config-level* `testEnvironment` (in `jest.config.ts`) for a Stryker-wrapped one
+  that reports per-test coverage (see `with-coverage-analysis.js`). It does **not**
+  reach a per-file docblock pragma — jest applies that itself, loading the literal
+  `jest-environment-node`, which reports no coverage. The whole run then aborts at
+  the dry run: `ERROR DryRunExecutor One or more tests resulted in an error: Missing
+  coverage results for: You probably configured a test environment in jest that is
+  not reporting code coverage to Stryker`. Fix it exactly as Stryker's error says —
+  change the node-context test files' first line to
+  `/** @jest-environment @stryker-mutator/jest-runner/jest-env/node */` (jsdom →
+  `.../jest-env/jsdom`). That wrapper is **transparent** outside Stryker (the mixin
+  only does anything when the `__stryker__` context is present), so `npm run test` /
+  `check:fast` are unaffected. The config-level default (`jsdom` in frontend, `node`
+  in workers) needs **no** change — Stryker auto-wraps it; only per-file overrides
+  need the explicit Stryker env. You can't collapse the pragmas into one global
+  `testEnvironment` because the suite genuinely uses both jsdom (React) and node
+  (API routes / lib) and the runner doesn't support jest `projects`.
+- **Each package's `.prettierignore` must list the Stryker artifacts itself.** A
+  package's `format` script runs `prettier --write .` from the package dir, so the
+  *closest* `.prettierignore` applies — the root one is **not** consulted. If a
+  package gets Stryker but its own `.prettierignore` omits `.stryker-tmp/`,
+  `stryker.log`, `reports/mutation.html`, and `reports/mutation/`, then `format`
+  (and `check:fast`) will reformat the generated HTML report in place — editing a
+  generated artifact, which CLAUDE.md forbids. Add those four entries to the
+  package `.prettierignore` (ESLint already ignores `.stryker-tmp/**` per package).
 - **Jest multi-`projects` config is unsupported by the runner.** Our packages use
   single-project Jest configs — keep it that way for any package you mutate.
 - **A survived mutant is a finding, not a failure to silence.** Fix it by adding
   an assertion in the **test**, never by deleting the mutator or disabling it
   (unless the mutation is genuinely equivalent/meaningless — then a documented
   `// Stryker disable next-line` comment is acceptable).
+- **Don't over-claim "equivalent" on a guard that a disabled button or shared
+  flag seems to make unreachable — it's usually killable.** Two recurring traps in
+  this repo's React components:
+  • A handler guard that duplicates a submit button's `disabled` (e.g.
+    `if (!name.trim() || isPending) return` inside `onSubmit`) is **still
+    reachable** by submitting the form *directly* — `fireEvent.submit(form)` /
+    `form.requestSubmit()` bypasses the disabled button. Submit with the empty/
+    invalid value and assert the action mock was **not** called; that kills both
+    the `if(false)` ConditionalExpression and the `||`→`&&` LogicalOperator mutant.
+  • A re-entrancy guard on a **shared** `isPending` (one flag for create/rename/
+    delete) is reachable **cross-operation**: hold one action pending (a deferred
+    promise), then trigger another whose button has no `disabled` — the original
+    guard blocks it, the mutant doesn't. Assert the second action's mock wasn't called.
+  Genuinely-equivalent guards do exist (a TS null/optional-chain guard unreachable
+  given the types; a `useState` initial always overwritten before first render; an
+  empty-array `Promise.all`/dispatch that no-ops) — those get a documented
+  `// Stryker disable next-line <Mutator>: AT_CEILING — <why>`. The test: *could any
+  assertion on state, a mock call, or rendered output ever differ?* If yes, kill it.
 - **The generated report is a generated artifact.** `<pkg>/reports/mutation/` is
   gitignored *and* prettier-ignored, and `.stryker-tmp/` is eslint-ignored. Never
   hand-edit or format them. (Adding those ignores when a package first gets

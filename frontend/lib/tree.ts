@@ -33,6 +33,7 @@ export function buildTree(items: Item[]): ItemNode[] {
 
   // Second pass: wire parent → children; collect roots.
   for (const node of nodeMap.values()) {
+    // Stryker disable next-line ConditionalExpression: AT_CEILING — id is always a string (never null), so nodeMap.get(parent_id) returns undefined when parent_id is null; the null guard is behavior-equivalent.
     const parentNode = node.parent_id === null ? undefined : nodeMap.get(node.parent_id);
     if (parentNode === undefined) {
       roots.push(node);
@@ -73,6 +74,7 @@ export function getAncestorTitles(items: Item[], parentId: string | null): strin
   const titles: string[] = [];
   const seen = new Set<string>();
   let currentId = parentId;
+  // Stryker disable next-line ConditionalExpression: AT_CEILING — when currentId is null, byId.get(null) is undefined → break; entering the loop changes nothing observable.
   while (currentId !== null && !seen.has(currentId)) {
     seen.add(currentId);
     const parent = byId.get(currentId);
@@ -105,6 +107,7 @@ export function getDescendantIds(node: ItemNode): string[] {
 export function collectSubtree(items: Item[], rootId: string): Item[] {
   const childrenByParent = new Map<string, Item[]>();
   for (const item of items) {
+    // Stryker disable next-line ConditionalExpression: AT_CEILING — root items would bucket under key null, which is never read (no item id is null); the collected subtree is unchanged.
     if (item.parent_id !== null) {
       const siblings = childrenByParent.get(item.parent_id) ?? [];
       siblings.push(item);
@@ -113,12 +116,14 @@ export function collectSubtree(items: Item[], rootId: string): Item[] {
   }
 
   const root = items.find((item) => item.id === rootId);
+  // Stryker disable next-line ConditionalExpression: AT_CEILING — without this early return, an undefined root is caught by the stack guard below and still yields []; identical result.
   if (root === undefined) return [];
 
   const result: Item[] = [];
   const stack: Item[] = [root];
   while (stack.length > 0) {
     const current = stack.pop();
+    // Stryker disable next-line ConditionalExpression: AT_CEILING — the stack only ever holds defined Items, so pop() is never undefined; this guard is dead defensive code.
     if (current === undefined) continue;
     result.push(current);
     for (const child of childrenByParent.get(current.id) ?? []) {

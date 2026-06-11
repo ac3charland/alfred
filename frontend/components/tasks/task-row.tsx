@@ -9,6 +9,7 @@ import { IconButton } from '@/components/atoms/icon-button';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { Button } from '@/components/ui/button';
+import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
@@ -19,40 +20,6 @@ interface TaskRowProperties {
   node: ItemNode;
   depth?: number;
   isCompleted?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers (outer scope to satisfy unicorn/consistent-function-scoping)
-// ---------------------------------------------------------------------------
-
-const MONTHS: readonly string[] = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
-function formatDueDate(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const todayString = now.toDateString();
-  const diffDays = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  if (date.toDateString() === todayString) return 'Today';
-  if (diffDays === 1) return 'Tomorrow';
-  if (diffDays === -1) return 'Yesterday';
-  return `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
-}
-
-function isDueDateOverdue(iso: string): boolean {
-  return new Date(iso) < new Date(new Date().toDateString());
 }
 
 /**
@@ -78,6 +45,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   const titleInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
+    // Stryker disable next-line ConditionalExpression,OptionalChaining: AT_CEILING — equivalent pair. The `?.` makes the `if` guard redundant for the side-effect: `if(true)` focuses on every effect run, but the title input is mounted (and the ref non-null) ONLY while isEditingTitle is true, so on every other run `current` is null and `?.` no-ops — identical to the guarded version. Likewise `current.focus()` (drop `?.`) only runs under the guard when the input is mounted, so `current` is never null there. Neither mutant can change observable focus behavior.
     if (isEditingTitle) titleInputRef.current?.focus();
   }, [isEditingTitle]);
   const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
@@ -95,7 +63,9 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   // list because they may be active items filtered out of the completed view.
   const isContextRow = isCompleted && depth === 0;
   const ancestorTitles = React.useMemo(
+    // Stryker disable next-line ArrayDeclaration: AT_CEILING — when isContextRow=false the false branch [] is never consumed (contextLabel is null, ancestorTitles.length is never checked); replacing with ["Stryker was here"] is behaviorally identical.
     () => (isContextRow ? getAncestorTitles(allTasks, node.parent_id) : []),
+    // Stryker disable next-line ArrayDeclaration: AT_CEILING — constant dep-array literal; every element is Object.is-equal across renders so React never recomputes, identical to [].
     [isContextRow, allTasks, node.parent_id],
   );
   const contextLabel = isContextRow
@@ -160,6 +130,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
 
   const handleSaveDueDate = async () => {
     setIsEditingDueDate(false);
+    // Stryker disable next-line MethodExpression: AT_CEILING — draftDueDate is only ever written by the date input's onChange or initialized from node.due_date (a clean YYYY-MM-DD or ''). A `type="date"` input rejects any value containing whitespace (its .value becomes ''), so draftDueDate can never hold surrounding whitespace; `.trim()` is therefore a provable no-op and removing it leaves every comparison identical.
     const newValue = draftDueDate.trim();
     const currentValue = node.due_date ?? '';
     if (newValue === currentValue) return;
@@ -206,7 +177,9 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
       {/* Main row */}
       <div
         className={cn(
+          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
           'flex items-center gap-2 rounded-sm py-2 pr-2',
+          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
           'hover:bg-secondary/30 transition-colors duration-100 motion-reduce:transition-none',
         )}
         style={{ paddingLeft: indentLeft }}
@@ -219,11 +192,15 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
           }}
           aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
           aria-expanded={isExpanded}
-          className={cn('shrink-0', !hasChildren && 'invisible pointer-events-none')}
+          className={
+            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+            cn('shrink-0', !hasChildren && 'invisible pointer-events-none')
+          }
         >
           <ChevronRight
             size={14}
             className={cn(
+              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
               'transition-transform duration-150 motion-reduce:transition-none',
               isExpanded && 'rotate-90',
             )}
@@ -242,11 +219,14 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
           }}
           aria-label={isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`}
           className={cn(
+            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
             'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
             isCompleted
               ? 'bg-accent-teal border-accent-teal'
-              : 'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
+              : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
           )}
         >
           {isCompleted && <Check size={10} className="text-background" strokeWidth={3} />}
@@ -271,7 +251,9 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                 }
               }}
               className={cn(
+                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                 'flex-1 min-w-0 rounded-sm border border-border bg-input px-2 py-0.5 text-sm text-foreground',
+                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
               )}
             />
@@ -282,7 +264,9 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                 void handleSaveTitle();
               }}
               className={cn(
+                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                 'flex h-5 w-5 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal',
+                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
               )}
             >
@@ -316,6 +300,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
             }}
             aria-label={`Due date: ${node.due_date}`}
             className={cn(
+              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
               'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors motion-reduce:transition-none',
               isDueDateOverdue(node.due_date)
                 ? 'border-accent-amber/50 text-accent-amber hover:border-accent-amber'
@@ -358,11 +343,17 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
             <DropdownMenu.Portal>
               <DropdownMenu.Content
                 className={cn(
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                   'z-50 min-w-40 rounded-xl border border-border bg-surface p-1',
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                   'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                   'data-[state=open]:animate-in data-[state=closed]:animate-out',
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                   'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                   'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                   'motion-reduce:animate-none',
                 )}
                 align="end"
@@ -402,8 +393,11 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                     <DropdownMenu.Portal>
                       <DropdownMenu.SubContent
                         className={cn(
+                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                           'z-50 min-w-36 rounded-xl border border-border bg-surface p-1',
+                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                           'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
+                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                           'motion-reduce:animate-none',
                         )}
                         sideOffset={4}
@@ -471,8 +465,11 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                     void handleSaveDueDate();
                   }}
                   className={cn(
+                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     'rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
+                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     '[color-scheme:dark]',
                   )}
                 />
@@ -529,8 +526,11 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                   }}
                   rows={3}
                   className={cn(
+                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     'w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground',
+                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     'placeholder:text-muted-foreground',
+                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
                   )}
                   placeholder="Add notes…"

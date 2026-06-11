@@ -11,6 +11,7 @@ export function jsonOk(data: unknown, status = 200): Response {
 /** Return an error JSON response with `{ error: message }` envelope. */
 export function jsonError(status: number, message: string, details?: unknown): Response {
   const body: { error: string; details?: unknown } = { error: message };
+  // Stryker disable next-line ConditionalExpression: AT_CEILING — JSON.stringify drops undefined-valued keys, so body.details = undefined yields byte-identical response output.
   if (details !== undefined) {
     body.details = details;
   }

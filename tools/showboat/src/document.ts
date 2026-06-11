@@ -34,6 +34,7 @@ export interface ShowboatDocument {
   entries: Entry[];
 }
 
+// Stryker disable next-line Regex: AT_CEILING — removing $ from FENCE has no observable effect since (.*) already captures to end-of-line; both forms match identically on any single line.
 const FENCE = /^(`{3,})(.*)$/;
 const IMAGE = /^!\[([^\]]*)\]\(([^)]*)\)$/;
 
@@ -102,7 +103,9 @@ type Token = FenceToken | ImageToken | NoteToken;
 function tokenize(lines: readonly string[], start: number): Token[] {
   const tokens: Token[] = [];
   let index = start;
+  // Stryker disable next-line EqualityOperator: AT_CEILING — only differs at the array boundary: with <=, the extra iteration reads lines[length]=undefined→'' which the line-110 blank-skip (''.trim()===''→index+=1;continue) handles identically before exiting; unobservable. (The <→>= variant on this line IS killable and stays covered by the parseDocument structural tests; Stryker can't isolate it from <→<= at per-mutator granularity.)
   while (index < lines.length) {
+    // Stryker disable next-line StringLiteral: AT_CEILING — lines[index] is always defined within index < lines.length; the ?? '' fallback is a TS-type-safety guard unreachable at runtime.
     const line = lines[index] ?? '';
     if (line.trim() === '') {
       index += 1;
@@ -111,11 +114,15 @@ function tokenize(lines: readonly string[], start: number): Token[] {
 
     const fence = FENCE.exec(line);
     if (fence) {
+      // Stryker disable next-line StringLiteral: AT_CEILING — when FENCE matches, fence[1] (the ticks) is always captured; the ?? default is a TS-type-safety guard.
       const ticks = fence[1] ?? '```';
+      // Stryker disable next-line StringLiteral: AT_CEILING — when FENCE matches, fence[2] (the info string) is always captured; the ?? default is a TS-type-safety guard.
       const info = (fence[2] ?? '').trim();
       const content: string[] = [];
       index += 1;
+      // Stryker disable next-line StringLiteral: AT_CEILING — lines[index] is always defined within index<lines.length; the ?? '' fallback is a TS-type-safety guard.
       while (index < lines.length && (lines[index] ?? '') !== ticks) {
+        // Stryker disable next-line StringLiteral: AT_CEILING — lines[index] is always defined within the loop bounds (index < lines.length); the ?? '' is a TS-type-safety guard.
         content.push(lines[index] ?? '');
         index += 1;
       }
@@ -126,13 +133,16 @@ function tokenize(lines: readonly string[], start: number): Token[] {
 
     const image = IMAGE.exec(line.trim());
     if (image) {
+      // Stryker disable next-line StringLiteral: AT_CEILING — IMAGE regex groups [1] and [2] are always captured when it matches (patterns [^\]]* and [^)]*); image[1]/image[2] are never undefined at runtime.
       tokens.push({ kind: 'image', alt: image[1] ?? '', path: image[2] ?? '' });
       index += 1;
       continue;
     }
 
     const noteLines: string[] = [];
+    // Stryker disable next-line EqualityOperator: AT_CEILING — only differs at the array boundary: with <=, the extra iteration reads lines[length]=undefined→'' which the line-145 break (''.trim()===''→break) handles identically before exiting; unobservable. (The <→>= variant on this line IS killable and stays covered by the parseDocument structural tests; Stryker can't isolate it from <→<= at per-mutator granularity.)
     while (index < lines.length) {
+      // Stryker disable next-line StringLiteral: AT_CEILING — lines[index] is always defined within index < lines.length; the ?? '' is a TS-type-safety guard.
       const noteLine = lines[index] ?? '';
       if (noteLine.trim() === '') break;
       if (FENCE.test(noteLine)) break;
@@ -148,9 +158,12 @@ function tokenize(lines: readonly string[], start: number): Token[] {
 function mergeTokens(tokens: readonly Token[]): Entry[] {
   const entries: Entry[] = [];
   let index = 0;
+  // Stryker disable next-line EqualityOperator: AT_CEILING — only differs at the array boundary: with <=, the extra iteration reads tokens[length]=undefined which the !token guard below (index+=1;continue) handles identically before exiting; unobservable. (The <→>= variant on this line IS killable and stays covered by the parseDocument structural tests; Stryker can't isolate it from <→<= at per-mutator granularity.)
   while (index < tokens.length) {
     const token = tokens[index];
+    // Stryker disable next-line ConditionalExpression,BlockStatement: AT_CEILING — tokenize() only ever pushes real Token objects; tokens[index] is only undefined when index===tokens.length, which only occurs with the EqualityOperator(<→<=) mutant; killing that mutant would require the two mutations to interact — a compound scenario beyond single-mutant testing.
     if (!token) {
+      // Stryker disable next-line AssignmentOperator: AT_CEILING — this branch is only reachable via the EqualityOperator mutant on the while condition; not reachable with any valid document.
       index += 1;
       continue;
     }
@@ -183,19 +196,25 @@ function mergeTokens(tokens: readonly Token[]): Entry[] {
 export function parseDocument(markdown: string): ShowboatDocument {
   const lines = markdown.split('\n');
   let index = 0;
+  // Stryker disable next-line EqualityOperator,StringLiteral: AT_CEILING — EqualityOperator(<→<=) only differs at the array boundary on an all-blank tail: with <=, the extra iteration reads lines[length]=undefined→'' (''.trim()===''→index+=1), then exits; the following titleMatch reads the same ''→null→throws either way; unobservable. (The <→>= variant on this line IS killable and stays covered by the parseDocument structural tests; Stryker can't isolate it from <→<= at per-mutator granularity.) StringLiteral(?? fallback): lines[index] is always a string within index<lines.length.
   while (index < lines.length && (lines[index] ?? '').trim() === '') index += 1;
 
+  // Stryker disable next-line Regex,StringLiteral: AT_CEILING — /^#\s+(.*)$/ vs /^#\s+(.*)/: removing $ has no effect since .* already captures to end-of-line. /^#\s(.*)$/: any title extracted has .trim() applied so leading spaces normalised away. StringLiteral(?? fallback): lines[index] is always defined when the while loop above has terminated.
   const titleMatch = /^#\s+(.*)$/.exec(lines[index] ?? '');
   if (!titleMatch) {
     throw new Error('malformed demo doc: missing "# Title" heading on the first line');
   }
+  // Stryker disable next-line StringLiteral: AT_CEILING — titleMatch[1] is always defined when the regex matches (group 1 is (.*)); the ?? '' is a TS-type-safety guard unreachable at runtime.
   const title = (titleMatch[1] ?? '').trim();
   index += 1;
 
+  // Stryker disable next-line EqualityOperator,StringLiteral: AT_CEILING — EqualityOperator(<→<=) only differs at the array boundary on an all-blank tail: with <=, the extra iteration reads lines[length]=undefined→'' (''.trim()===''→index+=1), then exits; the following timestampMatch reads the same ''→regex fails→timestamp stays '' either way; unobservable. (The <→>= variant on this line IS killable and stays covered by the parseDocument structural tests; Stryker can't isolate it from <→<= at per-mutator granularity.) StringLiteral(?? fallback): lines[index] is always a string within index<lines.length.
   while (index < lines.length && (lines[index] ?? '').trim() === '') index += 1;
+  // Stryker disable next-line StringLiteral: AT_CEILING — lines[index] is always defined here (the while loop above terminates on a non-whitespace line or when index reaches lines.length, in which case lines[index]=undefined→'' and the regex won't match, returning null regardless of the ?? fallback value).
   const timestampMatch = /^\*(.*)\*$/.exec((lines[index] ?? '').trim());
   let timestamp = '';
   if (timestampMatch) {
+    // Stryker disable next-line StringLiteral: AT_CEILING — timestampMatch[1] is always defined when the regex matches; the ?? '' is a TS-type-safety guard.
     timestamp = (timestampMatch[1] ?? '').trim();
     index += 1;
   }

@@ -1,4 +1,4 @@
-/** @jest-environment node */
+/** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
 import { GET, POST } from './route';
@@ -65,6 +65,18 @@ describe('GET /api/folders', () => {
     expect(body).toStrictEqual(folders);
   });
 
+  it('queries the "folders" table with select(*) and ascending order by created_at', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await GET(STUB_REQUEST, STUB_CONTEXT);
+
+    const chain = mockSupabase._chain;
+    expect(mockSupabase.from).toHaveBeenCalledWith('folders');
+    expect(chain.select).toHaveBeenCalledWith('*');
+    expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: true });
+  });
+
   it('returns 500 on Supabase error', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, {
       data: undefined,
@@ -110,6 +122,25 @@ describe('POST /api/folders', () => {
       STUB_CONTEXT,
     );
     expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe('Invalid request body');
+  });
+
+  it('returns 400 for invalid JSON body', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      new Request('http://localhost/api/folders', {
+        method: 'POST',
+        body: 'not-valid-json',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      STUB_CONTEXT,
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe('Invalid JSON body');
   });
 
   it('creates a folder and returns 201', async () => {
@@ -127,5 +158,41 @@ describe('POST /api/folders', () => {
     expect(response.status).toBe(201);
     const body: unknown = await response.json();
     expect(body).toStrictEqual(TEST_FOLDER);
+  });
+
+  it('inserts the folder name into the "folders" table', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_FOLDER, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(
+      new Request('http://localhost/api/folders', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Work' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      STUB_CONTEXT,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(mockSupabase.from).toHaveBeenCalledWith('folders');
+    expect(chain.insert).toHaveBeenCalledWith({ name: 'Work' });
+  });
+
+  it('returns 500 when Supabase returns an error on insert', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: undefined,
+      error: { message: 'Insert error' },
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      new Request('http://localhost/api/folders', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Work' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      STUB_CONTEXT,
+    );
+    expect(response.status).toBe(500);
   });
 });

@@ -1,4 +1,4 @@
-/** @jest-environment node */
+/** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
 import { DELETE, PATCH } from './route';
@@ -74,6 +74,25 @@ describe('PATCH /api/folders/[id]', () => {
       routeContext,
     );
     expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe('Invalid request body');
+  });
+
+  it('returns 400 for invalid JSON body', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request('http://localhost/api/folders/folder-1', {
+        method: 'PATCH',
+        body: 'not-valid-json',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe('Invalid JSON body');
   });
 
   it('renames folder and returns updated folder', async () => {
@@ -91,6 +110,43 @@ describe('PATCH /api/folders/[id]', () => {
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual(TEST_FOLDER);
+  });
+
+  it('updates the "folders" table with the correct name and id filter', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_FOLDER, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/folders/folder-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Renamed' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(mockSupabase.from).toHaveBeenCalledWith('folders');
+    expect(chain.update).toHaveBeenCalledWith({ name: 'Renamed' });
+    expect(chain.eq).toHaveBeenCalledWith('id', 'folder-1');
+  });
+
+  it('returns 500 when Supabase returns an error on update', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: undefined,
+      error: { message: 'Update error' },
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request('http://localhost/api/folders/folder-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Renamed' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+    expect(response.status).toBe(500);
   });
 });
 
@@ -128,6 +184,23 @@ describe('DELETE /api/folders/[id]', () => {
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual({ success: true });
+  });
+
+  it('deletes from the "folders" table filtering by the correct id', async () => {
+    const chain = {
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({ data: undefined, error: undefined }),
+    };
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await DELETE(new Request('http://localhost/api/folders/folder-1'), routeContext);
+
+    expect(mockSupabase.from).toHaveBeenCalledWith('folders');
+    expect(chain.eq).toHaveBeenCalledWith('id', 'folder-1');
   });
 
   it('returns 500 on Supabase error', async () => {

@@ -88,6 +88,12 @@ describe('tasksReducer', () => {
   it('remove drops every id in the set', () => {
     expect(tasksReducer([A, B], { type: 'remove', ids: ['a'] })).toStrictEqual([B]);
   });
+
+  it('unknown action type throws via assertNever', () => {
+    expect(() =>
+      tasksReducer([A], { type: 'unknown' } as unknown as Parameters<typeof tasksReducer>[1]),
+    ).toThrow('Unhandled task action');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -128,6 +134,48 @@ describe('addTask', () => {
     });
 
     expect(result.current.tasks).toStrictEqual([]);
+  });
+
+  it('includes parent_id in the API call when parentId is provided', async () => {
+    const saved = item({ id: 'server-1', parent_id: 'parent-1' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Subtask', parentId: 'parent-1' });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ parent_id: 'parent-1' }));
+  });
+
+  it('does NOT include parent_id in the API call when parentId is null (treated as absent)', async () => {
+    // `input.parentId ?? undefined` must use `??` not `&&`:
+    // null ?? undefined = undefined (so parent_id is omitted)
+    // null && undefined = null (which would cause parent_id: null to be spread if condition passes)
+    const saved = item({ id: 'server-1' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Root task', parentId: null });
+    });
+
+    // parent_id must not be included at all in the payload
+    const callArg = mockCreateItem.mock.calls[0]?.[0];
+    expect(callArg).not.toHaveProperty('parent_id');
+  });
+
+  it('does NOT include parent_id in the API call when parentId is undefined', async () => {
+    const saved = item({ id: 'server-1' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Root task' });
+    });
+
+    const callArg = mockCreateItem.mock.calls[0]?.[0];
+    expect(callArg).not.toHaveProperty('parent_id');
   });
 });
 
@@ -175,12 +223,35 @@ describe('completeTask', () => {
 
     expect(result.current.tasks.every((t) => t.status === 'active')).toBe(true);
   });
+
+  it('is a no-op and does not call the API when the id is not in the store', async () => {
+    // Guard: if (affected.length === 0) return — must not call API for unknown ids
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent]) });
+
+    await act(async () => {
+      await result.current.actions.completeTask('does-not-exist');
+    });
+
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+    // Store unchanged
+    expect(result.current.tasks[0]?.status).toBe('active');
+  });
 });
 
 describe('uncompleteTask', () => {
+  const completed = item({
+    id: 'item-1',
+    status: 'completed',
+    completed_at: '2025-01-05T00:00:00Z',
+  });
+  const completed2 = item({
+    id: 'item-2',
+    status: 'completed',
+    completed_at: '2025-01-06T00:00:00Z',
+  });
+
   it('reactivates a completed task and reconciles', async () => {
-    const completed = item({ id: 'item-1', status: 'completed' });
-    mockUpdateItem.mockResolvedValue({ ...completed, status: 'active' });
+    mockUpdateItem.mockResolvedValue({ ...completed, status: 'active', completed_at: null });
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([completed]) });
 
     await act(async () => {
@@ -189,6 +260,95 @@ describe('uncompleteTask', () => {
 
     expect(result.current.tasks[0]?.status).toBe('active');
     expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { status: 'active' });
+  });
+
+  it('optimistically sets status to "active" (not an empty string or other value)', () => {
+    // Ensures `status: 'active'` in the patch is not mutated to `status: ''`
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([completed]) });
+
+    act(() => {
+      void result.current.actions.uncompleteTask('item-1');
+    });
+
+    expect(result.current.tasks[0]?.status).toBe('active');
+  });
+
+  it('reconciles the store with the server row after uncomplete (not an empty upsert)', async () => {
+    // `dispatch({ type: 'upsert', items: [saved] })` must include [saved], not []
+    const serverRow = item({
+      id: 'item-1',
+      status: 'active',
+      completed_at: null,
+      title: 'from server',
+    });
+    mockUpdateItem.mockResolvedValue(serverRow);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([completed]) });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('item-1');
+    });
+
+    // Server title must be reflected (proves the upsert included the saved item)
+    expect(result.current.tasks[0]?.title).toBe('from server');
+  });
+
+  it('reactivates the correct task when multiple completed tasks exist', async () => {
+    // find predicate must use item.id === id (not find(() => true) which returns first)
+    const savedItem2 = item({ id: 'item-2', status: 'active', completed_at: null });
+    mockUpdateItem.mockResolvedValue(savedItem2);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([completed, completed2]),
+    });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('item-2');
+    });
+
+    // item-1 must remain completed; item-2 must be active
+    expect(result.current.tasks[0]?.status).toBe('completed');
+    expect(result.current.tasks[1]?.status).toBe('active');
+  });
+
+  it('rolls back the correct item (not the first item) when uncomplete of second item fails', async () => {
+    // find predicate: if () => true, rollback would restore item-1's original data to item-2
+    // Only catches if the two items have distinguishable completed_at values
+    const completed1 = item({
+      id: 'item-1',
+      status: 'completed',
+      title: 'First',
+      completed_at: '2025-01-01T00:00:00Z',
+    });
+    const completed2b = item({
+      id: 'item-2',
+      status: 'completed',
+      title: 'Second',
+      completed_at: '2025-01-02T00:00:00Z',
+    });
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([completed1, completed2b]),
+    });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('item-2').catch(() => {});
+    });
+
+    // item-2 must be rolled back to its OWN original data, not item-1's data
+    expect(result.current.tasks[1]?.title).toBe('Second');
+    expect(result.current.tasks[1]?.status).toBe('completed');
+  });
+
+  it('is a no-op and does not call the API when the id is not in the store', async () => {
+    // Guard: if (previous === undefined) return
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([completed]) });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('does-not-exist');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(result.current.tasks[0]?.status).toBe('completed');
   });
 });
 
@@ -208,6 +368,36 @@ describe('updateTask', () => {
     expect(result.current.tasks[0]?.notes).toBe('from server');
   });
 
+  it('applies the optimistic patch to the correct item when multiple items exist', () => {
+    // find predicate must use item.id === id (not () => true which patches first item)
+    const itemA = item({ id: 'item-a', notes: 'original-a' });
+    const itemB = item({ id: 'item-b', notes: 'original-b' });
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([itemA, itemB]) });
+
+    act(() => {
+      void result.current.actions.updateTask('item-b', { notes: 'updated-b' });
+    });
+
+    // item-a must be unchanged; item-b must have the new notes
+    expect(result.current.tasks[0]?.notes).toBe('original-a');
+    expect(result.current.tasks[1]?.notes).toBe('updated-b');
+  });
+
+  it('patches the correct item id (ids must include the target id)', () => {
+    // `dispatch({ type: 'patch', ids: [id], ... })` must not dispatch `ids: []`
+    const taskA = item({ id: 'item-a', notes: 'original-a' });
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([taskA]) });
+
+    act(() => {
+      void result.current.actions.updateTask('item-a', { notes: 'new-notes' });
+    });
+
+    // The item must have been patched (not a no-op from empty ids)
+    expect(result.current.tasks[0]?.notes).toBe('new-notes');
+  });
+
   it('rolls back the patched field on failure', async () => {
     mockUpdateItem.mockRejectedValue(new Error('network'));
     const { result } = renderHook(useTasksTest, {
@@ -219,6 +409,69 @@ describe('updateTask', () => {
     });
 
     expect(result.current.tasks[0]?.notes).toBe('original');
+  });
+
+  it('rolls back the correct item when two items exist and the second one fails', async () => {
+    // find predicate must use item.id === id (not () => true which captures first item)
+    // With () => true: previous = item-a, rollback patches item-b with item-a's notes = 'notes-a'
+    // With correct predicate: previous = item-b, rollback patches item-b with 'notes-b'
+    const itemA = item({ id: 'item-a', notes: 'notes-a' });
+    const itemB = item({ id: 'item-b', notes: 'notes-b' });
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([itemA, itemB]),
+    });
+
+    await act(async () => {
+      await result.current.actions.updateTask('item-b', { notes: 'typed-b' }).catch(() => {});
+    });
+
+    // item-a must be unchanged; item-b must be rolled back to 'notes-b' (NOT 'notes-a')
+    expect(result.current.tasks[0]?.notes).toBe('notes-a');
+    expect(result.current.tasks[1]?.notes).toBe('notes-b');
+  });
+
+  it('does not perform a rollback dispatch when the id is not in the store and request fails', async () => {
+    // if (previous) guard prevents rollback for unknown ids that would cause a phantom entry
+    const networkError = new Error('network');
+    mockUpdateItem.mockRejectedValue(networkError);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', notes: 'original' })]),
+    });
+    let caughtError: unknown;
+
+    await act(async () => {
+      try {
+        await result.current.actions.updateTask('does-not-exist', { notes: 'typed' });
+      } catch (error) {
+        caughtError = error;
+      }
+    });
+
+    // original item unchanged, and the original error is preserved
+    expect(result.current.tasks[0]?.notes).toBe('original');
+    expect(caughtError).toBe(networkError);
+  });
+
+  it('captures the pre-update state from the ref so a subsequent update rolls back correctly', async () => {
+    // Exercises the tasksRef sync — stale ref would roll back to wrong value
+    const firstServer = item({ id: 'item-1', notes: 'from-server-1' });
+    mockUpdateItem.mockResolvedValueOnce(firstServer).mockRejectedValueOnce(new Error('network'));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', notes: 'original' })]),
+    });
+
+    // First update succeeds
+    await act(async () => {
+      await result.current.actions.updateTask('item-1', { notes: 'typed-1' });
+    });
+    expect(result.current.tasks[0]?.notes).toBe('from-server-1');
+
+    // Second update fails: should roll back to 'from-server-1', not to 'original'
+    await act(async () => {
+      await result.current.actions.updateTask('item-1', { notes: 'typed-2' }).catch(() => {});
+    });
+    expect(result.current.tasks[0]?.notes).toBe('from-server-1');
   });
 });
 
@@ -255,6 +508,35 @@ describe('moveTask', () => {
 
     expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
   });
+
+  it('is a no-op and does not call the API when the id is not in the store', async () => {
+    // Guard: if (affected.length === 0) return
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent]) });
+
+    await act(async () => {
+      await result.current.actions.moveTask('does-not-exist', 'folder-2');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(mockMoveToInbox).not.toHaveBeenCalled();
+  });
+
+  it('restores the original folder on the subtree when move fails', async () => {
+    // Covers the rollback catch block (line 194-196)
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const parentInFolder = item({ id: 'item-1', folder_id: 'old-folder' });
+    const childInFolder = item({ id: 'c-1', parent_id: 'item-1', folder_id: 'old-folder' });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([parentInFolder, childInFolder]),
+    });
+
+    await act(async () => {
+      await result.current.actions.moveTask('item-1', 'new-folder').catch(() => {});
+    });
+
+    // Both items must be restored to 'old-folder'
+    expect(result.current.tasks.every((t) => t.folder_id === 'old-folder')).toBe(true);
+  });
 });
 
 describe('deleteTask', () => {
@@ -285,6 +567,19 @@ describe('deleteTask', () => {
       new Set(['c-1', 'item-1']),
     );
   });
+
+  it('is a no-op and does not call the API when the id is not in the store', async () => {
+    // Guard: if (affected.length === 0) return
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent]) });
+
+    await act(async () => {
+      await result.current.actions.deleteTask('does-not-exist');
+    });
+
+    expect(mockDeleteItem).not.toHaveBeenCalled();
+    // Store unchanged
+    expect(result.current.tasks).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -296,6 +591,7 @@ describe('useScopedTasks', () => {
     item({ id: 'inbox-active' }),
     item({ id: 'inbox-done', status: 'completed' }),
     item({ id: 'work-active', folder_id: 'work' }),
+    item({ id: 'work-done', folder_id: 'work', status: 'completed' }),
     item({ id: 'work-child', folder_id: 'work', parent_id: 'work-active' }),
   ];
 
@@ -308,15 +604,52 @@ describe('useScopedTasks', () => {
     expect(result.current.map((n) => n.id)).toStrictEqual(['inbox-active']);
   });
 
+  it('inbox scope excludes items with a folder_id (even if active)', () => {
+    // If scopeType === 'folder' guard is mutated to `if (true)`, inbox would be
+    // treated as a folder scope with folderId = null, filtering `folder_id === null`
+    // instead of the proper inbox predicate — but the result would be the same.
+    // The key distinguisher is that inbox must NOT include folder items.
+    const { result } = renderScope({ type: 'inbox' });
+    const ids = result.current.map((n) => n.id);
+    expect(ids).not.toContain('work-active');
+    expect(ids).not.toContain('work-child');
+  });
+
+  it('inbox scope excludes completed items', () => {
+    // The `item.status === 'active'` predicate must be intact — mutating to `true`
+    // would include completed inbox items.
+    const { result } = renderScope({ type: 'inbox' });
+    const ids = result.current.map((n) => n.id);
+    expect(ids).not.toContain('inbox-done');
+  });
+
   it('folder = active items in that folder, nested into a tree', () => {
     const { result } = renderScope({ type: 'folder', folderId: 'work' });
     expect(result.current.map((n) => n.id)).toStrictEqual(['work-active']);
     expect(result.current[0]?.children.map((c) => c.id)).toStrictEqual(['work-child']);
   });
 
+  it('folder scope excludes completed items in the folder', () => {
+    // `item.status === 'active'` must be asserted for folder scope too
+    const { result } = renderScope({ type: 'folder', folderId: 'work' });
+    const ids = result.current.map((n) => n.id);
+    expect(ids).not.toContain('work-done');
+  });
+
+  it('folder scope uses the correct folderId (not the always-truthy condition)', () => {
+    // `scope.type === 'folder' ? scope.folderId : null` mutated to `true ? scope.folderId : null`
+    // would always use scope.folderId even for inbox/completed — leading to wrong filtering.
+    // This test uses inbox scope with no items in that folder — would fail if folderId leaks.
+    const { result } = renderScope({ type: 'inbox' });
+    // Only inbox-active should appear — not work-active (which has folder_id: 'work')
+    expect(result.current.map((n) => n.id)).toStrictEqual(['inbox-active']);
+  });
+
   it('completed = items with completed status, regardless of folder', () => {
     const { result } = renderScope({ type: 'completed' });
-    expect(result.current.map((n) => n.id)).toStrictEqual(['inbox-done']);
+    const ids = result.current.map((n) => n.id);
+    expect(ids).toContain('inbox-done');
+    expect(ids).toContain('work-done');
   });
 });
 
@@ -337,9 +670,15 @@ describe('context wiring', () => {
     expect(result.current.actions).toBe(before);
   });
 
-  it('throws when the hooks are used outside a provider', () => {
+  it('throws when useTasks is used outside a provider', () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(useTasks)).toThrow(/must be used within a TasksProvider/);
+    spy.mockRestore();
+  });
+
+  it('throws when useTaskActions is used outside a provider', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(useTaskActions)).toThrow(/must be used within a TasksProvider/);
     spy.mockRestore();
   });
 });

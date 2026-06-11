@@ -71,6 +71,7 @@ export async function POST(request: Request): Promise<Response> {
   const input = parsed.data;
 
   // Resolve title: use `text` as a fallback (Siri raw-capture path)
+  // Stryker disable next-line StringLiteral: AT_CEILING — TS-type-safety guard, unreachable at runtime — the schema refine() guarantees title or text is present, so `input.title ?? input.text` is never undefined.
   const resolvedTitle = input.title ?? input.text ?? '';
   const resolvedRawCapture = input.raw_capture ?? input.text ?? null;
 

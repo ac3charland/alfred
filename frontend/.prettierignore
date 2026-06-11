@@ -9,6 +9,14 @@ test-results/
 node_modules/
 *.tsbuildinfo
 
+# Stryker mutation testing — transient sandbox + generated reports (don't format).
+# The root .prettierignore has these too, but this package's `format` runs
+# `prettier --write .` from this dir, so the closest .prettierignore is what applies.
+.stryker-tmp/
+stryker.log
+reports/mutation.html
+reports/mutation/
+
 # Generated source — reproduced verbatim by its generator, never hand-formatted.
 # (Mirrors the ESLint global ignores; see CLAUDE.md.)
 lib/database.types.ts

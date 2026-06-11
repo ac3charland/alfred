@@ -67,6 +67,20 @@ describe('buildTree', () => {
     expect(forest.map((n) => n.id)).toStrictEqual(['new', 'old']);
   });
 
+  it('keeps stable order when two items share the same created_at', () => {
+    // Both share the same timestamp — neither should displace the other.
+    // With `<` (correct), equal timestamps do NOT trigger an insertion, so the
+    // second item appended stays last. With `<=` (mutant), the second equal item
+    // would be inserted before the first, changing order.
+    const forest = buildTree([
+      item({ id: 'first', created_at: '2025-03-01T00:00:00Z' }),
+      item({ id: 'second', created_at: '2025-03-01T00:00:00Z' }),
+    ]);
+    // 'first' was inserted before 'second'; they share the same timestamp so no
+    // reordering should occur — 'first' remains before 'second'.
+    expect(forest.map((n) => n.id)).toStrictEqual(['first', 'second']);
+  });
+
   it('treats an item whose parent is absent as a root (filtered-view fallback)', () => {
     // A completed child whose active parent is not in the filtered list.
     const forest = buildTree([item({ id: 'orphan', parent_id: 'not-here' })]);
@@ -169,6 +183,41 @@ describe('makeOptimisticItem', () => {
     expect(it.folder_id).toBe('f-1');
     expect(it.parent_id).toBe('p-1');
     expect(it.due_date).toBe('2026-01-01');
+  });
+
+  it('preserves notes and source_url when provided', () => {
+    const it = makeOptimisticItem({
+      text: 't',
+      notes: 'my note',
+      source_url: 'https://example.com',
+    });
+    // These use `?? null` — if mutated to `&& null`, truthy inputs would be lost.
+    expect(it.notes).toBe('my note');
+    expect(it.source_url).toBe('https://example.com');
+  });
+
+  it('defaults notes and source_url to null when omitted', () => {
+    const it = makeOptimisticItem({ text: 't' });
+    expect(it.notes).toBeNull();
+    expect(it.source_url).toBeNull();
+  });
+
+  it('carries an explicit item_type through', () => {
+    // item_type uses `?? 'unclassified'` — if mutated to `&& 'unclassified'`, a
+    // truthy input would be replaced with 'unclassified'; if the default string
+    // literal is mutated to '', an absent type would yield '' instead.
+    expect(makeOptimisticItem({ text: 't', item_type: 'task' }).item_type).toBe('task');
+  });
+
+  it('defaults item_type to "unclassified" when omitted', () => {
+    expect(makeOptimisticItem({ text: 't' }).item_type).toBe('unclassified');
+  });
+
+  it('defaults title and raw_capture to empty string when neither title nor text is provided', () => {
+    // Covers the `?? ''` fallback at the end of the title/raw_capture chain.
+    const it = makeOptimisticItem({});
+    expect(it.title).toBe('');
+    expect(it.raw_capture).toBeNull();
   });
 
   it('generates a unique id each call', () => {

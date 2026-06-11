@@ -68,6 +68,12 @@ describe('TextField', () => {
     expect(screen.getByRole('textbox', { name: 'Title' })).toHaveClass('flex-1');
   });
 
+  it('defaults to type="text" when no type prop is given', () => {
+    render(<TextField aria-label="Title" />);
+
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveAttribute('type', 'text');
+  });
+
   it('respects an explicit input type', () => {
     render(<TextField aria-label="Due date" type="date" />);
 

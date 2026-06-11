@@ -23,7 +23,8 @@ describe('CascadeModal', () => {
 
     expect(screen.getByText(/complete with subtasks/i)).toBeInTheDocument();
     expect(screen.getByText(/Plan the launch/)).toBeInTheDocument();
-    expect(screen.getByText(/3 subtasks/)).toBeInTheDocument();
+    // Assert "has 3 subtasks" with the space between "has" and the count
+    expect(screen.getByText(/has 3 subtasks/)).toBeInTheDocument();
   });
 
   it('uses singular "subtask" when count is 1', () => {
@@ -31,7 +32,8 @@ describe('CascadeModal', () => {
 
     // Should NOT have "subtasks" (plural)
     expect(screen.queryByText(/1 subtasks/)).not.toBeInTheDocument();
-    expect(screen.getByText(/1 subtask/)).toBeInTheDocument();
+    // Must be exactly "1 subtask that" (no extra characters like "Stryker was here!")
+    expect(screen.getByText(/1 subtask that/)).toBeInTheDocument();
   });
 
   it('calls onConfirm when Complete all is clicked', async () => {

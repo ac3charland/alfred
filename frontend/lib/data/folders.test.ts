@@ -1,4 +1,4 @@
-/** @jest-environment node */
+/** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
 import { getFolder, getFolders } from './folders';
@@ -39,6 +39,7 @@ describe('getFolders', () => {
     const result = await getFolders();
 
     expect(client.from).toHaveBeenCalledWith('folders');
+    expect(client._chain.select).toHaveBeenCalledWith('*');
     expect(client._chain.order).toHaveBeenCalledWith('created_at', { ascending: true });
     expect(result).toStrictEqual([FOLDER]);
   });
@@ -55,6 +56,8 @@ describe('getFolder', () => {
 
     const result = await getFolder('f-1');
 
+    expect(client.from).toHaveBeenCalledWith('folders');
+    expect(client._chain.select).toHaveBeenCalledWith('*');
     expect(client._chain.eq).toHaveBeenCalledWith('id', 'f-1');
     expect(client._chain.maybeSingle).toHaveBeenCalled();
     expect(result).toStrictEqual(FOLDER);

@@ -1,4 +1,4 @@
-/** @jest-environment node */
+/** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
 import { getAllItems } from './items';
@@ -37,6 +37,7 @@ describe('getAllItems', () => {
     const result = await getAllItems();
 
     expect(client.from).toHaveBeenCalledWith('items');
+    expect(client._chain.select).toHaveBeenCalledWith('*');
     expect(client._chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
     expect(result).toStrictEqual([ITEM]);
   });

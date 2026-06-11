@@ -1,4 +1,4 @@
-/** @jest-environment node */
+/** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
 import { DELETE, PATCH } from './route';
@@ -39,6 +39,14 @@ function makeMockSupabase(user: { id: string } | undefined, result: MockResult) 
   };
 }
 
+/** Extract the first-call first-arg from a mock as a plain object. */
+function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
+  const calls = mockFn.mock.calls as [Record<string, unknown>][];
+  const firstCall = calls[0];
+  if (!firstCall) throw new Error('mock was never called');
+  return firstCall[0];
+}
+
 const routeContext = { params: Promise.resolve({ id: 'item-1' }) };
 
 // ---------------------------------------------------------------------------
@@ -74,6 +82,25 @@ describe('PATCH /api/items/[id]', () => {
       routeContext,
     );
     expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe('Invalid request body');
+  });
+
+  it('returns 400 for invalid JSON body', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: 'not-valid-json',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe('Invalid JSON body');
   });
 
   it('updates item and returns it on success', async () => {
@@ -91,6 +118,309 @@ describe('PATCH /api/items/[id]', () => {
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual(TEST_ITEM);
+  });
+
+  it('sends only title in update payload when only title is provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'New title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).toStrictEqual(['title']);
+    expect(payload['title']).toBe('New title');
+  });
+
+  it('does NOT include title in update payload when title is absent from body', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'completed' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    // title key must NOT be present in the payload (strict PATCH semantics)
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('title');
+  });
+
+  it('includes notes in update payload when notes is provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ notes: 'new notes' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ notes: 'new notes' });
+  });
+
+  it('does NOT include notes in payload when notes is absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('notes');
+  });
+
+  it('includes source_url in update payload when provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ source_url: 'https://example.com' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ source_url: 'https://example.com' });
+  });
+
+  it('does NOT include source_url in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('source_url');
+  });
+
+  it('includes due_date in update payload when provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ due_date: '2026-12-31' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ due_date: '2026-12-31' });
+  });
+
+  it('does NOT include due_date in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('due_date');
+  });
+
+  it('includes folder_id in update payload when provided', async () => {
+    const folderId = 'e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8';
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ folder_id: folderId }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ folder_id: folderId });
+  });
+
+  it('does NOT include folder_id in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('folder_id');
+  });
+
+  it('includes parent_id in update payload when provided', async () => {
+    const parentId = 'a1b2c3d4-e5f6-4789-abcd-ef0123456789';
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ parent_id: parentId }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ parent_id: parentId });
+  });
+
+  it('does NOT include parent_id in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('parent_id');
+  });
+
+  it('includes item_type in update payload when provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ item_type: 'task' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ item_type: 'task' });
+  });
+
+  it('does NOT include item_type in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('item_type');
+  });
+
+  it('includes status in update payload when provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'completed' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ status: 'completed' });
+  });
+
+  it('does NOT include status in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('status');
+  });
+
+  it('updates the "items" table filtering by the correct id', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request('http://localhost/api/items/item-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Updated' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(mockSupabase.from).toHaveBeenCalledWith('items');
+    expect(chain.eq).toHaveBeenCalledWith('id', 'item-1');
   });
 
   it('returns 500 on Supabase error', async () => {
@@ -141,6 +471,23 @@ describe('DELETE /api/items/[id]', () => {
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual({ success: true });
+  });
+
+  it('deletes from the "items" table filtering by the correct id', async () => {
+    const chain = {
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({ data: undefined, error: undefined }),
+    };
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await DELETE(new Request('http://localhost/api/items/item-1'), routeContext);
+
+    expect(mockSupabase.from).toHaveBeenCalledWith('items');
+    expect(chain.eq).toHaveBeenCalledWith('id', 'item-1');
   });
 
   it('returns 500 on Supabase error', async () => {
