@@ -15,8 +15,12 @@ const config = {
     'subject-full-stop': [2, 'never', '.'],
     // Scope is required (parentheses must be present)
     'scope-empty': [2, 'never'],
-    // Scope must be kebab-case (matches project history)
-    'scope-case': [2, 'always', 'kebab-case'],
+    // Scope must be lower-case: lowercase letters, digits and hyphens are all fine
+    // (e.g. `e2e`, `back-pressure`). NOT kebab-case — commitlint's kebab check runs the
+    // scope through lodash.kebabCase, which treats digits as word boundaries and rejects
+    // perfectly good scopes like `e2e` (it demands `e-2-e`). lower-case still rejects
+    // camelCase / PascalCase / UPPER, which is the casing we actually care about.
+    'scope-case': [2, 'always', 'lower-case'],
   },
 };
 
