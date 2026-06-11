@@ -134,6 +134,7 @@ export function FoldersProvider({
         }
       },
     }),
+    // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
     [],
   );
 

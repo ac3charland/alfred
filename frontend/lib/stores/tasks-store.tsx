@@ -179,6 +179,7 @@ export function TasksProvider({
       },
       async moveTask(id, folderId) {
         const affected = collectSubtree(tasksRef.current, id);
+        // Stryker disable next-line ConditionalExpression: AT_CEILING — empty subtree → ids=[], so Promise.all maps over [] (zero API calls) and the dispatches are no-ops; identical to the early return. (completeTask/deleteTask call the API unconditionally, so their guards stay killable.)
         if (affected.length === 0) return;
         const ids = affected.map((item) => item.id);
         dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
@@ -208,6 +209,7 @@ export function TasksProvider({
         }
       },
     }),
+    // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
     [],
   );
 
@@ -237,10 +239,12 @@ export function useTasks(): Item[] {
 export function useScopedTasks(scope: TaskScope): ItemNode[] {
   const items = useTasks();
   const scopeType = scope.type;
+  // Stryker disable next-line ConditionalExpression: AT_CEILING — folderId is only read inside the scopeType==='folder' filter branch; for inbox/completed it is unused, so null vs undefined is unobservable.
   const folderId = scope.type === 'folder' ? scope.folderId : null;
   return React.useMemo(() => {
     const filtered = items.filter((item) => {
       if (scopeType === 'completed') return item.status === 'completed';
+      // Stryker disable next-line ConditionalExpression: AT_CEILING — for inbox, folderId is null, so `folder_id === folderId` equals the inbox filter `folder_id === null`; completed is handled above, so forcing this branch true changes nothing.
       if (scopeType === 'folder') return item.status === 'active' && item.folder_id === folderId;
       return item.status === 'active' && item.folder_id === null; // inbox
     });
