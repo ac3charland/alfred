@@ -6,29 +6,31 @@ normal machine Playwright downloads its managed Chromium and everything just wor
 Ubuntu apt mirrors but **not Playwright's browser CDN** (`cdn.playwright.dev`), so
 `playwright install chromium` is blocked and `check:slow` can't get a browser.
 
-Rather than bundle a serverless Chromium fallback, configure a **custom environment** that
-allowlists the CDN and installs Chromium once at setup. Then the normal
-`playwright install chromium` path works in the cloud exactly as it does locally.
+Rather than bundle a serverless Chromium fallback, a **custom cloud environment** has been
+created that allowlists the CDN and installs Chromium once at setup. With it selected, the
+normal `playwright install chromium` path works in the cloud exactly as it does locally.
 
-## Create the environment
+## How the environment is configured
 
-In the **New cloud environment** dialog (cloud icon → **Add environment**):
+The `alfred-e2e` environment was created from the **New cloud environment** dialog (cloud
+icon → **Add environment**) with the settings below, recorded here so it can be recreated if
+it ever expires:
 
-- **Name:** e.g. `alfred-e2e`.
-- **Network access:** select **Custom**.
-  - Tick **"Also include default list of common package managers"** (keeps npm + the
-    Ubuntu apt mirrors that `--with-deps` needs).
-  - In **Allowed domains**, add Playwright's browser CDN:
-    ```
-    cdn.playwright.dev
-    *.playwright.dev
-    ```
-  - If a browser download still fails on a redirect to another host, switch to **Full**.
-- **Environment variables:** none required. `frontend/playwright.config.ts` injects
-  placeholder Supabase vars when `.env.local` is absent, so the production `webServer`
-  (`next build && next start`) boots and `e2e/home.spec.ts` asserts the `/login` redirect.
-  (Anything entered here is visible to whoever can edit the environment — no secrets.)
-- **Setup script:** point it at the committed script so the real logic stays in the repo:
+- **Name:** `alfred-e2e`.
+- **Network access: Custom**, with **"Also include default list of common package managers"**
+  ticked (keeps npm + the Ubuntu apt mirrors that `--with-deps` needs) and Playwright's browser
+  CDN added to **Allowed domains**:
+  ```
+  cdn.playwright.dev
+  *.playwright.dev
+  ```
+  (If a browser download ever fails on a redirect to another host, widening to **Full** fixes
+  it.)
+- **Environment variables:** none. `frontend/playwright.config.ts` runs the Next test server
+  against an in-memory mock Supabase backend (`scripts/mock-supabase.mjs`) with its own injected
+  env, so no real credentials are needed. (Anything entered here is visible to whoever can edit
+  the environment — no secrets.)
+- **Setup script:** points at the committed script so the real logic stays in the repo:
   ```bash
   #!/bin/bash
   bash scripts/cloud-setup.sh

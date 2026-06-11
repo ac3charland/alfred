@@ -104,8 +104,8 @@ Failures are fixed in the **code**, never by weakening config or bypassing hooks
 > **Browser for E2E/Storybook:** these use Playwright's managed Chromium, installed by
 > the test scripts via `setup:chromium` (which skips the download when the browser is
 > already present). On a normal machine this just works. In Claude Code on the web the
-> default sandbox blocks Playwright's browser CDN, so run these in a custom environment
-> that allowlists it — see [`docs/cloud-environment.md`](docs/cloud-environment.md).
+> default sandbox blocks Playwright's browser CDN, so they run in the dedicated `alfred-e2e`
+> cloud environment that allowlists it — see [`docs/cloud-environment.md`](docs/cloud-environment.md).
 
 ## Deploy (Vercel)
 
