@@ -38,6 +38,7 @@ export function exec(file: string, lang: string, code: string, workdir: string):
   document.entries.push({
     kind: 'exec',
     lang,
+    // Stryker disable next-line Regex,StringLiteral: AT_CEILING — trimTrailingNewlines in makeFence (document.ts) re-strips all trailing newlines on serialization, so /\n+$/ vs /\n$/ and the empty-string replacement are unobservable through any file round-trip.
     code: code.replace(/\n+$/, ''),
     output: result.output,
   });
@@ -52,7 +53,9 @@ export function exec(file: string, lang: string, code: string, workdir: string):
 export function image(file: string, argument: string): void {
   const document = load(file);
   const markdown = IMAGE_MARKDOWN.exec(argument.trim());
+  // Stryker disable next-line StringLiteral: AT_CEILING — when the regex matches, groups 1 and 2 are always captured (they're `[^\]]*` and `[^)]*`); markdown[1]/markdown[2] are never undefined, so the ?? '' fallback is a TS-type-safety guard that is unreachable at runtime.
   const alt = markdown ? (markdown[1] ?? '') : '';
+  // Stryker disable next-line StringLiteral: AT_CEILING — same as above; markdown[2] is always defined when the regex matches.
   const source = markdown ? (markdown[2] ?? '') : argument;
 
   const documentDirectory = path.dirname(path.resolve(file));
