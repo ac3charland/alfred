@@ -16,6 +16,10 @@ test-results/
 stryker.log
 **/reports/mutation.html
 **/reports/mutation/
+# jest-image-snapshot diff output — transient (written only on a failing visual
+# snapshot; the committed baselines live next to it in __image_snapshots__/).
+**/__diff_output__/
+**/__received_output__/
 
 # Local env files — real secrets, never commit. Tracked: *.example
 .env
