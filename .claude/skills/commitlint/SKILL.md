@@ -93,6 +93,10 @@ const config: UserConfig = {
     // REQUIRED: subject must be lowercase
     // Replaces config-conventional's 'never' + array with 'always' + single case
     'subject-case': [2, 'always', 'lower-case'],
+
+    // REQUIRED: scope must be lower-case — lowercase letters, digits and hyphens are
+    // all fine (e.g. `e2e`, `back-pressure`). Deliberately NOT 'kebab-case': see gotcha.
+    'scope-case': [2, 'always', 'lower-case'],
   },
 };
 
@@ -165,6 +169,8 @@ env:
 **scope-empty is not in config-conventional.** The default `@commitlint/config-conventional` does not include `scope-empty`. If you extend it and forget to add `'scope-empty': [2, 'never']`, scope is optional even if you think the parent config handles it.
 
 **body-empty and footer-empty default to `'never'` in config-conventional** — meaning the base config REQUIRES a body and footer. Alfred's overrides flip this to `[2, 'always']` to forbid them. Any commit with a blank line followed by content will fail if these overrides are missing.
+
+**`scope-case` is `'lower-case'`, NOT `'kebab-case'`.** commitlint's `kebab-case` check runs the scope through `lodash.kebabCase`, which inserts boundaries between letters and digits — so `kebabCase('e2e') === 'e-2-e'` and a scope of `e2e` (or `web3`, `oauth2`, …) is **rejected** with "scope must be kebab-case", demanding the absurd `e-2-e`. `lower-case` only checks `scope === scope.toLowerCase()`, so it accepts `e2e` and `back-pressure` alike while still rejecting `camelCase`/`PascalCase`/`UPPER`. The casing we actually care about is "not uppercased"; digit-as-boundary was never the intent. (This is the casing we want for scopes; subject already uses `lower-case` for the same reason.)
 
 **husky v9 hook files are plain shell — no shebang required** but they must be executable. If `git commit` throws `permission denied` on a hook, run `chmod +x .husky/commit-msg`.
 
