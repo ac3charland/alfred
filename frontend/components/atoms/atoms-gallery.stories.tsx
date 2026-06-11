@@ -6,6 +6,7 @@ import { FieldLabel } from './field-label';
 import { IconButton } from './icon-button';
 import { Spinner } from './spinner';
 import { TextField } from './text-field';
+import { VISUAL_TARGET, withVisualFrame } from './visual-test';
 
 /**
  * A single panel that shows the shared UI atoms together — the at-a-glance view of
@@ -15,7 +16,8 @@ import { TextField } from './text-field';
 const meta = {
   title: 'Atoms/Gallery',
   component: IconButton,
-  parameters: { controls: { disable: true } },
+  decorators: [withVisualFrame],
+  parameters: { controls: { disable: true }, visualTest: { target: VISUAL_TARGET } },
 } satisfies Meta<typeof IconButton>;
 
 export default meta;

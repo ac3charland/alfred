@@ -3,11 +3,14 @@ import * as React from 'react';
 
 import { FieldLabel } from './field-label';
 import { TextField } from './text-field';
+import { VISUAL_TARGET, withVisualFrame } from './visual-test';
 
 const meta = {
   title: 'Atoms/FieldLabel',
   component: FieldLabel,
   tags: ['autodocs'],
+  decorators: [withVisualFrame],
+  parameters: { visualTest: { target: VISUAL_TARGET } },
   args: { children: 'Due date' },
 } satisfies Meta<typeof FieldLabel>;
 
