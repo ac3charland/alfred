@@ -8,6 +8,10 @@ this?" If yes, link to it or leave it there — don't restate it.
   generated-files policy) are already loaded. Repeating them in a skill adds nothing.
 - **A gotcha belongs to one skill — the one for its area of concern.** Cross-reference
   it from a related skill ("see the eslint skill"); don't paste the content into both.
+- **A deterministic guardrail is its own source of truth.** If a lint rule, the
+  type-checker, or a test already enforces something, the gate reports every violation —
+  so "follow rule X" prose in a skill is dead weight that never fires. Configure the
+  rule; don't document compliance with it.
 
 ## Contents
 
@@ -15,6 +19,7 @@ this?" If yes, link to it or leave it there — don't restate it.
 - Restating a rule CLAUDE.md already owns (stryker `.prettierignore`)
 - A how-to that belongs to another skill (react-testing-library, eslint)
 - A convention echoed across two skills (cloudflare-workers + eslint)
+- Documenting a rule the linter already enforces (eslint)
 
 ## The same sentinel copied into two skills — RTL + supabase (`22088bd`, `145d299`)
 
@@ -60,3 +65,20 @@ Documenting the `_`-prefix unused-var convention, the same point was stated in t
 
 **Lesson:** one skill owns the convention; the other, at most, cross-references. Echoing
 the full statement in both is duplication waiting to drift.
+
+## Documenting a rule the linter already enforces — eslint (`0ad8139`)
+
+When new lint rules were added, the agent also added quick-reference rows telling agents
+how to satisfy them. But a lint rule is **deterministic back-pressure** — the linter
+flags every violation at the gate, so prose telling the agent to comply never does any
+work.
+
+BEFORE (a quick-reference row):
+```
+| "Allow unused vars/args prefixed with `_`" | A rules block **after** `strictTypeChecked` … |
+```
+AFTER: *(rows removed — the rule lives in eslint config; the linter is the feedback)*
+
+**Lesson:** when you add a new lint / type / test rule, put it in config and let the
+gate teach it — don't also write "follow rule X" into a skill. The guardrail already
+owns that feedback.

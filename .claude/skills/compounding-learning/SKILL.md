@@ -64,9 +64,11 @@ obviously clean.
    the situation calls for it. Don't bury the common case behind a rarely-needed
    section. → `references/right-altitude.md`
 
-4. **Single source of truth.** Don't restate what CLAUDE.md or another skill already
-   says. A gotcha lives in **exactly one** skill — the one for its area of concern;
-   cross-reference it from elsewhere, don't copy it (copies drift). → `references/single-source-of-truth.md`
+4. **Single source of truth.** Don't restate what CLAUDE.md, another skill, or a
+   **deterministic guardrail** (lint / type-check / test) already provides. A gotcha
+   lives in **exactly one** skill — cross-reference it, don't copy it (copies drift) —
+   and a mechanically-enforced rule lives in the gate, not in "follow rule X" prose. →
+   `references/single-source-of-truth.md`
 
 5. **One focused, validated change.** Record an insight you've actually confirmed, not
    a guess you'll rewrite tomorrow. Keep each recording to one tightly-related concern

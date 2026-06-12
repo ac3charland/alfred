@@ -12,7 +12,6 @@ one-time style nit.
 - A derivation spelled out before the point (batch-commits)
 - A generic preamble in front of the specific gotcha (playwright)
 - A redundant forward-pointer (showboat)
-- Over-stuffed table cells (eslint)
 
 ## A "Why:" paragraph re-justifying the line above it — skill-creator (`5f1b0ab`)
 
@@ -80,10 +79,3 @@ AFTER:
 ```
 description (see *Linking the demo in the PR* below).
 ```
-
-## Over-stuffed table cells — eslint (`0ad8139`)
-
-Quick-reference table rows had grown into multi-clause how-tos that belonged in prose
-(or another skill). Removing them kept the table scannable. **Lesson:** a reference
-table is an index, not the content — if a cell needs a paragraph, it's in the wrong
-shape.
