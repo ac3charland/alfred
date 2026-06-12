@@ -2337,22 +2337,262 @@ describe('TaskRow', () => {
   // statement executes within the test window and its coverage is attributed.
   // ===========================================================================
 
-  describe('isCompleted prop default (BooleanLiteral)', () => {
-    // Mutation: the `isCompleted = false` parameter default → `isCompleted = true`.
-    // Rendering a TaskRow WITHOUT the prop must default to the active state
-    // ("complete" affordance). With the mutant it would render the completed state.
-    it('defaults isCompleted to false (active) when the prop is omitted', () => {
+  describe('completion state derived from node.status', () => {
+    // The checkbox affordance follows the node's own status, not the view: an active node
+    // offers "complete", a completed node offers "active" — even without isCompletedView.
+    it('renders the "complete" affordance for an active node', () => {
       const [node] = buildTree([BASE_ITEM]);
       if (!node) throw new Error('node not built');
       renderWithProviders(<TaskRow node={node} />, { tasks: [BASE_ITEM] });
 
-      // Default false → active → the checkbox offers to "complete" the task.
       expect(
         screen.getByRole('button', { name: /mark "Write tests" complete/i }),
       ).toBeInTheDocument();
-      // …and NOT the completed-view "active" affordance.
       expect(
         screen.queryByRole('button', { name: /mark "Write tests" active/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the "active" affordance for a completed node even without isCompletedView', () => {
+      const [node] = buildTree([COMPLETED_ITEM]);
+      if (!node) throw new Error('node not built');
+      renderWithProviders(<TaskRow node={node} />, { tasks: [COMPLETED_ITEM] });
+
+      expect(
+        screen.getByRole('button', { name: /mark "Write tests" active/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // "Show completed" — completed children tucked under an active parent
+  // ---------------------------------------------------------------------------
+
+  describe('show completed children', () => {
+    const COMPLETED_CHILD: Item = {
+      ...CHILD_ITEM,
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    };
+    const COMPLETED_GRANDCHILD: Item = {
+      ...GRANDCHILD_ITEM,
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    };
+
+    it('hides completed children behind a "Show completed (N)" toggle when expanded', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      // Completed child is not revealed yet (its list is aria-hidden).
+      expect(screen.queryByRole('list', { name: 'Completed subtasks' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.getByRole('button', { name: 'Show completed (1)' })).toBeInTheDocument();
+      // Still hidden until the toggle is clicked.
+      expect(screen.queryByRole('list', { name: 'Completed subtasks' })).not.toBeInTheDocument();
+    });
+
+    it('counts only DIRECT completed children in the toggle label', async () => {
+      const user = userEvent.setup();
+      // item-1 → completed child → completed grandchild: one DIRECT completed child of item-1.
+      renderTasks([BASE_ITEM, COMPLETED_CHILD, COMPLETED_GRANDCHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.getByRole('button', { name: 'Show completed (1)' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /show completed \(2\)/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('reveals the completed children and switches the toggle to "Hide completed"', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      expect(screen.getByRole('list', { name: 'Completed subtasks' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Hide completed' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /show completed/i })).not.toBeInTheDocument();
+    });
+
+    it('renders a revealed completed child checked (teal) with low-contrast title', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      const checkbox = screen.getByRole('button', { name: /mark "Write unit tests" active/i });
+      expect(checkbox).toHaveClass('bg-accent-teal');
+      expect(screen.getByText('Write unit tests')).toHaveClass('text-muted-foreground');
+    });
+
+    it('does not render a "Show completed" toggle when there are no completed children', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]); // both active
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.queryByRole('button', { name: /show completed/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Completed-descendants badge — counts ALL completed descendants
+  // ---------------------------------------------------------------------------
+
+  describe('completed descendants badge', () => {
+    const COMPLETED_CHILD: Item = { ...CHILD_ITEM, status: 'completed' };
+    const COMPLETED_GRANDCHILD: Item = { ...GRANDCHILD_ITEM, status: 'completed' };
+
+    it('shows the total completed-descendant count (all depths) when collapsed', () => {
+      renderTasks([BASE_ITEM, COMPLETED_CHILD, COMPLETED_GRANDCHILD]);
+      expect(screen.getByLabelText('2 completed')).toBeInTheDocument();
+    });
+
+    it('shows no completed badge when there are no completed descendants', () => {
+      renderTasks([BASE_ITEM, CHILD_ITEM]); // active child only
+      expect(screen.queryByLabelText(/completed/i)).not.toBeInTheDocument();
+    });
+
+    it('renders the active count badge alongside the completed badge', () => {
+      // One active direct child + one completed direct child → active badge "1" (bg-secondary
+      // pill) and completed badge "1 completed".
+      const doneChild: Item = {
+        ...BASE_ITEM,
+        id: 'item-2c',
+        title: 'Done child',
+        parent_id: 'item-1',
+        status: 'completed',
+      };
+      renderTasks([BASE_ITEM, CHILD_ITEM, doneChild]);
+      expect(screen.getByLabelText('1 completed')).toBeInTheDocument();
+      // The active badge is the bg-secondary pill showing the active child count.
+      const activeBadge = screen.getByText('1', { selector: 'span.bg-secondary' });
+      expect(activeBadge).toBeInTheDocument();
+    });
+
+    it('hides both badges when the row is expanded', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      expect(screen.getByLabelText('1 completed')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.queryByLabelText('1 completed')).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Unchecking a completed child pops it back to active
+  // ---------------------------------------------------------------------------
+
+  describe('unchecking a completed child', () => {
+    const COMPLETED_CHILD: Item = {
+      ...CHILD_ITEM,
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    };
+
+    it('reactivates the child and removes the "Show completed" toggle', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...COMPLETED_CHILD,
+        status: 'active',
+        completed_at: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      await user.click(screen.getByRole('button', { name: /mark "Write unit tests" active/i }));
+
+      // The child pops to the active list (offers "complete" again); no completed children
+      // remain, so the toggle is gone.
+      expect(
+        await screen.findByRole('button', { name: /mark "Write unit tests" complete/i }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /show completed/i })).not.toBeInTheDocument();
+    });
+
+    it('reactivates a completed parent when its completed child is unchecked', async () => {
+      // Root(active) → Parent(completed) → Child(completed). Unchecking Child must also
+      // reactivate Parent (a completed parent can't keep an active child).
+      mockUpdateItem.mockImplementation((id: string) =>
+        Promise.resolve({
+          ...BASE_ITEM,
+          id,
+          title: id === 'p' ? 'Parent' : 'Child',
+          status: 'active',
+          completed_at: null,
+        }),
+      );
+      const root: Item = { ...BASE_ITEM, id: 'r', title: 'Root' };
+      const parent: Item = {
+        ...BASE_ITEM,
+        id: 'p',
+        title: 'Parent',
+        parent_id: 'r',
+        status: 'completed',
+        completed_at: '2025-01-02T00:00:00Z',
+        created_at: '2025-01-01T11:00:00Z',
+      };
+      const child: Item = {
+        ...BASE_ITEM,
+        id: 'c',
+        title: 'Child',
+        parent_id: 'p',
+        status: 'completed',
+        completed_at: '2025-01-02T00:00:00Z',
+        created_at: '2025-01-01T12:00:00Z',
+      };
+      const user = userEvent.setup();
+      renderTasks([root, parent, child]);
+
+      // Reveal Parent under Root.
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      // Reveal Child under Parent (Parent's own expand + show-completed).
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      // Uncheck Child.
+      await user.click(screen.getByRole('button', { name: 'Mark "Child" active' }));
+
+      // Parent is reactivated → it now offers the "complete" affordance.
+      expect(
+        await screen.findByRole('button', { name: 'Mark "Parent" complete' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Completing an active child tucks it into the completed section
+  // ---------------------------------------------------------------------------
+
+  describe('completing an active child', () => {
+    it('moves a completed leaf child into the "Show completed" section', async () => {
+      mockCompleteTask.mockResolvedValue([{ ...CHILD_ITEM, status: 'completed' }]);
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      // Child starts active in the subtask list.
+      await user.click(screen.getByRole('button', { name: /mark "Write unit tests" complete/i }));
+      // Completion commits when the row's collapse exit ends (jsdom: fire it by hand).
+      endCollapse('Write unit tests');
+
+      // It is now hidden behind the "Show completed (1)" toggle.
+      expect(await screen.findByRole('button', { name: 'Show completed (1)' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /mark "Write unit tests" complete/i }),
       ).not.toBeInTheDocument();
     });
   });

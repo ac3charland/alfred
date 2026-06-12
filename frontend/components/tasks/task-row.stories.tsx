@@ -113,6 +113,28 @@ export const WithAllMetadata: Story = {
   },
 };
 
+// An ACTIVE parent with both an active and a completed child. The completed descendants
+// badge (top-right) counts all completed descendants; expanding reveals the active child
+// plus a "Show completed (N)" toggle that unhides the completed ones.
+export const WithCompletedChildren: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      children: [
+        CHILD_NODE,
+        {
+          ...CHILD_NODE,
+          id: 'item-2b',
+          title: 'Lock the date',
+          status: 'completed',
+          completed_at: '2025-01-02T09:00:00Z',
+          created_at: '2025-01-01T09:00:00Z',
+        },
+      ],
+    },
+  },
+};
+
 export const Completed: Story = {
   args: {
     node: {
@@ -120,7 +142,7 @@ export const Completed: Story = {
       status: 'completed',
       completed_at: '2025-01-02T09:00:00Z',
     },
-    isCompleted: true,
+    isCompletedView: true,
   },
 };
 
@@ -132,7 +154,7 @@ export const CompletedWithChildren: Story = {
       completed_at: '2025-01-02T09:00:00Z',
       children: [{ ...CHILD_NODE, status: 'completed', completed_at: '2025-01-02T09:00:00Z' }],
     },
-    isCompleted: true,
+    isCompletedView: true,
   },
 };
 
@@ -147,7 +169,7 @@ export const CompletedInFolder: Story = {
       completed_at: '2025-01-02T09:00:00Z',
       folder_id: 'f1',
     },
-    isCompleted: true,
+    isCompletedView: true,
   },
   parameters: {
     store: {
@@ -176,7 +198,7 @@ export const CompletedNested: Story = {
       completed_at: '2025-01-02T09:00:00Z',
       parent_id: 'chain-5',
     },
-    isCompleted: true,
+    isCompletedView: true,
   },
   parameters: {
     store: {

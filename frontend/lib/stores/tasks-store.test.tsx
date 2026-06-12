@@ -340,7 +340,7 @@ describe('uncompleteTask', () => {
   });
 
   it('is a no-op and does not call the API when the id is not in the store', async () => {
-    // Guard: if (previous === undefined) return
+    // Guard: if (affected.length === 0) return
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([completed]) });
 
     await act(async () => {
@@ -349,6 +349,52 @@ describe('uncompleteTask', () => {
 
     expect(mockUpdateItem).not.toHaveBeenCalled();
     expect(result.current.tasks[0]?.status).toBe('completed');
+  });
+
+  it('reactivates the completed ancestor chain when uncompleting a nested completed task', async () => {
+    // P(completed) → C(completed). Unchecking C must also reactivate P: a completed parent
+    // cannot keep an active child.
+    const parent = item({ id: 'p', status: 'completed', completed_at: '2025-01-05T00:00:00Z' });
+    const child = item({
+      id: 'c',
+      parent_id: 'p',
+      status: 'completed',
+      completed_at: '2025-01-05T00:00:00Z',
+    });
+    mockUpdateItem.mockImplementation((rowId) =>
+      Promise.resolve(item({ id: rowId, status: 'active', completed_at: null })),
+    );
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('c');
+    });
+
+    expect(result.current.tasks.every((t) => t.status === 'active')).toBe(true);
+    expect(mockUpdateItem).toHaveBeenCalledWith('c', { status: 'active' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('p', { status: 'active' });
+  });
+
+  it('does NOT reactivate an already-active parent when uncompleting a completed child', async () => {
+    // P(active) → C(completed) is the "show completed under an active parent" case. Unchecking
+    // C reactivates only C; the active parent is left untouched (walk stops at the first
+    // active ancestor).
+    const parent = item({ id: 'p', status: 'active' });
+    const child = item({
+      id: 'c',
+      parent_id: 'p',
+      status: 'completed',
+      completed_at: '2025-01-05T00:00:00Z',
+    });
+    mockUpdateItem.mockResolvedValue(item({ id: 'c', status: 'active', completed_at: null }));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('c');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledTimes(1);
+    expect(mockUpdateItem).toHaveBeenCalledWith('c', { status: 'active' });
   });
 });
 
@@ -650,6 +696,31 @@ describe('useScopedTasks', () => {
     const ids = result.current.map((n) => n.id);
     expect(ids).toContain('inbox-done');
     expect(ids).toContain('work-done');
+  });
+
+  it('keeps completed children nested under an active parent in the inbox view', () => {
+    // A completed child stays in the active-view tree (so its parent can reveal it behind
+    // "Show completed"); only completed ROOTS are dropped.
+    const nested: Item[] = [
+      item({ id: 'parent-active' }),
+      item({ id: 'child-done', parent_id: 'parent-active', status: 'completed' }),
+    ];
+    const { result } = renderHook(() => useScopedTasks({ type: 'inbox' }), {
+      wrapper: makeWrapper(nested),
+    });
+    expect(result.current.map((n) => n.id)).toStrictEqual(['parent-active']);
+    expect(result.current[0]?.children.map((c) => c.id)).toStrictEqual(['child-done']);
+  });
+
+  it('drops a completed root (and its subtree) from the inbox view', () => {
+    const nested: Item[] = [
+      item({ id: 'root-done', status: 'completed' }),
+      item({ id: 'child-done', parent_id: 'root-done', status: 'completed' }),
+    ];
+    const { result } = renderHook(() => useScopedTasks({ type: 'inbox' }), {
+      wrapper: makeWrapper(nested),
+    });
+    expect(result.current).toStrictEqual([]);
   });
 });
 

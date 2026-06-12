@@ -86,6 +86,16 @@ export function getAncestorTitles(items: Item[], parentId: string | null): strin
   return titles;
 }
 
+/** Count all descendants (any depth) whose status is `completed` (excludes the node itself). */
+export function countCompletedDescendants(node: ItemNode): number {
+  let count = 0;
+  for (const child of node.children) {
+    if (child.status === 'completed') count += 1;
+    count += countCompletedDescendants(child);
+  }
+  return count;
+}
+
 /** Collect all descendant ids of a built node (not including the node itself). */
 export function getDescendantIds(node: ItemNode): string[] {
   const ids: string[] = [];
