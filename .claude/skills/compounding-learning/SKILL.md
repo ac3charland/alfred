@@ -34,9 +34,9 @@ cleanup work.
 
 **References** — real corrections, grouped by scenario; read the one that matches yours
 
-- [`references/recording-insights.md`](references/recording-insights.md) — you're adding a new gotcha / insight to a skill
-- [`references/updating-after-change.md`](references/updating-after-change.md) — your change invalidates something a skill currently says
-- [`references/structure-and-layout.md`](references/structure-and-layout.md) — you're reshaping a skill: body vs `references/`, contents sections, section order
+- [`references/recording-insights.md`](references/recording-insights.md) — you're adding a new gotcha / insight to a skill (what good looks like, verbosity, wrong-skill placement)
+- [`references/updating-after-change.md`](references/updating-after-change.md) — your change invalidates something a skill currently says (meta-comments, stale and contradicted content)
+- [`references/structure-and-layout.md`](references/structure-and-layout.md) — you're deciding where content lives (setup-only gotchas in the body, missing Contents index, section order)
 
 ## When to record
 
@@ -111,10 +111,12 @@ skill edit, every time:
 ## The correction catalog
 
 Before making the edit, open the reference matching your scenario (the
-Contents list above routes them). Each file holds real before/after
-corrections from this repo, one principle per `##` section — grep a keyword
-(e.g. `grep -il "table" .claude/skills/compounding-learning/references/`)
-to land on the relevant one without reading everything.
+Contents list above routes them). Each file is an anti-pattern catalog from
+this repo's history: `##` groups named for the anti-pattern, and under each,
+`### Example:` cases — a one-line description of what went wrong, then the
+**Before:**/**After:** that fixed it. Grep a keyword (e.g.
+`grep -ril "table" .claude/skills/compounding-learning/references/`) to land
+on the relevant case without reading everything.
 
 ## Improving this skill itself
 
@@ -124,11 +126,13 @@ something you or a previous agent wrote into a SKILL.md or reference doc —
 that correction is itself a compounding-learning event:
 
 1. Apply the correction.
-2. **Same turn**, add the example to the matching `references/` file here:
-   the scenario, the rejected text, the corrected text (quote the essential
-   lines, elide the rest), and the principle in one sentence.
-3. No matching section? Add a new `##` section to the closest file — or a new
-   reference file, routed from the Contents list above.
+2. **Same turn**, add an `### Example:` case under the matching anti-pattern
+   group in the right `references/` file: a one-line description of what went
+   wrong, then **Before:**/**After:** in fenced blocks (quote the essential
+   lines, elide the rest; when the fix is a deletion, say so in prose).
+3. No matching group? Add a new `##` group with a one-line definition — or a
+   new reference file — and route it from the file's Contents and the list
+   above.
 4. If the correction reveals a genuinely new principle, add it to *House
    style* as one numbered line; the example carries the detail.
 
