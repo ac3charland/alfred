@@ -1986,12 +1986,12 @@ describe('TaskRow', () => {
       await user.click(screen.getByRole('button', { name: /add subtask/i }));
 
       // The li wrapping CaptureBox should have the computed paddingLeft
-      // depth=0 → (0+1)*1.25+0.75 = 2rem
+      // depth=0 → (0+1)*1.25+2.5 = 3.75rem
       const captureBox = document.querySelector('input[placeholder]');
       if (!captureBox) throw new Error('capture box input not found');
       const li = captureBox.closest('li');
       if (!li) throw new Error('li not found');
-      expect(li).toHaveStyle({ paddingLeft: '2rem' });
+      expect(li).toHaveStyle({ paddingLeft: '3.75rem' });
     });
 
     it('capture box li has larger paddingLeft for a nested task (depth=1)', async () => {
@@ -2008,14 +2008,14 @@ describe('TaskRow', () => {
       const childAddBtn = within(childRow).getByRole('button', { name: /add subtask/i });
       await user.click(childAddBtn);
 
-      // depth=1 → (1+1)*1.25+0.75 = 3.25rem
+      // depth=1 → (1+1)*1.25+2.5 = 5rem
       const subtasksList = screen.getAllByRole('list', { name: /subtasks/i });
       // Find the nested subtasks list (second one — the child's)
       const childSubtasksList = subtasksList.at(-1);
       if (!childSubtasksList) throw new Error('child subtasks list not found');
       const captureLi = childSubtasksList.querySelector('li');
       if (!captureLi) throw new Error('capture li not found');
-      expect(captureLi).toHaveStyle({ paddingLeft: '3.25rem' });
+      expect(captureLi).toHaveStyle({ paddingLeft: '5rem' });
     });
   });
 

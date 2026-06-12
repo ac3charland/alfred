@@ -617,7 +617,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
               {showAddSubtask && (
                 <li
                   className="list-none py-1"
-                  style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+                  style={{ paddingLeft: `${String((depth + 1) * 1.25 + 2.5)}rem` }}
                 >
                   <CaptureBox
                     parentId={node.id}
