@@ -2,25 +2,22 @@
 name: demo-lint
 description: >
   Covers demo-lint, the linter that enforces the docs/demos folder-per-demo
-  structure and runs in the global check:slow (pre-push). Two rules ship today:
-  no-root-files (only README.md may sit directly in docs/demos/; every demo lives in
-  its own folder) and branch-folder (a feature branch must capture its demo in
-  docs/demos/<current-branch>/, slashes nesting). Use when running or interpreting
-  demo-lint, fixing a demo-lint finding, adding or changing a rule, or wiring the tool
-  into the build. Trigger on: "demo-lint", "lint the demos", "demo lint failing",
-  "no-root-files", "branch-folder", "demos folder structure", "add a demo-lint rule",
-  or editing tools/demo-lint.
+  structure and runs in the global check:slow (pre-push). Use when running or
+  interpreting demo-lint, fixing a demo-lint finding, adding or changing one of its
+  rules (no-root-files, branch-folder), or wiring the tool into the build. Trigger
+  on: "demo-lint", "lint the demos", "demo lint failing", "no-root-files",
+  "branch-folder", "demos folder structure", "add a demo-lint rule", or editing
+  tools/demo-lint.
 ---
 
 # demo-lint — lint the docs/demos structure
 
 ## What it is and why
 
-`tools/demo-lint` is a small, self-contained TypeScript CLI (modeled on
-`tools/skill-lint`) that enforces how `docs/demos/` is organized: every demo doc lives
-in its **own folder**, and on a feature branch that folder is **named after the
-branch**. It exists so the folder convention is enforced mechanically instead of
-relying on every author remembering it.
+`tools/demo-lint` is a small, self-contained TypeScript CLI that enforces how
+`docs/demos/` is organized: every demo doc lives in its **own folder**, and on a feature
+branch that folder is **named after the branch**. It exists so the folder convention is
+enforced mechanically instead of relying on every author remembering it.
 
 It runs in the repo's **`check:slow`** gate (the pre-push hook), not `check:fast` — it
 needs the git branch, and a demo doc is the last thing you produce before pushing, so
@@ -67,7 +64,7 @@ determined (detached HEAD, no git), so it only fires on a real feature branch.
 
 ## Maintaining the tool
 
-The architecture mirrors `skill-lint`: `src/demos.ts` gathers a pure `DemosContext`
+It's a standard rule-registry split: `src/demos.ts` gathers a pure `DemosContext`
 (root files + branch facts), `src/rules.ts` holds the rule registry (add a `Rule` to the
 exported `rules` array to lint something new), `src/lint.ts` runs them, and `src/cli.ts`
 is the entry point. The same source-maintenance constraints apply as the rest of
