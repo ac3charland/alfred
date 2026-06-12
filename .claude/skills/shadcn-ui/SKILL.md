@@ -1,14 +1,13 @@
 ---
 name: shadcn-ui
 description: >
-  Use this skill whenever working with UI components in the alfred frontend:
-  adding a new shadcn/ui component via the CLI, customizing or theming an
-  existing component, composing Radix primitives (Dialog, Dropdown, Popover,
-  etc.), adding Lucide icons to buttons or headings, or debugging styling issues
-  involving the cn() utility, CSS variables, or Tailwind v4's @theme inline
-  tokens. Also use when deciding whether a component needs "use client" in the
-  Next.js App Router context. For raw Tailwind utility classes or theme-token
-  edits (rather than component scaffolding) use the tailwindcss skill.
+  Covers shadcn/ui components in the alfred frontend: adding a component via the CLI,
+  customizing or theming an existing one, composing Radix primitives (Dialog, Dropdown,
+  Popover, etc.), adding Lucide icons to buttons or headings, the cn() utility, CSS
+  variables, Tailwind v4's @theme inline tokens, and deciding whether a component needs
+  "use client" in the Next.js App Router. Use whenever you add, theme, compose, or debug
+  a UI component. For raw Tailwind utility classes or theme-token edits (rather than
+  component scaffolding) use the tailwindcss skill.
 ---
 
 # shadcn/ui Skill

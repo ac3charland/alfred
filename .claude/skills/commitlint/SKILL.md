@@ -1,12 +1,11 @@
 ---
 name: commitlint
 description: >
-  Use when setting up or modifying commit message validation in the alfred monorepo.
-  Covers: commitlint rule configuration (the [level, applicable, value] tuple format),
-  the project's stricter-than-conventional rules (scope required, no body, no footer,
-  lowercase subject), wiring the commit-msg git hook via husky v9, and the pre-commit /
-  pre-push hooks that fan out to npm workspace packages. Trigger on any task involving:
-  commitlint.config.*, .husky/ hook files, conventional commit format enforcement,
+  Configures commit-message validation for the alfred monorepo: commitlint rule tuples
+  ([level, applicable, value]), the project's stricter-than-conventional rules (scope required,
+  no body, no footer, lowercase subject), the commit-msg git hook wired via husky v9, and the
+  pre-commit / pre-push hooks that fan out to npm workspace packages. Use when editing
+  commitlint.config.* or .husky/ hook files, or enforcing conventional-commit format —
   "require scope", "forbid body", "lowercase only", git hook setup, or husky install.
 ---
 

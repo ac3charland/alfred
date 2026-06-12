@@ -1,13 +1,13 @@
 ---
 name: npm-workspaces
 description: >
-  Use when working with npm workspaces in the alfred monorepo: declaring workspaces
-  in root package.json, installing dependencies to the root or a specific workspace,
-  running scripts across all packages (--workspaces --if-present fan-out pattern),
-  targeting a single workspace (-w), referencing one workspace from another, or
-  reasoning about the root orchestrator check scripts and how husky hooks fan out
-  through them. Also covers the single-lockfile / hoisting mental model and the
-  --workspace vs --workspaces flag distinction.
+  Covers npm workspaces in the alfred monorepo: declaring workspaces in root package.json,
+  installing dependencies to the root or a specific workspace, running scripts across all
+  packages (the --workspaces --if-present fan-out pattern), targeting a single workspace (-w),
+  referencing one workspace from another, the root orchestrator check scripts and how husky
+  hooks fan out through them, the single-lockfile / hoisting mental model, and the --workspace
+  vs --workspaces flag distinction. Use when adding a workspace, installing or hoisting
+  dependencies, wiring a fan-out script, or running a script against one or all packages.
 ---
 
 ## Mental Model

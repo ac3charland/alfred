@@ -1,13 +1,12 @@
 ---
 name: playwright
 description: >
-  Use when writing or modifying Playwright E2E tests in the alfred frontend/
-  package. Covers: test/expect structure, locators (getByRole/getByLabel/
-  getByText/getByTestId), web-first auto-retrying assertions, actions
-  (click/fill/press), auto-waiting, fixtures and test.use, projects and
-  playwright.config.ts (webServer for Next.js dev server), authentication state
-  reuse (storageState / setup project), network mocking (page.route), traces
-  and screenshots on failure, and parallelism/isolation. Apply before creating
+  Covers Playwright E2E testing in the alfred frontend/ package: test/expect
+  structure, locators (getByRole/getByLabel/getByText/getByTestId), web-first
+  auto-retrying assertions, actions (click/fill/press), auto-waiting, fixtures and
+  test.use, projects and playwright.config.ts (webServer for the Next.js dev server),
+  auth state reuse (storageState / setup project), network mocking (page.route),
+  traces and screenshots on failure, and parallelism/isolation. Use before creating
   any *.spec.ts file or touching playwright.config.ts in frontend/. For a single
   component's interaction test in isolation, use a Storybook play function
   (storybook skill) instead.

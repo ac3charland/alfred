@@ -1,17 +1,16 @@
 ---
 name: showboat
 description: >
-  Use when building a "demo doc" that proves an alfred change works — the
-  capture-the-behavior step at the end of the workflow, before committing and in
-  the PR. Covers the self-contained, showboat-compatible CLI at tools/showboat
-  (run via `npm run demo -- <command>`): init / note / exec / image / pop /
-  verify / extract, the markdown format it emits, where demo docs live
-  (docs/demos/), embedding live-UI screenshots via the Playwright `screenshot`
-  helper, how `verify` re-runs and diffs exec blocks, and the gotchas of
-  maintaining the tool (Node native-TS `.ts` imports, erasable syntax, shell
-  quoting, output determinism). Trigger on: "demo doc", "showboat", "npm run
-  demo", "prove it works", "demonstrate the change", "verify the demo",
-  "screenshot the UI for the PR".
+  Builds a "demo doc" that proves an alfred change works — the capture-the-behavior
+  step at the end of the workflow, before committing and in the PR. Covers the
+  self-contained, showboat-compatible CLI at tools/showboat (run via
+  `npm run demo -- <command>`): init / note / exec / image / pop / verify / extract,
+  the markdown format it emits, where demo docs live (docs/demos/), embedding live-UI
+  screenshots via the Playwright `screenshot` helper, how `verify` re-runs and diffs
+  exec blocks, and the gotchas of maintaining the tool (Node native-TS `.ts` imports,
+  erasable syntax, shell quoting, output determinism). Use on any mention of "demo doc",
+  "showboat", "npm run demo", "prove it works", "demonstrate the change", "verify the
+  demo", or "screenshot the UI for the PR".
 ---
 
 # showboat — executable demo docs for alfred

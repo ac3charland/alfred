@@ -1,11 +1,11 @@
 ---
 name: storybook
 description: >
-  Use when writing or modifying Storybook stories in the alfred frontend/ package,
-  configuring .storybook/preview.ts or main.ts, adding play functions for interaction
-  tests, wiring the test-runner for snapshot/a11y testing in CI/pre-push, or mocking
-  Next.js internals (useRouter, next/image, next/navigation) inside stories. Trigger on
-  any mention of: "write a story", "add a story", "interaction test", "play function",
+  Covers Storybook stories in the alfred frontend/ package: writing and modifying
+  stories, configuring .storybook/preview.ts or main.ts, play functions for interaction
+  tests, wiring the test-runner for snapshot/a11y testing in CI/pre-push, and mocking
+  Next.js internals (useRouter, next/image, next/navigation) inside stories. Use on any
+  mention of "write a story", "add a story", "interaction test", "play function",
   "test-runner", "storyshots", "snapshot test", "story controls", "argTypes", "autodocs",
   "storybook decorator", "preview.ts", or "test-storybook". For end-to-end flows that
   span pages or run against the real dev server, use a Playwright spec (playwright skill),

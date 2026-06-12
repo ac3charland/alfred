@@ -1,15 +1,13 @@
 ---
 name: supabase
 description: >
-  Use when writing any code that touches Supabase in the alfred project:
-  querying or mutating the items/folders tables, handling Auth (login,
-  session, getUser), writing RLS policies in SQL migrations, creating the
-  Supabase client in Next.js Server Components / Route Handlers / middleware
-  / browser components, generating TypeScript types, or running recursive
-  CTE queries for the subtask tree. Trigger on: any import from
-  @supabase/supabase-js or @supabase/ssr, any reference to the items or
-  folders tables, any mention of RLS, auth.uid(), service_role key, anon
-  key, or Supabase env vars.
+  Covers Supabase in the alfred project: querying or mutating the items/folders
+  tables, Auth (login, session, getUser), RLS policies in SQL migrations, creating
+  the Supabase client in Next.js Server Components / Route Handlers / middleware /
+  browser components, generating TypeScript types, and recursive CTE queries for the
+  subtask tree. Use on any import from @supabase/supabase-js or @supabase/ssr, any
+  reference to the items or folders tables, or any mention of RLS, auth.uid(), the
+  service_role key, the anon key, or Supabase env vars.
 ---
 
 # Supabase Skill — alfred project

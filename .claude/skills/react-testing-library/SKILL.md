@@ -1,15 +1,14 @@
 ---
 name: react-testing-library
 description: >
-  Use when writing or reviewing React component tests in the alfred frontend.
-  Covers query selection (getBy/queryBy/findBy, role/label/text priority),
-  user interactions with @testing-library/user-event v14 (async/await, setup()),
-  async patterns (findBy, waitFor), rendering with context providers, and
-  patterns specific to alfred components: capture box, task rows, subtask lists,
-  Radix Dialog modals, and folder navigation. Read this skill before writing
-  any file that imports from @testing-library/react. Do NOT use for end-to-end
-  browser flows (playwright skill) or pure-logic unit tests with no rendered
-  component (jest skill).
+  Covers React component testing in the alfred frontend with React Testing Library:
+  query selection (getBy/queryBy/findBy, role/label/text priority), user interactions
+  via @testing-library/user-event v14 (async/await, setup()), async patterns (findBy,
+  waitFor), rendering with context providers, and patterns specific to alfred
+  components — capture box, task rows, subtask lists, Radix Dialog modals, and folder
+  navigation. Use before writing any file that imports from @testing-library/react.
+  Do NOT use for end-to-end browser flows (playwright skill) or pure-logic unit tests
+  with no rendered component (jest skill).
 ---
 
 # React Testing Library
