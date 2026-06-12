@@ -36,6 +36,8 @@ The project's reusable motion tokens (defined in `globals.css`):
 |---|---|---|
 | `--animate-fade-in` | `animate-fade-in` | opacity 0 → 1 over 200ms ease-out |
 | `--animate-fade-out` | `animate-fade-out` | opacity 1 → 0 over 150ms ease-in (exit is slightly quicker than entry — feels responsive). Ends with `forwards` so it **holds** opacity 0 — see the flash pitfall below. |
+| `--animate-check-pop` | `animate-check-pop` | snappy scale overshoot (0.7 → 1.18 → 1) over 200ms — a responsive "press" for a control flipping to active (the task checkbox). |
+| `--animate-task-collapse` | `animate-task-collapse` | collapses height to 0 by animating a grid row track `1fr → 0fr` over 260ms (140ms delay so a preceding pop registers first), `forwards`. Drives the task-completion exit — see "Collapse a row's height to 0" below. |
 
 They are defined with a **plain `@theme`** block (not `@theme inline`) because they don't
 reference dark-mode variables:
@@ -102,8 +104,9 @@ Content is conditionally rendered ({open && <X/>})?
 | **Fade something in on mount** | `className="animate-fade-in motion-reduce:animate-none"` | The `motion-reduce:animate-none` guard is mandatory (see Pitfalls). |
 | **Fade + slide a panel in** | compose with tw-animate-css: `animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none` | `animate-in` / `slide-in-*` come from `tw-animate-css` (already imported). Our `--animate-fade-*` tokens are for the pure-opacity reusable case. |
 | **Reveal/collapse a region with a real fade both ways** | The reveal/collapse pattern (below) | Keep mounted through the exit; unmount on `animationend`; honour reduced motion. |
+| **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): `animate-task-collapse` + commit the store mutation on `animationend` | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Collapse height with the grid `1fr→0fr` trick. Used by `task-row.tsx` completion. |
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
-| **Read `prefers-reduced-motion` in a component** | `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` over `matchMedia('(prefers-reduced-motion: reduce)')` | Lint-clean (no setState-in-effect) and SSR-safe (server snapshot returns `false`). See the snippet below. |
+| **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
 
 ---
@@ -150,23 +153,9 @@ export function Reveal({ open, children }: { open: boolean; children: React.Reac
 }
 ```
 
-`usePrefersReducedMotion`, lint-clean + SSR-safe:
-
-```tsx
-const QUERY = '(prefers-reduced-motion: reduce)';
-const subscribe = (cb: () => void) => {
-  const mql = globalThis.matchMedia(QUERY);
-  mql.addEventListener('change', cb);
-  return () => { mql.removeEventListener('change', cb); };
-};
-function usePrefersReducedMotion(): boolean {
-  return React.useSyncExternalStore(
-    subscribe,
-    () => globalThis.matchMedia(QUERY).matches,
-    () => false, // server snapshot: assume motion allowed
-  );
-}
-```
+`usePrefersReducedMotion` is the shared hook at `frontend/lib/use-prefers-reduced-motion.ts`
+(`useSyncExternalStore` over `matchMedia('(prefers-reduced-motion: reduce)')`, lint-clean +
+SSR-safe — server snapshot returns `false`). Import it; don't re-inline the plumbing.
 
 Why each piece:
 - **Mount-during-render** (not `useEffect`): the `react-hooks/set-state-in-effect` rule errors
@@ -181,6 +170,45 @@ Why each piece:
 - **`forwards` fill-mode on the fade-out** (in the token shorthand): without it the exit
   flashes — see the dedicated pitfall below. This is what makes "fade out then unmount" look
   clean instead of stuttering.
+
+---
+
+## The animate-then-commit pattern (exit a row that a store removes on a state change)
+
+When an item's exit is driven by a **store mutation that filters it out of the view** (e.g.
+completing a task flips `status` and `useScopedTasks` drops it), the row **unmounts the instant
+the store updates** — there's nothing left to animate. The reveal/collapse pattern above doesn't
+apply (it owns its own `open` prop); here the unmount is the data layer's call. So **invert the
+order: play the exit first, commit the mutation last.** Used by `components/tasks/task-row.tsx`
+(completion: checkbox pop → height collapse → text fade, then `completeTask`).
+
+- **Local `isCompleting` state plays the exit.** A click sets it `true`; the row keeps rendering
+  (still "active" in the store) and applies the exit classes. The store mutation is **not** called
+  yet.
+- **Commit on `animationend`** of the collapse (guard `e.target === e.currentTarget` so the
+  checkbox-pop child animation bubbling up doesn't fire it early). The mutation's optimistic patch
+  then filters the row out — it unmounts already collapsed to 0 height, so no jump.
+- **Commit exactly once, with an unmount fallback.** Guard the mutation behind a
+  `hasCompletedRef`, and **also call it from an unmount effect's cleanup** when `isCompleting` —
+  otherwise navigating away mid-animation (the row unmounts before `animationend`) **silently drops
+  the mutation**. (Effect cleanup runs only for client-side unmounts, not full reloads — fine: a
+  full reload mid-exit just no-ops the click.)
+- **Reduced motion → commit immediately**, skipping the animation entirely (same reason as the
+  reveal pattern: no animation means no `animationend` to wait on). Branch on
+  `usePrefersReducedMotion()`.
+
+**Collapse height to 0 without measuring it** — the grid row-track trick (token
+`animate-task-collapse`): a single-child `grid` whose child is `overflow-hidden`, animating
+`grid-template-rows: 1fr → 0fr`. The child clips as the track shrinks, pulling the rows below up.
+Apply `overflow-hidden` only while collapsing so it doesn't clip focus rings at rest.
+
+**Testing it** (jsdom runs no CSS animations, so the commit's trigger never fires on its own):
+- Put a `data-testid` on the collapse wrapper and **fire its `animationend` by hand**
+  (`fireEvent.animationEnd(wrapper)`) to stand in for the collapse finishing — then assert the
+  mutation ran. Firing it on a child (the checkbox) must **not** commit (proves the
+  `target === currentTarget` guard).
+- Test the **reduced-motion** branch by overriding `matchMedia` to `matches: true` (see the jsdom
+  gotcha below); there completion is synchronous, no `animationend` needed.
 
 ---
 
