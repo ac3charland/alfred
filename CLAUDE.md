@@ -211,7 +211,7 @@ gotchas surface proactively instead of being rediscovered.
 
 When you hit and resolve a setback or **non-obvious** problem — at *any* stage,
 including the commit → push → PR → deploy wrap-up, not just while writing feature
-code — record the insight **before moving on**:
+code — **read the `compounding-learning` skill before recording the insight**, then record it before moving on:
 
 1. **Framework / library-related** → update that framework's existing skill with
    the insight / gotcha.
