@@ -18,6 +18,24 @@ CLI workflows the swarm leans on (git, `gh`, `vercel`, `wrangler`, `supabase`,
 `psql`, husky, CI). A reproducible quirk in any of those is just as skill-worthy as a
 framework gotcha.
 
+## Contents
+
+**This file**
+
+- [Where the insight goes](#where-the-insight-goes)
+- [Improving this skill](#improving-this-skill)
+- [Principles (read every time)](#principles-read-every-time)
+- [Worked examples (consult as needed)](#worked-examples-consult-as-needed)
+
+**Bundled resources**
+
+- **references/**
+  - [focused-changes.md](./references/focused-changes.md)
+  - [keep-it-lean.md](./references/keep-it-lean.md)
+  - [no-archaeology.md](./references/no-archaeology.md)
+  - [right-altitude.md](./references/right-altitude.md)
+  - [single-source-of-truth.md](./references/single-source-of-truth.md)
+
 ## Where the insight goes
 
 1. **Tied to a specific framework, library, service, CLI, or tool** → update that

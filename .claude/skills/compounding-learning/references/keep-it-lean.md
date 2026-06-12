@@ -71,6 +71,27 @@ The Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_U
 
 **Lesson:** lead with the part only this skill can tell you. Generic framing is filler.
 
+## A trailing "why" sentence after an already-clear imperative — showboat
+
+A new rule was stated clearly; a trailing sentence re-explained it from a different angle,
+adding nothing the rule didn't already imply.
+
+BEFORE:
+```
+**When the change is purely an animation (the before/after states are visually identical
+stills), the GIF alone is the evidence — do not add before/after screenshots.** Static
+shots of the same frozen UI add file size without showing the change.
+```
+AFTER:
+```
+**When the change is purely an animation, the GIF alone is the evidence — do not add
+before/after screenshots.**
+```
+
+**Lesson:** drop the "why" when the rule already implies it. Also drop parentheticals that
+spell out what the adjoining word already says ("purely" = no stills needed, no need to
+define it).
+
 ## A redundant forward-pointer — showboat (`17a61ea`)
 
 The same sentence already pointed the reader where to go; a trailing "see below" pointed

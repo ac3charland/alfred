@@ -29,6 +29,28 @@ Then after the skill is done (but again, the order is flexible), you can also ru
 
 Cool? Cool.
 
+## Contents
+
+**This file**
+
+- [Communicating with the user](#communicating-with-the-user)
+- [Creating a skill](#creating-a-skill)
+- [Running and evaluating test cases](#running-and-evaluating-test-cases)
+- [Improving the skill](#improving-the-skill)
+- [Advanced: Blind comparison](#advanced-blind-comparison)
+- [Description Optimization](#description-optimization)
+- [Claude.ai-specific instructions](#claudeai-specific-instructions)
+- [Cowork-Specific Instructions](#cowork-specific-instructions)
+- [Reference files](#reference-files)
+
+**Bundled resources** (each described under [Reference files](#reference-files))
+
+- **agents/** — grader / comparator / analyzer subagent instructions
+- **references/** — `schemas.md`, `description-triggering.md`, `example-libraries.md`
+- **scripts/** — the eval, benchmark, optimization, and packaging Python CLIs
+- **assets/** — `eval_review.html` (the trigger-eval review template)
+- **eval-viewer/** — `generate_review.py` + `viewer.html` (the results viewer)
+
 ## Communicating with the user
 
 The skill creator is liable to be used by people across a wide range of familiarity with coding jargon. If you haven't heard (and how could you, it's only very recently that it started), there's a trend now where the power of Claude is inspiring plumbers to open up their terminals, parents and grandparents to google "how to install npm". On the other hand, the bulk of users are probably fairly computer-literate.
