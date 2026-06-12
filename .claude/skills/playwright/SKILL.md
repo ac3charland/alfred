@@ -241,54 +241,32 @@ The Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_U
 
 ---
 
-## Browser availability: Claude Code on the web (CDN-blocked sandboxes)
+## Mocking the backend — the alfred integration suite (run authenticated, seeded tests)
 
-Playwright downloads its managed Chromium from `cdn.playwright.dev`. In some environments that
-host is blocked — most notably the **default "Trusted" network policy in Claude Code on the
-web**, whose allowlist covers npm + Ubuntu apt mirrors but NOT the Playwright browser CDN
-(confirmed: `curl -I https://cdn.playwright.dev/` → HTTP 403 under Trusted, while the apt and npm
-hosts return 200). There, `playwright install chromium` fails.
+The suite never touches real Supabase. Every Supabase access in alfred is **server-side** (middleware `getUser()`, `lib/data/*` readers in Server Components, the `app/api/**` route handlers) — so **`page.route()` cannot mock it**: Playwright only intercepts *browser* network, but the reads and auth validation happen inside the Next process and arrive as already-rendered HTML. The seam therefore sits at the Supabase **HTTP boundary inside the server**, not in the browser.
 
-**Preferred fix — open the CDN, don't bundle a fallback.** Configure a custom cloud environment
-that allowlists the CDN and installs the browser at setup:
-- **Network access: Custom**, "include defaults" ticked, plus `cdn.playwright.dev` (and
-  `*.playwright.dev`). **`--with-deps` gotcha:** it runs `apt-get update` across *every* apt source
-  baked into the base image, including the deadsnakes / ondrej-php PPAs served from
-  `ppa.launchpadcontent.net` — which is **NOT** in the default allowlist (confirmed: 403 even when
-  `archive`/`security.ubuntu.com` return 200). A single 403 aborts `apt-get update` (exit 100), so
-  the whole setup fails with `Failed to install browsers`. Fix by also allowlisting
-  `ppa.launchpadcontent.net`, or just use **Network access: Full**. (Chromium's libs come from the
-  Ubuntu mirrors, which the defaults cover; the base image lacks only a few X libs —
-  libxcomposite/libxdamage/libxrandr — so `--with-deps` is still required, not optional.)
-- **Setup script** (runs as root, so `apt` works; cached across sessions):
-  `npm exec -w frontend -- playwright install --with-deps chromium`.
+**The approach (zero production-code branches):** an in-memory mock of the Supabase HTTP API (`frontend/scripts/mock-supabase.mjs`) implements just the subset alfred uses — GoTrue `POST /auth/v1/token`, `GET /auth/v1/user`, `POST /auth/v1/logout`; PostgREST `GET|POST|PATCH|DELETE /rest/v1/{folders,items}` + `POST /rest/v1/rpc/complete_subtree`; and test-control routes `POST /__mock__/{reset,seed}`. `playwright.config.ts` runs it as a **second `webServer`** and points the Next server's env (`NEXT_PUBLIC_SUPABASE_URL`, anon/service keys, `INGEST_API_KEY`) at it — unconditionally, so a developer's real `.env.local` is never used in tests. The real `@supabase/ssr` client, cookie handling, PostgREST query strings and route handlers all still execute; only the DB+auth backend is faked. These are genuine **integration** tests.
 
-See [`docs/cloud-environment.md`](../../../docs/cloud-environment.md). alfred uses exactly this:
-`scripts/setup-chromium.mjs` then just runs the standard `playwright install chromium`, guarded
-by an `existsSync(chromium.executablePath())` check so it skips the download when the browser is
-already present.
+- **Seed per test, not per build.** `e2e/support/fixtures.ts` adds a `seed` fixture that POSTs to `/__mock__/reset` (clean slate) then `/__mock__/seed` before `page.goto()`. The mock is in-memory and the config runs `workers: 1, fullyParallel: false`, so a shared store with per-test reset is deterministic. Build seed rows with `makeItem` / `makeFolder` from `e2e/support/constants.ts`.
+- **Auth via the real login + `storageState`.** `e2e/auth.setup.ts` drives the actual login form against the mock and saves the session; the `chromium` project reuses it via `storageState`. **Don't hand-craft the auth cookie** — `@supabase/ssr` derives its name (`sb-<ref>-auth-token`, ref = first URL host label, e.g. `sb-localhost-auth-token`) from `NEXT_PUBLIC_SUPABASE_URL`, and because the browser and the server use the *same* URL the names match and the cookie round-trips. Logging in for real sidesteps the whole derivation. Specs that need the logged-OUT state opt out with `test.use({ storageState: { cookies: [], origins: [] } })` (see `home.spec.ts`).
+- **The mock mints a long-lived session** (far-future `expires_at`) so it never expires mid-run and `getUser()` never tries to refresh.
 
-**General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
-`launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
-`page.evaluate: Browser closed`.
+### Gotchas hit wiring this up (all real, all cost discovery time)
 
-**Last resort (truly air-gapped CI where the CDN is unreachable at all):**
-`@sparticuz/chromium` bundles a serverless Chromium `.br` you `inflate()` to `/tmp`, point
-Playwright at via `launchOptions.executablePath`, and back with hand-compiled NSS/NSPR stub
-`.so` libraries on `LD_LIBRARY_PATH`. It's fragile (single-process crashes, missing shared libs,
-SwiftShader args) — prefer the allowlist approach above. alfred carried this until the
-custom-environment switch and no longer needs it.
-
-**Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
-`process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
-`env['BASE_URL']` is correct; `env.BASE_URL` gives TS4111 error.
+- **`import.meta` breaks Playwright's config loader.** Playwright compiles `playwright.config.ts` (and its import chain) as **CJS**; any module it imports that uses `import.meta.dirname`/`import.meta.url` dies with `exports is not defined in ES module scope`. In a module imported by the config (e.g. `e2e/support/constants.ts`), resolve paths from `process.cwd()` (Playwright runs from the config dir) instead of `import.meta`.
+- **`.ts` import extensions.** The frontend `tsconfig` does **not** set `allowImportingTsExtensions`, so `import … from './x.ts'` fails `tsc` (TS5097). Use **extensionless** relative imports in `e2e/**` — Playwright's loader resolves them. (Only `tools/showboat` allows the `.ts` extension.)
+- **Sandbox Chromium + multiple spec files = "Browser closed".** `@sparticuz/chromium`'s args include `--single-process`; Playwright reuses one browser across spec **files**, and a single-process Chromium exits when its first page closes, crashing later files with `browserContext.newPage: Browser closed`. **Filter out `--single-process` and `--no-zygote`** from `chromiumPkg.args` (keep the rest); keep `--disable-dev-shm-usage`. (A single spec file is fine with single-process — multi-file reuse is what breaks, same root cause as the Storybook test-runner note above.)
+- **Radix submenu items don't fire `onSelect` from a synthetic pointer click.** A nested `DropdownMenu.Sub` item (e.g. the "Move to…" → folder picker) clicked via `.hover()`+`.click()` races the "safe triangle" and silently closes without selecting — the click "succeeds" but nothing happens. **Drive it by keyboard:** hover the subtrigger, `ArrowRight` (opens submenu, focuses first item), `ArrowDown` to the target, `Enter`. Top-level menu items (e.g. "Delete") click fine — only nested submenu items need this.
+- **Seed ids that get sent back in a mutation body must be real UUIDs.** The route zod schemas validate `folder_id` / `parent_id` as `z.uuid()`. A readable seed id like `'f1'` renders fine (folder navigation/tree-building are client-side) but a **move** (`PATCH { folder_id }`) or **add-subtask** (`POST { parent_id }`) sends it to the server, which 400s → the optimistic store **rolls back** → the row reappears. The tell-tale symptom is a mutation that "looks like it worked then undid itself." Use `crypto.randomUUID()` ids (the `makeItem`/`makeFolder` defaults) and capture the value when you need to reference it (URL, parent_id). The same trap makes an optimistic assertion *pass by luck* (the row is visible for the instant before the rollback) — so a green test can still be hiding a 400.
+- **Optimistic mutation + full reload races the server write.** After a store mutation, `page.goto()` (a full reload) re-fetches from the mock and can read **stale** state because the optimistic UI updated before the server write landed. Prefer **client-side navigation** (click a sidebar link) — it reads the already-reconciled store and reflects the change without a reload. When a full reload is genuinely required (e.g. folder-delete re-parents items only on the server, not in the client store), `await page.waitForResponse(...)` for the mutation **before** reloading.
+- **`getByText` is a case-insensitive substring match.** `getByText('Inbox')` also matches "Finished **inbox** task". Use `{ exact: true }` when the string is a substring of other visible text (e.g. a context label vs a task title).
 
 ---
 
 ## Storybook test-runner browser
 
 The Storybook test-runner runs on Playwright's managed Chromium. With a real browser available
-(see the section above), `test-runner-jest.config.cjs` just spreads `getJestConfig()` and sets a
+(see the section below), `test-runner-jest.config.cjs` just spreads `getJestConfig()` and sets a
 timeout — no custom `launchOptions`:
 ```js
 const { getJestConfig } = require('@storybook/test-runner');
@@ -372,25 +350,26 @@ Credentials come from env vars (`.env.local` for local dev, CI secrets for CI). 
 
 ---
 
-## Mocking the backend — the alfred integration suite (run authenticated, seeded tests)
 
-The suite never touches real Supabase. Every Supabase access in alfred is **server-side** (middleware `getUser()`, `lib/data/*` readers in Server Components, the `app/api/**` route handlers) — so **`page.route()` cannot mock it**: Playwright only intercepts *browser* network, but the reads and auth validation happen inside the Next process and arrive as already-rendered HTML. The seam therefore sits at the Supabase **HTTP boundary inside the server**, not in the browser.
+## Browser availability: Claude Code on the web (CDN-blocked sandboxes)
 
-**The approach (zero production-code branches):** an in-memory mock of the Supabase HTTP API (`frontend/scripts/mock-supabase.mjs`) implements just the subset alfred uses — GoTrue `POST /auth/v1/token`, `GET /auth/v1/user`, `POST /auth/v1/logout`; PostgREST `GET|POST|PATCH|DELETE /rest/v1/{folders,items}` + `POST /rest/v1/rpc/complete_subtree`; and test-control routes `POST /__mock__/{reset,seed}`. `playwright.config.ts` runs it as a **second `webServer`** and points the Next server's env (`NEXT_PUBLIC_SUPABASE_URL`, anon/service keys, `INGEST_API_KEY`) at it — unconditionally, so a developer's real `.env.local` is never used in tests. The real `@supabase/ssr` client, cookie handling, PostgREST query strings and route handlers all still execute; only the DB+auth backend is faked. These are genuine **integration** tests.
+Playwright downloads its managed Chromium from `cdn.playwright.dev`. In some environments that
+host is blocked — most notably the **default "Trusted" network policy in Claude Code on the
+web**, whose allowlist covers npm + Ubuntu apt mirrors but NOT the Playwright browser CDN
+(confirmed: `curl -I https://cdn.playwright.dev/` → HTTP 403 under Trusted, while the apt and npm
+hosts return 200). There, `playwright install chromium` fails.
 
-- **Seed per test, not per build.** `e2e/support/fixtures.ts` adds a `seed` fixture that POSTs to `/__mock__/reset` (clean slate) then `/__mock__/seed` before `page.goto()`. The mock is in-memory and the config runs `workers: 1, fullyParallel: false`, so a shared store with per-test reset is deterministic. Build seed rows with `makeItem` / `makeFolder` from `e2e/support/constants.ts`.
-- **Auth via the real login + `storageState`.** `e2e/auth.setup.ts` drives the actual login form against the mock and saves the session; the `chromium` project reuses it via `storageState`. **Don't hand-craft the auth cookie** — `@supabase/ssr` derives its name (`sb-<ref>-auth-token`, ref = first URL host label, e.g. `sb-localhost-auth-token`) from `NEXT_PUBLIC_SUPABASE_URL`, and because the browser and the server use the *same* URL the names match and the cookie round-trips. Logging in for real sidesteps the whole derivation. Specs that need the logged-OUT state opt out with `test.use({ storageState: { cookies: [], origins: [] } })` (see `home.spec.ts`).
-- **The mock mints a long-lived session** (far-future `expires_at`) so it never expires mid-run and `getUser()` never tries to refresh.
+We have a custom `alfred` cloud environment in Claude Code on the web that addresses this issue by isntalling Chromium as part of its setup script. If you are running in Claude Code on the web and do not see chromium, ask the user if they're on the Default environment.
 
-### Gotchas hit wiring this up (all real, all cost discovery time)
+See [`docs/cloud-environment.md`](../../../docs/cloud-environment.md) for additional details on the setup if you need to troubleshoot beyond simply switching environments.
 
-- **`import.meta` breaks Playwright's config loader.** Playwright compiles `playwright.config.ts` (and its import chain) as **CJS**; any module it imports that uses `import.meta.dirname`/`import.meta.url` dies with `exports is not defined in ES module scope`. In a module imported by the config (e.g. `e2e/support/constants.ts`), resolve paths from `process.cwd()` (Playwright runs from the config dir) instead of `import.meta`.
-- **`.ts` import extensions.** The frontend `tsconfig` does **not** set `allowImportingTsExtensions`, so `import … from './x.ts'` fails `tsc` (TS5097). Use **extensionless** relative imports in `e2e/**` — Playwright's loader resolves them. (Only `tools/showboat` allows the `.ts` extension.)
-- **Sandbox Chromium + multiple spec files = "Browser closed".** `@sparticuz/chromium`'s args include `--single-process`; Playwright reuses one browser across spec **files**, and a single-process Chromium exits when its first page closes, crashing later files with `browserContext.newPage: Browser closed`. **Filter out `--single-process` and `--no-zygote`** from `chromiumPkg.args` (keep the rest); keep `--disable-dev-shm-usage`. (A single spec file is fine with single-process — multi-file reuse is what breaks, same root cause as the Storybook test-runner note above.)
-- **Radix submenu items don't fire `onSelect` from a synthetic pointer click.** A nested `DropdownMenu.Sub` item (e.g. the "Move to…" → folder picker) clicked via `.hover()`+`.click()` races the "safe triangle" and silently closes without selecting — the click "succeeds" but nothing happens. **Drive it by keyboard:** hover the subtrigger, `ArrowRight` (opens submenu, focuses first item), `ArrowDown` to the target, `Enter`. Top-level menu items (e.g. "Delete") click fine — only nested submenu items need this.
-- **Seed ids that get sent back in a mutation body must be real UUIDs.** The route zod schemas validate `folder_id` / `parent_id` as `z.uuid()`. A readable seed id like `'f1'` renders fine (folder navigation/tree-building are client-side) but a **move** (`PATCH { folder_id }`) or **add-subtask** (`POST { parent_id }`) sends it to the server, which 400s → the optimistic store **rolls back** → the row reappears. The tell-tale symptom is a mutation that "looks like it worked then undid itself." Use `crypto.randomUUID()` ids (the `makeItem`/`makeFolder` defaults) and capture the value when you need to reference it (URL, parent_id). The same trap makes an optimistic assertion *pass by luck* (the row is visible for the instant before the rollback) — so a green test can still be hiding a 400.
-- **Optimistic mutation + full reload races the server write.** After a store mutation, `page.goto()` (a full reload) re-fetches from the mock and can read **stale** state because the optimistic UI updated before the server write landed. Prefer **client-side navigation** (click a sidebar link) — it reads the already-reconciled store and reflects the change without a reload. When a full reload is genuinely required (e.g. folder-delete re-parents items only on the server, not in the client store), `await page.waitForResponse(...)` for the mutation **before** reloading.
-- **`getByText` is a case-insensitive substring match.** `getByText('Inbox')` also matches "Finished **inbox** task". Use `{ exact: true }` when the string is a substring of other visible text (e.g. a context label vs a task title).
+**General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
+`launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
+`page.evaluate: Browser closed`.
+
+**Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
+`process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
+`env['BASE_URL']` is correct; `env.BASE_URL` gives TS4111 error.
 
 ---
 
