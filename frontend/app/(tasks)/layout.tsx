@@ -78,8 +78,10 @@ export default async function TasksLayout({ children }: { children: React.ReactN
             </header>
 
             {/* Page content */}
-            <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto max-w-3xl px-4 py-8">{children}</div>
+            <main className="flex-1 overflow-y-auto flex flex-col">
+              <div className="mx-auto w-full max-w-3xl px-4 py-8 flex-1 flex flex-col">
+                {children}
+              </div>
             </main>
           </div>
         </div>
