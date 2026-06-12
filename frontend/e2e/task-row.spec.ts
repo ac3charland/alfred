@@ -199,3 +199,52 @@ test.describe('move and delete', () => {
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Delete me')).toBeHidden();
   });
 });
+
+test.describe('single active inline input across rows', () => {
+  // Only one inline input may be open at a time across every row: the title-edit text
+  // box and the add-subtask entry box are mutually exclusive. (The Inbox hero capture
+  // box is exempt and always available.)
+
+  test('opening a subtask entry box on one row closes another row’s', async ({ page, seed }) => {
+    await seed({
+      items: [makeItem('Alpha task', { id: 'a1' }), makeItem('Beta task', { id: 'b1' })],
+    });
+    await page.goto('/?view=inbox');
+
+    const alpha = page.getByRole('listitem').filter({ hasText: 'Alpha task' });
+    const beta = page.getByRole('listitem').filter({ hasText: 'Beta task' });
+
+    await alpha.getByRole('button', { name: 'Add subtask' }).click();
+    await expect(alpha.getByPlaceholder(/add subtask/i)).toBeVisible();
+
+    await beta.getByRole('button', { name: 'Add subtask' }).click();
+    await expect(beta.getByPlaceholder(/add subtask/i)).toBeVisible();
+    // The first row's entry box closed when the second opened.
+    await expect(alpha.getByPlaceholder(/add subtask/i)).toBeHidden();
+  });
+
+  test('editing one title is abandoned without saving when another is double-clicked', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      items: [makeItem('Alpha task', { id: 'a1' }), makeItem('Beta task', { id: 'b1' })],
+    });
+    await page.goto('/?view=inbox');
+
+    await page.getByText('Alpha task').dblclick();
+    await page.getByRole('textbox', { name: 'Edit title' }).fill('Alpha edited');
+
+    // Double-click the other item — the first edit is abandoned, the second activates.
+    await page.getByText('Beta task').dblclick();
+
+    const editInputs = page.getByRole('textbox', { name: 'Edit title' });
+    await expect(editInputs).toHaveCount(1);
+    await expect(editInputs).toHaveValue('Beta task');
+
+    // The first row reverted to its saved title; the unsaved change never persisted.
+    const tasks = page.getByRole('list', { name: 'Tasks' });
+    await expect(tasks.getByText('Alpha task')).toBeVisible();
+    await expect(tasks.getByText('Alpha edited')).toBeHidden();
+  });
+});

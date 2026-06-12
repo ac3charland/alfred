@@ -10,6 +10,11 @@ import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { Button } from '@/components/ui/button';
 import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
+import {
+  sameEditor,
+  useActiveEditor,
+  useActiveEditorActions,
+} from '@/lib/stores/active-editor-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
@@ -38,9 +43,10 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   const folders = useFolders();
   const allTasks = useTasks();
   const { completeTask, uncompleteTask, updateTask, moveTask, deleteTask } = useTaskActions();
+  const activeEditor = useActiveEditor();
+  const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [isExpanded, setIsExpanded] = React.useState(false);
-  const [showAddSubtask, setShowAddSubtask] = React.useState(false);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
   // While true, the row plays its completion exit (checkbox pop → height collapse →
   // text fade) and holds itself visible until the collapse ends, at which point
@@ -50,7 +56,11 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   // OR unmount); `isCompletingRef` lets the unmount fallback read the latest state.
   const hasCompletedRef = React.useRef(false);
   const isCompletingRef = React.useRef(false);
-  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+  // Only one inline input may be open across all rows, so the title-edit and add-subtask
+  // flags are derived from the shared active-editor store, not held per-row. Opening
+  // either here closes whatever input another row had open (see active-editor-store).
+  const isEditingTitle = sameEditor(activeEditor, { itemId: node.id, kind: 'title' });
+  const showAddSubtask = sameEditor(activeEditor, { itemId: node.id, kind: 'subtask' });
   const [draftTitle, setDraftTitle] = React.useState(node.title);
   const titleInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -174,13 +184,13 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
     const newValue = draftTitle.trim();
     if (newValue === node.title || newValue === '') {
       setDraftTitle(node.title);
-      setIsEditingTitle(false);
+      closeEditor({ itemId: node.id, kind: 'title' });
       return;
     }
     // Exit edit mode immediately so the optimistic title shows the instant the user
     // submits — without waiting for the server. The store reconciles (or rolls back)
     // the row underneath, exactly like the due-date and notes edits.
-    setIsEditingTitle(false);
+    closeEditor({ itemId: node.id, kind: 'title' });
     try {
       await updateTask(node.id, { title: newValue });
     } catch {
@@ -329,7 +339,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                     if (event_.key === 'Enter') void handleSaveTitle();
                     if (event_.key === 'Escape') {
                       setDraftTitle(node.title);
-                      setIsEditingTitle(false);
+                      closeEditor({ itemId: node.id, kind: 'title' });
                     }
                   }}
                   className={cn(
@@ -359,7 +369,9 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
               <div
                 className="flex-1 flex flex-col min-w-0"
                 onDoubleClick={() => {
-                  setIsEditingTitle(true);
+                  // Reset the draft so a previously-abandoned edit doesn't resurface.
+                  setDraftTitle(node.title);
+                  openEditor({ itemId: node.id, kind: 'title' });
                 }}
               >
                 <span
@@ -417,8 +429,12 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                 size="md"
                 tone="accent"
                 onClick={() => {
-                  setShowAddSubtask((v) => !v);
-                  setIsExpanded(true);
+                  if (showAddSubtask) {
+                    closeEditor({ itemId: node.id, kind: 'subtask' });
+                  } else {
+                    openEditor({ itemId: node.id, kind: 'subtask' });
+                    setIsExpanded(true);
+                  }
                 }}
                 aria-label="Add subtask"
               >
@@ -716,7 +732,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                         folderId={node.folder_id}
                         compact
                         onDismiss={() => {
-                          setShowAddSubtask(false);
+                          closeEditor({ itemId: node.id, kind: 'subtask' });
                         }}
                       />
                     </li>
