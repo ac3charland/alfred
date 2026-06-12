@@ -18,6 +18,7 @@ up / debugging the harness?" If it's the latter, it's a reference.
 - A setup-only error embedded in the body (stryker jest-env)
 - A connection-string setup gotcha with trial-and-error in the body (supabase)
 - Burying the common case behind a rarely-needed section (playwright ordering)
+- Rule substance in the frontmatter description (demo-lint)
 
 ## One-time config listings in the body — playwright (`9e7f1ef`)
 
@@ -68,6 +69,29 @@ the dashboard's Session-pooler string.
 **Lesson:** the skill already linked a `references/` dir — that `nslookup`/`ip-ranges`
 detour is exactly what lives there, surfaced only when someone is actually wiring a
 connection string.
+
+## Rule substance in the frontmatter description — demo-lint
+
+The frontmatter `description` is the highest tier — the *only* text scanned to decide
+whether to load the skill — so it holds what-it-is + when-to-reach-for-it, nothing more.
+A new linter's description spelled out each rule's behavior; that substance is body
+content (the skill's "The rules" table), not triggering text.
+
+BEFORE (frontmatter):
+```
+... Two rules ship today: no-root-files (only README.md may sit directly in docs/demos/;
+every demo lives in its own folder) and branch-folder (a feature branch must capture its
+demo in docs/demos/<current-branch>/, slashes nesting). Use when ...
+```
+AFTER:
+```
+... runs in the global check:slow (pre-push). Use when running or interpreting
+demo-lint, ... adding or changing one of its rules (no-root-files, branch-folder), ...
+```
+
+**Lesson:** name the rules as trigger keywords in the description; let the body explain
+what they do. Substance in the description is the same altitude error as a reference-only
+detail in the body, one tier up.
 
 ## Burying the common case — playwright ordering (`30e0729`)
 
