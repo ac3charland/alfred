@@ -571,6 +571,13 @@ describe('TaskRow', () => {
 
       expect(screen.queryByRole('button', { name: /to a folder/i })).not.toBeInTheDocument();
     });
+
+    it('makes the title non-highlightable so a press-drag on it lifts the row', () => {
+      // The whole row is the drag surface, so the title text must not be selectable —
+      // select-none stops a press-drag on it from highlighting text instead of dragging.
+      renderTasks([BASE_ITEM]);
+      expect(screen.getByText('Write tests').closest('div')).toHaveClass('select-none');
+    });
   });
 
   // ---------------------------------------------------------------------------
