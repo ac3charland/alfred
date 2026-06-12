@@ -3,7 +3,7 @@
 A tweak to a skill has no quota. A point that fits in one sentence gets one sentence.
 The instinct to "write it up properly" produces justifying paragraphs, restated
 derivations, and bolded preambles that the surrounding text already implies. Every
-extra line loads on every future invocation, so leanness is a recurring tax, not a
+extra line loads on every future invocation, so verbosity is a recurring tax, not a
 one-time style nit.
 
 ## Contents
