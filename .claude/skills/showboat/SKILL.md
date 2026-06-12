@@ -74,6 +74,7 @@ npm run demo -- <command> [args]
 | `note <file> [text]` | Append commentary. Reads stdin if `text` is omitted. |
 | `exec <file> <lang> [code]` | Run code, capture output, append both. Echoes the output and **exits with the command's exit code**. Reads stdin if `code` is omitted. |
 | `image <file> <path \| '![alt](path)'>` | Copy an image next to the doc and embed it. |
+| `video <file> <webm> [alt]` | Convert a Playwright `.webm` recording to an animated **GIF** (in WASM — no system `ffmpeg`), save it next to the doc, embed it as an image, and **delete the `.webm`**. GitHub renders GIFs inline but not `.webm`. |
 | `pop <file>` | Remove the most recent entry (an exec drops its code *and* output). Use after a command errored and you don't want it in the doc. |
 | `verify <file> [--output <new>]` | Re-run every exec block and diff against the recorded output. Exit 1 on any mismatch, 0 if all match. `--output` writes a refreshed copy. |
 | `extract <file> [--filename <name>]` | Print the `showboat` commands that recreate the doc. |
@@ -212,12 +213,39 @@ test('capture: inbox reveal fade', async ({ page, seed }) => {
 });
 ```
 
-Playwright writes the `.webm` under `test-results/…`; move it next to the doc and
-link it from the demo doc / PR (a `.webm` won't inline as a markdown image, so link
-it as a file). Minimise size by: a small viewport **and** matching `video.size`, a
-test body containing **only** the animation (no unrelated steps inflating the
-clip), and triggering the animation immediately so the recording is a second or
-two, not the whole setup.
+Playwright writes the `.webm` under `test-results/…`. **Don't link the `.webm`** —
+GitHub's file and markdown viewers won't render it. Instead hand it to
+`npm run demo -- video <doc> <webm> [alt]`, which converts it to an animated **GIF**
+(that *does* inline as a markdown image), saves the GIF next to the doc, embeds it,
+and deletes the `.webm`:
+
+```bash
+# after the capture spec writes test-results/.../video.webm
+npm run demo -- video docs/demos/<doc>.md "$(find test-results -name '*.webm' | head -1)" "inbox reveal fade"
+```
+
+Minimise the GIF by keeping the recording small at the source: a small viewport
+**and** matching `video.size`, a test body containing **only** the animation (no
+unrelated steps inflating the clip), and triggering the animation immediately so
+the recording is a second or two, not the whole setup. (`video` itself caps the GIF
+width at 640px and thins it to 15fps.)
+
+> **ffmpeg backend (maintainer note).** `video` converts in pure WASM via
+> **`@ffmpeg/ffmpeg` v0.11.x** + its companion **`@ffmpeg/core` v0.11.x** — pinned
+> deliberately: 0.12+ dropped the Node entry point and runs only in the browser. This
+> needs **no system `ffmpeg`** and no environment changes; a clean conversion is
+> ~1s (load ≈0.1s + convert ≈0.8s), and it only runs at demo-authoring / `verify`
+> time, never in `check`. **Gotcha:** the 0.11 core's emscripten glue grabs the
+> global `fetch` to load its `.wasm` and feeds it a bare filesystem path that Node
+> 18+'s WHATWG `fetch` rejects (`Failed to parse URL`). `tools/showboat/src/ffmpeg.ts`
+> hides `globalThis.fetch` *only* across `ffmpeg.load()` so the glue falls back to its
+> Node `fs` reader, then restores it. **Second gotcha:** ffmpeg.wasm pins the Node event
+> loop open, so the process *hangs after the conversion already finished* instead of
+> exiting — `convertWebmToGif` calls `ffmpeg.exit()` in a `finally` to tear the runtime
+> down (we can't `process.exit()` — it's banned). If a future `video` change makes the
+> command hang for ~forever despite producing the GIF, that teardown is what's missing,
+> **not** a slow conversion (a clean run is ~1s). The conversion orchestration in `video`
+> takes an injectable converter so it's unit-tested without spinning up WASM.
 
 ## Linking the demo in the PR (a live, clickable link)
 
