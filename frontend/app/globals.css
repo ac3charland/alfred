@@ -85,7 +85,13 @@
    (mount → fade-in / fade-out → unmount) pattern these are built for. */
 @theme {
   --animate-fade-in: fade-in 200ms ease-out;
-  --animate-fade-out: fade-out 150ms ease-in;
+  /* `forwards` keeps the element at its final keyframe (opacity 0) after the
+     animation ends. Without it, fill-mode defaults to `none`: the moment the
+     fade-out finishes the element snaps back to its base opacity (1) for the one
+     frame before an animationend-driven unmount removes it — a visible flash.
+     The keyword must live INSIDE this shorthand; applied as a separate utility it
+     is reset to `none` by the `animation` shorthand this token expands to. */
+  --animate-fade-out: fade-out 150ms ease-in forwards;
 
   @keyframes fade-in {
     from {
