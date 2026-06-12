@@ -108,6 +108,25 @@ cloud-deploy/
 ```
 Claude reads only the relevant reference file.
 
+#### Reference & example libraries
+
+Sometimes the *point* of a skill is a body of reference material or worked example
+scenarios too big for SKILL.md — API docs, per-domain schemas, a catalog of "if the
+situation looks like X, do Y" cases, or good/bad output samples for calibration. That's
+just progressive disclosure applied to a library: keep the routing in SKILL.md (always
+loaded) and push the bulk into bundled files Claude fetches only when a task needs them.
+The canonical home is `references/`; an `examples/` folder is fine but isn't the
+standard term, so reserve it for samples that teach by demonstration (e.g. a good/bad
+output split).
+
+When the user asks to create or improve a skill **"with examples"**, **"with
+references"**, or with a library of scenarios, **read
+[`references/example-libraries.md`](references/example-libraries.md) before drafting
+it.** It covers the folder vocabulary, the three library layouts (scenario-index,
+file-per-scenario, good/bad split) and when each fits, the grep-hint / one-level-deep /
+no-duplication rules that keep large files navigable, and the point at which a library
+is big enough that an MCP retrieval tool beats a skill.
+
 #### Principle of Lack of Surprise
 
 This goes without saying, but skills must not contain malware, exploit code, or any content that could compromise system security. A skill's contents should not surprise the user in their intent if described. Don't go along with requests to create misleading skills or skills designed to facilitate unauthorized access, data exfiltration, or other malicious activities. Things like a "roleplay as an XYZ" are OK though.
@@ -133,6 +152,9 @@ ALWAYS use this exact template:
 Input: Added user authentication with JWT tokens
 Output: feat(auth): implement JWT-based authentication
 ```
+This inline form is for a couple of few-shot pairs that fit in SKILL.md. When you need a
+whole *library* of examples or references loaded on demand, don't inline them — see the
+"Reference & example libraries" subsection above and `references/example-libraries.md`.
 
 ### Writing Style
 
@@ -466,6 +488,7 @@ The agents/ directory contains instructions for specialized subagents. Read them
 
 The references/ directory has additional documentation:
 - `references/schemas.md` — JSON structures for evals.json, grading.json, etc.
+- `references/example-libraries.md` — how to structure a skill whose value is a library of references or example scenarios (folder vocabulary, the three library layouts, grep-hint / one-level-deep / no-duplication rules, and the RAG boundary). Read it when building a skill "with examples" or "with references."
 
 ---
 
