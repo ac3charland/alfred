@@ -1,18 +1,8 @@
-import { existsSync } from 'node:fs';
-
 import { defineConfig, devices } from '@playwright/test';
-import chromiumPkg from '@sparticuz/chromium';
 
 import { AUTH_FILE, E2E_USER, MOCK_PORT, MOCK_URL } from './e2e/support/constants';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
-
-// In CDN-restricted sandboxes, scripts/setup-chromium.mjs extracts a
-// @sparticuz/chromium binary to <tmpdir>/chromium. When that file exists, point
-// Playwright at it (with the SwiftShader/no-sandbox args it needs). On normal
-// machines / CI the file is absent and Playwright uses its own managed browser
-// (installed by setup-chromium.mjs via `playwright install chromium`).
-const sandboxChromium = existsSync('/tmp/chromium') ? '/tmp/chromium' : undefined;
 
 // The E2E suite never touches real Supabase: it points the Next server at the
 // in-memory mock backend (scripts/mock-supabase.mjs). These values are injected
@@ -29,30 +19,6 @@ const mockEnvironment: Record<string, string> = {
   E2E_USER_EMAIL: E2E_USER.email,
   E2E_USER_PASSWORD: E2E_USER.password,
 };
-
-const chromiumLaunch = sandboxChromium
-  ? {
-      launchOptions: {
-        executablePath: sandboxChromium,
-        // Drop --single-process / --no-zygote: Playwright reuses one browser across
-        // spec FILES, and a single-process Chromium exits when its first page closes,
-        // crashing later files with "browserContext.newPage: Browser closed". Keep the
-        // rest of sparticuz's SwiftShader/GL args.
-        args: [
-          ...chromiumPkg.args.filter(
-            (argument) => argument !== '--single-process' && argument !== '--no-zygote',
-          ),
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-        ],
-        env: {
-          ...process.env,
-          LD_LIBRARY_PATH: '/tmp:' + (process.env['LD_LIBRARY_PATH'] ?? ''),
-        },
-      },
-    }
-  : {};
 
 export default defineConfig({
   testDir: './e2e',
@@ -73,7 +39,7 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /.*\.setup\.ts/,
-      use: { ...devices['Desktop Chrome'], ...chromiumLaunch },
+      use: { ...devices['Desktop Chrome'] },
     },
     // 2. Authenticated tests reuse that session. Specs that need the logged-out
     //    state opt out with `test.use({ storageState: { cookies: [], origins: [] } })`.
@@ -81,7 +47,6 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        ...chromiumLaunch,
         storageState: AUTH_FILE,
       },
       dependencies: ['setup'],
