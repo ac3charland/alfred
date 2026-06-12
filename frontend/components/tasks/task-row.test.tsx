@@ -179,7 +179,8 @@ describe('TaskRow', () => {
 
     await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
 
-    expect(screen.getByText('Write unit tests')).toBeInTheDocument();
+    // Subtask list is in the accessibility tree (aria-hidden removed) when expanded
+    expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
   });
 
   it('hides child tasks when expanded and then collapsed', async () => {
@@ -187,10 +188,12 @@ describe('TaskRow', () => {
     renderTasks([BASE_ITEM, CHILD_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
-    expect(screen.getByText('Write unit tests')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /collapse subtasks/i }));
-    expect(screen.queryByText('Write unit tests')).not.toBeInTheDocument();
+    // Subtask list is removed from the accessibility tree (aria-hidden) when collapsed;
+    // the DOM node stays mounted for the height/opacity exit animation.
+    expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------------
@@ -1167,13 +1170,13 @@ describe('TaskRow', () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
-      // Initially collapsed — child not visible
-      expect(screen.queryByText('Write unit tests')).not.toBeInTheDocument();
+      // Initially collapsed — subtask list not in accessibility tree
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: /add subtask/i }));
 
-      // Children should now be visible too
-      expect(screen.getByText('Write unit tests')).toBeInTheDocument();
+      // Subtask list is now in the accessibility tree (expanded + aria-hidden removed)
+      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
     });
 
     it('hides the capture box when "Add subtask" is clicked twice (toggle off)', async () => {
@@ -1195,7 +1198,8 @@ describe('TaskRow', () => {
   describe('initial collapsed state', () => {
     it('does not show children before the expand button is clicked', () => {
       renderTasks([BASE_ITEM, CHILD_ITEM]);
-      expect(screen.queryByText('Write unit tests')).not.toBeInTheDocument();
+      // The subtask list is aria-hidden when collapsed; queryByRole respects that.
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
     });
   });
 
@@ -1818,28 +1822,28 @@ describe('TaskRow', () => {
       const user = userEvent.setup();
       renderTasks([{ ...BASE_ITEM, due_date: null }, CHILD_ITEM]);
 
-      // Children not visible initially
-      expect(screen.queryByText('Write unit tests')).not.toBeInTheDocument();
+      // Children not in accessibility tree initially (collapsed, aria-hidden)
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
       await user.keyboard('[ArrowDown][Enter]');
 
       // After selecting "Set due date", isExpanded should be set to true → children visible
-      expect(screen.getByText('Write unit tests')).toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
     });
 
     it('expands the children list when "Add notes" is selected from the menu', async () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
-      expect(screen.queryByText('Write unit tests')).not.toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
       await user.keyboard('[ArrowDown][ArrowDown][Enter]');
 
-      expect(screen.getByText('Write unit tests')).toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
     });
   });
 

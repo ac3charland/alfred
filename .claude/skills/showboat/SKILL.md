@@ -189,9 +189,11 @@ The default evidence is **still a screenshot**. Pick the medium deliberately:
   the file size, diff cleanly in git, and a reviewer can scan them at a glance. A
   video of a click-through flow is large and adds nothing a sequence of stills
   doesn't already show.
-- **An animation → a SHORT VIDEO, and only then** — a fade/slide/expand/collapse,
+- **An animation → a SHORT VIDEO (GIF), and only then** — a fade/slide/expand/collapse,
   a modal transition, a hover reveal. Motion is the one thing a still genuinely
-  can't convey, so it's the *only* case that justifies a video.
+  can't convey, so it's the *only* case that justifies a video. **When the change
+  is purely an animation, the GIF alone is the evidence — do not add before/after
+  screenshots.**
 
 When you do record a video, **scope it to just the animation and keep the file
 tiny**:

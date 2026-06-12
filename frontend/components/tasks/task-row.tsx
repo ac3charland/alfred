@@ -677,31 +677,53 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
             </div>
           )}
 
-          {/* Children */}
-          {isExpanded && (hasChildren || showAddSubtask) && (
-            <ul aria-label="Subtasks">
-              {/* Add subtask inline form */}
-              {showAddSubtask && (
-                <li
-                  className="list-none py-1"
-                  style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
-                >
-                  <CaptureBox
-                    parentId={node.id}
-                    folderId={node.folder_id}
-                    compact
-                    onCapture={() => {
-                      setShowAddSubtask(false);
-                    }}
-                  />
-                </li>
+          {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr */}
+          {(hasChildren || showAddSubtask) && (
+            <div
+              className={cn(
+                'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+                isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
               )}
+              aria-hidden={!isExpanded}
+              inert={!isExpanded}
+            >
+              <div className="overflow-hidden">
+                <ul
+                  aria-label="Subtasks"
+                  className={cn(
+                    'transition-opacity motion-reduce:transition-none',
+                    isExpanded ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
+                  )}
+                >
+                  {/* Add subtask inline form */}
+                  {showAddSubtask && (
+                    <li
+                      className="list-none py-1"
+                      style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+                    >
+                      <CaptureBox
+                        parentId={node.id}
+                        folderId={node.folder_id}
+                        compact
+                        onCapture={() => {
+                          setShowAddSubtask(false);
+                        }}
+                      />
+                    </li>
+                  )}
 
-              {/* Child task rows */}
-              {node.children.map((child) => (
-                <TaskRow key={child.id} node={child} depth={depth + 1} isCompleted={isCompleted} />
-              ))}
-            </ul>
+                  {/* Child task rows */}
+                  {node.children.map((child) => (
+                    <TaskRow
+                      key={child.id}
+                      node={child}
+                      depth={depth + 1}
+                      isCompleted={isCompleted}
+                    />
+                  ))}
+                </ul>
+              </div>
+            </div>
           )}
         </div>
       </div>

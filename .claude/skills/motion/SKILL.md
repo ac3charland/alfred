@@ -104,7 +104,8 @@ Content is conditionally rendered ({open && <X/>})?
 | **Fade something in on mount** | `className="animate-fade-in motion-reduce:animate-none"` | The `motion-reduce:animate-none` guard is mandatory (see Pitfalls). |
 | **Fade + slide a panel in** | compose with tw-animate-css: `animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none` | `animate-in` / `slide-in-*` come from `tw-animate-css` (already imported). Our `--animate-fade-*` tokens are for the pure-opacity reusable case. |
 | **Reveal/collapse a region with a real fade both ways** | The reveal/collapse pattern (below) | Keep mounted through the exit; unmount on `animationend`; honour reduced motion. |
-| **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): `animate-task-collapse` + commit the store mutation on `animationend` | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Collapse height with the grid `1fr→0fr` trick. Used by `task-row.tsx` completion. |
+| **Smooth height expand/collapse (height: 0 → auto)** | CSS grid-rows trick (below) | `height: 0 → auto` can't be transitioned directly; `grid-template-rows: 0fr → 1fr` can. **Use a `transition`, not a keyframe — fr keyframes ignore the easing and animate linearly.** |
+| **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): the grid-rows transition + commit the store mutation on `transitionend` | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Used by `task-row.tsx` completion. |
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
 | **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
@@ -209,6 +210,54 @@ Apply `overflow-hidden` only while collapsing so it doesn't clip focus rings at 
   `target === currentTarget` guard).
 - Test the **reduced-motion** branch by overriding `matchMedia` to `matches: true` (see the jsdom
   gotcha below); there completion is synchronous, no `animationend` needed.
+## The grid-rows expand/collapse pattern (height: 0 → auto without JS measurement)
+
+CSS cannot transition `height: auto`. The `grid-template-rows: 0fr → 1fr` trick gives smooth height animation with no JavaScript measurement. Used by `components/tasks/task-row.tsx` for the subtask list.
+
+```tsx
+{(hasChildren || showExtra) && (
+  <div
+    className={cn(
+      'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+      isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+    )}
+    aria-hidden={!isOpen}
+    inert={!isOpen}   // prevents keyboard focus when collapsed
+  >
+    <div className="overflow-hidden">
+      <ul
+        className={cn(
+          'transition-opacity motion-reduce:transition-none',
+          isOpen ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
+        )}
+      >
+        {children}
+      </ul>
+    </div>
+  </div>
+)}
+```
+
+Key points:
+- **Two-div wrapper**: outer `grid` div drives the height via `grid-template-rows`; inner `overflow-hidden` div clips the content to the track height. Without `overflow-hidden`, content protrudes out of the collapsed track.
+- **`aria-hidden` + `inert`**: collapsed content stays in the DOM (for animation), but both attributes together remove it from the AT and prevent keyboard focus. `inert` alone would suffice for both, but `aria-hidden` is what RTL's `queryByRole` tests check.
+- **Opacity on the inner element**: stagger opacity slightly behind height (`delay-75` on open, `duration-100` on close) for a natural "slide open then reveal" feel.
+- **`motion-reduce:transition-none` on both elements**: disables all transitions for reduced-motion users (no height, no opacity).
+- **Content stays mounted**: unlike the reveal/collapse pattern, there's no mount/unmount — the element is always in the DOM when `hasChildren || showExtra` is true. This means no `animationend` logic needed.
+
+### Testing with RTL and Playwright
+
+RTL's `queryByRole` respects `aria-hidden`, so when the wrapper has `aria-hidden={true}`, `queryByRole('list', { name: 'Subtasks' })` returns null — use that to assert hidden state instead of `queryByText`.
+
+Playwright's `toBeHidden()` checks CSS properties (`display: none`, `visibility: hidden`, zero bounding box) **but does NOT check inherited opacity**. `getComputedStyle(span).opacity` is `1` even if an ancestor `<ul>` has `opacity: 0`, because CSS opacity doesn't cascade via `getComputedStyle`. The grid-rows + overflow-hidden visually hides the element but Playwright still sees it as "visible". Fix: use Playwright's `getByRole` (which respects `aria-hidden`) instead of `getByText` to assert the collapsed state:
+
+```ts
+// ✗ fails — Playwright sees the <span> as visible even with opacity:0 on ancestor
+await expect(page.getByText('Child task')).toBeHidden();
+
+// ✓ correct — getByRole respects aria-hidden; 0 matches = not visible
+await expect(page.getByRole('list', { name: 'Subtasks' })).not.toBeVisible();
+```
 
 ---
 
