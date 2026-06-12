@@ -1,7 +1,7 @@
 ---
 name: react
 description: >
-  Covers React function-component and hooks patterns in the alfred frontend: hooks,
+  Covers React function-component and hooks patterns: hooks,
   state, effects, refs, context, memoization, composition, and recursive component
   trees (task/subtask rendering). Use before writing or reviewing any file under
   frontend/ that imports from 'react' — especially recursive subtask rendering,

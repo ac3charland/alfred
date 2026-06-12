@@ -1,7 +1,7 @@
 ---
 name: eslint
 description: >
-  Covers ESLint, Prettier, and import sorting in the alfred monorepo: ESLint 9 flat config
+  Covers ESLint, Prettier, and import sorting: ESLint 9 flat config
   (eslint.config.js), typescript-eslint strict/type-aware rules, per-package plugin scoping
   (frontend/ vs workers/), eslint-config-prettier integration, and @trivago/prettier-plugin-sort-imports.
   Use when creating or editing eslint.config.js or prettier.config.js, adding a lint plugin, changing

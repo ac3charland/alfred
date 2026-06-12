@@ -1,7 +1,7 @@
 ---
 name: nextjs
 description: >
-  Covers Next.js App Router development in the alfred frontend/ package (deployed to Vercel):
+  Covers Next.js App Router development (deployed to Vercel):
   routing decisions (route groups, layouts, dynamic segments), the Server vs Client Component
   boundary ("use client"), data-fetching patterns (async Server Components, fetch caching,
   Server Actions, Route Handlers), API route handlers under app/api/, environment variables,

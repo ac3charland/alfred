@@ -1,7 +1,7 @@
 ---
 name: playwright
 description: >
-  Covers Playwright E2E testing in the alfred frontend/ package: test/expect
+  Covers Playwright E2E testing: test/expect
   structure, locators (getByRole/getByLabel/getByText/getByTestId), web-first
   auto-retrying assertions, actions (click/fill/press), auto-waiting, fixtures and
   test.use, projects and playwright.config.ts (webServer for the Next.js dev server),

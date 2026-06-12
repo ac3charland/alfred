@@ -1,7 +1,7 @@
 ---
 name: storybook
 description: >
-  Covers Storybook stories in the alfred frontend/ package: writing and modifying
+  Covers Storybook stories: writing and modifying
   stories, configuring .storybook/preview.ts or main.ts, play functions for interaction
   tests, wiring the test-runner for snapshot/a11y/visual testing in CI/pre-push,
   image-snapshot visual regression (hover/focus states, reference PNGs committed to git),

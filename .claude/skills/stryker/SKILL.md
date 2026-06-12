@@ -1,7 +1,7 @@
 ---
 name: stryker
 description: >
-  Covers Stryker mutation testing (StrykerJS) in the alfred monorepo: what mutation
+  Covers Stryker mutation testing (StrykerJS): what mutation
   testing measures (test-assertion quality, not line coverage), the per-package
   stryker.config.json setup wired to Jest + ts-jest, the `npm run mutation` script,
   coverageAnalysis choices, mutant states + the mutation-score formula, interpreting

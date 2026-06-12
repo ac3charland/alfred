@@ -1,7 +1,7 @@
 ---
 name: react-testing-library
 description: >
-  Covers React component testing in the alfred frontend with React Testing Library:
+  Covers React component testing with React Testing Library:
   query selection (getBy/queryBy/findBy, role/label/text priority), user interactions
   via @testing-library/user-event v14 (async/await, setup()), async patterns (findBy,
   waitFor), rendering with context providers, and patterns specific to alfred

@@ -1,7 +1,7 @@
 ---
 name: anthropic-api
 description: >
-  Covers the Anthropic Claude API and the alfred project's best practices for it: the
+  Covers the Anthropic Claude API and best practices for it: the
   Messages API, defining tools, the tool-use agentic loop, streaming responses, and
   calling the API from a Cloudflare Worker (SDK vs raw fetch, tool_choice, stop_reason
   handling, the tool_use_id contract). Use when writing or debugging any of those, or on

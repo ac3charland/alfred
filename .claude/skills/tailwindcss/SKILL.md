@@ -1,7 +1,7 @@
 ---
 name: tailwindcss
 description: >
-  Covers Tailwind CSS in the alfred project (Next.js + shadcn/ui + lucide-react, dark dense
+  Covers Tailwind CSS (Next.js + shadcn/ui + lucide-react, dark dense
   productivity UI): Tailwind v4's CSS-first @theme config as the primary target, with explicit
   v3 gotchas for agents trained on the old tailwind.config.js pattern. Use whenever you write
   or edit utility classes, configure the theme, wire up dark-mode tokens, or translate a design

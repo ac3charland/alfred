@@ -1,7 +1,7 @@
 ---
 name: npm-workspaces
 description: >
-  Covers npm workspaces in the alfred monorepo: declaring workspaces in root package.json,
+  Covers npm workspaces: declaring workspaces in root package.json,
   installing dependencies to the root or a specific workspace, running scripts across all
   packages (the --workspaces --if-present fan-out pattern), targeting a single workspace (-w),
   referencing one workspace from another, the root orchestrator check scripts and how husky

@@ -1,7 +1,7 @@
 ---
 name: supabase
 description: >
-  Covers Supabase in the alfred project: querying or mutating the items/folders
+  Covers Supabase: querying or mutating the items/folders
   tables, Auth (login, session, getUser), RLS policies in SQL migrations, creating
   the Supabase client in Next.js Server Components / Route Handlers / middleware /
   browser components, generating TypeScript types, and recursive CTE queries for the

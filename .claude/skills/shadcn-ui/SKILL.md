@@ -1,7 +1,7 @@
 ---
 name: shadcn-ui
 description: >
-  Covers shadcn/ui components in the alfred frontend: adding a component via the CLI,
+  Covers shadcn/ui components: adding a component via the CLI,
   customizing or theming an existing one, composing Radix primitives (Dialog, Dropdown,
   Popover, etc.), adding Lucide icons to buttons or headings, the cn() utility, CSS
   variables, Tailwind v4's @theme inline tokens, and deciding whether a component needs

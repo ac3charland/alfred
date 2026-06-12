@@ -1,7 +1,7 @@
 ---
 name: jest
 description: >
-  Covers Jest testing in the alfred monorepo (TypeScript, co-located test files):
+  Covers Jest testing (TypeScript, co-located test files):
   describe/it/test structure, expect matchers, all mock APIs (jest.fn / jest.mock /
   jest.spyOn), async testing patterns, fake timers, snapshots, setup lifecycle hooks,
   jest.config.ts per package, and eslint-plugin-jest constraints. Use before creating

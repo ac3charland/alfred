@@ -1,7 +1,7 @@
 ---
 name: showboat
 description: >
-  Builds a "demo doc" that proves an alfred change works — the capture-the-behavior
+  Builds a "demo doc" that proves a change works — the capture-the-behavior
   step at the end of the workflow, before committing and in the PR. Covers the
   self-contained, showboat-compatible CLI at tools/showboat (run via
   `npm run demo -- <command>`): init / note / exec / image / pop / verify / extract,

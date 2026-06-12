@@ -1,7 +1,7 @@
 ---
 name: gh-cli
 description: >
-  Covers using the GitHub CLI (`gh`) in the alfred repo: opening or editing pull requests and
+  Covers using the GitHub CLI (`gh`): opening or editing pull requests and
   issues, setting/updating a PR or issue body or title, commenting, and scripting GitHub via
   `gh api`. Use when running `gh pr create`, `gh pr edit`, `gh pr comment`, `gh issue edit`, or `gh api` —
   "update the PR description", "edit the PR body", or a `gh` command that errors with a

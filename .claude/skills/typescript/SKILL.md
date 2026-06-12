@@ -1,7 +1,7 @@
 ---
 name: typescript
 description: >
-  Covers TypeScript in the alfred monorepo: strict tsconfig setup, type-aware patterns
+  Covers TypeScript: strict tsconfig setup, type-aware patterns
   that satisfy @typescript-eslint strict-type-checked, discriminated unions,
   unknown/narrowing, no-floating-promises, the satisfies operator, utility types, and
   nullable DB-column modeling. Use whenever writing or reviewing TypeScript — required
