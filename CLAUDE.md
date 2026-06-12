@@ -171,7 +171,22 @@ When you finish a task, **unless the user tells you not to**, wrap it up like th
 1. **Never commit on `main`.** Check the current branch first; if it's `main`, create a feature branch and switch to it before committing.
 2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`). **When a finished change needs more than one commit, don't run `git commit` once per group** — each would re-run the `check:fast` gate. Use the **`batch-commits` skill** (`node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>`): it runs the gate once up front, then creates every commit, skipping the redundant re-checks. See `.claude/skills/batch-commits/SKILL.md`.
 3. **Push** the branch to the remote.
-4. **Open a pull request** from the feature branch into `main` once the full feature is done. **Link the demo doc as a _live, clickable_ link** in the description — generate it with `npm run demo -- pr-link docs/demos/<name>.md` (emits a GitHub blob URL on the head branch, **not** a bare path, so reviewers can open it and see the embedded screenshots/diffs rendered). See the `showboat` skill. If a pull request for the branch already exists, **update its description** to include your change.
+4. **Open or update the pull request — and keep its description in sync.** A PR's
+   description is the canonical record of what the PR does; reviewers read it, not your
+   chat history. So treat it as a **living document that must match the branch's current
+   content at all times**:
+   - **No PR exists yet?** Open one from the feature branch into `main` once the full
+     feature is done. **Link the demo doc as a _live, clickable_ link** in the description
+     — generate it with `npm run demo -- pr-link docs/demos/<name>.md` (emits a GitHub blob
+     URL on the head branch, **not** a bare path, so reviewers can open it and see the
+     embedded screenshots/diffs rendered). See the `showboat` skill.
+   - **A PR already exists?** (Including one you opened earlier this session, or one the
+     UI/another agent created.) **Every time you push a change that alters what the PR does
+     — a new commit, a follow-up fix, a rename, an added file — update the description in the
+     same turn so it reflects the new state**, and add the demo link if it's still missing.
+     This is not a one-time step at PR creation: it recurs for *every* content change you
+     push to a branch that has an open PR. A description that's gone stale relative to the
+     branch is a bug to fix, exactly like a failing check.
 
 The pre-commit (`check:fast`) and pre-push (`check:slow`) hooks gate each step
 automatically — fix any failures in the **code**, never with `--no-verify` or by
