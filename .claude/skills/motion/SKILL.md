@@ -35,7 +35,7 @@ The project's reusable motion tokens (defined in `globals.css`):
 | Token | Utility | What it does |
 |---|---|---|
 | `--animate-fade-in` | `animate-fade-in` | opacity 0 → 1 over 200ms ease-out |
-| `--animate-fade-out` | `animate-fade-out` | opacity 1 → 0 over 150ms ease-in (exit is slightly quicker than entry — feels responsive) |
+| `--animate-fade-out` | `animate-fade-out` | opacity 1 → 0 over 150ms ease-in (exit is slightly quicker than entry — feels responsive). Ends with `forwards` so it **holds** opacity 0 — see the flash pitfall below. |
 
 They are defined with a **plain `@theme`** block (not `@theme inline`) because they don't
 reference dark-mode variables:
@@ -43,7 +43,7 @@ reference dark-mode variables:
 ```css
 @theme {
   --animate-fade-in: fade-in 200ms ease-out;
-  --animate-fade-out: fade-out 150ms ease-in;
+  --animate-fade-out: fade-out 150ms ease-in forwards; /* `forwards` is load-bearing — see pitfall */
 
   @keyframes fade-in {
     from { opacity: 0; }
@@ -178,6 +178,9 @@ Why each piece:
 - **Reduced-motion immediate unmount**: with `motion-reduce:animate-none` there is *no*
   fade-out, so `animationend` never fires — the region would be stranded on screen. Detecting
   reduced motion lets us unmount it right away instead.
+- **`forwards` fill-mode on the fade-out** (in the token shorthand): without it the exit
+  flashes — see the dedicated pitfall below. This is what makes "fade out then unmount" look
+  clean instead of stuttering.
 
 ---
 
@@ -190,6 +193,20 @@ Why each piece:
 - **`motion-reduce:animate-none` silently breaks `animationend`-driven unmounts.** If your
   unmount waits on the fade-out animation, reduced-motion users get no animation and thus no
   event. Handle that branch explicitly (immediate unmount), as in the pattern above.
+
+- **A fade-out that unmounts on `animationend` flashes back to full opacity for one frame
+  unless its animation uses `animation-fill-mode: forwards`.** Default fill-mode is `none`:
+  the moment the fade finishes, the element reverts to its *base* opacity (1) — and there's a
+  one-frame gap between `animationend` firing and React committing the unmount, so that fully
+  opaque frame paints. The result is a visible blink right before the element disappears.
+  `forwards` makes the element **hold** its final keyframe (opacity 0) through that gap, so no
+  flash. **The keyword must live inside the token's `animation` shorthand**
+  (`--animate-fade-out: fade-out 150ms ease-in forwards`) — applied as a *separate* utility
+  (e.g. `[animation-fill-mode:forwards]`) it's reset to `none` by the `animation` shorthand the
+  `animate-fade-out` utility expands to, so it silently does nothing (this is exactly why a
+  "just add `forwards`" attempt fails). Demo: `docs/demos/inbox-fade-stutter.md`. To *catch or
+  measure* this class of one-frame glitch, sample the element frame by frame — see the
+  `debug-animations` skill.
 
 - **`onAnimationEnd` bubbles from descendants.** Guard with
   `event.target === event.currentTarget` so a child's animation doesn't trigger parent logic.
