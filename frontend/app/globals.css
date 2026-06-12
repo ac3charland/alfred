@@ -93,6 +93,17 @@
      is reset to `none` by the `animation` shorthand this token expands to. */
   --animate-fade-out: fade-out 150ms ease-in forwards;
 
+  /* Task completion — a two-beat exit. `check-pop` gives the checkbox a snappy,
+     responsive press (quick scale overshoot, then settle). `task-collapse` then
+     shrinks the row's height to nothing by animating its grid row track from 1fr
+     to 0fr: pair it with a single-child `grid` whose child is `overflow-hidden`
+     and the height collapses without measuring it in JS, pulling the rows below up.
+     The 140ms delay lets the pop register before the collapse begins, and the
+     `forwards` fill holds the row at 0fr through the frame before it unmounts (same
+     flash-prevention reason as fade-out above). See the `motion` skill. */
+  --animate-check-pop: check-pop 200ms ease-out;
+  --animate-task-collapse: task-collapse 260ms ease-in 140ms forwards;
+
   @keyframes fade-in {
     from {
       opacity: 0;
@@ -108,6 +119,27 @@
     }
     to {
       opacity: 0;
+    }
+  }
+
+  @keyframes check-pop {
+    0% {
+      transform: scale(0.7);
+    }
+    45% {
+      transform: scale(1.18);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes task-collapse {
+    from {
+      grid-template-rows: 1fr;
+    }
+    to {
+      grid-template-rows: 0fr;
     }
   }
 }

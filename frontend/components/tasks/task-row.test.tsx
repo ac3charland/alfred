@@ -68,6 +68,35 @@ function renderTasks(items: Item[], options: { folders?: Folder[]; scope?: TaskS
 
 const COMPLETED = { scope: { type: 'completed' } as const };
 
+/**
+ * Force a `prefers-reduced-motion` result for the duration of a test. `restoreMocks`
+ * (jest.config) reverts the spy to the jest.setup stub after each test.
+ */
+function mockReducedMotion(matches: boolean): void {
+  const mql = {
+    matches,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  } as unknown as MediaQueryList;
+  jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
+}
+
+/**
+ * The collapse wrapper that owns a row's completion exit animation. jsdom doesn't run
+ * CSS animations, so completion tests fire this element's `animationend` by hand to
+ * stand in for the height collapse finishing (as the inbox-reveal tests do).
+ */
+function collapseWrapperFor(title: string): HTMLElement {
+  const li = screen.getByText(title).closest('li');
+  if (!li) throw new Error('task row <li> not found');
+  const wrapper = li.querySelector<HTMLElement>('[data-testid="task-collapse"]');
+  if (!wrapper) throw new Error('collapse wrapper not found');
+  return wrapper;
+}
+
 // ---------------------------------------------------------------------------
 // Timezone-safe due-date helpers
 //
@@ -165,39 +194,103 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Active task completion — optimistic, filtered out of the view
+  // Active task completion — animated exit, THEN optimistic removal
+  //
+  // Completing an active task plays a checkbox pop + height collapse, and only calls
+  // completeTask once the collapse animation ends (the row stays visible meanwhile so
+  // the exit can play). jsdom doesn't run CSS animations, so we drive the collapse's
+  // animationend by hand. Under reduced motion there's no animation, so completion is
+  // immediate — see the "reduced motion" block below.
   // ---------------------------------------------------------------------------
 
-  it('removes the task from the view immediately on checkbox click', async () => {
-    mockCompleteTask.mockImplementation(() => new Promise(() => {}));
+  it('shows the checkbox as checked the instant it is clicked (before the row leaves)', async () => {
+    mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
-    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    const checkbox = screen.getByRole('button', { name: /mark "Write tests" complete/i });
+    await user.click(checkbox);
 
-    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+    // Immediate, snappy feedback: the checkbox fills and the row is still present,
+    // animating out (not removed yet).
+    expect(checkbox).toHaveClass('bg-accent-teal');
+    expect(checkbox).toHaveClass('animate-check-pop');
+    expect(screen.getByText('Write tests')).toBeInTheDocument();
   });
 
-  it('calls completeTask when the checkbox is clicked (no children)', async () => {
+  it('does NOT call completeTask until the collapse animation ends', async () => {
     mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
 
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('does not let the checkbox pop (a child animation) commit the completion', async () => {
+    mockCompleteTask.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    const checkbox = screen.getByRole('button', { name: /mark "Write tests" complete/i });
+    await user.click(checkbox);
+    // The pop's animationend bubbles to the wrapper; only the wrapper's own collapse counts.
+    fireEvent.animationEnd(checkbox);
+
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('calls completeTask and removes the task once the collapse animation ends', async () => {
+    mockCompleteTask.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    fireEvent.animationEnd(collapseWrapperFor('Write tests'));
+
     await waitFor(() => {
       expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
     });
+    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
   });
 
-  it('restores the task when completeTask fails', async () => {
+  it('restores the task when completeTask fails after the animation', async () => {
     mockCompleteTask.mockRejectedValue(new Error('Network error'));
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    fireEvent.animationEnd(collapseWrapperFor('Write tests'));
 
     expect(await screen.findByText('Write tests')).toBeInTheDocument();
+  });
+
+  describe('reduced motion', () => {
+    it('completes immediately on click, with no animation to wait on', async () => {
+      mockReducedMotion(true);
+      mockCompleteTask.mockResolvedValue([]);
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+      await waitFor(() => {
+        expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
+      });
+      expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+    });
+
+    it('removes the task from the view immediately on click', async () => {
+      mockReducedMotion(true);
+      mockCompleteTask.mockImplementation(() => new Promise(() => {}));
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+      expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+    });
   });
 
   it('opens the cascade modal when checkbox is clicked on a task with children', async () => {
@@ -1312,7 +1405,7 @@ describe('TaskRow', () => {
   // ---------------------------------------------------------------------------
 
   describe('cascade modal', () => {
-    it('confirms cascade completion and calls completeTask', async () => {
+    it('confirms cascade completion, closes the modal, and completes after the animation', async () => {
       mockCompleteTask.mockResolvedValue([]);
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
@@ -1321,10 +1414,18 @@ describe('TaskRow', () => {
       await screen.findByText(/complete with subtasks/i);
 
       // Confirm button should be enabled (isPending=false, so not disabled)
-      const confirmBtn = screen.getByRole('button', { name: /complete/i });
+      const confirmBtn = screen.getByRole('button', { name: /complete all/i });
       expect(confirmBtn).not.toBeDisabled();
 
       await user.click(confirmBtn);
+
+      // The modal closes and the subtree animates out; completion fires when it ends.
+      await waitFor(() => {
+        expect(screen.queryByText(/complete with subtasks/i)).not.toBeInTheDocument();
+      });
+      expect(mockCompleteTask).not.toHaveBeenCalled();
+
+      fireEvent.animationEnd(collapseWrapperFor('Write tests'));
 
       await waitFor(() => {
         expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
