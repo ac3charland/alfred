@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { type Entry, type ShowboatDocument, parseDocument, serializeDocument } from './document.ts';
@@ -16,8 +16,13 @@ function save(file: string, document: ShowboatDocument): void {
   writeFileSync(file, serializeDocument(document));
 }
 
-/** Create a fresh demo doc with a title and an ISO-8601 timestamp. */
+/**
+ * Create a fresh demo doc with a title and an ISO-8601 timestamp. Creates any
+ * missing parent folders so a demo can be initialized straight into its branch
+ * folder (e.g. `docs/demos/<branch>/<name>.md`) without a manual `mkdir`.
+ */
 export function init(file: string, title: string, now: Date = new Date()): void {
+  mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   save(file, { title, timestamp: now.toISOString(), entries: [] });
 }
 
