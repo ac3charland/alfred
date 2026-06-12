@@ -23,6 +23,27 @@ Sources used:
 
 ---
 
+## Table of Contents
+
+**This file**
+- [Mental Model](#mental-model)
+- [Choosing the Right Approach](#choosing-the-right-approach)
+  - [Which locator to use?](#which-locator-to-use)
+  - [Which assertion style to use?](#which-assertion-style-to-use)
+  - [Fixtures vs. beforeEach hooks?](#fixtures-vs-beforeeach-hooks)
+- [Plain-English → Pattern Table](#plain-english--pattern-table)
+- [Fixtures and Lifecycle](#fixtures-and-lifecycle)
+- [Common Pitfalls](#common-pitfalls)
+- [Version Gotchas (as of v1.50–v1.60)](#version-gotchas-as-of-v150v160-current-as-of-june-2026)
+- [Mocking the backend — the alfred integration suite](#mocking-the-backend--the-alfred-integration-suite-run-authenticated-seeded-tests)
+- [Browser availability: Claude Code on the web](#browser-availability-claude-code-on-the-web-cdn-blocked-sandboxes)
+- [What's Not in This Skill (and Why)](#whats-not-in-this-skill-and-why)
+
+**References**
+- [`references/setup-and-wiring.md`](references/setup-and-wiring.md) — `playwright.config.ts` / `auth.setup.ts` reference, Storybook test-runner browser config, and gotchas hit wiring the integration suite
+
+---
+
 ## Mental Model
 
 Playwright drives a real browser. The central insight is that **the DOM is always changing** — a click triggers a re-render, a form fill may show a spinner, async data arrives after paint. Playwright's entire API is designed around this reality through three layered mechanisms:
@@ -242,183 +263,6 @@ The Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_U
 
 ---
 
-## Air-gapped / CDN-blocked Environments
-
-In environments where the Playwright browser CDN (storage.googleapis.com) is unreachable
-(Docker containers, CI sandboxes, certain corporate networks), `playwright install chromium`
-will fail with `ENETUNREACH`. The alternative is `@sparticuz/chromium` — an npm package
-that bundles a serverless-compatible Chromium binary as a compressed `.br` file. Since the
-npm registry is always reachable, it installs cleanly.
-
-**Setup pattern:**
-
-1. Install `@sparticuz/chromium` as a production dep (it runs at test time, not just build):
-   ```
-   npm install @sparticuz/chromium
-   ```
-
-2. Write a `scripts/setup-chromium.mjs` that calls `inflate()` to extract to `/tmp`:
-   ```js
-   import { inflate } from '@sparticuz/chromium';
-   import { join } from 'node:path';  // use default import (unicorn/import-style)
-   await inflate('/path/to/chromium.br');  // extracted to /tmp/chromium
-   ```
-   Check `existsSync('/tmp/chromium')` before inflating to avoid re-extraction.
-
-3. Configure `playwright.config.ts` to use the extracted binary:
-   ```ts
-   launchOptions: {
-     executablePath: process.env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] ?? '/tmp/chromium',
-     args: [...chromiumPkg.args, '--no-sandbox', '--disable-setuid-sandbox'],
-     // CRITICAL: pass LD_LIBRARY_PATH in launchOptions.env — not just in the shell.
-     // Playwright may override the process environment for the launched browser.
-     env: {
-       ...process.env,
-       LD_LIBRARY_PATH: '/tmp:' + (process.env['LD_LIBRARY_PATH'] ?? ''),
-     },
-   }
-   ```
-
-4. NSS/NSPR stub libraries: sparticuz chromium requires `libnspr4.so`, `libnss3.so`,
-   `libnssutil3.so` with GNU versioned symbols. If not present, compile stubs:
-   ```c
-   // nss-stub.c — provides NSS_3.x, NSSUTIL_3.x, NSPR_4.0 versioned symbols
-   // compile: gcc -shared -fPIC --version-script=nss.map -o /tmp/libnss3.so nss-stub.c
-   ```
-   Then put them in `/tmp/` and include `/tmp` in `LD_LIBRARY_PATH`.
-
-5. Wire `setup:chromium` before every test script so it always runs first:
-   ```json
-   "test:e2e": "node scripts/setup-chromium.mjs && playwright test"
-   ```
-
-**The sparticuz args do NOT include `--use-gl=angle --use-angle=swiftshader`.** Those
-are Playwright's internal defaults for Chromium. sparticuz provides its own SwiftShader
-build via `chromiumPkg.args` — use those, not Playwright's defaults.
-
-**Use `worers: 1` in playwright.config.ts** when using `@sparticuz/chromium` in
-single-process mode (the `--single-process` arg in `chromiumPkg.args`) — multiple
-workers spawning multiple Chromium processes in single-process mode causes crashes.
-
-**`Browser closed` crashes — two fixes (Storybook test-runner especially):**
-- **Always add `--disable-dev-shm-usage`.** In sandboxes/containers `/dev/shm` is tiny;
-  Chromium runs out of shared memory mid-run and dies with `page.evaluate: Browser closed`.
-  This flag makes it use `/tmp` instead. Add it to BOTH the Playwright launchOptions args and
-  the Storybook `test-runner-jest.config.cjs` launchOptions args.
-- **Do NOT use `--single-process` for the Storybook test-runner.** jest-playwright reuses ONE
-  browser across test FILES; a single-process Chromium exits when its first page closes, so
-  suite #2+ fails with `browserContext.newPage: Browser closed`. A single test file works, but
-  multiple story files don't. Drop `--single-process` (and `--no-zygote`) so the browser
-  process persists across files; keep `maxWorkers: 1` for memory headroom. (Playwright E2E with
-  one spec file is fine with single-process — the multi-file reuse is what breaks.)
-
-**Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
-`process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
-`env['BASE_URL']` is correct; `env.BASE_URL` gives TS4111 error.
-
----
-
-## Storybook test-runner with sparticuz chromium
-
-The Storybook test-runner has its own Jest-Playwright integration. To use sparticuz with
-`test-storybook`:
-
-1. Create `test-runner-jest.config.cjs` (must be `.cjs` not `.js` — see ESLint section):
-   ```js
-   const { getJestConfig } = require('@storybook/test-runner');
-   const config = getJestConfig();
-   module.exports = {
-     ...config,
-     testEnvironmentOptions: {
-       ...config.testEnvironmentOptions,
-       'jest-playwright': {
-         launchOptions: {
-           executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || '/tmp/chromium',
-           args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', ...],
-           env: { ...process.env, LD_LIBRARY_PATH: '/tmp:' + (process.env.LD_LIBRARY_PATH || '') },
-         },
-       },
-     },
-   };
-   ```
-   The test-runner discovers this config via glob `test-runner-jest*` — both `.js` and `.cjs`
-   work.
-
-2. Run sequence: `setup:chromium` → `storybook:build` → serve static build → `test-storybook --ci`.
-
----
-
-## playwright.config.ts Reference for alfred
-
-```typescript
-import { defineConfig, devices } from '@playwright/test';
-
-const BASE_URL = process.env['BASE_URL'] ?? 'http://localhost:3000';
-
-export default defineConfig({
-  testDir: './e2e',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,         // fail CI if test.only left in
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
-  reporter: 'html',
-
-  use: {
-    baseURL: BASE_URL,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-  },
-
-  projects: [
-    // 1. Auth setup runs first
-    {
-      name: 'setup',
-      testMatch: /.*\.setup\.ts/,
-    },
-    // 2. Test project depends on setup
-    {
-      name: 'chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-        storageState: 'playwright/.auth/user.json',
-      },
-      dependencies: ['setup'],
-    },
-  ],
-
-  webServer: {
-    command: 'npm run dev',              // starts Next.js dev server
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
-});
-```
-
-**auth.setup.ts pattern for Supabase email/password login:**
-
-```typescript
-import { test as setup, expect } from '@playwright/test';
-import path from 'path';
-
-const authFile = path.join(__dirname, '../playwright/.auth/user.json');
-
-setup('authenticate', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(process.env.E2E_USER_EMAIL!);
-  await page.getByLabel('Password').fill(process.env.E2E_USER_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  // Wait for successful redirect — the Supabase auth gate redirects to /
-  await page.waitForURL('/');
-  await expect(page.getByRole('main')).toBeVisible();
-  await page.context().storageState({ path: authFile });
-});
-```
-
-Credentials come from env vars (`.env.local` for local dev, CI secrets for CI). Never hardcode them.
-
----
-
 ## Mocking the backend — the alfred integration suite (run authenticated, seeded tests)
 
 The suite never touches real Supabase. Every Supabase access in alfred is **server-side** (middleware `getUser()`, `lib/data/*` readers in Server Components, the `app/api/**` route handlers) — so **`page.route()` cannot mock it**: Playwright only intercepts *browser* network, but the reads and auth validation happen inside the Next process and arrive as already-rendered HTML. The seam therefore sits at the Supabase **HTTP boundary inside the server**, not in the browser.
@@ -429,15 +273,35 @@ The suite never touches real Supabase. Every Supabase access in alfred is **serv
 - **Auth via the real login + `storageState`.** `e2e/auth.setup.ts` drives the actual login form against the mock and saves the session; the `chromium` project reuses it via `storageState`. **Don't hand-craft the auth cookie** — `@supabase/ssr` derives its name (`sb-<ref>-auth-token`, ref = first URL host label, e.g. `sb-localhost-auth-token`) from `NEXT_PUBLIC_SUPABASE_URL`, and because the browser and the server use the *same* URL the names match and the cookie round-trips. Logging in for real sidesteps the whole derivation. Specs that need the logged-OUT state opt out with `test.use({ storageState: { cookies: [], origins: [] } })` (see `home.spec.ts`).
 - **The mock mints a long-lived session** (far-future `expires_at`) so it never expires mid-run and `getUser()` never tries to refresh.
 
-### Gotchas hit wiring this up (all real, all cost discovery time)
+> **Setting up the suite, editing config, or debugging a setup-level failure?** The full
+> `playwright.config.ts` / `auth.setup.ts` reference, the Storybook test-runner browser config,
+> and the gotchas hit wiring this suite up (CJS / `import.meta`, `.ts` import extensions, UUID
+> seed ids, Radix submenu keyboard nav, optimistic-reload races, `getByText` substring matching,
+> …) live in [`references/setup-and-wiring.md`](references/setup-and-wiring.md) — pulled out of
+> this skill because they're one-time setup, rarely needed for everyday test authoring.
 
-- **`import.meta` breaks Playwright's config loader.** Playwright compiles `playwright.config.ts` (and its import chain) as **CJS**; any module it imports that uses `import.meta.dirname`/`import.meta.url` dies with `exports is not defined in ES module scope`. In a module imported by the config (e.g. `e2e/support/constants.ts`), resolve paths from `process.cwd()` (Playwright runs from the config dir) instead of `import.meta`.
-- **`.ts` import extensions.** The frontend `tsconfig` does **not** set `allowImportingTsExtensions`, so `import … from './x.ts'` fails `tsc` (TS5097). Use **extensionless** relative imports in `e2e/**` — Playwright's loader resolves them. (Only `tools/showboat` allows the `.ts` extension.)
-- **Sandbox Chromium + multiple spec files = "Browser closed".** `@sparticuz/chromium`'s args include `--single-process`; Playwright reuses one browser across spec **files**, and a single-process Chromium exits when its first page closes, crashing later files with `browserContext.newPage: Browser closed`. **Filter out `--single-process` and `--no-zygote`** from `chromiumPkg.args` (keep the rest); keep `--disable-dev-shm-usage`. (A single spec file is fine with single-process — multi-file reuse is what breaks, same root cause as the Storybook test-runner note above.)
-- **Radix submenu items don't fire `onSelect` from a synthetic pointer click.** A nested `DropdownMenu.Sub` item (e.g. the "Move to…" → folder picker) clicked via `.hover()`+`.click()` races the "safe triangle" and silently closes without selecting — the click "succeeds" but nothing happens. **Drive it by keyboard:** hover the subtrigger, `ArrowRight` (opens submenu, focuses first item), `ArrowDown` to the target, `Enter`. Top-level menu items (e.g. "Delete") click fine — only nested submenu items need this.
-- **Seed ids that get sent back in a mutation body must be real UUIDs.** The route zod schemas validate `folder_id` / `parent_id` as `z.uuid()`. A readable seed id like `'f1'` renders fine (folder navigation/tree-building are client-side) but a **move** (`PATCH { folder_id }`) or **add-subtask** (`POST { parent_id }`) sends it to the server, which 400s → the optimistic store **rolls back** → the row reappears. The tell-tale symptom is a mutation that "looks like it worked then undid itself." Use `crypto.randomUUID()` ids (the `makeItem`/`makeFolder` defaults) and capture the value when you need to reference it (URL, parent_id). The same trap makes an optimistic assertion *pass by luck* (the row is visible for the instant before the rollback) — so a green test can still be hiding a 400.
-- **Optimistic mutation + full reload races the server write.** After a store mutation, `page.goto()` (a full reload) re-fetches from the mock and can read **stale** state because the optimistic UI updated before the server write landed. Prefer **client-side navigation** (click a sidebar link) — it reads the already-reconciled store and reflects the change without a reload. When a full reload is genuinely required (e.g. folder-delete re-parents items only on the server, not in the client store), `await page.waitForResponse(...)` for the mutation **before** reloading.
-- **`getByText` is a case-insensitive substring match.** `getByText('Inbox')` also matches "Finished **inbox** task". Use `{ exact: true }` when the string is a substring of other visible text (e.g. a context label vs a task title).
+---
+
+
+## Browser availability: Claude Code on the web (CDN-blocked sandboxes)
+
+Playwright downloads its managed Chromium from `cdn.playwright.dev`. In some environments that
+host is blocked — most notably the **default "Trusted" network policy in Claude Code on the
+web**, whose allowlist covers npm + Ubuntu apt mirrors but NOT the Playwright browser CDN
+(confirmed: `curl -I https://cdn.playwright.dev/` → HTTP 403 under Trusted, while the apt and npm
+hosts return 200). There, `playwright install chromium` fails.
+
+We have a custom `alfred` cloud environment in Claude Code on the web that addresses this issue by installing Chromium as part of its setup script. If you are running in Claude Code on the web and do not see chromium, ask the user if they're on the Default environment.
+
+See [`docs/cloud-environment.md`](../../../docs/cloud-environment.md) for additional details on the setup if you need to troubleshoot beyond simply switching environments.
+
+**General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
+`launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
+`page.evaluate: Browser closed`.
+
+**Process.env bracket notation:** TypeScript strict mode (`@tsconfig/strictest`) requires
+`process.env['VAR']` not `process.env.VAR` when the property is not a known env var.
+`env['BASE_URL']` is correct; `env.BASE_URL` gives TS4111 error.
 
 ---
 

@@ -2,7 +2,17 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { exec, extract, image, init, note, pop, verify } from './commands.ts';
+import {
+  exec,
+  extract,
+  formatDemoLink,
+  image,
+  init,
+  note,
+  pop,
+  prLink,
+  verify,
+} from './commands.ts';
 import { parseDocument } from './document.ts';
 
 function tempDoc(): { file: string; directory: string } {
@@ -352,5 +362,65 @@ describe('extract', () => {
     exec(file, 'node', 'console.log(1)', directory);
     const lines = extract(file, 'out.md').split('\n');
     expect(lines[1]).toBe("showboat exec 'out.md' 'node' 'console.log(1)'");
+  });
+});
+
+describe('formatDemoLink', () => {
+  const link =
+    '📝 **Demo:** [docs/demos/x.md](https://github.com/ac3charland/alfred/blob/main/docs/demos/x.md)';
+
+  it('builds a github blob link from an SSH remote', () => {
+    expect(formatDemoLink('git@github.com:ac3charland/alfred.git', 'main', 'docs/demos/x.md')).toBe(
+      link,
+    );
+  });
+
+  it('handles an HTTPS remote with and without the .git suffix', () => {
+    expect(
+      formatDemoLink('https://github.com/ac3charland/alfred.git', 'main', 'docs/demos/x.md'),
+    ).toBe(link);
+    expect(formatDemoLink('https://github.com/ac3charland/alfred', 'main', 'docs/demos/x.md')).toBe(
+      link,
+    );
+  });
+
+  it('handles the sandbox local git proxy URL (extra /git/ path prefix, non-github host)', () => {
+    expect(
+      formatDemoLink('http://127.0.0.1:41663/git/ac3charland/alfred', 'main', 'docs/demos/x.md'),
+    ).toBe(link);
+  });
+
+  it('handles a proxy URL with userinfo (user@host)', () => {
+    expect(
+      formatDemoLink(
+        'http://local_proxy@127.0.0.1:34699/git/ac3charland/alfred',
+        'main',
+        'docs/demos/x.md',
+      ),
+    ).toBe(link);
+  });
+
+  it('keeps slashes in a branch name (github resolves the ref)', () => {
+    expect(formatDemoLink('https://github.com/o/r', 'claude/foo-bar', 'docs/demos/x.md')).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/claude/foo-bar/docs/demos/x.md)',
+    );
+  });
+
+  it('normalizes a leading ./ and backslashes in the doc path', () => {
+    expect(formatDemoLink('https://github.com/o/r', 'main', String.raw`./docs\demos\x.md`)).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+    );
+  });
+
+  it('throws when owner/repo cannot be parsed from the remote', () => {
+    expect(() => formatDemoLink('not-a-url', 'main', 'd.md')).toThrow(/owner\/repo/);
+  });
+});
+
+describe('prLink', () => {
+  it('formats the link from an injected git context (no real repo needed)', () => {
+    expect(
+      prLink('docs/demos/x.md', { remoteUrl: 'git@github.com:o/r.git', branch: 'feat/x' }),
+    ).toBe('📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/feat/x/docs/demos/x.md)');
   });
 });

@@ -30,6 +30,8 @@ export default defineConfig([
       '.stryker-tmp/**',
       '*.gen.ts',
       'node_modules/**',
+      // Visual-regression baselines — generated PNGs (npm run test:storybook:update)
+      '__image_snapshots__/**',
       // Next.js generated file — do not lint
       'next-env.d.ts',
       // Supabase-generated schema types (regenerated via `supabase gen types`)

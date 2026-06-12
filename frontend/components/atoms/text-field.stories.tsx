@@ -1,11 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { TextField } from './text-field';
+import { VISUAL_TARGET, withVisualFrame } from './visual-test';
 
 const meta = {
   title: 'Atoms/TextField',
   component: TextField,
   tags: ['autodocs'],
+  decorators: [withVisualFrame],
+  parameters: { visualTest: { target: VISUAL_TARGET } },
   args: {
     'aria-label': 'Inline field',
     placeholder: 'Type here…',
@@ -28,4 +31,10 @@ export const Disabled: Story = {
 
 export const DateInput: Story = {
   args: { type: 'date', 'aria-label': 'Due date', className: '[color-scheme:dark]' },
+};
+
+// Keyboard focus draws the signature teal `focus-visible` ring — the TextField has no
+// hover style, so focus is its one interactive state.
+export const Focused: Story = {
+  parameters: { visualTest: { focus: true } },
 };

@@ -77,6 +77,7 @@ npm run demo -- <command> [args]
 | `pop <file>` | Remove the most recent entry (an exec drops its code *and* output). Use after a command errored and you don't want it in the doc. |
 | `verify <file> [--output <new>]` | Re-run every exec block and diff against the recorded output. Exit 1 on any mismatch, 0 if all match. `--output` writes a refreshed copy. |
 | `extract <file> [--filename <name>]` | Print the `showboat` commands that recreate the doc. |
+| `pr-link <file>` | Print the live, clickable GitHub **blob** link for the doc — owner/repo from `origin`, branch from `HEAD` — to paste into the PR body. |
 
 Global: `--workdir <dir>` sets the directory exec blocks run in (default: cwd).
 `--version`, `--help`.
@@ -99,13 +100,13 @@ npm run demo -- exec "$DOC" bash "curl -s localhost:3000/api/items | head -c 400
 npm run demo -- verify "$DOC"        # confirm it reproduces before you commit
 ```
 
-Commit the doc under `docs/demos/` and link it in the PR description. For a
-**visual** change, the centrepiece is a screenshot instead — see below.
+Commit the doc under `docs/demos/` and add a **live, clickable link** to it in the PR
+description (see *Linking the demo in the PR* below).
 
 ## Screenshotting the UI (the evidence for any visual change)
 
-Reuse the sandbox-aware Chromium the E2E suite installs (`npm run setup:chromium`
-extracts it to `/tmp/chromium`) via the `screenshot` helper
+Reuse the Playwright-managed Chromium the E2E suite installs (`npm run setup:chromium`,
+which skips the download when the browser is already present) via the `screenshot` helper
 (`frontend/scripts/screenshot.mjs`). `verify` **skips image entries**, so
 screenshots never make verification flaky. There are two ways to put the rendered
 UI in front of it — reach for **Storybook first**; it's the one that always works
@@ -120,7 +121,7 @@ a Storybook snapshot test. Build the static Storybook, serve it, and shoot the
 story's `iframe.html`:
 
 ```bash
-npm run storybook:build -w frontend           # also run setup:chromium once if /tmp/chromium is absent
+npm run storybook:build -w frontend           # also run setup:chromium once if Chromium isn't installed yet
 npm run serve:storybook -w frontend &         # http-server on :6006
 npx wait-on http://127.0.0.1:6006
 # story id = kebab(title)--kebab(exportName), e.g. title 'Tasks/TaskRow' + export
@@ -217,6 +218,27 @@ it as a file). Minimise size by: a small viewport **and** matching `video.size`,
 test body containing **only** the animation (no unrelated steps inflating the
 clip), and triggering the animation immediately so the recording is a second or
 two, not the whole setup.
+
+## Linking the demo in the PR (a live, clickable link)
+
+A demo doc only helps a reviewer if they can **open it from the PR and see the embedded
+screenshots/diffs rendered**. A bare path or relative link isn't clickable on the PR page,
+so the PR **body must contain a live, absolute GitHub blob link** to the doc. Don't build
+that URL by hand — generate it:
+
+```bash
+npm run demo -- pr-link docs/demos/<name>.md
+# → 📝 **Demo:** [docs/demos/<name>.md](https://github.com/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md)
+```
+
+The `pr-link` command derives `<owner>/<repo>` from `origin` and `<branch>` from `HEAD`
+(no hardcoding), and emits a **blob** URL on the current branch — which renders the doc
+(images, diffs and all) rather than raw source. Paste its output into the PR body.
+
+**Always include it when you open the PR.** If a PR for the branch **already exists** (e.g.
+opened from the Claude Code UI), **edit the body** to add the link if it's missing — pass
+the `pr-link` output to `gh pr edit --body` / the `update_pull_request` MCP tool (see the
+`gh-cli` skill). This is the one PR edit that's always worth making.
 
 ## How `verify` works (and how to keep it green)
 

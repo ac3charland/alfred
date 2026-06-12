@@ -173,7 +173,7 @@ env:
 
 **husky v9 hook files are plain shell — no shebang required** but they must be executable. If `git commit` throws `permission denied` on a hook, run `chmod +x .husky/commit-msg`.
 
-**Never use `git commit --no-verify` or `git push --no-verify`** in alfred. This is a hard project rule. If hooks fail, fix the root cause — don't bypass the hooks.
+**Never use `git commit --no-verify` or `git push --no-verify`** in alfred. This is a hard project rule. If hooks fail, fix the root cause — don't bypass the hooks. The **only** sanctioned `--no-verify` is inside the `batch-commits` skill's tool, which runs `check:fast` once for the whole batch and validates every message with commitlint up front before skipping the *redundant* per-commit re-runs (see `.claude/skills/batch-commits/SKILL.md`).
 
 **`npx husky init` vs `npx husky install`:** Only `npx husky init` is correct for v9. `npx husky install` is the v8 command and will error or produce a deprecation warning in v9. `npx husky init` creates `.husky/`, adds the `prepare` script, and writes a sample `pre-commit`. Run it once at the repo root; never run it per-workspace.
 

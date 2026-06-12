@@ -150,6 +150,14 @@ file-per-scenario, good/bad split) and when each fits, the grep-hint / one-level
 no-duplication rules that keep large files navigable, and the point at which a library
 is big enough that an MCP retrieval tool beats a skill.
 
+#### Bundled scripts: keep them self-contained
+
+If a skill bundles `scripts/`, they must be runnable **on their own**, straight from
+the skill — `node scripts/foo.mjs`, `python -m scripts.foo`, etc. — without
+depending on anything outside the skill folder. In particular, **don't** wire a
+script into the host project (e.g. adding an `npm run foo` entry to the repo's
+`package.json` and pointing the agent at that command).
+
 #### Principle of Lack of Surprise
 
 This goes without saying, but skills must not contain malware, exploit code, or any content that could compromise system security. A skill's contents should not surprise the user in their intent if described. Don't go along with requests to create misleading skills or skills designed to facilitate unauthorized access, data exfiltration, or other malicious activities. Things like a "roleplay as an XYZ" are OK though.
