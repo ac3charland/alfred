@@ -1,11 +1,11 @@
 'use client';
 
 import { X } from 'lucide-react';
-import Link from 'next/link';
 import * as React from 'react';
 
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { TaskList } from '@/components/tasks/task-list';
+import { ViewLink } from '@/components/tasks/view-link';
 import { cn } from '@/lib/utils';
 
 interface InboxScreenProperties {
@@ -85,14 +85,14 @@ export function InboxScreen({ open }: InboxScreenProperties) {
       {/* Subtle affordance: reveal the inbox list, or close it back to the landing */}
       <div className="flex justify-center">
         {open ? (
-          <Link href="/" aria-label="Close inbox" className={toggleLinkClass}>
+          <ViewLink href="/" aria-label="Close inbox" className={toggleLinkClass}>
             <X size={13} />
             Close
-          </Link>
+          </ViewLink>
         ) : (
-          <Link href="/?view=inbox" className={toggleLinkClass}>
+          <ViewLink href="/?view=inbox" className={toggleLinkClass}>
             View inbox
-          </Link>
+          </ViewLink>
         )}
       </div>
 
