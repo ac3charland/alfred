@@ -119,11 +119,14 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
       setIsEditingTitle(false);
       return;
     }
+    // Exit edit mode immediately so the optimistic title shows the instant the user
+    // submits — without waiting for the server. The store reconciles (or rolls back)
+    // the row underneath, exactly like the due-date and notes edits.
+    setIsEditingTitle(false);
     try {
       await updateTask(node.id, { title: newValue });
-      setIsEditingTitle(false);
     } catch {
-      // The store reverted the title; keep editing so the user can retry.
+      // The store reverted the title; reset the draft for the next edit.
       setDraftTitle(node.title);
     }
   };
