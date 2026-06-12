@@ -150,6 +150,13 @@ completing a task flips its `status`, so it drops out of the active views automa
   selector.
 - **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row mid-flight
   — change the data; the filtered view updates, and a rollback brings it back.
+- **Never `await` the mutation before closing a local edit UI.** An inline editor that
+  replaces the displayed value (the title / due-date / notes input) must flip its
+  editing flag off **synchronously, before** the `await` — otherwise the input hangs
+  open for the whole round-trip and the optimistic value never shows through, so the edit
+  looks non-optimistic. On failure, the store's rollback reverts the displayed value;
+  don't keep the editor open to retry. (See `handleSaveTitle`/`handleSaveDueDate` in
+  `task-row.tsx`.)
 - **Never mirror store data in ad-hoc `useState`.** Local state is only for transient UI
   (expanded row, input draft).
 

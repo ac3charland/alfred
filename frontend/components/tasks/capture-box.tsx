@@ -41,9 +41,16 @@ export function CaptureBox({
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
   const { addTask } = useTaskActions();
   const textareaReference = React.useRef<HTMLTextAreaElement>(null);
+  const inputReference = React.useRef<HTMLInputElement>(null);
   // Number of saves still in flight. A ref, not state, because the count itself never
   // drives the UI — only the derived "did the user get ahead of the network?" flag does.
   const inFlightReference = React.useRef(0);
+
+  React.useEffect(() => {
+    if (compact) {
+      inputReference.current?.focus();
+    }
+  }, [compact]);
 
   const handleSubmit = async (event_?: React.SyntheticEvent) => {
     event_?.preventDefault();
@@ -104,14 +111,13 @@ export function CaptureBox({
         className="flex items-center gap-2"
       >
         <TextField
+          ref={inputReference}
           value={value}
           onChange={(event_) => {
             setValue(event_.target.value);
           }}
           onKeyDown={handleCompactKeyDown}
           placeholder="Add subtask…"
-          // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-          // The compact box is shown inline; focus is managed by the parent toggle.
           className="flex-1 px-3 py-1.5"
         />
         <Button
