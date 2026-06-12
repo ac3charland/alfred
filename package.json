@@ -17,9 +17,7 @@
     "check": "npm run check:fast && npm run check:slow",
     "check:fast": "npm run check:fast --workspaces --if-present",
     "check:slow": "npm run check:slow --workspaces --if-present",
-    "demo": "node tools/showboat/src/cli.ts",
-    "batch-commit": "node .claude/skills/batch-commits/scripts/batch-commit.mjs",
-    "batch-commit:test": "node --test .claude/skills/batch-commits/scripts/*.test.mjs"
+    "demo": "node tools/showboat/src/cli.ts"
   },
   "repository": {
     "type": "git",

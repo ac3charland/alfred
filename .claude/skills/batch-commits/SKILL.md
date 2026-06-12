@@ -5,9 +5,10 @@ description: >
   commits and you want to avoid re-running the pre-commit gate on every one. The
   pre-commit hook runs `npm run check:fast` on each commit; splitting a task into
   N commits the normal way runs that identical check N times. This skill's bundled
-  tool (`npm run batch-commit -- <input-file>`) runs the gate ONCE up front,
-  validates every message with commitlint, then creates all the commits with
-  --no-verify — the only sanctioned use of --no-verify in alfred. Trigger on:
+  script (run it directly: `node .claude/skills/batch-commits/scripts/batch-commit.mjs
+  <input-file>`) runs the gate ONCE up front, validates every message with
+  commitlint, then creates all the commits with --no-verify — the only sanctioned
+  use of --no-verify in alfred. Trigger on:
   "multiple commits", "split into commits", "group commits by concern", "commit
   groups", "batch commit", "create several commits", "commit the work in pieces",
   or any wrap-up where you're about to run `git commit` more than once for one
@@ -29,10 +30,12 @@ commit is made against the *same* final working tree, and `check:fast` checks th
 **whole tree** (there's no lint-staged). So those N runs are N validations of one
 identical green state — **N−1 of them are pure redundancy.**
 
-This tool runs that check **exactly once** and creates all the commits:
+This tool runs that check **exactly once** and creates all the commits. The script
+is **self-contained** — run it straight with `node`, no npm script or other
+project wiring required:
 
 ```bash
-npm run batch-commit -- <input-file>
+node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>
 ```
 
 No coverage is lost (the one run validates the complete end state, same as each
@@ -64,7 +67,7 @@ message: test(tasks): cover subtask expansion
 
 - A line starting with `message:` begins a commit; the rest of that line is its
   **single-line** subject (must satisfy commitlint: `type(scope): subject`,
-  kebab-case scope, lowercase subject, no body/footer).
+  lower-case scope, lowercase subject, no body/footer).
 - The following non-blank lines are **file paths** for that commit (whole trimmed
   line — paths may contain spaces; one path per line).
 - Blank lines separate commits; lines starting with `#` are comments.
@@ -125,9 +128,13 @@ is "run the meaningful check once," not "bypass it."
 
 - The scripts are plain **Node ESM (`.mjs`, no dependencies)** run straight via
   `node` — no build step, no TypeScript. They live in this skill's `scripts/`, not
-  a workspace, so they're outside the `check:fast` fan-out.
+  a workspace, so they're outside the `check:fast` fan-out. They're deliberately
+  **self-contained**: invoke them by path with `node`, never via a project
+  `package.json` script, so the skill stays portable and nothing breaks if that
+  config changes.
 - Pure parsing/validation lives in `scripts/parse.mjs` and is unit-tested with
-  `node --test`: run `npm run batch-commit:test`. Keep new logic testable there.
+  `node --test`: run `node --test .claude/skills/batch-commits/scripts/*.test.mjs`.
+  Keep new logic testable there.
 - The end-to-end behavior is captured in `docs/demos/batch-commits.md` (showboat).
   Re-verify it with `npm run demo -- verify docs/demos/batch-commits.md`.
 - Message validation **mirrors the `commit-msg` hook exactly** (`npx --no --

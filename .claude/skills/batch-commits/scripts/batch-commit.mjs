@@ -25,7 +25,7 @@ import { join } from 'node:path';
 import { parseBatchInput, validateCommits } from './parse.mjs';
 
 const USAGE = [
-  'Usage: npm run batch-commit -- <input-file>',
+  'Usage: node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>',
   '',
   'Create several commits in one pass, running check:fast only once.',
   '',
