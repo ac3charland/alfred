@@ -1,0 +1,29 @@
+t=  0ms  opacity=1.000
+t= 16ms  opacity=1.000
+t= 32ms  opacity=1.000
+t= 48ms  opacity=1.000
+t= 64ms  opacity=1.000
+t= 80ms  opacity=1.000
+t= 96ms  opacity=0.979
+t=112ms  opacity=0.924
+t=128ms  opacity=0.843
+t=144ms  opacity=0.742
+t=160ms  opacity=0.623
+t=176ms  opacity=0.489
+t=192ms  opacity=0.340
+t=208ms  opacity=0.178
+t=224ms  opacity=0.000
+t=240ms  opacity=1.000
+t=256ms  opacity=GONE (unmounted)
+t=272ms  opacity=GONE (unmounted)
+t=288ms  opacity=GONE (unmounted)
+t=304ms  opacity=GONE (unmounted)
+t=320ms  opacity=GONE (unmounted)
+t=336ms  opacity=GONE (unmounted)
+t=352ms  opacity=GONE (unmounted)
+t=368ms  opacity=GONE (unmounted)
+t=384ms  opacity=GONE (unmounted)
+t=400ms  opacity=GONE (unmounted)
+t=416ms  opacity=GONE (unmounted)
+t=432ms  opacity=GONE (unmounted)
+t=448ms  opacity=GONE (unmounted)
