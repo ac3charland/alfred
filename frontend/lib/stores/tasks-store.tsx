@@ -155,14 +155,26 @@ export function TasksProvider({
         }
       },
       async uncompleteTask(id) {
-        const previous = tasksRef.current.find((item) => item.id === id);
-        if (previous === undefined) return;
-        dispatch({ type: 'patch', ids: [id], patch: { status: 'active', completed_at: null } });
+        // Reactivate this task AND its contiguous chain of completed ancestors: a completed
+        // parent can't have an active child (the inverse of cascade completion). Walk up
+        // while each ancestor is completed, stopping at the first active ancestor (or root).
+        const byId = new Map(tasksRef.current.map((item) => [item.id, item] as const));
+        const affected: Item[] = [];
+        let current = byId.get(id);
+        while (current?.status === 'completed') {
+          affected.push(current);
+          current = current.parent_id === null ? undefined : byId.get(current.parent_id);
+        }
+        if (affected.length === 0) return;
+        const ids = affected.map((item) => item.id);
+        dispatch({ type: 'patch', ids, patch: { status: 'active', completed_at: null } });
         try {
-          const saved = await api.updateItem(id, { status: 'active' });
-          dispatch({ type: 'upsert', items: [saved] });
+          const rows = await Promise.all(
+            ids.map((itemId) => api.updateItem(itemId, { status: 'active' })),
+          );
+          dispatch({ type: 'upsert', items: rows });
         } catch (error) {
-          dispatch({ type: 'upsert', items: [previous] });
+          dispatch({ type: 'upsert', items: affected });
           throw error;
         }
       },
@@ -244,11 +256,19 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
   return React.useMemo(() => {
     const filtered = items.filter((item) => {
       if (scopeType === 'completed') return item.status === 'completed';
+      // Active views (inbox / folder) keep BOTH active and completed items in scope so a
+      // parent's completed children render under it (revealed by "Show completed"). A
+      // subtree shares one folder bucket (moveTask cascades folder_id), so filtering by
+      // folder alone keeps each subtree intact for buildTree.
       // Stryker disable next-line ConditionalExpression: AT_CEILING — for inbox, folderId is null, so `folder_id === folderId` equals the inbox filter `folder_id === null`; completed is handled above, so forcing this branch true changes nothing.
-      if (scopeType === 'folder') return item.status === 'active' && item.folder_id === folderId;
-      return item.status === 'active' && item.folder_id === null; // inbox
+      if (scopeType === 'folder') return item.folder_id === folderId;
+      return item.folder_id === null; // inbox
     });
-    return buildTree(filtered);
+    const forest = buildTree(filtered);
+    if (scopeType === 'completed') return forest;
+    // A completed ROOT belongs to the Completed view, not here — drop it (and its subtree).
+    // Completed items only surface in an active view as descendants of an active task.
+    return forest.filter((node) => node.status === 'active');
   }, [items, scopeType, folderId]);
 }
 

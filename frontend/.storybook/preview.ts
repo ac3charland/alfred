@@ -2,6 +2,7 @@ import type { Preview } from '@storybook/nextjs';
 import React from 'react';
 
 import '../app/globals.css';
+import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
 import type { Folder, Item } from '../lib/types';
@@ -25,9 +26,13 @@ const preview: Preview = {
           TasksProvider,
           { initialTasks: seed.tasks ?? [] },
           React.createElement(
-            'div',
-            { className: 'dark min-h-screen bg-background text-foreground p-8' },
-            React.createElement(Story),
+            ActiveEditorProvider,
+            null,
+            React.createElement(
+              'div',
+              { className: 'dark min-h-screen bg-background text-foreground p-8' },
+              React.createElement(Story),
+            ),
           ),
         ),
       );

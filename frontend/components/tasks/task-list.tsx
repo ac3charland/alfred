@@ -20,7 +20,7 @@ interface TaskListProperties {
  */
 export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListProperties) {
   const nodes = useScopedTasks(scope);
-  const isCompleted = scope.type === 'completed';
+  const isCompletedView = scope.type === 'completed';
 
   if (nodes.length === 0) {
     return (
@@ -41,7 +41,7 @@ export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListPrope
       )}
     >
       {nodes.map((node) => (
-        <TaskRow key={node.id} node={node} isCompleted={isCompleted} />
+        <TaskRow key={node.id} node={node} isCompletedView={isCompletedView} />
       ))}
     </ul>
   );
