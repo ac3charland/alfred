@@ -55,6 +55,24 @@ JSON-parsing test output to wrangle it into something "presentable" for a demo,
 stop — that effort is the symptom. Screenshot the UI instead (for a visual change)
 or capture a real request/response (for a non-visual one).
 
+## Cover every requirement, not just one
+
+A demo is the evidence that the **whole** change works, so it must exercise **every
+feature or requirement** the task asked for or you implemented — not one happy path that
+leaves the rest unproven. Walk back through the requirements and make each one show up in
+the doc; a reviewer should be able to tick off every line of the task from the evidence
+alone.
+
+- **A CLI / tooling change** → an `exec` for **every command, flag, and rule** it adds. A
+  linter with three rules and a glob flag needs a block per rule *and* the glob — one
+  passing run doesn't show the other rules fire.
+- **A frontend change** → **every user journey** it touches, with **all the steps** of
+  each (a screenshot per meaningful step), not just one screen's end state.
+- **A data / API change** → **each endpoint or shape** that changed, not one representative call.
+
+A requirement that's awkward to demonstrate is usually one that's under-tested too —
+capture it anyway.
+
 ## Running it
 
 Always go through the root script (never call the tool directly):
