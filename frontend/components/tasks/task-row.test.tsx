@@ -416,6 +416,45 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Drag-to-folder handle — only top-level, active, reconciled rows are draggable
+  // ---------------------------------------------------------------------------
+
+  describe('drag to folder handle', () => {
+    it('renders a drag handle on a top-level active row', () => {
+      renderTasks([BASE_ITEM]);
+      expect(
+        screen.getByRole('button', { name: /drag "Write tests" to a folder/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not render a drag handle on a subtask row (a subtask follows its parent)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      // The nested child (depth 1) is not independently draggable...
+      expect(
+        screen.queryByRole('button', { name: /drag "Write unit tests" to a folder/i }),
+      ).not.toBeInTheDocument();
+      // ...but the top-level parent still has its handle.
+      expect(
+        screen.getByRole('button', { name: /drag "Write tests" to a folder/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not render a drag handle on a completed row', () => {
+      renderTasks([COMPLETED_ITEM], COMPLETED);
+      expect(screen.queryByRole('button', { name: /to a folder/i })).not.toBeInTheDocument();
+    });
+
+    it('does not render a drag handle on an unreconciled (temp id) row', () => {
+      renderTasks([{ ...BASE_ITEM, id: 'temp-abc' }]);
+      expect(screen.queryByRole('button', { name: /to a folder/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Inline title editing
   // ---------------------------------------------------------------------------
 

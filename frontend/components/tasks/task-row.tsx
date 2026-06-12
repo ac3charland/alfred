@@ -1,6 +1,7 @@
 'use client';
 
-import { Check, ChevronRight, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
+import { useDraggable } from '@dnd-kit/core';
+import { Check, ChevronRight, GripVertical, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
@@ -13,7 +14,7 @@ import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
-import { getAncestorTitles, getDescendantIds } from '@/lib/tree';
+import { getAncestorTitles, getDescendantIds, isTempId } from '@/lib/tree';
 import { cn } from '@/lib/utils';
 
 interface TaskRowProperties {
@@ -53,6 +54,18 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
   const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
   const [isMetaOpen, setIsMetaOpen] = React.useState(false);
+
+  // Drag-to-folder: only top-level (depth 0) active tasks are draggable — a subtask's
+  // folder follows its parent, so it isn't filed independently (see the dnd-kit skill).
+  // A temp (unreconciled) id can't be PATCHed yet, so it isn't draggable either.
+  const canDrag = depth === 0 && !isCompleted && !isTempId(node.id);
+  const {
+    setNodeRef: setDragNodeRef,
+    attributes: dragAttributes,
+    listeners: dragListeners,
+    setActivatorNodeRef,
+    isDragging,
+  } = useDraggable({ id: node.id, disabled: !canDrag });
 
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
@@ -176,14 +189,38 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
     <li className="group/row list-none">
       {/* Main row */}
       <div
+        ref={setDragNodeRef}
         className={cn(
           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
           'flex items-center gap-2 rounded-sm py-2 pr-2',
           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
           'hover:bg-secondary/30 transition-colors duration-100 motion-reduce:transition-none',
+          // Dim the in-place row while its DragOverlay clone is being dragged.
+          isDragging && 'opacity-40',
         )}
         style={{ paddingLeft: indentLeft }}
       >
+        {/* Drag handle — only top-level active rows file into folders (see the dnd-kit skill) */}
+        {canDrag && (
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...dragAttributes}
+            {...(dragListeners ?? {})}
+            aria-label={`Drag "${node.title}" to a folder`}
+            className={cn(
+              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+              'flex h-5 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/60 hover:text-foreground',
+              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+              'opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none',
+              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+            )}
+          >
+            <GripVertical size={14} />
+          </button>
+        )}
+
         {/* Expand/collapse toggle */}
         <IconButton
           size="sm"
