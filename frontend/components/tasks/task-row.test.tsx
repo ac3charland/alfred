@@ -494,6 +494,25 @@ describe('TaskRow', () => {
       expect(mockUpdateItem).not.toHaveBeenCalled();
     });
 
+    it('exits edit mode and shows the new title immediately, before the server responds', async () => {
+      // A never-resolving update keeps the request in flight for the assertion window, so
+      // the editor must close and the new title show from the optimistic store patch alone
+      // — never from awaiting the server (matching the due-date / notes interactions).
+      mockUpdateItem.mockImplementation(() => new Promise(() => {}));
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Optimistic title');
+      await user.keyboard('[Enter]');
+
+      expect(screen.getByText('Optimistic title')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { title: 'Optimistic title' });
+    });
+
     it('reverts to the original title if updateItem fails', async () => {
       mockUpdateItem.mockRejectedValue(new Error('Network error'));
       const user = userEvent.setup();
@@ -505,9 +524,10 @@ describe('TaskRow', () => {
       await user.type(input, 'Broken title');
       await user.keyboard('[Enter]');
 
-      await waitFor(() => {
-        expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveValue('Write tests');
-      });
+      // Edit mode exits immediately (optimistic); the store rolls back the failed update,
+      // so the original title is shown again and no edit input remains.
+      expect(await screen.findByText('Write tests')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
     });
 
     it('exits edit mode after a successful save', async () => {
