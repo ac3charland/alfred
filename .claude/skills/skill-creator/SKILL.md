@@ -97,26 +97,35 @@ These word counts are approximate and you can feel free to go longer if needed.
 - Reference files clearly from SKILL.md with guidance on when to read them
 - For large reference files (>~100 lines), include a table of contents so a partial read still reveals the file's full scope
 
+**Domain organization**: When a skill supports multiple domains/frameworks, organize by variant:
+```
+cloud-deploy/
+├── SKILL.md (workflow + selection)
+└── references/
+    ├── aws.md
+    ├── gcp.md
+    └── azure.md
+```
+Claude reads only the relevant reference file.
+
 #### Reference & example libraries
 
 Sometimes the *point* of a skill is a body of reference material or worked example
-scenarios too big for SKILL.md — API docs, per-domain or per-framework schemas, a
-catalog of "if the situation looks like X, do Y" cases, or good/bad output samples for
-calibration. That's just progressive disclosure applied to a library: keep the routing
-in SKILL.md (always loaded) and push the bulk into bundled files Claude fetches only
-when a task needs them. The canonical home is `references/`; an `examples/` folder is
-fine but isn't the standard term, so reserve it for samples that teach by demonstration
-(e.g. a good/bad output split).
+scenarios too big for SKILL.md — API docs, per-domain schemas, a catalog of "if the
+situation looks like X, do Y" cases, or good/bad output samples for calibration. That's
+just progressive disclosure applied to a library: keep the routing in SKILL.md (always
+loaded) and push the bulk into bundled files Claude fetches only when a task needs them.
+The canonical home is `references/`; an `examples/` folder is fine but isn't the
+standard term, so reserve it for samples that teach by demonstration (e.g. a good/bad
+output split).
 
 When the user asks to create or improve a skill **"with examples"**, **"with
-references"**, with a library of scenarios, or split across **multiple
-domains/frameworks**, **read
+references"**, or with a library of scenarios, **read
 [`references/example-libraries.md`](references/example-libraries.md) before drafting
 it.** It covers the folder vocabulary, the three library layouts (scenario-index,
-file-per-scenario — the shape for per-domain/per-framework splits too — and good/bad
-split) and when each fits, the grep-hint / one-level-deep / no-duplication rules that
-keep large files navigable, and the point at which a library is big enough that an MCP
-retrieval tool beats a skill.
+file-per-scenario, good/bad split) and when each fits, the grep-hint / one-level-deep /
+no-duplication rules that keep large files navigable, and the point at which a library
+is big enough that an MCP retrieval tool beats a skill.
 
 #### Principle of Lack of Surprise
 
