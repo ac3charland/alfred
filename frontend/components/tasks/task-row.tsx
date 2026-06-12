@@ -235,12 +235,13 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
       {/* The completion exit collapses the row (and its expanded subtree): a transition
           on the grid row track from 1fr to 0fr shrinks the height to nothing, pulling the
           rows below up. `ease-out` (a transition, not a keyframe) makes the collapse start
-          briskly after the checkbox pop, then settle — `delay-100` lets the pop lead. The
-          inner child is clipped so it can shrink past its content. */}
+          briskly, then settle — `delay-200` holds it back until the 200ms checkbox pop has
+          finished, so the dismissal doesn't cover the pop. The inner child is clipped so it
+          can shrink past its content. */}
       <div
         className={cn(
           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-          'grid transition-[grid-template-rows] duration-300 ease-out delay-100 motion-reduce:transition-none',
+          'grid transition-[grid-template-rows] duration-300 ease-out delay-200 motion-reduce:transition-none',
           isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
         )}
         data-testid="task-collapse"
@@ -361,7 +362,8 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                 <span
                   className={cn(
                     // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'text-sm truncate cursor-text transition-colors duration-300 delay-100 motion-reduce:transition-none',
+                    // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
+                    'text-sm truncate cursor-text transition-colors duration-300 delay-200 motion-reduce:transition-none',
                     // Fade to low-contrast as the row completes; full-contrast otherwise.
                     isCompleting ? 'text-muted-foreground/50' : 'text-foreground',
                   )}
