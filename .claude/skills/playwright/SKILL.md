@@ -252,7 +252,14 @@ hosts return 200). There, `playwright install chromium` fails.
 **Preferred fix — open the CDN, don't bundle a fallback.** Configure a custom cloud environment
 that allowlists the CDN and installs the browser at setup:
 - **Network access: Custom**, "include defaults" ticked, plus `cdn.playwright.dev` (and
-  `*.playwright.dev`). Fall back to **Full** only if a download redirect host is still blocked.
+  `*.playwright.dev`). **`--with-deps` gotcha:** it runs `apt-get update` across *every* apt source
+  baked into the base image, including the deadsnakes / ondrej-php PPAs served from
+  `ppa.launchpadcontent.net` — which is **NOT** in the default allowlist (confirmed: 403 even when
+  `archive`/`security.ubuntu.com` return 200). A single 403 aborts `apt-get update` (exit 100), so
+  the whole setup fails with `Failed to install browsers`. Fix by also allowlisting
+  `ppa.launchpadcontent.net`, or just use **Network access: Full**. (Chromium's libs come from the
+  Ubuntu mirrors, which the defaults cover; the base image lacks only a few X libs —
+  libxcomposite/libxdamage/libxrandr — so `--with-deps` is still required, not optional.)
 - **Setup script** (runs as root, so `apt` works; cached across sessions):
   `npm exec -w frontend -- playwright install --with-deps chromium`.
 

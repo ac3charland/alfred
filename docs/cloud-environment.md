@@ -18,14 +18,22 @@ it ever expires:
 
 - **Name:** `alfred-e2e`.
 - **Network access: Custom**, with **"Also include default list of common package managers"**
-  ticked (keeps npm + the Ubuntu apt mirrors that `--with-deps` needs) and Playwright's browser
-  CDN added to **Allowed domains**:
+  ticked, and these **Allowed domains**:
   ```
   cdn.playwright.dev
   *.playwright.dev
+  ppa.launchpadcontent.net
   ```
-  (If a browser download ever fails on a redirect to another host, widening to **Full** fixes
-  it.)
+  `cdn.playwright.dev` is Playwright's browser CDN. `ppa.launchpadcontent.net` is required
+  because `playwright install --with-deps` runs `apt-get update` across *every* apt source in the
+  base image — including the deadsnakes / ondrej-php PPAs served from that host, which are **not**
+  in the default package-manager allowlist. A single 403 there aborts `apt-get update` (exit 100)
+  and the setup script fails with `Failed to install browsers`. The default list covers the
+  Ubuntu mirrors (`archive`/`security.ubuntu.com`) and Docker that Chromium's actual libraries
+  come from.
+
+  > **Simplest alternative:** set **Network access** to **Full** instead — then every apt repo is
+  > reachable and you don't have to enumerate hosts.
 - **Environment variables:** none. `frontend/playwright.config.ts` runs the Next test server
   against an in-memory mock Supabase backend (`scripts/mock-supabase.mjs`) with its own injected
   env, so no real credentials are needed. (Anything entered here is visible to whoever can edit
@@ -47,8 +55,8 @@ npm exec -w frontend -- playwright install --with-deps chromium
 ```
 
 `--with-deps` uses apt to install Chromium's system libraries (needs root, which setup
-scripts have). The result is snapshotted by environment caching, so later sessions start
-with Chromium already on disk.
+scripts have, and every apt repo reachable — see the network note above). The result is
+snapshotted by environment caching, so later sessions start with Chromium already on disk.
 
 ## How the test scripts use it
 
