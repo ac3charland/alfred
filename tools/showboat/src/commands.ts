@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { type Entry, type ShowboatDocument, parseDocument, serializeDocument } from './document.ts';
+import { convertWebmToGif } from './ffmpeg.ts';
 import { type RunResult, runCode } from './run.ts';
 
 const IMAGE_MARKDOWN = /^!\[([^\]]*)\]\(([^)]*)\)$/;
@@ -68,6 +69,37 @@ export function image(file: string, argument: string): void {
   copyFileSync(source, path.join(documentDirectory, generated));
   document.entries.push({ kind: 'image', alt, path: generated });
   save(file, document);
+}
+
+/**
+ * Embed a screen recording. Playwright writes an animation as a `.webm`, which
+ * GitHub's file and markdown viewers won't render — so we convert it to an
+ * animated GIF (which *does* inline as a markdown image), save that next to the
+ * doc under a generated, collision-free name, embed it, and delete the now-redundant
+ * `.webm`. The conversion runs entirely in WASM (no system `ffmpeg`).
+ *
+ * The `convert` step is injectable so this orchestration is unit-testable without
+ * spinning up ffmpeg.wasm. The `.webm` is deleted only after the GIF is safely
+ * written and the doc saved, so a failed conversion leaves the recording intact.
+ */
+export async function video(
+  file: string,
+  webmPath: string,
+  alt = '',
+  convert: (webmPath: string) => Promise<Uint8Array> = convertWebmToGif,
+): Promise<void> {
+  const document = load(file);
+  const gif = await convert(webmPath);
+
+  const documentDirectory = path.dirname(path.resolve(file));
+  const stem = path.basename(file, path.extname(file));
+  const imageCount = document.entries.filter((entry) => entry.kind === 'image').length;
+  const generated = `${stem}-video-${String(imageCount + 1)}.gif`;
+
+  writeFileSync(path.join(documentDirectory, generated), gif);
+  document.entries.push({ kind: 'image', alt, path: generated });
+  save(file, document);
+  rmSync(webmPath);
 }
 
 /** Remove and return the most recent entry (an exec drops its code *and* output). */
