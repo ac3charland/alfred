@@ -11,9 +11,9 @@ With the dev server running (`npm run dev -w frontend`), this page was captured 
 The captured image now lives alongside the doc in the repo:
 
 ```bash
-ls docs/demos/image-capture-image-1.png
+ls docs/demos/image-capture/image-capture-image-1.png
 ```
 
 ```output
-docs/demos/image-capture-image-1.png
+docs/demos/image-capture/image-capture-image-1.png
 ```
