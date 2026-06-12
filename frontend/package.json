@@ -40,7 +40,6 @@
     "@eslint/js": "^9.39.4",
     "@next/eslint-plugin-next": "^16.2.7",
     "@playwright/test": "^1.60.0",
-    "@sparticuz/chromium": "^149.0.0",
     "@storybook/addon-docs": "^10.4.3",
     "@storybook/nextjs": "^10.4.3",
     "@storybook/test-runner": "^0.24.4",

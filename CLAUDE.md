@@ -51,7 +51,14 @@ guardrails.** The following are strictly forbidden:
   `eslint-disable` (any variant), `@ts-ignore`, `@ts-expect-error`,
   `// prettier-ignore`, or `.skip` / `.only` on tests.
 - **Do not bypass the hooks** — never `git commit --no-verify` or
-  `git push --no-verify`.
+  `git push --no-verify`. The **sole exception** is the `batch-commits` skill's
+  bundled script (`node .claude/skills/batch-commits/scripts/batch-commit.mjs
+  <file>`): it runs the full `check:fast` gate **once** against the complete
+  working tree, validates every commit message
+  with commitlint up front, and then applies `--no-verify` only to skip the
+  *redundant* re-runs on the remaining commits of the same batch (`pre-push` /
+  `check:slow` stays intact). That's "run the meaningful check once," not a bypass.
+  Outside that tool, `--no-verify` remains forbidden.
 
 ### When a rule seems wrong, file a lint suggestion — don't silently work around it
 
@@ -162,7 +169,7 @@ non-behavioral changes (pure refactors, docs, config) don't need a demo doc.
 When you finish a task, **unless the user tells you not to**, wrap it up like this:
 
 1. **Never commit on `main`.** Check the current branch first; if it's `main`, create a feature branch and switch to it before committing.
-2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`).
+2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`). **When a finished change needs more than one commit, don't run `git commit` once per group** — each would re-run the `check:fast` gate. Use the **`batch-commits` skill** (`node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>`): it runs the gate once up front, then creates every commit, skipping the redundant re-checks. See `.claude/skills/batch-commits/SKILL.md`.
 3. **Push** the branch to the remote.
 4. **Open a pull request** from the feature branch into `main` once the full feature is done. **Link the demo doc as a _live, clickable_ link** in the description — a full GitHub blob URL on the PR's head branch (`https://github.com/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md`), **not** a bare path, so reviewers can open it and see the embedded screenshots/diffs rendered. See the `showboat` skill for the exact format. If a pull request for the branch already exists, **update its description** to include your change.
 
