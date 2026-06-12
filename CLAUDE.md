@@ -169,7 +169,7 @@ non-behavioral changes (pure refactors, docs, config) don't need a demo doc.
 When you finish a task, **unless the user tells you not to**, wrap it up like this:
 
 1. **Never commit on `main`.** Check the current branch first; if it's `main`, create a feature branch and switch to it before committing.
-2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`). **When a finished change needs more than one commit, don't run `git commit` once per group** — each would re-run the `check:fast` gate. Use the **`batch-commits` skill** (`node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>`): it runs the gate once up front, then creates every commit, skipping the redundant re-checks. See `.claude/skills/batch-commits/SKILL.md`.
+2. **Commit your changes, grouped by concern.** Don't dump everything into one commit — stage and commit related changes together so each commit is a single logical unit. Include the demo doc from *Demonstrating changes* (e.g. `docs(demos): …`). Every message follows the commitlint format (one-line Conventional Commits: subject + scope **required**, body and footer **always empty**, subject **lowercase** — e.g. `feat(tasks): add inline subtask rows`). **When a finished change needs more than one commit, you MUST commit them with the `batch-commits` skill — never run `git commit` once per group.** Each manual commit re-runs the whole `check:fast` gate, so N commits pay that cost N times; the skill (`node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>`) runs the gate once up front, then creates every commit, skipping the redundant re-checks. See `.claude/skills/batch-commits/SKILL.md`.
 3. **Push** the branch to the remote.
 4. **Open or update the pull request — and keep its description in sync.** A PR's
    description is the canonical record of what the PR does; reviewers read it, not your
@@ -226,15 +226,18 @@ gotchas surface proactively instead of being rediscovered.
 
 When you hit and resolve a setback or **non-obvious** problem — at *any* stage,
 including the commit → push → PR → deploy wrap-up, not just while writing feature
-code — record the insight **before moving on**:
+code — record the insight **before moving on**. **Read the `compounding-learning`
+skill (`.claude/skills/compounding-learning/SKILL.md`) before you do** — it's the house
+style for *how* to record (lean, current, right altitude, no duplication, no narration
+of the edit), plus a library of before/after examples. Route the insight like so:
 
-1. **Framework / library-related** → update that framework's existing skill with
-   the insight / gotcha.
-2. **Anything else** — a service quirk, an integration, a config interaction, a
-   piece of functionality, **or a developer-tooling / CLI / workflow gotcha**
-   (`git`, `gh`, `vercel`, `wrangler`, `supabase`, `psql`, husky, a CI step) →
-   find the existing skill for that area of concern and update it; **if none
-   exists, create a new skill** for that concern.
+1. **Tied to a specific framework, library, service, CLI, or tool** → update that
+   tool's existing skill (Next.js, React, Supabase, Playwright, `git`, `gh`,
+   `wrangler`, `psql`, husky, …).
+2. **Not tied to any one tool** — a cross-cutting project convention, house-style
+   decision, or architectural pattern → it belongs in a house-style skill like
+   `data-flow` or `motion`. Update the existing skill for that area of concern, or
+   **create a new one if none fits**.
 
 "It was just a one-off CLI hiccup" / "a quick workaround" is exactly the
 rationalization to resist: if it cost discovery time and could recur, it's a
