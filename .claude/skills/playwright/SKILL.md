@@ -22,6 +22,27 @@ Sources used:
 
 ---
 
+## Table of Contents
+
+**This file**
+- [Mental Model](#mental-model)
+- [Choosing the Right Approach](#choosing-the-right-approach)
+  - [Which locator to use?](#which-locator-to-use)
+  - [Which assertion style to use?](#which-assertion-style-to-use)
+  - [Fixtures vs. beforeEach hooks?](#fixtures-vs-beforeeach-hooks)
+- [Plain-English → Pattern Table](#plain-english--pattern-table)
+- [Fixtures and Lifecycle](#fixtures-and-lifecycle)
+- [Common Pitfalls](#common-pitfalls)
+- [Version Gotchas (as of v1.50–v1.60)](#version-gotchas-as-of-v150v160-current-as-of-june-2026)
+- [Mocking the backend — the alfred integration suite](#mocking-the-backend--the-alfred-integration-suite-run-authenticated-seeded-tests)
+- [Browser availability: Claude Code on the web](#browser-availability-claude-code-on-the-web-cdn-blocked-sandboxes)
+- [What's Not in This Skill (and Why)](#whats-not-in-this-skill-and-why)
+
+**References**
+- [`references/setup-and-wiring.md`](references/setup-and-wiring.md) — `playwright.config.ts` / `auth.setup.ts` reference, Storybook test-runner browser config, and gotchas hit wiring the integration suite
+
+---
+
 ## Mental Model
 
 Playwright drives a real browser. The central insight is that **the DOM is always changing** — a click triggers a re-render, a form fill may show a spinner, async data arrives after paint. Playwright's entire API is designed around this reality through three layered mechanisms:

@@ -1,9 +1,8 @@
 # Playwright — setup & wiring (reference)
 
-Extracted from the playwright `SKILL.md`. This holds the **one-time setup material and the
-gotchas hit wiring the suite up** — the `playwright.config.ts` / `auth.setup.ts` reference, the
-Storybook test-runner browser config, and the integration-suite wiring gotchas. You rarely need
-any of this for everyday test authoring; reach for it when scaffolding the suite, editing config,
+This holds the **one-time setup material and the gotchas hit wiring the suiteup** — 
+the `playwright.config.ts` / `auth.setup.ts` reference, the Storybook test-runner browser config, and the integration-suite wiring gotchas. 
+You rarely need any of this for everyday test authoring; reach for it when scaffolding the suite, editing config,
 or debugging a setup-level failure. For browser/environment provisioning in Claude Code on the
 web, see [`docs/cloud-environment.md`](../../../../docs/cloud-environment.md).
 
