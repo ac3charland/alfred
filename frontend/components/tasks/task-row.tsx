@@ -13,13 +13,14 @@ import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
-import { getAncestorTitles, getDescendantIds } from '@/lib/tree';
+import { countCompletedDescendants, getAncestorTitles, getDescendantIds } from '@/lib/tree';
 import { cn } from '@/lib/utils';
 
 interface TaskRowProperties {
   node: ItemNode;
   depth?: number;
-  isCompleted?: boolean;
+  /** True when this row is rendered inside the Completed view (drives the context label). */
+  isCompletedView?: boolean;
 }
 
 /**
@@ -33,11 +34,12 @@ interface TaskRowProperties {
  * - Move-to-folder dropdown
  * - Delete
  */
-export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowProperties) {
+export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowProperties) {
   const folders = useFolders();
   const allTasks = useTasks();
   const { completeTask, uncompleteTask, updateTask, moveTask, deleteTask } = useTaskActions();
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const [showCompleted, setShowCompleted] = React.useState(false);
   const [showAddSubtask, setShowAddSubtask] = React.useState(false);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
   const [isEditingTitle, setIsEditingTitle] = React.useState(false);
@@ -54,14 +56,29 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
   const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
   const [isMetaOpen, setIsMetaOpen] = React.useState(false);
 
+  // A row's completed state is read off the node itself (not the view), so a completed
+  // child shown under an active parent renders checked + low-contrast, and clicking it
+  // reactivates rather than completes.
+  const isCompleted = node.status === 'completed';
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
+
+  // In the Completed view every child is itself completed and renders inline (unchanged).
+  // In an active view, completed children are split out and tucked behind a "Show completed"
+  // toggle, separate from the active children shown directly above them.
+  const activeChildren = isCompletedView
+    ? node.children
+    : node.children.filter((child) => child.status === 'active');
+  const completedChildren = isCompletedView
+    ? []
+    : node.children.filter((child) => child.status === 'completed');
+  const completedDescendantCount = isCompletedView ? 0 : countCompletedDescendants(node);
 
   // On the Completed screen, each root row carries a context label showing where the
   // task lives: its ancestor breadcrumb (oldest → youngest) when it's a nested subtask,
   // otherwise its folder name (or "Inbox"). Ancestors are resolved from the full task
   // list because they may be active items filtered out of the completed view.
-  const isContextRow = isCompleted && depth === 0;
+  const isContextRow = isCompletedView && depth === 0;
   const ancestorTitles = React.useMemo(
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — when isContextRow=false the false branch [] is never consumed (contextLabel is null, ancestorTitles.length is never checked); replacing with ["Stryker was here"] is behaviorally identical.
     () => (isContextRow ? getAncestorTitles(allTasks, node.parent_id) : []),
@@ -280,7 +297,16 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
               setIsEditingTitle(true);
             }}
           >
-            <span className="text-sm text-foreground truncate cursor-text">{node.title}</span>
+            <span
+              className={cn(
+                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                'text-sm truncate cursor-text',
+                // Completed rows read low-contrast; active rows full-contrast.
+                isCompleted ? 'text-muted-foreground' : 'text-foreground',
+              )}
+            >
+              {node.title}
+            </span>
             {contextLabel !== null && (
               <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
                 <ListCheck size={10} className="shrink-0" />
@@ -311,10 +337,21 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
           </button>
         )}
 
-        {/* Children count badge */}
-        {hasChildren && !isExpanded && (
+        {/* Active children count badge */}
+        {activeChildren.length > 0 && !isExpanded && (
           <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-            {node.children.length}
+            {activeChildren.length}
+          </span>
+        )}
+
+        {/* Completed descendants count badge (all depths) — to the right of the active one */}
+        {completedDescendantCount > 0 && !isExpanded && (
+          <span
+            aria-label={`${String(completedDescendantCount)} completed`}
+            className="shrink-0 inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-0.5 text-xs text-muted-foreground/60"
+          >
+            <Check size={10} strokeWidth={3} className="shrink-0" />
+            {completedDescendantCount}
           </span>
         )}
 
@@ -630,10 +667,76 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                 </li>
               )}
 
-              {/* Child task rows */}
-              {node.children.map((child) => (
-                <TaskRow key={child.id} node={child} depth={depth + 1} isCompleted={isCompleted} />
+              {/* Active child rows */}
+              {activeChildren.map((child) => (
+                <TaskRow
+                  key={child.id}
+                  node={child}
+                  depth={depth + 1}
+                  isCompletedView={isCompletedView}
+                />
               ))}
+
+              {/* Completed children — revealed by the toggle with the same grid-rows
+                  animation as the parent's own expand. The toggle sits at the bottom. */}
+              {completedChildren.length > 0 && (
+                <li className="list-none">
+                  <div
+                    className={cn(
+                      'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+                      showCompleted ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                    )}
+                    aria-hidden={!showCompleted}
+                    inert={!showCompleted}
+                  >
+                    <div className="overflow-hidden">
+                      <ul
+                        aria-label="Completed subtasks"
+                        className={cn(
+                          'transition-opacity motion-reduce:transition-none',
+                          showCompleted
+                            ? 'opacity-100 duration-200 delay-75'
+                            : 'opacity-0 duration-100',
+                        )}
+                      >
+                        {completedChildren.map((child) => (
+                          <TaskRow
+                            key={child.id}
+                            node={child}
+                            depth={depth + 1}
+                            isCompletedView={isCompletedView}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div
+                    className="py-1"
+                    style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCompleted((v) => !v);
+                      }}
+                      aria-expanded={showCompleted}
+                      className={cn(
+                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                        'inline-flex items-center rounded-sm text-xs text-muted-foreground/70',
+                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                        'transition-colors duration-100 hover:text-foreground motion-reduce:transition-none',
+                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                      )}
+                    >
+                      {showCompleted
+                        ? 'Hide completed'
+                        : `Show completed (${String(completedChildren.length)})`}
+                    </button>
+                  </div>
+                </li>
+              )}
             </ul>
           </div>
         </div>

@@ -43,6 +43,45 @@ test.describe('subtasks', () => {
     await page.getByRole('button', { name: 'Collapse subtasks' }).click();
     await expect(subtaskList).toBeHidden();
   });
+
+  test('reveals completed subtasks behind a toggle and reactivates one on uncheck', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      items: [
+        makeItem('Plan the launch', { id: 'p1' }),
+        makeItem('Draft the brief', {
+          id: 'c1',
+          parent_id: 'p1',
+          status: 'completed',
+          completed_at: '2025-01-02T00:00:00Z',
+        }),
+      ],
+    });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'Expand subtasks' }).click();
+
+    // The completed child is hidden behind the toggle until it is opened.
+    const completedList = page.getByRole('list', { name: 'Completed subtasks' });
+    await expect(completedList).toBeHidden();
+
+    await page.getByRole('button', { name: 'Show completed (1)' }).click();
+    await expect(completedList.getByText('Draft the brief')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Hide completed' })).toBeVisible();
+
+    // Unchecking pops the child back to active; with no completed children left the
+    // toggle disappears and the row offers "complete" again.
+    await page.getByRole('button', { name: 'Mark "Draft the brief" active' }).click();
+    await expect(page.getByRole('button', { name: /show completed/i })).toBeHidden();
+    await expect(
+      page.getByRole('list', { name: 'Subtasks' }).getByText('Draft the brief'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Mark "Draft the brief" complete' }),
+    ).toBeVisible();
+  });
 });
 
 test.describe('cascade completion', () => {
