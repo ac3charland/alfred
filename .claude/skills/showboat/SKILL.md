@@ -78,6 +78,7 @@ npm run demo -- <command> [args]
 | `pop <file>` | Remove the most recent entry (an exec drops its code *and* output). Use after a command errored and you don't want it in the doc. |
 | `verify <file> [--output <new>]` | Re-run every exec block and diff against the recorded output. Exit 1 on any mismatch, 0 if all match. `--output` writes a refreshed copy. |
 | `extract <file> [--filename <name>]` | Print the `showboat` commands that recreate the doc. |
+| `pr-link <file>` | Print the live, clickable GitHub **blob** link for the doc — owner/repo from `origin`, branch from `HEAD` — to paste into the PR body. |
 
 Global: `--workdir <dir>` sets the directory exec blocks run in (default: cwd).
 `--version`, `--help`.
@@ -223,25 +224,23 @@ two, not the whole setup.
 ## Linking the demo in the PR (a live, clickable link)
 
 A demo doc only helps a reviewer if they can **open it from the PR and see the embedded
-screenshots/diffs rendered**. A bare path (`docs/demos/foo.md`) or a filename isn't
-clickable on the PR page, and a relative link doesn't resolve there. So the PR
-**description body must contain a live, absolute GitHub link** to the doc on the PR's
-**head** branch:
+screenshots/diffs rendered**. A bare path or relative link isn't clickable on the PR page,
+so the PR **body must contain a live, absolute GitHub blob link** to the doc. Don't build
+that URL by hand — generate it:
 
-```text
-📝 **Demo:** [docs/demos/<name>.md](https://github.com/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md)
+```bash
+npm run demo -- pr-link docs/demos/<name>.md
+# → 📝 **Demo:** [docs/demos/<name>.md](https://github.com/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md)
 ```
 
-- `<branch>` is the PR's **head** branch (the one you pushed) — not `main`, where the doc
-  may not exist yet. The link then tracks the doc as it lands.
-- Don't hardcode `<owner>/<repo>` / `<branch>` — read them from the PR, or from
-  `git remote get-url origin` + `git rev-parse --abbrev-ref HEAD`.
-- Use the **blob** URL (`/blob/<branch>/…`): GitHub renders the markdown — images, diffs and
-  all. A `raw.githubusercontent.com` / `?raw=1` URL shows source text instead.
-- **Always include it when you open the PR.** If a PR for the branch **already exists**
-  (e.g. opened from the Claude Code UI), **edit the body** to add the link if it's missing
-  (`gh pr edit --body` / the `update_pull_request` MCP tool — see the `gh-cli` skill). This is
-  the one PR edit that's always worth making.
+The `pr-link` command derives `<owner>/<repo>` from `origin` and `<branch>` from `HEAD`
+(no hardcoding), and emits a **blob** URL on the current branch — which renders the doc
+(images, diffs and all) rather than raw source. Paste its output into the PR body.
+
+**Always include it when you open the PR.** If a PR for the branch **already exists** (e.g.
+opened from the Claude Code UI), **edit the body** to add the link if it's missing — pass
+the `pr-link` output to `gh pr edit --body` / the `update_pull_request` MCP tool (see the
+`gh-cli` skill). This is the one PR edit that's always worth making.
 
 ## How `verify` works (and how to keep it green)
 
