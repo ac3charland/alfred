@@ -46,19 +46,21 @@ export default defineConfig([
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
   {
+    // Scope the type-aware project service to TS files ONLY. JS/CJS/MJS config &
+    // script files get `projectService: false` from the disableTypeChecked block
+    // below — but ESLint's flat-config deep-merge keeps an *object* `projectService`
+    // over a later `false`, so if this block matched them too, that override would
+    // silently no-op and every script file would still route through the default
+    // project (tripping typescript-eslint's >8-default-project-files cap). Scoping
+    // by `files` keeps the object off JS files entirely, so their `false` is the
+    // only value that resolves. Only `.storybook/*.ts(x)` now hit the default project.
+    files: ['**/*.{ts,tsx,mts,cts}'],
     languageOptions: {
       parserOptions: {
         projectService: {
-          // Allow files not picked up by tsconfig.json's project service:
-          // .storybook/ TS files, scripts/, and root-level config JS/MJS files.
-          allowDefaultProject: [
-            '.storybook/*.ts',
-            '.storybook/*.tsx',
-            'scripts/*.mjs',
-            '*.mjs',
-            '*.cjs',
-            '*.js',
-          ],
+          // Allow .storybook/ TS files (not picked up by tsconfig.json's include)
+          // to use the default tsconfig via the project service.
+          allowDefaultProject: ['.storybook/*.ts', '.storybook/*.tsx'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
