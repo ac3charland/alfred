@@ -5,7 +5,9 @@ description: >
   Tailwind theme, wiring up dark-mode tokens, or translating a design description into utility
   classes for the alfred project (Next.js + shadcn/ui + lucide-react, dark dense productivity
   UI). Covers Tailwind v4 (CSS-first @theme config) as the primary target with explicit v3
-  gotchas for agents trained on the old tailwind.config.js pattern.
+  gotchas for agents trained on the old tailwind.config.js pattern. For scaffolding or
+  composing shadcn/ui components use the shadcn-ui skill; for animation and transition
+  tokens use the motion skill.
 ---
 
 # Tailwind CSS Skill — alfred project

@@ -1,6 +1,6 @@
 ---
 name: lib-skill-forge
-description: Build a high-quality SKILL.md for any programming library or framework from its documentation. Use this when the user provides a library name and doc URL(s) and wants a reusable skill that will help a coding agent implement that library accurately from plain-English descriptions. Trigger on phrases like "create a skill for [library]", "make a skill from [docs URL]", "build a skill for working with [framework]", or any time the user wants to convert library documentation into a coding-agent skill.
+description: Build a high-quality SKILL.md for any programming library or framework from its documentation. Use this when the user provides a library name and doc URL(s) and wants a reusable skill that will help a coding agent implement that library accurately from plain-English descriptions. Trigger on phrases like "create a skill for [library]", "make a skill from [docs URL]", "build a skill for working with [framework]", or any time the user wants to convert library documentation into a coding-agent skill. For general skill creation, iteration, evaluation/benchmarking, or description-trigger optimization that is not driven by a library's documentation, use the skill-creator skill instead.
 ---
  
 # Library Skill Forge

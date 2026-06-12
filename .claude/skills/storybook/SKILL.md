@@ -7,7 +7,9 @@ description: >
   Next.js internals (useRouter, next/image, next/navigation) inside stories. Trigger on
   any mention of: "write a story", "add a story", "interaction test", "play function",
   "test-runner", "storyshots", "snapshot test", "story controls", "argTypes", "autodocs",
-  "storybook decorator", "preview.ts", or "test-storybook".
+  "storybook decorator", "preview.ts", or "test-storybook". For end-to-end flows that
+  span pages or run against the real dev server, use a Playwright spec (playwright skill),
+  not a play function.
 ---
 
 # Storybook Skill (alfred / Next.js + Tailwind v4 + TypeScript)

@@ -6,7 +6,9 @@ description: >
   patterns (task trees). Covers function components + hooks only. Apply before
   any file under frontend/ that imports from 'react'. Especially relevant for:
   recursive subtask rendering, inline-expanding rows, controlled inputs, cascade
-  modals, and deciding whether an effect is actually needed.
+  modals, and deciding whether an effect is actually needed. Do NOT use for tests:
+  React component tests belong to the react-testing-library skill, and
+  non-component unit tests to the jest skill.
 ---
 
 # React Skill (Function Components + Hooks)

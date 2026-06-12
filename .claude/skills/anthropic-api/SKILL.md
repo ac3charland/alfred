@@ -7,7 +7,9 @@ description: >
   Trigger on any mention of: anthropic, @anthropic-ai/sdk, claude-*, Messages
   API, tool_use, tool_result, stop_reason, or any task described as
   "classify/clean text with Claude", "define an item-action tool", "call Claude
-  from a Worker", or "run the tool loop".
+  from a Worker", or "run the tool loop". For the Worker runtime, bindings, and
+  wrangler config that host this code (rather than the Claude API calls
+  themselves), use the cloudflare-workers skill.
 ---
 
 # Anthropic API Skill (alfred project)

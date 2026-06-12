@@ -6,7 +6,9 @@ description: >
   all mock APIs (jest.fn / jest.mock / jest.spyOn), async testing patterns,
   fake timers, snapshots, setup lifecycle hooks, jest.config.ts per package,
   and eslint-plugin-jest constraints. Apply before creating any *.test.ts file
-  or touching jest.config.ts in any package.
+  or touching jest.config.ts in any package. For React component rendering and
+  queries use the react-testing-library skill; for browser end-to-end tests use
+  the playwright skill.
 ---
 
 # Jest (alfred monorepo)

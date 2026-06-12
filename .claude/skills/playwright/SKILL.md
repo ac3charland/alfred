@@ -8,7 +8,9 @@ description: >
   playwright.config.ts (webServer for Next.js dev server), authentication state
   reuse (storageState / setup project), network mocking (page.route), traces
   and screenshots on failure, and parallelism/isolation. Apply before creating
-  any *.spec.ts file or touching playwright.config.ts in frontend/.
+  any *.spec.ts file or touching playwright.config.ts in frontend/. For a single
+  component's interaction test in isolation, use a Storybook play function
+  (storybook skill) instead.
 ---
 
 # Playwright (alfred frontend)

@@ -7,7 +7,9 @@ description: >
   async patterns (findBy, waitFor), rendering with context providers, and
   patterns specific to alfred components: capture box, task rows, subtask lists,
   Radix Dialog modals, and folder navigation. Read this skill before writing
-  any file that imports from @testing-library/react.
+  any file that imports from @testing-library/react. Do NOT use for end-to-end
+  browser flows (playwright skill) or pure-logic unit tests with no rendered
+  component (jest skill).
 ---
 
 # React Testing Library

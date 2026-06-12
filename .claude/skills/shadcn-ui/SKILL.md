@@ -7,7 +7,8 @@ description: >
   etc.), adding Lucide icons to buttons or headings, or debugging styling issues
   involving the cn() utility, CSS variables, or Tailwind v4's @theme inline
   tokens. Also use when deciding whether a component needs "use client" in the
-  Next.js App Router context.
+  Next.js App Router context. For raw Tailwind utility classes or theme-token
+  edits (rather than component scaffolding) use the tailwindcss skill.
 ---
 
 # shadcn/ui Skill
