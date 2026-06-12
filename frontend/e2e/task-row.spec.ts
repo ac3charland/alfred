@@ -103,9 +103,13 @@ test.describe('cascade completion', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Complete all' }).click();
 
-    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Ship feature')).toBeHidden();
+    // Wait for the collapse exit to finish and the subtree to actually leave the list
+    // (completion commits when the animation ends), not merely be clipped out of view.
+    await expect(page.getByText('Ship feature')).toHaveCount(0);
 
-    await page.goto('/completed');
+    // Client-side nav reads the already-reconciled store, avoiding a full reload that
+    // could race the server-side completion persisting.
+    await page.getByRole('link', { name: 'Completed' }).click();
     await expect(page.getByText('2 completed tasks')).toBeVisible();
   });
 
@@ -124,6 +128,26 @@ test.describe('cascade completion', () => {
 
     await expect(dialog).toBeHidden();
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Keep me')).toBeVisible();
+  });
+});
+
+test.describe('completion', () => {
+  test('completing a leaf task animates it out and lands it in Completed', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeItem('Buy milk', { id: 'l1' })] });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'Mark "Buy milk" complete' }).click();
+
+    // The row plays its collapse exit, then actually leaves the inbox list (completion
+    // commits when the animation ends).
+    await expect(page.getByText('Buy milk')).toHaveCount(0);
+
+    // Client-side nav reads the reconciled store rather than racing the server.
+    await page.getByRole('link', { name: 'Completed' }).click();
+    await expect(page.getByText('Buy milk')).toBeVisible();
   });
 });
 
