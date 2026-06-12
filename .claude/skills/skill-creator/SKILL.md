@@ -70,19 +70,16 @@ Based on the user interview, fill in these components:
 
 #### Writing a description that triggers
 
-The description is the *entire* basis on which Claude decides to reach for your skill — at selection time it sees the installed skills' names and descriptions and nothing else, and there's no separate classifier doing anything clever behind the scenes. A handful of mechanical realities follow from that, and they're worth internalizing because they aren't obvious and they quietly decide whether your skill ever fires:
+The description is the only thing Claude sees when deciding whether to reach for a skill, so it's worth getting right. The checklist below is the *what to do*; the reasoning, evidence, and caveats behind each rule live in [`references/description-triggering.md`](references/description-triggering.md) — read it when a rule isn't obvious.
 
-- **Front-load what-it-does and the most distinctive trigger words.** Two forces punish burying the good stuff at the end. First, position bias: models lean hardest on the beginning of a block of text (and somewhat the end) and "lose the middle," so the start is prime real estate. Second, the available-skills listing the agent actually sees is length-capped — in current Claude Code each description is shown only up to roughly its first ~250 characters before being truncated, so anything after that may never reach the routing decision at all. (Treat that exact number as a moving target: it's changed before and isn't a documented stable contract — but the *principle* holds whatever the cutoff is.) So open with a crisp "what it does," then the highest-signal keywords; don't lead with a generic "Use when working in the X package" and save the disambiguating vocabulary for a tail that may get cut. And make that "what it does" name the skill honestly — see the verb table just below.
+- **Lead with what-it-does + the distinctive keywords, in the first ~250 characters.** The listing the model sees is truncated and the opening carries the most weight, so don't bury high-signal vocabulary in a tail that may get cut — and don't open with a generic "Use when working in the X package."
+- **Name what the skill *is*, not the action it describes.** It's a reference the agent reads, not code that runs; pick the verb from the table below.
+- **Use the literal words a user would type.** Triggering leans on keyword overlap, so include real vocabulary and near-synonyms ("Docker" *and* "containerized"); an explicit "Trigger on: …" list earns its keep.
+- **Disambiguate from sibling skills.** If two skills could match the same request, say when to use each: "do NOT use for X — use the Y skill", or "pairs with the Z skill".
+- **Be a little pushy, but keep scope honest.** Nudge toward firing even when the user doesn't name the skill (under-triggering is the common failure) — without claiming territory it doesn't cover (over-broad descriptions misfire and add noise).
+- **Third person, under the ~1024-char cap, re-checked after model upgrades.**
 
-- **Triggering rides on literal keyword/lexical overlap more than on deep semantics.** In practice, activation behaves closer to keyword matching than to conceptual understanding: the skill fires when the user's words overlap the description's words. So spell out the actual vocabulary a user would type, *including near-synonyms and surface variants* — if the skill is about containers, write both "Docker" and "containerized"; if it's about a file type, name the extension; if users say "ship it," don't make them rely on the model inferring that means your "deploy" skill. This is why the keyword-list style some of our skills use ("Trigger on: …") earns its keep — just make sure the highest-value terms are early, per the point above.
-
-- **Disambiguate from sibling skills.** The single most common misrouting cause is two skills whose descriptions overlap in scope — the model picks the wrong one or dithers between them. When two skills could plausibly match the same request, make their scopes explicitly non-overlapping and say *when to use each*: a short "do NOT use for X — use the Y skill" where it's genuinely ambiguous, and a positive "pairs with the Z skill" pointer where they're complementary. This matters more as the library grows, not less.
-
-- **Lean pushy to fix under-triggering — but mind the opposite failure too.** Claude has a measured tendency to *under*-trigger: to not reach for a skill even when it would help. That's the dominant failure mode, so it pays to make descriptions a little "pushy" — name the triggering contexts and nudge toward firing even when the user doesn't ask for the skill by name. For instance, instead of just "How to build a simple fast dashboard to display internal Anthropic data.", add the explicit pull: "…Make sure to use this skill whenever the user mentions dashboards, data visualization, or internal metrics, or wants to display any kind of company data, even if they don't explicitly ask for a 'dashboard.'" The flip side is real too: an over-broad description carries two costs — false triggers (firing on adjacent tasks it shouldn't own), and the subtler one, that a skill loaded into context on an irrelevant task can actively *degrade* the result by adding noise and distraction. So push toward firing, but keep the claimed scope honest; don't annex territory the skill doesn't actually cover. When you optimize (see Description Optimization below), measure both false negatives *and* false positives, not just whether it triggers.
-
-- **Third person, the char cap, and the model.** Write the description in the third person about the skill ("Extracts tables from PDFs and fills forms…"), not first person ("I can help you…") or a bare imperative to the user. The `description` field has a hard length cap (currently ~1024 characters — again, verify rather than trust the number), so spend it on trigger conditions and disambiguation, not redundancy. And re-check triggering after any model upgrade: selection behavior, and how much a given phrasing helps, vary from model to model.
-
-**Pick the verb that names what the skill *is*, not the action it describes.** A skill is something the agent *reads*, not something that *runs* — so the opening verb should name what the skill **gives** the agent (knowledge, conventions, a procedure, or a bundled tool), never the downstream action the agent performs after reading it. Litmus test: if the skill were deleted, the verb's claim should turn *false*. "Implements code against the Claude API" fails it — the agent can still write that code with no skill present, so the skill plainly doesn't "implement" anything; it's a *reference*, and the honest lead is "Covers the Claude API: …". Match the verb to the skill's center of gravity:
+**Verb by skill type** (the litmus test and full reasoning are in the reference):
 
 | The skill really is… | How to tell | Lead it with | Example |
 | --- | --- | --- | --- |
@@ -92,7 +89,7 @@ The description is the *entire* basis on which Claude decides to reach for your 
 | A **workflow / procedure** | walks through a multi-step process | "Describes how to \<outcome\>…" — *not* "\<does the outcome\>" as if the skill performs it | *Describes how to build a SKILL.md for a library from its documentation…* |
 | A **bundled tool / script wrapper** | the doing-code lives *inside* the skill (`scripts/`, a CLI) | an action verb is honest here — "\<what the tool does\>…" | *Builds a "demo doc" via the `tools/showboat` CLI…* |
 
-The rows aren't rigid — many skills blend two (a framework reference that also encodes project conventions). Pick the verb for the skill's center of gravity, keep it third person, and make the very next words the distinctive keywords.
+Rows blend — pick the skill's center of gravity, keep it third person, and put the distinctive keywords right after the verb.
 
 ### Skill Writing Guide
 
@@ -516,6 +513,7 @@ The agents/ directory contains instructions for specialized subagents. Read them
 
 The references/ directory has additional documentation:
 - `references/schemas.md` — JSON structures for evals.json, grading.json, etc.
+- `references/description-triggering.md` — the reasoning, evidence, and caveats behind the "Writing a description that triggers" checklist (front-loading, keyword overlap, sibling disambiguation, pushiness vs false-positives, and the verb-choice litmus test). Read it when a checklist rule isn't obvious.
 - `references/example-libraries.md` — how to structure a skill whose value is a library of references or example scenarios (folder vocabulary, the three library layouts, grep-hint / one-level-deep / no-duplication rules, and the RAG boundary). Read it when building a skill "with examples" or "with references."
 
 ---
