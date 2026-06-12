@@ -101,6 +101,8 @@ This fans the command to every workspace and **gracefully skips** any workspace 
 
 **`--if-present` is a flag for `npm run`, not a general workspace flag.** It tells npm to skip the command silently when the named script isn't defined. It has no effect on `npm install` or `npm exec`.
 
+**A workspace-scoped `npm install <pkg> -w <ws>` only reconciles that workspace's subtree.** On a fresh or partially-installed clone it can leave *root-only* devDeps uninstalled — e.g. `@trivago/prettier-plugin-sort-imports`, which Prettier loads — so a later `npm run format`/`lint` dies with a cryptic `Cannot find package '…' imported from …/noop.js`. Run `npm ci` from the root once (before or after the add) to populate the full shared tree.
+
 ---
 
 ## Version Gotchas
