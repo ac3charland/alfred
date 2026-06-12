@@ -30,6 +30,12 @@ describe('CaptureBox', () => {
     expect(screen.getByRole('button', { name: /add/i })).toBeInTheDocument();
   });
 
+  it('focuses the input on mount in compact mode', () => {
+    renderWithProviders(<CaptureBox compact />);
+
+    expect(screen.getByPlaceholderText(/add subtask/i)).toHaveFocus();
+  });
+
   it('submit button is disabled when input is empty', () => {
     renderWithProviders(<CaptureBox />);
 
