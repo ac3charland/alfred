@@ -30,7 +30,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased scrollbar-gutter-stable`}>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased scrollbar-gutter-stable`}
+    >
       <body className="min-h-full flex flex-col bg-background text-foreground">{children}</body>
     </html>
   );
