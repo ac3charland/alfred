@@ -8,6 +8,6 @@ Starting state — the inbox with three active tasks. We complete the middle one
 
 ![](task-completion-animation-image-1.png)
 
-Clicking its checkbox plays the exit: the checkbox pops and fills, the row collapses its height to nothing, the title fades out, and the two remaining tasks rise to close the gap.
+Clicking its checkbox plays the exit: the checkbox pops and fills, then — a beat later — the row collapses its height to nothing (ease-out), the title fades out, and the two remaining tasks rise to close the gap.
 
-![completing a task: checkbox pop, ease-out height collapse, text fade](task-completion-animation-video-1.gif)
+![completing a task: checkbox pop, a beat, then ease-out height collapse + text fade](task-completion-animation-video-1.gif)
