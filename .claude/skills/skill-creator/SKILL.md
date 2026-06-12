@@ -133,16 +133,7 @@ If a skill bundles `scripts/`, they must be runnable **on their own**, straight 
 the skill — `node scripts/foo.mjs`, `python -m scripts.foo`, etc. — without
 depending on anything outside the skill folder. In particular, **don't** wire a
 script into the host project (e.g. adding an `npm run foo` entry to the repo's
-`package.json` and pointing the agent at that command). Have the skill tell the
-agent to invoke the script **by its path** instead.
-
-Why: a skill is a portable, droppable unit. The moment running it requires an edit
-to the host repo's config, the skill stops being self-contained — it won't work
-when the skill is copied to another repo, and it silently breaks if someone changes
-or removes that config entry. The script's own directory is the one thing that
-always travels with the skill, so depend only on that. If a script genuinely needs
-a heavy toolchain, bundle or document that dependency inside the skill rather than
-reaching back into the host project for it.
+`package.json` and pointing the agent at that command).
 
 #### Principle of Lack of Surprise
 
