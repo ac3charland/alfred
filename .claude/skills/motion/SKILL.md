@@ -204,7 +204,9 @@ Why each piece:
   (`--animate-fade-out: fade-out 150ms ease-in forwards`) — applied as a *separate* utility
   (e.g. `[animation-fill-mode:forwards]`) it's reset to `none` by the `animation` shorthand the
   `animate-fade-out` utility expands to, so it silently does nothing (this is exactly why a
-  "just add `forwards`" attempt fails). Demo: `docs/demos/inbox-fade-stutter.md`.
+  "just add `forwards`" attempt fails). Demo: `docs/demos/inbox-fade-stutter.md`. To *catch or
+  measure* this class of one-frame glitch, sample the element frame by frame — see the
+  `debug-animations` skill.
 
 - **`onAnimationEnd` bubbles from descendants.** Guard with
   `event.target === event.currentTarget` so a child's animation doesn't trigger parent logic.
