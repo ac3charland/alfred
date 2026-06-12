@@ -24,9 +24,13 @@ So this doc is self-contained about what's a *suggestion* vs. *done*:
    to the genuinely-overlapping clusters: `react` / `react-testing-library` / `jest`,
    `tailwindcss` / `shadcn-ui` (with a pointer to `motion`), `playwright` / `storybook`,
    `anthropic-api` → `cloudflare-workers`, and `skill-creator` ↔ `lib-skill-forge`.
+3. **Every description was rewritten to lead with what-the-skill-does** — a third-person verb
+   (Covers / Configures / Owns / Drives / Builds / Implements) plus the distinctive keywords —
+   instead of a generic `Use when working in the X package…` opener, so the highest-signal
+   words land at the front (this was item 2 below; now done).
 
-The items below are the things I deliberately did **not** do because they change structure,
-not wording.
+The items below are structural changes I deliberately did **not** make, because they alter
+the library's shape rather than the wording of individual descriptions.
 
 ---
 
@@ -39,12 +43,13 @@ separately reports each description truncated to ~250 chars in the listing). Pas
 point, "descriptions are silently shortened and triggering degrades" — not because any one
 description is bad, but because they no longer all fit.
 
-**Our numbers (measured post-audit).** 22 skills, **14,148 characters** of description
-text total — already ~1.75× the ~8,000-char budget the report cites. Average description
-is ~640 chars; **none** fits in the cited ~250-char per-skill listing window. That means
-the high-signal `Trigger on: …` keyword catalogs at the *tails* of most of our
-descriptions — **and the disambiguation clauses I just appended** — sit past the likely
-visible window and may not reach the routing decision at all.
+**Our numbers (measured post-audit).** 22 skills, **~13,800 characters** of description
+text total — already ~1.7× the ~8,000-char budget the report cites. Average description
+is ~630 chars; **none** fits in the cited ~250-char per-skill listing window. The
+what-it-does lead + distinctive keywords now sit in the front (good — see item 2), but the
+trailing keyword catalogs and the sibling-disambiguation pointers ("use the Y skill") still
+fall in the *tail* of the longer descriptions — past the likely visible window, so they may
+not reach the routing decision at all.
 
 > ⚠️ Treat the exact thresholds as uncertain. The report explicitly flags these character
 > limits as a moving target ("verify current limits in the docs before relying on exact
@@ -53,10 +58,11 @@ visible window and may not reach the routing decision at all.
 
 **Options, roughly in order of effort:**
 
-- **(a) Tighten descriptions so the essentials fit the visible window.** Rewrite each so
-  the first ~250 chars carry *what it does + top distinctive keywords + the key
-  disambiguation*, and demote the exhaustive keyword catalogs. This is a per-description
-  pass (see item 2). Lowest-risk, keeps the flat structure.
+- **(a) Tighten descriptions so the essentials fit the visible window.** The *what it does +
+  top keywords* half of this is **done** (item 2); the remaining step is to get the
+  *disambiguation pointers* inside the first ~250 chars too — either by moving them earlier
+  or by trimming the exhaustive keyword catalogs that currently push them into the tail.
+  Lowest-risk, keeps the flat structure.
 - **(b) Consolidate overlapping clusters** into fewer skills with `references/` files (see
   item 3). Fewer top-level descriptions ⇒ more budget per skill ⇒ less truncation. This is
   the report's recommended structure (progressive disclosure) and *also* removes routing
@@ -73,28 +79,26 @@ library grows, and only reach for **(c)** if we blow well past ~32 skills.
 
 ---
 
-## 2. Front-load distinctive keywords ahead of generic scope leads (per-description pass)
+## 2. Front-load distinctive keywords ahead of generic scope leads — DONE
 
 **Evidence.** Position bias ("Lost in the Middle" — start/end used best, middle lost) plus
 the listing truncation above mean the first words are prime real estate. The report's #1
 recommendation is to lead with *what it does + the literal keywords a user would type*.
 
-**What I saw in the audit.** Most of our descriptions already lead with a reasonable
-what-it-does, so this is a polish pass, not a rescue. But several open with a *generic
-package-scope* lead and bury their distinctive vocabulary at the end, where truncation
-bites hardest. Examples:
+**Status: applied to all 22 skills.** Originally 20 of 22 descriptions led with a generic
+`Use when working in the X package…` opener and buried their distinctive vocabulary in the
+tail. Each was rewritten to open with a third-person what-it-does clause carrying the domain
+keyword at word ~2 — e.g. `cloudflare-workers` now opens "Covers Cloudflare Workers
+development in the alfred workers/ package… ctx.waitUntil, wrangler deploy…" rather than
+"Use when working on any file…", and `react` / `nextjs` / `supabase` lead with "Covers React
+function-component and hooks patterns…", "Covers Next.js App Router development…", and
+"Covers Supabase in the alfred project…". `lib-skill-forge` and `skill-creator` already led
+with what-they-do and were left as-is.
 
-- `cloudflare-workers` opens "Use when working on any file in the alfred workers/
-  package…"; the distinctive `ctx.waitUntil`, `wrangler deploy`, "validate an API key"
-  terms come later. Its `Do NOT use for Next.js API routes` disambiguation sits at ~char
-  700 — past the likely visible window.
-- `react` / `nextjs` / `supabase` similarly lead with package/role scope before the
-  high-signal terms.
-
-**Why I didn't just do it:** reordering all 22 risks churn and over-fitting to an uncertain
-truncation number, and the leads are *good enough* that the win is incremental. It's worth
-doing as a deliberate, reviewed pass — ideally measured (item 4) rather than by feel — so
-we can confirm the reordering actually helps for our model before committing to it.
+**Still open (folds into item 1a):** the *disambiguation pointers* still sit in the tail of
+the longer descriptions. And per the report, this kind of reordering should ideally be
+**measured** rather than trusted by feel (item 4) — confirm the front-loading actually lifts
+triggering for our model rather than assuming it does.
 
 ---
 
