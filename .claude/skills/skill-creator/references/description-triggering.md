@@ -25,7 +25,11 @@ Two forces punish burying the good stuff at the end:
 
 Practical consequence: the first sentence or two must carry what the skill does *and* its
 highest-signal keywords. Don't open with a generic "Use when working in the X package" and
-leave the disambiguating vocabulary for a tail that may get cut.
+leave the disambiguating vocabulary for a tail that may get cut. And don't spend those front
+characters on scope the agent already has: "in the alfred repo/project/monorepo" is redundant
+(CLAUDE.md supplies that context) and just pushes the distinctive keywords back. Keep a scope
+clause only where it disambiguates *which part* of the project, and then without the repo name
+("in the frontend", "in the monorepo").
 
 ## Triggering rides on literal keyword overlap
 

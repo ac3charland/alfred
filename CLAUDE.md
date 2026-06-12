@@ -201,6 +201,11 @@ the swarm leans on (git, the GitHub CLI → `gh-cli`, the deploy CLIs `vercel` /
 `wrangler` / `supabase`, `psql`, …). A reproducible quirk in any of those is
 just as skill-worthy as a framework gotcha.
 
+These skills are **alfred-specific** even when named for a library: a skill like `react`
+or `supabase` blends that library's reference with this project's own conventions and
+gotchas, so a description that says `Covers <library>` already implies "as used in alfred"
+and needn't spell that scope out.
+
 **Read the relevant skill(s) before starting related work** so accumulated
 gotchas surface proactively instead of being rediscovered.
 
