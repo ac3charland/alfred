@@ -15,8 +15,12 @@ one-time style nit.
 
 ## A "Why:" paragraph re-justifying the line above it — skill-creator (`5f1b0ab`)
 
-The rule sentence ("bundled scripts must be self-contained") was clear. A full "Why:"
-paragraph restated it at length.
+The rule had just been stated plainly — the line directly above the cut:
+
+> …**don't** wire a script into the host project (e.g. adding an `npm run foo` entry to
+> the repo's `package.json` and pointing the agent at that command).
+
+The "Why:" paragraph that immediately followed restated that same point at length:
 
 BEFORE:
 ```
@@ -24,7 +28,7 @@ Why: a skill is a portable, droppable unit. The moment running it requires an ed
 the host repo's config, the skill stops being self-contained — it won't work when the
 skill is copied to another repo ... reaching back into the host project for it.
 ```
-AFTER: *(paragraph removed; the rule ends at "...pointing the agent at that command).")*
+AFTER: *(paragraph removed; the rule above already says it)*
 
 **Lesson:** explaining *why* is good when the why is non-obvious — but don't re-explain
 a rule the reader already understood from the sentence before.
