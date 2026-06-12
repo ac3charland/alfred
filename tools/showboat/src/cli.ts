@@ -11,6 +11,7 @@ import {
   pop,
   prLink,
   verify,
+  video,
 } from './commands.ts';
 
 const VERSION = '0.1.0';
@@ -22,6 +23,7 @@ Usage:
   showboat note <file> [text]              Append commentary (stdin if omitted).
   showboat exec <file> <lang> [code]       Run code, capture output (stdin if omitted).
   showboat image <file> <path|markdown>    Embed an image next to the doc.
+  showboat video <file> <webm> [alt]       Convert a .webm to GIF, embed it, drop the .webm.
   showboat pop <file>                      Remove the most recent entry.
   showboat verify <file> [--output <f>]    Re-run every exec block, diff the output.
   showboat extract <file> [--filename <f>] Print the commands that recreate the doc.
@@ -88,7 +90,7 @@ function reportVerify(file: string, result: VerifyResult): void {
   );
 }
 
-function main(argv: readonly string[]): number {
+async function main(argv: readonly string[]): Promise<number> {
   let workdir = process.cwd();
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -150,6 +152,12 @@ function main(argv: readonly string[]): number {
       image(file, argument);
       return 0;
     }
+    case 'video': {
+      const [file, webmPath, ...altParts] = rest;
+      if (!file || !webmPath) fail('usage: showboat video <file> <webm-path> [alt]');
+      await video(file, webmPath, altParts.join(' '));
+      return 0;
+    }
     case 'pop': {
       const [file] = rest;
       if (!file) fail('usage: showboat pop <file>');
@@ -184,7 +192,7 @@ function main(argv: readonly string[]): number {
 }
 
 try {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   if (error instanceof UsageError) {
     process.stderr.write(`showboat: ${error.message}\n`);

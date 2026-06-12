@@ -12,6 +12,7 @@ import {
   pop,
   prLink,
   verify,
+  video,
 } from './commands.ts';
 import { parseDocument } from './document.ts';
 
@@ -23,6 +24,8 @@ function tempDoc(): { file: string; directory: string } {
 function entriesOf(file: string) {
   return parseDocument(readFileSync(file, 'utf8')).entries;
 }
+
+const failingConvert = (): Promise<Uint8Array> => Promise.reject(new Error('convert failed'));
 
 describe('init', () => {
   it('writes the title and an ISO-8601 timestamp', () => {
@@ -271,6 +274,87 @@ describe('image', () => {
     const entries = entriesOf(file);
     // The image is the second entry (after the note), but it should be numbered "1"
     expect(entries[1]).toMatchObject({ kind: 'image', path: 'demo-image-1.png' });
+  });
+});
+
+describe('video', () => {
+  const fakeGif = Buffer.from('GIF89a-fake-bytes');
+  // A converter that records the path it was handed and returns fixed GIF bytes,
+  // so the orchestration is exercised without running ffmpeg.wasm.
+  function fakeConvert(calls: string[]): (webmPath: string) => Promise<Uint8Array> {
+    return (webmPath) => {
+      calls.push(webmPath);
+      return Promise.resolve(fakeGif);
+    };
+  }
+
+  it('writes the converted gif next to the doc, embeds it, and deletes the webm', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const webm = path.join(directory, 'clip.webm');
+    writeFileSync(webm, 'fake-webm-bytes');
+
+    await video(file, webm, '', fakeConvert([]));
+
+    expect(entriesOf(file)).toEqual([{ kind: 'image', alt: '', path: 'demo-video-1.gif' }]);
+    const gifPath = path.join(directory, 'demo-video-1.gif');
+    expect(existsSync(gifPath)).toBe(true);
+    expect(readFileSync(gifPath)).toEqual(fakeGif);
+    expect(existsSync(webm)).toBe(false);
+  });
+
+  it('uses the provided alt text for the embedded gif', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const webm = path.join(directory, 'clip.webm');
+    writeFileSync(webm, 'x');
+
+    await video(file, webm, 'inbox reveal', fakeConvert([]));
+
+    expect(entriesOf(file)[0]).toMatchObject({
+      kind: 'image',
+      alt: 'inbox reveal',
+      path: 'demo-video-1.gif',
+    });
+  });
+
+  it('hands the webm path to the converter', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const webm = path.join(directory, 'clip.webm');
+    writeFileSync(webm, 'x');
+    const calls: string[] = [];
+
+    await video(file, webm, '', fakeConvert(calls));
+
+    expect(calls).toEqual([webm]);
+  });
+
+  it('numbers gifs after existing image entries so files never collide', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const png = path.join(directory, 'a.png');
+    writeFileSync(png, 'x');
+    image(file, png);
+    const webm = path.join(directory, 'clip.webm');
+    writeFileSync(webm, 'x');
+
+    await video(file, webm, '', fakeConvert([]));
+
+    expect(entriesOf(file)[1]).toMatchObject({ kind: 'image', path: 'demo-video-2.gif' });
+  });
+
+  it('preserves the webm and writes nothing when conversion fails', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    const webm = path.join(directory, 'clip.webm');
+    writeFileSync(webm, 'x');
+
+    await expect(video(file, webm, '', failingConvert)).rejects.toThrow('convert failed');
+
+    expect(existsSync(webm)).toBe(true);
+    expect(existsSync(path.join(directory, 'demo-video-1.gif'))).toBe(false);
+    expect(entriesOf(file)).toEqual([]);
   });
 });
 
