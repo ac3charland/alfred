@@ -1,16 +1,18 @@
 ---
 name: storybook
 description: >
-  Use when writing or modifying Storybook stories in the alfred frontend/ package,
-  configuring .storybook/preview.ts or main.ts, adding play functions for interaction
-  tests, wiring the test-runner for snapshot/a11y/visual testing in CI/pre-push, setting up
-  image-snapshot visual regression (hover/focus states, reference PNGs committed to git), or
-  mocking Next.js internals (useRouter, next/image, next/navigation) inside stories. Trigger
-  on any mention of: "write a story", "add a story", "interaction test", "play function",
-  "test-runner", "storyshots", "snapshot test", "visual testing", "visual regression",
-  "image snapshot", "jest-image-snapshot", "postVisit", "page.screenshot", "hover state
-  screenshot", "story controls", "argTypes", "autodocs", "storybook decorator", "preview.ts",
-  or "test-storybook".
+  Covers Storybook stories: writing and modifying
+  stories, configuring .storybook/preview.ts or main.ts, play functions for interaction
+  tests, wiring the test-runner for snapshot/a11y/visual testing in CI/pre-push,
+  image-snapshot visual regression (hover/focus states, reference PNGs committed to git),
+  and mocking Next.js internals (useRouter, next/image, next/navigation) inside stories.
+  Use on any mention of "write a story", "add a story", "interaction test", "play
+  function", "test-runner", "storyshots", "snapshot test", "visual testing", "visual
+  regression", "image snapshot", "jest-image-snapshot", "postVisit", "page.screenshot",
+  "hover state screenshot", "story controls", "argTypes", "autodocs", "storybook
+  decorator", "preview.ts", or "test-storybook". For end-to-end flows that span pages or
+  run against the real dev server, use a Playwright spec (playwright skill), not a play
+  function.
 ---
 
 # Storybook Skill (alfred / Next.js + Tailwind v4 + TypeScript)

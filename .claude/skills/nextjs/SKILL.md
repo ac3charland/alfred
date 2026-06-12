@@ -1,14 +1,14 @@
 ---
 name: nextjs
 description: >
-  Use when working on the alfred frontend/ package (Next.js App Router + Vercel). Covers
-  routing decisions (route groups, layouts, dynamic segments), the Server vs Client
-  Component boundary ("use client"), data fetching patterns (async Server Components, fetch
-  caching, Server Actions, Route Handlers), API route handlers under app/api/, environment
-  variables, and Vercel deployment. Trigger on any task involving: creating or modifying
-  pages/layouts/routes, fetching or mutating data, adding API endpoints, wiring env vars, or
-  deploying to Vercel. Do NOT use for Cloudflare Workers (workers/ package) or Supabase
-  schema migrations (database/ package).
+  Covers Next.js App Router development (deployed to Vercel):
+  routing decisions (route groups, layouts, dynamic segments), the Server vs Client Component
+  boundary ("use client"), data-fetching patterns (async Server Components, fetch caching,
+  Server Actions, Route Handlers), API route handlers under app/api/, environment variables,
+  and Vercel deployment. Use when creating or modifying pages/layouts/routes, fetching or
+  mutating data, adding API endpoints, wiring env vars, or deploying to Vercel. Do NOT use for
+  Cloudflare Workers (workers/ package — use the cloudflare-workers skill) or Supabase schema
+  migrations (database/ package — use the supabase skill).
 ---
 
 # Next.js App Router Skill (alfred project)

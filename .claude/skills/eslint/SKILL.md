@@ -1,13 +1,12 @@
 ---
 name: eslint
 description: >
-  Use when configuring or modifying ESLint, Prettier, or import sorting in the alfred monorepo.
-  Covers: ESLint 9 flat config (eslint.config.js), typescript-eslint strict/type-aware rules,
-  per-package plugin scoping (frontend/ vs workers/), eslint-config-prettier integration,
-  and @trivago/prettier-plugin-sort-imports. Trigger on any task involving: creating or editing
-  eslint.config.js or prettier.config.js, adding a lint plugin, changing a rule severity, scoping
-  rules to test files, or running check:fast. Do NOT use for Jest test authoring (use the jest skill)
-  or Next.js routing (use the nextjs skill).
+  Covers ESLint, Prettier, and import sorting: ESLint 9 flat config
+  (eslint.config.js), typescript-eslint strict/type-aware rules, per-package plugin scoping
+  (frontend/ vs workers/), eslint-config-prettier integration, and @trivago/prettier-plugin-sort-imports.
+  Use when creating or editing eslint.config.js or prettier.config.js, adding a lint plugin, changing
+  a rule severity, scoping rules to test files, or running check:fast. Do NOT use for Jest test
+  authoring (use the jest skill) or Next.js routing (use the nextjs skill).
 ---
 
 # ESLint + Prettier Skill (alfred monorepo)

@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
+description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy. To build a skill for a specific programming library or framework straight from its documentation or doc URLs, use the lib-skill-forge skill instead; this skill owns general creation, iteration, evaluation, and description-trigger optimization.
 ---
 
 # Skill Creator
@@ -64,9 +64,33 @@ Check available MCPs - if useful for research (searching docs, finding similar s
 Based on the user interview, fill in these components:
 
 - **name**: Skill identifier
-- **description**: When to trigger, what it does. This is the primary triggering mechanism - include both what the skill does AND specific contexts for when to use it. All "when to use" info goes here, not in the body. Note: currently Claude has a tendency to "undertrigger" skills -- to not use them when they'd be useful. To combat this, please make the skill descriptions a little bit "pushy". So for instance, instead of "How to build a simple fast dashboard to display internal Anthropic data.", you might write "How to build a simple fast dashboard to display internal Anthropic data. Make sure to use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of company data, even if they don't explicitly ask for a 'dashboard.'"
+- **description**: The primary triggering mechanism — it states what the skill does and when to use it. All "when to use" info lives here, not in the body. It's high-leverage enough to have its own playbook, so read **Writing a description that triggers** below before you finalize it.
 - **compatibility**: Required tools, dependencies (optional, rarely needed)
 - **the rest of the skill :)**
+
+#### Writing a description that triggers
+
+The description is the only thing Claude sees when deciding whether to reach for a skill, so it's worth getting right. The checklist below is the *what to do*; the reasoning, evidence, and caveats behind each rule live in [`references/description-triggering.md`](references/description-triggering.md) — read it when a rule isn't obvious.
+
+- **Lead with what-it-does + the distinctive keywords, in the first ~250 characters.** The listing the model sees is truncated and the opening carries the most weight, so don't bury high-signal vocabulary in a tail that may get cut — and don't open with a generic "Use when working in the X package."
+- **Don't spend the front on redundant scope.** The agent already knows which repo it's in (CLAUDE.md), so "Covers \<X\> in the alfred repo/project/monorepo" wastes the highest-value position and pushes the real keywords back — just write "Covers \<X\>". Add a scope clause only when it genuinely disambiguates *which part* of the project, and then drop the repo name: "in the frontend", "in the monorepo".
+- **Name what the skill *is*, not the action it describes.** It's a reference the agent reads, not code that runs; pick the verb from the table below.
+- **Use the literal words a user would type.** Triggering leans on keyword overlap, so include real vocabulary and near-synonyms ("Docker" *and* "containerized"); an explicit "Trigger on: …" list earns its keep.
+- **Disambiguate from sibling skills.** If two skills could match the same request, say when to use each: "do NOT use for X — use the Y skill", or "pairs with the Z skill".
+- **Be a little pushy, but keep scope honest.** Nudge toward firing even when the user doesn't name the skill (under-triggering is the common failure) — without claiming territory it doesn't cover (over-broad descriptions misfire and add noise).
+- **Third person, under the ~1024-char cap, re-checked after model upgrades.**
+
+**Verb by skill type** (the litmus test and full reasoning are in the reference):
+
+| The skill really is… | How to tell | Lead it with | Example |
+| --- | --- | --- | --- |
+| A library / API / framework **reference** | explains how to use an external tool you don't ship | "Covers …" / "Reference for …" — *not* "Implements/Calls …"; claim "best practices" only if they're really in it | *Covers the Anthropic Claude API: the Messages API, tool definitions, the tool-use loop, streaming…* |
+| **Repo config / tooling** reference | explains how this repo wires a tool and how to change it | "Covers how \<tool\> is configured in \<repo\>…" — *not* "Configures \<tool\>" | *Covers ESLint, Prettier, and import sorting in the alfred monorepo: ESLint 9 flat config…* |
+| **Project conventions / architecture** | records decisions or house-style the team chose | "Documents the project's \<subject\> conventions…" — *not* a verb that impersonates the behavior | *Documents the alfred frontend's data-flow architecture: database → API → store → components…* |
+| A **workflow / procedure** | walks through a multi-step process | "Describes how to \<outcome\>…" — *not* "\<does the outcome\>" as if the skill performs it | *Describes how to build a SKILL.md for a library from its documentation…* |
+| A **bundled tool / script wrapper** | the doing-code lives *inside* the skill (`scripts/`, a CLI) | an action verb is honest here — "\<what the tool does\>…" | *Builds a "demo doc" via the `tools/showboat` CLI…* |
+
+Rows blend — pick the skill's center of gravity, keep it third person, and put the distinctive keywords right after the verb.
 
 ### Skill Writing Guide
 
@@ -429,6 +453,8 @@ Understanding the triggering mechanism helps design better eval queries. Skills 
 
 This means your eval queries should be substantive enough that Claude would actually benefit from consulting a skill. Simple queries like "read file X" are poor test cases — they won't trigger skills regardless of description quality.
 
+One more scaling reality worth knowing when you optimize a description inside a *large* library: the `available_skills` listing has a finite budget (on the order of ~1% of the context window), so once a project accumulates more than a few dozen skills, descriptions start getting silently truncated and triggering degrades across the board — not because any one description is bad, but because they no longer all fit. Keeping each description tight is therefore a library-wide concern, not just a per-skill one. Past that ceiling the real fix is architectural rather than wordsmithing: retrieve a relevant *subset* of skills per query (a tool-search / RAG step over the descriptions) instead of loading every description into the prompt. If the pool is comfortably under the ceiling and triggering is accurate, don't bother — retrieval adds latency and its own failure mode (a relevant skill that the retriever never surfaces can't trigger at all).
+
 ### Step 4: Apply the result
 
 Take `best_description` from the JSON output and update the skill's SKILL.md frontmatter. Show the user before/after and report the scores.
@@ -496,6 +522,7 @@ The agents/ directory contains instructions for specialized subagents. Read them
 
 The references/ directory has additional documentation:
 - `references/schemas.md` — JSON structures for evals.json, grading.json, etc.
+- `references/description-triggering.md` — the reasoning, evidence, and caveats behind the "Writing a description that triggers" checklist (front-loading, keyword overlap, sibling disambiguation, pushiness vs false-positives, and the verb-choice litmus test). Read it when a checklist rule isn't obvious.
 - `references/example-libraries.md` — how to structure a skill whose value is a library of references or example scenarios (folder vocabulary, the three library layouts, grep-hint / one-level-deep / no-duplication rules, and the RAG boundary). Read it when building a skill "with examples" or "with references."
 
 ---

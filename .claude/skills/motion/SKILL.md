@@ -1,16 +1,15 @@
 ---
 name: motion
 description: >
-  Use this skill whenever you add, reuse, or reason about motion in the alfred frontend —
-  fade/slide reveals, expand/collapse, hover lift, entrance/exit transitions, or any
-  prefers-reduced-motion handling. It owns the reusable animation design tokens (the
-  `--animate-*` theme tokens in globals.css, e.g. `animate-fade-in` / `animate-fade-out`),
-  the pattern for revealing/collapsing content with a fade (mount → fade-in, fade-out →
-  unmount), how to add a new motion token, and the jsdom `matchMedia` gotcha when testing
-  motion-aware components. Trigger on: "fade in/out", "transition", "animate", "reveal",
-  "collapse", "slide in", "reduced motion", "useSyncExternalStore for media query", or
-  "add a motion token". Pairs with the tailwindcss skill (token mechanics) and the react /
-  react-testing-library skills (component + test mechanics).
+  Documents the frontend's motion conventions: the reusable animation design tokens (the `--animate-*`
+  theme tokens in globals.css, e.g. `animate-fade-in` / `animate-fade-out`), the pattern for
+  revealing/collapsing content with a fade (mount → fade-in, fade-out → unmount), how to add a
+  new motion token, and the jsdom `matchMedia` gotcha when testing motion-aware components. Use
+  whenever you add, reuse, or reason about fade/slide reveals, expand/collapse, hover lift,
+  entrance/exit transitions, or prefers-reduced-motion handling — "fade in/out", "transition",
+  "animate", "reveal", "collapse", "slide in", "reduced motion", "useSyncExternalStore for media
+  query", or "add a motion token". Pairs with the tailwindcss skill (token mechanics) and the
+  react / react-testing-library skills (component + test mechanics).
 ---
 
 # Motion Skill — alfred project

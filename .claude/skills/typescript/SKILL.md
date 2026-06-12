@@ -1,11 +1,11 @@
 ---
 name: typescript
 description: >
-  Use this skill whenever writing or reviewing TypeScript code in the alfred monorepo.
-  Covers: strict tsconfig setup, type-aware patterns that satisfy @typescript-eslint
-  strict-type-checked, discriminated unions, unknown/narrowing, no-floating-promises,
-  the satisfies operator, utility types, and nullable DB-column modeling. Required reading
-  before touching any tsconfig, ESLint config, or writing new types/interfaces.
+  Covers TypeScript: strict tsconfig setup, type-aware patterns
+  that satisfy @typescript-eslint strict-type-checked, discriminated unions,
+  unknown/narrowing, no-floating-promises, the satisfies operator, utility types, and
+  nullable DB-column modeling. Use whenever writing or reviewing TypeScript — required
+  reading before touching any tsconfig, ESLint config, or writing new types/interfaces.
 ---
 
 # TypeScript Skill — alfred monorepo

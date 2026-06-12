@@ -1,18 +1,17 @@
 ---
 name: data-flow
 description: >
-  Use whenever you read, fetch, store, or mutate app data in the alfred frontend — any
-  entity (folders, tasks/items, and whatever comes next) — or decide where data should
-  live. Owns the general data-flow architecture (database → API → context store →
-  components on read; components → store action → API → database on write), the
-  optimistic-store pattern with reconcile/rollback, the "fetch-all then filter
-  client-side" choice, and the anti-patterns this design prevents. Trigger on: "fetch
-  data", "state management", "where should this data live", "prop vs context", "add a
-  query / endpoint", "optimistic update", "reconcile", "rollback", "router.refresh",
-  "create a supabase client", "useTasks / useFolders / a store", "client-side filter",
-  "lib/data", or refactoring a hard-refresh mutation. Pairs with the supabase skill
-  (client/queries), the nextjs skill (Server vs Client boundary), and the react skill
-  (context + hooks).
+  Documents the frontend's data-flow architecture and conventions: database → API →
+  context store → components on read, and components → store action → API → database on write, plus the
+  optimistic-store pattern with reconcile/rollback, the "fetch-all then filter client-side"
+  choice, and the anti-patterns this design prevents. Use whenever you read, fetch, store, or
+  mutate app data for any entity (folders, tasks/items, and whatever comes next) or decide
+  where data should live — "fetch data", "state management", "where should this data live",
+  "prop vs context", "add a query / endpoint", "optimistic update", "reconcile", "rollback",
+  "router.refresh", "create a supabase client", "useTasks / useFolders / a store",
+  "client-side filter", "lib/data", or refactoring a hard-refresh mutation. Pairs with the
+  supabase skill (client/queries), the nextjs skill (Server vs Client boundary), and the
+  react skill (context + hooks).
 ---
 
 # Data Flow & State Management (alfred frontend)
