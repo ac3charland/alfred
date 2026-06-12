@@ -17,22 +17,28 @@ description: >
 
 # batch-commits — many commits, one gate run
 
-## What it is and why
+## Contents
 
-The `pre-commit` hook runs root `check:fast` (typecheck → `eslint --fix` →
-`prettier --write` → unit tests) on **every** commit. The workflow also tells you
-to **group commits by logical concern**, so one ticket becomes N commits — and the
-same `check:fast` runs N times.
+- [What it is and how to invoke](#what-it-is-and-how-to-invoke)
+- [When to use it (and when not to)](#when-to-use-it-and-when-not-to)
+- [Input file format](#input-file-format)
+- [What the tool does (all validation happens BEFORE the first commit)](#what-the-tool-does-all-validation-happens-before-the-first-commit)
+- [Why this keeps the guardrails' teeth](#why-this-keeps-the-guardrails-teeth)
+- [Further Reading](#further-reading)
+- **references/**
+  - [failure-modes.md](./references/failure-modes.md)
+  - [maintenance-gotchas.md](./references/maintenance-gotchas.md)
+- **scripts/**
+  - [batch-commit.mjs](./scripts/batch-commit.mjs)
+  - [parse.mjs](./scripts/parse.mjs)
+  - [parse.test.mjs](./scripts/parse.test.mjs)
 
-Here's the key insight: in the documented flow you **finish the work, get `check`
-green, then split the finished diff into logical commits**. At that point every
-commit is made against the *same* final working tree, and `check:fast` checks the
-**whole tree** (there's no lint-staged). So those N runs are N validations of one
-identical green state — **N−1 of them are pure redundancy.**
+## What it is and how to invoke
 
-This tool runs that check **exactly once** and creates all the commits. The script
-is **self-contained** — run it straight with `node`, no npm script or other
-project wiring required:
+The `pre-commit` hook runs root `check:fast` (typecheck → `eslint --fix` → `prettier --write` → unit tests) on **every** commit. 
+When committing by logical concern, this means `check:fast` is run multiple redundant times for the same set of changes.
+
+This script addresses the problem by running that check **exactly once** and creating all the commits:
 
 ```bash
 node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>
@@ -40,23 +46,23 @@ node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>
 
 No coverage is lost (the one run validates the complete end state, same as each
 redundant run would), and **`pre-push` / `check:slow` is untouched** — the push
-gate (Storybook snapshots + Playwright) still fires.
+gate (Storybook snapshots + Playwright) still fires as-is.
 
 ## When to use it (and when not to)
 
 **Use it** when you have a **finished, green** change and want it as more than one
-commit. That's the wrap-up case the workflow describes.
+commit. That's the wrap-up case described in [CLAUDE.md § End of Workflow](../../../CLAUDE.md#end-of-workflow-committing-pushing--pr).
 
 **Don't use it** to commit mid-development, or to sneak past a failing check. If
 `check:fast` fails, the tool makes **no commits** — fix the code and re-run, exactly
 as the hook would force you to. For a single commit, just `git commit` normally
 (the hook is cheap enough once).
 
-## Input format (block text)
+## Input file format
 
 One file describes every commit, in order:
 
-```
+```txt
 message: feat(tasks): add inline subtask rows
   frontend/components/TaskRow.tsx
   frontend/components/SubtaskList.tsx
@@ -76,7 +82,7 @@ Write it to a temp file (e.g. `/tmp/commits.txt`) and pass it to the tool.
 
 ## What the tool does (all validation happens BEFORE the first commit)
 
-`scripts/batch-commit.mjs` runs from the repo root and:
+`scripts/batch-commit.mjs`:
 
 1. **Parses & structurally validates** the input — every commit has a message and
    ≥1 file, and **no file appears in two commits** (whole-file staging can't split
@@ -96,24 +102,6 @@ Write it to a temp file (e.g. `/tmp/commits.txt`) and pass it to the tool.
 6. **Reports** the commits it made and lists any leftover uncommitted changes (e.g.
    a file a formatter touched that you didn't assign to a group).
 
-## Edge cases & failure modes
-
-- **Fixers mutate files** (`eslint --fix` / `prettier --write`) → handled by
-  running the gate in step 3 *before* staging; the fixers are idempotent
-  afterward, so staging captures the final content.
-- **A bad commit message** → caught in step 2, before any commit.
-- **Same file in two commits** → caught in step 1 (hunk-splitting is out of scope).
-- **An empty group / a path with no pending changes** → caught in step 4.
-- **A pathspec typo** → caught in step 4.
-- **Untracked, deleted, or renamed files** → `git add` handles adds and deletions;
-  for a rename, list both the old and new path.
-- **Leftover changes** (a formatter touched a file you didn't list) → reported in
-  step 6, not an error; commit or discard them yourself.
-- **Mid-batch failure** (rare, after validation passes) → the tool stops, prints
-  which commits landed, and leaves the rest in the working tree. It never
-  auto-rolls-back; inspect with `git status` and continue manually.
-- **A single commit** → the tool still works (one gate run, one `--no-verify`
-  commit), but a plain `git commit` is fine too.
 
 ## Why this keeps the guardrails' teeth
 
@@ -124,20 +112,7 @@ redundant per-commit runs), validates every message with the real commitlint
 config, and leaves `pre-push` / `check:slow` fully intact. The integrity argument
 is "run the meaningful check once," not "bypass it."
 
-## Maintaining the tool (gotchas)
+## Further Reading
 
-- The scripts are plain **Node ESM (`.mjs`, no dependencies)** run straight via
-  `node` — no build step, no TypeScript. They live in this skill's `scripts/`, not
-  a workspace, so they're outside the `check:fast` fan-out. They're deliberately
-  **self-contained**: invoke them by path with `node`, never via a project
-  `package.json` script, so the skill stays portable and nothing breaks if that
-  config changes.
-- Pure parsing/validation lives in `scripts/parse.mjs` and is unit-tested with
-  `node --test`: run `node --test .claude/skills/batch-commits/scripts/*.test.mjs`.
-  Keep new logic testable there.
-- The end-to-end behavior is captured in `docs/demos/batch-commits.md` (showboat).
-  Re-verify it with `npm run demo -- verify docs/demos/batch-commits.md`.
-- Message validation **mirrors the `commit-msg` hook exactly** (`npx --no --
-  commitlint --edit`). If the hook's invocation changes, change it here too.
-- `node --test <dir>` didn't discover files on this Node build; the test script
-  uses an explicit `*.test.mjs` glob instead.
+- Getting unexpected output? See [failure-modes.md](./references/failure-modes.md)
+- Updating/maintaining the tool? See [maintenance-gotchas.md](./references/maintenance-gotchas.md)
