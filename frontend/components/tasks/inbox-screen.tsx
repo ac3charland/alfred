@@ -6,29 +6,13 @@ import * as React from 'react';
 
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { TaskList } from '@/components/tasks/task-list';
+import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
 interface InboxScreenProperties {
   /** Whether the inbox list is revealed. Driven by the `?view=inbox` search param. */
   open: boolean;
 }
-
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
-
-function subscribeReducedMotion(callback: () => void): () => void {
-  const query = globalThis.matchMedia(REDUCED_MOTION_QUERY);
-  query.addEventListener('change', callback);
-  return () => {
-    query.removeEventListener('change', callback);
-  };
-}
-
-const getReducedMotionSnapshot = (): boolean => globalThis.matchMedia(REDUCED_MOTION_QUERY).matches;
-
-// Server render has no matchMedia; assume motion is allowed so the markup matches
-// the common client case and only corrects after hydration if needed.
-// Stryker disable next-line BooleanLiteral,ArrowFunction: AT_CEILING — getServerSnapshot is read only on the first render, where rendered===open makes its sole consumer (line `!open && rendered && prefersReducedMotion`) unreachable; post-hydration the client snapshot is used. Verified via renderToString (markup identical for false/true); undefined vs false is also boolean-equivalent at that consumer — equivalent.
-const getReducedMotionServerSnapshot = (): boolean => false;
 
 const toggleLinkClass = cn(
   // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
@@ -51,11 +35,7 @@ const toggleLinkClass = cn(
  * mounted through its fade-out so the exit animation can finish before it unmounts.
  */
 export function InboxScreen({ open }: InboxScreenProperties) {
-  const prefersReducedMotion = React.useSyncExternalStore(
-    subscribeReducedMotion,
-    getReducedMotionSnapshot,
-    getReducedMotionServerSnapshot,
-  );
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   // Keep the list mounted while it fades out; unmount once the animation ends.
   // Derive the mount flag from `open` during render (React's recommended pattern
