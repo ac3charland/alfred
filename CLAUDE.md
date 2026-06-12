@@ -193,39 +193,28 @@ Being told to skip a step implies skipping all later steps as well:
 Agent knowledge is a durable, compounding asset. Back-pressure prevents
 regressions mechanically; **skills prevent _repeated discovery cost_** — the
 price of re-learning the same gotcha. The skill library lives in
-`.claude/skills/` — one `SKILL.md` per **area of concern**. That's not only app
-frameworks (Next.js, React, Tailwind, shadcn/ui, Supabase, Cloudflare Workers,
-Anthropic API, Jest, RTL, Storybook, Playwright, ESLint, commitlint, npm
-workspaces, TypeScript, …) but also the **developer tooling and CLI workflows**
-the swarm leans on (git, the GitHub CLI → `gh-cli`, the deploy CLIs `vercel` /
-`wrangler` / `supabase`, `psql`, …). A reproducible quirk in any of those is
-just as skill-worthy as a framework gotcha.
-
-These skills are **alfred-specific** even when named for a library: a skill like `react`
-or `supabase` blends that library's reference with this project's own conventions and
-gotchas, so a description that says `Covers <library>` already implies "as used in alfred"
-and needn't spell that scope out.
+`.claude/skills/` — one `SKILL.md` per **area of concern**, covering app
+frameworks and the developer tooling / CLI workflows the swarm leans on alike
+(a reproducible quirk in `git` or `wrangler` is just as skill-worthy as a
+framework gotcha).
 
 **Read the relevant skill(s) before starting related work** so accumulated
 gotchas surface proactively instead of being rediscovered.
 
 When you hit and resolve a setback or **non-obvious** problem — at *any* stage,
 including the commit → push → PR → deploy wrap-up, not just while writing feature
-code — record the insight **before moving on**:
-
-1. **Framework / library-related** → update that framework's existing skill with
-   the insight / gotcha.
-2. **Anything else** — a service quirk, an integration, a config interaction, a
-   piece of functionality, **or a developer-tooling / CLI / workflow gotcha**
-   (`git`, `gh`, `vercel`, `wrangler`, `supabase`, `psql`, husky, a CI step) →
-   find the existing skill for that area of concern and update it; **if none
-   exists, create a new skill** for that concern.
-
-"It was just a one-off CLI hiccup" / "a quick workaround" is exactly the
+code — record the insight **before moving on**, the same turn, without being
+asked. "It was just a one-off CLI hiccup" / "a quick workaround" is exactly the
 rationalization to resist: if it cost discovery time and could recur, it's a
-skill — record it the same turn you fix it, without being asked. The goal is
-simple: **each problem is encountered at most once** — across the whole swarm and
-across sessions.
+skill. The goal is simple: **each problem is encountered at most once** — across
+the whole swarm and across sessions.
+
+**Before writing or editing any skill, read the
+[`compounding-learning` skill](.claude/skills/compounding-learning/SKILL.md).**
+It owns the rest of this rule: which skill an insight belongs in (update vs
+create), what goes in a SKILL.md body vs its `references/`, the house style for
+skill edits, and a catalog of real corrections. Skill edits made without it are
+the ones that keep needing manual cleanup.
 
 ---
 
