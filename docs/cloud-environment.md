@@ -12,11 +12,11 @@ normal `playwright install chromium` path works in the cloud exactly as it does 
 
 ## How the environment is configured
 
-The `alfred-e2e` environment was created from the **New cloud environment** dialog (cloud
+The `alfred` environment was created from the **New cloud environment** dialog (cloud
 icon → **Add environment**) with the settings below, recorded here so it can be recreated if
 it ever expires:
 
-- **Name:** `alfred-e2e`.
+- **Name:** `alfred`.
 - **Network access: Custom**, with **"Also include default list of common package managers"**
   ticked, and these **Allowed domains**:
   ```
