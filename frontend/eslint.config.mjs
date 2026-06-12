@@ -49,16 +49,14 @@ export default defineConfig([
     languageOptions: {
       parserOptions: {
         projectService: {
-          // Allow files not picked up by tsconfig.json's project service:
-          // .storybook/ TS files, scripts/, and root-level config JS/MJS files.
-          allowDefaultProject: [
-            '.storybook/*.ts',
-            '.storybook/*.tsx',
-            'scripts/*.mjs',
-            '*.mjs',
-            '*.cjs',
-            '*.js',
-          ],
+          // Allow TS files not picked up by tsconfig.json's project service.
+          // ONLY list type-checked files here: the project service hard-caps
+          // allowDefaultProject at 8 matched files (it throws a parsing error
+          // past that, and only on a cold .eslintcache — warm runs mask it).
+          // JS/CJS/MJS files don't belong on this list at all; the
+          // disableTypeChecked block below opts them out of the project
+          // service entirely.
+          allowDefaultProject: ['.storybook/*.ts', '.storybook/*.tsx'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -195,6 +193,10 @@ export default defineConfig([
     files: ['**/*.{js,cjs,mjs}'],
     ...tseslint.configs.disableTypeChecked,
     languageOptions: {
+      // Keep disableTypeChecked's parserOptions (projectService: false) — a bare
+      // `languageOptions:` key after the spread would overwrite it and silently
+      // push every JS/CJS/MJS file back into the type-aware project service.
+      ...tseslint.configs.disableTypeChecked.languageOptions,
       // Add Node.js globals (process, require, module, __dirname, etc.)
       // so plain JS/CJS/MJS scripts don't get `no-undef` false positives.
       globals: {
