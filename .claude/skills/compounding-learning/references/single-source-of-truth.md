@@ -11,7 +11,9 @@ this?" If yes, link to it or leave it there — don't restate it.
 - **A deterministic guardrail is its own source of truth.** If a lint rule, the
   type-checker, or a test already enforces something, the gate reports every violation —
   so "follow rule X" prose in a skill is dead weight that never fires. Configure the
-  rule; don't document compliance with it.
+  rule; don't document compliance with it. **Exception — discovery cost:** when the gate
+  throws a *cryptic error whose fix is non-obvious*, that fix is skill-worthy — record it
+  in a "common gotchas" section of the guardrail's skill so it isn't re-derived each time.
 
 ## Contents
 
@@ -81,4 +83,6 @@ AFTER: *(rows removed — the rule lives in eslint config; the linter is the fee
 
 **Lesson:** when you add a new lint / type / test rule, put it in config and let the
 gate teach it — don't also write "follow rule X" into a skill. The guardrail already
-owns that feedback.
+owns that feedback. (Contrast: a *cryptic* error from that same linter whose fix takes
+discovery **is** worth a "common gotchas" note — the line is discovery cost, not the
+rule itself.)

@@ -67,8 +67,10 @@ obviously clean.
 4. **Single source of truth.** Don't restate what CLAUDE.md, another skill, or a
    **deterministic guardrail** (lint / type-check / test) already provides. A gotcha
    lives in **exactly one** skill — cross-reference it, don't copy it (copies drift) —
-   and a mechanically-enforced rule lives in the gate, not in "follow rule X" prose. →
-   `references/single-source-of-truth.md`
+   and a mechanically-enforced rule lives in the gate, not in "follow rule X" prose.
+   **The exception is discovery cost:** when a guardrail throws a *cryptic error whose
+   fix is non-obvious*, record the fix (e.g. a "common gotchas" entry in that guardrail's
+   skill) so it isn't re-derived every time. → `references/single-source-of-truth.md`
 
 5. **One focused, validated change.** Record an insight you've actually confirmed, not
    a guess you'll rewrite tomorrow. Keep each recording to one tightly-related concern
