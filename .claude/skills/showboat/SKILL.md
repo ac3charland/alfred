@@ -36,24 +36,21 @@ claude-sandbox Docker image with **no environment-specific setup**.
 A demo must show the **new behavior actually happening**. Pick the evidence that
 *shows* it — and match the evidence to whether the change has a visual surface:
 
-- **Anything visual — a screen, a component, a layout/styling/copy tweak → the
-  primary evidence is a screenshot of the rendered UI.** The reviewer should *see*
-  the change. Drive to the exact state the change affects (the right view, the
-  right data) and shoot it. See the screenshot recipe below.
+- **Anything visual — a screen, a component, a layout/styling/copy tweak, or a
+  UI interaction state change (element stays open, content appears, box closes)
+  → the primary evidence is a screenshot of the rendered UI.** The reviewer should
+  *see* the change. Drive to the exact state the change affects (the right view,
+  the right data) and shoot it. See the screenshot recipe below.
 - **Only a change with no visual surface — an API route, a data-layer function, a
   migration, a CLI/tooling change → uses CLI/`exec` output** as its evidence: the
   request + response, the query result, the command's output.
 
-**Do not demo a UI change by re-running the unit / integration suite.** The `check`
-suites already run in the pre-commit and pre-push hooks — replaying their green
+**Never put test-suite output in a demo doc — not for visual changes, not ever.**
+The `check` suites run in the pre-commit and pre-push hooks; replaying their green
 output in a demo proves nothing the gates didn't, and shows the reviewer *nothing
-they can see*. The demo's job is the part the gates *don't* do: make the new
-behavior visible and reproducible.
-
-Tell-tale sign you're capturing the wrong layer: if you're piping, `grep`-ing, or
-JSON-parsing test output to wrangle it into something "presentable" for a demo,
-stop — that effort is the symptom. Screenshot the UI instead (for a visual change)
-or capture a real request/response (for a non-visual one).
+they can see*. If you catch yourself piping or `grep`-ing test output to make it
+"presentable", stop — that effort is the symptom. Screenshot the UI instead (for a
+visual change) or capture a real request/response (for a non-visual one).
 
 ## Cover every requirement, not just one
 

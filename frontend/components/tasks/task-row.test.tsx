@@ -2024,30 +2024,58 @@ describe('TaskRow', () => {
   // ---------------------------------------------------------------------------
 
   describe('onCapture callback', () => {
-    it('hides the capture box after onCapture fires', async () => {
-      // CaptureBox calls onCapture() after a successful submission.
-      // With mutation setShowAddSubtask(false) → noop, or → true, the box stays visible.
-      // We simulate a capture by typing in the input and pressing Enter.
+    it('keeps the capture box open after Enter so multiple subtasks can be added', async () => {
+      // After a successful subtask submission the box must stay open,
+      // letting the user type the next subtask without re-clicking "Add subtask".
       const mockCreateItem = jest.mocked(apiClient.createItem);
-      mockCreateItem.mockResolvedValue({ ...BASE_ITEM, id: 'new-item', title: 'New subtask' });
+      mockCreateItem
+        .mockResolvedValueOnce({ ...BASE_ITEM, id: 'new-item-1', title: 'First subtask' })
+        .mockResolvedValueOnce({ ...BASE_ITEM, id: 'new-item-2', title: 'Second subtask' });
 
       const user = userEvent.setup();
       renderTasks([BASE_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /add subtask/i }));
 
-      // Capture box is visible
+      const captureInput = document.querySelector('input[placeholder]');
+      if (!captureInput) throw new Error('capture input not found');
+
+      // Add first subtask — box should remain open.
+      await user.type(captureInput, 'First subtask');
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledTimes(1);
+      });
+      expect(document.querySelector('input[placeholder]')).toBeInTheDocument();
+
+      // Add second subtask without re-opening the box.
+      await user.type(captureInput, 'Second subtask');
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledTimes(2);
+      });
+      expect(document.querySelector('input[placeholder]')).toBeInTheDocument();
+    });
+
+    it('hides the capture box when Escape is pressed', async () => {
+      // Escape (onDismiss) must close the capture box.
+      // With mutation setShowAddSubtask(false) → noop, the box would stay visible.
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+
       const captureInput = document.querySelector('input[placeholder]');
       if (!captureInput) throw new Error('capture input not found');
       expect(captureInput).toBeInTheDocument();
 
-      await user.type(captureInput, 'New subtask');
-      await user.keyboard('[Enter]');
+      // Focus the input before pressing Escape (autoFocus is intentionally omitted).
+      await user.click(captureInput);
+      await user.keyboard('[Escape]');
 
-      // After onCapture fires, setShowAddSubtask(false) hides the capture box
-      await waitFor(() => {
-        expect(document.querySelector('input[placeholder]')).not.toBeInTheDocument();
-      });
+      expect(document.querySelector('input[placeholder]')).not.toBeInTheDocument();
     });
   });
 
