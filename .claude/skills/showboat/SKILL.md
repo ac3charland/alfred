@@ -102,8 +102,7 @@ npm run demo -- verify "$DOC"        # confirm it reproduces before you commit
 ```
 
 Commit the doc under `docs/demos/` and add a **live, clickable link** to it in the PR
-description (see *Linking the demo in the PR* below). For a **visual** change, the
-centrepiece is a screenshot instead — see below.
+description (see *Linking the demo in the PR* below).
 
 ## Screenshotting the UI (the evidence for any visual change)
 
