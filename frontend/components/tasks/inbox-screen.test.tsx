@@ -56,15 +56,31 @@ describe('InboxScreen', () => {
     });
   });
 
+  describe('vertical centering (landing vs inbox)', () => {
+    it('top and bottom spacers have grow class when closed (capture box centered)', () => {
+      render(<InboxScreen open={false} />);
+
+      expect(screen.getByTestId('center-spacer-top')).toHaveClass('grow');
+      expect(screen.getByTestId('center-spacer-bottom')).toHaveClass('grow');
+    });
+
+    it('spacers have grow-0 class when open (capture box at top)', () => {
+      render(<InboxScreen open />);
+
+      expect(screen.getByTestId('center-spacer-top')).toHaveClass('grow-0');
+      expect(screen.getByTestId('center-spacer-bottom')).toHaveClass('grow-0');
+    });
+  });
+
   describe('inbox screen (open)', () => {
-    it('reveals the inbox list (faded in) and a Close link', () => {
+    it('reveals the inbox list (expanded) and a Close link', () => {
       render(<InboxScreen open />);
 
       expect(screen.getByTestId('capture-box')).toBeInTheDocument();
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
       const reveal = screen.getByTestId('inbox-reveal');
-      expect(reveal).toHaveClass('animate-fade-in');
+      expect(reveal).toHaveClass('animate-expand-y');
       expect(reveal).toHaveAttribute('aria-hidden', 'false');
 
       const closeLink = screen.getByRole('link', { name: /close inbox/i });
@@ -75,35 +91,35 @@ describe('InboxScreen', () => {
   });
 
   describe('toggling between landing and inbox', () => {
-    it('reveals the list with a fade-in when toggled open', () => {
+    it('reveals the list with an expand animation when toggled open', () => {
       const { rerender } = render(<InboxScreen open={false} />);
       expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
 
       rerender(<InboxScreen open />);
 
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
-      expect(screen.getByTestId('inbox-reveal')).toHaveClass('animate-fade-in');
+      expect(screen.getByTestId('inbox-reveal')).toHaveClass('animate-expand-y');
       // The View-inbox affordance is swapped for the Close affordance.
       expect(screen.getByRole('link', { name: /close inbox/i })).toBeInTheDocument();
     });
 
-    it('keeps the list mounted (fading out) when toggled closed, then unmounts on animation end', () => {
-      mockReducedMotion(false); // motion allowed → real fade-out
+    it('keeps the list mounted (collapsing) when toggled closed, then unmounts on animation end', () => {
+      mockReducedMotion(false); // motion allowed → real collapse animation
 
       const { rerender } = render(<InboxScreen open />);
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
       rerender(<InboxScreen open={false} />);
 
-      // Still mounted so the exit animation can play, now in its fade-out state.
+      // Still mounted so the exit animation can play, now in its collapse state.
       const reveal = screen.getByTestId('inbox-reveal');
-      expect(reveal).toHaveClass('animate-fade-out');
+      expect(reveal).toHaveClass('animate-collapse-y');
       expect(reveal).toHaveAttribute('aria-hidden', 'true');
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
       // The landing affordance is already back.
       expect(screen.getByRole('link', { name: /view inbox/i })).toBeInTheDocument();
 
-      // When the fade-out animation finishes, the list unmounts.
+      // When the collapse animation finishes, the list unmounts.
       fireEvent.animationEnd(reveal);
       expect(screen.queryByTestId('inbox-reveal')).not.toBeInTheDocument();
       expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
@@ -117,7 +133,7 @@ describe('InboxScreen', () => {
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
       // A descendant's animation ending must NOT unmount the panel (only the
-      // container's own fade-out should). The eyebrow label lives inside the panel.
+      // container's own collapse should). The eyebrow label lives inside the panel.
       fireEvent.animationEnd(screen.getByText('Inbox'));
 
       expect(screen.getByTestId('inbox-reveal')).toBeInTheDocument();
@@ -125,7 +141,7 @@ describe('InboxScreen', () => {
     });
 
     it('unmounts the list immediately on close when reduced motion is preferred', () => {
-      mockReducedMotion(true); // no fade-out animation will run
+      mockReducedMotion(true); // no collapse animation will run
 
       const { rerender } = render(<InboxScreen open />);
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
