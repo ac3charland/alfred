@@ -21,7 +21,7 @@ grep -n 'animate-fade-out:' frontend/app/globals.css
 Computed opacity of the inbox panel, sampled every animation frame during the close. **Before** the fix — it fades to `0.000`, then rebounds to a full `1.000` for one frame at t=240ms. That rebound frame is the flash:
 
 ```bash
-sed -n '13,16p' docs/demos/inbox-fade-stutter.before.txt
+sed -n '13,16p' docs/demos/inbox-fade-stutter/inbox-fade-stutter.before.txt
 ```
 
 ```output
@@ -34,7 +34,7 @@ t=240ms  opacity=1.000
 **After** the fix — `forwards` holds the final keyframe, so once it reaches `0.000` it stays there until it unmounts. No rebound, no flash:
 
 ```bash
-sed -n '13,16p' docs/demos/inbox-fade-stutter.after.txt
+sed -n '13,16p' docs/demos/inbox-fade-stutter/inbox-fade-stutter.after.txt
 ```
 
 ```output
