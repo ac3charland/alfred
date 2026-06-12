@@ -1,6 +1,6 @@
 ---
 name: compounding-learning
-description: Documents how to record a compounding-learning insight into a skill *well* — keep skill bodies lean and current, push rarely-needed gotchas into references/ behind a table of contents, never duplicate CLAUDE.md or another skill, and never narrate the edit ("ported from", "supersedes §8", "Historical note"). Read this BEFORE adding a gotcha or insight to any SKILL.md or reference file — i.e. whenever the CLAUDE.md compounding-learning rule fires because you hit and resolved a setback or non-obvious problem at any stage (feature work, commit, push, PR, deploy). Also read it when revising or correcting how an insight was recorded, and capture that correction here as a before/after example. Trigger on: "record this gotcha", "update the X skill", "add this to the skill", "capture this insight", "note this for next time", "compounding learning", or any edit to a file under .claude/skills/.
+description: Covers the house style for recording a compounding-learning insight into a skill: keeping the edit lean and current, the body-vs-references altitude split, avoiding duplication of CLAUDE.md or another skill, and not narrating the edit. Read this BEFORE adding a gotcha or insight to any SKILL.md or reference file — i.e. whenever the CLAUDE.md compounding-learning rule fires because you hit and resolved a setback or non-obvious problem at any stage (feature work, commit, push, PR, deploy). Also read it when revising or correcting how an insight was recorded, and capture that correction here as a before/after example. Trigger on: "record this gotcha", "update the X skill", "add this to the skill", "capture this insight", "note this for next time", "compounding learning", or any edit to a file under .claude/skills/.
 ---
 
 # Compounding Learning
@@ -18,16 +18,7 @@ CLI workflows the swarm leans on (git, `gh`, `vercel`, `wrangler`, `supabase`,
 `psql`, husky, CI). A reproducible quirk in any of those is just as skill-worthy as a
 framework gotcha.
 
-## When this fires
-
-The moment you hit and resolve a **setback or non-obvious problem** — at *any* stage,
-including the commit → push → PR → deploy wrap-up, not just while writing feature
-code — record the insight **before moving on**. "It was just a one-off CLI hiccup" /
-"a quick workaround" is exactly the rationalization to resist: if it cost discovery
-time and could recur, it's worth recording the same turn you fix it, without being
-asked.
-
-**Where it goes:**
+## Where the insight goes
 
 1. **Framework / library-related** → update that framework's existing skill.
 2. **Anything else** — a service quirk, an integration, a config interaction, a piece
