@@ -218,13 +218,13 @@ duplication, no narration of the edit) is where it repeatedly goes wrong, and th
 skill is the house style plus a library of before/after examples. Route the insight
 like so:
 
-1. **Framework / library-related** → update that framework's existing skill with
-   the insight / gotcha.
-2. **Anything else** — a service quirk, an integration, a config interaction, a
-   piece of functionality, **or a developer-tooling / CLI / workflow gotcha**
-   (`git`, `gh`, `vercel`, `wrangler`, `supabase`, `psql`, husky, a CI step) →
-   find the existing skill for that area of concern and update it; **if none
-   exists, create a new skill** for that concern.
+1. **Tied to a specific framework, library, service, CLI, or tool** → update that
+   tool's existing skill (Next.js, React, Supabase, Playwright, `git`, `gh`,
+   `wrangler`, `psql`, husky, …).
+2. **Not tied to any one tool** — a cross-cutting project convention, house-style
+   decision, or architectural pattern → it belongs in a house-style skill like
+   `data-flow` or `motion`. Update the existing skill for that area of concern, or
+   **create a new one if none fits**.
 
 "It was just a one-off CLI hiccup" / "a quick workaround" is exactly the
 rationalization to resist: if it cost discovery time and could recur, it's a

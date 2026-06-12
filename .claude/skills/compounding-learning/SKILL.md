@@ -20,11 +20,12 @@ framework gotcha.
 
 ## Where the insight goes
 
-1. **Framework / library-related** → update that framework's existing skill.
-2. **Anything else** — a service quirk, an integration, a config interaction, a piece
-   of functionality, or a developer-tooling / CLI / workflow gotcha → find the existing
-   skill for that area of concern and update it; **if none exists, create a new skill**
-   for that concern.
+1. **Tied to a specific framework, library, service, CLI, or tool** → update that
+   tool's skill (e.g. Next.js, Supabase, Playwright, `gh`, `wrangler`).
+2. **Not tied to any one tool** — a cross-cutting project convention, house-style
+   decision, or architectural pattern → it belongs in a house-style skill like
+   `data-flow` or `motion`. Update the one for that area of concern, or **create it
+   if none fits**.
 
 Recording is good and we do it consistently — that's not the problem. The problem is
 *how*: edits that bloat, restate, narrate, or go stale. The principles below are the
