@@ -62,9 +62,12 @@ filtering that list and building its tree — see `useScopedTasks(scope)` in
 
 This is a deliberate choice for a small, single-user dataset: **one fetch beats per-view
 round-trips and per-navigation re-seeding**, and a single seed-once store sidesteps stale
-re-seed bugs entirely. Pages pass a serializable `scope` to `TaskList`; the filtering
-happens in the client. **Revisit** (scoped/paginated server reads, or a normalized cache)
-only when the dataset grows large enough that filtering everything in memory hurts.
+re-seed bugs entirely. A single client view router (`TaskViews`) maps the URL to a `scope`
+and renders the matching view from the store, so switching views (inbox / a folder /
+completed) is a **client-side History-API URL change, not a per-view server render** — see
+the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated server reads,
+or a normalized cache) only when the dataset grows large enough that filtering everything in
+memory hurts.
 
 ## Decision Tree
 
@@ -119,7 +122,7 @@ completing a task flips its `status`, so it drops out of the active views automa
   source of truth (single-user, no realtime; a hard reload re-seeds). A prop-sync effect or
   a remount `key` would wipe optimistic state on navigation.
 - **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
-  folderId])`), and take a **serializable** scope so Server Components can pass it as a prop.
+  folderId])`), and take a small, serializable scope (`TaskViews` builds it from the URL).
 
 ## Common Pitfalls (the anti-patterns this design removes)
 
@@ -138,8 +141,7 @@ completing a task flips its `status`, so it drops out of the active views automa
 
 ## File Map
 
-- `frontend/lib/data/{folders,items}.ts` — server-only readers (`getFolders`, `getAllItems`,
-  `getFolder`).
+- `frontend/lib/data/{folders,items}.ts` — server-only readers (`getFolders`, `getAllItems`).
 - `frontend/lib/stores/{folders-store,tasks-store}.tsx` — Context stores, optimistic actions,
   and selector hooks (`useScopedTasks`).
 - `frontend/lib/tree.ts` — pure helpers: `buildTree`, `collectSubtree`, `getDescendantIds`,
@@ -147,8 +149,12 @@ completing a task flips its `status`, so it drops out of the active views automa
 - `frontend/lib/api-client.ts` — typed `fetch` wrappers over the `app/api/**` route handlers.
 - `frontend/app/api/**/route.ts` — the HTTP write boundary (auth + validation + Supabase).
 - `frontend/app/(tasks)/layout.tsx` — fetches folders + all items once, mounts both stores.
-- `frontend/app/(tasks)/{page,completed/page,folders/[id]/page}.tsx` — render `TaskList` with a
-  `scope`; the store is already provided by the layout.
+- `frontend/app/(tasks)/{page,completed/page,folders/[id]/page}.tsx` — thin shells; each renders
+  the `TaskViews` client view router (so a hard load / deep link resolves the right view).
+- `frontend/components/tasks/{task-views,folder-view,completed-view}.tsx` — the URL→view router
+  and the per-view components, all reading from the stores.
+- `frontend/components/tasks/view-link.tsx` — `ViewLink`, the History-API anchor that switches
+  views client-side (see the nextjs skill).
 - `frontend/lib/test-utils.tsx` — `renderWithProviders({ folders, tasks })` for store-reading
   component tests.
 
