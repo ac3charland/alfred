@@ -49,6 +49,14 @@ const GRANDCHILD_ITEM: Item = {
   created_at: '2025-01-01T12:00:00Z',
 };
 
+// A second root inbox item, for the "only one inline input open at a time" cross-row tests.
+const SECOND_ITEM: Item = {
+  ...BASE_ITEM,
+  id: 'item-9',
+  title: 'Second task',
+  created_at: '2025-01-01T09:00:00Z',
+};
+
 const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
 const COMPLETED_FOLDER_ITEM: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-1' };
 
@@ -67,6 +75,13 @@ function renderTasks(items: Item[], options: { folders?: Folder[]; scope?: TaskS
 }
 
 const COMPLETED = { scope: { type: 'completed' } as const };
+
+/** The <li> for the root row carrying `title`, for scoping within() queries. */
+function rowFor(title: string): HTMLElement {
+  const li = screen.getByText(title).closest('li');
+  if (!li) throw new Error(`no row found for "${title}"`);
+  return li;
+}
 
 // ---------------------------------------------------------------------------
 // Timezone-safe due-date helpers
@@ -1095,6 +1110,94 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /add subtask/i }));
       expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Single active inline input across rows
+  //
+  // Only ONE inline input may be open across all task rows: the title-edit text box
+  // and the add-subtask entry box are mutually exclusive. Opening either closes
+  // whatever another row had open, and an in-progress title edit is abandoned (never
+  // saved) when another input takes over. (The Inbox hero capture box is exempt — it's
+  // not rendered by TaskList, so these tests exercise only the row-level inputs.)
+  // ---------------------------------------------------------------------------
+
+  describe('single active inline input across rows', () => {
+    it("closes one row's subtask entry box when another row opens its own", async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      const [firstAdd, secondAdd] = screen.getAllByRole('button', { name: /add subtask/i });
+      if (!firstAdd || !secondAdd) throw new Error('expected two add-subtask buttons');
+
+      await user.click(firstAdd);
+      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
+
+      await user.click(secondAdd);
+
+      // Exactly one subtask entry box remains, and it belongs to the second row.
+      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
+      expect(
+        within(rowFor('Write tests')).queryByPlaceholderText(/add subtask/i),
+      ).not.toBeInTheDocument();
+      expect(
+        within(rowFor('Second task')).getByPlaceholderText(/add subtask/i),
+      ).toBeInTheDocument();
+    });
+
+    it('abandons an in-progress title edit without saving when another title is double-clicked', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      // Start editing the first item's title and type an unsaved change.
+      await user.dblClick(screen.getByText('Write tests'));
+      const firstInput = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(firstInput);
+      await user.type(firstInput, 'Changed text');
+
+      // Double-click the second item's title — the first edit is abandoned.
+      await user.dblClick(screen.getByText('Second task'));
+
+      const [activeInput, ...rest] = screen.getAllByRole('textbox', { name: /edit title/i });
+      expect(rest).toHaveLength(0);
+      expect(activeInput).toHaveValue('Second task');
+      // The first row reverted to its original title; the typed change never persisted.
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+      expect(screen.queryByText('Changed text')).not.toBeInTheDocument();
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+
+    it('shows the current title (not the abandoned draft) when the edit is re-opened later', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const firstInput = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(firstInput);
+      await user.type(firstInput, 'Abandoned draft');
+
+      // Take over with the second item, then come back to the first.
+      await user.dblClick(screen.getByText('Second task'));
+      await user.dblClick(screen.getByText('Write tests'));
+
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveValue('Write tests');
+    });
+
+    it('closes an open title edit when an add-subtask box opens (cross-input exclusion)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toBeInTheDocument();
+
+      const [, secondAdd] = screen.getAllByRole('button', { name: /add subtask/i });
+      if (!secondAdd) throw new Error('expected a second add-subtask button');
+      await user.click(secondAdd);
+
+      // The title edit is gone; the subtask entry box is the sole open input.
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
     });
   });
 
