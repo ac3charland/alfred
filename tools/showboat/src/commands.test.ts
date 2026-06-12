@@ -37,6 +37,14 @@ describe('init', () => {
     expect(document.entries).toEqual([]);
   });
 
+  it('creates missing parent folders so a doc can land in its branch folder', () => {
+    const { directory } = tempDoc();
+    // A branch name with a slash nests; init must create the whole chain.
+    const nested = path.join(directory, 'claude', 'feat-x', 'demo.md');
+    init(nested, 'Nested', new Date('2026-06-10T12:00:00.000Z'));
+    expect(existsSync(nested)).toBe(true);
+  });
+
   it('creates a doc with exactly zero entries — serialized file contains nothing beyond header', () => {
     const { file } = tempDoc();
     init(file, 'Empty', new Date('2026-01-01T00:00:00.000Z'));

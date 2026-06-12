@@ -1,0 +1,8 @@
+# Build output & tool artifacts (generated — don't format)
+dist/
+node_modules/
+.eslintcache
+*.tsbuildinfo
+
+# Generated source — reproduced verbatim by its generator, never hand-formatted.
+*.gen.ts

@@ -100,6 +100,13 @@
      keyframe collapse would ease-in and feel sluggish after the pop. */
   --animate-check-pop: check-pop 200ms ease-out;
 
+  /* Height expand/collapse for a grid-rows reveal. Used by inbox-screen.tsx to open
+     and close the inbox list while the capture box slides up/down to its position.
+     `forwards` on collapse-y holds grid-template-rows at 0fr between animationend
+     and the React unmount — same reason as the fade-out `forwards`. */
+  --animate-expand-y: expand-y 300ms ease-out;
+  --animate-collapse-y: collapse-y 300ms ease-out forwards;
+
   @keyframes fade-in {
     from {
       opacity: 0;
@@ -127,6 +134,24 @@
     }
     100% {
       transform: scale(1);
+    }
+  }
+
+  @keyframes expand-y {
+    from {
+      grid-template-rows: 0fr;
+    }
+    to {
+      grid-template-rows: 1fr;
+    }
+  }
+
+  @keyframes collapse-y {
+    from {
+      grid-template-rows: 1fr;
+    }
+    to {
+      grid-template-rows: 0fr;
     }
   }
 }

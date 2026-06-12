@@ -1,0 +1,33 @@
+{
+  "name": "@alfred/demo-lint",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Enforces the docs/demos folder-per-demo structure; runs in the global check:slow.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --fix --cache --cache-location .eslintcache .",
+    "format": "prettier --write --cache .",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
+    "lint:demos": "node src/cli.ts",
+    "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test",
+    "check:slow": "npm run lint:demos"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tsconfig/strictest": "^2.0.8",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^3.10.1",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jest": "^29.15.2",
+    "eslint-plugin-unicorn": "^65.0.1",
+    "globals": "^14.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.61.0"
+  }
+}

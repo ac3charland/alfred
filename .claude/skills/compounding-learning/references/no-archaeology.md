@@ -20,6 +20,7 @@ record of what an agent just did. Two failure modes live here, and they share a 
 - "Folded in from another skill" porting note (supabase)
 - "Extracted from the SKILL.md" reference intro (playwright)
 - Narrating the problem-history instead of the guidance (CLAUDE.md)
+- "Modeled on another tool" provenance (demo-lint)
 - Stale workaround for a since-removed constraint (supabase)
 - The constructive counterpart: replace-and-shrink (playwright)
 
@@ -111,6 +112,25 @@ plus a library of before/after examples.
 **Lesson:** narration isn't only about *moved* text. Justifying a rule by recounting
 the mistakes that led to it ("this is where it repeatedly goes wrong") is the same
 archaeology — state what to do, not the backstory.
+
+## "Modeled on another tool" provenance — demo-lint
+
+A new tool's skill introduced the tool by naming the existing tool it was copied from.
+
+BEFORE:
+```
+`tools/demo-lint` is a small, self-contained TypeScript CLI (modeled on
+`tools/skill-lint`) that enforces how `docs/demos/` is organized: ...
+```
+AFTER:
+```
+`tools/demo-lint` is a small, self-contained TypeScript CLI that enforces how
+`docs/demos/` is organized: ...
+```
+
+**Lesson:** how a tool was built ("modeled on…", "mirrors…") is provenance the reader
+doesn't need — describe what it *is*, not what it was copied from. The same wording in a
+"Maintaining" section ("the architecture mirrors skill-lint") got the same cut.
 
 ## Stale workaround for a since-removed constraint — supabase (`3676ca8`)
 
