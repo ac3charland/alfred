@@ -69,6 +69,20 @@ the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated se
 or a normalized cache) only when the dataset grows large enough that filtering everything in
 memory hurts.
 
+## Transient UI state: local by default, a store only for a cross-row invariant
+
+Per-row UI state (the expanded flag, an input draft) stays in the row's own `useState`.
+The one exception is an invariant that spans rows: only one inline input — a title edit
+**or** an add-subtask box — may be open at a time. "Which input is open" can't live in any
+single row, so it's lifted into its own tiny Context store, `ActiveEditorProvider`
+(`lib/stores/active-editor-store.tsx`): mounted in the layout beside the data stores but
+seeded with **no server data**. Rows derive their open flags from it (`sameEditor(active,
+{ itemId, kind })`) and call `openEditor` / `closeEditor`; opening one closes whatever was
+open. `closeEditor` only clears when it still owns the slot, so a stale close (an async
+title save resolving *after* another input opened) no-ops instead of closing the new input.
+Reach for a coordination store only for a genuine cross-component invariant — not to hoist
+ordinary local state.
+
 ## Decision Tree
 
 ```
@@ -136,6 +150,13 @@ completing a task flips its `status`, so it drops out of the active views automa
   selector.
 - **Never fake optimism with a local `dismissed`/`isPending` flag** to hide a row mid-flight
   — change the data; the filtered view updates, and a rollback brings it back.
+- **Never `await` the mutation before closing a local edit UI.** An inline editor that
+  replaces the displayed value (the title / due-date / notes input) must flip its
+  editing flag off **synchronously, before** the `await` — otherwise the input hangs
+  open for the whole round-trip and the optimistic value never shows through, so the edit
+  looks non-optimistic. On failure, the store's rollback reverts the displayed value;
+  don't keep the editor open to retry. (See `handleSaveTitle`/`handleSaveDueDate` in
+  `task-row.tsx`.)
 - **Never mirror store data in ad-hoc `useState`.** Local state is only for transient UI
   (expanded row, input draft).
 

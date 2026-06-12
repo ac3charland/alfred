@@ -49,6 +49,14 @@ const GRANDCHILD_ITEM: Item = {
   created_at: '2025-01-01T12:00:00Z',
 };
 
+// A second root inbox item, for the "only one inline input open at a time" cross-row tests.
+const SECOND_ITEM: Item = {
+  ...BASE_ITEM,
+  id: 'item-9',
+  title: 'Second task',
+  created_at: '2025-01-01T09:00:00Z',
+};
+
 const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
 const COMPLETED_FOLDER_ITEM: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-1' };
 
@@ -67,6 +75,58 @@ function renderTasks(items: Item[], options: { folders?: Folder[]; scope?: TaskS
 }
 
 const COMPLETED = { scope: { type: 'completed' } as const };
+
+/** The <li> for the root row carrying `title`, for scoping within() queries. */
+function rowFor(title: string): HTMLElement {
+  const li = screen.getByText(title).closest('li');
+  if (!li) throw new Error(`no row found for "${title}"`);
+  return li;
+}
+
+/**
+ * Force a `prefers-reduced-motion` result for the duration of a test. `restoreMocks`
+ * (jest.config) reverts the spy to the jest.setup stub after each test.
+ */
+function mockReducedMotion(matches: boolean): void {
+  const mql = {
+    matches,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  } as unknown as MediaQueryList;
+  jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
+}
+
+/** The collapse wrapper that owns a row's completion exit (the grid-rows transition). */
+function collapseWrapperFor(title: string): HTMLElement {
+  const li = screen.getByText(title).closest('li');
+  if (!li) throw new Error('task row <li> not found');
+  const wrapper = li.querySelector<HTMLElement>('[data-testid="task-collapse"]');
+  if (!wrapper) throw new Error('collapse wrapper not found');
+  return wrapper;
+}
+
+/**
+ * Dispatch a bubbling `transitionend` carrying a `propertyName`. jsdom has no
+ * `TransitionEvent`, so `fireEvent.transitionEnd(el, { propertyName })` silently drops
+ * it — build the event by hand and define the prop so the handler's guard is exercised.
+ */
+function fireTransitionEnd(element: HTMLElement, propertyName: string): void {
+  const event = new Event('transitionend', { bubbles: true });
+  Object.defineProperty(event, 'propertyName', { value: propertyName });
+  fireEvent(element, event);
+}
+
+/**
+ * Finish a row's collapse. jsdom doesn't run CSS transitions, so completion tests fire
+ * the wrapper's `grid-template-rows` `transitionend` by hand to stand in for the height
+ * collapse finishing — that's what commits the completion.
+ */
+function endCollapse(title: string): void {
+  fireTransitionEnd(collapseWrapperFor(title), 'grid-template-rows');
+}
 
 // ---------------------------------------------------------------------------
 // Timezone-safe due-date helpers
@@ -168,39 +228,115 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Active task completion — optimistic, filtered out of the view
+  // Active task completion — animated exit, THEN optimistic removal
+  //
+  // Completing an active task plays a checkbox pop + height collapse, and only calls
+  // completeTask once the collapse transition ends (the row stays visible meanwhile so
+  // the exit can play). jsdom doesn't run CSS transitions, so we drive the collapse's
+  // transitionend by hand (endCollapse). Under reduced motion there's no animation, so
+  // completion is immediate — see the "reduced motion" block below.
   // ---------------------------------------------------------------------------
 
-  it('removes the task from the view immediately on checkbox click', async () => {
-    mockCompleteTask.mockImplementation(() => new Promise(() => {}));
+  it('shows the checkbox as checked the instant it is clicked (before the row leaves)', async () => {
+    mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
-    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    const checkbox = screen.getByRole('button', { name: /mark "Write tests" complete/i });
+    await user.click(checkbox);
 
-    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+    // Immediate, snappy feedback: the checkbox fills and the row is still present,
+    // animating out (not removed yet).
+    expect(checkbox).toHaveClass('bg-accent-teal');
+    expect(checkbox).toHaveClass('animate-check-pop');
+    expect(screen.getByText('Write tests')).toBeInTheDocument();
   });
 
-  it('calls completeTask when the checkbox is clicked (no children)', async () => {
+  it('does NOT call completeTask until the collapse transition ends', async () => {
     mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
 
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('does not let an unrelated transition on the wrapper commit the completion', async () => {
+    mockCompleteTask.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    // Only the grid-template-rows transition commits — a different property must not.
+    fireTransitionEnd(collapseWrapperFor('Write tests'), 'opacity');
+
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('does not let a child transition (e.g. the title colour fade) commit the completion', async () => {
+    mockCompleteTask.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    const checkbox = screen.getByRole('button', { name: /mark "Write tests" complete/i });
+    await user.click(checkbox);
+    // A child's transitionend bubbles to the wrapper; only the wrapper's own collapse counts.
+    fireTransitionEnd(checkbox, 'grid-template-rows');
+
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('calls completeTask and removes the task once the collapse transition ends', async () => {
+    mockCompleteTask.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    endCollapse('Write tests');
+
     await waitFor(() => {
       expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
     });
+    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
   });
 
-  it('restores the task when completeTask fails', async () => {
+  it('restores the task when completeTask fails after the animation', async () => {
     mockCompleteTask.mockRejectedValue(new Error('Network error'));
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    endCollapse('Write tests');
 
     expect(await screen.findByText('Write tests')).toBeInTheDocument();
+  });
+
+  describe('reduced motion', () => {
+    it('completes immediately on click, with no animation to wait on', async () => {
+      mockReducedMotion(true);
+      mockCompleteTask.mockResolvedValue([]);
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+      await waitFor(() => {
+        expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
+      });
+      expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+    });
+
+    it('removes the task from the view immediately on click', async () => {
+      mockReducedMotion(true);
+      mockCompleteTask.mockImplementation(() => new Promise(() => {}));
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+      expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+    });
   });
 
   it('opens the cascade modal when checkbox is clicked on a task with children', async () => {
@@ -533,6 +669,25 @@ describe('TaskRow', () => {
       expect(mockUpdateItem).not.toHaveBeenCalled();
     });
 
+    it('exits edit mode and shows the new title immediately, before the server responds', async () => {
+      // A never-resolving update keeps the request in flight for the assertion window, so
+      // the editor must close and the new title show from the optimistic store patch alone
+      // — never from awaiting the server (matching the due-date / notes interactions).
+      mockUpdateItem.mockImplementation(() => new Promise(() => {}));
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Optimistic title');
+      await user.keyboard('[Enter]');
+
+      expect(screen.getByText('Optimistic title')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { title: 'Optimistic title' });
+    });
+
     it('reverts to the original title if updateItem fails', async () => {
       mockUpdateItem.mockRejectedValue(new Error('Network error'));
       const user = userEvent.setup();
@@ -544,9 +699,10 @@ describe('TaskRow', () => {
       await user.type(input, 'Broken title');
       await user.keyboard('[Enter]');
 
-      await waitFor(() => {
-        expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveValue('Write tests');
-      });
+      // Edit mode exits immediately (optimistic); the store rolls back the failed update,
+      // so the original title is shown again and no edit input remains.
+      expect(await screen.findByText('Write tests')).toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
     });
 
     it('exits edit mode after a successful save', async () => {
@@ -1138,6 +1294,94 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Single active inline input across rows
+  //
+  // Only ONE inline input may be open across all task rows: the title-edit text box
+  // and the add-subtask entry box are mutually exclusive. Opening either closes
+  // whatever another row had open, and an in-progress title edit is abandoned (never
+  // saved) when another input takes over. (The Inbox hero capture box is exempt — it's
+  // not rendered by TaskList, so these tests exercise only the row-level inputs.)
+  // ---------------------------------------------------------------------------
+
+  describe('single active inline input across rows', () => {
+    it("closes one row's subtask entry box when another row opens its own", async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      const [firstAdd, secondAdd] = screen.getAllByRole('button', { name: /add subtask/i });
+      if (!firstAdd || !secondAdd) throw new Error('expected two add-subtask buttons');
+
+      await user.click(firstAdd);
+      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
+
+      await user.click(secondAdd);
+
+      // Exactly one subtask entry box remains, and it belongs to the second row.
+      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
+      expect(
+        within(rowFor('Write tests')).queryByPlaceholderText(/add subtask/i),
+      ).not.toBeInTheDocument();
+      expect(
+        within(rowFor('Second task')).getByPlaceholderText(/add subtask/i),
+      ).toBeInTheDocument();
+    });
+
+    it('abandons an in-progress title edit without saving when another title is double-clicked', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      // Start editing the first item's title and type an unsaved change.
+      await user.dblClick(screen.getByText('Write tests'));
+      const firstInput = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(firstInput);
+      await user.type(firstInput, 'Changed text');
+
+      // Double-click the second item's title — the first edit is abandoned.
+      await user.dblClick(screen.getByText('Second task'));
+
+      const [activeInput, ...rest] = screen.getAllByRole('textbox', { name: /edit title/i });
+      expect(rest).toHaveLength(0);
+      expect(activeInput).toHaveValue('Second task');
+      // The first row reverted to its original title; the typed change never persisted.
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+      expect(screen.queryByText('Changed text')).not.toBeInTheDocument();
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+
+    it('shows the current title (not the abandoned draft) when the edit is re-opened later', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const firstInput = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(firstInput);
+      await user.type(firstInput, 'Abandoned draft');
+
+      // Take over with the second item, then come back to the first.
+      await user.dblClick(screen.getByText('Second task'));
+      await user.dblClick(screen.getByText('Write tests'));
+
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveValue('Write tests');
+    });
+
+    it('closes an open title edit when an add-subtask box opens (cross-input exclusion)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, SECOND_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toBeInTheDocument();
+
+      const [, secondAdd] = screen.getAllByRole('button', { name: /add subtask/i });
+      if (!secondAdd) throw new Error('expected a second add-subtask button');
+      await user.click(secondAdd);
+
+      // The title edit is gone; the subtask entry box is the sole open input.
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // isExpanded default (false) — children hidden until toggled
   // ---------------------------------------------------------------------------
 
@@ -1355,7 +1599,7 @@ describe('TaskRow', () => {
   // ---------------------------------------------------------------------------
 
   describe('cascade modal', () => {
-    it('confirms cascade completion and calls completeTask', async () => {
+    it('confirms cascade completion, closes the modal, and completes after the animation', async () => {
       mockCompleteTask.mockResolvedValue([]);
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
@@ -1364,10 +1608,18 @@ describe('TaskRow', () => {
       await screen.findByText(/complete with subtasks/i);
 
       // Confirm button should be enabled (isPending=false, so not disabled)
-      const confirmBtn = screen.getByRole('button', { name: /complete/i });
+      const confirmBtn = screen.getByRole('button', { name: /complete all/i });
       expect(confirmBtn).not.toBeDisabled();
 
       await user.click(confirmBtn);
+
+      // The modal closes and the subtree animates out; completion fires when it ends.
+      await waitFor(() => {
+        expect(screen.queryByText(/complete with subtasks/i)).not.toBeInTheDocument();
+      });
+      expect(mockCompleteTask).not.toHaveBeenCalled();
+
+      endCollapse('Write tests');
 
       await waitFor(() => {
         expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
@@ -2025,12 +2277,12 @@ describe('TaskRow', () => {
       await user.click(screen.getByRole('button', { name: /add subtask/i }));
 
       // The li wrapping CaptureBox should have the computed paddingLeft
-      // depth=0 → (0+1)*1.25+0.75 = 2rem
+      // depth=0 → (0+1)*1.25+2.5 = 3.75rem
       const captureBox = document.querySelector('input[placeholder]');
       if (!captureBox) throw new Error('capture box input not found');
       const li = captureBox.closest('li');
       if (!li) throw new Error('li not found');
-      expect(li).toHaveStyle({ paddingLeft: '2rem' });
+      expect(li).toHaveStyle({ paddingLeft: '3.75rem' });
     });
 
     it('capture box li has larger paddingLeft for a nested task (depth=1)', async () => {
@@ -2047,14 +2299,14 @@ describe('TaskRow', () => {
       const childAddBtn = within(childRow).getByRole('button', { name: /add subtask/i });
       await user.click(childAddBtn);
 
-      // depth=1 → (1+1)*1.25+0.75 = 3.25rem
+      // depth=1 → (1+1)*1.25+2.5 = 5rem
       const subtasksList = screen.getAllByRole('list', { name: /subtasks/i });
       // Find the nested subtasks list (second one — the child's)
       const childSubtasksList = subtasksList.at(-1);
       if (!childSubtasksList) throw new Error('child subtasks list not found');
       const captureLi = childSubtasksList.querySelector('li');
       if (!captureLi) throw new Error('capture li not found');
-      expect(captureLi).toHaveStyle({ paddingLeft: '3.25rem' });
+      expect(captureLi).toHaveStyle({ paddingLeft: '5rem' });
     });
   });
 
@@ -2124,22 +2376,262 @@ describe('TaskRow', () => {
   // statement executes within the test window and its coverage is attributed.
   // ===========================================================================
 
-  describe('isCompleted prop default (BooleanLiteral)', () => {
-    // Mutation: the `isCompleted = false` parameter default → `isCompleted = true`.
-    // Rendering a TaskRow WITHOUT the prop must default to the active state
-    // ("complete" affordance). With the mutant it would render the completed state.
-    it('defaults isCompleted to false (active) when the prop is omitted', () => {
+  describe('completion state derived from node.status', () => {
+    // The checkbox affordance follows the node's own status, not the view: an active node
+    // offers "complete", a completed node offers "active" — even without isCompletedView.
+    it('renders the "complete" affordance for an active node', () => {
       const [node] = buildTree([BASE_ITEM]);
       if (!node) throw new Error('node not built');
       renderWithProviders(<TaskRow node={node} />, { tasks: [BASE_ITEM] });
 
-      // Default false → active → the checkbox offers to "complete" the task.
       expect(
         screen.getByRole('button', { name: /mark "Write tests" complete/i }),
       ).toBeInTheDocument();
-      // …and NOT the completed-view "active" affordance.
       expect(
         screen.queryByRole('button', { name: /mark "Write tests" active/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the "active" affordance for a completed node even without isCompletedView', () => {
+      const [node] = buildTree([COMPLETED_ITEM]);
+      if (!node) throw new Error('node not built');
+      renderWithProviders(<TaskRow node={node} />, { tasks: [COMPLETED_ITEM] });
+
+      expect(
+        screen.getByRole('button', { name: /mark "Write tests" active/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // "Show completed" — completed children tucked under an active parent
+  // ---------------------------------------------------------------------------
+
+  describe('show completed children', () => {
+    const COMPLETED_CHILD: Item = {
+      ...CHILD_ITEM,
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    };
+    const COMPLETED_GRANDCHILD: Item = {
+      ...GRANDCHILD_ITEM,
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    };
+
+    it('hides completed children behind a "Show completed (N)" toggle when expanded', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      // Completed child is not revealed yet (its list is aria-hidden).
+      expect(screen.queryByRole('list', { name: 'Completed subtasks' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.getByRole('button', { name: 'Show completed (1)' })).toBeInTheDocument();
+      // Still hidden until the toggle is clicked.
+      expect(screen.queryByRole('list', { name: 'Completed subtasks' })).not.toBeInTheDocument();
+    });
+
+    it('counts only DIRECT completed children in the toggle label', async () => {
+      const user = userEvent.setup();
+      // item-1 → completed child → completed grandchild: one DIRECT completed child of item-1.
+      renderTasks([BASE_ITEM, COMPLETED_CHILD, COMPLETED_GRANDCHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.getByRole('button', { name: 'Show completed (1)' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /show completed \(2\)/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('reveals the completed children and switches the toggle to "Hide completed"', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      expect(screen.getByRole('list', { name: 'Completed subtasks' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Hide completed' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /show completed/i })).not.toBeInTheDocument();
+    });
+
+    it('renders a revealed completed child checked (teal) with low-contrast title', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      const checkbox = screen.getByRole('button', { name: /mark "Write unit tests" active/i });
+      expect(checkbox).toHaveClass('bg-accent-teal');
+      expect(screen.getByText('Write unit tests')).toHaveClass('text-muted-foreground');
+    });
+
+    it('does not render a "Show completed" toggle when there are no completed children', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]); // both active
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.queryByRole('button', { name: /show completed/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Completed-descendants badge — counts ALL completed descendants
+  // ---------------------------------------------------------------------------
+
+  describe('completed descendants badge', () => {
+    const COMPLETED_CHILD: Item = { ...CHILD_ITEM, status: 'completed' };
+    const COMPLETED_GRANDCHILD: Item = { ...GRANDCHILD_ITEM, status: 'completed' };
+
+    it('shows the total completed-descendant count (all depths) when collapsed', () => {
+      renderTasks([BASE_ITEM, COMPLETED_CHILD, COMPLETED_GRANDCHILD]);
+      expect(screen.getByLabelText('2 completed')).toBeInTheDocument();
+    });
+
+    it('shows no completed badge when there are no completed descendants', () => {
+      renderTasks([BASE_ITEM, CHILD_ITEM]); // active child only
+      expect(screen.queryByLabelText(/completed/i)).not.toBeInTheDocument();
+    });
+
+    it('renders the active count badge alongside the completed badge', () => {
+      // One active direct child + one completed direct child → active badge "1" (bg-secondary
+      // pill) and completed badge "1 completed".
+      const doneChild: Item = {
+        ...BASE_ITEM,
+        id: 'item-2c',
+        title: 'Done child',
+        parent_id: 'item-1',
+        status: 'completed',
+      };
+      renderTasks([BASE_ITEM, CHILD_ITEM, doneChild]);
+      expect(screen.getByLabelText('1 completed')).toBeInTheDocument();
+      // The active badge is the bg-secondary pill showing the active child count.
+      const activeBadge = screen.getByText('1', { selector: 'span.bg-secondary' });
+      expect(activeBadge).toBeInTheDocument();
+    });
+
+    it('hides both badges when the row is expanded', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      expect(screen.getByLabelText('1 completed')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.queryByLabelText('1 completed')).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Unchecking a completed child pops it back to active
+  // ---------------------------------------------------------------------------
+
+  describe('unchecking a completed child', () => {
+    const COMPLETED_CHILD: Item = {
+      ...CHILD_ITEM,
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    };
+
+    it('reactivates the child and removes the "Show completed" toggle', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...COMPLETED_CHILD,
+        status: 'active',
+        completed_at: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      await user.click(screen.getByRole('button', { name: /mark "Write unit tests" active/i }));
+
+      // The child pops to the active list (offers "complete" again); no completed children
+      // remain, so the toggle is gone.
+      expect(
+        await screen.findByRole('button', { name: /mark "Write unit tests" complete/i }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /show completed/i })).not.toBeInTheDocument();
+    });
+
+    it('reactivates a completed parent when its completed child is unchecked', async () => {
+      // Root(active) → Parent(completed) → Child(completed). Unchecking Child must also
+      // reactivate Parent (a completed parent can't keep an active child).
+      mockUpdateItem.mockImplementation((id: string) =>
+        Promise.resolve({
+          ...BASE_ITEM,
+          id,
+          title: id === 'p' ? 'Parent' : 'Child',
+          status: 'active',
+          completed_at: null,
+        }),
+      );
+      const root: Item = { ...BASE_ITEM, id: 'r', title: 'Root' };
+      const parent: Item = {
+        ...BASE_ITEM,
+        id: 'p',
+        title: 'Parent',
+        parent_id: 'r',
+        status: 'completed',
+        completed_at: '2025-01-02T00:00:00Z',
+        created_at: '2025-01-01T11:00:00Z',
+      };
+      const child: Item = {
+        ...BASE_ITEM,
+        id: 'c',
+        title: 'Child',
+        parent_id: 'p',
+        status: 'completed',
+        completed_at: '2025-01-02T00:00:00Z',
+        created_at: '2025-01-01T12:00:00Z',
+      };
+      const user = userEvent.setup();
+      renderTasks([root, parent, child]);
+
+      // Reveal Parent under Root.
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      // Reveal Child under Parent (Parent's own expand + show-completed).
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.click(screen.getByRole('button', { name: 'Show completed (1)' }));
+
+      // Uncheck Child.
+      await user.click(screen.getByRole('button', { name: 'Mark "Child" active' }));
+
+      // Parent is reactivated → it now offers the "complete" affordance.
+      expect(
+        await screen.findByRole('button', { name: 'Mark "Parent" complete' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Completing an active child tucks it into the completed section
+  // ---------------------------------------------------------------------------
+
+  describe('completing an active child', () => {
+    it('moves a completed leaf child into the "Show completed" section', async () => {
+      mockCompleteTask.mockResolvedValue([{ ...CHILD_ITEM, status: 'completed' }]);
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      // Child starts active in the subtask list.
+      await user.click(screen.getByRole('button', { name: /mark "Write unit tests" complete/i }));
+      // Completion commits when the row's collapse exit ends (jsdom: fire it by hand).
+      endCollapse('Write unit tests');
+
+      // It is now hidden behind the "Show completed (1)" toggle.
+      expect(await screen.findByRole('button', { name: 'Show completed (1)' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /mark "Write unit tests" complete/i }),
       ).not.toBeInTheDocument();
     });
   });

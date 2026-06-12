@@ -4,6 +4,7 @@ import {
   TEMP_ID_PREFIX,
   buildTree,
   collectSubtree,
+  countCompletedDescendants,
   getAncestorTitles,
   getDescendantIds,
   isTempId,
@@ -96,6 +97,31 @@ describe('getDescendantIds', () => {
 
   it('returns an empty array for a leaf', () => {
     expect(getDescendantIds(defined(buildTree([BASE])[0]))).toStrictEqual([]);
+  });
+});
+
+describe('countCompletedDescendants', () => {
+  it('counts completed descendants at every depth, ignoring the node itself', () => {
+    // item-1 (active) → c-1 (completed) → g-1 (completed); c-2 (active). Two completed.
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', status: 'completed', created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', status: 'completed' }),
+        item({ id: 'c-2', parent_id: 'item-1', status: 'active' }),
+        item({ id: 'g-1', parent_id: 'c-1', status: 'completed' }),
+      ])[0],
+    );
+    // The root's own completed status is NOT counted — only its descendants.
+    expect(countCompletedDescendants(root)).toBe(2);
+  });
+
+  it('returns 0 when no descendant is completed', () => {
+    const root = defined(buildTree(flatItems())[0]);
+    expect(countCompletedDescendants(root)).toBe(0);
+  });
+
+  it('returns 0 for a leaf', () => {
+    expect(countCompletedDescendants(defined(buildTree([BASE])[0]))).toBe(0);
   });
 });
 

@@ -43,6 +43,45 @@ test.describe('subtasks', () => {
     await page.getByRole('button', { name: 'Collapse subtasks' }).click();
     await expect(subtaskList).toBeHidden();
   });
+
+  test('reveals completed subtasks behind a toggle and reactivates one on uncheck', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      items: [
+        makeItem('Plan the launch', { id: 'p1' }),
+        makeItem('Draft the brief', {
+          id: 'c1',
+          parent_id: 'p1',
+          status: 'completed',
+          completed_at: '2025-01-02T00:00:00Z',
+        }),
+      ],
+    });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'Expand subtasks' }).click();
+
+    // The completed child is hidden behind the toggle until it is opened.
+    const completedList = page.getByRole('list', { name: 'Completed subtasks' });
+    await expect(completedList).toBeHidden();
+
+    await page.getByRole('button', { name: 'Show completed (1)' }).click();
+    await expect(completedList.getByText('Draft the brief')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Hide completed' })).toBeVisible();
+
+    // Unchecking pops the child back to active; with no completed children left the
+    // toggle disappears and the row offers "complete" again.
+    await page.getByRole('button', { name: 'Mark "Draft the brief" active' }).click();
+    await expect(page.getByRole('button', { name: /show completed/i })).toBeHidden();
+    await expect(
+      page.getByRole('list', { name: 'Subtasks' }).getByText('Draft the brief'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Mark "Draft the brief" complete' }),
+    ).toBeVisible();
+  });
 });
 
 test.describe('cascade completion', () => {
@@ -64,9 +103,13 @@ test.describe('cascade completion', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Complete all' }).click();
 
-    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Ship feature')).toBeHidden();
+    // Wait for the collapse exit to finish and the subtree to actually leave the list
+    // (completion commits when the animation ends), not merely be clipped out of view.
+    await expect(page.getByText('Ship feature')).toHaveCount(0);
 
-    await page.goto('/completed');
+    // Client-side nav reads the already-reconciled store, avoiding a full reload that
+    // could race the server-side completion persisting.
+    await page.getByRole('link', { name: 'Completed' }).click();
     await expect(page.getByText('2 completed tasks')).toBeVisible();
   });
 
@@ -85,6 +128,26 @@ test.describe('cascade completion', () => {
 
     await expect(dialog).toBeHidden();
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Keep me')).toBeVisible();
+  });
+});
+
+test.describe('completion', () => {
+  test('completing a leaf task animates it out and lands it in Completed', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeItem('Buy milk', { id: 'l1' })] });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'Mark "Buy milk" complete' }).click();
+
+    // The row plays its collapse exit, then actually leaves the inbox list (completion
+    // commits when the animation ends).
+    await expect(page.getByText('Buy milk')).toHaveCount(0);
+
+    // Client-side nav reads the reconciled store rather than racing the server.
+    await page.getByRole('link', { name: 'Completed' }).click();
+    await expect(page.getByText('Buy milk')).toBeVisible();
   });
 });
 
@@ -173,5 +236,54 @@ test.describe('move and delete', () => {
     await page.getByRole('menuitem', { name: 'Delete' }).click();
 
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Delete me')).toBeHidden();
+  });
+});
+
+test.describe('single active inline input across rows', () => {
+  // Only one inline input may be open at a time across every row: the title-edit text
+  // box and the add-subtask entry box are mutually exclusive. (The Inbox hero capture
+  // box is exempt and always available.)
+
+  test('opening a subtask entry box on one row closes another row’s', async ({ page, seed }) => {
+    await seed({
+      items: [makeItem('Alpha task', { id: 'a1' }), makeItem('Beta task', { id: 'b1' })],
+    });
+    await page.goto('/?view=inbox');
+
+    const alpha = page.getByRole('listitem').filter({ hasText: 'Alpha task' });
+    const beta = page.getByRole('listitem').filter({ hasText: 'Beta task' });
+
+    await alpha.getByRole('button', { name: 'Add subtask' }).click();
+    await expect(alpha.getByPlaceholder(/add subtask/i)).toBeVisible();
+
+    await beta.getByRole('button', { name: 'Add subtask' }).click();
+    await expect(beta.getByPlaceholder(/add subtask/i)).toBeVisible();
+    // The first row's entry box closed when the second opened.
+    await expect(alpha.getByPlaceholder(/add subtask/i)).toBeHidden();
+  });
+
+  test('editing one title is abandoned without saving when another is double-clicked', async ({
+    page,
+    seed,
+  }) => {
+    await seed({
+      items: [makeItem('Alpha task', { id: 'a1' }), makeItem('Beta task', { id: 'b1' })],
+    });
+    await page.goto('/?view=inbox');
+
+    await page.getByText('Alpha task').dblclick();
+    await page.getByRole('textbox', { name: 'Edit title' }).fill('Alpha edited');
+
+    // Double-click the other item — the first edit is abandoned, the second activates.
+    await page.getByText('Beta task').dblclick();
+
+    const editInputs = page.getByRole('textbox', { name: 'Edit title' });
+    await expect(editInputs).toHaveCount(1);
+    await expect(editInputs).toHaveValue('Beta task');
+
+    // The first row reverted to its saved title; the unsaved change never persisted.
+    const tasks = page.getByRole('list', { name: 'Tasks' });
+    await expect(tasks.getByText('Alpha task')).toBeVisible();
+    await expect(tasks.getByText('Alpha edited')).toBeHidden();
   });
 });

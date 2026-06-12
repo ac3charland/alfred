@@ -135,7 +135,7 @@ weaken config" rule above is about silencing a check on _hand-written_ code).
 
 When implementing work, unless told explicitly not to, use Red/Green TDD.
 
-Every change to the app's functionality should impact **at least one** test. Not necessarily always unit tests, but either a unit, Storkybook, or e2e test. We aren't aiming for 100% unit test coverage, but we **ARE** aiming for 100% confidence in the behavior of our app when we run the `check` commands. That means every requirement of the app must be expressed somewhere, either explicitly or implicitly, in a test. If you were to make a change without updating tests and nothing broke, that would be a failure of our testing strategy.
+Every change to the app's functionality should impact **at least one** test. Not necessarily always unit tests, but either a unit, Storybook, or e2e test. We aren't aiming for 100% unit test coverage, but we **ARE** aiming for 100% confidence in the behavior of our app when we run the `check` commands. That means every requirement of the app must be expressed somewhere, either explicitly or implicitly, in a test. If you were to make a change without updating tests and nothing broke, that would be a failure of our testing strategy.
 
 ### Demonstrating changes: the demo doc
 
