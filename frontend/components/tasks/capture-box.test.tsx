@@ -429,22 +429,22 @@ describe('CaptureBox', () => {
     });
   });
 
-  it('compact Escape key clears the input and calls onCapture', async () => {
-    const onCapture = jest.fn();
+  it('compact Escape key clears the input and calls onDismiss', async () => {
+    const onDismiss = jest.fn();
     const user = userEvent.setup();
-    renderWithProviders(<CaptureBox compact onCapture={onCapture} />);
+    renderWithProviders(<CaptureBox compact onDismiss={onDismiss} />);
 
     const input = screen.getByPlaceholderText(/add subtask/i);
     await user.type(input, 'Draft text');
     await user.keyboard('{Escape}');
 
     expect(input).toHaveValue('');
-    expect(onCapture).toHaveBeenCalled();
+    expect(onDismiss).toHaveBeenCalled();
   });
 
-  it('compact Escape key does not throw when onCapture is not provided', async () => {
-    // Verifies optional chaining on onCapture?.() — calling onCapture() without
-    // the optional chain would throw when onCapture is undefined.
+  it('compact Escape key does not throw when onDismiss is not provided', async () => {
+    // Verifies optional chaining on onDismiss?.() — calling onDismiss() without
+    // the optional chain would throw when onDismiss is undefined.
     const user = userEvent.setup();
     renderWithProviders(<CaptureBox compact />);
 
@@ -453,7 +453,7 @@ describe('CaptureBox', () => {
     // Should not throw:
     await user.keyboard('{Escape}');
 
-    // Input is cleared even without an onCapture callback.
+    // Input is cleared even without an onDismiss callback.
     expect(input).toHaveValue('');
   });
 });

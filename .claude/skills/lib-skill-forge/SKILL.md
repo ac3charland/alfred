@@ -9,6 +9,25 @@ Converts library documentation + credentialed best practices into a high-quality
  
 **The core bet:** Agent failures come from missing mental models, not missing API syntax. Structure the skill around understanding first, API reference second.
  
+## Contents
+
+**This file**
+
+- [Step 0: Gather Inputs](#step-0-gather-inputs)
+- [Step 1: Check for Maintainer-Published Agent Assets](#step-1-check-for-maintainer-published-agent-assets)
+- [Step 2: Fetch Docs in Parallel](#step-2-fetch-docs-in-parallel)
+- [Step 3: Find Credentialed Best Practices Sources](#step-3-find-credentialed-best-practices-sources)
+- [Step 4: Synthesize the Skill](#step-4-synthesize-the-skill)
+- [Step 4.5: Verify the API Surface](#step-45-verify-the-api-surface)
+- [Step 5: Package and Present](#step-5-package-and-present)
+- [Quality Checklist](#quality-checklist)
+
+**Bundled resources**
+
+- **references/**
+  - [output-structure.md](./references/output-structure.md) — the skill template, examples, and anti-patterns (read before writing)
+  - [source-quality-criteria.md](./references/source-quality-criteria.md) — the rubric for choosing credentialed sources
+
 ## Step 0: Gather Inputs
  
 If the user hasn't provided all of these, ask before proceeding:

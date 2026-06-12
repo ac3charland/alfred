@@ -1,23 +1,14 @@
 import * as React from 'react';
 
-import { InboxScreen } from '@/components/tasks/inbox-screen';
-
-interface InboxPageProperties {
-  /** `?view=inbox` reveals the inbox list; absent = the bare landing (capture box only). */
-  searchParams: Promise<{ view?: string }>;
-}
+import { TaskViews } from '@/components/tasks/task-views';
 
 /**
- * Landing + Inbox page — one route.
+ * Landing + Inbox route (`/`).
  *
- * The bare landing shows only the capture box. `?view=inbox` reveals the inbox
- * task list below it with a fade transition (see InboxScreen). Items are always
- * fetched so they're ready to fade in without a second round-trip.
+ * Renders the shared client view router, which reads the URL (`?view=inbox`) and
+ * renders the inbox from the layout-seeded store — no per-view fetch. Switching to
+ * other views happens client-side via the History API (see ViewLink / TaskViews).
  */
-export default async function InboxPage({ searchParams }: InboxPageProperties) {
-  const { view } = await searchParams;
-  const open = view === 'inbox';
-
-  // Items come from the layout-level TasksProvider; the inbox view filters them client-side.
-  return <InboxScreen open={open} />;
+export default function InboxPage() {
+  return <TaskViews />;
 }

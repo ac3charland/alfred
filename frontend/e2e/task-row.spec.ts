@@ -176,6 +176,9 @@ test.describe('move and delete', () => {
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('menuitem', { name: 'Work' })).toBeVisible();
     await page.keyboard.press('ArrowDown');
+    // Wait for focus to actually land on "Work" before selecting — pressing Enter
+    // back-to-back with ArrowDown can race the focus move and select "Inbox" instead.
+    await expect(page.getByRole('menuitem', { name: 'Work' })).toBeFocused();
     await page.keyboard.press('Enter');
 
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Inbox task')).toBeHidden();

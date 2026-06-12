@@ -128,6 +128,30 @@ Is it a data read that can be cached / ISR?
 
 ---
 
+## Client-side view switching without an RSC round-trip
+
+When every view already renders from a client store (see the data-flow skill), navigating
+between them with `<Link>` still pays a full RSC server round-trip per switch — there's nothing
+to fetch, yet the page Server Component re-runs and the payload streams back (≈1s on Vercel).
+To keep real URLs but make switching instant, drive navigation with the **native History API**:
+
+- Next.js patches `window.history.pushState`/`replaceState` to sync `usePathname` /
+  `useSearchParams` — it dispatches an internal `ACTION_RESTORE`, **not** a fetch (see
+  `next/dist/client/components/app-router.js`). So `window.history.pushState(null, '',
+  '/folders/abc')` updates the URL and every URL-deriving component with zero server work.
+- Nav links stay real `<a href>` but intercept only a **plain primary click** and call
+  `pushState`; modified/middle clicks and a hard load navigate natively (alfred's `ViewLink`,
+  `components/tasks/view-link.tsx`).
+- **One client component derives the view from the URL** (`usePathname` + a `?view` param) and
+  renders it from the store (alfred's `TaskViews`), which *every* page in the module renders.
+  Because all routes render that same URL-deriving component, it doesn't matter which server
+  route is actually mounted after a `pushState` — the view follows the URL, and a hard load /
+  deep link / refresh of any path still renders the right view server-side.
+- A missing dynamic segment (e.g. an unknown folder id) becomes a **client-side** not-found
+  rendered from the store, since the page no longer fetches it server-side.
+
+---
+
 ## Callback / Lifecycle — Server Actions & Route Handlers
 
 **Server Actions:**

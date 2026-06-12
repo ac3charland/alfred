@@ -710,7 +710,7 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
                         parentId={node.id}
                         folderId={node.folder_id}
                         compact
-                        onCapture={() => {
+                        onDismiss={() => {
                           setShowAddSubtask(false);
                         }}
                       />

@@ -10,6 +10,22 @@ description: >
 
 # TypeScript Skill — alfred monorepo
 
+## Contents
+
+**This file**
+
+- [Mental Model](#mental-model)
+- [Decision Tree](#decision-tree)
+- [Plain-English → Pattern Table](#plain-english--pattern-table)
+- [Common Pitfalls](#common-pitfalls)
+- [Version Gotchas (TypeScript 5.x)](#version-gotchas-typescript-5x)
+- [What Was Deliberately Left Out](#what-was-deliberately-left-out)
+
+**Bundled resources**
+
+- **references/**
+  - [tsconfig.md](./references/tsconfig.md) — the alfred base `tsconfig` and per-package extensions
+
 ## Mental Model
 
 TypeScript's type system is a **proof layer that runs at build time, not a runtime safety net**.

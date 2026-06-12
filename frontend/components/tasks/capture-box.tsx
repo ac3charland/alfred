@@ -15,8 +15,10 @@ interface CaptureBoxProperties {
   parentId?: string | null;
   /** Compact mode for inline "add subtask" affordance (no serif prompt). */
   compact?: boolean;
-  /** Called after a successful capture (e.g. to collapse the inline form). */
+  /** Called after a successful capture. */
   onCapture?: () => void;
+  /** Called when the user dismisses the compact input (Escape key). */
+  onDismiss?: () => void;
 }
 
 /**
@@ -32,6 +34,7 @@ export function CaptureBox({
   parentId,
   compact = false,
   onCapture,
+  onDismiss,
 }: CaptureBoxProperties) {
   const [value, setValue] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
@@ -88,7 +91,7 @@ export function CaptureBox({
 
     if (event_.key === 'Escape') {
       setValue('');
-      onCapture?.();
+      onDismiss?.();
     }
   };
 

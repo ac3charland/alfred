@@ -1,7 +1,7 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { createClient } from '@/lib/supabase/server';
 
-import { getFolder, getFolders } from './folders';
+import { getFolders } from './folders';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
 jest.mock('server-only', () => ({}));
@@ -17,9 +17,7 @@ interface MockResult {
 function makeChain(result: MockResult) {
   return {
     select: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
     order: jest.fn().mockResolvedValue(result),
-    maybeSingle: jest.fn().mockResolvedValue(result),
   };
 }
 
@@ -47,24 +45,5 @@ describe('getFolders', () => {
   it('returns an empty array when the query yields no data', async () => {
     mockClient({ data: null });
     expect(await getFolders()).toStrictEqual([]);
-  });
-});
-
-describe('getFolder', () => {
-  it('looks up a single folder by id via maybeSingle', async () => {
-    const client = mockClient({ data: FOLDER });
-
-    const result = await getFolder('f-1');
-
-    expect(client.from).toHaveBeenCalledWith('folders');
-    expect(client._chain.select).toHaveBeenCalledWith('*');
-    expect(client._chain.eq).toHaveBeenCalledWith('id', 'f-1');
-    expect(client._chain.maybeSingle).toHaveBeenCalled();
-    expect(result).toStrictEqual(FOLDER);
-  });
-
-  it('returns null when the folder does not exist', async () => {
-    mockClient({ data: null });
-    expect(await getFolder('missing')).toBeNull();
   });
 });

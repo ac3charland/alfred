@@ -1,12 +1,12 @@
 'use client';
 
 import { Check, FolderOpen, Inbox, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
 import { IconButton } from '@/components/atoms/icon-button';
 import { TextField } from '@/components/atoms/text-field';
+import { ViewLink } from '@/components/tasks/view-link';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { cn } from '@/lib/utils';
 
@@ -104,10 +104,10 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
       {/* Inbox — reveals the inbox list on the landing route */}
-      <Link href="/?view=inbox" className={navLinkClass(isActive('/'))} {...closeProperty}>
+      <ViewLink href="/?view=inbox" className={navLinkClass(isActive('/'))} {...closeProperty}>
         <Inbox size={15} className="shrink-0" />
         <span>Inbox</span>
-      </Link>
+      </ViewLink>
 
       {/* Folders section */}
       <div className="mt-4">
@@ -196,7 +196,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                 </form>
               ) : (
                 <>
-                  <Link
+                  <ViewLink
                     href={`/folders/${folder.id}`}
                     className={cn(
                       navLinkClass(isActive(`/folders/${folder.id}`)),
@@ -207,7 +207,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                   >
                     <FolderOpen size={14} className="shrink-0" />
                     <span className="truncate">{folder.name}</span>
-                  </Link>
+                  </ViewLink>
 
                   {/* Folder actions — on hover */}
                   <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
@@ -241,10 +241,14 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
       {/* Completed */}
       <div className="mt-4 border-t border-border/50 pt-2">
-        <Link href="/completed" className={navLinkClass(isActive('/completed'))} {...closeProperty}>
+        <ViewLink
+          href="/completed"
+          className={navLinkClass(isActive('/completed'))}
+          {...closeProperty}
+        >
           <Check size={15} className="shrink-0" />
           <span>Completed</span>
-        </Link>
+        </ViewLink>
       </div>
     </nav>
   );

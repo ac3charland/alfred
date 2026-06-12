@@ -1,26 +1,14 @@
 import * as React from 'react';
 
-import { CompletedCount } from '@/components/tasks/completed-count';
-import { TaskList } from '@/components/tasks/task-list';
+import { TaskViews } from '@/components/tasks/task-views';
 
 /**
- * Completed view — all completed tasks across inbox and folders, filtered from the
- * shared store. Read-only: no capture box here (completed tasks are done).
+ * Completed route (`/completed`).
+ *
+ * Renders the shared client view router, which derives the completed list from the
+ * layout-seeded store. Reaching it from the sidebar is a client-side view switch (see
+ * TaskViews / ViewLink), not an RSC navigation.
  */
 export default function CompletedPage() {
-  return (
-    <>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
-          Completed
-        </span>
-      </div>
-
-      <div className="mb-8">
-        <CompletedCount />
-      </div>
-
-      <TaskList scope={{ type: 'completed' }} emptyMessage="Nothing completed yet" />
-    </>
-  );
+  return <TaskViews />;
 }
