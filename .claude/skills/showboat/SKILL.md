@@ -79,7 +79,27 @@ npm run demo -- <command> [args]
 ```
 
 `--` passes everything after it to the CLI. Paths are resolved from the repo root
-(where you run npm), so `docs/demos/my-feature.md` lands in the right place.
+(where you run npm), so `docs/demos/<branch>/my-feature.md` lands in the right place.
+
+### Every demo lives in its own folder, named for the branch
+
+A demo is **never** a loose file in `docs/demos/`. It lives in its **own folder**, and
+on a feature branch that folder is **named after the current branch** —
+`docs/demos/<branch>/<name>.md`, with any images/GIFs/txt the doc embeds sitting beside
+it in the same folder. `init` **creates that folder for you** (it `mkdir -p`s the parent),
+so just point it at the branch path:
+
+```bash
+BRANCH=$(git branch --show-current)
+DOC="docs/demos/$BRANCH/my-feature.md"
+npm run demo -- init "$DOC" "What this branch does"
+```
+
+A branch name with a slash (`claude/foo-bar`) simply nests
+(`docs/demos/claude/foo-bar/…`). This is enforced by **`demo-lint`** in the global
+`check:slow` (pre-push), which errors if a loose file sits directly in `docs/demos/` or
+if a feature branch has no `docs/demos/<branch>/` folder — so create the demo under your
+branch's folder and a single branch's demos stay together.
 
 ## Commands
 
@@ -109,15 +129,15 @@ For a change with **no visual surface** (here, an API endpoint), the evidence is
 real request and its response:
 
 ```bash
-DOC=docs/demos/items-endpoint.md
+DOC="docs/demos/$(git branch --show-current)/items-endpoint.md"
 npm run demo -- init "$DOC" "Items endpoint returns nested subtasks"
 npm run demo -- note "$DOC" "GET /api/items now nests children under each parent."
 npm run demo -- exec "$DOC" bash "curl -s localhost:3000/api/items | head -c 400"
 npm run demo -- verify "$DOC"        # confirm it reproduces before you commit
 ```
 
-Commit the doc under `docs/demos/` and add a **live, clickable link** to it in the PR
-description (see *Linking the demo in the PR* below).
+Commit the doc under your branch's folder in `docs/demos/` and add a **live, clickable
+link** to it in the PR description (see *Linking the demo in the PR* below).
 
 ## Screenshotting the UI (the evidence for any visual change)
 
@@ -183,11 +203,11 @@ import { expect, test } from './support/fixtures';
 test('capture: complete-a-task flow', async ({ page, seed }) => {
   await seed({ items: [makeItem('Submit the report')] });
   await page.goto('/?view=inbox');
-  await page.screenshot({ path: 'docs/demos/assets/flow-1-inbox.png' });
+  await page.screenshot({ path: '/tmp/flow-1-inbox.png' });
 
   await page.getByRole('button', { name: 'Mark "Submit the report" complete' }).click();
   await page.getByRole('link', { name: 'Completed' }).click();
-  await page.screenshot({ path: 'docs/demos/assets/flow-2-completed.png' });
+  await page.screenshot({ path: '/tmp/flow-2-completed.png' });
 });
 ```
 
@@ -297,6 +317,11 @@ reproducible:
   time-specific in captured output.
 - Color is already disabled (the runner sets `NO_COLOR`/`FORCE_COLOR`), so you
   don't need to.
+- **Node deprecation warnings on stderr are non-deterministic** — `exec` captures
+  stdout **and** stderr, and a `DEP0040`-style warning (e.g. the `punycode` notice that
+  fires when running `node tools/showboat/src/cli.ts …`) prints `(node:<pid>) …` with a
+  PID that changes every run, so `verify` diffs forever. When you only care about a
+  command's stdout/result, redirect its stderr (`… 2>/dev/null`) in the `exec` block.
 - If a command legitimately changes, re-run `verify --output` and commit the
   refreshed doc.
 - **Don't put a triple-backtick fenced code block inside a `note`.** Notes are raw
