@@ -26,6 +26,25 @@ description: >
 
 ---
 
+## Contents
+
+**This file**
+
+- [Mental Model](#mental-model)
+- [Decision Tree](#decision-tree)
+- [Plain-English → Pattern Table](#plain-english--pattern-table)
+- [Auth Lifecycle (onAuthStateChange)](#auth-lifecycle-onauthstatechange)
+- [Common Pitfalls](#common-pitfalls)
+- [Version Gotchas](#version-gotchas)
+- [What Was Deliberately Left Out](#what-was-deliberately-left-out)
+- [Quick Reference: Project Env Vars](#quick-reference-project-env-vars)
+
+**Bundled resources**
+
+- **references/**
+  - [recursive-subtasks.md](./references/recursive-subtasks.md) — the `WITH RECURSIVE` CTE for a task's subtree
+  - [rls-policies.md](./references/rls-policies.md) — full RLS policy templates
+
 ## Mental Model
 
 Supabase is a Postgres-first backend-as-a-service. Every data operation goes through **PostgREST**, a REST layer that translates the supabase-js fluent API into SQL. Auth tokens are JWTs issued by the **GoTrue** auth server; those tokens flow through HTTP cookies (server-side) or localStorage (browser), and Postgres's `auth.uid()` function reads the JWT claim to enforce row-level security.

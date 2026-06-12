@@ -11,6 +11,23 @@ description: >
 
 # ESLint + Prettier Skill (alfred monorepo)
 
+## Contents
+
+**This file**
+
+- [Mental Model](#mental-model)
+- [Decision Tree](#decision-tree)
+- [Plain-English → Pattern Table](#plain-english--pattern-table)
+- [Common Pitfalls](#common-pitfalls)
+- [Version Gotchas](#version-gotchas)
+- [Full Assembly Reference](#full-assembly-reference)
+- [What's Not in This Skill (and Why)](#whats-not-in-this-skill-and-why)
+
+**Bundled resources**
+
+- **references/**
+  - [configs.md](./references/configs.md) — full per-package `eslint.config.js` / `prettier.config.mjs` assemblies
+
 ## Mental Model
 
 ESLint 9 flat config is an **ordered array of config objects** exported from `eslint.config.js`.
