@@ -1,10 +1,9 @@
 # Demo docs
 
-Each markdown file here is an **executable demo doc**: commentary interleaved with
-the commands that were run, their captured output, and (for UI work) screenshots.
-A demo doc proves a change actually *does* what it claims — beyond the `check`
-suites proving it doesn't regress — and lets a reviewer reproduce it with one
-command.
+Each demo here is an **executable demo doc**: commentary interleaved with the
+commands that were run, their captured output, and (for UI work) screenshots. A
+demo doc proves a change actually *does* what it claims — beyond the `check` suites
+proving it doesn't regress — and lets a reviewer reproduce it with one command.
 
 These are produced by the self-contained demo CLI in
 [`tools/showboat`](../../tools/showboat), run via `npm run demo -- <command>`. See
@@ -13,11 +12,19 @@ reference and authoring tips.
 
 ## Conventions
 
-- **One doc per feature/branch**, named for the change (e.g. `inline-subtasks.md`).
+- **Every demo lives in its own folder** — never a loose file directly in
+  `docs/demos/`. The doc's images/GIFs/txt sit beside it inside that folder.
+- **On a feature branch, the folder is named after the branch**
+  (`docs/demos/<branch>/<name>.md`); a slash in the branch name just nests
+  (`docs/demos/claude/foo-bar/…`). `npm run demo -- init` creates the folder for you.
+  The folders already here predate this rule and are named for the feature they demo.
 - **Link the doc in the PR description.**
 - Keep exec blocks **deterministic** so the doc stays verifiable (pipe noisy output
   through `tail`/`grep`/`sort`; avoid timestamps and random paths in captured
   output).
+
+Both folder rules are enforced by **`demo-lint`** ([`tools/demo-lint`](../../tools/demo-lint)),
+which runs in the global `check:slow` on every push.
 
 ## Reproduce / verify a demo
 
