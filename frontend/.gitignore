@@ -41,3 +41,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# playwright — captured auth session (contains a session token) + run artifacts
+/e2e/.auth/
+/playwright/.auth/
+/test-results/
+/playwright-report/
+/blob-report/

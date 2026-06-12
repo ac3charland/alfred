@@ -140,16 +140,84 @@ makes the hook die with `EADDRINUSE: address already in use 0.0.0.0:6006` and bl
 the push. After screenshotting, stop it (`pkill -f http-server`) and confirm 6006 is
 free before `git push`.
 
-### The live app route — only with real Supabase creds + seeded data
+### The live authenticated app — via the Playwright mock backend (reproducible)
 
-`npm run dev -w frontend &` then screenshotting `localhost:3000/<route>` *seems*
-simplest, but **every protected route is auth-gated**. With no real Supabase env (a
-fresh sandbox / Claude Code on web) `getUser()` returns null and the middleware
-redirects to `/login` — so you'd screenshot the login page, not your screen (this
-is exactly what `e2e/home.spec.ts` asserts). Driving the real route needs real
-credentials *and* seeded rows for the view, and is **not reproducible in CI or the
-web sandbox**. Prefer Storybook unless you specifically have a live, authenticated,
-data-seeded environment.
+Storybook shoots components in isolation. When the evidence needs the **whole
+authenticated app** at a real route — a full-page layout, a cross-component flow,
+or **an animation** — drive it with Playwright against the **in-memory Supabase
+mock** that the integration suite already wires up (see the `playwright` skill's
+"Mocking the backend" section). This is now **fully reproducible in CI and the web
+sandbox**: no real Supabase, no `.env.local`. The mock provides auth + seeded data,
+so `getUser()` succeeds and the protected route renders your screen instead of the
+login page.
+
+> Plain `npm run dev` + screenshotting `localhost:3000/<route>` still hits the
+> auth gate and redirects to `/login` (exactly what `e2e/home.spec.ts` asserts).
+> Capture through the Playwright harness below, which logs in and seeds for you.
+
+Write a throwaway capture spec under `frontend/e2e/` — it runs inside the harness
+that boots the mock, the Next server, and the logged-in `storageState`, and seeds
+per test:
+
+```ts
+// e2e/capture.flow.ts  (delete after capturing; don't commit the spec)
+import { makeItem } from './support/constants';
+import { expect, test } from './support/fixtures';
+
+test('capture: complete-a-task flow', async ({ page, seed }) => {
+  await seed({ items: [makeItem('Submit the report')] });
+  await page.goto('/?view=inbox');
+  await page.screenshot({ path: 'docs/demos/assets/flow-1-inbox.png' });
+
+  await page.getByRole('button', { name: 'Mark "Submit the report" complete' }).click();
+  await page.getByRole('link', { name: 'Completed' }).click();
+  await page.screenshot({ path: 'docs/demos/assets/flow-2-completed.png' });
+});
+```
+
+Run it through the harness (`npm run test:e2e -w frontend -- capture.flow.ts`),
+then embed each shot with `npm run demo -- image`. **Look at every PNG** (Read it)
+before embedding.
+
+#### Images for flows, video only for animations
+
+The default evidence is **still a screenshot**. Pick the medium deliberately:
+
+- **A multi-step user flow → a SERIES OF STILL IMAGES, one per meaningful step**
+  (`page.screenshot()` after each action), not a video. Stills are a fraction of
+  the file size, diff cleanly in git, and a reviewer can scan them at a glance. A
+  video of a click-through flow is large and adds nothing a sequence of stills
+  doesn't already show.
+- **An animation → a SHORT VIDEO, and only then** — a fade/slide/expand/collapse,
+  a modal transition, a hover reveal. Motion is the one thing a still genuinely
+  can't convey, so it's the *only* case that justifies a video.
+
+When you do record a video, **scope it to just the animation and keep the file
+tiny**:
+
+```ts
+// e2e/capture.anim.ts  (delete after capturing)
+import { makeItem } from './support/constants';
+import { test } from './support/fixtures';
+
+// Small viewport + small video size = small file. The test body is ONLY the
+// animation, so the recording spans just that moment (not setup/teardown).
+test.use({ viewport: { width: 720, height: 540 }, video: { mode: 'on', size: { width: 720, height: 540 } } });
+
+test('capture: inbox reveal fade', async ({ page, seed }) => {
+  await seed({ items: [makeItem('A captured thought')] });
+  await page.goto('/');                                   // landing, list hidden
+  await page.getByRole('link', { name: 'View inbox' }).click(); // triggers animate-fade-in
+  await page.getByRole('list', { name: 'Tasks' }).waitFor();    // stop right after it settles
+});
+```
+
+Playwright writes the `.webm` under `test-results/…`; move it next to the doc and
+link it from the demo doc / PR (a `.webm` won't inline as a markdown image, so link
+it as a file). Minimise size by: a small viewport **and** matching `video.size`, a
+test body containing **only** the animation (no unrelated steps inflating the
+clip), and triggering the animation immediately so the recording is a second or
+two, not the whole setup.
 
 ## How `verify` works (and how to keep it green)
 
