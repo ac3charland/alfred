@@ -4,7 +4,7 @@ import { makeFolder, makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
- * Drag-to-folder: a top-level task row carries a drag handle; the sidebar Inbox and
+ * Drag-to-folder: the whole task row is the drag surface (no handle); the sidebar Inbox and
  * folders are drop targets. A drop routes through the optimistic moveTask action, so the
  * task leaves its current view instantly and is filed under the target folder.
  */
@@ -35,10 +35,10 @@ test.describe('drag a task to a folder', () => {
     await seed({ folders: [work], items: [makeItem('Drag me')] });
     await page.goto('/?view=inbox');
 
-    const handle = page.getByRole('button', { name: 'Drag "Drag me" to a folder' });
+    const source = page.getByText('Drag me');
     const workFolder = page.getByRole('link', { name: 'Work' });
 
-    await dragOnto(page, handle, workFolder);
+    await dragOnto(page, source, workFolder);
 
     // Optimistic move: the task leaves the inbox immediately ...
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Drag me')).toBeHidden();
@@ -56,10 +56,10 @@ test.describe('drag a task to a folder', () => {
     await seed({ folders: [work], items: [makeItem('File me', { folder_id: work.id })] });
     await page.goto(`/folders/${work.id}`);
 
-    const handle = page.getByRole('button', { name: 'Drag "File me" to a folder' });
+    const source = page.getByText('File me');
     const inbox = page.getByRole('link', { name: 'Inbox' });
 
-    await dragOnto(page, handle, inbox);
+    await dragOnto(page, source, inbox);
 
     // It leaves the Work folder view immediately ...
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('File me')).toBeHidden();
