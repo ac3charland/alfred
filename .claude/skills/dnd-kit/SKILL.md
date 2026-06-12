@@ -226,11 +226,17 @@ Chromium), not unit tests:
   **don't** assert reorder outcomes there. Instead **unit-test the pure logic** (the `arrayMove`
   call, the fractional-rank calc, the "is this a descendant?" guard) extracted into plain
   functions — fast, deterministic, and where the real bugs live.
-- **Prefer the keyboard sensor in E2E.** Pointer drags require brittle mouse-move choreography;
-  keyboard DnD is deterministic: focus the handle, `Space` to lift, `ArrowDown`/`ArrowUp` to move,
-  `Space` to drop. This is the reliable way to test a drag in Playwright and a Storybook play
-  function — another reason the `KeyboardSensor` is mandatory, not optional.
-- Capture the working interaction as a **demo doc** (showboat skill) once green.
+- **Sortable lists → keyboard sensor in E2E** (deterministic): focus the handle, `Space` to lift,
+  `Arrow` keys to move, `Space` to drop. **Spatial drops onto fixed targets (drag-to-folder) →
+  pointer drag**, since there's no sortable axis to arrow along. Reliable Playwright recipe:
+  `mouse.move` to the handle centre → `mouse.down` → `mouse.move` ~16px (clear the 8px activation
+  distance) → `mouse.move` to the target centre `{ steps: 10 }` → `mouse.up`. Wait on a visible
+  drop-state marker (e.g. a `data-drop-over` attr the droppable sets when `isOver`) before
+  asserting or screenshotting. A throwaway demo-capture spec must be named `*.spec.ts` to match
+  Playwright's `testMatch`.
+- Capture the working interaction as a **demo doc** (showboat skill) once green — for this visual
+  change the evidence is screenshots (inbox handle → mid-drag overlay+highlight → filed), driven
+  through the Playwright mock backend; never test-suite output.
 
 ---
 
