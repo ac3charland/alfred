@@ -15,20 +15,22 @@ one-time style nit.
 
 ## A "Why:" paragraph re-justifying the line above it — skill-creator (`5f1b0ab`)
 
-The rule had just been stated plainly — the line directly above the cut:
-
-> …**don't** wire a script into the host project (e.g. adding an `npm run foo` entry to
-> the repo's `package.json` and pointing the agent at that command).
-
-The "Why:" paragraph that immediately followed restated that same point at length:
+The rule was already stated plainly; the "Why:" paragraph that followed just restated it.
 
 BEFORE:
 ```
+…**don't** wire a script into the host project (e.g. adding an `npm run foo` entry to
+the repo's `package.json` and pointing the agent at that command).
+
 Why: a skill is a portable, droppable unit. The moment running it requires an edit to
 the host repo's config, the skill stops being self-contained — it won't work when the
 skill is copied to another repo ... reaching back into the host project for it.
 ```
-AFTER: *(paragraph removed; the rule above already says it)*
+AFTER:
+```
+…**don't** wire a script into the host project (e.g. adding an `npm run foo` entry to
+the repo's `package.json` and pointing the agent at that command).
+```
 
 **Lesson:** explaining *why* is good when the why is non-obvious — but don't re-explain
 a rule the reader already understood from the sentence before.
