@@ -299,14 +299,6 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
 
 ## 7. Visual Regression Testing (image snapshots)
 
-> alfred **does** do visual regression — the §8 note that it "does not" is obsolete.
-> The official **Writing Tests → Visual Testing** page documents **Chromatic** only, a
-> hosted service that keeps baselines in the cloud. alfred keeps baselines **in git**, so
-> it uses the self-hosted equivalent: the **test-runner's `postVisit` hook +
-> `jest-image-snapshot` + Playwright `page.screenshot()`** (the test-runner README's
-> "Image snapshot" recipe). Same idea — render a story, screenshot it, diff against a
-> committed PNG — minus the cloud.
-
 **Where it lives:**
 
 - Config: `frontend/.storybook/test-runner.ts` (auto-loaded by `test-storybook` from the
@@ -460,8 +452,7 @@ augmentation comes from the `@types` package, so no import of `expect` is needed
   but adds authoring overhead with no benefit for this use case.
 
 - **Chromatic / `@chromatic-com/storybook`**: alfred does visual regression self-hosted with
-  git-committed baselines (§7), so the hosted Chromatic service and its addon are intentionally
-  not used.
+  git-committed baselines (§7), so the hosted Chromatic service and its addon are intentionally not used.
 
 - **`composeStories` portable stories in Jest**: alfred uses the test-runner for story-based
   testing. The portable stories / JSDOM path is the migration route from Storyshots and is
