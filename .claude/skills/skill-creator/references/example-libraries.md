@@ -115,6 +115,12 @@ pure noise. It's more browsable and git-diffable, but it costs a tool call per f
 spreads routing across filenames — so only split this way when the files are genuinely
 independent, not just to be tidy.
 
+This is also the shape for **per-domain or per-framework** references — e.g. a
+`cloud-deploy` skill with `references/aws.md`, `references/gcp.md`, and
+`references/azure.md`, where SKILL.md owns the workflow and variant selection and Claude
+reads only the matching file. When a skill supports several mutually-exclusive variants,
+one file per variant keeps each one's context out of the others.
+
 ### Layout 3 — Good / bad output split (calibration)
 
 ```
