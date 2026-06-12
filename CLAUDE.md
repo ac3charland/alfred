@@ -212,11 +212,9 @@ gotchas surface proactively instead of being rediscovered.
 When you hit and resolve a setback or **non-obvious** problem — at *any* stage,
 including the commit → push → PR → deploy wrap-up, not just while writing feature
 code — record the insight **before moving on**. **Read the `compounding-learning`
-skill (`.claude/skills/compounding-learning/SKILL.md`) before you do** — recording is
-something we do consistently, but *how* we record (lean, current, right altitude, no
-duplication, no narration of the edit) is where it repeatedly goes wrong, and that
-skill is the house style plus a library of before/after examples. Route the insight
-like so:
+skill (`.claude/skills/compounding-learning/SKILL.md`) before you do** — it's the house
+style for *how* to record (lean, current, right altitude, no duplication, no narration
+of the edit), plus a library of before/after examples. Route the insight like so:
 
 1. **Tied to a specific framework, library, service, CLI, or tool** → update that
    tool's existing skill (Next.js, React, Supabase, Playwright, `git`, `gh`,

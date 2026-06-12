@@ -4,10 +4,11 @@ A skill reads as the **current truth**. It is not a changelog, a migration log, 
 record of what an agent just did. Two failure modes live here, and they share a fix —
 **delete**:
 
-- **Narrating the edit.** Notes about where text came from or what it replaced
-  ("ported from…", "Extracted from…", "folded in from…", "supersedes §8", "Historical
-  note: we used to…"). They tell a future reader nothing actionable and cost tokens on
-  every load.
+- **Narrating the edit.** Notes about where text came from, what it replaced, or the
+  backstory of mistakes that motivated a rule ("ported from…", "Extracted from…",
+  "folded in from…", "supersedes §8", "Historical note: we used to…", "this is where it
+  repeatedly goes wrong"). They tell a future reader nothing actionable and cost tokens
+  on every load.
 - **Leaving contradicted / stale content in place.** When a change invalidates a
   section, the section gets *removed*, not annotated as obsolete. A flag like "the §8
   note is now wrong" leaves both the wrong text and the flag in context.
@@ -18,6 +19,7 @@ record of what an agent just did. Two failure modes live here, and they share a 
 - Historical "we used to" note (shadcn-ui)
 - "Folded in from another skill" porting note (supabase)
 - "Extracted from the SKILL.md" reference intro (playwright)
+- Narrating the problem-history instead of the guidance (CLAUDE.md)
 - Stale workaround for a since-removed constraint (supabase)
 - The constructive counterpart: replace-and-shrink (playwright)
 
@@ -85,6 +87,30 @@ AFTER:
 This holds the **one-time setup material and the gotchas hit wiring the suite up** —
 the `playwright.config.ts` / `auth.setup.ts` reference, ...
 ```
+
+## Narrating the problem-history instead of the guidance — CLAUDE.md
+
+The CLAUDE.md pointer to the compounding-learning skill explained *why* the skill
+exists by recounting where things keep going wrong, rather than just stating what the
+skill is for.
+
+BEFORE:
+```
+Read the `compounding-learning` skill before you do — recording is something we do
+consistently, but *how* we record (lean, current, right altitude, no duplication, no
+narration of the edit) is where it repeatedly goes wrong, and that skill is the house
+style plus a library of before/after examples.
+```
+AFTER:
+```
+Read the `compounding-learning` skill before you do — it's the house style for *how*
+to record (lean, current, right altitude, no duplication, no narration of the edit),
+plus a library of before/after examples.
+```
+
+**Lesson:** narration isn't only about *moved* text. Justifying a rule by recounting
+the mistakes that led to it ("this is where it repeatedly goes wrong") is the same
+archaeology — state what to do, not the backstory.
 
 ## Stale workaround for a since-removed constraint — supabase (`3676ca8`)
 
