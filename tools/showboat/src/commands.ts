@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -152,4 +153,66 @@ export function extract(file: string, filename?: string): string {
     }
   }
   return lines.join('\n');
+}
+
+/**
+ * Extract `owner/repo` from any git remote URL: SSH (`git@host:owner/repo.git`),
+ * HTTPS (`https://host/owner/repo.git`), or the sandbox's local git proxy
+ * (`http://127.0.0.1:PORT/git/owner/repo`). The host is irrelevant — we always link
+ * to github.com — so we just strip the scheme/host/scp prefix and take the last two
+ * path segments.
+ */
+function parseOwnerRepo(remoteUrl: string): string {
+  const repoPath = remoteUrl
+    .trim()
+    .replace(/\.git$/, '')
+    .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i, '') // scheme://host/  → strip
+    .replace(/^[^@/]+@[^:/]+:/, ''); // scp-like git@host: → strip
+  const segments = repoPath.split('/').filter(Boolean);
+  const repo = segments.at(-1);
+  const owner = segments.at(-2);
+  if (!owner || !repo) throw new Error(`cannot parse owner/repo from remote "${remoteUrl}"`);
+  return `${owner}/${repo}`;
+}
+
+/**
+ * Build the Markdown for the live, clickable PR demo link: a GitHub **blob** URL on
+ * `branch` (which renders the doc — images and all — instead of raw source). `docPath`
+ * is repo-root-relative, exactly as passed to the other showboat commands.
+ */
+export function formatDemoLink(remoteUrl: string, branch: string, docPath: string): string {
+  const cleanPath = docPath
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/^\.?\/+/, '');
+  const url = `https://github.com/${parseOwnerRepo(remoteUrl)}/blob/${branch}/${cleanPath}`;
+  return `📝 **Demo:** [${cleanPath}](${url})`;
+}
+
+/** Git context for {@link prLink}; injectable so tests don't need a real repo/remote. */
+export interface GitContext {
+  remoteUrl: string;
+  branch: string;
+}
+
+function git(args: readonly string[]): string {
+  const result = spawnSync('git', [...args], { encoding: 'utf8' });
+  // A non-zero / null status covers both a git error and a failure to spawn at all
+  // (status is null then, and stdout would be null too) — bail before touching stdout.
+  if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed`);
+  const output = result.stdout.trim();
+  if (output.length === 0) throw new Error(`git ${args.join(' ')} produced no output`);
+  return output;
+}
+
+/**
+ * Produce the live PR demo link for `docPath`, deriving `owner/repo` from the `origin`
+ * remote and the branch from `HEAD` — no hardcoding. Paste the output into the PR body
+ * (or pass it to `gh pr edit --body` / the update_pull_request MCP tool) when you open or
+ * update the PR.
+ */
+export function prLink(docPath: string, context?: GitContext): string {
+  const remoteUrl = context?.remoteUrl ?? git(['remote', 'get-url', 'origin']);
+  const branch = context?.branch ?? git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  return formatDemoLink(remoteUrl, branch, docPath);
 }

@@ -1,7 +1,17 @@
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
-import { type VerifyResult, exec, extract, image, init, note, pop, verify } from './commands.ts';
+import {
+  type VerifyResult,
+  exec,
+  extract,
+  image,
+  init,
+  note,
+  pop,
+  prLink,
+  verify,
+} from './commands.ts';
 
 const VERSION = '0.1.0';
 
@@ -15,6 +25,7 @@ Usage:
   showboat pop <file>                      Remove the most recent entry.
   showboat verify <file> [--output <f>]    Re-run every exec block, diff the output.
   showboat extract <file> [--filename <f>] Print the commands that recreate the doc.
+  showboat pr-link <file>                  Print the live PR demo-doc link (Markdown).
 
 Global options:
   --workdir <dir>   Directory to run code blocks in (default: cwd).
@@ -158,6 +169,12 @@ function main(argv: readonly string[]): number {
       const [file] = positional2;
       if (!file) fail('usage: showboat extract <file> [--filename <name>]');
       process.stdout.write(`${extract(file, filename)}\n`);
+      return 0;
+    }
+    case 'pr-link': {
+      const [file] = rest;
+      if (!file) fail('usage: showboat pr-link <file>');
+      process.stdout.write(`${prLink(file)}\n`);
       return 0;
     }
     default: {

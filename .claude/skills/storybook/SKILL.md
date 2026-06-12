@@ -3,11 +3,14 @@ name: storybook
 description: >
   Use when writing or modifying Storybook stories in the alfred frontend/ package,
   configuring .storybook/preview.ts or main.ts, adding play functions for interaction
-  tests, wiring the test-runner for snapshot/a11y testing in CI/pre-push, or mocking
-  Next.js internals (useRouter, next/image, next/navigation) inside stories. Trigger on
-  any mention of: "write a story", "add a story", "interaction test", "play function",
-  "test-runner", "storyshots", "snapshot test", "story controls", "argTypes", "autodocs",
-  "storybook decorator", "preview.ts", or "test-storybook".
+  tests, wiring the test-runner for snapshot/a11y/visual testing in CI/pre-push, setting up
+  image-snapshot visual regression (hover/focus states, reference PNGs committed to git), or
+  mocking Next.js internals (useRouter, next/image, next/navigation) inside stories. Trigger
+  on any mention of: "write a story", "add a story", "interaction test", "play function",
+  "test-runner", "storyshots", "snapshot test", "visual testing", "visual regression",
+  "image snapshot", "jest-image-snapshot", "postVisit", "page.screenshot", "hover state
+  screenshot", "story controls", "argTypes", "autodocs", "storybook decorator", "preview.ts",
+  or "test-storybook".
 ---
 
 # Storybook Skill (alfred / Next.js + Tailwind v4 + TypeScript)
@@ -18,7 +21,9 @@ description: >
 > becomes a bottleneck and custom Webpack config is not needed.
 >
 > Sources consulted: Storybook official releases page (storybook.js.org/releases),
-> Storybook GitHub test-runner README (storybookjs/test-runner), Storybook blog
+> Storybook GitHub test-runner README (storybookjs/test-runner) — including its
+> "Image snapshot" recipe, Storybook docs "Writing tests → Visual testing"
+> (storybook.js.org/docs/writing-tests/visual-testing), Storybook blog
 > "Component Story Format 3 is here" (Michael Shilman, Storybook org), eslint-plugin-storybook
 > GitHub README (storybookjs/eslint-plugin-storybook), Storybook GitHub PR #30742 confirming
 > import path move to `storybook/test` (merged March 2025, targeted for v9), and
@@ -292,7 +297,146 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
 
 ---
 
-## 7. What Was Deliberately Left Out
+## 7. Visual Regression Testing (image snapshots)
+
+**Where it lives:**
+
+- Config: `frontend/.storybook/test-runner.ts` (auto-loaded by `test-storybook` from the
+  config dir — no flag needed).
+- Baselines: `frontend/__image_snapshots__/<story-id>-snap.png`, **committed to git** and
+  ignored by both ESLint and Prettier as generated artifacts (keep those two ignore lists
+  in sync — see CLAUDE.md).
+- Generate / update baselines: `npm run test:storybook:update -w frontend` (same as the
+  gate but **without** `--ci` and **with** `-u`).
+- The gate (`check:slow` → `test:storybook`) runs `test-storybook --ci`, which **fails**
+  on a missing or mismatched baseline instead of silently writing one.
+
+**When an intentional change moves a baseline — capture the diff, then approve (don't
+make me do it manually).** A failing visual snapshot is not automatically a bug: if *you*
+changed the component on purpose, the baseline is simply stale. On any mismatch,
+`jest-image-snapshot` auto-writes a **3-panel diff** — baseline | highlighted changed
+pixels (red) | received — to
+`frontend/__image_snapshots__/__diff_output__/<story-id>-diff.png` (gitignored, transient).
+Turn that failure into a reviewable, self-approving event:
+
+1. **Confirm the change is intended** by looking at the diff image. If the diff shows
+   something you did *not* intend, it's a real regression — fix the code, don't re-baseline.
+2. **Embed the diff in the demo doc** so the reviewer sees exactly what moved:
+   `npm run demo -- image docs/demos/<doc>.md frontend/__image_snapshots__/__diff_output__/<story-id>-diff.png`
+   (Add a `note` first describing the intended change. The diff *is* the demo evidence for
+   a visual change — see the showboat skill.)
+3. **Approve the new render** — this regenerates the baselines, rewriting **only** the
+   mismatched PNGs: `npm run test:storybook:update -w frontend`.
+4. **Commit the regenerated baseline PNG(s) together with the demo doc** (e.g.
+   `test(<scope>): rebaseline <component> visual snapshot`). The regenerated PNG is the
+   approval; the embedded diff is the proof. **Never hand-edit a baseline PNG** — only the
+   generator (the update script) may write it.
+
+Do not silently re-run `:update` and move on — without the diff in the demo doc the
+baseline change is invisible to review. This is the whole point: the agent approves its
+own intended visual changes, with evidence, so a human doesn't have to drive the
+accept-baseline dance by hand.
+
+**Opt-in per story, not blanket.** `postVisit` screenshots a story only when it sets
+`parameters.visualTest`; every other story (molecules, organisms) is still smoke-tested
+and runs its play function, just without a screenshot. This keeps the baseline set small
+and intentional. Gate on the **parameter**, not on the title — titles drift.
+
+**Capturing interactive states — the part the docs skip.** The official page never
+explains hover/focus. Two hard-won rules:
+
+- **CSS `:hover` is NOT triggered by `userEvent.hover` in a play function.** `userEvent`
+  dispatches pointer *events*; it never moves a real pointer, so the `:hover`
+  pseudo-class never matches and the screenshot shows the resting state. To capture a real
+  hover, move the actual mouse in `postVisit` with Playwright:
+  `await page.locator(target).hover()`. Drive hover from the test-runner, never a play fn.
+- **`:focus-visible` only matches keyboard-driven focus.** Calling `.focus()`
+  programmatically yields a plain `:focus` with no ring — Tailwind's `focus-visible:ring-*`
+  won't render. Press Tab instead: `await page.keyboard.press('Tab')`. Each focus story
+  must render a **single** focusable control so the first Tab lands on it.
+
+**Determinism — freeze motion before every capture.** Anything animated makes the diff
+non-deterministic: an `animate-spin` spinner sits at a random rotation, a
+`transition-colors` hover captures a half-faded colour, a focused input's caret blinks.
+Inject a kill-switch stylesheet in `postVisit` *before* screenshotting:
+
+```ts
+await page.addStyleTag({
+  content: `*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}`,
+});
+```
+
+Use `animation:none` (not `animation-play-state:paused`, which freezes at the *current*
+random frame) so transforms reset to identity and the result is stable regardless of when
+the capture fires. Disabling transitions also snaps a hovered colour to its final value.
+
+**Screenshot the component tight — but leave room for the ring.** A full-canvas
+screenshot buries a 24px icon change in a sea of background: a tone regression moves <1%
+of pixels and slips under any percent threshold. Screenshot a component-tight element so a
+real change is a large fraction of the frame. BUT Playwright's element screenshot **clips
+to the border box** — a `ring`/`box-shadow`/`outline` drawn *outside* the element (e.g.
+`ring-2 ring-offset-1`) gets cut off. Wrap the story in a small **padded** frame
+(`inline-flex p-3`) and screenshot the frame so the focus ring stays inside the capture.
+See the `withVisualFrame` decorator + `VISUAL_TARGET` in
+`frontend/components/atoms/visual-test.tsx`.
+
+**Skip the autodocs Docs entry.** `tags: ['autodocs']` generates a separate `*--docs`
+entry that renders every story at once. Guard `postVisit` with
+`if (storyContext.tags.includes('docs')) return;` or it screenshots the whole docs page.
+
+**Cross-environment antialiasing.** Sub-pixel font/edge rendering differs between the
+sandbox SwiftShader Chromium that generated the baselines and a machine with a real GPU.
+Set a small tolerance — `failureThreshold: 0.01, failureThresholdType: 'percent'` — so
+antialiasing noise doesn't fail the gate while a real tone/hover/focus change (far more
+than 1% of a tight crop) still does. Always (re)generate baselines in the **same**
+environment the gate runs in, and commit the regenerated PNGs verbatim.
+
+**`getStoryContext` for per-story directives.** `getStoryContext(page, context)` (from
+`@storybook/test-runner`) returns the resolved story context — read
+`storyContext.parameters` and `storyContext.tags` to branch behaviour. Storybook
+**deep-merges** parameters, so a `visualTest.target` on `meta` combines with a
+`visualTest.hover` on one story (set the shared target once on `meta`).
+
+**Reference shape (`.storybook/test-runner.ts`):**
+
+```ts
+import { type TestRunnerConfig, getStoryContext, waitForPageReady } from '@storybook/test-runner';
+import { toMatchImageSnapshot } from 'jest-image-snapshot';
+import path from 'node:path';
+
+const config: TestRunnerConfig = {
+  setup() {
+    expect.extend({ toMatchImageSnapshot });
+  },
+  async postVisit(page, context) {
+    const ctx = await getStoryContext(page, context);
+    if (ctx.tags.includes('docs')) return;
+    const visual = (ctx.parameters as { visualTest?: { target?: string; hover?: boolean; focus?: boolean } })
+      .visualTest;
+    if (!visual) return;
+    await page.addStyleTag({ content: FREEZE_MOTION });
+    const el = page.locator(visual.target ?? '#storybook-root').first();
+    if (visual.hover) await el.hover();
+    if (visual.focus) await page.keyboard.press('Tab');
+    await waitForPageReady(page);
+    expect(await el.screenshot()).toMatchImageSnapshot({
+      customSnapshotsDir: path.join(process.cwd(), '__image_snapshots__'),
+      customSnapshotIdentifier: context.id,
+      failureThreshold: 0.01,
+      failureThresholdType: 'percent',
+    });
+  },
+};
+export default config;
+```
+
+`jest-image-snapshot` + `@types/jest-image-snapshot` are dev deps. `expect` / `expect.extend`
+are Jest globals in the test-runner's node context; the `toMatchImageSnapshot` matcher
+augmentation comes from the `@types` package, so no import of `expect` is needed.
+
+---
+
+## 8. What Was Deliberately Left Out
 
 - **CSF Factories** (`definePreview` / `meta.story()` chain): Preview-status in Storybook 10,
   not yet the default. Including it would cause agents to use it prematurely. Revisit when
@@ -307,7 +451,8 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
 - **MDX stories and custom Docs pages**: alfred writes stories in `.tsx` files only. MDX is valid
   but adds authoring overhead with no benefit for this use case.
 
-- **Chromatic visual diffing**: alfred does not use Chromatic. Visual regression is out of scope.
+- **Chromatic / `@chromatic-com/storybook`**: alfred does visual regression self-hosted with
+  git-committed baselines (§7), so the hosted Chromatic service and its addon are intentionally not used.
 
 - **`composeStories` portable stories in Jest**: alfred uses the test-runner for story-based
   testing. The portable stories / JSDOM path is the migration route from Storyshots and is
