@@ -27,12 +27,23 @@ framework gotcha.
    `data-flow` or `motion`. Update the one for that area of concern, or **create it
    if none fits**.
 
-Recording is good and we do it consistently — that's not the problem. The problem is
-*how*: edits that bloat, restate, narrate, or go stale. The principles below are the
-fix. **Read them every time; consult the matching reference for worked before/after
-examples when an edit isn't obviously clean.**
+## Improving this skill
+
+This skill compounds the same way the others do. **When you're told to revise or
+correct an edit you made to a SKILL** — a human or reviewer pushes back on *how* you
+recorded an insight (too verbose, wrong altitude, left stale text, duplicated
+something) — that correction is itself a compounding-learning lesson. Before moving on,
+capture it: add a short **before/after** entry to the matching `references/` file
+(create a new theme file, and link it in the worked-examples table below, if none fits).
+Keep entries faithful — quote the real text, trimmed to the essentials — and follow the
+very rules this skill teaches: lean, current, no archaeology about the correction itself.
 
 ## Principles (read every time)
+
+Recording is good and we do it consistently — that's not the problem. The problem is
+*how*: edits that bloat, restate, narrate, or go stale. The principles below are the
+fix; consult the matching reference for worked before/after examples when an edit isn't
+obviously clean.
 
 1. **A skill is current truth, not a changelog.** Write the insight as if it had
    always been there. Never narrate the edit — no "ported from the main SKILL.md",
@@ -66,7 +77,7 @@ examples when an edit isn't obviously clean.**
 
 Each reference is a small before/after library mined from real corrections in this
 repo. Open the one that matches the edit you're about to make — or that a reviewer just
-pushed back on. They grow over time (see "Improving this skill" below), so grep for a
+pushed back on. They grow over time (see "Improving this skill" above), so grep for a
 keyword rather than reading end to end.
 
 | Read when your edit risks… | Reference | grep for |
@@ -76,14 +87,3 @@ keyword rather than reading end to end.
 | putting a rarely-needed / setup gotcha in the always-loaded body | `references/right-altitude.md` | `grep -i "setup\|reference\|toc" references/right-altitude.md` |
 | repeating CLAUDE.md or another skill | `references/single-source-of-truth.md` | `grep -i "duplicate\|cross-ref" references/single-source-of-truth.md` |
 | a grab-bag commit or premature, soon-rewritten guidance | `references/focused-changes.md` | `grep -i "grab-bag\|churn" references/focused-changes.md` |
-
-## Improving this skill
-
-This skill compounds the same way the others do. **When you're told to revise or
-correct an edit you made to a SKILL** — a human or reviewer pushes back on *how* you
-recorded an insight (too verbose, wrong altitude, left stale text, duplicated
-something) — that correction is itself a compounding-learning lesson. Before moving on,
-capture it: add a short **before/after** entry to the matching `references/` file
-(create a new theme file, and link it in the table above, if none fits). Keep entries
-faithful — quote the real text, trimmed to the essentials — and follow the very rules
-this skill teaches: lean, current, no archaeology about the correction itself.
