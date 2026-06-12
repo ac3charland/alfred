@@ -41,6 +41,11 @@ interface TaskActions {
   updateTask: (id: string, patch: TaskFieldPatch) => Promise<void>;
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
+  /**
+   * Re-parent a task under another task: set its `parent_id` to `newParentId` and have
+   * its whole subtree adopt the new parent's folder (a subtree shares one folder bucket).
+   */
+  reparentTask: (id: string, newParentId: string) => Promise<void>;
   /** Delete a task and its subtree (the DB cascades the children). */
   deleteTask: (id: string) => Promise<void>;
 }
@@ -203,6 +208,41 @@ export function TasksProvider({
                 : api.updateItem(itemId, { folder_id: folderId }),
             ),
           );
+          dispatch({ type: 'upsert', items: rows });
+        } catch (error) {
+          dispatch({ type: 'upsert', items: affected });
+          throw error;
+        }
+      },
+      async reparentTask(id, newParentId) {
+        const current = tasksRef.current;
+        const dragged = current.find((item) => item.id === id);
+        const newParent = current.find((item) => item.id === newParentId);
+        // Both ends must exist (the target may have just been deleted/reconciled away).
+        if (dragged === undefined || newParent === undefined) return;
+        const affected = collectSubtree(current, id);
+        const newFolderId = newParent.folder_id;
+        // Moving under a parent in a different folder drags the whole subtree's folder
+        // along; staying in the same folder is a pure parent change (no descendant writes).
+        const folderChanged = dragged.folder_id !== newFolderId;
+        const descendantIds = affected.filter((item) => item.id !== id).map((item) => item.id);
+
+        dispatch({
+          type: 'patch',
+          ids: [id],
+          patch: { parent_id: newParentId, folder_id: newFolderId },
+        });
+        if (folderChanged && descendantIds.length > 0) {
+          dispatch({ type: 'patch', ids: descendantIds, patch: { folder_id: newFolderId } });
+        }
+        try {
+          const requests = [api.updateItem(id, { parent_id: newParentId, folder_id: newFolderId })];
+          if (folderChanged) {
+            for (const descId of descendantIds) {
+              requests.push(api.updateItem(descId, { folder_id: newFolderId }));
+            }
+          }
+          const rows = await Promise.all(requests);
           dispatch({ type: 'upsert', items: rows });
         } catch (error) {
           dispatch({ type: 'upsert', items: affected });

@@ -585,6 +585,86 @@ describe('moveTask', () => {
   });
 });
 
+describe('reparentTask', () => {
+  it('sets the new parent and has the whole subtree adopt the new parent folder', async () => {
+    const dragged = item({ id: 'd1', folder_id: null });
+    const child = item({ id: 'd1-c', parent_id: 'd1', folder_id: null });
+    const target = item({ id: 'p1', folder_id: 'folder-9' });
+    mockUpdateItem.mockImplementation((id: string) =>
+      Promise.resolve(item({ id, parent_id: id === 'd1' ? 'p1' : 'd1', folder_id: 'folder-9' })),
+    );
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([dragged, child, target]),
+    });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'p1');
+    });
+
+    const draggedAfter = result.current.tasks.find((t) => t.id === 'd1');
+    expect(draggedAfter?.parent_id).toBe('p1');
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1', { parent_id: 'p1', folder_id: 'folder-9' });
+    // The subtree adopts the new parent's folder.
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1-c', { folder_id: 'folder-9' });
+    expect(result.current.tasks.every((t) => t.id === 'p1' || t.folder_id === 'folder-9')).toBe(
+      true,
+    );
+  });
+
+  it('only updates parent_id (no descendant folder writes) when the folder is unchanged', async () => {
+    const dragged = item({ id: 'd1', folder_id: 'folder-1' });
+    const child = item({ id: 'd1-c', parent_id: 'd1', folder_id: 'folder-1' });
+    const target = item({ id: 'p1', folder_id: 'folder-1' });
+    mockUpdateItem.mockResolvedValue(item({ id: 'd1', parent_id: 'p1', folder_id: 'folder-1' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([dragged, child, target]),
+    });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'p1');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1', { parent_id: 'p1', folder_id: 'folder-1' });
+    // Same folder → the child is not PATCHed.
+    expect(mockUpdateItem).not.toHaveBeenCalledWith('d1-c', { folder_id: 'folder-1' });
+  });
+
+  it('is a no-op when the target parent is not in the store', async () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([item({ id: 'd1' })]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'missing');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when the dragged task is not in the store', async () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([item({ id: 'p1' })]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('missing', 'p1');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('restores the original parent and folder when the re-parent fails', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const dragged = item({ id: 'd1', parent_id: null, folder_id: null });
+    const target = item({ id: 'p1', folder_id: 'folder-9' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged, target]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'p1').catch(() => {});
+    });
+
+    const draggedAfter = result.current.tasks.find((t) => t.id === 'd1');
+    expect(draggedAfter?.parent_id).toBeNull();
+    expect(draggedAfter?.folder_id).toBeNull();
+  });
+});
+
 describe('deleteTask', () => {
   const parent = item({ id: 'item-1' });
   const child = item({ id: 'c-1', parent_id: 'item-1' });
