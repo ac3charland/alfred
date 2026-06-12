@@ -5,7 +5,9 @@ import { expect, test } from './support/fixtures';
 
 // Expand/collapse is animated (a grid-rows transition). Reduced motion makes it instant so
 // a freshly-revealed subtask is in its final position before we press it to start a drag.
-test.use({ reducedMotion: 'reduce' });
+// `reducedMotion` isn't a top-level use option in this Playwright version — it's set through
+// the browser context (see PlaywrightTestOptions.contextOptions).
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
 /**
  * Re-parent by drag-and-drop: dropping a task (parent or subtask) onto ANOTHER task makes
