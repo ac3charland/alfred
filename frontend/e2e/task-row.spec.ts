@@ -33,14 +33,15 @@ test.describe('subtasks', () => {
     });
     await page.goto('/?view=inbox');
 
-    const child = page.getByText('Hidden child');
-    await expect(child).toBeHidden();
+    // getByRole respects aria-hidden: when the wrapper is aria-hidden the list has 0 AT matches.
+    const subtaskList = page.getByRole('list', { name: 'Subtasks' });
+    await expect(subtaskList).toBeHidden();
 
     await page.getByRole('button', { name: 'Expand subtasks' }).click();
-    await expect(child).toBeVisible();
+    await expect(subtaskList).toBeVisible();
 
     await page.getByRole('button', { name: 'Collapse subtasks' }).click();
-    await expect(child).toBeHidden();
+    await expect(subtaskList).toBeHidden();
   });
 });
 
