@@ -3,19 +3,6 @@ import * as React from 'react';
 
 import { InboxScreen } from './inbox-screen';
 
-// Mock next/link as a plain anchor so we can assert on hrefs.
-jest.mock(
-  'next/link',
-  () =>
-    function MockLink({ href, children, ...rest }: { href: string; children: React.ReactNode }) {
-      return (
-        <a href={href} {...rest}>
-          {children}
-        </a>
-      );
-    },
-);
-
 // Stub the children — they are exercised by their own tests. Here we only care
 // about the screen's own toggle + reveal logic.
 jest.mock('./capture-box', () => ({

@@ -18,18 +18,11 @@ jest.mock('next/navigation', () => ({
   },
 }));
 
-// Mock next/link as a plain anchor for easier querying
-jest.mock(
-  'next/link',
-  () =>
-    function MockLink({ href, children, ...rest }: { href: string; children: React.ReactNode }) {
-      return (
-        <a href={href} {...rest}>
-          {children}
-        </a>
-      );
-    },
-);
+// ViewLink switches views via window.history.pushState; stub it so clicks in jsdom
+// don't mutate the shared history. restoreMocks resets spies per test, so re-spy each.
+beforeEach(() => {
+  jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+});
 
 // Mock api-client
 jest.mock('@/lib/api-client');
