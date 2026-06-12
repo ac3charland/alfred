@@ -149,10 +149,15 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
     beginComplete();
   };
 
-  // The collapse animation finishing is what commits the completion. Guard against the
-  // checkbox pop (a child animation) bubbling up — only the wrapper's own collapse counts.
-  const handleCompleteCollapseEnd = (event_: React.AnimationEvent<HTMLDivElement>) => {
-    if (event_.target === event_.currentTarget && isCompleting) {
+  // The collapse transition finishing is what commits the completion. Guard against
+  // child transitions (e.g. the checkbox/title colour fades) bubbling up — only the
+  // wrapper's own `grid-template-rows` transition counts.
+  const handleCompleteCollapseEnd = (event_: React.TransitionEvent<HTMLDivElement>) => {
+    if (
+      event_.target === event_.currentTarget &&
+      event_.propertyName === 'grid-template-rows' &&
+      isCompleting
+    ) {
       runComplete();
     }
   };
@@ -227,19 +232,19 @@ export function TaskRow({ node, depth = 0, isCompleted = false }: TaskRowPropert
 
   return (
     <li className="group/row list-none">
-      {/* The completion exit collapses the row (and its expanded subtree): animating
-          the grid row track from 1fr to 0fr shrinks the height to nothing, pulling the
-          rows below up. The inner child is clipped so it can shrink past its content. */}
+      {/* The completion exit collapses the row (and its expanded subtree): a transition
+          on the grid row track from 1fr to 0fr shrinks the height to nothing, pulling the
+          rows below up. `ease-out` (a transition, not a keyframe) makes the collapse start
+          briskly after the checkbox pop, then settle — `delay-100` lets the pop lead. The
+          inner child is clipped so it can shrink past its content. */}
       <div
         className={cn(
           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-          'grid',
-          isCompleting &&
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'animate-task-collapse motion-reduce:animate-none',
+          'grid transition-[grid-template-rows] duration-300 ease-out delay-100 motion-reduce:transition-none',
+          isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
         )}
         data-testid="task-collapse"
-        onAnimationEnd={handleCompleteCollapseEnd}
+        onTransitionEnd={handleCompleteCollapseEnd}
       >
         <div className={cn(isCompleting && 'overflow-hidden')}>
           {/* Main row */}

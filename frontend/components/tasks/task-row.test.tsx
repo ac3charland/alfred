@@ -84,17 +84,33 @@ function mockReducedMotion(matches: boolean): void {
   jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
 }
 
-/**
- * The collapse wrapper that owns a row's completion exit animation. jsdom doesn't run
- * CSS animations, so completion tests fire this element's `animationend` by hand to
- * stand in for the height collapse finishing (as the inbox-reveal tests do).
- */
+/** The collapse wrapper that owns a row's completion exit (the grid-rows transition). */
 function collapseWrapperFor(title: string): HTMLElement {
   const li = screen.getByText(title).closest('li');
   if (!li) throw new Error('task row <li> not found');
   const wrapper = li.querySelector<HTMLElement>('[data-testid="task-collapse"]');
   if (!wrapper) throw new Error('collapse wrapper not found');
   return wrapper;
+}
+
+/**
+ * Dispatch a bubbling `transitionend` carrying a `propertyName`. jsdom has no
+ * `TransitionEvent`, so `fireEvent.transitionEnd(el, { propertyName })` silently drops
+ * it — build the event by hand and define the prop so the handler's guard is exercised.
+ */
+function fireTransitionEnd(element: HTMLElement, propertyName: string): void {
+  const event = new Event('transitionend', { bubbles: true });
+  Object.defineProperty(event, 'propertyName', { value: propertyName });
+  fireEvent(element, event);
+}
+
+/**
+ * Finish a row's collapse. jsdom doesn't run CSS transitions, so completion tests fire
+ * the wrapper's `grid-template-rows` `transitionend` by hand to stand in for the height
+ * collapse finishing — that's what commits the completion.
+ */
+function endCollapse(title: string): void {
+  fireTransitionEnd(collapseWrapperFor(title), 'grid-template-rows');
 }
 
 // ---------------------------------------------------------------------------
@@ -200,10 +216,10 @@ describe('TaskRow', () => {
   // Active task completion — animated exit, THEN optimistic removal
   //
   // Completing an active task plays a checkbox pop + height collapse, and only calls
-  // completeTask once the collapse animation ends (the row stays visible meanwhile so
-  // the exit can play). jsdom doesn't run CSS animations, so we drive the collapse's
-  // animationend by hand. Under reduced motion there's no animation, so completion is
-  // immediate — see the "reduced motion" block below.
+  // completeTask once the collapse transition ends (the row stays visible meanwhile so
+  // the exit can play). jsdom doesn't run CSS transitions, so we drive the collapse's
+  // transitionend by hand (endCollapse). Under reduced motion there's no animation, so
+  // completion is immediate — see the "reduced motion" block below.
   // ---------------------------------------------------------------------------
 
   it('shows the checkbox as checked the instant it is clicked (before the row leaves)', async () => {
@@ -221,7 +237,7 @@ describe('TaskRow', () => {
     expect(screen.getByText('Write tests')).toBeInTheDocument();
   });
 
-  it('does NOT call completeTask until the collapse animation ends', async () => {
+  it('does NOT call completeTask until the collapse transition ends', async () => {
     mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
@@ -231,26 +247,38 @@ describe('TaskRow', () => {
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
-  it('does not let the checkbox pop (a child animation) commit the completion', async () => {
+  it('does not let an unrelated transition on the wrapper commit the completion', async () => {
+    mockCompleteTask.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+    // Only the grid-template-rows transition commits — a different property must not.
+    fireTransitionEnd(collapseWrapperFor('Write tests'), 'opacity');
+
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  it('does not let a child transition (e.g. the title colour fade) commit the completion', async () => {
     mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
     const checkbox = screen.getByRole('button', { name: /mark "Write tests" complete/i });
     await user.click(checkbox);
-    // The pop's animationend bubbles to the wrapper; only the wrapper's own collapse counts.
-    fireEvent.animationEnd(checkbox);
+    // A child's transitionend bubbles to the wrapper; only the wrapper's own collapse counts.
+    fireTransitionEnd(checkbox, 'grid-template-rows');
 
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
-  it('calls completeTask and removes the task once the collapse animation ends', async () => {
+  it('calls completeTask and removes the task once the collapse transition ends', async () => {
     mockCompleteTask.mockResolvedValue([]);
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
-    fireEvent.animationEnd(collapseWrapperFor('Write tests'));
+    endCollapse('Write tests');
 
     await waitFor(() => {
       expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
@@ -264,7 +292,7 @@ describe('TaskRow', () => {
     renderTasks([BASE_ITEM]);
 
     await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
-    fireEvent.animationEnd(collapseWrapperFor('Write tests'));
+    endCollapse('Write tests');
 
     expect(await screen.findByText('Write tests')).toBeInTheDocument();
   });
@@ -1429,7 +1457,7 @@ describe('TaskRow', () => {
       });
       expect(mockCompleteTask).not.toHaveBeenCalled();
 
-      fireEvent.animationEnd(collapseWrapperFor('Write tests'));
+      endCollapse('Write tests');
 
       await waitFor(() => {
         expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
