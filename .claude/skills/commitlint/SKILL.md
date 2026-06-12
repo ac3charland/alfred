@@ -1,7 +1,7 @@
 ---
 name: commitlint
 description: >
-  Configures commit-message validation for the alfred monorepo: commitlint rule tuples
+  Covers commit-message validation in the alfred monorepo: commitlint rule tuples
   ([level, applicable, value]), the project's stricter-than-conventional rules (scope required,
   no body, no footer, lowercase subject), the commit-msg git hook wired via husky v9, and the
   pre-commit / pre-push hooks that fan out to npm workspace packages. Use when editing

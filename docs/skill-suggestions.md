@@ -25,9 +25,12 @@ So this doc is self-contained about what's a *suggestion* vs. *done*:
    `tailwindcss` / `shadcn-ui` (with a pointer to `motion`), `playwright` / `storybook`,
    `anthropic-api` → `cloudflare-workers`, and `skill-creator` ↔ `lib-skill-forge`.
 3. **Every description was rewritten to lead with what-the-skill-does** — a third-person verb
-   (Covers / Configures / Owns / Drives / Builds / Implements) plus the distinctive keywords —
-   instead of a generic `Use when working in the X package…` opener, so the highest-signal
-   words land at the front (this was item 2 below; now done).
+   chosen to name what the skill *is to the agent* (a reference → "Covers …"; project
+   conventions → "Documents …"; a workflow → "Describes how to …"; a bundled-script wrapper →
+   an action verb like "Builds …") plus the distinctive keywords, instead of a generic
+   `Use when working in the X package…` opener or a verb that impersonates the downstream
+   action ("Implements/Configures/Drives …" — a skill is read, not run). The skill-creator
+   playbook now carries a verb table codifying this. (Was item 2 below; now done.)
 
 The items below are structural changes I deliberately did **not** make, because they alter
 the library's shape rather than the wording of individual descriptions.

@@ -1,9 +1,9 @@
 ---
 name: gh-cli
 description: >
-  Drives the GitHub CLI (`gh`) in the alfred repo: opening or editing pull requests and issues,
-  setting/updating a PR or issue body or title, commenting, and scripting GitHub via `gh api`.
-  Use when running `gh pr create`, `gh pr edit`, `gh pr comment`, `gh issue edit`, or `gh api` —
+  Covers using the GitHub CLI (`gh`) in the alfred repo: opening or editing pull requests and
+  issues, setting/updating a PR or issue body or title, commenting, and scripting GitHub via
+  `gh api`. Use when running `gh pr create`, `gh pr edit`, `gh pr comment`, `gh issue edit`, or `gh api` —
   "update the PR description", "edit the PR body", or a `gh` command that errors with a
   GraphQL / "Projects (classic)" message. This is where the project's commit → push → PR
   workflow (see CLAUDE.md) meets the GitHub CLI.

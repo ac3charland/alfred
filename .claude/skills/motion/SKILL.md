@@ -1,7 +1,7 @@
 ---
 name: motion
 description: >
-  Owns motion in the alfred frontend: the reusable animation design tokens (the `--animate-*`
+  Documents the alfred frontend's motion conventions: the reusable animation design tokens (the `--animate-*`
   theme tokens in globals.css, e.g. `animate-fade-in` / `animate-fade-out`), the pattern for
   revealing/collapsing content with a fade (mount → fade-in, fade-out → unmount), how to add a
   new motion token, and the jsdom `matchMedia` gotcha when testing motion-aware components. Use

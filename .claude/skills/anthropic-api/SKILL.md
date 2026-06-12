@@ -1,14 +1,15 @@
 ---
 name: anthropic-api
 description: >
-  Implements code against the Anthropic Claude API: the Messages API, tool
-  definitions, the tool-use agentic loop, streaming responses, and calling the API
-  from a Cloudflare Worker. Use when writing or debugging any of those, or on any
-  mention of anthropic, @anthropic-ai/sdk, claude-*, tool_use, tool_result, or
+  Covers the Anthropic Claude API and the alfred project's best practices for it: the
+  Messages API, defining tools, the tool-use agentic loop, streaming responses, and
+  calling the API from a Cloudflare Worker (SDK vs raw fetch, tool_choice, stop_reason
+  handling, the tool_use_id contract). Use when writing or debugging any of those, or on
+  any mention of anthropic, @anthropic-ai/sdk, claude-*, tool_use, tool_result, or
   stop_reason — including tasks like "classify/clean text with Claude", "define an
-  item-action tool", "call Claude from a Worker", or "run the tool loop". For the
-  Worker runtime, bindings, and wrangler config that host this code (rather than the
-  Claude API calls themselves), use the cloudflare-workers skill.
+  item-action tool", "call Claude from a Worker", or "run the tool loop". For the Worker
+  runtime, bindings, and wrangler config that host this code (rather than the Claude API
+  calls themselves), use the cloudflare-workers skill.
 ---
 
 # Anthropic API Skill (alfred project)

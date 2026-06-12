@@ -1,8 +1,8 @@
 ---
 name: data-flow
 description: >
-  Owns the alfred frontend's data-flow architecture: database → API → context store →
-  components on read, and components → store action → API → database on write, plus the
+  Documents the alfred frontend's data-flow architecture and conventions: database → API →
+  context store → components on read, and components → store action → API → database on write, plus the
   optimistic-store pattern with reconcile/rollback, the "fetch-all then filter client-side"
   choice, and the anti-patterns this design prevents. Use whenever you read, fetch, store, or
   mutate app data for any entity (folders, tasks/items, and whatever comes next) or decide
