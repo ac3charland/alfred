@@ -122,6 +122,12 @@ export function CaptureBox({
         onSubmit={(event_) => {
           void handleSubmit(event_);
         }}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) {
+            setValue('');
+            onDismiss?.();
+          }
+        }}
         className="flex items-center gap-2"
       >
         <TextField

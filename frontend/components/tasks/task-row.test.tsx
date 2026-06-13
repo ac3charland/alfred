@@ -754,6 +754,40 @@ describe('TaskRow', () => {
         expect(screen.getByRole('textbox', { name: /edit title/i })).toHaveFocus();
       });
     });
+
+    it('dismisses and reverts the title when focus moves outside the edit area', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Draft that gets abandoned');
+
+      await user.click(document.body);
+
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+
+    it('does not dismiss when clicking the confirm-title button (saves instead)', async () => {
+      mockUpdateItem.mockResolvedValue({ id: 'item-1', title: 'New title' } as Awaited<
+        ReturnType<typeof apiClient.updateItem>
+      >);
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'New title');
+      await user.click(screen.getByRole('button', { name: /confirm title/i }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { title: 'New title' });
+      });
+    });
   });
 
   // ---------------------------------------------------------------------------
