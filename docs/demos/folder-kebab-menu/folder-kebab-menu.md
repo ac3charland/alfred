@@ -18,8 +18,6 @@ Clicking the kebab opens the menu with Edit and Delete:
 
 ![](folder-kebab-menu-image-2.png)
 
-**Fix 2 — rename checkmark no longer cut off.** The rename form previously used left-padding only (pl-3), causing the confirm button to sit flush at the sidebar's clipping boundary. Changed to symmetric padding (px-3) so the checkmark has room on the right.
-
-Selecting Edit opens the inline rename input. Playwright verified the confirm button has a non-null bounding box (fully within the viewport, not clipped):
+**Fix 2 — rename form fully visible.** The rename form overflowed the sidebar because the `<form>` and `<input>` flex items lacked `min-w-0`, causing the browser's default input min-width (~209px) to push the form beyond the sidebar's 207px content area. Added `min-w-0` to both the form and the TextField so the input can shrink to fit. The confirm checkmark is now fully within the sidebar:
 
 ![](folder-kebab-menu-image-3.png)
