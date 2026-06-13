@@ -79,33 +79,33 @@ npm run demo -- <command> [args]
 ```
 
 `--` passes everything after it to the CLI. Paths are resolved from the repo root
-(where you run npm), so `docs/demos/<branch>/my-feature.md` lands in the right place.
+(where you run npm), so `docs/demos/<feature-name>/my-feature.md` lands in the right place.
 
-### Every demo lives in its own folder, named for the branch
+### Every demo lives in its own folder — with a semantic name
 
-A demo is **never** a loose file in `docs/demos/`. It lives in its **own folder**, and
-on a feature branch that folder is **named after the current branch** —
-`docs/demos/<branch>/<name>.md`, with any images/GIFs/txt the doc embeds sitting beside
-it in the same folder. `init` **creates that folder for you** (it `mkdir -p`s the parent),
-so just point it at the branch path:
+A demo is **never** a loose file in `docs/demos/`. It lives in its **own folder**, named
+for the **feature** it demonstrates — `docs/demos/<feature-name>/<name>.md`, with any
+images/GIFs/txt the doc embeds sitting beside it in the same folder. `init` **creates that
+folder for you** (it `mkdir -p`s the parent), so just point it at a descriptive path:
 
 ```bash
-BRANCH=$(git branch --show-current)
-DOC="docs/demos/$BRANCH/my-feature.md"
-npm run demo -- init "$DOC" "What this branch does"
+DOC="docs/demos/inline-subtask-rows/my-feature.md"
+npm run demo -- init "$DOC" "What this feature does"
 ```
 
-A branch name with a slash (`claude/foo-bar`) simply nests
-(`docs/demos/claude/foo-bar/…`). This is enforced by **`demo-lint`** in the global
-`check:slow` (pre-push), which errors if a loose file sits directly in `docs/demos/` or
-if a feature branch has no `docs/demos/<branch>/` folder — so create the demo under your
-branch's folder and a single branch's demos stay together.
+The folder name is **decoupled from the branch**: `init` records the current branch in the
+doc's **YAML front matter** (`branch: <name>`) instead, and `demo-lint` reads it from
+there. Override the detected branch with `--branch <name>` (handy on a detached HEAD or
+when stamping a doc for a different branch). This is enforced by **`demo-lint`** in the
+global `check:slow` (pre-push), which errors if a loose file sits directly in `docs/demos/`
+or if the current feature branch has no demo doc claiming it in front matter — so init the
+demo under a feature-named folder and the branch tag comes along for free.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `init <file> <title>` | Start a new doc (H1 title + ISO timestamp). |
+| `init <file> <title> [--branch <name>]` | Start a new doc (H1 title + ISO timestamp). Records the current branch in YAML front matter so `demo-lint` accepts a semantically-named folder; `--branch` overrides the detected branch. |
 | `note <file> [text]` | Append commentary. Reads stdin if `text` is omitted. |
 | `exec <file> <lang> [code]` | Run code, capture output, append both. Echoes the output and **exits with the command's exit code**. Reads stdin if `code` is omitted. |
 | `image <file> <path \| '![alt](path)'>` | Copy an image next to the doc and embed it. |
@@ -129,14 +129,14 @@ For a change with **no visual surface** (here, an API endpoint), the evidence is
 real request and its response:
 
 ```bash
-DOC="docs/demos/$(git branch --show-current)/items-endpoint.md"
+DOC="docs/demos/items-nested-subtasks/items-endpoint.md"
 npm run demo -- init "$DOC" "Items endpoint returns nested subtasks"
 npm run demo -- note "$DOC" "GET /api/items now nests children under each parent."
 npm run demo -- exec "$DOC" bash "curl -s localhost:3000/api/items | head -c 400"
 npm run demo -- verify "$DOC"        # confirm it reproduces before you commit
 ```
 
-Commit the doc under your branch's folder in `docs/demos/` and add a **live, clickable
+Commit the doc under its feature-named folder in `docs/demos/` and add a **live, clickable
 link** to it in the PR description (see *Linking the demo in the PR* below).
 
 ## Screenshotting the UI (the evidence for any visual change)

@@ -16,12 +16,15 @@ description: >
 
 `tools/demo-lint` is a small, self-contained TypeScript CLI that enforces how
 `docs/demos/` is organized: every demo doc lives in its **own folder**, and on a feature
-branch that folder is **named after the branch**. It exists so the folder convention is
-enforced mechanically instead of relying on every author remembering it.
+branch some demo doc must **claim that branch** in its YAML front matter
+(`branch: <name>`). The folder name itself is free — pick a semantic, feature-related
+name — because the branch lives in front matter, not in the path. `npm run demo -- init`
+stamps that front matter automatically. It exists so the convention is enforced
+mechanically instead of relying on every author remembering it.
 
 It runs in the repo's **`check:slow`** gate (the pre-push hook), not `check:fast` — it
 needs the git branch, and a demo doc is the last thing you produce before pushing, so
-push-time is when the branch folder must exist.
+push-time is when the branch's demo must exist.
 
 ## Running it
 
@@ -43,19 +46,23 @@ Both rules are **errors** (exit 1 fails the push).
 
 | Rule | Fires when | Fix |
 | --- | --- | --- |
-| `no-root-files` | any file other than `README.md` sits **directly** in `docs/demos/` | move it into its own folder: `docs/demos/<branch-or-feature>/` |
-| `branch-folder` | you're on a feature branch and `docs/demos/<branch>/` is missing or empty | create the folder and put this branch's demo doc there (`npm run demo -- init docs/demos/<branch>/<name>.md "<title>"`) |
+| `no-root-files` | any file other than `README.md` sits **directly** in `docs/demos/` | move it into its own folder: `docs/demos/<feature-name>/` |
+| `branch-folder` | you're on a feature branch and no demo doc claims it — no doc has `branch: <current-branch>` in front matter (and no legacy folder named after the branch has content) | capture this branch's demo in its own (semantically-named) folder: `npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>"` stamps the branch into front matter for you |
 
 `branch-folder` **skips** trunk (`main`/`master`) and any state where the branch can't be
 determined (detached HEAD, no git), so it only fires on a real feature branch.
 
 ## Everyday gotchas
 
-- **A slash in the branch name nests.** Branch `claude/foo-bar` owes
-  `docs/demos/claude/foo-bar/` — `init` `mkdir -p`s it for you, so just init the doc at
-  that path.
-- **The branch folder must have content.** An empty `mkdir` doesn't satisfy
-  `branch-folder` (and git wouldn't commit an empty dir anyway) — put the demo doc in it.
+- **The folder name is decoupled from the branch.** `branch-folder` is satisfied by a
+  demo doc that declares `branch: <current-branch>` in front matter — the folder can be
+  any semantic name. `npm run demo -- init` writes that front matter, so the normal
+  authoring flow just works; you don't name the folder after the branch anymore.
+- **A legacy branch-named folder still counts.** For backward compatibility, a folder
+  literally named after the branch (`docs/demos/claude/foo-bar/`) with content also
+  satisfies the rule even without front matter. New demos should rely on front matter.
+- **The branch claim must be real content.** An empty `mkdir` satisfies nothing (and git
+  wouldn't commit an empty dir) — put a demo doc with the right front matter in the folder.
 - **Only `README.md` is allowed at the root.** That allow-list lives in
   `ALLOWED_ROOT_FILES` in `src/demos.ts`; everything else at the root is a finding.
 - **It's wired into `check:slow`, not `check:fast`.** The package's `check:slow` script is
@@ -65,9 +72,12 @@ determined (detached HEAD, no git), so it only fires on a real feature branch.
 ## Maintaining the tool
 
 It's a standard rule-registry split: `src/demos.ts` gathers a pure `DemosContext`
-(root files + branch facts), `src/rules.ts` holds the rule registry (add a `Rule` to the
-exported `rules` array to lint something new), `src/lint.ts` runs them, and `src/cli.ts`
-is the entry point. The same source-maintenance constraints apply as the rest of
-`tools/*` — explicit `.ts` import extensions, erasable syntax only, no `process.exit()`
-(see the `showboat` skill's maintainer notes). Tests run under ts-jest ESM via the
-package's `check:fast`.
+(root files + branch facts + `declaredBranches`), `src/rules.ts` holds the rule registry
+(add a `Rule` to the exported `rules` array to lint something new), `src/lint.ts` runs
+them, and `src/cli.ts` is the entry point. `declaredBranches` is built by walking every
+`*.md` under `docs/demos/` and reading each doc's `branch:` front matter via
+`readDeclaredBranch` (a deliberately tiny YAML-scalar reader — demo-lint needs only that
+one field, so it does **not** depend on `tools/showboat`'s parser). The same
+source-maintenance constraints apply as the rest of `tools/*` — explicit `.ts` import
+extensions, erasable syntax only, no `process.exit()` (see the `showboat` skill's
+maintainer notes). Tests run under ts-jest ESM via the package's `check:fast`.
