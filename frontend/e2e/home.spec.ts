@@ -7,6 +7,11 @@ test.use({ storageState: { cookies: [], origins: [] } });
 // With the Supabase auth gate active, an unauthenticated visitor to any protected
 // route is redirected to /login by the middleware. (With no session cookie,
 // getUser() short-circuits to null without even contacting the backend.)
+test('page head includes apple-touch-icon for iOS home screen shortcut', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
+});
+
 test('unauthenticated visit to / is gated to the login page', async ({ page }) => {
   // getUser() runs server-side on the redirect + login render; allow headroom.
   test.setTimeout(60_000);
