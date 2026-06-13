@@ -1,10 +1,11 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { makeFolder, makeItem } from './support/constants';
+import { pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
 /**
- * Drag-to-folder: a top-level task row carries a drag handle; the sidebar Inbox and
+ * Drag-to-folder: the whole task row is the drag surface (no handle); the sidebar Inbox and
  * folders are drop targets. A drop routes through the optimistic moveTask action, so the
  * task leaves its current view instantly and is filed under the target folder.
  */
@@ -15,14 +16,13 @@ import { expect, test } from './support/fixtures';
  * steps (it needs intermediate pointermove events to resolve the collision).
  */
 async function dragOnto(page: Page, source: Locator, target: Locator): Promise<void> {
-  const from = await source.boundingBox();
+  await pickUp(page, source);
   const to = await target.boundingBox();
-  if (from === null || to === null) throw new Error('source or target has no bounding box');
-
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from.x + from.width / 2 + 16, from.y + from.height / 2, { steps: 5 });
+  if (to === null) throw new Error('target has no bounding box');
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+  // Wait for the drop target to register the hover (its data-drop-over marker) before
+  // releasing, so the drop never races ahead of collision detection under load.
+  await expect(page.locator('[data-drop-over="true"]')).toBeVisible();
   await page.mouse.up();
 }
 
@@ -35,10 +35,10 @@ test.describe('drag a task to a folder', () => {
     await seed({ folders: [work], items: [makeItem('Drag me')] });
     await page.goto('/?view=inbox');
 
-    const handle = page.getByRole('button', { name: 'Drag "Drag me" to a folder' });
+    const source = page.getByText('Drag me');
     const workFolder = page.getByRole('link', { name: 'Work' });
 
-    await dragOnto(page, handle, workFolder);
+    await dragOnto(page, source, workFolder);
 
     // Optimistic move: the task leaves the inbox immediately ...
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Drag me')).toBeHidden();
@@ -56,10 +56,10 @@ test.describe('drag a task to a folder', () => {
     await seed({ folders: [work], items: [makeItem('File me', { folder_id: work.id })] });
     await page.goto(`/folders/${work.id}`);
 
-    const handle = page.getByRole('button', { name: 'Drag "File me" to a folder' });
+    const source = page.getByText('File me');
     const inbox = page.getByRole('link', { name: 'Inbox' });
 
-    await dragOnto(page, handle, inbox);
+    await dragOnto(page, source, inbox);
 
     // It leaves the Work folder view immediately ...
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('File me')).toBeHidden();

@@ -179,6 +179,19 @@ keyboard-focus + a11y floor with almost no work. To get them you must:
 
 ## Common Pitfalls
 
+- **Never `disabled` a *droppable* you only want to reject a drop on.** A disabled droppable
+  leaves collision detection entirely, so releasing the pointer on it makes dnd-kit report the
+  **previously-hovered** droppable as `over` — a silent drop onto the wrong target (this is how
+  "drop a task back on itself after hovering another → it vanishes under that other task"
+  happened). Keep every row a *registered* droppable and decide validity in `onDragEnd`
+  (skip self/descendant/completed/temp there), gating only the **highlight** on validity. Also
+  guard the mutation against cycles at the store (`reparentTask` no-ops a self/descendant
+  target) so a stale `over` can never corrupt the tree. (Disabling a *draggable* — e.g.
+  `useSortable({ disabled: isTempId })` — is fine; this is only about droppables.)
+- **Drop zones that bracket a list must not reflow it mid-drag.** A zone that grows from 0
+  height on drag-start shoves the rows (and the targets you're aiming at) down under the
+  cursor. Reserve the **top** zone's height at all times (invisible until needed); let the
+  **bottom** zone grow into the empty space below the list, which moves nothing.
 - **Never render the `useSortable` component inside `<DragOverlay>`.** Two mounts share one id →
   `useDraggable` id collision → glitchy drags. Split into a **presentational** row (pure props,
   no hook) rendered in the overlay, and a sortable wrapper that renders the presentational one.
@@ -234,6 +247,19 @@ Chromium), not unit tests:
   drop-state marker (e.g. a `data-drop-over` attr the droppable sets when `isOver`) before
   asserting or screenshotting. A throwaway demo-capture spec must be named `*.spec.ts` to match
   Playwright's `testMatch`.
+- **A drag fired right after `goto` races hydration under load** (e.g. inside the pre-push
+  `check:slow`, which runs the prod build): if React's handlers aren't attached yet, the
+  press+move is a **text selection**, not a drag, and silently does nothing. Drags that first
+  click something (expand a row) are fine; a bare drag-after-navigation isn't. Make a shared
+  `pickUp` helper that **retries the press until the row enters its dragging state** (the
+  `opacity-40` it gets while dragged) before gliding to the target.
+- **The `DragOverlay` clones the dragged item's text**, so `getByText(title)` matches **two**
+  nodes mid-drag (the row + the floating clone). Capture any bounding boxes you need *before*
+  pressing, or scope past the overlay.
+- **A re-parent's optimistic→reconcile re-render can swallow a click** that lands in the same
+  tick under load. Wrap a post-drop interaction (e.g. expanding the new parent) in
+  `expect(async () => …).toPass()`, clicking only while still collapsed so it never toggles
+  back shut.
 - Capture the working interaction as a **demo doc** (showboat skill) once green — for this visual
   change the evidence is screenshots (inbox handle → mid-drag overlay+highlight → filed), driven
   through the Playwright mock backend; never test-suite output.

@@ -552,41 +552,31 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Drag-to-folder handle — only top-level, active, reconciled rows are draggable
+  // Drag handle removed — the whole row is now the drag surface (see the dnd-kit skill).
+  // The drag/re-parent behaviour itself is covered by the pure resolvers + the e2e suite,
+  // since jsdom can't measure layout to drive a real drag.
   // ---------------------------------------------------------------------------
 
-  describe('drag to folder handle', () => {
-    it('renders a drag handle on a top-level active row', () => {
+  describe('drag handle', () => {
+    it('no longer renders a separate grip/drag handle button on a top-level row', () => {
       renderTasks([BASE_ITEM]);
-      expect(
-        screen.getByRole('button', { name: /drag "Write tests" to a folder/i }),
-      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /to a folder/i })).not.toBeInTheDocument();
     });
 
-    it('does not render a drag handle on a subtask row (a subtask follows its parent)', async () => {
+    it('does not render a drag handle on a subtask row either', async () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
 
-      // The nested child (depth 1) is not independently draggable...
-      expect(
-        screen.queryByRole('button', { name: /drag "Write unit tests" to a folder/i }),
-      ).not.toBeInTheDocument();
-      // ...but the top-level parent still has its handle.
-      expect(
-        screen.getByRole('button', { name: /drag "Write tests" to a folder/i }),
-      ).toBeInTheDocument();
-    });
-
-    it('does not render a drag handle on a completed row', () => {
-      renderTasks([COMPLETED_ITEM], COMPLETED);
       expect(screen.queryByRole('button', { name: /to a folder/i })).not.toBeInTheDocument();
     });
 
-    it('does not render a drag handle on an unreconciled (temp id) row', () => {
-      renderTasks([{ ...BASE_ITEM, id: 'temp-abc' }]);
-      expect(screen.queryByRole('button', { name: /to a folder/i })).not.toBeInTheDocument();
+    it('makes the title non-highlightable so a press-drag on it lifts the row', () => {
+      // The whole row is the drag surface, so the title text must not be selectable —
+      // select-none stops a press-drag on it from highlighting text instead of dragging.
+      renderTasks([BASE_ITEM]);
+      expect(screen.getByText('Write tests').closest('div')).toHaveClass('select-none');
     });
   });
 
