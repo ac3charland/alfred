@@ -1,7 +1,8 @@
 'use client';
 
-import { Check, FolderOpen, Inbox, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { Check, FolderOpen, Inbox, MoreHorizontal, Plus } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
+import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
 import { IconButton } from '@/components/atoms/icon-button';
@@ -175,7 +176,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                       event_.preventDefault();
                       void handleRenameFolder(folder.id);
                     }}
-                    className="flex flex-1 items-center gap-1 pl-3"
+                    className="flex flex-1 min-w-0 items-center gap-1 px-3"
                   >
                     <TextField
                       value={editingName}
@@ -188,7 +189,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                         }
                       }}
                       // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-                      className="flex-1"
+                      className="flex-1 min-w-0"
                     />
                     <IconButton
                       type="submit"
@@ -215,27 +216,55 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                     </ViewLink>
 
                     {/* Folder actions — on hover */}
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
-                      <IconButton
-                        size="sm"
-                        onClick={() => {
-                          setEditingFolderId(folder.id);
-                          setEditingName(folder.name);
-                        }}
-                        aria-label={`Rename ${folder.name}`}
-                      >
-                        <MoreHorizontal size={12} />
-                      </IconButton>
-                      <IconButton
-                        size="sm"
-                        tone="danger"
-                        onClick={() => {
-                          void handleDeleteFolder(folder.id);
-                        }}
-                        aria-label={`Delete ${folder.name}`}
-                      >
-                        <Trash2 size={12} />
-                      </IconButton>
+                    <div className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger asChild>
+                          <IconButton size="sm" aria-label={`Options for ${folder.name}`}>
+                            <MoreHorizontal size={12} />
+                          </IconButton>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.Content
+                            className={cn(
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              'z-50 min-w-32 rounded-xl border border-border bg-surface p-1',
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              'data-[state=open]:animate-in data-[state=closed]:animate-out',
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              'motion-reduce:animate-none',
+                            )}
+                            align="end"
+                            sideOffset={4}
+                          >
+                            <DropdownMenu.Item
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                              onSelect={() => {
+                                setEditingFolderId(folder.id);
+                                setEditingName(folder.name);
+                              }}
+                            >
+                              Edit
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Separator className="my-1 h-px bg-border" />
+                            <DropdownMenu.Item
+                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-destructive outline-none hover:bg-secondary focus:bg-secondary"
+                              onSelect={() => {
+                                void handleDeleteFolder(folder.id);
+                              }}
+                            >
+                              Delete
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Root>
                     </div>
                   </>
                 )}
