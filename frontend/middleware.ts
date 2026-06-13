@@ -14,6 +14,8 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith('/_next/static') ||
     pathname.startsWith('/_next/image') ||
     pathname === '/favicon.svg' ||
+    // Next.js metadata routes serve icons without a file extension (e.g. /apple-icon?hash).
+    pathname === '/apple-icon' ||
     STATIC_ASSET.test(pathname)
   );
 }
