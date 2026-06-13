@@ -7,6 +7,7 @@ import {
   countCompletedDescendants,
   getAncestorTitles,
   getDescendantIds,
+  getItemDepth,
   isTempId,
   makeOptimisticItem,
 } from './tree';
@@ -173,6 +174,24 @@ describe('getAncestorTitles', () => {
     ];
     // Walks x → y, then y → x is already seen, so it halts.
     expect(getAncestorTitles(cyclic, 'x')).toStrictEqual(['Y', 'X']);
+  });
+});
+
+describe('getItemDepth', () => {
+  it('returns 0 for a root item', () => {
+    expect(getItemDepth(flatItems(), 'item-1')).toBe(0);
+  });
+
+  it('returns 1 for a direct child', () => {
+    expect(getItemDepth(flatItems(), 'c-1')).toBe(1);
+  });
+
+  it('returns 2 for a grandchild', () => {
+    expect(getItemDepth(flatItems(), 'g-1')).toBe(2);
+  });
+
+  it('returns 0 for an unknown id', () => {
+    expect(getItemDepth(flatItems(), 'nonexistent')).toBe(0);
   });
 });
 

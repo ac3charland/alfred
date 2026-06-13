@@ -18,7 +18,7 @@ import { isPromoteZone, resolvePromoteToRoot } from '@/lib/dnd/promote-to-root';
 import { resolveReparent } from '@/lib/dnd/reparent';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
-import { collectSubtree, isTempId } from '@/lib/tree';
+import { collectSubtree, getItemDepth, isTempId } from '@/lib/tree';
 
 /**
  * Shared state about the in-progress drag, read by every TaskRow so it can light up as a
@@ -77,6 +77,12 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
   const activeTask = activeId === null ? undefined : tasks.find((item) => item.id === activeId);
   // A child can be pulled out to the top level; a task that's already a root can't.
   const activeDragIsChild = activeTask !== undefined && activeTask.parent_id !== null;
+
+  // Depth of the dragged task — drives the DragOverlay indent so title text aligns with the row.
+  const activeDragDepth = React.useMemo(
+    () => (activeId === null ? 0 : getItemDepth(tasks, activeId)),
+    [activeId, tasks],
+  );
 
   // The dragged item + its descendants — the rows that must NOT accept the current drag.
   const draggedSubtreeIds = React.useMemo<ReadonlySet<string>>(() => {
@@ -160,8 +166,14 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
         {children}
         <DragOverlay>
           {activeTask ? (
-            <div className="rounded-md border border-accent-teal bg-surface px-3 py-2 text-sm text-foreground shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]">
-              {activeTask.title}
+            // Mirror the row's layout so title text aligns with the dimmed in-place row, eliminating the jump on drag cancel.
+            <div
+              className="flex items-center gap-2 rounded-sm bg-surface py-2 pr-2 text-sm ring-1 ring-accent-teal shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]"
+              style={{ paddingLeft: `${String(activeDragDepth * 1.25 + 0.75)}rem` }}
+            >
+              <div aria-hidden="true" className="h-5 w-5 shrink-0" />
+              <div aria-hidden="true" className="h-4 w-4 shrink-0 rounded border border-border" />
+              <span className="min-w-0 flex-1 truncate text-foreground">{activeTask.title}</span>
             </div>
           ) : null}
         </DragOverlay>
