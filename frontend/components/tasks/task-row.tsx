@@ -1,7 +1,7 @@
 'use client';
 
-import { useDraggable } from '@dnd-kit/core';
-import { Check, ChevronRight, GripVertical, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { Check, ChevronRight, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
@@ -9,6 +9,7 @@ import { FieldLabel } from '@/components/atoms/field-label';
 import { IconButton } from '@/components/atoms/icon-button';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
+import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { Button } from '@/components/ui/button';
 import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
 import {
@@ -87,17 +88,44 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   // reactivates rather than completes.
   const isCompleted = node.status === 'completed';
 
-  // Drag-to-folder: only top-level (depth 0) active tasks are draggable — a subtask's
-  // folder follows its parent, so it isn't filed independently (see the dnd-kit skill).
-  // A temp (unreconciled) id can't be PATCHed yet, so it isn't draggable either.
-  const canDrag = depth === 0 && !isCompleted && !isTempId(node.id);
+  // The whole row is a drag source (the RowPointerSensor ignores presses on its buttons
+  // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
+  // be dragged to re-parent it; an active task can also be filed into a folder. A completed
+  // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
+  const canDrag = !isCompleted && !isTempId(node.id);
   const {
     setNodeRef: setDragNodeRef,
-    attributes: dragAttributes,
     listeners: dragListeners,
-    setActivatorNodeRef,
     isDragging,
   } = useDraggable({ id: node.id, disabled: !canDrag });
+
+  // The row is also a drop target: dropping another task onto it re-parents that task here.
+  // EVERY reconciled row stays a *registered* droppable — never `disabled`. A disabled
+  // droppable doesn't just refuse the drop, it drops out of collision detection, so
+  // releasing on it makes dnd-kit report the previously-hovered row as `over` instead.
+  // That stale target silently re-parents the item onto the wrong task (the
+  // "drop-on-self-after-highlighting-another vanishes the item" bug). Keeping the row
+  // registered makes `over` always reflect the row actually under the pointer; whether the
+  // drop is *allowed* is decided in the drag-end handler (see resolveReparent + the
+  // reparentTask cycle guard).
+  const { draggedSubtreeIds } = useTaskDrag();
+  const { setNodeRef: setDropNodeRef, isOver } = useDroppable({ id: node.id });
+  // Only a valid landing spot lights up: a different, active, reconciled task outside the
+  // dragged item's own subtree (re-parenting onto self/a descendant would make a cycle).
+  const isValidDropTarget = !isCompleted && !isTempId(node.id) && !draggedSubtreeIds.has(node.id);
+
+  // Merge the draggable + droppable refs onto the one row element (both share node.id —
+  // dnd-kit keeps draggables and droppables in separate registries, so this is safe).
+  const setRowRef = React.useCallback(
+    (element: HTMLElement | null) => {
+      setDragNodeRef(element);
+      setDropNodeRef(element);
+    },
+    [setDragNodeRef, setDropNodeRef],
+  );
+
+  // A valid drop target lights up and swaps its checkbox for a "+" while a task hovers it.
+  const isDropTarget = isOver && isValidDropTarget;
 
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
@@ -297,40 +325,28 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
         onTransitionEnd={handleCompleteCollapseEnd}
       >
         <div className={cn(isCompleting && 'overflow-hidden')}>
-          {/* Main row */}
+          {/* Main row — the whole surface is the drag handle (RowPointerSensor lets the
+              buttons/input below stay clickable). Dropping another task here re-parents it. */}
           <div
-            ref={setDragNodeRef}
+            ref={setRowRef}
+            {...(dragListeners ?? {})}
+            data-drop-over={isDropTarget ? 'true' : undefined}
             className={cn(
               // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
               'flex items-center gap-2 rounded-sm py-2 pr-2',
               // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-              'hover:bg-secondary/30 transition-colors duration-100 motion-reduce:transition-none',
+              'transition-colors duration-100 motion-reduce:transition-none',
+              // A valid drop target lights up (teal); otherwise the usual hover wash.
+              isDropTarget
+                ? // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  'bg-accent-teal/15 ring-1 ring-accent-teal/50'
+                : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  'hover:bg-secondary/30',
               // Dim the in-place row while its DragOverlay clone is being dragged.
               isDragging && 'opacity-40',
             )}
             style={{ paddingLeft: indentLeft }}
           >
-            {/* Drag handle — only top-level active rows file into folders (see the dnd-kit skill) */}
-            {canDrag && (
-              <button
-                type="button"
-                ref={setActivatorNodeRef}
-                {...dragAttributes}
-                {...(dragListeners ?? {})}
-                aria-label={`Drag "${node.title}" to a folder`}
-                className={cn(
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'flex h-5 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/60 hover:text-foreground',
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none',
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                )}
-              >
-                <GripVertical size={14} />
-              </button>
-            )}
-
             {/* Expand/collapse toggle */}
             <IconButton
               size="sm"
@@ -354,35 +370,48 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               />
             </IconButton>
 
-            {/* Completion checkbox */}
-            <button
-              type="button"
-              onClick={() => {
-                if (isCompleting) return;
-                if (isCompleted) {
-                  void handleToggleUncomplete();
-                } else {
-                  handleToggleComplete();
+            {/* Completion checkbox — or, while a task is dropped onto this row, a "+" that
+                signals it will become a child here (replaces the checkbox; no animation). */}
+            {isDropTarget ? (
+              <div
+                aria-hidden="true"
+                className={cn(
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal text-background',
+                )}
+              >
+                <Plus size={10} strokeWidth={3} />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCompleting) return;
+                  if (isCompleted) {
+                    void handleToggleUncomplete();
+                  } else {
+                    handleToggleComplete();
+                  }
+                }}
+                aria-label={
+                  isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`
                 }
-              }}
-              aria-label={
-                isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`
-              }
-              className={cn(
-                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                showAsComplete
-                  ? 'bg-accent-teal border-accent-teal'
-                  : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
-                // The snappy press: a quick scale overshoot the instant completion begins.
-                isCompleting && 'animate-check-pop motion-reduce:animate-none',
-              )}
-            >
-              {showAsComplete && <Check size={10} className="text-background" strokeWidth={3} />}
-            </button>
+                className={cn(
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                  showAsComplete
+                    ? 'bg-accent-teal border-accent-teal'
+                    : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                      'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
+                  // The snappy press: a quick scale overshoot the instant completion begins.
+                  isCompleting && 'animate-check-pop motion-reduce:animate-none',
+                )}
+              >
+                {showAsComplete && <Check size={10} className="text-background" strokeWidth={3} />}
+              </button>
+            )}
 
             {/* Title */}
             {isEditingTitle ? (
@@ -427,7 +456,9 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               </>
             ) : (
               <div
-                className="flex-1 flex flex-col min-w-0"
+                // select-none: the whole row is a drag surface, so the title text is no
+                // longer highlightable. Double-click still opens the inline title editor.
+                className="flex-1 flex flex-col min-w-0 select-none"
                 onDoubleClick={() => {
                   // Reset the draft so a previously-abandoned edit doesn't resurface.
                   setDraftTitle(node.title);
@@ -438,7 +469,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                   className={cn(
                     // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
-                    'text-sm truncate cursor-text transition-colors duration-300 delay-200 motion-reduce:transition-none',
+                    'text-sm truncate transition-colors duration-300 delay-200 motion-reduce:transition-none',
                     // Fade to low-contrast as the row completes; a completed row reads
                     // low-contrast; an active row full-contrast.
                     isCompleting

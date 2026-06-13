@@ -261,6 +261,10 @@ The Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_U
 
 **`context.videosPath` / `videoSize` were removed in v1.60** — use `recordVideo: { dir: '...', size: {...} }` in context/use options instead.
 
+**`reducedMotion` is not a top-level `test.use()` / `use` option here** — it's a *context* option. `test.use({ reducedMotion: 'reduce' })` fails typecheck (`'reducedMotion' does not exist in type 'Fixtures<…>'`); set `test.use({ contextOptions: { reducedMotion: 'reduce' } })` instead. It still "works" at runtime if passed at the top level (silently ignored), so the only signal is the type error — easy to miss until the type-check gate catches it.
+
+**`getByRole(role, { name })` matches the name as a case-insensitive _substring_ by default** — so `getByRole('list', { name: 'Tasks' })` also matches a `Subtasks` list, throwing a strict-mode "resolved to 2 elements" once a subtask list is on screen. Pass `{ name: 'Tasks', exact: true }` when one accessible name is a substring of another.
+
 ---
 
 ## Mocking the backend — the alfred integration suite (run authenticated, seeded tests)
