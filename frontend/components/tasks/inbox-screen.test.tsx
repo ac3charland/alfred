@@ -219,4 +219,18 @@ describe('InboxScreen', () => {
       expect(screen.getByTestId('task-list')).toHaveTextContent('Your inbox is empty');
     });
   });
+
+  describe('collapse all button', () => {
+    it('renders a collapse all button when the inbox is open', () => {
+      render(<InboxScreen open />);
+
+      expect(screen.getByRole('button', { name: /collapse all tasks/i })).toBeInTheDocument();
+    });
+
+    it('does not render a collapse button when the inbox is closed', () => {
+      render(<InboxScreen open={false} />);
+
+      expect(screen.queryByRole('button', { name: /collapse all tasks/i })).not.toBeInTheDocument();
+    });
+  });
 });
