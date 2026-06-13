@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -37,6 +37,13 @@ export interface DemosContext {
   readonly branchFolder: string | undefined;
   /** True when `branchFolder` exists, is a directory, and holds at least one entry. */
   readonly branchFolderHasContent: boolean;
+  /**
+   * Branches declared in the `branch:` YAML front matter of any demo doc anywhere
+   * under `demosDir`, sorted and de-duplicated. This is how a demo claims a branch
+   * without naming its folder after it — letting the folder be a semantic feature
+   * name (the `branch-folder` rule reads this).
+   */
+  readonly declaredBranches: readonly string[];
 }
 
 /**
@@ -60,6 +67,52 @@ function listRootFiles(demosDir: string): string[] {
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name),
   );
+}
+
+/**
+ * Read the `branch` declared in a demo doc's leading YAML front matter, or
+ * `undefined` when the file has no front matter, no `branch:` key, an empty value,
+ * or can't be read. Front matter must be the first thing in the file (`---` … `---`);
+ * the value may be quoted. Kept intentionally small — demo-lint only needs this one
+ * scalar, not a full YAML parser.
+ */
+export function readDeclaredBranch(file: string): string | undefined {
+  let content: string;
+  try {
+    content = readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!block) return undefined;
+  for (const line of (block[1] ?? '').split(/\r?\n/)) {
+    const match = /^branch:\s*(.*)$/.exec(line.trim());
+    if (!match) continue;
+    const value = (match[1] ?? '').trim().replaceAll(/^['"]|['"]$/g, '');
+    return value.length > 0 ? value : undefined;
+  }
+  return undefined;
+}
+
+/** Recursively collect the paths of every `*.md` file under `dir`. */
+function listMarkdownFiles(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...listMarkdownFiles(full));
+    else if (entry.isFile() && entry.name.endsWith('.md')) files.push(full);
+  }
+  return files;
+}
+
+/** Branches declared in front matter across every demo doc, sorted and de-duplicated. */
+function collectDeclaredBranches(demosDir: string): string[] {
+  const branches: string[] = [];
+  for (const file of listMarkdownFiles(demosDir)) {
+    const branch = readDeclaredBranch(file);
+    if (branch !== undefined && !branches.includes(branch)) branches.push(branch);
+  }
+  return sorted(branches);
 }
 
 /** True when `dir` exists, is a directory, and is not empty. */
@@ -106,5 +159,6 @@ export function gatherDemos(
     branchFolder,
     branchFolderHasContent:
       branchFolder === undefined ? false : isNonEmptyDir(path.join(absolute, branchFolder)),
+    declaredBranches: collectDeclaredBranches(absolute),
   };
 }

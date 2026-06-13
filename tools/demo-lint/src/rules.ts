@@ -46,21 +46,25 @@ const noRootFiles: Rule = {
 };
 
 /**
- * While developing a feature branch, its demo belongs in a folder named after the
- * branch. The rule skips trunk and an undeterminable branch so it only fires where
- * a real, missing branch folder is the problem.
+ * While developing a feature branch, it must own a demo. A demo claims its branch by
+ * declaring `branch: <name>` in the doc's YAML front matter (so the folder can carry a
+ * semantic feature name instead of the branch), and `npm run demo -- init` stamps that
+ * automatically. A legacy folder named after the branch with content still satisfies it.
+ * The rule skips trunk and an undeterminable branch so it only fires on a real feature
+ * branch that has no demo at all.
  */
 const branchFolder: Rule = {
   name: 'branch-folder',
-  description: 'Each feature branch must capture its demo in docs/demos/<current-branch>/.',
+  description: 'Each feature branch must own a demo, tagged with branch in its front matter.',
   check(demos) {
     if (demos.branchFolder === undefined) return []; // trunk, detached HEAD, or no git.
-    if (demos.branchFolderHasContent) return [];
+    if (demos.declaredBranches.includes(demos.branchFolder)) return []; // claimed in front matter.
+    if (demos.branchFolderHasContent) return []; // legacy: folder named after the branch.
     return [
       {
         rule: 'branch-folder',
         severity: 'error',
-        message: `branch "${demos.branchFolder}" has no demo folder. Create ${demos.displayPath}/${demos.branchFolder}/ and capture this branch's demo there (e.g. npm run demo -- init ${demos.displayPath}/${demos.branchFolder}/<name>.md "<title>").`,
+        message: `branch "${demos.branchFolder}" has no demo. Capture it in its own folder under ${demos.displayPath}/ — npm run demo -- init ${demos.displayPath}/<feature-name>/<name>.md "<title>" records this branch in the doc's front matter automatically.`,
       },
     ];
   },

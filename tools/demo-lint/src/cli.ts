@@ -20,7 +20,8 @@ Options:
 Rules:
   ✗ no-root-files  — only README.md may sit directly in docs/demos/; every demo
                      lives in its own folder.
-  ✗ branch-folder  — a feature branch must capture its demo in docs/demos/<branch>/.
+  ✗ branch-folder  — a feature branch must own a demo; a doc claims a branch via
+                     "branch: <name>" in its YAML front matter (folder name is free).
 
 In this repo, run it through the package script: npm run lint:demos -w tools/demo-lint
 `;
