@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { Spinner } from '@/components/atoms/spinner';
 import { TextField } from '@/components/atoms/text-field';
+import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
 import { Button } from '@/components/ui/button';
 import { useTaskActions } from '@/lib/stores/tasks-store';
 import { cn } from '@/lib/utils';
@@ -49,7 +50,20 @@ export function CaptureBox({
   React.useEffect(() => {
     if (compact) {
       inputReference.current?.focus();
+    } else {
+      textareaReference.current?.focus();
     }
+  }, [compact]);
+
+  React.useEffect(() => {
+    if (compact) return;
+    const handleFocus = () => {
+      textareaReference.current?.focus();
+    };
+    globalThis.addEventListener(ALFRED_CAPTURE_FOCUS_EVENT, handleFocus);
+    return () => {
+      globalThis.removeEventListener(ALFRED_CAPTURE_FOCUS_EVENT, handleFocus);
+    };
   }, [compact]);
 
   const handleSubmit = async (event_?: React.SyntheticEvent) => {

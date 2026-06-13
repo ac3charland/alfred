@@ -36,6 +36,25 @@ describe('CaptureBox', () => {
     expect(screen.getByPlaceholderText(/add subtask/i)).toHaveFocus();
   });
 
+  it('focuses the textarea on mount in full mode', () => {
+    renderWithProviders(<CaptureBox />);
+
+    expect(screen.getByRole('textbox', { name: /capture box/i })).toHaveFocus();
+  });
+
+  it('focuses the textarea when alfred-capture-focus event is dispatched', () => {
+    renderWithProviders(<CaptureBox />);
+
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(screen.getByRole('textbox', { name: /capture box/i })).not.toHaveFocus();
+
+    act(() => {
+      globalThis.dispatchEvent(new CustomEvent('alfred-capture-focus'));
+    });
+
+    expect(screen.getByRole('textbox', { name: /capture box/i })).toHaveFocus();
+  });
+
   it('submit button is disabled when input is empty', () => {
     renderWithProviders(<CaptureBox />);
 
