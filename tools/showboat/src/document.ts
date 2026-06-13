@@ -29,6 +29,14 @@ export interface ImageEntry {
 export type Entry = NoteEntry | ExecEntry | ImageEntry;
 
 export interface ShowboatDocument {
+  /**
+   * Raw YAML front matter body (the lines between the `---` fences, without them).
+   * Carries metadata that lives outside the rendered doc — currently the `branch`
+   * the demo belongs to, which `demo-lint` reads so the folder name can be a
+   * semantic feature name instead of the branch. Absent (or empty) when the doc has
+   * no front matter, in which case serialization emits none.
+   */
+  frontMatter?: string | undefined;
   title: string;
   timestamp: string;
   entries: Entry[];
@@ -81,7 +89,10 @@ function entryToMarkdown(entry: Entry): string {
 export function serializeDocument(document: ShowboatDocument): string {
   const header = `# ${document.title}\n\n*${document.timestamp}*`;
   const parts = [header, ...document.entries.map((entry) => entryToMarkdown(entry))];
-  return `${parts.join('\n\n')}\n`;
+  const body = `${parts.join('\n\n')}\n`;
+  const frontMatter = document.frontMatter;
+  if (frontMatter === undefined || frontMatter === '') return body;
+  return `---\n${frontMatter}\n---\n\n${body}`;
 }
 
 interface FenceToken {
@@ -193,9 +204,24 @@ function mergeTokens(tokens: readonly Token[]): Entry[] {
   return entries;
 }
 
+/**
+ * Pull a leading YAML front matter block off the top of the doc. Front matter must
+ * be the very first line (`---`) and run to the next `---`; absent a closing fence,
+ * the leading `---` is treated as ordinary content (a horizontal rule), not front
+ * matter. Returns the raw inner body and the index of the first line after it.
+ */
+function extractFrontMatter(lines: readonly string[]): { frontMatter?: string; start: number } {
+  if ((lines[0] ?? '') !== '---') return { start: 0 };
+  let end = 1;
+  while (end < lines.length && (lines[end] ?? '') !== '---') end += 1;
+  if (end >= lines.length) return { start: 0 }; // no closing fence → not front matter
+  return { frontMatter: lines.slice(1, end).join('\n'), start: end + 1 };
+}
+
 export function parseDocument(markdown: string): ShowboatDocument {
   const lines = markdown.split('\n');
-  let index = 0;
+  const { frontMatter, start } = extractFrontMatter(lines);
+  let index = start;
   // Stryker disable next-line EqualityOperator,StringLiteral: AT_CEILING — EqualityOperator(<→<=) only differs at the array boundary on an all-blank tail: with <=, the extra iteration reads lines[length]=undefined→'' (''.trim()===''→index+=1), then exits; the following titleMatch reads the same ''→null→throws either way; unobservable. (The <→>= variant on this line IS killable and stays covered by the parseDocument structural tests; Stryker can't isolate it from <→<= at per-mutator granularity.) StringLiteral(?? fallback): lines[index] is always a string within index<lines.length.
   while (index < lines.length && (lines[index] ?? '').trim() === '') index += 1;
 
@@ -219,5 +245,5 @@ export function parseDocument(markdown: string): ShowboatDocument {
     index += 1;
   }
 
-  return { title, timestamp, entries: mergeTokens(tokenize(lines, index)) };
+  return { frontMatter, title, timestamp, entries: mergeTokens(tokenize(lines, index)) };
 }

@@ -30,29 +30,50 @@ const failingConvert = (): Promise<Uint8Array> => Promise.reject(new Error('conv
 describe('init', () => {
   it('writes the title and an ISO-8601 timestamp', () => {
     const { file } = tempDoc();
-    init(file, 'My Demo', new Date('2026-06-10T12:00:00.000Z'));
+    init(file, 'My Demo', { now: new Date('2026-06-10T12:00:00.000Z') });
     const document = parseDocument(readFileSync(file, 'utf8'));
     expect(document.title).toBe('My Demo');
     expect(document.timestamp).toBe('2026-06-10T12:00:00.000Z');
     expect(document.entries).toEqual([]);
   });
 
-  it('creates missing parent folders so a doc can land in its branch folder', () => {
+  it('creates missing parent folders so a doc can land in its own folder', () => {
     const { directory } = tempDoc();
-    // A branch name with a slash nests; init must create the whole chain.
-    const nested = path.join(directory, 'claude', 'feat-x', 'demo.md');
-    init(nested, 'Nested', new Date('2026-06-10T12:00:00.000Z'));
+    // A semantic folder name may nest; init must create the whole chain.
+    const nested = path.join(directory, 'cool', 'feature', 'demo.md');
+    init(nested, 'Nested', { now: new Date('2026-06-10T12:00:00.000Z') });
     expect(existsSync(nested)).toBe(true);
   });
 
   it('creates a doc with exactly zero entries — serialized file contains nothing beyond header', () => {
     const { file } = tempDoc();
-    init(file, 'Empty', new Date('2026-01-01T00:00:00.000Z'));
+    init(file, 'Empty', { now: new Date('2026-01-01T00:00:00.000Z') });
     const raw = readFileSync(file, 'utf8');
     // Exact expected serialization: header line, blank line, italic timestamp, trailing newline.
     // If entries were non-empty (e.g. ["Stryker was here"]), join() would add \n\n + the stringified
     // entry (undefined → empty string) resulting in a longer file.
     expect(raw).toBe('# Empty\n\n*2026-01-01T00:00:00.000Z*\n');
+  });
+
+  it('stamps the branch into YAML front matter when one is given', () => {
+    const { file } = tempDoc();
+    init(file, 'Tagged', { branch: 'claude/foo-bar', now: new Date('2026-01-01T00:00:00.000Z') });
+    expect(readFileSync(file, 'utf8')).toBe(
+      '---\nbranch: claude/foo-bar\n---\n\n# Tagged\n\n*2026-01-01T00:00:00.000Z*\n',
+    );
+  });
+
+  it('writes no front matter when the branch is empty or omitted', () => {
+    const { file } = tempDoc();
+    init(file, 'Untagged', { branch: '', now: new Date('2026-01-01T00:00:00.000Z') });
+    expect(readFileSync(file, 'utf8').startsWith('---')).toBe(false);
+  });
+
+  it('keeps the branch front matter through a later note (load/save round-trip)', () => {
+    const { file } = tempDoc();
+    init(file, 'Tagged', { branch: 'feat/x', now: new Date('2026-01-01T00:00:00.000Z') });
+    note(file, 'a later edit');
+    expect(parseDocument(readFileSync(file, 'utf8')).frontMatter).toBe('branch: feat/x');
   });
 });
 
@@ -378,7 +399,7 @@ describe('verify', () => {
     const { file, directory } = tempDoc();
     // A fixed timestamp with no 4/9 digits and a command whose code text contains
     // neither, so tampering the recorded "4" hits only the output block.
-    init(file, 'D', new Date('2026-01-01T00:00:00.000Z'));
+    init(file, 'D', { now: new Date('2026-01-01T00:00:00.000Z') });
     exec(file, 'bash', 'echo $((6 - 2))', directory);
     writeFileSync(file, readFileSync(file, 'utf8').replace('4', '9'));
     const result = verify(file, directory);
@@ -390,7 +411,7 @@ describe('verify', () => {
 
   it('--output writes a refreshed copy without touching the original', () => {
     const { file, directory } = tempDoc();
-    init(file, 'D', new Date('2026-01-01T00:00:00.000Z'));
+    init(file, 'D', { now: new Date('2026-01-01T00:00:00.000Z') });
     exec(file, 'bash', 'echo $((6 - 2))', directory);
     writeFileSync(file, readFileSync(file, 'utf8').replace('4', '9'));
     const out = path.join(directory, 'refreshed.md');
