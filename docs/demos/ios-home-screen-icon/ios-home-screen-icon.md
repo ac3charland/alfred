@@ -13,9 +13,9 @@ curl -s http://localhost:3000/login | python3 -c "import sys,re; html=sys.stdin.
 ```
 
 ```output
-<link rel="apple-touch-icon" href="/apple-icon?39709f27fbaece44" type="image/png" sizes="180x180"/>
+<link rel="apple-touch-icon" href="/apple-icon?87b34abda0bebb1a" type="image/png" sizes="180x180"/>
 ```
 
-The icon itself — a 180×180 PNG matching the favicon (dark navy background, white lowercase "a"):
+The icon uses Liberation Serif (a metric-compatible substitute for Georgia) with `marginBottom: 34` in the flexbox container to correct for em-box descent, giving exactly 52px of dark space above and below the glyph:
 
 ![](ios-home-screen-icon-image-1.png)
