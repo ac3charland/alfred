@@ -176,7 +176,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                       event_.preventDefault();
                       void handleRenameFolder(folder.id);
                     }}
-                    className="flex flex-1 items-center gap-1 px-3"
+                    className="flex flex-1 min-w-0 items-center gap-1 px-3"
                   >
                     <TextField
                       value={editingName}
@@ -189,7 +189,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                         }
                       }}
                       // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-                      className="flex-1"
+                      className="flex-1 min-w-0"
                     />
                     <IconButton
                       type="submit"
