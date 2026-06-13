@@ -663,6 +663,78 @@ describe('reparentTask', () => {
     expect(draggedAfter?.parent_id).toBeNull();
     expect(draggedAfter?.folder_id).toBeNull();
   });
+
+  // Cycle guards — a task may never become its own parent or a child of its own
+  // descendant. Without these, the bad parent_id makes buildTree drop the subtree and the
+  // task (and its children) silently vanish — and the corruption persists to the server.
+  it('is a no-op when dropped onto itself (would self-parent)', async () => {
+    const dragged = item({ id: 'd1', parent_id: null });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'd1');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(result.current.tasks.find((t) => t.id === 'd1')?.parent_id).toBeNull();
+  });
+
+  it('is a no-op when dropped onto one of its own descendants (would make a cycle)', async () => {
+    const dragged = item({ id: 'd1', parent_id: null });
+    const child = item({ id: 'd1-c', parent_id: 'd1' });
+    const grandchild = item({ id: 'd1-gc', parent_id: 'd1-c' });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([dragged, child, grandchild]),
+    });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'd1-gc');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(result.current.tasks.find((t) => t.id === 'd1')?.parent_id).toBeNull();
+  });
+
+  // Promote to a top-level task: parent_id → null, folder kept.
+  it('clears parent_id (keeping the folder) when re-parented to null', async () => {
+    const dragged = item({ id: 'd1', parent_id: 'p1', folder_id: 'folder-1' });
+    const parent = item({ id: 'p1', folder_id: 'folder-1' });
+    mockUpdateItem.mockResolvedValue(item({ id: 'd1', parent_id: null, folder_id: 'folder-1' }));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged, parent]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', null);
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1', { parent_id: null });
+    const draggedAfter = result.current.tasks.find((t) => t.id === 'd1');
+    expect(draggedAfter?.parent_id).toBeNull();
+    expect(draggedAfter?.folder_id).toBe('folder-1');
+  });
+
+  it('is a no-op when promoting a task that is already top-level', async () => {
+    const dragged = item({ id: 'd1', parent_id: null });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', null);
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('restores the original parent when a promote-to-root fails', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const dragged = item({ id: 'd1', parent_id: 'p1', folder_id: 'folder-1' });
+    const parent = item({ id: 'p1', folder_id: 'folder-1' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged, parent]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', null).catch(() => {});
+    });
+
+    expect(result.current.tasks.find((t) => t.id === 'd1')?.parent_id).toBe('p1');
+  });
 });
 
 describe('deleteTask', () => {

@@ -100,14 +100,19 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   } = useDraggable({ id: node.id, disabled: !canDrag });
 
   // The row is also a drop target: dropping another task onto it re-parents that task here.
-  // It bows out while it's the dragged item or one of its descendants (a cycle), and a
-  // completed / temp row never accepts a drop.
+  // EVERY reconciled row stays a *registered* droppable — never `disabled`. A disabled
+  // droppable doesn't just refuse the drop, it drops out of collision detection, so
+  // releasing on it makes dnd-kit report the previously-hovered row as `over` instead.
+  // That stale target silently re-parents the item onto the wrong task (the
+  // "drop-on-self-after-highlighting-another vanishes the item" bug). Keeping the row
+  // registered makes `over` always reflect the row actually under the pointer; whether the
+  // drop is *allowed* is decided in the drag-end handler (see resolveReparent + the
+  // reparentTask cycle guard).
   const { draggedSubtreeIds } = useTaskDrag();
-  const canDrop = !isCompleted && !isTempId(node.id) && !draggedSubtreeIds.has(node.id);
-  const { setNodeRef: setDropNodeRef, isOver } = useDroppable({
-    id: node.id,
-    disabled: !canDrop,
-  });
+  const { setNodeRef: setDropNodeRef, isOver } = useDroppable({ id: node.id });
+  // Only a valid landing spot lights up: a different, active, reconciled task outside the
+  // dragged item's own subtree (re-parenting onto self/a descendant would make a cycle).
+  const isValidDropTarget = !isCompleted && !isTempId(node.id) && !draggedSubtreeIds.has(node.id);
 
   // Merge the draggable + droppable refs onto the one row element (both share node.id —
   // dnd-kit keeps draggables and droppables in separate registries, so this is safe).
@@ -120,7 +125,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   );
 
   // A valid drop target lights up and swaps its checkbox for a "+" while a task hovers it.
-  const isDropTarget = isOver && canDrop;
+  const isDropTarget = isOver && isValidDropTarget;
 
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;

@@ -42,10 +42,12 @@ interface TaskActions {
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
   /**
-   * Re-parent a task under another task: set its `parent_id` to `newParentId` and have
-   * its whole subtree adopt the new parent's folder (a subtree shares one folder bucket).
+   * Re-parent a task. With a `newParentId`, nest it under that task and have its whole
+   * subtree adopt the new parent's folder (a subtree shares one folder bucket). With
+   * `null`, promote it to a top-level task (clear `parent_id`, keep its current folder).
+   * No-ops on any move that would create a cycle (onto itself or one of its descendants).
    */
-  reparentTask: (id: string, newParentId: string) => Promise<void>;
+  reparentTask: (id: string, newParentId: string | null) => Promise<void>;
   /** Delete a task and its subtree (the DB cascades the children). */
   deleteTask: (id: string) => Promise<void>;
 }
@@ -217,10 +219,33 @@ export function TasksProvider({
       async reparentTask(id, newParentId) {
         const current = tasksRef.current;
         const dragged = current.find((item) => item.id === id);
-        const newParent = current.find((item) => item.id === newParentId);
-        // Both ends must exist (the target may have just been deleted/reconciled away).
-        if (dragged === undefined || newParent === undefined) return;
+        if (dragged === undefined) return;
         const affected = collectSubtree(current, id);
+        // A task can't become its own parent, nor a child of one of its own descendants —
+        // either makes a cycle that buildTree drops, so the subtree silently vanishes (and
+        // the bad parent_id persists). `affected` is the dragged item PLUS its descendants,
+        // so one membership check rejects both self and descendant targets. Guarding here,
+        // at the source of truth, keeps any caller (a stale drag target, a future feature)
+        // from corrupting the tree regardless of UI-level checks.
+        if (newParentId !== null && affected.some((item) => item.id === newParentId)) return;
+
+        // Promote to a top-level task: clear parent_id, keep the current folder.
+        if (newParentId === null) {
+          if (dragged.parent_id === null) return; // already a root — nothing to do
+          dispatch({ type: 'patch', ids: [id], patch: { parent_id: null } });
+          try {
+            const saved = await api.updateItem(id, { parent_id: null });
+            dispatch({ type: 'upsert', items: [saved] });
+          } catch (error) {
+            dispatch({ type: 'upsert', items: [dragged] });
+            throw error;
+          }
+          return;
+        }
+
+        const newParent = current.find((item) => item.id === newParentId);
+        // The target may have just been deleted/reconciled away.
+        if (newParent === undefined) return;
         const newFolderId = newParent.folder_id;
         // Moving under a parent in a different folder drags the whole subtree's folder
         // along; staying in the same folder is a pure parent change (no descendant writes).
