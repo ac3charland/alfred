@@ -19,6 +19,7 @@ import {
 } from '@/lib/stores/active-editor-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
+import { useCollapseSubscription } from '@/lib/task-collapse-context';
 import type { ItemNode } from '@/lib/tree';
 import {
   countCompletedDescendants,
@@ -82,6 +83,14 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
   const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
   const [isMetaOpen, setIsMetaOpen] = React.useState(false);
+
+  const subscribe = useCollapseSubscription();
+  React.useEffect(() => {
+    return subscribe(() => {
+      setIsExpanded(false);
+      setShowCompleted(false);
+    });
+  }, [subscribe]);
 
   // A row's completed state is read off the node itself (not the view), so a completed
   // child shown under an active parent renders checked + low-contrast, and clicking it
