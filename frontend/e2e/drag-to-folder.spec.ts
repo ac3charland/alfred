@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { makeFolder, makeItem } from './support/constants';
+import { pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -15,14 +16,13 @@ import { expect, test } from './support/fixtures';
  * steps (it needs intermediate pointermove events to resolve the collision).
  */
 async function dragOnto(page: Page, source: Locator, target: Locator): Promise<void> {
-  const from = await source.boundingBox();
+  await pickUp(page, source);
   const to = await target.boundingBox();
-  if (from === null || to === null) throw new Error('source or target has no bounding box');
-
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from.x + from.width / 2 + 16, from.y + from.height / 2, { steps: 5 });
+  if (to === null) throw new Error('target has no bounding box');
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+  // Wait for the drop target to register the hover (its data-drop-over marker) before
+  // releasing, so the drop never races ahead of collision detection under load.
+  await expect(page.locator('[data-drop-over="true"]')).toBeVisible();
   await page.mouse.up();
 }
 

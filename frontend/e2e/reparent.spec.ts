@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { makeItem } from './support/constants';
+import { boxOf, pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
 // Expand/collapse is animated (a grid-rows transition). Reduced motion makes it instant so
@@ -22,16 +23,26 @@ test.use({ contextOptions: { reducedMotion: 'reduce' } });
  * steps and wait for its drop highlight (`data-drop-over`) before releasing.
  */
 async function reparentOnto(page: Page, source: Locator, target: Locator): Promise<void> {
-  const from = await source.boundingBox();
+  await pickUp(page, source);
   const to = await target.boundingBox();
-  if (from === null || to === null) throw new Error('source or target has no bounding box');
-
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from.x + from.width / 2 + 16, from.y + from.height / 2, { steps: 5 });
+  if (to === null) throw new Error('target has no bounding box');
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
   await expect(page.locator('[data-drop-over="true"]')).toBeVisible();
   await page.mouse.up();
+}
+
+/**
+ * Expand collapsed rows until `childText` is revealed. Re-parenting is optimistic and then
+ * reconciles with the server; under load that re-render can swallow a single expand click, so
+ * retry it — clicking only rows that are still collapsed (whose toggle reads "Expand
+ * subtasks"), so an already-open row is never toggled back shut.
+ */
+async function expandToReveal(page: Page, childText: string): Promise<void> {
+  await expect(async () => {
+    const collapsed = page.getByRole('button', { name: 'Expand subtasks' });
+    if ((await collapsed.count()) > 0) await collapsed.first().click();
+    await expect(page.getByText(childText)).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
 }
 
 test.describe('re-parent a task by dragging it onto another task', () => {
@@ -48,10 +59,7 @@ test.describe('re-parent a task by dragging it onto another task', () => {
     // The parent now owns the dragged task — expand it to reveal the new child.
     const parentRow = page.getByRole('listitem').filter({ hasText: 'Parent task' });
     await expect(parentRow).toContainText('Dragged task');
-    await page.getByRole('button', { name: 'Expand subtasks' }).click();
-    await expect(
-      page.getByRole('list', { name: 'Subtasks' }).getByText('Dragged task'),
-    ).toBeVisible();
+    await expandToReveal(page, 'Dragged task');
   });
 
   test('brings the dragged task’s whole subtree along', async ({ page, seed }) => {
@@ -67,9 +75,8 @@ test.describe('re-parent a task by dragging it onto another task', () => {
     await expect(page.getByRole('listitem').filter({ hasText: 'New home' })).toContainText(
       'Move me',
     );
-    await page.getByRole('button', { name: 'Expand subtasks' }).click(); // expand New home
-    await page.getByRole('button', { name: 'Expand subtasks' }).click(); // expand Move me
-    await expect(page.getByText('My child')).toBeVisible();
+    // Expand New home, then Move me, to reveal the moved grandchild.
+    await expandToReveal(page, 'My child');
   });
 
   test('re-parents a subtask onto a different task', async ({ page, seed }) => {
@@ -87,9 +94,44 @@ test.describe('re-parent a task by dragging it onto another task', () => {
     await expect(page.getByRole('listitem').filter({ hasText: 'Second parent' })).toContainText(
       'Loose subtask',
     );
-    await page.getByRole('button', { name: 'Expand subtasks' }).click();
-    await expect(
-      page.getByRole('list', { name: 'Subtasks' }).getByText('Loose subtask'),
-    ).toBeVisible();
+    await expandToReveal(page, 'Loose subtask');
+  });
+
+  // Regression: dropping a task back on itself must be a no-op. Re-parenting a task onto
+  // itself (or a descendant) would make a cycle that buildTree drops, so the task and its
+  // whole subtree silently vanish. The drop must especially survive having *hovered another
+  // task first* (which used to leave a stale drop target behind). Cycles are also rejected
+  // at the store layer (see tasks-store.test.tsx); this guards the integrated drag.
+  test('dropping a task back on itself (after hovering another) leaves it untouched', async ({
+    page,
+    seed,
+  }) => {
+    const keep = makeItem('Keep me');
+    const sub = makeItem('My subtask', { parent_id: keep.id });
+    const other = makeItem('Other task');
+    await seed({ items: [keep, sub, other] });
+    await page.goto('/?view=inbox');
+
+    // Capture both rows' positions up front — once the drag starts, the DragOverlay renders
+    // a second "Keep me", so getByText would match two nodes. "Keep me" is a root, so the
+    // promote zones never reveal and nothing reflows.
+    const self = await boxOf(page.getByText('Keep me'));
+    const target = await boxOf(page.getByText('Other task'));
+
+    // Pick up "Keep me", hover "Other task" so it highlights, then glide back and drop on
+    // "Keep me" itself.
+    await pickUp(page, page.getByText('Keep me'));
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
+    await expect(page.locator('[data-drop-over="true"]')).toBeVisible();
+    await page.mouse.move(self.x + self.width / 2, self.y + self.height / 2, { steps: 10 });
+    await page.mouse.up();
+
+    // "Keep me" is still a top-level row (a direct child of the Tasks list) and still owns
+    // its subtask — it neither vanished into a cycle nor nested under the hovered task. The
+    // collapsed row's "1" badge proves the subtree came through intact.
+    const tasks = page.getByRole('list', { name: 'Tasks', exact: true });
+    const keepRow = tasks.locator(':scope > li').filter({ hasText: 'Keep me' });
+    await expect(keepRow).toBeVisible();
+    await expect(keepRow.getByText('1', { exact: true })).toBeVisible();
   });
 });
