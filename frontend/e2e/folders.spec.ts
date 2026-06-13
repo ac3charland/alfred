@@ -38,7 +38,9 @@ test('renames a folder', async ({ page, seed }) => {
   await seed({ folders: [makeFolder('Old name', { id: 'f1' })] });
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'Rename Old name' }).click();
+  await page.getByRole('link', { name: 'Old name' }).hover();
+  await page.getByRole('button', { name: 'Options for Old name' }).click();
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
   // Scope to the sidebar nav — the inbox capture box is also a textbox.
   const input = page.getByRole('navigation', { name: 'Navigation' }).getByRole('textbox');
   await input.fill('New name');
@@ -62,7 +64,9 @@ test('deleting a folder returns its tasks to the Inbox', async ({ page, seed }) 
     (response) =>
       response.url().includes('/api/folders/') && response.request().method() === 'DELETE',
   );
-  await page.getByRole('button', { name: 'Delete Temporary' }).click();
+  await page.getByRole('link', { name: 'Temporary' }).hover();
+  await page.getByRole('button', { name: 'Options for Temporary' }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
   await deleted;
   await expect(page.getByRole('link', { name: 'Temporary' })).toBeHidden();
 
