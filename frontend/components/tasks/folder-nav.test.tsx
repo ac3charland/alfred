@@ -35,6 +35,26 @@ const FOLDERS: Folder[] = [
   { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
 ];
 
+// Opens the options dropdown for the named folder and waits for the menu to appear.
+// Radix DropdownMenu portals set pointer-events:none on the body, so subsequent item
+// interactions must use keyboard navigation — see selectEdit / selectDelete below.
+const openFolderMenu = async (user: ReturnType<typeof userEvent.setup>, folderName: string) => {
+  await user.click(
+    screen.getByRole('button', { name: new RegExp(`options for ${folderName}`, 'i') }),
+  );
+  await screen.findByRole('menu');
+};
+
+// Selects "Edit" (first item) from the currently open folder menu.
+const selectEdit = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.keyboard('[ArrowDown][Enter]');
+};
+
+// Selects "Delete" (second item, past the separator) from the currently open folder menu.
+const selectDelete = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+};
+
 describe('FolderNav', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -265,7 +285,8 @@ describe('FolderNav', () => {
     });
 
     // Now rename Work — should succeed since isPending reset to false
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
@@ -373,13 +394,14 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /work/i })).not.toHaveClass('bg-secondary');
   });
 
-  it('calls deleteFolder when the delete button is clicked for a folder', async () => {
+  it('calls deleteFolder when Delete is selected from the folder options menu', async () => {
     mockDeleteFolder.mockResolvedValue({ success: true });
 
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /delete work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectDelete(user);
 
     // Optimistic removal — the folder vanishes from the nav immediately.
     expect(screen.queryByRole('link', { name: /work/i })).not.toBeInTheDocument();
@@ -395,7 +417,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /delete work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectDelete(user);
 
     await waitFor(() => {
       expect(mockDeleteFolder).toHaveBeenCalledWith('f1');
@@ -410,7 +433,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /delete work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectDelete(user);
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/');
@@ -424,7 +448,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /delete work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectDelete(user);
 
     await waitFor(() => {
       expect(mockDeleteFolder).toHaveBeenCalledWith('f1');
@@ -440,7 +465,8 @@ describe('FolderNav', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     // Start the delete operation (folder is removed optimistically from UI immediately)
-    await user.click(screen.getByRole('button', { name: /delete personal/i }));
+    await openFolderMenu(user, 'Personal');
+    await selectDelete(user);
 
     // Open the create form while delete is in flight
     await user.click(screen.getByRole('button', { name: /create folder/i }));
@@ -450,7 +476,7 @@ describe('FolderNav', () => {
     expect(screen.getByRole('button', { name: /save folder/i })).toBeDisabled();
   });
 
-  it('ignores a delete click while another action is in flight (shared isPending guard)', async () => {
+  it('ignores a delete selection while another action is in flight (shared isPending guard)', async () => {
     // Hold the create in-flight via a deferred promise so isPending stays true. The
     // Promise executor runs synchronously, so `resolveCreate` is assigned before use.
     const deferred = {} as { resolve: (folder: Folder) => void };
@@ -472,10 +498,11 @@ describe('FolderNav', () => {
     // createFolder is in flight; isPending is true.
     expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
 
-    // The delete IconButton has no `disabled` prop, so the click fires; only the
-    // handleDeleteFolder isPending guard blocks it. With the guard intact,
-    // removeFolder/deleteFolder must NOT be called while the create is pending.
-    await user.click(screen.getByRole('button', { name: /delete work/i }));
+    // The dropdown item's onSelect fires; only the handleDeleteFolder isPending guard
+    // blocks it. With the guard intact, removeFolder/deleteFolder must NOT be called
+    // while the create is pending.
+    await openFolderMenu(user, 'Work');
+    await selectDelete(user);
     expect(mockDeleteFolder).not.toHaveBeenCalled();
 
     // Cleanup: resolve the pending create to avoid trailing act() warnings.
@@ -497,7 +524,8 @@ describe('FolderNav', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     // Delete a folder and wait for it to complete
-    await user.click(screen.getByRole('button', { name: /delete personal/i }));
+    await openFolderMenu(user, 'Personal');
+    await selectDelete(user);
     await waitFor(() => {
       expect(mockDeleteFolder).toHaveBeenCalledWith('f2');
     });
@@ -512,11 +540,12 @@ describe('FolderNav', () => {
     });
   });
 
-  it('shows the rename form when the rename button is clicked', async () => {
+  it('shows the rename form when Edit is selected from the folder options menu', async () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
 
     // The rename input appears (folder link is replaced)
     expect(screen.queryByRole('link', { name: /work/i })).not.toBeInTheDocument();
@@ -527,7 +556,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
 
     const input = screen.getByRole('textbox');
     expect(input).toHaveValue('Work');
@@ -543,7 +573,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
@@ -564,7 +595,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
@@ -579,7 +611,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: /save rename/i }));
@@ -591,7 +624,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'New Name');
@@ -603,7 +637,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     expect(screen.getByRole('button', { name: /save rename/i })).toBeInTheDocument();
 
     // Click the input to focus it, then press Escape so onKeyDown fires
@@ -615,18 +650,19 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /work/i })).toBeInTheDocument();
   });
 
-  it('rename button label includes folder name for accessibility', () => {
+  it('options button label includes folder name for accessibility', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    expect(screen.getByRole('button', { name: /rename work/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /rename personal/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /options for work/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /options for personal/i })).toBeInTheDocument();
   });
 
   it('only shows the rename form for the clicked folder, not others', async () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
 
     // Work is in editing mode (no link), Personal stays as a link
     expect(screen.queryByRole('link', { name: /work/i })).not.toBeInTheDocument();
@@ -639,7 +675,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
@@ -660,7 +697,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
@@ -686,7 +724,8 @@ describe('FolderNav', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     // Rename a folder and wait for it to complete
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
@@ -709,7 +748,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, ' '.repeat(3));
@@ -728,7 +768,8 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('button', { name: /rename work/i }));
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, '  Work Renamed  ');
@@ -760,11 +801,21 @@ describe('FolderNav', () => {
     expect(screen.getByText(/folders/i)).toBeInTheDocument();
   });
 
-  it('within folder row, delete button has accessible label for the folder', () => {
+  it('within folder row, options button has accessible label for the folder', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    expect(screen.getByRole('button', { name: /delete work/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /delete personal/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /options for work/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /options for personal/i })).toBeInTheDocument();
+  });
+
+  it('folder options menu contains Edit and Delete items', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await openFolderMenu(user, 'Work');
+
+    expect(screen.getByRole('menuitem', { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /delete/i })).toBeInTheDocument();
   });
 
   describe('rename form submit via keyboard', () => {
@@ -778,7 +829,8 @@ describe('FolderNav', () => {
       const user = userEvent.setup();
       renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-      await user.click(screen.getByRole('button', { name: /rename work/i }));
+      await openFolderMenu(user, 'Work');
+      await selectEdit(user);
       const input = screen.getByRole('textbox');
       await user.clear(input);
       await user.type(input, 'Work Renamed');
