@@ -351,6 +351,12 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
             <IconButton
               size="sm"
               onClick={() => {
+                if (isExpanded && activeEditor !== null) {
+                  const descendantIds = getDescendantIds(node);
+                  if (descendantIds.includes(activeEditor.itemId)) {
+                    closeEditor(activeEditor);
+                  }
+                }
                 setIsExpanded((v) => !v);
               }}
               aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}

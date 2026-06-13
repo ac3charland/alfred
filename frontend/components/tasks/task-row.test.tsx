@@ -228,6 +228,82 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Collapse clears open editors on descendants
+  //
+  // When a parent collapses, any open inline input on a descendant (title edit or
+  // add-subtask box) must be closed so the editor is not still active when the
+  // parent is later re-expanded.
+  // ---------------------------------------------------------------------------
+
+  describe('collapse clears open editors on descendants', () => {
+    it('closes a title-edit textbox on a child when the parent collapses', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      await user.dblClick(screen.getByText('Write unit tests'));
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /collapse subtasks/i }));
+
+      // Re-expand: editor state was cleared, so the textbox must not reappear.
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+    });
+
+    it('closes an add-subtask capture box on a child when the parent collapses', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      const childRow = rowFor('Write unit tests');
+      await user.click(within(childRow).getByRole('button', { name: /add subtask/i }));
+      expect(within(childRow).getByRole('textbox')).toBeInTheDocument();
+
+      // Clicking "Add subtask" also sets isExpanded=true on the child, so there are now
+      // two "Collapse subtasks" buttons (parent's + child's invisible one). Take the first
+      // (outermost parent) to collapse the parent.
+      const [parentCollapseBtn] = screen.getAllByRole('button', { name: /collapse subtasks/i });
+      if (!parentCollapseBtn) throw new Error('expected collapse button for parent');
+      await user.click(parentCollapseBtn);
+
+      // Re-expand: editor state was cleared, so the capture box must not reappear.
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    });
+
+    it('closes a title-edit textbox on a grandchild when the grandparent collapses', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM]);
+
+      // Expand parent: only parent's button is accessible initially (children are aria-hidden).
+      const [expandParent] = screen.getAllByRole('button', { name: /expand subtasks/i });
+      if (!expandParent) throw new Error('expected expand button for parent');
+      await user.click(expandParent);
+
+      // After parent expands, its button becomes "Collapse subtasks"; child's "Expand subtasks"
+      // button is now accessible (index 0 of the remaining expand buttons).
+      const [expandChild] = screen.getAllByRole('button', { name: /expand subtasks/i });
+      if (!expandChild) throw new Error('expected expand button for child');
+      await user.click(expandChild);
+
+      await user.dblClick(screen.getByText('Write edge case tests'));
+      expect(screen.getByRole('textbox', { name: /edit title/i })).toBeInTheDocument();
+
+      // Collapse the grandparent — should close the grandchild's editor. Parent's "Collapse
+      // subtasks" is the first button in DOM order (child is also expanded now).
+      const [parentCollapseBtn] = screen.getAllByRole('button', { name: /collapse subtasks/i });
+      if (!parentCollapseBtn) throw new Error('expected collapse button for parent');
+      await user.click(parentCollapseBtn);
+
+      // Re-expand parent. The child stayed expanded (its isExpanded state was not reset),
+      // so the grandchild is immediately visible without clicking the child's expand button.
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Active task completion — animated exit, THEN optimistic removal
   //
   // Completing an active task plays a checkbox pop + height collapse, and only calls
