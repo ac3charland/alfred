@@ -13,17 +13,20 @@ reference and authoring tips.
 ## Conventions
 
 - **Every demo lives in its own folder** — never a loose file directly in
-  `docs/demos/`. The doc's images/GIFs/txt sit beside it inside that folder.
-- **On a feature branch, the folder is named after the branch**
-  (`docs/demos/<branch>/<name>.md`); a slash in the branch name just nests
-  (`docs/demos/claude/foo-bar/…`). `npm run demo -- init` creates the folder for you.
-  The folders already here predate this rule and are named for the feature they demo.
+  `docs/demos/`. The folder is named for the **feature** it demonstrates
+  (`docs/demos/<feature-name>/<name>.md`); the doc's images/GIFs/txt sit beside it
+  inside that folder. `npm run demo -- init` creates the folder for you.
+- **The branch lives in the doc's YAML front matter, not the folder name.** `init`
+  stamps `branch: <current-branch>` at the top of the doc (override with
+  `--branch <name>`), and `demo-lint` reads it from there — so the folder name is free
+  to be a semantic feature name. A legacy folder literally named after the branch still
+  counts, for backward compatibility.
 - **Link the doc in the PR description.**
 - Keep exec blocks **deterministic** so the doc stays verifiable (pipe noisy output
   through `tail`/`grep`/`sort`; avoid timestamps and random paths in captured
   output).
 
-Both folder rules are enforced by **`demo-lint`** ([`tools/demo-lint`](../../tools/demo-lint)),
+Both rules are enforced by **`demo-lint`** ([`tools/demo-lint`](../../tools/demo-lint)),
 which runs in the global `check:slow` on every push.
 
 ## Reproduce / verify a demo

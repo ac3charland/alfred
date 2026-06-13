@@ -105,6 +105,42 @@ describe('serializeDocument', () => {
     };
     expect(serializeDocument(document)).toContain('![screenshot](demo-image-1.png)');
   });
+
+  it('prepends a YAML front matter block when the document declares one', () => {
+    const document: ShowboatDocument = {
+      frontMatter: 'branch: claude/foo-bar',
+      title: 'Tagged',
+      timestamp: '2026-06-10T12:00:00.000Z',
+      entries: [],
+    };
+    expect(serializeDocument(document)).toBe(
+      [
+        '---',
+        'branch: claude/foo-bar',
+        '---',
+        '',
+        '# Tagged',
+        '',
+        '*2026-06-10T12:00:00.000Z*',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('omits the front matter block entirely when there is none', () => {
+    const document: ShowboatDocument = { title: 'Bare', timestamp: 'now', entries: [] };
+    expect(serializeDocument(document)).toBe('# Bare\n\n*now*\n');
+  });
+
+  it('treats an empty front matter string as no front matter', () => {
+    const document: ShowboatDocument = {
+      frontMatter: '',
+      title: 'Bare',
+      timestamp: 'now',
+      entries: [],
+    };
+    expect(serializeDocument(document).startsWith('---')).toBe(false);
+  });
 });
 
 describe('parseDocument / round-trip', () => {
@@ -136,6 +172,39 @@ describe('parseDocument / round-trip', () => {
 
   it('throws on a doc with no title heading', () => {
     expect(() => parseDocument('no heading here')).toThrow(/missing "# Title"/);
+  });
+
+  it('parses a leading YAML front matter block into frontMatter', () => {
+    const md = ['---', 'branch: claude/foo-bar', '---', '', '# Tagged', '', '*now*', ''].join('\n');
+    const doc = parseDocument(md);
+    expect(doc.frontMatter).toBe('branch: claude/foo-bar');
+    expect(doc.title).toBe('Tagged');
+    expect(doc.timestamp).toBe('now');
+  });
+
+  it('round-trips a document that carries front matter', () => {
+    const document: ShowboatDocument = {
+      frontMatter: 'branch: feat/x',
+      title: 'Round trip',
+      timestamp: '2026-06-10T12:00:00.000Z',
+      entries: [
+        { kind: 'note', text: 'narration' },
+        { kind: 'exec', lang: 'bash', code: 'echo hi', output: 'hi' },
+      ],
+    };
+    expect(parseDocument(serializeDocument(document))).toEqual(document);
+  });
+
+  it('requires a closing --- — an unterminated leading block is not swallowed as front matter', () => {
+    // With no closing fence the leading --- is not valid front matter, so the parser
+    // must not silently consume the rest of the file as metadata — it fails the title scan.
+    const md = ['---', 'branch: x', '# Title', '', '*now*', ''].join('\n');
+    expect(() => parseDocument(md)).toThrow(/missing "# Title"/);
+  });
+
+  it('leaves frontMatter undefined for a doc without a front matter block', () => {
+    const doc = parseDocument('# Plain\n\n*now*\n');
+    expect(doc.frontMatter).toBeUndefined();
   });
 
   it('throws on an output block with no preceding code block', () => {

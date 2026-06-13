@@ -16,14 +16,28 @@ function save(file: string, document: ShowboatDocument): void {
   writeFileSync(file, serializeDocument(document));
 }
 
+export interface InitOptions {
+  /**
+   * The branch this demo belongs to. When given (and non-empty), it's stamped into
+   * the doc's YAML front matter so `demo-lint` can read it — decoupling the folder
+   * name (which can be a semantic feature name) from the branch name.
+   */
+  branch?: string | undefined;
+  /** Override the timestamp (defaults to now); injected for deterministic tests. */
+  now?: Date;
+}
+
 /**
  * Create a fresh demo doc with a title and an ISO-8601 timestamp. Creates any
- * missing parent folders so a demo can be initialized straight into its branch
- * folder (e.g. `docs/demos/<branch>/<name>.md`) without a manual `mkdir`.
+ * missing parent folders so a demo can be initialized straight into its own folder
+ * (e.g. `docs/demos/<feature-name>/<name>.md`) without a manual `mkdir`. When a
+ * branch is supplied it's recorded in YAML front matter (see {@link InitOptions}).
  */
-export function init(file: string, title: string, now: Date = new Date()): void {
+export function init(file: string, title: string, options: InitOptions = {}): void {
+  const { branch, now = new Date() } = options;
   mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-  save(file, { title, timestamp: now.toISOString(), entries: [] });
+  const frontMatter = branch ? `branch: ${branch}` : undefined;
+  save(file, { frontMatter, title, timestamp: now.toISOString(), entries: [] });
 }
 
 /** Append a commentary paragraph. */
@@ -230,6 +244,19 @@ export function formatDemoLink(remoteUrl: string, branch: string, docPath: strin
 export interface GitContext {
   remoteUrl: string;
   branch: string;
+}
+
+/**
+ * The current git branch, or `undefined` when it can't be determined — a detached
+ * HEAD (git prints `HEAD`), no repo, or no git. `init` uses it to default the branch
+ * stamped into a new doc's front matter; an undefined result simply omits it (and
+ * `demo-lint` skips a branch it can't determine anyway).
+ */
+export function currentBranch(): string | undefined {
+  const result = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
+  if (result.status !== 0) return undefined;
+  const branch = result.stdout.trim();
+  return branch.length === 0 || branch === 'HEAD' ? undefined : branch;
 }
 
 function git(args: readonly string[]): string {

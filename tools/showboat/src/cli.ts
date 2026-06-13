@@ -3,6 +3,7 @@ import process from 'node:process';
 
 import {
   type VerifyResult,
+  currentBranch,
   exec,
   extract,
   image,
@@ -19,7 +20,9 @@ const VERSION = '0.1.0';
 const HELP = `showboat — build executable demo docs that prove a change works.
 
 Usage:
-  showboat init <file> <title>             Create a new demo doc.
+  showboat init <file> <title> [--branch <name>]
+                                           Create a new demo doc (records the branch
+                                           in front matter; --branch overrides git).
   showboat note <file> [text]              Append commentary (stdin if omitted).
   showboat exec <file> <lang> [code]       Run code, capture output (stdin if omitted).
   showboat image <file> <path|markdown>    Embed an image next to the doc.
@@ -125,10 +128,13 @@ async function main(argv: readonly string[]): Promise<number> {
       return 0;
     }
     case 'init': {
-      const [file, ...titleParts] = rest;
+      const { value: branchOption, rest: rest2 } = takeOption(rest, '--branch');
+      const [file, ...titleParts] = rest2;
       const title = titleParts.join(' ').trim();
-      if (!file || !title) fail('usage: showboat init <file> <title>');
-      init(file, title);
+      if (!file || !title) fail('usage: showboat init <file> <title> [--branch <name>]');
+      // Stamp the current branch into front matter so the folder name can be a
+      // semantic feature name; --branch overrides the detected branch.
+      init(file, title, { branch: branchOption ?? currentBranch() });
       return 0;
     }
     case 'note': {

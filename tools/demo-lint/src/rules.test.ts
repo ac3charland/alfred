@@ -10,6 +10,7 @@ function makeDemos(overrides: Partial<DemosContext> = {}): DemosContext {
     branch: 'main',
     branchFolder: undefined,
     branchFolderHasContent: false,
+    declaredBranches: [],
     ...overrides,
   };
 }
@@ -52,20 +53,35 @@ describe('branch-folder', () => {
     ).toHaveLength(0);
   });
 
-  it('errors when a feature branch has no demo folder', () => {
+  it('errors when a feature branch has no demo (no front matter, no branch folder)', () => {
     const [finding] = findingsFor(
       'branch-folder',
       makeDemos({
         branch: 'claude/foo',
         branchFolder: 'claude/foo',
         branchFolderHasContent: false,
+        declaredBranches: ['some/other-branch'],
       }),
     );
     expect(finding?.severity).toBe('error');
     expect(finding?.message).toContain('claude/foo');
   });
 
-  it('passes when the branch folder has content', () => {
+  it('passes when a demo doc declares this branch in front matter (any folder name)', () => {
+    expect(
+      findingsFor(
+        'branch-folder',
+        makeDemos({
+          branch: 'claude/foo',
+          branchFolder: 'claude/foo',
+          branchFolderHasContent: false,
+          declaredBranches: ['claude/foo'],
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('still passes via a legacy branch-named folder with content', () => {
     expect(
       findingsFor(
         'branch-folder',
@@ -73,6 +89,7 @@ describe('branch-folder', () => {
           branch: 'claude/foo',
           branchFolder: 'claude/foo',
           branchFolderHasContent: true,
+          declaredBranches: [],
         }),
       ),
     ).toHaveLength(0);
