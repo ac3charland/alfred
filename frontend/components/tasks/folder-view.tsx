@@ -1,9 +1,12 @@
 'use client';
 
+import { ListCollapse } from 'lucide-react';
 import * as React from 'react';
 
+import { IconButton } from '@/components/atoms/icon-button';
 import { TaskList } from '@/components/tasks/task-list';
 import { useFolders } from '@/lib/stores/folders-store';
+import { TaskCollapseContext, useCollapseAll } from '@/lib/task-collapse-context';
 
 interface FolderViewProperties {
   /** The folder whose active tasks to show, taken from the URL by TaskViews. */
@@ -17,6 +20,7 @@ interface FolderViewProperties {
  * folder you just deleted — shows a not-found message instead of a server 404.
  */
 export function FolderView({ folderId }: FolderViewProperties) {
+  const { subscribe, collapseAll } = useCollapseAll();
   const folder = useFolders().find((candidate) => candidate.id === folderId);
 
   if (!folder) {
@@ -29,14 +33,22 @@ export function FolderView({ folderId }: FolderViewProperties) {
   }
 
   return (
-    <>
+    <TaskCollapseContext.Provider value={{ subscribe }}>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           {folder.name}
         </span>
+        <IconButton
+          size="sm"
+          className="ml-auto"
+          onClick={collapseAll}
+          aria-label="Collapse all tasks"
+        >
+          <ListCollapse size={14} />
+        </IconButton>
       </div>
 
       <TaskList scope={{ type: 'folder', folderId }} emptyMessage={`No tasks in ${folder.name}`} />
-    </>
+    </TaskCollapseContext.Provider>
   );
 }

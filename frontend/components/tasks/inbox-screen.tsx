@@ -1,11 +1,13 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { ListCollapse, X } from 'lucide-react';
 import * as React from 'react';
 
+import { IconButton } from '@/components/atoms/icon-button';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { TaskList } from '@/components/tasks/task-list';
 import { ViewLink } from '@/components/tasks/view-link';
+import { TaskCollapseContext, useCollapseAll } from '@/lib/task-collapse-context';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +39,7 @@ const toggleLinkClass = cn(
  * mounted through its collapse animation so the exit can finish before it unmounts.
  */
 export function InboxScreen({ open }: InboxScreenProperties) {
+  const { subscribe, collapseAll } = useCollapseAll();
   const prefersReducedMotion = usePrefersReducedMotion();
 
   // Keep the list mounted while it collapses; unmount once the animation ends.
@@ -105,12 +108,22 @@ export function InboxScreen({ open }: InboxScreenProperties) {
         >
           <div className="overflow-hidden">
             <div className="mt-6">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
-                  Inbox
-                </span>
-              </div>
-              <TaskList scope={{ type: 'inbox' }} emptyMessage="Your inbox is empty" />
+              <TaskCollapseContext.Provider value={{ subscribe }}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
+                    Inbox
+                  </span>
+                  <IconButton
+                    size="sm"
+                    className="ml-auto"
+                    onClick={collapseAll}
+                    aria-label="Collapse all tasks"
+                  >
+                    <ListCollapse size={14} />
+                  </IconButton>
+                </div>
+                <TaskList scope={{ type: 'inbox' }} emptyMessage="Your inbox is empty" />
+              </TaskCollapseContext.Provider>
             </div>
           </div>
         </div>

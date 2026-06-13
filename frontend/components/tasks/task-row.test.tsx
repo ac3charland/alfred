@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import type { TaskScope } from '@/lib/stores/tasks-store';
+import { TaskCollapseContext, useCollapseAll } from '@/lib/task-collapse-context';
 import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree } from '@/lib/tree';
 import type { Folder, Item } from '@/lib/types';
@@ -2913,5 +2914,59 @@ describe('TaskRow', () => {
       await screen.findByText('Due date');
       expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Collapse all (TaskCollapseContext)
+// ---------------------------------------------------------------------------
+
+/** Wraps TaskList with a collapse controller that exposes a test trigger button. */
+function CollapseWrapper({ children }: { children: React.ReactNode }) {
+  const { subscribe, collapseAll } = useCollapseAll();
+  return (
+    <>
+      <button data-testid="collapse-all-trigger" onClick={collapseAll} />
+      <TaskCollapseContext.Provider value={{ subscribe }}>{children}</TaskCollapseContext.Provider>
+    </>
+  );
+}
+
+function renderWithCollapse(items: Item[]) {
+  return renderWithProviders(
+    <CollapseWrapper>
+      <TaskList scope={{ type: 'inbox' }} />
+    </CollapseWrapper>,
+    { tasks: items },
+  );
+}
+
+describe('collapse all', () => {
+  it('collapses an expanded parent row when the context fires', async () => {
+    const user = userEvent.setup();
+    renderWithCollapse([BASE_ITEM, CHILD_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+    expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('collapse-all-trigger'));
+
+    expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+  });
+
+  it('collapses nested rows (grandchild subtrees) when the context fires', async () => {
+    const user = userEvent.setup();
+    renderWithCollapse([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM]);
+
+    // Expand parent — child becomes visible; parent button becomes "Collapse subtasks"
+    await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+    // Expand child — grandchild becomes visible; the remaining "Expand subtasks" is the child's
+    await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+    expect(screen.getAllByRole('list', { name: 'Subtasks' })).toHaveLength(2);
+
+    await user.click(screen.getByTestId('collapse-all-trigger'));
+
+    expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
   });
 });

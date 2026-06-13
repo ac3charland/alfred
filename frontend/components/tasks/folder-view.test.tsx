@@ -54,5 +54,19 @@ describe('FolderView', () => {
       expect(screen.getByText('Folder not found')).toBeInTheDocument();
       expect(screen.queryByTestId('task-list')).not.toBeInTheDocument();
     });
+
+    it('does not render a collapse button when the folder is not found', () => {
+      renderWithProviders(<FolderView folderId="missing" />, { folders: FOLDERS });
+
+      expect(screen.queryByRole('button', { name: /collapse all tasks/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('collapse all button', () => {
+    it('renders a collapse all button in the header when the folder exists', () => {
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      expect(screen.getByRole('button', { name: /collapse all tasks/i })).toBeInTheDocument();
+    });
   });
 });
