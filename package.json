@@ -15,8 +15,8 @@
   "scripts": {
     "prepare": "node -e \"if (!process.env.CI) require('child_process').execSync('husky', {stdio: 'inherit'})\"",
     "check": "npm run check:fast && npm run check:slow",
-    "check:fast": "npm run check:fast --workspaces --if-present",
-    "check:slow": "npm run check:slow --workspaces --if-present",
+    "check:fast": "npm run check:fast -w frontend && npm run check:fast -w workers && npm run check:fast -w @alfred/showboat && npm run check:fast -w @alfred/demo-lint && npm run check:fast -w @alfred/skill-lint",
+    "check:slow": "npm run check:slow -w @alfred/demo-lint && npm run check:slow -w frontend",
     "demo": "node tools/showboat/src/cli.ts"
   },
   "repository": {
