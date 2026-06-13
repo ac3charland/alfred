@@ -86,6 +86,19 @@ export function getAncestorTitles(items: Item[], parentId: string | null): strin
   return titles;
 }
 
+/** Walk the ancestor chain to find how many levels deep `itemId` is (root = 0). */
+export function getItemDepth(items: Item[], itemId: string): number {
+  let depth = 0;
+  let currentId: string | null = itemId;
+  while (currentId !== null) {
+    const current = items.find((t) => t.id === currentId);
+    if (current === undefined) break;
+    currentId = current.parent_id;
+    if (currentId !== null) depth++;
+  }
+  return depth;
+}
+
 /** Count all descendants (any depth) whose status is `completed` (excludes the node itself). */
 export function countCompletedDescendants(node: ItemNode): number {
   let count = 0;
