@@ -95,7 +95,11 @@ split into state + actions contexts (so actions-only callers don't re-render on 
   subtree, since the panel renders as a sibling of the tree, not inside it.
 
 Reach for a coordination store only for a genuine cross-row invariant or command — not to
-hoist ordinary local state.
+hoist ordinary local state. **Consuming one needs no explanatory comment:** reading a store's
+flags and calling its actions is the documented norm (this skill is its single source of
+truth), so an inline note restating "expansion is a cross-row store, read from the provider"
+is just noise — delete it. Comment only a genuinely non-obvious *local* decision, never the
+pattern itself.
 
 ## Decision Tree
 

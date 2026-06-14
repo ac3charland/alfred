@@ -55,10 +55,6 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const activeEditor = useActiveEditor();
   const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
-  // Expansion is a cross-row invariant (a header "Collapse all" closes every open row),
-  // so the subtask-tree and completed-panel flags are read from the shared ExpansionProvider
-  // rather than held per-row — see the data-flow skill. Rows derive their open flags here
-  // and mutate them through the store's actions.
   const { subtasks: expandedSubtasks, completed: expandedCompleted } = useExpansion();
   const { toggleSubtasks, expandSubtasks, toggleCompleted } = useExpansionActions();
   const isExpanded = expandedSubtasks.has(node.id);
