@@ -415,7 +415,15 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
 
             {/* Title */}
             {isEditingTitle ? (
-              <>
+              <div
+                className="contents"
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) {
+                    setDraftTitle(node.title);
+                    closeEditor({ itemId: node.id, kind: 'title' });
+                  }
+                }}
+              >
                 <input
                   ref={titleInputRef}
                   aria-label="Edit title"
@@ -453,7 +461,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                 >
                   <Check size={10} className="text-background" strokeWidth={3} />
                 </button>
-              </>
+              </div>
             ) : (
               <div
                 // select-none: the whole row is a drag surface, so the title text is no
@@ -535,6 +543,13 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               <IconButton
                 size="md"
                 tone="accent"
+                onMouseDown={(e) => {
+                  // Prevent the browser from moving focus away from the CaptureBox input
+                  // when the toggle is pressed while the box is open. Without this, `blur`
+                  // fires and `onDismiss` closes the box before the `click` handler runs,
+                  // making the handler see showAddSubtask=false and re-open instead of close.
+                  if (showAddSubtask) e.preventDefault();
+                }}
                 onClick={() => {
                   if (showAddSubtask) {
                     closeEditor({ itemId: node.id, kind: 'subtask' });

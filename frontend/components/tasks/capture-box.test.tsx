@@ -481,4 +481,26 @@ describe('CaptureBox', () => {
     // Input is cleared even without an onDismiss callback.
     expect(input).toHaveValue('');
   });
+
+  it('compact: calls onDismiss when focus moves outside the form', async () => {
+    const onDismiss = jest.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox compact onDismiss={onDismiss} />);
+
+    await user.type(screen.getByPlaceholderText(/add subtask/i), 'Draft text');
+    await user.click(document.body);
+
+    expect(onDismiss).toHaveBeenCalled();
+  });
+
+  it('compact: does not call onDismiss when focus moves to the Add button', async () => {
+    const onDismiss = jest.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox compact onDismiss={onDismiss} />);
+
+    await user.type(screen.getByPlaceholderText(/add subtask/i), 'Subtask');
+    await user.click(screen.getByRole('button', { name: /add/i }));
+
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
 });
