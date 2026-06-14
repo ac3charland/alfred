@@ -1,14 +1,15 @@
 ---
 name: data-flow
 description: >
-  Documents the frontend's data-flow architecture and conventions: database → API →
-  context store → components on read, and components → store action → API → database on write, plus the
-  optimistic-store pattern with reconcile/rollback, the "fetch-all then filter client-side"
-  choice, and the anti-patterns this design prevents. Use whenever you read, fetch, store, or
-  mutate app data for any entity (folders, tasks/items, and whatever comes next) or decide
-  where data should live — "fetch data", "state management", "where should this data live",
-  "prop vs context", "add a query / endpoint", "optimistic update", "reconcile", "rollback",
-  "router.refresh", "create a supabase client", "useTasks / useFolders / a store",
+  Documents the frontend's data-flow and client-state architecture: database → API →
+  context store → components on read, components → store action → API → database on write,
+  the optimistic-store pattern with reconcile/rollback, the "fetch-all then filter
+  client-side" choice, AND when transient UI state belongs in a small cross-row coordination
+  store (ExpansionProvider / ActiveEditorProvider) rather than a row's own useState. Use
+  whenever you read, fetch, store, or mutate app data, or decide where state lives — "fetch
+  data", "state management", "prop vs context", "cross-component change", "coordination
+  store", "lift state into a store", "collapse/expand all", "which row is open", "optimistic
+  update", "reconcile", "rollback", "router.refresh", "useTasks / useFolders / a store",
   "client-side filter", "lib/data", or refactoring a hard-refresh mutation. Pairs with the
   supabase skill (client/queries), the nextjs skill (Server vs Client boundary), and the
   react skill (context + hooks).
@@ -69,19 +70,32 @@ the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated se
 or a normalized cache) only when the dataset grows large enough that filtering everything in
 memory hurts.
 
-## Transient UI state: local by default, a store only for a cross-row invariant
+## Transient UI state: local until a cross-row command needs it
 
-Per-row UI state (the expanded flag, an input draft) stays in the row's own `useState`.
-The one exception is an invariant that spans rows: only one inline input — a title edit
-**or** an add-subtask box — may be open at a time. "Which input is open" can't live in any
-single row, so it's lifted into its own tiny Context store, `ActiveEditorProvider`
-(`lib/stores/active-editor-store.tsx`): mounted in the layout beside the data stores but
-seeded with **no server data**. Rows derive their open flags from it (`sameEditor(active,
-{ itemId, kind })`) and call `openEditor` / `closeEditor`; opening one closes whatever was
-open. `closeEditor` only clears when it still owns the slot, so a stale close (an async
-title save resolving *after* another input opened) no-ops instead of closing the new input.
-Reach for a coordination store only for a genuine cross-component invariant — not to hoist
-ordinary local state.
+Per-row UI state stays in the row's own `useState` — an input draft, the meta panel, the
+title-edit text. It graduates to a tiny Context store **only** when an invariant or command
+spans rows and so can't live in any single one. Two such coordination stores exist, both
+mounted in the layout beside the data stores, both **seeded with no server data**, both
+split into state + actions contexts (so actions-only callers don't re-render on every change):
+
+- **`ActiveEditorProvider`** (`lib/stores/active-editor-store.tsx`) — only one inline input
+  (a title edit **or** an add-subtask box) may be open across all rows. Rows derive their
+  open flag from it (`sameEditor(active, { itemId, kind })`) and call `openEditor` /
+  `closeEditor`; opening one closes whatever was open. `closeEditor` only clears when it
+  still owns the slot, so a stale close (an async title save resolving *after* another input
+  opened) no-ops instead of closing the new input.
+- **`ExpansionProvider`** (`lib/stores/expansion-store.tsx`) — a row's two child-disclosure
+  flags (its subtask tree and its "Show completed" panel) live here, not per-row, because a
+  header **"collapse all"** must close every open row at once — a cross-row command no single
+  row's state can express. Rows read `subtasks.has(id)` / `completed.has(id)` and call
+  `toggleSubtasks` / `expandSubtasks` / `toggleCompleted`; `CollapseAllButton` dispatches
+  `collapseAll(viewIds)` **scoped to its view**, so collapsing one view leaves others intact.
+  Corollary: scope each action to what the store flag actually controls — an action that only
+  opens the meta panel (editing a parent's due date/notes) must **not** also expand its
+  subtree, since the panel renders as a sibling of the tree, not inside it.
+
+Reach for a coordination store only for a genuine cross-row invariant or command — not to
+hoist ordinary local state.
 
 ## Decision Tree
 
@@ -158,13 +172,17 @@ completing a task flips its `status`, so it drops out of the active views automa
   don't keep the editor open to retry. (See `handleSaveTitle`/`handleSaveDueDate` in
   `task-row.tsx`.)
 - **Never mirror store data in ad-hoc `useState`.** Local state is only for transient UI
-  (expanded row, input draft).
+  with no cross-row reach (an input draft, the meta panel) — a flag a header command must
+  touch (row expansion) belongs in a coordination store, not per-row state.
 
 ## File Map
 
 - `frontend/lib/data/{folders,items}.ts` — server-only readers (`getFolders`, `getAllItems`).
 - `frontend/lib/stores/{folders-store,tasks-store}.tsx` — Context stores, optimistic actions,
   and selector hooks (`useScopedTasks`).
+- `frontend/lib/stores/{active-editor-store,expansion-store}.tsx` — server-data-free cross-row
+  coordination stores (which input is open; which rows are expanded). `CollapseAllButton` is
+  the per-view collapse-all control that dispatches `collapseAll(viewIds)`.
 - `frontend/lib/tree.ts` — pure helpers: `buildTree`, `collectSubtree`, `getDescendantIds`,
   `makeOptimisticItem`.
 - `frontend/lib/api-client.ts` — typed `fetch` wrappers over the `app/api/**` route handlers.
