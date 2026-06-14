@@ -55,7 +55,7 @@ What already exists (verified against the repo) and what this module adds:
 |---|---|---|
 | `items` table | generic core + task fields; `item_type` enum already includes `'code'` | sidecar `code_items` + `projects` + `epics` tables (§4) |
 | Classification | none — capture always writes `item_type='unclassified'`; everything renders as a task | inbox classification UI + type badges (§7) |
-| Type-specific fields | tasks have due dates / notes / subtasks (all items share these) | code stories get Project/Epic/Ref/state (§4, §7) |
+| Type-specific fields | due dates + subtasks are usable on **any** item (no classification gate) | gate them behind `task` classification — only `task` items get due dates + subtasks; `notes` stay generic; code stories get Project/Epic/Ref/state (§4, §7, §7.3) |
 | App shell | `(tasks)` route group; sidebar with `alfred` wordmark + `FolderNav` (Inbox/Folders/Completed) | a **Tasks ⇄ Code** view switcher; a `(code)` route group; Inbox button removed (§6) |
 | `workers/` | bare skeleton (`fetch` returns `alfred workers ok`) | the GitHub PR webhook Worker (§13) |
 | Data flow | `getAllItems()`+`getFolders()` seed client stores; optimistic mutate → `/api/*` → Supabase | `CodeProvider` store + `/api/projects`, `/api/epics`, `/api/code` routes (§14) |
@@ -321,8 +321,9 @@ Today every capture is `unclassified` and renders as a task with no type afforda
 In the item row dropdown menu (`task-row.tsx`, the existing Radix `DropdownMenu`), add a **`Classify
 as ▸`** submenu with **`Task`** and **`Code`** (Knowledge is future — leave room, don't build it):
 
-- **Classify as Task** → `updateItem(id, { item_type: 'task' })`. Tasks already have due-date /
-  notes / subtask UI; nothing else changes except the badge.
+- **Classify as Task** → `updateItem(id, { item_type: 'task' })`. Classifying as `task` is what
+  **unlocks** due-date and subtask editing (plus the Task badge); an `unclassified` item exposes
+  neither (§7.3).
 - **Classify as Code** → `updateItem(id, { item_type: 'code' })`. The item **stays in the inbox** (no
   `code_items` row yet) and now shows a **Code** badge plus a **`Send to Code module…`** action
   (enabled only once type is `code`) that opens the gate (§8).
@@ -340,10 +341,20 @@ already in `task-row.tsx`). Unclassified items show no badge. Knowledge is reser
 ### 7.3 Type-specific fields (clarification)
 
 The direction notes mention "type-specific fields (due dates + subitems for tasks, epics + projects
-for code)." Concretely: **tasks** keep today's due-date/notes/subtask editing; **code** items surface
-**Project / Epic / Ref / state** — but those live on the **board and detail modal** (§9–10), assigned
-at the gate (§8), *not* as inline inbox editors. An inbox code item that hasn't been sent shows only
-its Code badge and the **Send to Code module…** affordance.
+for code)." Make them genuinely type-gated:
+
+- **Due dates and subtasks are `task`-only — not generic.** An `unclassified` (or `code`) item must
+  **not** expose a due-date or add-subtask affordance; the user classifies it as a **`task`** first,
+  and that is what unlocks them. *This is a behavior change from today,* where the UI lets any item
+  set a due date or add subtasks. The schema already treats `due_date`/`parent_id` as task-lifecycle
+  fields (see the `0001` migration comment), so this only tightens the UI: gate the row's due-date
+  and add-subtask controls on `item_type === 'task'`. Existing `unclassified` rows that already carry
+  a due date or children should be surfaced for — or auto-promoted to — `task` classification.
+- **`notes` stay generic.** They are part of the base item (`SPEC.md` §3.2) and remain available on
+  any item regardless of type.
+- **Code** items surface **Project / Epic / Ref / state**, which live on the **board and detail
+  modal** (§9–10), assigned at the gate (§8), *not* as inline inbox editors. An inbox code item that
+  hasn't been sent shows only its Code badge and the **Send to Code module…** affordance.
 
 ---
 
