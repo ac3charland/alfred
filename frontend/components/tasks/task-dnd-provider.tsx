@@ -5,7 +5,6 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
-  KeyboardSensor,
   pointerWithin,
   useSensor,
   useSensors,
@@ -13,6 +12,7 @@ import {
 import * as React from 'react';
 
 import { INBOX_DROP_ID, resolveFolderDrop } from '@/lib/dnd/drag-to-folder';
+import { RowKeyboardSensor } from '@/lib/dnd/keyboard-sensor';
 import { RowPointerSensor } from '@/lib/dnd/pointer-sensor';
 import { isPromoteZone, resolvePromoteToRoot } from '@/lib/dnd/promote-to-root';
 import { resolveReparent } from '@/lib/dnd/reparent';
@@ -71,7 +71,10 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
     // Drag from anywhere on a row except its buttons/inputs; the 8px threshold keeps a
     // plain click on a control from being read as the start of a drag (see RowPointerSensor).
     useSensor(RowPointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
+    // RowKeyboardSensor, like RowPointerSensor, refuses to lift from the row's buttons or
+    // inline edit input — so pressing Space while editing a title types a space instead of
+    // starting a phantom keyboard drag that collapses the editor (see the dnd-kit skill).
+    useSensor(RowKeyboardSensor),
   );
 
   const activeTask = activeId === null ? undefined : tasks.find((item) => item.id === activeId);
