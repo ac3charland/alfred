@@ -4,14 +4,14 @@ branch: claude/serene-ptolemy-473rv4
 
 # Inbox skips expand animation on direct navigation
 
-*2026-06-14T17:56:55.154Z*
+*2026-06-14T18:33:00.002Z*
 
-Previously, navigating from a folder view (or loading /?view=inbox directly) caused the inbox list to play its expand animation on mount. The animation should only play when the user toggles the inbox open from the landing page — not when the inbox is already the destination.
+Navigating from a folder to the inbox (or loading /?view=inbox directly) used to play the expand animation on mount. This fix makes the inbox appear immediately in those cases — the expand animation only fires when the user explicitly toggles it open from the landing page.
 
-The inbox component mounted with open=true (direct navigation or hard load of /?view=inbox) now appears immediately at full height — no expand animation:
+**Fix: folder → inbox navigation — inbox appears immediately (no expand animation)**
 
-![](demo-image-1.png)
+![folder to inbox: inbox appears immediately](demo-video-1.gif)
 
-The expand animation still fires when the user explicitly toggles the inbox open from the landing page (closed → open transition). The landing page (open=false):
+**Normal toggle behavior preserved — clicking 'View inbox' from the landing page still animates**
 
-![](demo-image-2.png)
+![landing page: view inbox toggle animates open](demo-video-2.gif)
