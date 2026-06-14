@@ -30,6 +30,51 @@ const navLinkClass = (active: boolean) =>
       : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
   );
 
+/** Shared inline form used by both create and rename. Handles min-w-0 so the save button is never clipped. */
+function FolderNameForm({
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+  placeholder,
+  className,
+  submitLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  placeholder?: string;
+  className?: string;
+  submitLabel: string;
+}) {
+  return (
+    <form
+      onSubmit={(event_) => {
+        event_.preventDefault();
+        onSubmit();
+      }}
+      className={cn('flex min-w-0 items-center gap-1', className)}
+    >
+      <TextField
+        value={value}
+        onChange={(event_) => {
+          onChange(event_.target.value);
+        }}
+        onKeyDown={(event_) => {
+          if (event_.key === 'Escape') onCancel();
+        }}
+        placeholder={placeholder}
+        // autoFocus intentionally omitted — jsx-a11y/no-autofocus
+        className="flex-1 min-w-0"
+      />
+      <IconButton type="submit" tone="affirm" disabled={!value.trim()} aria-label={submitLabel}>
+        <Check size={13} />
+      </IconButton>
+    </form>
+  );
+}
+
 /**
  * Sidebar navigation: Inbox link, folder list with CRUD, Completed link.
  *
@@ -55,9 +100,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   // otherwise `(() => void) | undefined` is not assignable to `MouseEventHandler`.
   const closeProperty = onClose ? { onClick: onClose } : {};
 
-  const handleCreateFolder = async (event_?: React.SyntheticEvent) => {
-    // Stryker disable next-line OptionalChaining: AT_CEILING — handleCreateFolder's only caller is the form onSubmit (line ~131), which always passes a defined SyntheticEvent; the optional chain never short-circuits in reachable code — equivalent.
-    event_?.preventDefault();
+  const handleCreateFolder = async () => {
     const name = newFolderName.trim();
     if (!name) return;
     setNewFolderName('');
@@ -126,36 +169,20 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
         {/* New folder form */}
         {isCreating && (
-          <form
-            onSubmit={(event_) => {
-              void handleCreateFolder(event_);
+          <FolderNameForm
+            value={newFolderName}
+            onChange={setNewFolderName}
+            onSubmit={() => {
+              void handleCreateFolder();
             }}
-            className="flex items-center gap-1 px-2 py-1"
-          >
-            <TextField
-              value={newFolderName}
-              onChange={(event_) => {
-                setNewFolderName(event_.target.value);
-              }}
-              onKeyDown={(event_) => {
-                if (event_.key === 'Escape') {
-                  setIsCreating(false);
-                  setNewFolderName('');
-                }
-              }}
-              placeholder="Folder name…"
-              // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-              className="flex-1"
-            />
-            <IconButton
-              type="submit"
-              tone="affirm"
-              disabled={!newFolderName.trim()}
-              aria-label="Save folder"
-            >
-              <Check size={13} />
-            </IconButton>
-          </form>
+            onCancel={() => {
+              setIsCreating(false);
+              setNewFolderName('');
+            }}
+            placeholder="Folder name…"
+            submitLabel="Save folder"
+            className="px-2 py-1"
+          />
         )}
 
         {/* Folder list */}
@@ -164,35 +191,18 @@ export function FolderNav({ onClose }: FolderNavProperties) {
             <FolderDropZone key={folder.id} id={folder.id}>
               <div className="group/folder flex items-center gap-1 pr-1">
                 {editingFolderId === folder.id ? (
-                  <form
-                    onSubmit={(event_) => {
-                      event_.preventDefault();
+                  <FolderNameForm
+                    value={editingName}
+                    onChange={setEditingName}
+                    onSubmit={() => {
                       void handleRenameFolder(folder.id);
                     }}
-                    className="flex flex-1 min-w-0 items-center gap-1 px-3"
-                  >
-                    <TextField
-                      value={editingName}
-                      onChange={(event_) => {
-                        setEditingName(event_.target.value);
-                      }}
-                      onKeyDown={(event_) => {
-                        if (event_.key === 'Escape') {
-                          setEditingFolderId(undefined);
-                        }
-                      }}
-                      // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-                      className="flex-1 min-w-0"
-                    />
-                    <IconButton
-                      type="submit"
-                      tone="affirm"
-                      disabled={!editingName.trim()}
-                      aria-label="Save rename"
-                    >
-                      <Check size={13} />
-                    </IconButton>
-                  </form>
+                    onCancel={() => {
+                      setEditingFolderId(undefined);
+                    }}
+                    submitLabel="Save rename"
+                    className="flex-1 px-3"
+                  />
                 ) : (
                   <>
                     <ViewLink
