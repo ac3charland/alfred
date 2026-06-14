@@ -36,6 +36,10 @@ claude-sandbox Docker image with **no environment-specific setup**.
 A demo must show the **new behavior actually happening**. Pick the evidence that
 *shows* it — and match the evidence to whether the change has a visual surface:
 
+- **An animation (fade, slide, expand, collapse, any CSS transition or keyframe
+  change) → a GIF, not a screenshot.** Motion is what a still can't convey; a
+  static image of the end state proves nothing. Record with Playwright video and
+  convert with `npm run demo -- video`. See the recording recipe below.
 - **Anything visual — a screen, a component, a layout/styling/copy tweak, or a
   UI interaction state change (element stays open, content appears, box closes)
   → the primary evidence is a screenshot of the rendered UI.** The reviewer should
