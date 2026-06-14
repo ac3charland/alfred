@@ -219,7 +219,7 @@ Run it through the harness (`npm run test:e2e -w frontend -- capture.flow.ts`),
 then embed each shot with `npm run demo -- image`. **Look at every PNG** (Read it)
 before embedding.
 
-#### Images for flows, video only for animations
+#### Images for flows, video only for animations and timing-sensitive changes
 
 The default evidence is **still a screenshot**. Pick the medium deliberately:
 
@@ -233,6 +233,13 @@ The default evidence is **still a screenshot**. Pick the medium deliberately:
   can't convey, so it's the *only* case that justifies a video. **When the change
   is purely an animation, the GIF alone is the evidence — do not add before/after
   screenshots.**
+- **An interaction timing change → a SHORT VIDEO (GIF)** — when the *when* is the
+  point (e.g. an optimistic UI that closes a form before the network responds, a
+  spinner that appears/disappears at the right moment, a debounce), stills can't
+  show the gap. Use `page.route()` to slow the relevant API call (2–3 s), add
+  `page.waitForTimeout()` pauses at key moments so the interesting states are
+  visible in the GIF, and record the interaction. The GIF should show the form
+  close *while* the API is still in-flight, not just the end state.
 
 When you do record a video, **scope it to just the animation and keep the file
 tiny**:
