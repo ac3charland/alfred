@@ -44,6 +44,14 @@ export interface DemosContext {
    * name (the `branch-folder` rule reads this).
    */
   readonly declaredBranches: readonly string[];
+  /**
+   * True when this branch changed at least one path outside `docs/` — meaning it owes
+   * a demo. A docs-only branch (every change under `docs/`) is exempt from
+   * `branch-folder`. **Conservative default:** when the diff is unknown (git
+   * unavailable, no trunk ref, or a failed command) this is `true`, so we never grant
+   * the exception on a guess.
+   */
+  readonly hasChangesOutsideDocs: boolean;
 }
 
 /**
@@ -138,15 +146,53 @@ export function currentBranch(): string | undefined {
   return branch;
 }
 
+/** A path counts as docs iff it is `docs` itself or sits under `docs/`. */
+function isDocsPath(p: string): boolean {
+  return p === 'docs' || p.startsWith('docs/');
+}
+
+/** Trunk refs to diff against, in priority order (first existing one wins). */
+const TRUNK_REFS: readonly string[] = ['origin/main', 'main', 'origin/master', 'master'];
+
+/**
+ * Repo-relative paths changed on the current branch vs the trunk merge-base, or
+ * `undefined` when git can't tell us — no git, no trunk ref among {@link TRUNK_REFS},
+ * or any command failing. Git emits POSIX, repo-relative paths already; we trim and
+ * drop blank lines. The CLI passes this into {@link gatherDemos} (mirroring how it
+ * passes {@link currentBranch}); an `undefined` result yields the conservative
+ * `hasChangesOutsideDocs === true` default.
+ */
+export function changedPathsSinceTrunk(): readonly string[] | undefined {
+  const trunk = TRUNK_REFS.find((ref) => {
+    const probe = spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { encoding: 'utf8' });
+    return probe.status === 0;
+  });
+  if (trunk === undefined) return undefined;
+  const base = spawnSync('git', ['merge-base', 'HEAD', trunk], { encoding: 'utf8' });
+  if (base.status !== 0) return undefined;
+  const mergeBase = base.stdout.trim();
+  if (mergeBase.length === 0) return undefined;
+  const diff = spawnSync('git', ['diff', '--name-only', mergeBase, 'HEAD'], { encoding: 'utf8' });
+  if (diff.status !== 0) return undefined;
+  return diff.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 /**
  * Parse the demos directory and the branch context rules consume. `branch` is a
  * plain value (the CLI reads it from {@link currentBranch}); pass `undefined` for
- * "branch unknown", which makes the `branch-folder` rule skip.
+ * "branch unknown", which makes the `branch-folder` rule skip. `changedPaths` is the
+ * repo-relative diff vs trunk (the CLI reads it from {@link changedPathsSinceTrunk});
+ * pass `undefined` for "diff unknown", which conservatively keeps
+ * `hasChangesOutsideDocs === true` so no docs-only exception is granted on a guess.
  */
 export function gatherDemos(
   demosDir: string,
   cwd: string = process.cwd(),
   branch?: string,
+  changedPaths?: readonly string[],
 ): DemosContext {
   const absolute = path.resolve(demosDir);
   const isTrunk = branch !== undefined && TRUNK_BRANCHES.has(branch);
@@ -160,5 +206,9 @@ export function gatherDemos(
     branchFolderHasContent:
       branchFolder === undefined ? false : isNonEmptyDir(path.join(absolute, branchFolder)),
     declaredBranches: collectDeclaredBranches(absolute),
+    // Unknown diff (`undefined`) → assume changes outside docs, so we never grant the
+    // docs-only `branch-folder` exception on a guess.
+    hasChangesOutsideDocs:
+      changedPaths === undefined ? true : changedPaths.some((p) => !isDocsPath(p)),
   };
 }

@@ -47,10 +47,14 @@ Both rules are **errors** (exit 1 fails the push).
 | Rule | Fires when | Fix |
 | --- | --- | --- |
 | `no-root-files` | any file other than `README.md` sits **directly** in `docs/demos/` | move it into its own folder: `docs/demos/<feature-name>/` |
-| `branch-folder` | you're on a feature branch and no demo doc claims it — no doc has `branch: <current-branch>` in front matter (and no legacy folder named after the branch has content) | capture this branch's demo in its own (semantically-named) folder: `npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>"` stamps the branch into front matter for you |
+| `branch-folder` | you're on a feature branch that touches code (changes outside `docs/`) and no demo doc claims it — no doc has `branch: <current-branch>` in front matter (and no legacy folder named after the branch has content) | capture this branch's demo in its own (semantically-named) folder: `npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>"` stamps the branch into front matter for you |
 
-`branch-folder` **skips** trunk (`main`/`master`) and any state where the branch can't be
-determined (detached HEAD, no git), so it only fires on a real feature branch.
+`branch-folder` **skips** trunk (`main`/`master`), any state where the branch can't be
+determined (detached HEAD, no git), and a **docs-only** branch — one whose every change
+vs trunk lives under `docs/` — so it only fires on a real feature branch that touches code.
+The diff is computed against the first existing trunk ref (`origin/main`, `main`,
+`origin/master`, `master`); when it can't be computed the branch is treated **conservatively**
+as touching code, so the exception is never granted on a guess.
 
 ## Everyday gotchas
 
@@ -72,9 +76,14 @@ determined (detached HEAD, no git), so it only fires on a real feature branch.
 ## Maintaining the tool
 
 It's a standard rule-registry split: `src/demos.ts` gathers a pure `DemosContext`
-(root files + branch facts + `declaredBranches`), `src/rules.ts` holds the rule registry
-(add a `Rule` to the exported `rules` array to lint something new), `src/lint.ts` runs
-them, and `src/cli.ts` is the entry point. `declaredBranches` is built by walking every
+(root files + branch facts + `declaredBranches` + `hasChangesOutsideDocs`), `src/rules.ts`
+holds the rule registry (add a `Rule` to the exported `rules` array to lint something new),
+`src/lint.ts` runs them, and `src/cli.ts` is the entry point. Git facts are computed in the
+CLI and injected for testability: `currentBranch()` and `changedPathsSinceTrunk()` shell out
+to git, the CLI passes both into `gatherDemos(demosDir, cwd, branch, changedPaths)`, and tests
+pass literals (so the raw git calls stay untested). `hasChangesOutsideDocs` is `changedPaths`
+classified by whether any path falls outside `docs/`, defaulting to `true` on an `undefined`
+(unknown) diff so the docs-only exception is never granted on a guess. `declaredBranches` is built by walking every
 `*.md` under `docs/demos/` and reading each doc's `branch:` front matter via
 `readDeclaredBranch` (a deliberately tiny YAML-scalar reader — demo-lint needs only that
 one field, so it does **not** depend on `tools/showboat`'s parser). The same

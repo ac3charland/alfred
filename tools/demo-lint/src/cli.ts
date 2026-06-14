@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { currentBranch, gatherDemos } from './demos.ts';
+import { changedPathsSinceTrunk, currentBranch, gatherDemos } from './demos.ts';
 import { countBySeverity, lintDemos } from './lint.ts';
 
 const HELP = `demo-lint — enforce the docs/demos folder-per-demo structure.
@@ -22,6 +22,7 @@ Rules:
                      lives in its own folder.
   ✗ branch-folder  — a feature branch must own a demo; a doc claims a branch via
                      "branch: <name>" in its YAML front matter (folder name is free).
+                     A docs-only branch (every change under docs/) is exempt.
 
 In this repo, run it through the package script: npm run lint:demos -w tools/demo-lint
 `;
@@ -68,7 +69,13 @@ function main(argv: readonly string[]): number {
     throw new UsageError(`demos directory not found: ${demosDir}`);
   }
 
-  const demos = gatherDemos(demosDir, cwd, branchOverridden ? branch : currentBranch());
+  // The diff always runs against the real HEAD, even when --branch is overridden.
+  const demos = gatherDemos(
+    demosDir,
+    cwd,
+    branchOverridden ? branch : currentBranch(),
+    changedPathsSinceTrunk(),
+  );
   const findings = lintDemos(demos);
 
   if (findings.length > 0) {

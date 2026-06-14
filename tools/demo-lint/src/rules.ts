@@ -51,13 +51,15 @@ const noRootFiles: Rule = {
  * semantic feature name instead of the branch), and `npm run demo -- init` stamps that
  * automatically. A legacy folder named after the branch with content still satisfies it.
  * The rule skips trunk and an undeterminable branch so it only fires on a real feature
- * branch that has no demo at all.
+ * branch that has no demo at all. It also skips a **docs-only** branch — one whose every
+ * change lives under `docs/` — since such a change owes no demo.
  */
 const branchFolder: Rule = {
   name: 'branch-folder',
   description: 'Each feature branch must own a demo, tagged with branch in its front matter.',
   check(demos) {
     if (demos.branchFolder === undefined) return []; // trunk, detached HEAD, or no git.
+    if (!demos.hasChangesOutsideDocs) return []; // docs-only branch owes no demo.
     if (demos.declaredBranches.includes(demos.branchFolder)) return []; // claimed in front matter.
     if (demos.branchFolderHasContent) return []; // legacy: folder named after the branch.
     return [
