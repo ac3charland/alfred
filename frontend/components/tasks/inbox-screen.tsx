@@ -50,6 +50,14 @@ export function InboxScreen({ open }: InboxScreenProperties) {
     setRendered(false);
   }
 
+  // Only play the expand animation when toggling open from a closed state.
+  // Direct navigation to /?view=inbox (or mounting with open=true) should show
+  // the inbox immediately with no animation.
+  const [hasBeenClosed, setHasBeenClosed] = React.useState(!open);
+  if (!open && !hasBeenClosed) {
+    setHasBeenClosed(true);
+  }
+
   const handleAnimationEnd = (event_: React.AnimationEvent<HTMLDivElement>) => {
     // Ignore animations bubbling up from children; only react to our own collapse.
     if (event_.target === event_.currentTarget && !open) {
@@ -96,7 +104,7 @@ export function InboxScreen({ open }: InboxScreenProperties) {
           className={cn(
             // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
             'grid',
-            open ? 'animate-expand-y' : 'animate-collapse-y',
+            open ? (hasBeenClosed ? 'animate-expand-y' : undefined) : 'animate-collapse-y',
             // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
             'motion-reduce:animate-none',
           )}
