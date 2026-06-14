@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import * as React from 'react';
 
 import { CaptureBox } from '@/components/tasks/capture-box';
+import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
 import { TaskList } from '@/components/tasks/task-list';
 import { ViewLink } from '@/components/tasks/view-link';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
@@ -105,10 +106,11 @@ export function InboxScreen({ open }: InboxScreenProperties) {
         >
           <div className="overflow-hidden">
             <div className="mt-6">
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
                   Inbox
                 </span>
+                <CollapseAllButton scope={{ type: 'inbox' }} />
               </div>
               <TaskList scope={{ type: 'inbox' }} emptyMessage="Your inbox is empty" />
             </div>
