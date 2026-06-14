@@ -228,6 +228,52 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Editing a parent's metadata opens the meta panel (a sibling of the subtree), so it
+  // must NOT expand the subtask tree. Only "Add subtask" — whose form lives inside the
+  // subtree — expands it.
+  // ---------------------------------------------------------------------------
+
+  describe('editing metadata does not expand the subtree', () => {
+    it('opening the due-date editor from the menu leaves the subtree collapsed', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      // No folders → menu is: Set due date (1), Add notes (2), Delete (3).
+      await user.keyboard('[ArrowDown][Enter]');
+
+      // The meta panel opened, but the subtask tree stayed collapsed.
+      expect(screen.getByText('Due date')).toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+    });
+
+    it('opening the notes editor from the menu leaves the subtree collapsed', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+
+      expect(screen.getByRole('textbox', { name: /notes/i })).toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+    });
+
+    it('adding a subtask still expands the subtree', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+
+      // The inline add-subtask form lives inside the subtree, so it must reveal it.
+      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Active task completion — animated exit, THEN optimistic removal
   //
   // Completing an active task plays a checkbox pop + height collapse, and only calls
@@ -1990,40 +2036,6 @@ describe('TaskRow', () => {
 
       const reopenedTextarea = await screen.findByRole('textbox', { name: /notes/i });
       expect(reopenedTextarea).toHaveValue('Saved note');
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // setIsExpanded(true) in dropdown menu items
-  // ---------------------------------------------------------------------------
-
-  describe('menu items expand children', () => {
-    it('expands the children list when "Set due date" is selected from the menu', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: null }, CHILD_ITEM]);
-
-      // Children not in accessibility tree initially (collapsed, aria-hidden)
-      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
-
-      // After selecting "Set due date", isExpanded should be set to true → children visible
-      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
-    });
-
-    it('expands the children list when "Add notes" is selected from the menu', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-
-      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
-
-      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
     });
   });
 
