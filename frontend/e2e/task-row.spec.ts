@@ -166,6 +166,37 @@ test.describe('inline editing', () => {
     await expect(tasks.getByText('Original title')).toBeHidden();
   });
 
+  test('typing a space while editing a title keeps the editor open (no phantom keyboard drag)', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeItem('Original title', { id: 't1' })] });
+    await page.goto('/?view=inbox');
+
+    await page.getByText('Original title').dblclick();
+    const input = page.getByRole('textbox', { name: 'Edit title' });
+
+    // Type key-by-key so the Space fires a real keydown — the one that used to bubble to
+    // the row's drag listeners and start a phantom keyboard drag, swallowing the space and
+    // collapsing the editor. pressSequentially (not fill) is what exercises the bug.
+    await input.fill('');
+    await input.pressSequentially('two words');
+
+    // The space survived — it was typed, not consumed by a drag activation — and the
+    // editor is still open.
+    await expect(input).toHaveValue('two words');
+    await expect(input).toBeVisible();
+
+    // Saving persists the spaced title, and double-click still re-opens the editor on that
+    // same item (the drag never hijacked it).
+    await input.press('Enter');
+    const tasks = page.getByRole('list', { name: 'Tasks' });
+    await expect(tasks.getByText('two words')).toBeVisible();
+
+    await tasks.getByText('two words').dblclick();
+    await expect(page.getByRole('textbox', { name: 'Edit title' })).toBeVisible();
+  });
+
   test('sets a due date from the actions menu', async ({ page, seed }) => {
     await seed({ items: [makeItem('Schedule review', { id: 't1' })] });
     await page.goto('/?view=inbox');
