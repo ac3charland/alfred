@@ -246,8 +246,7 @@ describe('FolderNav', () => {
     });
   });
 
-  it('save folder button is disabled while createFolder is in flight', async () => {
-    // Never-resolving promise to hold the in-flight state
+  it('closes the create form immediately before the API resolves', async () => {
     mockCreateFolder.mockImplementation(() => new Promise<never>(() => {}));
 
     const user = userEvent.setup();
@@ -257,43 +256,37 @@ describe('FolderNav', () => {
     await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
     await user.click(screen.getByRole('button', { name: /save folder/i }));
 
-    // While the promise is pending the save button should be disabled
-    expect(screen.getByRole('button', { name: /save folder/i })).toBeDisabled();
+    // Form closes immediately — no waitFor needed
+    expect(screen.queryByPlaceholderText(/folder name/i)).not.toBeInTheDocument();
   });
 
-  it('can rename a folder after a create completes (isPending resets to false after create)', async () => {
-    mockCreateFolder.mockResolvedValue({
-      id: 'f3',
-      name: 'Projects',
-      created_at: '2025-01-03T00:00:00Z',
-    });
-    mockUpdateFolder.mockResolvedValue({
-      id: 'f1',
-      name: 'Work Renamed',
-      created_at: '2025-01-01T00:00:00Z',
-    });
+  it('shows the new folder in the list immediately before the API resolves', async () => {
+    mockCreateFolder.mockImplementation(() => new Promise<never>(() => {}));
 
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    // Create a folder and wait for it to complete
     await user.click(screen.getByRole('button', { name: /create folder/i }));
     await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
     await user.click(screen.getByRole('button', { name: /save folder/i }));
-    await waitFor(() => {
-      expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
-    });
 
-    // Now rename Work — should succeed since isPending reset to false
-    await openFolderMenu(user, 'Work');
-    await selectEdit(user);
-    const input = screen.getByRole('textbox');
-    await user.clear(input);
-    await user.type(input, 'Work Renamed');
-    await user.click(screen.getByRole('button', { name: /save rename/i }));
+    // Folder appears immediately via the optimistic store dispatch
+    expect(screen.getByRole('link', { name: /projects/i })).toBeInTheDocument();
+  });
 
+  it('restores the create form with the original name when createFolder fails', async () => {
+    mockCreateFolder.mockRejectedValue(new Error('Network error'));
+
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await user.click(screen.getByRole('button', { name: /create folder/i }));
+    await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
+    await user.click(screen.getByRole('button', { name: /save folder/i }));
+
+    // Form re-opens with the original name so the user can retry
     await waitFor(() => {
-      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', 'Work Renamed');
+      expect(screen.getByPlaceholderText(/folder name/i)).toHaveValue('Projects');
     });
   });
 
@@ -457,89 +450,6 @@ describe('FolderNav', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('create form save button is disabled while a delete is in flight', async () => {
-    // Never-resolving promise so delete stays in flight
-    mockDeleteFolder.mockImplementation(() => new Promise<never>(() => {}));
-
-    const user = userEvent.setup();
-    renderWithProviders(<FolderNav />, { folders: FOLDERS });
-
-    // Start the delete operation (folder is removed optimistically from UI immediately)
-    await openFolderMenu(user, 'Personal');
-    await selectDelete(user);
-
-    // Open the create form while delete is in flight
-    await user.click(screen.getByRole('button', { name: /create folder/i }));
-    await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
-
-    // Save button should be disabled because isPending = true
-    expect(screen.getByRole('button', { name: /save folder/i })).toBeDisabled();
-  });
-
-  it('ignores a delete selection while another action is in flight (shared isPending guard)', async () => {
-    // Hold the create in-flight via a deferred promise so isPending stays true. The
-    // Promise executor runs synchronously, so `resolveCreate` is assigned before use.
-    const deferred = {} as { resolve: (folder: Folder) => void };
-    mockCreateFolder.mockImplementation(
-      () =>
-        new Promise<Folder>((resolve) => {
-          deferred.resolve = resolve;
-        }),
-    );
-
-    const user = userEvent.setup();
-    renderWithProviders(<FolderNav />, { folders: FOLDERS });
-
-    // Kick off a create that never resolves yet → component isPending becomes true.
-    await user.click(screen.getByRole('button', { name: /create folder/i }));
-    await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
-    await user.click(screen.getByRole('button', { name: /save folder/i }));
-
-    // createFolder is in flight; isPending is true.
-    expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
-
-    // The dropdown item's onSelect fires; only the handleDeleteFolder isPending guard
-    // blocks it. With the guard intact, removeFolder/deleteFolder must NOT be called
-    // while the create is pending.
-    await openFolderMenu(user, 'Work');
-    await selectDelete(user);
-    expect(mockDeleteFolder).not.toHaveBeenCalled();
-
-    // Cleanup: resolve the pending create to avoid trailing act() warnings.
-    deferred.resolve({ id: 'f3', name: 'Projects', created_at: '2025-01-03T00:00:00Z' });
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: /projects/i })).toBeInTheDocument();
-    });
-  });
-
-  it('can create a folder after a delete completes (isPending resets to false after delete)', async () => {
-    mockDeleteFolder.mockResolvedValue({ success: true });
-    mockCreateFolder.mockResolvedValue({
-      id: 'f3',
-      name: 'Projects',
-      created_at: '2025-01-03T00:00:00Z',
-    });
-
-    const user = userEvent.setup();
-    renderWithProviders(<FolderNav />, { folders: FOLDERS });
-
-    // Delete a folder and wait for it to complete
-    await openFolderMenu(user, 'Personal');
-    await selectDelete(user);
-    await waitFor(() => {
-      expect(mockDeleteFolder).toHaveBeenCalledWith('f2');
-    });
-
-    // Now create a folder — should work since isPending reset to false
-    await user.click(screen.getByRole('button', { name: /create folder/i }));
-    await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
-    await user.click(screen.getByRole('button', { name: /save folder/i }));
-
-    await waitFor(() => {
-      expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
-    });
-  });
-
   it('shows the rename form when Edit is selected from the folder options menu', async () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
@@ -690,8 +600,7 @@ describe('FolderNav', () => {
     expect(screen.queryByRole('button', { name: /save rename/i })).toBeInTheDocument();
   });
 
-  it('save rename button is disabled while updateFolder is in flight', async () => {
-    // Never-resolving promise to hold the in-flight state
+  it('closes the rename form immediately before the API resolves', async () => {
     mockUpdateFolder.mockImplementation(() => new Promise<never>(() => {}));
 
     const user = userEvent.setup();
@@ -704,44 +613,25 @@ describe('FolderNav', () => {
     await user.type(input, 'Work Renamed');
     await user.click(screen.getByRole('button', { name: /save rename/i }));
 
-    // While the promise is pending the save rename button should be disabled
-    expect(screen.getByRole('button', { name: /save rename/i })).toBeDisabled();
+    // Rename form closes immediately — no waitFor needed
+    expect(screen.queryByRole('button', { name: /save rename/i })).not.toBeInTheDocument();
   });
 
-  it('can create a folder after a rename completes (isPending resets to false after rename)', async () => {
-    mockUpdateFolder.mockResolvedValue({
-      id: 'f1',
-      name: 'Work Renamed',
-      created_at: '2025-01-01T00:00:00Z',
-    });
-    mockCreateFolder.mockResolvedValue({
-      id: 'f3',
-      name: 'Projects',
-      created_at: '2025-01-03T00:00:00Z',
-    });
+  it('shows the updated name in the list immediately before the rename API resolves', async () => {
+    mockUpdateFolder.mockImplementation(() => new Promise<never>(() => {}));
 
     const user = userEvent.setup();
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    // Rename a folder and wait for it to complete
     await openFolderMenu(user, 'Work');
     await selectEdit(user);
     const input = screen.getByRole('textbox');
     await user.clear(input);
     await user.type(input, 'Work Renamed');
     await user.click(screen.getByRole('button', { name: /save rename/i }));
-    await waitFor(() => {
-      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', 'Work Renamed');
-    });
 
-    // Now create a folder — should succeed since isPending reset to false
-    await user.click(screen.getByRole('button', { name: /create folder/i }));
-    await user.type(screen.getByPlaceholderText(/folder name/i), 'Projects');
-    await user.click(screen.getByRole('button', { name: /save folder/i }));
-
-    await waitFor(() => {
-      expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
-    });
+    // Updated name appears immediately via the optimistic store patch
+    expect(screen.getByRole('link', { name: /work renamed/i })).toBeInTheDocument();
   });
 
   it('does not call updateFolder when rename name is only whitespace (via Enter)', async () => {
