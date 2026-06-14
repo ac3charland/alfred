@@ -80,13 +80,23 @@ describe('InboxScreen', () => {
       expect(screen.getByTestId('task-list')).toBeInTheDocument();
 
       const reveal = screen.getByTestId('inbox-reveal');
-      expect(reveal).toHaveClass('animate-expand-y');
+      expect(reveal).not.toHaveClass('animate-expand-y');
       expect(reveal).toHaveAttribute('aria-hidden', 'false');
 
       const closeLink = screen.getByRole('link', { name: /close inbox/i });
       expect(closeLink).toHaveAttribute('href', '/');
 
       expect(screen.queryByRole('link', { name: /view inbox/i })).not.toBeInTheDocument();
+    });
+
+    it('shows the inbox immediately with no expand animation on direct navigation', () => {
+      // Mounting with open=true (e.g. navigating from a folder or loading /?view=inbox
+      // directly) must not play the expand animation — the list is already "there".
+      render(<InboxScreen open />);
+
+      const reveal = screen.getByTestId('inbox-reveal');
+      expect(reveal).not.toHaveClass('animate-expand-y');
+      expect(reveal).not.toHaveClass('animate-collapse-y');
     });
   });
 
