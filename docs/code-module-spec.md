@@ -72,18 +72,21 @@ Key files to know going in:
 
 ## 3. Domain model & vocabulary
 
-- **Project** — *= a GitHub repository.* Top-level container. Has a human-picked **key** (2–5 chars,
-  uppercase, e.g. `ALF`, `RLP`) used as the prefix for all refs in the project, and the repo
+- **Project** — *= a GitHub repository.* Top-level container. Has a human-picked **key** (**exactly 3
+  chars**, uppercase, e.g. `ALF`, `RLP`) used as the prefix for all refs in the project, and the repo
   coordinates used to build Claude Code URLs and match webhooks.
-- **Epic** — a grouping within a project (e.g. "Communication Firewall"). **No lifecycle of its own**
-  — purely an organizing bucket on the board. Gets a human-visible **ref** like a story.
+- **Epic** — a grouping within a project (e.g. "Communication Firewall"). No refine→implement
+  lifecycle of its own, but it **can carry `notes`** and be **archived once done** (archived epics
+  drop off the active board, §9.2). Gets a human-visible **ref** like a story.
 - **Story** — the unit of work that runs the **refine → implement** lifecycle. *A story is an
   `items` row* with `item_type='code'` plus a `code_items` sidecar row. This is the "ticket."
 - **Ref** — the human-visible id, `KEY-N` (e.g. `ALF-42`). **Epics and stories share one
   per-project counter**, so every ref in a project is unique whether it names an epic or a story.
   Refs appear in the UI, in branch names, and in PR frontmatter (§12).
-- **Factory state** — where a story sits in the lifecycle (§5). Distinct from the generic
-  `items.status` (`active`/`completed`), which we do **not** overload.
+- **Factory state** — where a story sits in the lifecycle (§5). Code stories do **not** use
+  `items.status` (`active`/`completed`) at all — that field is **task-only**. A code story is
+  "complete" only when its implementation PR merges and `factory_state` becomes `done`; its
+  `items.status` stays at the default `active` and is ignored.
 - **Lane** — how much supervision a story needs. **Lane 2** (human-launched Claude Code Web) is the
   only lane built now; **Lane 1** (local model implements, Claude reviews) is reserved (§18).
 
@@ -101,13 +104,20 @@ GRANTs to `anon, authenticated, service_role`; `SECURITY INVOKER` RPCs for anyth
 express). After writing the migration, **regenerate** `frontend/lib/database.types.ts`
 (`supabase gen types`) and commit the raw output — never hand-edit it.
 
+> **Sandbox limitation (read before implementing).** Steps that need live credentials — running
+> `supabase gen types` and `supabase db push` against the project, setting `wrangler` secrets, and
+> deploying the Worker — **cannot be done by an agent in a CI/web sandbox**, which has no access to
+> the gitignored `frontend/.env.local` (Supabase keys) or the Worker secrets. A sandbox agent should
+> write the migration/code and leave these credentialed steps as an explicit checklist to run at the
+> end in a **local, high-touch session** with `.env.local` present. The same applies to the per-repo
+> GitHub webhook + token setup (§13.4).
+
 ### 4.1 Enums
 
 ```sql
 create type code_factory_state as enum (
   'needs_refinement',  -- entered the factory; refinement not started
   'in_refinement',     -- user launched the refinement session
-  'spec_review',       -- OPTIONAL/deferred: refinement PR open, under review (§5.3)
   'ready_for_dev',     -- refinement PR merged; spec exists
   'in_development',    -- user launched the implementation session
   'ready_for_review',  -- implementation PR open
@@ -127,7 +137,7 @@ create type code_lane as enum ('human', 'local');  -- only 'human' (Lane 2) used
 create table projects (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
-  key         text not null unique check (key ~ '^[A-Z][A-Z0-9]{1,4}$'),
+  key         text not null unique check (key ~ '^[A-Z][A-Z0-9]{2}$'), -- exactly 3 chars
   repo_owner  text not null,        -- e.g. 'ac3charland'
   repo_name   text not null,        -- e.g. 'alfred'
   github_url  text,                 -- convenience; owner/name is the source of truth
@@ -141,8 +151,10 @@ create table epics (
   id          uuid primary key default gen_random_uuid(),
   project_id  uuid not null references projects (id) on delete cascade,
   name        text not null,
+  notes       text,                 -- optional epic-level notes
   ref_number  int  not null,
   ref         text not null unique, -- denormalized KEY-N for display/lookup
+  archived_at timestamptz,          -- set when the epic is archived (done); null = active
   created_at  timestamptz not null default now()
 );
 
@@ -251,7 +263,7 @@ The dividing line is **"does the item have a `code_items` row?"**
 
 ### 5.1 States (happy path)
 
-`needs_refinement → in_refinement → [spec_review] → ready_for_dev → in_development → ready_for_review → done`
+`needs_refinement → in_refinement → ready_for_dev → in_development → ready_for_review → done`
 
 Plus two escape states reachable manually (and, where noted, automatically): `blocked`, `abandoned`.
 
@@ -262,9 +274,9 @@ Plus two escape states reachable manually (and, where noted, automatically): `bl
 | (inbox, `item_type='code'`) | user assigns Project + Epic, confirms gate | `needs_refinement` | app: `enter_code_module` RPC (§4.3, §8) |
 | (a task) | user picks **Convert to Code Story**, assigns Project + Epic | `needs_refinement` | same RPC; also flips `item_type` |
 | `needs_refinement` | user clicks **refinement** link | `in_refinement` | client handler: await Supabase write → open tab (§11.3) |
-| `in_refinement` | refinement PR **opened** | `spec_review` *(if enabled; else stays `in_refinement`)* | webhook → Worker (§13) |
-| `in_refinement`/`spec_review` | refinement PR **merged** | `ready_for_dev` | webhook → Worker; snapshot spec (`spec_path`,`spec_sha`,`spec_markdown`) |
-| `in_refinement`/`spec_review` | refinement PR **closed, unmerged** | `needs_refinement` | webhook → Worker (revert so user can retry; `abandoned` is manual) |
+| `in_refinement` | refinement PR **opened** | *(no state change)* | webhook → Worker records `refinement_pr_url` (§13) |
+| `in_refinement` | refinement PR **merged** | `ready_for_dev` | webhook → Worker; snapshot spec (`spec_path`,`spec_sha`,`spec_markdown`) |
+| `in_refinement` | refinement PR **closed, unmerged** | `needs_refinement` | webhook → Worker (revert so user can retry; `abandoned` is manual) |
 | `ready_for_dev` | user clicks **implementation** link | `in_development` | client handler: await write → open tab (§11.3) |
 | `in_development` | implementation PR **opened** | `ready_for_review` | webhook → Worker |
 | `ready_for_review` | implementation PR **merged** | `done` | webhook → Worker |
@@ -275,14 +287,12 @@ Plus two escape states reachable manually (and, where noted, automatically): `bl
 modal (§10) must offer manual state controls — at minimum *Block*, *Abandon*, and *Advance/Revert
 one step* — so a human can move any story without a PR.
 
-### 5.3 Spec-review state (deferred, but modeled)
+### 5.3 No separate spec-review state
 
-`spec_review` is included in the enum but the back-and-forth on a refinement PR happens through **PR
-comments** (Claude Code Web already responds to review comments), so a distinct swim lane may be
-unnecessary. **Default v1: do not surface a `spec_review` column** — treat refinement-PR-*opened* as
-a no-op and keep the story in `in_refinement`; the definitive transition is refinement-PR-*merged →
-`ready_for_dev`*. Leaving the enum value in place means turning the lane on later is config, not a
-migration. Gate it behind a single Worker constant (`ENABLE_SPEC_REVIEW`).
+There is **no `spec_review` state**. A refinement PR *opening* is a **no-op** for the state machine
+(the Worker just records `refinement_pr_url`); any back-and-forth happens through **PR comments**
+(Claude Code Web already responds to review comments). The story stays in `in_refinement` until the
+refinement PR **merges**, which moves it **straight to `ready_for_dev`**.
 
 ---
 
@@ -372,7 +382,7 @@ dialog with three fields:
 - **Name** (free text, e.g. "Alfred").
 - **GitHub link** (e.g. `https://github.com/ac3charland/alfred`) — parse to `repo_owner` / `repo_name`
   on submit; store the URL too.
-- **Ticket key** (2–5 chars; uppercase; validated unique against existing keys; the regex in §4.2).
+- **Ticket key** (**exactly 3 chars**; uppercase; validated unique against existing keys; the regex in §4.2).
   Show a live preview ("Refs will look like `ALF-12`").
 
 On submit: **optimistically** insert the project (temp id) and reconcile with the server row (house
@@ -417,6 +427,9 @@ horizontally scrollable / condensable to fit the dense layout.
   Drag-to-move between swimlanes is **optional polish**; if added, reuse the existing `dnd-kit`
   wiring and persist via the same PATCH the modal uses. (See the `dnd-kit` skill.)
 - Clicking a card opens the **detail modal** (§10).
+- **Archived epics are hidden by default** (§4.2 `archived_at`); a *Show archived* toggle reveals
+  them. Archiving / un-archiving an epic is a **manual** action from the epic header — it does not
+  auto-fire when every story is `done`. The epic header also edits the epic's `notes`.
 
 ---
 
@@ -553,8 +566,7 @@ string-match + DB write. Because both phases end in a PR, this single Worker tra
 3. For **each** ref, load the `code_items` row (by `ref`) via Supabase REST using the
    **service_role/secret key** (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`), and apply the §5.2
    transition by **`(phase, action, merged)`**:
-   - refinement + `opened` → `spec_review` *(only if `ENABLE_SPEC_REVIEW`; else no-op)*; record
-     `refinement_pr_url`.
+   - refinement + `opened` → no state change; record `refinement_pr_url`.
    - refinement + `closed` & merged → `ready_for_dev`; record `spec_path` + fetch & snapshot the spec
      (§13.3).
    - refinement + `closed` & !merged → `needs_refinement`.
@@ -576,7 +588,7 @@ event to the default branch) touches the recorded `spec_path`.
 ### 13.4 Worker shape, env, deploy
 
 - Typed `Env`: `GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-  (all secrets), plus a plain `ENABLE_SPEC_REVIEW` var. Add to `wrangler.toml`; let Wrangler generate
+  (all secrets). Add to `wrangler.toml`; let Wrangler generate
   `worker-configuration.d.ts` (keep it in the ESLint/Prettier ignores — it's generated).
 - Prefer **raw `fetch` to Supabase REST** over bundling `@supabase/supabase-js` (smaller Worker; see
   the `cloudflare-workers` skill). Parse frontmatter with a small regex — **no `yaml` dep**.
@@ -598,13 +610,15 @@ components read via hooks and mutate via optimistic actions → `/api/*` → Sup
 - **`CodeProvider`** (`frontend/lib/stores/code-store.tsx`): holds `projects`, `epics`, and code
   `stories` (item + sidecar). Hooks: `useProjects()`, `useProjectBoard(projectId)` (epics +
   stories grouped by epic → state), `useCodeActions()`.
-- **Actions (optimistic + reconcile):** `createProject`, `createEpic`, `enterCodeModule`
-  (the gate), `updateCodeState` (manual transitions + the link-click write), `convertTaskToCode`.
+- **Actions (optimistic + reconcile):** `createProject`, `createEpic`, `updateEpic` (notes +
+  archive/un-archive), `enterCodeModule` (the gate), `updateCodeState` (manual transitions + the
+  link-click write), `convertTaskToCode`.
 - **API routes** (Next.js, mirroring `app/api/items`, `app/api/folders`): `app/api/projects`
-  (GET/POST), `app/api/epics` (GET/POST, calls `create_epic`), `app/api/code` (GET list; POST = the
-  gate via `enter_code_module`), `app/api/code/[ref]` (PATCH state). Extend `frontend/lib/api-client.ts`
-  with typed `createProject` / `createEpic` / `enterCodeModule` / `updateCodeState` (remember: send
-  `null` for clears only from the null-aware `lib/` layer, per the existing `moveToInbox` note).
+  (GET/POST), `app/api/epics` (GET/POST, calls `create_epic`), `app/api/epics/[id]` (PATCH notes /
+  `archived_at`), `app/api/code` (GET list; POST = the gate via `enter_code_module`),
+  `app/api/code/[ref]` (PATCH state). Extend `frontend/lib/api-client.ts` with typed `createProject` /
+  `createEpic` / `updateEpic` / `enterCodeModule` / `updateCodeState` (remember: send `null` for
+  clears only from the null-aware `lib/` layer, per the existing `moveToInbox` note).
 - **Tasks store** unchanged except its source becomes the `task_items` view (§4.5) so factory
   stories disappear from Tasks/Inbox.
 
@@ -667,15 +681,17 @@ work; schema, the state machine, the gate, and the Worker's transition logic wan
 **Resolved (owner):** Projects & Epics are first-class tables; **stories** carry the lifecycle; epics
 are lightweight groupings with their own shared-counter ref. A sent story **leaves the inbox** and
 lives on **its project's board, in its epic, as a card in a state swimlane**. Refs are **per-project
-3-ish-char keys** (`ALF-42`), the key chosen in the **New project** dialog (name + GitHub link + key),
-epics created via a **New epic** dialog; **epics and stories share one ref scheme**. The Code module
+exactly-3-char keys** (`ALF-42`), the key chosen in the **New project** dialog (name + GitHub link +
+key), epics created via a **New epic** dialog; **epics and stories share one ref scheme**, and epics
+can carry notes and be archived when done. The Code module
 is a **new view** reached by a **Tasks⇄Code switcher** in the header; **Inbox button removed** (reach
 inbox via the `alfred` wordmark, closed by default).
 
 **Resolved (this spec's defaults — change deliberately):** spec render = **Option B snapshot**;
-`spec_review` lane **deferred** (enum kept, off by default); enforcing GitHub **check = committed
-Action**; Worker→GitHub auth = **fine-grained PAT** (GitHub App = upgrade path); refinement/impl
-**links derived client-side**, not stored; PR-closed-unmerged **reverts** rather than auto-abandons.
+**no separate `spec_review` state** (refinement-PR-merged → `ready_for_dev` directly); enforcing
+GitHub **check = committed Action**; Worker→GitHub auth = **fine-grained PAT** (GitHub App = upgrade
+path); refinement/impl **links derived client-side**, not stored; PR-closed-unmerged **reverts**
+rather than auto-abandons.
 
 **Still open (flag at implementation, don't block):** exact Claude Code Web param names + prompt
 length cap (§11.1 — verify via `claude-code-guide`); whether specs are edited post-merge often enough
@@ -703,8 +719,7 @@ and reused. **Do not build any of it now.**
 ### 19.1 Environment & secrets
 
 - **Worker (`wrangler.toml` secrets):** `GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN` (fine-grained PAT,
-  Contents:read on the project repos), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`; var:
-  `ENABLE_SPEC_REVIEW`.
+  Contents:read on the project repos), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 - **Frontend:** no new secrets (Claude Code links are public URLs; the modal reads the Supabase
   snapshot). Add the `react-markdown` + `remark-gfm` deps.
 
