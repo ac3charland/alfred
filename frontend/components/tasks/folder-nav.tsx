@@ -48,7 +48,6 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const [editingFolderId, setEditingFolderId] = React.useState<string | undefined>();
   // Stryker disable next-line StringLiteral: AT_CEILING — editingName's initial value is always overwritten by setEditingName(folder.name) in the same onClick that sets editingFolderId, before the rename input ever renders; never observable — equivalent.
   const [editingName, setEditingName] = React.useState('');
-  const [isPending, setIsPending] = React.useState(false);
 
   const isActive = (path: string) => pathname === path;
 
@@ -60,36 +59,32 @@ export function FolderNav({ onClose }: FolderNavProperties) {
     // Stryker disable next-line OptionalChaining: AT_CEILING — handleCreateFolder's only caller is the form onSubmit (line ~131), which always passes a defined SyntheticEvent; the optional chain never short-circuits in reachable code — equivalent.
     event_?.preventDefault();
     const name = newFolderName.trim();
-    if (!name || isPending) return;
-    setIsPending(true);
+    if (!name) return;
+    setNewFolderName('');
+    setIsCreating(false);
     try {
       await addFolder(name);
-      setNewFolderName('');
-      setIsCreating(false);
     } catch {
-      // The store already rolled back; keep the form open so the user can retry.
-    } finally {
-      setIsPending(false);
+      // Store rolled back; re-open the form so the user can retry.
+      setNewFolderName(name);
+      setIsCreating(true);
     }
   };
 
   const handleRenameFolder = async (id: string) => {
     const name = editingName.trim();
-    if (!name || isPending) return;
-    setIsPending(true);
+    if (!name) return;
+    setEditingFolderId(undefined);
     try {
       await renameFolder(id, name);
-      setEditingFolderId(undefined);
     } catch {
-      // The store already restored the previous name.
-    } finally {
-      setIsPending(false);
+      // Store restored the previous name; re-open the editor so the user can retry.
+      setEditingFolderId(id);
+      setEditingName(name);
     }
   };
 
   const handleDeleteFolder = async (id: string) => {
-    if (isPending) return;
-    setIsPending(true);
     const wasActive = pathname === `/folders/${id}`;
     try {
       await removeFolder(id);
@@ -98,9 +93,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
         router.push('/');
       }
     } catch {
-      // The store already restored the folder.
-    } finally {
-      setIsPending(false);
+      // Store already restored the folder.
     }
   };
 
@@ -157,7 +150,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
             <IconButton
               type="submit"
               tone="affirm"
-              disabled={isPending || !newFolderName.trim()}
+              disabled={!newFolderName.trim()}
               aria-label="Save folder"
             >
               <Check size={13} />
@@ -194,7 +187,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                     <IconButton
                       type="submit"
                       tone="affirm"
-                      disabled={isPending}
+                      disabled={!editingName.trim()}
                       aria-label="Save rename"
                     >
                       <Check size={13} />
