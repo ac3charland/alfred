@@ -11,6 +11,14 @@ jest.mock('./capture-box', () => ({
   },
 }));
 
+// The collapse-all button reads the shared stores; stub it here like the other
+// store-reading children, since these tests render InboxScreen without providers.
+jest.mock('./collapse-all-button', () => ({
+  CollapseAllButton: function MockCollapseAllButton() {
+    return <button type="button" aria-label="Collapse all" />;
+  },
+}));
+
 // Capture the last-rendered scope so tests can assert on it.
 let lastTaskListScope: unknown;
 jest.mock('./task-list', () => ({

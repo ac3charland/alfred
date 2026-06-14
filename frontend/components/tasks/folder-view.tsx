@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
 import { TaskList } from '@/components/tasks/task-list';
 import { useFolders } from '@/lib/stores/folders-store';
 
@@ -30,10 +31,11 @@ export function FolderView({ folderId }: FolderViewProperties) {
 
   return (
     <>
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           {folder.name}
         </span>
+        <CollapseAllButton scope={{ type: 'folder', folderId }} />
       </div>
 
       <TaskList scope={{ type: 'folder', folderId }} emptyMessage={`No tasks in ${folder.name}`} />

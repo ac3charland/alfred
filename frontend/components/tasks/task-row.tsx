@@ -17,6 +17,7 @@ import {
   useActiveEditor,
   useActiveEditorActions,
 } from '@/lib/stores/active-editor-store';
+import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import type { ItemNode } from '@/lib/tree';
@@ -54,8 +55,10 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const activeEditor = useActiveEditor();
   const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
-  const [isExpanded, setIsExpanded] = React.useState(false);
-  const [showCompleted, setShowCompleted] = React.useState(false);
+  const { subtasks: expandedSubtasks, completed: expandedCompleted } = useExpansion();
+  const { toggleSubtasks, expandSubtasks, toggleCompleted } = useExpansionActions();
+  const isExpanded = expandedSubtasks.has(node.id);
+  const showCompleted = expandedCompleted.has(node.id);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
   // While true, the row plays its completion exit (checkbox pop → height collapse →
   // text fade) and holds itself visible until the collapse ends, at which point
@@ -351,7 +354,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
             <IconButton
               size="sm"
               onClick={() => {
-                setIsExpanded((v) => !v);
+                toggleSubtasks(node.id);
               }}
               aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
               aria-expanded={isExpanded}
@@ -555,7 +558,8 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                     closeEditor({ itemId: node.id, kind: 'subtask' });
                   } else {
                     openEditor({ itemId: node.id, kind: 'subtask' });
-                    setIsExpanded(true);
+                    // The inline add-subtask form renders inside the subtree, so expand it.
+                    expandSubtasks(node.id);
                   }
                 }}
                 aria-label="Add subtask"
@@ -595,7 +599,6 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                       onSelect={() => {
                         setIsEditingDueDate(true);
                         setIsMetaOpen(true);
-                        setIsExpanded(true);
                       }}
                     >
                       {node.due_date ? 'Edit due date' : 'Set due date'}
@@ -607,7 +610,6 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                       onSelect={() => {
                         setIsEditingNotes(true);
                         setIsMetaOpen(true);
-                        setIsExpanded(true);
                       }}
                     >
                       {node.notes ? 'Edit notes' : 'Add notes'}
@@ -911,7 +913,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                         <button
                           type="button"
                           onClick={() => {
-                            setShowCompleted((v) => !v);
+                            toggleCompleted(node.id);
                           }}
                           aria-expanded={showCompleted}
                           className={cn(
