@@ -197,8 +197,15 @@ keyboard-focus + a11y floor with almost no work. To get them you must:
   no hook) rendered in the overlay, and a sortable wrapper that renders the presentational one.
 - **`SortableContext items` must exactly match the rendered order and use the same ids** you pass
   to `useSortable`. A mismatch makes items jump to wrong slots or refuse to sort.
-- **Listeners on the whole row eat button clicks.** Use a handle (`setActivatorNodeRef` +
-  `{...listeners}` on the handle) so the row's rename/delete/expand `IconButton`s stay clickable.
+- **Listeners on the whole row eat button clicks AND keystrokes.** alfred drags from the whole
+  row (no handle), so it guards BOTH sensors against the row's controls via `isInteractiveTarget`
+  (`lib/dnd/pointer-sensor.ts`): `RowPointerSensor` for press, `RowKeyboardSensor` for keys.
+  Without the keyboard guard, the `KeyboardSensor` lifts on **Space/Enter** (its default start
+  codes) when a keydown bubbles up from a focused control inside the row — so pressing space in
+  the inline title `<input>` started a phantom drag and `preventDefault`-ate the typed space,
+  collapsing the editor. Both custom sensors omit the `activatorNode` check (alfred sets no
+  `setActivatorNodeRef`), so the interactive guard is the only thing standing between a control
+  and an accidental lift; any new draggable-row controls inherit the protection for free.
 - **No `activationConstraint` → every click starts a drag** and taps stop working. Always set
   `{ distance: 8 }` (or `{ delay, tolerance }` for touch) on the `PointerSensor`.
 - **`rectIntersection` on a vertical list feels broken** (must fully overlap). Use `closestCenter`
