@@ -1,0 +1,40 @@
+# alfred Software Factory — PR frontmatter enforcing check (code-module §12).
+#
+# Copy this file to a project repo's `.github/workflows/alfred-frontmatter.yml`.
+# It fails the PR check when the machine-readable `alfred` block is missing or
+# malformed, so the webhook Worker (§13) can always parse a valid block. Coding
+# agents are configured to fix failing checks, so they self-correct.
+#
+# Contract (§12):
+#   ```alfred
+#   alfred-ticket: ALF-42            # one ref, or a comma-separated list
+#   phase: refinement                # refinement | implementation
+#   spec-path: specs/ALF-42.md       # refinement PRs only
+#   ```
+
+name: alfred-frontmatter
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate alfred frontmatter block
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          node -e '
+            const b = process.env.BODY || "";
+            const m = b.match(/```alfred\s+([\s\S]*?)```/);
+            if (!m) { console.error("missing ```alfred block"); process.exit(1); }
+            const blk = m[1];
+            const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
+            const phase  = /phase:\s*(refinement|implementation)/.exec(blk);
+            if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
+            if (phase[1] === "refinement" && !/spec-path:\s*\S+/.test(blk)) {
+              console.error("refinement PRs need spec-path"); process.exit(1);
+            }
+            console.log("ok:", ticket[1].trim(), phase[1]);
+          '
