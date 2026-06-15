@@ -39,6 +39,14 @@ interface TaskActions {
   uncompleteTask: (id: string) => Promise<void>;
   /** Optimistically patch a task's editable fields, rolling back on failure. */
   updateTask: (id: string, patch: TaskFieldPatch) => Promise<void>;
+  /**
+   * Classify an inbox item by flipping its `item_type` (the §7.1 inbox-triage gate).
+   * Its own action — not part of `TaskFieldPatch` — so only this deliberate control may
+   * change the type. An `unclassified` row is always free of task-only fields (the §4.6
+   * DB CHECK), so the flip is a bare `item_type` patch that clears nothing; reconciles /
+   * rolls back exactly like `updateTask`.
+   */
+  classifyItem: (id: string, itemType: 'task' | 'code') => Promise<void>;
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
   /**
@@ -190,6 +198,17 @@ export function TasksProvider({
         dispatch({ type: 'patch', ids: [id], patch });
         try {
           const saved = await api.updateItem(id, patch);
+          dispatch({ type: 'upsert', items: [saved] });
+        } catch (error) {
+          if (previous) dispatch({ type: 'upsert', items: [previous] });
+          throw error;
+        }
+      },
+      async classifyItem(id, itemType) {
+        const previous = tasksRef.current.find((item) => item.id === id);
+        dispatch({ type: 'patch', ids: [id], patch: { item_type: itemType } });
+        try {
+          const saved = await api.updateItem(id, { item_type: itemType });
           dispatch({ type: 'upsert', items: [saved] });
         } catch (error) {
           if (previous) dispatch({ type: 'upsert', items: [previous] });

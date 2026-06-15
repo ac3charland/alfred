@@ -522,6 +522,89 @@ describe('updateTask', () => {
 });
 
 // ---------------------------------------------------------------------------
+// classifyItem — inbox triage: flip item_type only (§7.1). Mirrors updateTask's
+// optimistic patch → reconcile → rollback, but is its own action so the field
+// isn't exposed on TaskFieldPatch (only this gate may change item_type).
+// ---------------------------------------------------------------------------
+
+describe('classifyItem', () => {
+  it('patches item_type optimistically before the request resolves', () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'unclassified' })]),
+    });
+
+    act(() => {
+      void result.current.actions.classifyItem('item-1', 'code');
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('code');
+  });
+
+  it('sends the new item_type to the API and reconciles with the server row', async () => {
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'task' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'unclassified' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'task');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'task' });
+    expect(result.current.tasks[0]?.item_type).toBe('task');
+  });
+
+  it('patches the targeted item, leaving the others untouched', () => {
+    const a = item({ id: 'item-a', item_type: 'unclassified' });
+    const b = item({ id: 'item-b', item_type: 'unclassified' });
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([a, b]) });
+
+    act(() => {
+      void result.current.actions.classifyItem('item-b', 'code');
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('unclassified');
+    expect(result.current.tasks[1]?.item_type).toBe('code');
+  });
+
+  it('rolls back to the prior item_type on failure', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'unclassified' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'code').catch(() => {});
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('unclassified');
+  });
+
+  it('does not roll back (no phantom row) when the id is absent, and preserves the error', async () => {
+    const networkError = new Error('network');
+    mockUpdateItem.mockRejectedValue(networkError);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'unclassified' })]),
+    });
+    let caught: unknown;
+
+    await act(async () => {
+      try {
+        await result.current.actions.classifyItem('does-not-exist', 'code');
+      } catch (error) {
+        caught = error;
+      }
+    });
+
+    expect(result.current.tasks).toHaveLength(1);
+    expect(result.current.tasks[0]?.item_type).toBe('unclassified');
+    expect(caught).toBe(networkError);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // moveTask (cascades) + deleteTask (cascades)
 // ---------------------------------------------------------------------------
 
