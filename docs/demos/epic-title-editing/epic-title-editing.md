@@ -18,7 +18,7 @@ Step 2: Clicking ⋯ opens a dropdown with two items: Edit title and Archive.
 
 ![](epic-title-editing-image-3.png)
 
-Step 3: Clicking Edit title transforms the epic heading into an inline text input (teal ring, pre-selected). Enter saves; Escape or clicking outside cancels.
+Step 3: Clicking Edit title transforms the epic heading into an inline text input (teal ring, pre-selected). Click the teal ✓ button or press Enter to save; Escape or clicking outside cancels.
 
 ![](epic-title-editing-image-4.png)
 
