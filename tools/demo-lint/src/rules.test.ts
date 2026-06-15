@@ -11,6 +11,7 @@ function makeDemos(overrides: Partial<DemosContext> = {}): DemosContext {
     branchFolder: undefined,
     branchFolderHasContent: false,
     declaredBranches: [],
+    hasChangesOutsideDocs: true,
     ...overrides,
   };
 }
@@ -65,6 +66,21 @@ describe('branch-folder', () => {
     );
     expect(finding?.severity).toBe('error');
     expect(finding?.message).toContain('claude/foo');
+  });
+
+  it('skips a docs-only branch with no demo (every change under docs/)', () => {
+    expect(
+      findingsFor(
+        'branch-folder',
+        makeDemos({
+          branch: 'claude/foo',
+          branchFolder: 'claude/foo',
+          branchFolderHasContent: false,
+          declaredBranches: [],
+          hasChangesOutsideDocs: false,
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('passes when a demo doc declares this branch in front matter (any folder name)', () => {

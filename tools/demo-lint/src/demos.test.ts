@@ -95,6 +95,25 @@ describe('gatherDemos', () => {
     write(demoDoc('feat/x'), 'b', 'demo.md');
     expect(gatherDemos(root, root, 'main').declaredBranches).toEqual(['feat/x']);
   });
+
+  it('reports no changes outside docs when every changed path is under docs/', () => {
+    const changed = ['docs/code-module-spec.md', 'docs/demos/x/y.md'];
+    expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(false);
+  });
+
+  it('reports changes outside docs when a changed path is outside docs/', () => {
+    const changed = ['tools/demo-lint/src/rules.ts'];
+    expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(true);
+  });
+
+  it('reports changes outside docs for a mixed change set', () => {
+    const changed = ['docs/code-module-spec.md', 'tools/demo-lint/src/rules.ts'];
+    expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(true);
+  });
+
+  it('conservatively reports changes outside docs when the diff is unknown', () => {
+    expect(gatherDemos(root, root, 'feat/x').hasChangesOutsideDocs).toBe(true);
+  });
 });
 
 describe('readDeclaredBranch', () => {
