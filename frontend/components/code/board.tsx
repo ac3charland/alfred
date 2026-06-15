@@ -3,6 +3,7 @@
 import {
   Archive,
   ArchiveRestore,
+  Check,
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
@@ -241,6 +242,9 @@ function EpicBlock({
       <h3 id={headingId} className="m-0 flex items-stretch">
         {editingTitle ? (
           /* When editing title: non-interactive row with the input in place of the name. */
+          /* TODO: investigate consolidating this inline-title-edit pattern (input + check
+             button + Escape/click-outside cancel) with story-detail-modal's EditableTitle
+             and folder-nav's rename input into a single shared EditableTextField atom. */
           <div className="flex flex-1 items-center gap-2 px-4 py-3">
             {collapsed ? (
               <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
@@ -264,6 +268,16 @@ function EpicBlock({
               }}
               className="flex-1 rounded-sm border border-border bg-input px-2 py-0.5 text-sm font-medium text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
             />
+            <button
+              type="button"
+              aria-label="Confirm title"
+              onClick={() => {
+                void saveTitle();
+              }}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+            >
+              <Check size={12} className="text-background" strokeWidth={3} />
+            </button>
             <span className="shrink-0 font-mono text-xs text-muted-foreground">{epic.ref}</span>
           </div>
         ) : (
