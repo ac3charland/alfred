@@ -6,9 +6,15 @@ import * as React from 'react';
 import { StoryCard } from '@/components/code/story-card';
 import { Swimlane } from '@/components/code/swimlane';
 import type { BoardEpic } from '@/lib/stores/code-store';
-import { useProjectBoard } from '@/lib/stores/code-store';
+import { useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 import { cn } from '@/lib/utils';
+
+/** The phase-appropriate launch handler the board threads to every card (§11). */
+type OpenSessionHandler = (
+  story: CodeStory,
+  phase: 'refinement' | 'implementation',
+) => void | Promise<void>;
 
 export interface BoardProperties {
   /** The project whose board to render (the `/code/[projectId]` route segment). */
@@ -50,12 +56,14 @@ function EpicBlock({
   onToggleCollapse,
   showBlocked,
   onOpenStory,
+  onOpenSession,
 }: {
   board: BoardEpic;
   collapsed: boolean;
   onToggleCollapse: () => void;
   showBlocked: boolean;
   onOpenStory: (story: CodeStory) => void;
+  onOpenSession: OpenSessionHandler;
 }) {
   const { epic, lanes, escapeStories } = board;
   const headingId = `epic-${epic.id}-heading`;
@@ -90,7 +98,12 @@ function EpicBlock({
           {/* The six happy-path lanes, horizontally scrollable to fit the dense layout. */}
           <div className="flex gap-2 overflow-x-auto pb-1">
             {lanes.map((lane) => (
-              <Swimlane key={lane.state} lane={lane} onOpenStory={onOpenStory} />
+              <Swimlane
+                key={lane.state}
+                lane={lane}
+                onOpenStory={onOpenStory}
+                onOpenSession={onOpenSession}
+              />
             ))}
           </div>
 
@@ -130,6 +143,7 @@ function EpicBlock({
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
+  const { openClaudeSession } = useCodeActions();
 
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
@@ -148,6 +162,19 @@ export function Board({ projectId }: BoardProperties) {
   const handleOpenStory = React.useCallback((_story: CodeStory) => {
     // M6: open the story detail modal.
   }, []);
+
+  // The §11 human launch: await the state write then open the prefilled tab (the store
+  // action owns the await-then-open; the card owns the in-flight spinner). A failed write
+  // rejects — swallow it here so an unhandled rejection doesn't surface; the card re-enables.
+  const handleOpenSession = React.useCallback<OpenSessionHandler>(
+    async (story, phase) => {
+      // A story showing a launch button always has a real ref (the view's inner-join
+      // guarantee; the row type is nullable only because it's a view) — guard for the type.
+      if (story.ref === null) return;
+      await openClaudeSession(story.ref, phase);
+    },
+    [openClaudeSession],
+  );
 
   if (project === undefined) {
     return (
@@ -202,6 +229,7 @@ export function Board({ projectId }: BoardProperties) {
               }}
               showBlocked={showBlocked}
               onOpenStory={handleOpenStory}
+              onOpenSession={handleOpenSession}
             />
           ))}
         </div>

@@ -11,6 +11,11 @@ export interface SwimlaneProperties {
   lane: BoardLane;
   /** Forwarded to each card's `onOpen` (M6 detail modal seam). */
   onOpenStory?: (story: CodeStory) => void;
+  /** Forwarded to each card's `onOpenSession` (the §11 human-launch action). */
+  onOpenSession?: (
+    story: CodeStory,
+    phase: 'refinement' | 'implementation',
+  ) => void | Promise<void>;
 }
 
 /**
@@ -23,7 +28,7 @@ export interface SwimlaneProperties {
  * An empty lane shows a faint placeholder so the column reads as "nothing here yet" rather
  * than looking broken.
  */
-export function Swimlane({ lane, onOpenStory }: SwimlaneProperties) {
+export function Swimlane({ lane, onOpenStory, onOpenSession }: SwimlaneProperties) {
   return (
     <section
       aria-label={lane.label}
@@ -43,7 +48,10 @@ export function Swimlane({ lane, onOpenStory }: SwimlaneProperties) {
         ) : (
           lane.stories.map((story) => {
             const openProperty = onOpenStory ? { onOpen: onOpenStory } : {};
-            return <StoryCard key={story.item_id} story={story} {...openProperty} />;
+            const sessionProperty = onOpenSession ? { onOpenSession } : {};
+            return (
+              <StoryCard key={story.item_id} story={story} {...openProperty} {...sessionProperty} />
+            );
           })
         )}
       </div>

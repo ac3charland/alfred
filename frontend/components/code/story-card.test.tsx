@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -52,7 +52,9 @@ describe('StoryCard', () => {
     const user = userEvent.setup();
     render(<StoryCard story={story} onOpen={onOpen} />);
 
-    await user.click(screen.getByRole('button'));
+    // The card body opens the detail modal; query by its accessible name to disambiguate it
+    // from the launch button that also renders in this state.
+    await user.click(screen.getByRole('button', { name: /open ALF-42/i }));
 
     expect(onOpen).toHaveBeenCalledWith(story);
   });
@@ -62,8 +64,9 @@ describe('StoryCard', () => {
     render(<StoryCard story={makeStory()} />);
 
     // No throw on click when onOpen is absent.
-    await user.click(screen.getByRole('button'));
-    expect(screen.getByRole('button')).toBeInTheDocument();
+    const body = screen.getByRole('button', { name: /open ALF-42/i });
+    await user.click(body);
+    expect(body).toBeInTheDocument();
   });
 
   it('shows no escape tag for a happy-path story', () => {
@@ -88,6 +91,119 @@ describe('StoryCard', () => {
   it('exposes the factory state as a data attribute for the board', () => {
     render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
 
-    expect(screen.getByRole('button')).toHaveAttribute('data-factory-state', 'ready_for_dev');
+    expect(screen.getAllByRole('button')[0]).toHaveAttribute('data-factory-state', 'ready_for_dev');
+  });
+
+  describe('the "Open Claude Code" action (§11)', () => {
+    /** The set of states in which NO launch button applies (§11.3). */
+    const noButtonStates = [
+      'in_refinement',
+      'in_development',
+      'ready_for_review',
+      'done',
+      'blocked',
+      'abandoned',
+    ] as const;
+
+    it('shows a Refinement button when the story needs refinement', () => {
+      render(<StoryCard story={makeStory({ factory_state: 'needs_refinement' })} />);
+
+      expect(screen.getByRole('button', { name: /refine/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
+    });
+
+    it('shows an Implementation button when the story is ready for dev', () => {
+      render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+
+      expect(screen.getByRole('button', { name: /implement/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /refine/i })).not.toBeInTheDocument();
+    });
+
+    it.each(noButtonStates)('shows no launch button in the %s state', (state) => {
+      render(<StoryCard story={makeStory({ factory_state: state })} />);
+
+      expect(screen.queryByRole('button', { name: /refine/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
+    });
+
+    it('calls onOpenSession with the story and the refinement phase', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const story = makeStory({ factory_state: 'needs_refinement' });
+      const user = userEvent.setup();
+      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+
+      await user.click(screen.getByRole('button', { name: /refine/i }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(story, 'refinement');
+    });
+
+    it('calls onOpenSession with the implementation phase from ready_for_dev', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const story = makeStory({ factory_state: 'ready_for_dev' });
+      const user = userEvent.setup();
+      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+
+      await user.click(screen.getByRole('button', { name: /implement/i }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(story, 'implementation');
+    });
+
+    it('does not fire the card-level onOpen when the launch button is clicked', async () => {
+      const onOpen = jest.fn();
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const user = userEvent.setup();
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'needs_refinement' })}
+          onOpen={onOpen}
+          onOpenSession={onOpenSession}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /refine/i }));
+
+      expect(onOpenSession).toHaveBeenCalledTimes(1);
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+
+    it('shows a spinner while the launch is in flight and disables the button', async () => {
+      // A never-resolving handler keeps the launch pending so the spinner stays visible.
+      const onOpenSession = jest.fn().mockImplementation(() => new Promise(() => {}));
+      const user = userEvent.setup();
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'needs_refinement' })}
+          onOpenSession={onOpenSession}
+        />,
+      );
+
+      const launch = screen.getByRole('button', { name: /refine/i });
+      await user.click(launch);
+
+      // The spinner has an accessible "Opening" label (queried by name to avoid the toast
+      // viewport's status-region collision, per the RTL skill).
+      expect(await screen.findByRole('status', { name: /opening/i })).toBeInTheDocument();
+      expect(launch).toBeDisabled();
+    });
+
+    it('re-enables the button after a failed launch (so the user can retry)', async () => {
+      const onOpenSession = jest.fn().mockRejectedValue(new Error('write failed'));
+      const user = userEvent.setup();
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'needs_refinement' })}
+          onOpenSession={onOpenSession}
+        />,
+      );
+
+      const launch = screen.getByRole('button', { name: /refine/i });
+      await user.click(launch);
+
+      // Settles back to enabled; the spinner is gone.
+      await waitFor(() => {
+        expect(launch).toBeEnabled();
+      });
+      expect(screen.queryByRole('status', { name: /opening/i })).not.toBeInTheDocument();
+    });
   });
 });

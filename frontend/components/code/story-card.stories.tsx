@@ -40,15 +40,35 @@ const meta = {
   tags: ['autodocs'],
   decorators: [withVisualFrame],
   parameters: { visualTest: { target: VISUAL_TARGET } },
-  args: { story: BASE_STORY },
+  // A no-op launch handler so the §11 button renders and is clickable in the gallery.
+  args: { story: BASE_STORY, onOpenSession: () => {} },
 } satisfies Meta<typeof StoryCard>;
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** A happy-path story card: ref + title, the default board treatment. */
+/**
+ * A `needs_refinement` story: ref + title + the phase-appropriate **Refine in Claude Code**
+ * launch button (§11). This is the default board treatment for a freshly-gated story.
+ */
 export const Default: Story = {};
+
+/**
+ * A `ready_for_dev` story (its refinement PR merged): the launch button switches to
+ * **Implement in Claude Code** (§11.3).
+ */
+export const ReadyForDev: Story = {
+  args: { story: { ...BASE_STORY, factory_state: 'ready_for_dev', ref: 'ALF-45' } },
+};
+
+/**
+ * An `in_refinement` story: a Claude Code session is already running, so NO launch button
+ * applies — the card is just ref + title until the webhook advances it (§11.3).
+ */
+export const InRefinement: Story = {
+  args: { story: { ...BASE_STORY, factory_state: 'in_refinement', ref: 'ALF-46' } },
+};
 
 /** A blocked story: amber edge + a Blocked tag, surfaced via the board's filter toggle. */
 export const Blocked: Story = {
