@@ -113,14 +113,14 @@ export interface CodeActions {
     epicId: string,
   ) => Promise<CodeStory>;
   /**
-   * Edit an epic's header fields (§9.2): `notes` and `archived_at` (set to archive,
-   * `null` to un-archive — archiving drops the epic off the active board). Optimistically
-   * patches the epic via the reducer's `patchEpic`, then reconciles with the saved row,
-   * rolling the touched fields back on error.
+   * Edit an epic's header fields (§9.2): `name` (inline rename), `notes` and `archived_at`
+   * (set to archive, `null` to un-archive — archiving drops the epic off the active board).
+   * Optimistically patches the epic via the reducer's `patchEpic`, then reconciles with the
+   * saved row, rolling the touched fields back on error.
    */
   updateEpic: (
     epicId: string,
-    patch: { notes?: string | null; archived_at?: string | null },
+    patch: { name?: string; notes?: string | null; archived_at?: string | null },
   ) => Promise<void>;
   /**
    * Edit a code story's title (§10 header). The title lives on the `items` row, so this
@@ -475,6 +475,10 @@ export function CodeProvider({
         // Capture exactly the fields this patch touches so a failure restores only them.
         const rollback: Partial<Epic> = {};
         const optimistic: Partial<Epic> = {};
+        if (patch.name !== undefined) {
+          rollback.name = previous.name;
+          optimistic.name = patch.name;
+        }
         if (patch.notes !== undefined) {
           rollback.notes = previous.notes;
           optimistic.notes = patch.notes;
@@ -489,7 +493,7 @@ export function CodeProvider({
           dispatch({
             type: 'patchEpic',
             id: epicId,
-            patch: { notes: saved.notes, archived_at: saved.archived_at },
+            patch: { name: saved.name, notes: saved.notes, archived_at: saved.archived_at },
           });
         } catch (error) {
           dispatch({ type: 'patchEpic', id: epicId, patch: rollback });

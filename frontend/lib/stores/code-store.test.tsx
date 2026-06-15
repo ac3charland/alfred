@@ -564,7 +564,39 @@ describe('code-store', () => {
       });
     });
 
-    describe('updateEpic (§9.2 notes + archive)', () => {
+    describe('updateEpic (§9.2 name + notes + archive)', () => {
+      it('optimistically patches epic name, then reconciles with the saved row', async () => {
+        mockUpdateEpic.mockResolvedValue(makeSavedEpic({ name: 'Renamed Epic' }));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateEpic('e1', { name: 'Renamed Epic' });
+        });
+
+        expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { name: 'Renamed Epic' });
+        expect(result.current.board.activeEpics[0]?.epic.name).toBe('Renamed Epic');
+      });
+
+      it('rolls the name back when the API call fails', async () => {
+        mockUpdateEpic.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({
+            projects: [PROJECT_A],
+            epics: [makeEpic('e1', 'p1', { name: 'Original Name' })],
+          }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateEpic('e1', { name: 'New Name' }),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(result.current.board.activeEpics[0]?.epic.name).toBe('Original Name');
+      });
+
       it('optimistically patches epic notes, then reconciles with the saved row', async () => {
         mockUpdateEpic.mockResolvedValue(makeSavedEpic({ notes: 'Refine the routing' }));
         const { result } = renderHook(() => useStore('p1'), {
