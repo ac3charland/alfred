@@ -1,11 +1,14 @@
 'use client';
 
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Plus } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
+import { IconButton } from '@/components/atoms/icon-button';
+import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
-import { useProjects } from '@/lib/stores/code-store';
+import { useCodeActions, useProjects } from '@/lib/stores/code-store';
+import type { Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface ProjectNavProperties {
@@ -29,15 +32,25 @@ const navLinkClass = (active: boolean) =>
  * that's the active route. Reads the project list from the CodeProvider store.
  *
  * Each project shows its 3-char key as the ref-prefix hint, since refs everywhere read
- * `KEY-N` (§3). The `+ New project` create control is deferred to M4 (the gate's
- * New-project dialog, §8.1) — its seam is marked below.
+ * `KEY-N` (§3). The `+` opens the same New-project dialog as the gate (§8.1 / §9.1),
+ * persisting through the optimistic `createProject` action and then routing to the new
+ * board.
  */
 export function ProjectNav({ onClose }: ProjectNavProperties) {
   const pathname = usePathname();
   const projects = useProjects();
+  const { createProject } = useCodeActions();
+  const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
   // exactOptionalPropertyTypes: only forward onClick when a handler was given.
   const closeProperty = onClose ? { onClick: onClose } : {};
+
+  const handleCreated = (project: Project) => {
+    // Route to the new board (a client-side History push, like ViewLink) and close any
+    // open mobile drawer.
+    globalThis.history.pushState(null, '', `/code/${project.id}`);
+    onClose?.();
+  };
 
   return (
     <nav aria-label="Projects" className="flex flex-col gap-1 py-2">
@@ -45,7 +58,15 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           Projects
         </span>
-        {/* M4: + New project dialog (§8.1) — the create control lands with the gate. */}
+        <IconButton
+          size="sm"
+          aria-label="New project"
+          onClick={() => {
+            setNewProjectOpen(true);
+          }}
+        >
+          <Plus size={14} />
+        </IconButton>
       </div>
 
       {projects.length === 0 ? (
@@ -73,6 +94,14 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
           })}
         </div>
       )}
+
+      <NewProjectDialog
+        open={newProjectOpen}
+        onOpenChange={setNewProjectOpen}
+        onCreateProject={createProject}
+        onCreated={handleCreated}
+        existingKeys={projects.map((project) => project.key)}
+      />
     </nav>
   );
 }

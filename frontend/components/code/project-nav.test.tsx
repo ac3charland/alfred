@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
+import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
 
@@ -11,9 +13,16 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
 }));
 
+// The New-project dialog persists via the optimistic createProject action, which calls
+// api-client; mock it so the dialog's create flow never hits the network.
+jest.mock('@/lib/api-client');
+const mockCreateProject = jest.mocked(api.createProject);
+
 beforeEach(() => {
-  jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+  pushStateSpy = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
 });
+
+let pushStateSpy: jest.SpyInstance;
 
 const PROJECTS: Project[] = [
   {
@@ -107,10 +116,58 @@ describe('ProjectNav', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not defer the New project control into the DOM (M4 seam)', () => {
-    // The create control is deferred to M4; ProjectNav must not render a create button yet.
+  it('renders the New project button (§9.1)', () => {
     renderNav(PROJECTS);
 
-    expect(screen.queryByRole('button', { name: /new project/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /new project/i })).toBeInTheDocument();
+  });
+
+  it('opens the New-project dialog when the + is clicked', async () => {
+    const user = userEvent.setup();
+    renderNav(PROJECTS);
+
+    await user.click(screen.getByRole('button', { name: /new project/i }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /github link/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /ticket key/i })).toBeInTheDocument();
+  });
+
+  it('creates a project and routes to its new board', async () => {
+    // NB: the seeded PROJECTS already use ALF + RLP, so the new key must be distinct
+    // (the dialog rejects a duplicate key — covered in gate-dialog.test).
+    const created: Project = {
+      id: 'p-new',
+      name: 'Beacon',
+      key: 'BCN',
+      repo_owner: 'ac3charland',
+      repo_name: 'beacon',
+      github_url: 'https://github.com/ac3charland/beacon',
+      ref_seq: 0,
+      created_at: '2025-02-01T00:00:00Z',
+    };
+    mockCreateProject.mockResolvedValue(created);
+    const user = userEvent.setup();
+    renderNav(PROJECTS);
+
+    await user.click(screen.getByRole('button', { name: /new project/i }));
+    await screen.findByRole('dialog');
+    await user.type(screen.getByRole('textbox', { name: /name/i }), 'Beacon');
+    await user.type(
+      screen.getByRole('textbox', { name: /github link/i }),
+      'https://github.com/ac3charland/beacon',
+    );
+    await user.type(screen.getByRole('textbox', { name: /ticket key/i }), 'BCN');
+    await user.click(screen.getByRole('button', { name: /create project/i }));
+
+    await waitFor(() => {
+      expect(mockCreateProject).toHaveBeenCalledWith({
+        name: 'Beacon',
+        github_url: 'https://github.com/ac3charland/beacon',
+        key: 'BCN',
+      });
+    });
+    expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/code/p-new');
   });
 });
