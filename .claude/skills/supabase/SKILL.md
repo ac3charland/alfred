@@ -251,11 +251,28 @@ and always **verify a change with a follow-up query** — a fix without verifica
 
 ### Applying migrations / generating types without a personal access token
 
-`supabase gen types typescript --db-url "<postgres-connection-string>"` introspects the
-live DB directly — no `--project-id` + personal access token needed. Likewise, plain SQL
-migrations can be applied over the **session pooler** connection string (port 5432) with
-any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable for
-multi-statement DDL — prefer the session pooler or direct connection for migrations.
+Plain SQL migrations can be applied over the **session pooler** connection string (port
+5432) with any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable
+for multi-statement DDL — prefer the session pooler or direct connection for migrations.
+
+**Regenerating `database.types.ts` from `--db-url` is CLI-version-sensitive — pin a mid-2.9x
+version and have Docker running.** Token-free `--db-url` introspection only works on CLI
+versions that spin up a local Docker `postgres-meta` container, so **start Docker Desktop first**
+(`open -a Docker`, then poll `until docker info; do sleep 2; done`):
+
+```bash
+npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > frontend/lib/database.types.ts
+```
+
+- **The current CLI (2.106.0) dropped the token-free path** — `gen types --db-url` errors
+  `LegacyPlatformAuthRequiredError` ("Access token not provided"), demanding `supabase login` /
+  `SUPABASE_ACCESS_TOKEN`. Don't reach for `@latest` here.
+- **Very old versions (≤2.40.x) work token-free via Docker but emit an outdated type format**
+  (no `SetofOptions`, drops `graphql_public` when you pass `--schema public`) → noisy format
+  churn vs. the committed file.
+- **2.6x–2.9x are the sweet spot:** token-free, Docker-based, and emit the *current* format
+  (`SetofOptions`, `graphql_public`, `__InternalSupabase`). Omit `--schema` so all exposed
+  schemas are included.
 
 **Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
 `DATABASE_URL` from the dashboard's *Direct connection* tab points at
