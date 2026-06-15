@@ -7,6 +7,7 @@ import * as React from 'react';
 
 import { FieldLabel } from '@/components/atoms/field-label';
 import { IconButton } from '@/components/atoms/icon-button';
+import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
@@ -21,6 +22,7 @@ import {
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
+import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
 import {
   countCompletedDescendants,
@@ -52,8 +54,16 @@ interface TaskRowProperties {
 export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowProperties) {
   const folders = useFolders();
   const allTasks = useTasks();
-  const { completeTask, uncompleteTask, updateTask, moveTask, deleteTask, classifyItem } =
-    useTaskActions();
+  const {
+    completeTask,
+    uncompleteTask,
+    updateTask,
+    moveTask,
+    deleteTask,
+    classifyItem,
+    removeGatedItem,
+  } = useTaskActions();
+  const { showToast } = useToastActions();
   const activeEditor = useActiveEditor();
   const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -101,6 +111,16 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   // still unclassified — `Classify as Code` is a bare item_type flip that's safe precisely
   // because an unclassified row is already clean (no due_date/parent_id/completed to clear).
   const isUnclassified = node.item_type === 'unclassified';
+  // A code-classified-but-not-yet-sent row (no code_items sidecar) — it's still in the
+  // inbox, and offers "Send to Code module…" to open the gate (§7.1 / §8).
+  const isCode = node.item_type === 'code';
+
+  // The gate (§8): "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
+  // unclassified rows). Both open the SAME dialog, which is CodeProvider-free (this row
+  // lives under TasksProvider, not CodeProvider). On confirm the item leaves task_items
+  // server-side, so we drop it from the tasks store and toast the allocated ref.
+  const [showGate, setShowGate] = React.useState(false);
+  const canConvert = isTask || isUnclassified;
 
   // The whole row is a drag source (the RowPointerSensor ignores presses on its buttons
   // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
@@ -673,6 +693,35 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                       </DropdownMenu.Sub>
                     )}
 
+                    {/* Send to Code module… — a code-classified inbox item enters the gate
+                        (§7.1 / §8). The RPC creates the code_items sidecar; the item then
+                        leaves the Tasks/Inbox views. */}
+                    {isCode && (
+                      <DropdownMenu.Item
+                        className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                        onSelect={() => {
+                          setShowGate(true);
+                        }}
+                      >
+                        Send to Code module…
+                      </DropdownMenu.Item>
+                    )}
+
+                    {/* Convert to Code Story… — the path for an existing task (or an
+                        unclassified item): the gate both flips item_type and creates the
+                        factory row in one step (the enter_code_module RPC clears task-only
+                        fields, §4.3, so a task with a due date / subtasks converts safely). */}
+                    {canConvert && (
+                      <DropdownMenu.Item
+                        className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
+                        onSelect={() => {
+                          setShowGate(true);
+                        }}
+                      >
+                        Convert to Code Story…
+                      </DropdownMenu.Item>
+                    )}
+
                     {/* Set/Edit due date — `task`-only (§7.3). */}
                     {isTask && (
                       <DropdownMenu.Item
@@ -1033,6 +1082,23 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
           handleCascadeConfirm();
         }}
         isPending={false}
+      />
+
+      {/* The gate (§8) — Send to Code module / Convert to Code Story. On success the item
+          has left task_items, so drop it from the store and toast its new ref. */}
+      <GateDialog
+        open={showGate}
+        onOpenChange={setShowGate}
+        item={{
+          id: node.id,
+          title: node.title,
+          notes: node.notes,
+          source_url: node.source_url,
+        }}
+        onComplete={(story) => {
+          removeGatedItem(node.id);
+          showToast(`Created ${story.ref}`);
+        }}
       />
     </li>
   );

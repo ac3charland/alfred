@@ -58,6 +58,15 @@ interface TaskActions {
   reparentTask: (id: string, newParentId: string | null) => Promise<void>;
   /** Delete a task and its subtree (the DB cascades the children). */
   deleteTask: (id: string) => Promise<void>;
+  /**
+   * Drop an item from the store WITHOUT a server delete — for when a server-side action
+   * has already moved it out of the tasks domain. The gate (§8) admits an item to the
+   * factory via `enter_code_module`, which creates a `code_items` sidecar; the item then
+   * falls out of the `task_items` view, so it must leave this store too. A pure client-side
+   * `remove` (no API call): the row already changed server-side, so there's nothing to
+   * reconcile and nothing to roll back.
+   */
+  removeGatedItem: (id: string) => void;
 }
 
 type TaskAction =
@@ -303,6 +312,11 @@ export function TasksProvider({
           dispatch({ type: 'upsert', items: affected });
           throw error;
         }
+      },
+      removeGatedItem(id) {
+        // The gate's RPC clears parent_id, so a gated item is always a leaf here — drop
+        // just that row (no subtree, no server call).
+        dispatch({ type: 'remove', ids: [id] });
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].

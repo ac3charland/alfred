@@ -39,10 +39,11 @@ test.describe('inbox classification', () => {
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Classify as…' }).hover();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('menuitem', { name: 'Code' })).toBeVisible();
+    // `exact` so "Code" doesn't also match the M4 "Convert to Code Story…" menu item.
+    await expect(page.getByRole('menuitem', { name: 'Code', exact: true })).toBeVisible();
     // ArrowDown moves from "Task" (first) to "Code"; wait for focus before selecting.
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByRole('menuitem', { name: 'Code' })).toBeFocused();
+    await expect(page.getByRole('menuitem', { name: 'Code', exact: true })).toBeFocused();
     await page.keyboard.press('Enter');
 
     const row = page.getByRole('listitem').filter({ hasText: 'Ship the webhook' });
