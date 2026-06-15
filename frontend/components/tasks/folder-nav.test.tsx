@@ -61,19 +61,24 @@ describe('FolderNav', () => {
     mockPathname.mockReturnValue('/');
   });
 
-  it('renders Inbox, Completed links, and folder names', () => {
+  it('renders the Completed link and folder names', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    expect(screen.getByRole('link', { name: /inbox/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /completed/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /work/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /personal/i })).toBeInTheDocument();
   });
 
+  it('does NOT render an Inbox link (§6.2 — removed; reach the inbox via the wordmark)', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.queryByRole('link', { name: /inbox/i })).not.toBeInTheDocument();
+  });
+
   it('renders with no folders when the list is empty', () => {
     renderWithProviders(<FolderNav />, { folders: [] });
 
-    expect(screen.getByRole('link', { name: /inbox/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /completed/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /work/i })).not.toBeInTheDocument();
   });
 
@@ -321,7 +326,7 @@ describe('FolderNav', () => {
     const user = userEvent.setup();
     renderWithProviders(<FolderNav onClose={onClose} />, { folders: FOLDERS });
 
-    await user.click(screen.getByRole('link', { name: /inbox/i }));
+    await user.click(screen.getByRole('link', { name: /completed/i }));
 
     expect(onClose).toHaveBeenCalled();
   });
@@ -330,13 +335,7 @@ describe('FolderNav', () => {
     // Renders without throwing and links are still present
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    expect(screen.getByRole('link', { name: /inbox/i })).toBeInTheDocument();
-  });
-
-  it('inbox link points to /?view=inbox', () => {
-    renderWithProviders(<FolderNav />, { folders: FOLDERS });
-
-    expect(screen.getByRole('link', { name: /inbox/i })).toHaveAttribute('href', '/?view=inbox');
+    expect(screen.getByRole('link', { name: /completed/i })).toBeInTheDocument();
   });
 
   it('completed link points to /completed', () => {
@@ -352,11 +351,11 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /personal/i })).toHaveAttribute('href', '/folders/f2');
   });
 
-  it('highlights the inbox link when on the / route', () => {
+  it('does not highlight Completed on the / route, and shows it muted', () => {
     mockPathname.mockReturnValue('/');
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    expect(screen.getByRole('link', { name: /inbox/i })).toHaveClass('bg-secondary');
+    // The inbox is reached via the wordmark now — no nav link highlights on `/`.
     expect(screen.getByRole('link', { name: /completed/i })).not.toHaveClass('bg-secondary');
     // Inactive links use the muted foreground class
     expect(screen.getByRole('link', { name: /completed/i })).toHaveClass('text-muted-foreground');
@@ -367,7 +366,6 @@ describe('FolderNav', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     expect(screen.getByRole('link', { name: /completed/i })).toHaveClass('bg-secondary');
-    expect(screen.getByRole('link', { name: /inbox/i })).not.toHaveClass('bg-secondary');
   });
 
   it('highlights the folder link for the active folder route', () => {
@@ -382,7 +380,6 @@ describe('FolderNav', () => {
     mockPathname.mockReturnValue('/settings');
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
-    expect(screen.getByRole('link', { name: /inbox/i })).not.toHaveClass('bg-secondary');
     expect(screen.getByRole('link', { name: /completed/i })).not.toHaveClass('bg-secondary');
     expect(screen.getByRole('link', { name: /work/i })).not.toHaveClass('bg-secondary');
   });

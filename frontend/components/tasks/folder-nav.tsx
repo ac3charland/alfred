@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, FolderOpen, Inbox, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
@@ -9,7 +9,6 @@ import { IconButton } from '@/components/atoms/icon-button';
 import { TextField } from '@/components/atoms/text-field';
 import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
 import { ViewLink } from '@/components/tasks/view-link';
-import { INBOX_DROP_ID } from '@/lib/dnd/drag-to-folder';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { cn } from '@/lib/utils';
 
@@ -76,7 +75,12 @@ function FolderNameForm({
 }
 
 /**
- * Sidebar navigation: Inbox link, folder list with CRUD, Completed link.
+ * Sidebar navigation: folder list with CRUD, plus a Completed link.
+ *
+ * No Inbox link (§6.2 — removed): the `alfred` wordmark is the way into the inbox/capture
+ * screen (it navigates to `/`), and the inbox list still opens via `?view=inbox`. Folders
+ * remain a drop target for moving an item back to the Inbox (the FolderDropZone wrapping
+ * each folder), so removing the standalone Inbox link doesn't affect drag-to-inbox.
  *
  * Reads the folder list from the FoldersProvider store and mutates through its
  * optimistic actions — the list updates instantly and reconciles with the server
@@ -142,16 +146,8 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
-      {/* Inbox — reveals the inbox list on the landing route, and is a drop target */}
-      <FolderDropZone id={INBOX_DROP_ID}>
-        <ViewLink href="/?view=inbox" className={navLinkClass(isActive('/'))} {...closeProperty}>
-          <Inbox size={15} className="shrink-0" />
-          <span>Inbox</span>
-        </ViewLink>
-      </FolderDropZone>
-
       {/* Folders section */}
-      <div className="mt-4">
+      <div>
         <div className="flex items-center justify-between px-3 py-1">
           <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
             Folders
