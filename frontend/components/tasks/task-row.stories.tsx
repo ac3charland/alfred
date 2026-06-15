@@ -60,6 +60,32 @@ export const Simple: Story = {
   },
 };
 
+// ── Classification variants (§7) — the type-gating matrix made visible. ──
+
+// An unclassified row (what capture creates): no type badge, no completion checkbox, no
+// add-subtask affordance — just the title. Classifying it unlocks those (see below).
+export const Unclassified: Story = {
+  args: {
+    node: { ...BASE_NODE, item_type: 'unclassified', title: 'Triage this thought' },
+  },
+};
+
+// A task row: the "Task" badge plus the full task affordances (checkbox + due date +
+// subtasks). This is BASE_NODE's type; spelled out here for the contrast with the others.
+export const TaskClassified: Story = {
+  args: {
+    node: { ...BASE_NODE, item_type: 'task', title: 'Write the first draft' },
+  },
+};
+
+// A code-classified row: the "Code" badge, but still NO task affordances. (Notes stay
+// generic — available via the actions menu on every type.)
+export const CodeClassified: Story = {
+  args: {
+    node: { ...BASE_NODE, item_type: 'code', title: 'Build the webhook worker' },
+  },
+};
+
 export const WithDueDate: Story = {
   args: {
     node: { ...BASE_NODE, due_date: '2099-06-30' },

@@ -2961,3 +2961,238 @@ describe('TaskRow', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Classification & type-gating (M2, §7.1 / §7.2 / §7.3)
+//
+// Capture creates `unclassified` items; `Classify as Task` unlocks the task-only
+// affordances (checkbox, due date, subtasks) plus the Task badge; `Classify as Code`
+// shows the Code badge but still no task affordances. `notes` stay generic on every type.
+// ---------------------------------------------------------------------------
+
+const UNCLASSIFIED_ITEM: Item = { ...BASE_ITEM, item_type: 'unclassified' };
+const CODE_ITEM: Item = { ...BASE_ITEM, item_type: 'code' };
+
+describe('TaskRow — classification & type-gating', () => {
+  describe('type badge (§7.2)', () => {
+    it('shows no badge on an unclassified row', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      expect(screen.queryByText('Code')).not.toBeInTheDocument();
+    });
+
+    it('shows a "Task" badge on a task row', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(screen.getByText('Task')).toBeInTheDocument();
+    });
+
+    it('shows a "Code" badge on a code row', () => {
+      renderTasks([CODE_ITEM]);
+
+      expect(screen.getByText('Code')).toBeInTheDocument();
+    });
+  });
+
+  describe('the Classify as… submenu (§7.1)', () => {
+    it('offers Classify as… only while the row is unclassified', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
+    });
+
+    it('hides Classify as… once the row is a task', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+    });
+
+    it('hides Classify as… once the row is code', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+    });
+
+    it('classifies as Task (item_type → task) and reveals the task affordances', async () => {
+      mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'task' });
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      // Drive the Radix submenu by keyboard (synthetic clicks race the safe-triangle):
+      // hover the subtrigger, ArrowRight opens it (focusing "Task"), Enter selects.
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'task' });
+      });
+      // Optimistic flip: the Task badge and the completion checkbox now show.
+      expect(screen.getByText('Task')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Mark "Write tests" complete' }),
+      ).toBeInTheDocument();
+    });
+
+    it('classifies as Code (item_type → code) showing the Code badge but no checkbox', async () => {
+      mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'code' });
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Code' });
+      // ArrowDown from "Task" to "Code", then select.
+      await user.keyboard('[ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'code' });
+      });
+      expect(screen.getByText('Code')).toBeInTheDocument();
+      // Still no task affordance after classifying as code.
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('rolls the item_type back if the classify request fails', async () => {
+      mockUpdateItem.mockRejectedValue(new Error('network'));
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[Enter]');
+
+      // Optimistic badge appears, then the rollback removes it (back to unclassified).
+      await waitFor(() => {
+        expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('task-only affordances are gated (§7.3)', () => {
+    it('an unclassified row exposes no completion checkbox', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('a code row exposes no completion checkbox', () => {
+      renderTasks([CODE_ITEM]);
+
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('a task row exposes the completion checkbox', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(
+        screen.getByRole('button', { name: 'Mark "Write tests" complete' }),
+      ).toBeInTheDocument();
+    });
+
+    it('an unclassified row exposes no add-subtask affordance', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+    });
+
+    it('a code row exposes no add-subtask affordance', () => {
+      renderTasks([CODE_ITEM]);
+
+      expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+    });
+
+    it('a task row exposes the add-subtask affordance', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(screen.getByRole('button', { name: 'Add subtask' })).toBeInTheDocument();
+    });
+
+    it('an unclassified row offers no Set due date menu item', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByText('Set due date')).not.toBeInTheDocument();
+      expect(screen.queryByText('Edit due date')).not.toBeInTheDocument();
+    });
+
+    it('a code row offers no Set due date menu item', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByText('Set due date')).not.toBeInTheDocument();
+    });
+
+    it('a task row offers the Set due date menu item', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByText('Set due date')).toBeInTheDocument();
+    });
+  });
+
+  describe('notes stay generic across every type (§7.3)', () => {
+    it('an unclassified row still offers Add notes', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByText('Add notes')).toBeInTheDocument();
+    });
+
+    it('a code row still offers Add notes and opens the notes editor (no due-date field)', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.click(screen.getByRole('menuitem', { name: 'Add notes' }));
+
+      // The notes editor is available on a code row…
+      expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
+      // …but the (task-only) due-date field is NOT rendered in the meta panel.
+      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
+    });
+  });
+});
