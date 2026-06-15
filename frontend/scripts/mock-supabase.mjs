@@ -17,8 +17,12 @@
  *     GET  /auth/v1/user                                      → the single user
  *     POST /auth/v1/logout                                    → 204
  *   Data (PostgREST):
- *     GET|POST|PATCH|DELETE /rest/v1/{folders,items}          → CRUD + filters
+ *     GET|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items}
+ *                                                             → CRUD + filters
+ *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
+ *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module}
+ *                                                             → Software Factory RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
  *
@@ -57,6 +61,12 @@ const PASSWORD = process.env.E2E_USER_PASSWORD ?? 'demo-password-123';
 let folders = [];
 /** @type {Record<string, unknown>[]} */
 let items = [];
+/** @type {Record<string, unknown>[]} */
+let projects = [];
+/** @type {Record<string, unknown>[]} */
+let epics = [];
+/** @type {Record<string, unknown>[]} */
+let codeItems = [];
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -141,6 +151,9 @@ function applyOrder(rows, searchParameters) {
 function tableFor(name) {
   if (name === 'folders') return folders;
   if (name === 'items') return items;
+  if (name === 'projects') return projects;
+  if (name === 'epics') return epics;
+  if (name === 'code_items') return codeItems;
   return;
 }
 
@@ -171,6 +184,68 @@ function newFolder(input) {
   };
 }
 
+// ── Software Factory row constructors (defaults mirror migration 0002). ──
+
+/** A project = a GitHub repo; `ref_seq` is the shared per-project ref counter. */
+function newProject(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    created_at: input.created_at ?? new Date().toISOString(),
+    name: input.name ?? '',
+    key: input.key ?? 'ALF',
+    repo_owner: input.repo_owner ?? '',
+    repo_name: input.repo_name ?? '',
+    github_url: input.github_url ?? null,
+    ref_seq: input.ref_seq ?? 0,
+  };
+}
+
+/** An epic = an organizing bucket; its `ref` is drawn from the project counter. */
+function newEpic(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    created_at: input.created_at ?? new Date().toISOString(),
+    project_id: input.project_id ?? null,
+    name: input.name ?? '',
+    notes: input.notes ?? null,
+    ref_number: input.ref_number ?? 0,
+    ref: input.ref ?? '',
+    archived_at: input.archived_at ?? null,
+  };
+}
+
+/** A code story: the 1:1 `code_items` sidecar on an `items` row. */
+function newCodeItem(input) {
+  const now = new Date().toISOString();
+  return {
+    item_id: input.item_id ?? randomUUID(),
+    project_id: input.project_id ?? null,
+    epic_id: input.epic_id ?? null,
+    ref_number: input.ref_number ?? 0,
+    ref: input.ref ?? '',
+    factory_state: input.factory_state ?? 'needs_refinement',
+    lane: input.lane ?? 'human',
+    spec_path: input.spec_path ?? null,
+    spec_sha: input.spec_sha ?? null,
+    spec_markdown: input.spec_markdown ?? null,
+    refinement_pr_url: input.refinement_pr_url ?? null,
+    implementation_pr_url: input.implementation_pr_url ?? null,
+    blocked_reason: input.blocked_reason ?? null,
+    created_at: input.created_at ?? now,
+    updated_at: input.updated_at ?? now,
+  };
+}
+
+/** Build a function that picks the right row constructor for a real table. */
+function rowConstructorFor(name) {
+  if (name === 'folders') return newFolder;
+  if (name === 'items') return newItem;
+  if (name === 'projects') return newProject;
+  if (name === 'epics') return newEpic;
+  if (name === 'code_items') return newCodeItem;
+  return;
+}
+
 /** Ids of an item plus every descendant (matches the DB parent_id cascade). */
 function subtreeIds(rootId) {
   const ids = new Set([rootId]);
@@ -185,6 +260,76 @@ function subtreeIds(rootId) {
     }
   }
   return ids;
+}
+
+// ── Computed views (migration 0002 §4.5) ─────────────────────────────────────
+// These are derived on read from the real arrays, never stored.
+
+/**
+ * The `task_items` view: items NOT in the factory — i.e. items with no
+ * `code_items` sidecar (matches the migration's `not exists` predicate). Returns
+ * the full `items` shape so the same filters/order apply as a plain `items` read.
+ */
+function taskItemsRows() {
+  const inFactory = new Set(codeItems.map((code) => code.item_id));
+  return items.filter((item) => !inFactory.has(item.id));
+}
+
+/**
+ * The `v_code_stories` view: each `code_items` row joined to its `items`,
+ * `projects`, and `epics` rows, flattened to EXACTLY the columns the migration's
+ * view selects (renamed timestamps and the joined project/epic fields). Rows whose
+ * joins don't resolve are dropped, mirroring the view's inner joins.
+ */
+function codeStoryRows() {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const epicById = new Map(epics.map((epic) => [epic.id, epic]));
+  /** @type {Record<string, unknown>[]} */
+  const rows = [];
+  for (const code of codeItems) {
+    const item = itemById.get(code.item_id);
+    const project = projectById.get(code.project_id);
+    const epic = epicById.get(code.epic_id);
+    // Drop rows whose joins don't resolve (mirrors the view's inner joins).
+    if ([item, project, epic].includes(undefined)) continue;
+    rows.push({
+      item_id: code.item_id,
+      project_id: code.project_id,
+      epic_id: code.epic_id,
+      ref_number: code.ref_number,
+      ref: code.ref,
+      factory_state: code.factory_state,
+      lane: code.lane,
+      spec_path: code.spec_path,
+      spec_sha: code.spec_sha,
+      spec_markdown: code.spec_markdown,
+      refinement_pr_url: code.refinement_pr_url,
+      implementation_pr_url: code.implementation_pr_url,
+      blocked_reason: code.blocked_reason,
+      code_created_at: code.created_at,
+      code_updated_at: code.updated_at,
+      title: item.title,
+      notes: item.notes,
+      source_url: item.source_url,
+      item_created_at: item.created_at,
+      project_key: project.key,
+      project_name: project.name,
+      repo_owner: project.repo_owner,
+      repo_name: project.repo_name,
+      epic_name: epic.name,
+      epic_ref: epic.ref,
+      epic_archived_at: epic.archived_at,
+    });
+  }
+  return rows;
+}
+
+/** Resolve a computed view name to its derived rows, or undefined if not a view. */
+function viewRows(name) {
+  if (name === 'task_items') return taskItemsRows();
+  if (name === 'v_code_stories') return codeStoryRows();
+  return;
 }
 
 // ── route handlers ─────────────────────────────────────────────────────────
@@ -232,6 +377,18 @@ function makeSession() {
   };
 }
 
+/**
+ * Allocate the next ref number for a project: increment its `ref_seq` and return
+ * the new value. Mirrors the `next_code_ref` SQL (the shared epic+story counter).
+ * Returns undefined if the project doesn't exist.
+ */
+function allocateRef(projectId) {
+  const project = projects.find((row) => String(row.id) === String(projectId));
+  if (project === undefined) return;
+  project.ref_seq = Number(project.ref_seq) + 1;
+  return project.ref_seq;
+}
+
 function handleRpc(req, res, fn, body) {
   if (fn === 'complete_subtree' && req.method === 'POST') {
     const rootId = body?.root_id;
@@ -248,6 +405,55 @@ function handleRpc(req, res, fn, body) {
     sendJson(res, 200, affected);
     return;
   }
+
+  // ── Software Factory RPCs (migration 0002 §4.3) ──
+  if (fn === 'next_code_ref' && req.method === 'POST') {
+    const n = allocateRef(body?.p_project);
+    // A scalar-returning RPC sends the bare value.
+    sendJson(res, 200, n ?? null);
+    return;
+  }
+
+  if (fn === 'create_epic' && req.method === 'POST') {
+    const project = projects.find((row) => String(row.id) === String(body?.p_project));
+    const key = project?.key ?? null;
+    const n = allocateRef(body?.p_project);
+    const epic = newEpic({
+      project_id: body?.p_project,
+      name: body?.p_name,
+      ref_number: n,
+      ref: `${key}-${String(n)}`,
+    });
+    epics.push(epic);
+    sendJson(res, 200, epic);
+    return;
+  }
+
+  if (fn === 'enter_code_module' && req.method === 'POST') {
+    const project = projects.find((row) => String(row.id) === String(body?.p_project));
+    const key = project?.key ?? null;
+    const n = allocateRef(body?.p_project);
+    // Flip the item to `code` and clear task-only fields (the §4.6 CHECK).
+    const item = items.find((row) => String(row.id) === String(body?.p_item));
+    if (item !== undefined) {
+      item.item_type = 'code';
+      item.due_date = null;
+      item.parent_id = null;
+      item.status = 'active';
+      item.completed_at = null;
+    }
+    const code = newCodeItem({
+      item_id: body?.p_item,
+      project_id: body?.p_project,
+      epic_id: body?.p_epic,
+      ref_number: n,
+      ref: `${key}-${String(n)}`,
+    });
+    codeItems.push(code);
+    sendJson(res, 200, code);
+    return;
+  }
+
   sendJson(res, 404, { message: `No rpc: ${fn}` });
 }
 
@@ -256,6 +462,18 @@ function handleRest(req, res, url, body) {
 
   if (rest.startsWith('rpc/')) {
     handleRpc(req, res, rest.slice('rpc/'.length), body);
+    return;
+  }
+
+  // Computed views are read-only and derived on demand (not stored arrays).
+  const view = viewRows(rest);
+  if (view !== undefined) {
+    if (req.method !== 'GET') {
+      sendJson(res, 405, { message: `View is read-only: ${rest}` });
+      return;
+    }
+    const rows = applyOrder(applyFilters(view, url.searchParams), url.searchParams);
+    sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
     return;
   }
 
@@ -272,9 +490,10 @@ function handleRest(req, res, url, body) {
   }
 
   if (req.method === 'POST') {
+    const construct = rowConstructorFor(rest);
     const inputs = Array.isArray(body) ? body : [body];
     const created = inputs.map((input) => {
-      const row = rest === 'folders' ? newFolder(input) : newItem(input);
+      const row = construct === undefined ? { ...input } : construct(input);
       table.push(row);
       return row;
     });
@@ -288,7 +507,12 @@ function handleRest(req, res, url, body) {
 
   if (req.method === 'PATCH') {
     const matched = applyFilters(table, url.searchParams);
-    for (const row of matched) Object.assign(row, body);
+    const now = new Date().toISOString();
+    for (const row of matched) {
+      Object.assign(row, body);
+      // code_items bumps updated_at on every write (mirrors the table trigger).
+      if (rest === 'code_items') row.updated_at = now;
+    }
     if (!wantsRepresentation(req)) {
       sendNoContent(res);
       return;
@@ -299,28 +523,52 @@ function handleRest(req, res, url, body) {
 
   if (req.method === 'DELETE') {
     const matched = applyFilters(table, url.searchParams);
-    const removeIds = new Set();
-    for (const row of matched) {
-      if (rest === 'items') {
-        for (const id of subtreeIds(row.id)) removeIds.add(id);
-      } else {
-        removeIds.add(row.id);
-      }
-    }
-    if (rest === 'folders') {
-      // ON DELETE SET NULL: items in a deleted folder return to the Inbox.
-      for (const item of items) {
-        if (removeIds.has(item.folder_id)) item.folder_id = null;
-      }
-      folders = folders.filter((folder) => !removeIds.has(folder.id));
-    } else {
-      items = items.filter((item) => !removeIds.has(item.id));
-    }
+    deleteRows(rest, matched);
     sendNoContent(res);
     return;
   }
 
   sendJson(res, 405, { message: `Method not allowed: ${req.method}` });
+}
+
+/**
+ * Delete the matched rows of `rest`, honouring migration 0002's FK cascades:
+ * items → its subtree + each item's code_items (on delete cascade); folders →
+ * items return to the Inbox (on delete set null); projects → their epics +
+ * code_items (on delete cascade). epics/code_items delete only themselves.
+ */
+function deleteRows(rest, matched) {
+  if (rest === 'folders') {
+    const removeIds = new Set(matched.map((row) => row.id));
+    for (const item of items) {
+      if (removeIds.has(item.folder_id)) item.folder_id = null;
+    }
+    folders = folders.filter((folder) => !removeIds.has(folder.id));
+    return;
+  }
+  if (rest === 'items') {
+    const removeIds = new Set();
+    for (const row of matched) for (const id of subtreeIds(row.id)) removeIds.add(id);
+    items = items.filter((item) => !removeIds.has(item.id));
+    codeItems = codeItems.filter((code) => !removeIds.has(code.item_id));
+    return;
+  }
+  if (rest === 'projects') {
+    const removeIds = new Set(matched.map((row) => row.id));
+    epics = epics.filter((epic) => !removeIds.has(epic.project_id));
+    codeItems = codeItems.filter((code) => !removeIds.has(code.project_id));
+    projects = projects.filter((project) => !removeIds.has(project.id));
+    return;
+  }
+  if (rest === 'epics') {
+    const removeRows = new Set(matched);
+    epics = epics.filter((epic) => !removeRows.has(epic));
+    return;
+  }
+  if (rest === 'code_items') {
+    const removeRows = new Set(matched);
+    codeItems = codeItems.filter((code) => !removeRows.has(code));
+  }
 }
 
 function handleControl(req, res, url, body) {
@@ -331,17 +579,23 @@ function handleControl(req, res, url, body) {
   if (url.pathname === '/__mock__/reset' && req.method === 'POST') {
     folders = [];
     items = [];
+    projects = [];
+    epics = [];
+    codeItems = [];
     sendJson(res, 200, { ok: true });
     return;
   }
   if (url.pathname === '/__mock__/seed' && req.method === 'POST') {
     folders = Array.isArray(body?.folders) ? body.folders.map((f) => newFolder(f)) : [];
     items = Array.isArray(body?.items) ? body.items.map((i) => newItem(i)) : [];
-    sendJson(res, 200, { folders, items });
+    projects = Array.isArray(body?.projects) ? body.projects.map((p) => newProject(p)) : [];
+    epics = Array.isArray(body?.epics) ? body.epics.map((e) => newEpic(e)) : [];
+    codeItems = Array.isArray(body?.codeItems) ? body.codeItems.map((c) => newCodeItem(c)) : [];
+    sendJson(res, 200, { folders, items, projects, epics, codeItems });
     return;
   }
   if (url.pathname === '/__mock__/state' && req.method === 'GET') {
-    sendJson(res, 200, { folders, items });
+    sendJson(res, 200, { folders, items, projects, epics, codeItems });
     return;
   }
   sendJson(res, 404, { message: `No control route: ${req.method} ${url.pathname}` });
