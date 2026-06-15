@@ -1,7 +1,8 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
-import type { CodeStory, Epic, Project } from '@/lib/types';
+import * as api from '@/lib/api-client';
+import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   CodeProvider,
@@ -11,6 +12,12 @@ import {
   useProjectBoard,
   useProjects,
 } from './code-store';
+
+// api-client is the seam the store calls; mock it so tests never hit the network.
+jest.mock('@/lib/api-client');
+const mockCreateProject = jest.mocked(api.createProject);
+const mockCreateEpic = jest.mocked(api.createEpic);
+const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
 
 const PROJECT_A: Project = {
   id: 'p1',
@@ -95,6 +102,11 @@ function makeWrapper(seed: { projects?: Project[]; epics?: Epic[]; stories?: Cod
       </CodeProvider>
     );
   };
+}
+
+/** Read the actions + the derived board for one project in a single hook. */
+function useStore(projectId: string) {
+  return { actions: useCodeActions(), board: useProjectBoard(projectId) };
 }
 
 describe('code-store', () => {
@@ -223,12 +235,203 @@ describe('code-store', () => {
     });
   });
 
-  describe('useCodeActions (M4–M6 seam)', () => {
-    it('is wired but inert (ready: false) in M3', () => {
-      const { result } = renderHook(() => useCodeActions(), {
-        wrapper: makeWrapper({}),
+  describe('useCodeActions (optimistic mutations)', () => {
+    const SERVER_PROJECT: Project = {
+      ...PROJECT_A,
+      id: 'server-p',
+      name: 'Server project',
+      key: 'SRV',
+    };
+
+    describe('createProject', () => {
+      it('inserts optimistically then reconciles with the saved row', async () => {
+        mockCreateProject.mockResolvedValue(SERVER_PROJECT);
+        const { result } = renderHook(() => useStore('server-p'), {
+          wrapper: makeWrapper({ projects: [] }),
+        });
+
+        let returned: Project | undefined;
+        await act(async () => {
+          returned = await result.current.actions.createProject({
+            name: 'Server project',
+            github_url: 'https://github.com/ac3charland/srv',
+            key: 'SRV',
+          });
+        });
+
+        expect(returned?.id).toBe('server-p');
+        // The reconciled (server) project is in the store, not the temp one.
+        expect(result.current.board.project?.name).toBe('Server project');
       });
-      expect(result.current.ready).toBe(false);
+
+      it('rolls the optimistic project back out on failure', async () => {
+        mockCreateProject.mockRejectedValue(new Error('boom'));
+        const { result } = renderHook(
+          () => ({ actions: useCodeActions(), projects: useProjects() }),
+          {
+            wrapper: makeWrapper({ projects: [PROJECT_A] }),
+          },
+        );
+
+        await act(async () => {
+          await expect(
+            result.current.actions.createProject({
+              name: 'Doomed',
+              github_url: 'https://github.com/ac3charland/doomed',
+              key: 'DMD',
+            }),
+          ).rejects.toThrow('boom');
+        });
+
+        // Only the originally-seeded project remains.
+        expect(result.current.projects.map((p) => p.id)).toEqual(['p1']);
+      });
+    });
+
+    describe('createEpic', () => {
+      it('inserts optimistically then reconciles the allocated ref', async () => {
+        const saved: Epic = {
+          id: 'server-e',
+          project_id: 'p1',
+          name: 'Refinement',
+          notes: null,
+          ref_number: 7,
+          ref: 'ALF-7',
+          archived_at: null,
+          created_at: '2025-01-03T00:00:00Z',
+        };
+        mockCreateEpic.mockResolvedValue(saved);
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.createEpic('p1', 'Refinement');
+        });
+
+        expect(result.current.board.activeEpics.map((b) => b.epic.ref)).toEqual(['ALF-7']);
+      });
+
+      it('rolls the optimistic epic back out on failure', async () => {
+        mockCreateEpic.mockRejectedValue(new Error('nope'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.actions.createEpic('p1', 'Doomed')).rejects.toThrow('nope');
+        });
+
+        expect(result.current.board.activeEpics).toEqual([]);
+      });
+    });
+
+    describe('enterCodeModule / convertTaskToCode', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      const savedSidecar: CodeItem = {
+        item_id: 'task-1',
+        project_id: 'p1',
+        epic_id: 'e1',
+        ref_number: 9,
+        ref: 'ALF-9',
+        factory_state: 'needs_refinement',
+        lane: 'human',
+        spec_path: null,
+        spec_sha: null,
+        spec_markdown: null,
+        refinement_pr_url: null,
+        implementation_pr_url: null,
+        blocked_reason: null,
+        created_at: '2025-01-04T00:00:00Z',
+        updated_at: '2025-01-04T00:00:00Z',
+      };
+
+      it('inserts an optimistic card immediately and reconciles the allocated ref', async () => {
+        mockEnterCodeModule.mockResolvedValue(savedSidecar);
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        let returned: CodeStory | undefined;
+        await act(async () => {
+          returned = await result.current.actions.convertTaskToCode(
+            { id: 'task-1', title: 'Convert me', notes: null, source_url: null },
+            'p1',
+            'e1',
+          );
+        });
+
+        expect(returned?.ref).toBe('ALF-9');
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        expect(lane?.stories.map((s) => s.ref)).toEqual(['ALF-9']);
+        expect(lane?.stories[0]?.title).toBe('Convert me');
+      });
+
+      it('rolls the optimistic card back out on failure', async () => {
+        mockEnterCodeModule.mockRejectedValue(new Error('gate failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.convertTaskToCode(
+              { id: 'task-1', title: 'Convert me', notes: null, source_url: null },
+              'p1',
+              'e1',
+            ),
+          ).rejects.toThrow('gate failed');
+        });
+
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        expect(lane?.stories).toEqual([]);
+      });
+
+      it('throws if the project or epic is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [], epics: [] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.convertTaskToCode(
+              { id: 'task-1', title: 'No project', notes: null, source_url: null },
+              'missing',
+              'missing',
+            ),
+          ).rejects.toThrow(/missing from the code store/i);
+        });
+        expect(mockEnterCodeModule).not.toHaveBeenCalled();
+      });
+
+      it('shows the optimistic card before the server resolves', async () => {
+        // A never-resolving call keeps the request in flight: the card must already be on
+        // the board from the optimistic insert alone.
+        mockEnterCodeModule.mockImplementation(() => new Promise(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        act(() => {
+          void result.current.actions.convertTaskToCode(
+            { id: 'task-1', title: 'Pending', notes: null, source_url: null },
+            'p1',
+            'e1',
+          );
+        });
+
+        await waitFor(() => {
+          const lane = result.current.board.activeEpics[0]?.lanes.find(
+            (l) => l.state === 'needs_refinement',
+          );
+          expect(lane?.stories.map((s) => s.title)).toEqual(['Pending']);
+        });
+      });
     });
   });
 });

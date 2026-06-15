@@ -2,17 +2,24 @@
 
 import * as React from 'react';
 
-import type { CodeFactoryState, CodeStory, Epic, Project } from '@/lib/types';
+import * as api from '@/lib/api-client';
+import { TEMP_ID_PREFIX } from '@/lib/tree';
+import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 /**
  * Code store — the source of truth for the Software Factory module (projects, epics,
  * code stories). Mirrors `folders-store` / `tasks-store`: mounted once at the (code)
  * layout and seeded from server reads (`lib/data/code.ts`); the board reads via hooks and
- * never fetches (see the data-flow skill).
+ * never fetches (see the data-flow skill). Mutations edit the seeded slices instantly and
+ * reconcile with the server row(s), rolling back on error.
  *
- * READ-only this milestone (M3): the store holds the data and exposes `useProjects` /
- * `useProjectBoard`. The mutation seam is wired but inert — see `useCodeActions` and the
- * SEAM note on `CodeActions` for what lands in M4–M6.
+ * Cross-module note (the gate, §8): the gate is also reachable from the Tasks view, which
+ * is NOT wrapped by CodeProvider — so the gate dialog drives its OWN local project/epic
+ * state and calls `lib/api-client` directly; it does not use these actions. These actions
+ * exist for mutations made from WITHIN the Code view (ProjectNav's `+`, and conversions
+ * surfaced on the board). The board re-seeds from the server on a real cross-group
+ * navigation, so a gate-from-Tasks story shows up there without sharing this store (the M3
+ * gotcha).
  */
 
 // ── The happy-path swimlanes, in board order (§9.2). ──
@@ -69,27 +76,218 @@ export interface ProjectBoard {
   archivedEpics: BoardEpic[];
 }
 
+/** What the gate (or ProjectNav `+`) needs to optimistically create a project (§8.1). */
+export interface CreateProjectInput {
+  name: string;
+  github_url: string;
+  key: string;
+}
+
 /**
- * Mutation actions for the code module.
+ * Mutation actions for the code module — the optimistic + reconcile/rollback recipe
+ * (data-flow skill), mirroring `tasks-store`.
  *
- * SEAM (M4–M6): the optimistic actions land here, each following the `tasks-store` recipe
- * (optimistic dispatch → `lib/api-client` → reconcile/rollback):
- *   - createProject / createEpic           (M4 — the New-project / New-epic dialogs)
- *   - enterCodeModule / convertTaskToCode  (M4 — the gate)
- *   - updateEpic                           (M4 — notes + archive/un-archive)
- *   - updateCodeState                      (M5/M6 — link-click write + manual controls)
- *   - openClaudeSession                    (M5 — await-write-then-open)
- * Add the reducer + dispatch alongside them then (mirror `tasksReducer`), swap the seeds
- * in `CodeProvider` for `useReducer` state, and populate the `value` below. The read hooks
- * (`useProjects` / `useProjectBoard`) don't change.
+ * SEAM: `updateEpic` (notes + archive/un-archive) and `updateCodeState` (manual
+ * transitions + the M5 link-click write) land in M5/M6. The reducer already supports the
+ * moves they need (`patchEpic` / `patchStory`), so they slot in as `useCodeActions`
+ * members without further store surgery.
  */
 export interface CodeActions {
+  /** Optimistically add a project, then reconcile with the saved row (§8.1 / §9.1). */
+  createProject: (input: CreateProjectInput) => Promise<Project>;
+  /** Optimistically add an epic (the `create_epic` RPC allocates its ref), then reconcile. */
+  createEpic: (projectId: string, name: string) => Promise<Epic>;
   /**
-   * Placeholder so the actions context has a non-empty contract until M4. It is never set
-   * to `true` in M3 (no mutations exist yet); the real actions replace it. Reading it lets
-   * a future descendant feature-detect that the actions layer is wired before M4 fills it.
+   * The gate from within the Code view (§8.3): admit an item already known here to the
+   * factory. Inserts an optimistic story card and reconciles with the allocated ref.
    */
-  readonly ready: boolean;
+  enterCodeModule: (itemId: string, projectId: string, epicId: string) => Promise<CodeStory>;
+  /**
+   * Convert a task surfaced inside the Code view into a code story — same RPC + same
+   * optimistic insert as `enterCodeModule`; distinct name so the call site reads as the
+   * §7.1 "Convert to Code Story" intent.
+   */
+  convertTaskToCode: (
+    item: { id: string; title: string; notes: string | null; source_url: string | null },
+    projectId: string,
+    epicId: string,
+  ) => Promise<CodeStory>;
+}
+
+interface CodeState {
+  projects: Project[];
+  epics: Epic[];
+  stories: CodeStory[];
+}
+
+type CodeAction =
+  | { type: 'insertProject'; project: Project }
+  | { type: 'replaceProject'; id: string; project: Project }
+  | { type: 'removeProject'; id: string }
+  | { type: 'insertEpic'; epic: Epic }
+  | { type: 'replaceEpic'; id: string; epic: Epic }
+  | { type: 'patchEpic'; id: string; patch: Partial<Epic> }
+  | { type: 'removeEpic'; id: string }
+  | { type: 'insertStory'; story: CodeStory }
+  | { type: 'replaceStory'; itemId: string; story: CodeStory }
+  | { type: 'patchStory'; itemId: string; patch: Partial<CodeStory> }
+  | { type: 'removeStory'; itemId: string };
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled code action: ${JSON.stringify(value)}`);
+}
+
+/**
+ * Pure reducer over the three code slices. Each `replace`/`patch`/`remove` is keyed by id
+ * and is a no-op when the id is absent — the race rule: a reconcile for a row already
+ * removed adds nothing back.
+ */
+export function codeReducer(state: CodeState, action: CodeAction): CodeState {
+  switch (action.type) {
+    case 'insertProject': {
+      return { ...state, projects: [...state.projects, action.project] };
+    }
+    case 'replaceProject': {
+      return {
+        ...state,
+        projects: state.projects.map((p) => (p.id === action.id ? action.project : p)),
+      };
+    }
+    case 'removeProject': {
+      return { ...state, projects: state.projects.filter((p) => p.id !== action.id) };
+    }
+    case 'insertEpic': {
+      return { ...state, epics: [...state.epics, action.epic] };
+    }
+    case 'replaceEpic': {
+      return { ...state, epics: state.epics.map((e) => (e.id === action.id ? action.epic : e)) };
+    }
+    case 'patchEpic': {
+      return {
+        ...state,
+        epics: state.epics.map((e) => (e.id === action.id ? { ...e, ...action.patch } : e)),
+      };
+    }
+    case 'removeEpic': {
+      return { ...state, epics: state.epics.filter((e) => e.id !== action.id) };
+    }
+    case 'insertStory': {
+      return { ...state, stories: [...state.stories, action.story] };
+    }
+    case 'replaceStory': {
+      return {
+        ...state,
+        stories: state.stories.map((s) => (s.item_id === action.itemId ? action.story : s)),
+      };
+    }
+    case 'patchStory': {
+      return {
+        ...state,
+        stories: state.stories.map((s) =>
+          s.item_id === action.itemId ? { ...s, ...action.patch } : s,
+        ),
+      };
+    }
+    case 'removeStory': {
+      return { ...state, stories: state.stories.filter((s) => s.item_id !== action.itemId) };
+    }
+    default: {
+      return assertNever(action);
+    }
+  }
+}
+
+function tempId(): string {
+  return `${TEMP_ID_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** Build an optimistic project row (a temp id until the server row reconciles). */
+function makeOptimisticProject(input: CreateProjectInput): Project {
+  return {
+    id: tempId(),
+    name: input.name,
+    key: input.key,
+    // repo_owner/repo_name are derived server-side; show placeholders until reconcile.
+    repo_owner: '',
+    repo_name: '',
+    github_url: input.github_url,
+    ref_seq: 0,
+    created_at: new Date().toISOString(),
+  };
+}
+
+/** Build an optimistic epic row. The real ref/ref_number arrive from `create_epic`. */
+function makeOptimisticEpic(projectId: string, name: string): Epic {
+  return {
+    id: tempId(),
+    project_id: projectId,
+    name,
+    notes: null,
+    ref_number: 0,
+    ref: '',
+    archived_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Build the optimistic flattened `CodeStory` (the board read shape) for an item entering
+ * the factory, joining the known project + epic so the card renders immediately. The real
+ * ref/ref_number arrive from `enter_code_module`.
+ */
+function makeOptimisticStory(
+  item: { id: string; title: string; notes: string | null; source_url: string | null },
+  project: Project,
+  epic: Epic,
+): CodeStory {
+  const now = new Date().toISOString();
+  return {
+    item_id: item.id,
+    project_id: project.id,
+    epic_id: epic.id,
+    ref_number: 0,
+    ref: '',
+    factory_state: 'needs_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    code_created_at: now,
+    code_updated_at: now,
+    title: item.title,
+    notes: item.notes,
+    source_url: item.source_url,
+    item_created_at: now,
+    project_key: project.key,
+    project_name: project.name,
+    repo_owner: project.repo_owner,
+    repo_name: project.repo_name,
+    epic_name: epic.name,
+    epic_ref: epic.ref,
+    epic_archived_at: epic.archived_at,
+  };
+}
+
+/** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
+function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
+  return {
+    ...optimistic,
+    ref: saved.ref,
+    ref_number: saved.ref_number,
+    factory_state: saved.factory_state,
+    lane: saved.lane,
+    spec_path: saved.spec_path,
+    spec_sha: saved.spec_sha,
+    spec_markdown: saved.spec_markdown,
+    refinement_pr_url: saved.refinement_pr_url,
+    implementation_pr_url: saved.implementation_pr_url,
+    blocked_reason: saved.blocked_reason,
+    code_created_at: saved.created_at,
+    code_updated_at: saved.updated_at,
+  };
 }
 
 const CodeProjectsContext = React.createContext<Project[] | undefined>(undefined);
@@ -108,20 +306,97 @@ export function CodeProvider({
   initialStories: CodeStory[];
   children: React.ReactNode;
 }) {
-  // M3 is read-only, so the seeds are the session state as-is. M4 swaps these for
-  // useReducer state (see the CodeActions SEAM note) without changing the read hooks.
-  const projects = initialProjects;
-  const epics = initialEpics;
-  const stories = initialStories;
+  const [state, dispatch] = React.useReducer(codeReducer, {
+    projects: initialProjects,
+    epics: initialEpics,
+    stories: initialStories,
+  });
 
-  // Inert until M4: no mutations are wired yet, so `ready` stays false (see CodeActions).
-  const actions = React.useMemo<CodeActions>(() => ({ ready: false }), []);
+  // Latest state, readable inside the stable action closures so they can capture
+  // pre-mutation rows for rollback without going stale (synced via an effect, not a
+  // render-body write — actions fire from user events after commit, so it's current).
+  const stateRef = React.useRef(state);
+  React.useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const actions = React.useMemo<CodeActions>(() => {
+    // Shared insert-optimistic-then-reconcile path for both gate entry points (the
+    // §7.1 "Send to Code module" and "Convert to Code Story"), so neither relies on `this`.
+    async function admitToFactory(
+      item: { id: string; title: string; notes: string | null; source_url: string | null },
+      projectId: string,
+      epicId: string,
+    ): Promise<CodeStory> {
+      const { projects, epics } = stateRef.current;
+      const project = projects.find((p) => p.id === projectId);
+      const epic = epics.find((e) => e.id === epicId);
+      if (project === undefined || epic === undefined) {
+        // Can't build the optimistic card without its project/epic — should not happen
+        // from the Code view, where both are seeded. Surface as an error.
+        throw new Error('Project or epic missing from the code store');
+      }
+      const optimistic = makeOptimisticStory(item, project, epic);
+      dispatch({ type: 'insertStory', story: optimistic });
+      try {
+        const saved = await api.enterCodeModule(item.id, projectId, epicId);
+        const reconciled = reconcileStory(optimistic, saved);
+        dispatch({ type: 'replaceStory', itemId: item.id, story: reconciled });
+        return reconciled;
+      } catch (error) {
+        dispatch({ type: 'removeStory', itemId: item.id });
+        throw error;
+      }
+    }
+
+    return {
+      async createProject(input) {
+        const optimistic = makeOptimisticProject(input);
+        dispatch({ type: 'insertProject', project: optimistic });
+        try {
+          const saved = await api.createProject(input);
+          dispatch({ type: 'replaceProject', id: optimistic.id, project: saved });
+          return saved;
+        } catch (error) {
+          dispatch({ type: 'removeProject', id: optimistic.id });
+          throw error;
+        }
+      },
+      async createEpic(projectId, name) {
+        const optimistic = makeOptimisticEpic(projectId, name);
+        dispatch({ type: 'insertEpic', epic: optimistic });
+        try {
+          const saved = await api.createEpic(projectId, name);
+          dispatch({ type: 'replaceEpic', id: optimistic.id, epic: saved });
+          return saved;
+        } catch (error) {
+          dispatch({ type: 'removeEpic', id: optimistic.id });
+          throw error;
+        }
+      },
+      enterCodeModule(itemId, projectId, epicId) {
+        const story = stateRef.current.stories.find((s) => s.item_id === itemId);
+        const item = {
+          id: itemId,
+          title: story?.title ?? '',
+          notes: story?.notes ?? null,
+          source_url: story?.source_url ?? null,
+        };
+        return admitToFactory(item, projectId, epicId);
+      },
+      convertTaskToCode(item, projectId, epicId) {
+        return admitToFactory(item, projectId, epicId);
+      },
+    };
+  }, []);
 
   return (
     <CodeActionsContext.Provider value={actions}>
-      <CodeProjectsContext.Provider value={projects}>
-        <CodeEpicsContext.Provider value={epics}>
-          <CodeStoriesContext.Provider value={stories}>{children}</CodeStoriesContext.Provider>
+      <CodeProjectsContext.Provider value={state.projects}>
+        <CodeEpicsContext.Provider value={state.epics}>
+          <CodeStoriesContext.Provider value={state.stories}>
+            {children}
+          </CodeStoriesContext.Provider>
         </CodeEpicsContext.Provider>
       </CodeProjectsContext.Provider>
     </CodeActionsContext.Provider>
@@ -188,10 +463,7 @@ export function useProjectBoard(projectId: string): ProjectBoard {
   }, [projects, epics, stories, projectId]);
 }
 
-/**
- * Read the code mutation actions (the M4–M6 seam). Throws outside a CodeProvider. Inert
- * this milestone (`ready: false`); see the `CodeActions` doc comment for what lands here.
- */
+/** Read the code mutation actions (the gate / ProjectNav `+`). Throws outside a CodeProvider. */
 export function useCodeActions(): CodeActions {
   const context = React.useContext(CodeActionsContext);
   if (context === undefined) {
