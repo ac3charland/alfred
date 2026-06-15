@@ -36,3 +36,5 @@ npm run test -w frontend 2>&1 | grep -E 'Tests:|Suites:' | tail -4
 Test Suites: 56 passed, 56 total
 Tests:       942 passed, 942 total
 ```
+
+![Storybook snapshot diff for board Seeded story](epic-title-editing-image-6.png)
