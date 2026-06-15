@@ -393,6 +393,16 @@ antialiasing noise doesn't fail the gate while a real tone/hover/focus change (f
 than 1% of a tight crop) still does. Always (re)generate baselines in the **same**
 environment the gate runs in, and commit the regenerated PNGs verbatim.
 
+**macOS can't pass this gate — push from the Linux sandbox.** On local macOS the text
+renders at a *different width* than the Linux-sandbox baselines (e.g. 196px vs 216px), so
+`test-storybook` fails with `Expected image to be the same size as the snapshot` — a hard
+**size** mismatch the `failureThreshold` percent-tolerance can't absorb (it only compares
+same-size images). This makes the `pre-push` `check:slow` gate **unpassable on macOS** for
+any branch, regardless of what you changed. Do feature dev + the `git push`/PR from the web
+sandbox (where the baselines were made); reserve local sessions for credentialed work
+(DB migrations, `wrangler` secrets) and let the sandbox own the push. Never regenerate the
+baselines on macOS to "fix" it — that just breaks the gate for everyone else.
+
 **`getStoryContext` for per-story directives.** `getStoryContext(page, context)` (from
 `@storybook/test-runner`) returns the resolved story context — read
 `storyContext.parameters` and `storyContext.tags` to branch behaviour. Storybook
