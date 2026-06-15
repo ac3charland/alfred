@@ -170,7 +170,7 @@ create table code_items (
   lane                 code_lane not null default 'human',
   spec_path            text,        -- declared by the refinement PR (§12); never inferred
   spec_sha             text,        -- blob sha of the snapshotted spec
-  spec_markdown        text,        -- Option B snapshot rendered in the detail modal (§10)
+  spec_markdown        text,        -- Worker-written snapshot rendered in the detail modal (§10)
   refinement_pr_url    text,
   implementation_pr_url text,
   blocked_reason       text,
@@ -221,7 +221,10 @@ declare n int; k text; row code_items;
 begin
   select key into k from projects where id = p_project;
   n := next_code_ref(p_project);
-  update items set item_type = 'code' where id = p_item;
+  -- Flip to code and clear task-only fields so the §4.6 CHECK holds across conversion.
+  update items set item_type = 'code', due_date = null, parent_id = null,
+                   status = 'active', completed_at = null
+    where id = p_item;
   insert into code_items (item_id, project_id, epic_id, ref_number, ref)
   values (p_item, p_project, p_epic, n, k || '-' || n) returning * into row;
   return row;
@@ -256,6 +259,32 @@ The dividing line is **"does the item have a `code_items` row?"**
 - **Code view** reads `code_items` joined to `items`, `projects`, `epics` (a `v_code_stories` view or
   a PostgREST embed). Volume is small (single user) — fetch all for the selected project and filter
   client-side.
+
+### 4.6 `items` constraints + data migration (task-gating at the database level)
+
+Completion, due dates, and subtasks are **task-only**, enforced in the **schema** — not just the UI
+(§7.3). Do both of these in `0002`, in order:
+
+- **Promote existing items to `task` first.** Every current row is `unclassified` but behaves as a
+  task, so run `update items set item_type = 'task' where item_type = 'unclassified';` **before**
+  adding the constraint below (otherwise existing rows with a `due_date`/`parent_id` would violate
+  it). New captures still start as `unclassified`.
+- **Add a CHECK constraint** so a non-`task` item cannot hold any task-lifecycle value:
+  ```sql
+  alter table items add constraint items_task_only_fields check (
+    item_type = 'task'
+    or (due_date is null and parent_id is null
+        and status = 'active' and completed_at is null)
+  );
+  ```
+  This makes `unclassified` (and `code`) rows **structurally incapable** of a due date, a parent
+  (subtask), or a completed status — capture creates them clean, and only `Classify as Task` (§7.1)
+  lets a row gain those. `enter_code_module` (§4.3) clears these fields when it flips a task to
+  `code`, so the constraint also holds across conversion.
+
+> This deliberately reverses the `0001` assumption that any item may carry task fields — it's the
+> tightening the owner called for. A `parent_id` already implies the child is a task; keep the
+> add-subtask flow nesting only under tasks so subtask trees stay all-`task`.
 
 ---
 
@@ -315,7 +344,8 @@ and a new `frontend/app/(code)/layout.tsx`, sharing one sidebar/header shell):
    inbox/capture screen — it already navigates to `/` and fires `ALFRED_CAPTURE_FOCUS_EVENT`
    (`alfred-link.tsx`); the inbox stays **closed by default** (landing shows the capture box; the
    inbox list opens via the existing `?view=inbox`). No behavior change to the wordmark itself.
-3. **Mobile:** the switcher joins the mobile nav (`mobile-nav.tsx`) alongside the hamburger.
+3. **Mobile:** the switcher lives **inside the hamburger menu** (`mobile-nav.tsx`) — not in the
+   header bar — so opening the menu is how you switch between Tasks and Code on small screens.
 
 Keep the dark, dense aesthetic and the existing tokens (`bg-surface`, `border-border`,
 `text-accent-teal`, the serif wordmark). New surfaces use shadcn/Radix primitives already in the repo.
@@ -332,8 +362,10 @@ In the item row dropdown menu (`task-row.tsx`, the existing Radix `DropdownMenu`
 as ▸`** submenu with **`Task`** and **`Code`** (Knowledge is future — leave room, don't build it):
 
 - **Classify as Task** → `updateItem(id, { item_type: 'task' })`. Classifying as `task` is what
-  **unlocks** due-date and subtask editing (plus the Task badge); an `unclassified` item exposes
-  neither (§7.3).
+  **unlocks** the task affordances — the **completion checkbox**, due-date editing, and subtasks —
+  plus the Task badge; an `unclassified` item exposes **none** of them (§7.3). Like code
+  classification, the item **stays in the inbox** (it isn't filed anywhere), and a task can be
+  **completed right from the inbox** without ever being assigned to a folder.
 - **Classify as Code** → `updateItem(id, { item_type: 'code' })`. The item **stays in the inbox** (no
   `code_items` row yet) and now shows a **Code** badge plus a **`Send to Code module…`** action
   (enabled only once type is `code`) that opens the gate (§8).
@@ -353,13 +385,16 @@ already in `task-row.tsx`). Unclassified items show no badge. Knowledge is reser
 The direction notes mention "type-specific fields (due dates + subitems for tasks, epics + projects
 for code)." Make them genuinely type-gated:
 
-- **Due dates and subtasks are `task`-only — not generic.** An `unclassified` (or `code`) item must
-  **not** expose a due-date or add-subtask affordance; the user classifies it as a **`task`** first,
-  and that is what unlocks them. *This is a behavior change from today,* where the UI lets any item
-  set a due date or add subtasks. The schema already treats `due_date`/`parent_id` as task-lifecycle
-  fields (see the `0001` migration comment), so this only tightens the UI: gate the row's due-date
-  and add-subtask controls on `item_type === 'task'`. Existing `unclassified` rows that already carry
-  a due date or children should be surfaced for — or auto-promoted to — `task` classification.
+- **Completion, due dates, and subtasks are `task`-only — not generic, and enforced in the
+  *database*, not just the UI.** An `unclassified` (or `code`) item must **not** expose a completion
+  checkbox, a due-date control, or an add-subtask affordance; the user classifies it as a **`task`**
+  first, and that unlocks all three. *This is a behavior change from today,* where the UI lets any
+  item be completed, get a due date, or take subtasks. Enforce it with **CHECK constraints on
+  `items`** (§4.6) so a non-`task` row cannot hold a `due_date`, a `parent_id`, or a non-default
+  `status`/`completed_at`, and **migrate every existing item to `task`** as part of `0002` (today
+  they're all `unclassified` but behave as tasks). Going forward, capture still creates `unclassified`
+  items — which therefore start with no completion, no due date, and no subtasks — and `Classify as
+  Task` is the gate that lets them gain those.
 - **`notes` stay generic.** They are part of the base item (`SPEC.md` §3.2) and remain available on
   any item regardless of type.
 - **Code** items surface **Project / Epic / Ref / state**, which live on the **board and detail
@@ -423,9 +458,10 @@ column. **Stories are cards** in their state's swimlane, showing **ref**, **titl
 **phase-appropriate action** (the "open Claude Code" button, §11) when one applies. Columns are
 horizontally scrollable / condensable to fit the dense layout.
 
-- **v1 may ship read-only swimlanes** (state changes come from links + webhook + the detail modal).
-  Drag-to-move between swimlanes is **optional polish**; if added, reuse the existing `dnd-kit`
-  wiring and persist via the same PATCH the modal uses. (See the `dnd-kit` skill.)
+- **Swimlanes are read-only in this module.** State changes come from links + webhook + the detail
+  modal's manual controls (§10) — that's good enough for now. **Drag-to-move between swimlanes is a
+  future enhancement**, explicitly out of scope here; if it's built later, reuse the existing
+  `dnd-kit` wiring and persist via the same PATCH the modal uses (see the `dnd-kit` skill).
 - Clicking a card opens the **detail modal** (§10).
 - **Archived epics are hidden by default** (§4.2 `archived_at`); a *Show archived* toggle reveals
   them. Archiving / un-archiving an epic is a **manual** action from the epic header — it does not
@@ -441,9 +477,9 @@ Opening a story card shows:
 - **Header:** `ref` + title (inline-editable title, reusing the row's edit pattern), Project ›
   Epic, current **factory state** chip.
 - **Body:** notes; the **rendered spec markdown** for any story past `ready_for_dev` — render
-  `code_items.spec_markdown` (the Option B snapshot) with `react-markdown` + `remark-gfm` (add to
-  `frontend` deps). A **"View in repo"** link built from `repo_owner/repo_name` + `spec_path` +
-  `spec_sha`. If `spec_markdown` is null (snapshot not yet taken) fall back to the repo link.
+  `code_items.spec_markdown` with `react-markdown` + `remark-gfm` (add to `frontend` deps). A
+  **"View in repo"** link built from `repo_owner/repo_name` + `spec_path` + `spec_sha`. If
+  `spec_markdown` is null (not yet captured) fall back to the repo link.
 - **Primary action:** the **phase-appropriate "Open Claude Code" button** (§11) — *refinement* in
   `needs_refinement`, *implementation* in `ready_for_dev`. Disabled/hidden in states where no session
   applies (`in_refinement`, `in_development`, `ready_for_review`, `done`).
@@ -451,12 +487,12 @@ Opening a story card shows:
 - **Manual controls (the §5.2 fallback):** *Block*, *Abandon*, and *Advance/Revert one step*, each a
   PATCH to `/api/code/:ref` updating `factory_state` (and `blocked_reason` for Block). These keep the
   board accurate for non-PR work.
-
-> **Spec rendering = Option B (snapshot in Supabase).** The Worker writes `spec_markdown` on
-> refinement-merge and refreshes it on later merges/pushes touching `spec_path` (§13). The modal then
-> reads pure Supabase — instant, offline-capable, no GitHub token in the read path. Always keep
-> `spec_path` + `spec_sha` so the modal can offer "view in repo" and detect drift. Never *infer* the
-> path; use the one the PR **declared** (§12).
+- **The spec is read from Supabase, not GitHub, at view time.** The modal renders
+  `code_items.spec_markdown`, which the Worker writes when the refinement PR merges and refreshes on
+  later merges/pushes that touch `spec_path` (§13). That keeps the read path instant, offline-capable,
+  and free of a GitHub token. Always store `spec_path` + `spec_sha` next to it so the modal can offer
+  **"view in repo"** and detect drift — and always use the path the PR **declared** (§12), never an
+  inferred one.
 
 ---
 
@@ -576,7 +612,7 @@ string-match + DB write. Because both phases end in a PR, this single Worker tra
    - *(deferred)* checks-failing → `blocked` — needs `check_suite`/`check_run` events; mark future.
 4. Respond `200` quickly; do GitHub fetches in `ctx.waitUntil`.
 
-### 13.3 Spec snapshot (Option B)
+### 13.3 Spec snapshot
 
 On refinement-merge, fetch the spec file via the **GitHub Contents API**
 (`GET /repos/{owner}/{name}/contents/{spec_path}?ref=<merge sha>`) using a **fine-grained PAT**
@@ -687,7 +723,8 @@ can carry notes and be archived when done. The Code module
 is a **new view** reached by a **Tasks⇄Code switcher** in the header; **Inbox button removed** (reach
 inbox via the `alfred` wordmark, closed by default).
 
-**Resolved (this spec's defaults — change deliberately):** spec render = **Option B snapshot**;
+**Resolved (this spec's defaults — change deliberately):** spec render = **Supabase snapshot** (the
+Worker writes the rendered spec on refinement-merge; the modal reads Supabase);
 **no separate `spec_review` state** (refinement-PR-merged → `ready_for_dev` directly); enforcing
 GitHub **check = committed Action**; Worker→GitHub auth = **fine-grained PAT** (GitHub App = upgrade
 path); refinement/impl **links derived client-side**, not stored; PR-closed-unmerged **reverts**
