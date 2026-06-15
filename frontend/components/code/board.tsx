@@ -1,13 +1,15 @@
 'use client';
 
-import { Archive, ChevronDown, ChevronRight } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import * as React from 'react';
 
 import { StoryCard } from '@/components/code/story-card';
+import { StoryDetailModal } from '@/components/code/story-detail-modal';
 import { Swimlane } from '@/components/code/swimlane';
+import { Button } from '@/components/ui/button';
 import type { BoardEpic } from '@/lib/stores/code-store';
 import { useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
-import type { CodeStory } from '@/lib/types';
+import type { CodeStory, Epic } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 /** The phase-appropriate launch handler the board threads to every card (§11). */
@@ -46,6 +48,130 @@ function ToggleButton({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * The epic header's notes-editing + archive/un-archive controls (§9.2). Archiving sets
+ * `archived_at` (the M3 read filter moves it out of the active board into the Show-archived
+ * set); un-archiving clears it. Notes edit inline. Both go through the store's optimistic
+ * `updateEpic`. These sit OUTSIDE the collapse toggle button (no nested interactive elements).
+ */
+function EpicHeaderActions({ epic }: { epic: Epic }) {
+  const { updateEpic } = useCodeActions();
+  const archived = epic.archived_at !== null;
+  const [editingNotes, setEditingNotes] = React.useState(false);
+  const [draftNotes, setDraftNotes] = React.useState(epic.notes ?? '');
+  const [pending, setPending] = React.useState(false);
+
+  const toggleArchive = async () => {
+    setPending(true);
+    try {
+      // Set a timestamp to archive, null to un-archive (§9.2 / §4.2).
+      await updateEpic(epic.id, { archived_at: archived ? null : new Date().toISOString() });
+    } catch {
+      // The store rolled the change back.
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const saveNotes = async () => {
+    const next = draftNotes.trim();
+    setEditingNotes(false);
+    if (next === (epic.notes ?? '')) return;
+    try {
+      await updateEpic(epic.id, { notes: next === '' ? null : next });
+    } catch {
+      setDraftNotes(epic.notes ?? '');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 border-b border-border/40 px-4 pb-3">
+      {editingNotes ? (
+        <div className="flex flex-col gap-2">
+          <textarea
+            aria-label="Edit epic notes"
+            value={draftNotes}
+            onChange={(e) => {
+              setDraftNotes(e.target.value);
+            }}
+            rows={2}
+            placeholder="Epic notes…"
+            className="w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                void saveNotes();
+              }}
+              className="text-accent-teal hover:bg-accent-teal/10"
+            >
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setEditingNotes(false);
+                setDraftNotes(epic.notes ?? '');
+              }}
+              className="text-muted-foreground"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setDraftNotes(epic.notes ?? '');
+              setEditingNotes(true);
+            }}
+            className="group/notes flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+          >
+            {epic.notes === null || epic.notes === '' ? (
+              <span className="text-muted-foreground hover:text-foreground">Add epic notes…</span>
+            ) : (
+              <span className="truncate whitespace-pre-wrap text-muted-foreground">
+                {epic.notes}
+              </span>
+            )}
+            <Pencil
+              size={12}
+              className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
+            />
+          </button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              void toggleArchive();
+            }}
+            className="shrink-0"
+          >
+            {archived ? (
+              <>
+                <ArchiveRestore size={13} className="mr-1.5" />
+                Un-archive
+              </>
+            ) : (
+              <>
+                <Archive size={13} className="mr-1.5" />
+                Archive
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -89,12 +215,14 @@ function EpicBlock({
           )}
           <span className="font-medium text-foreground">{epic.name}</span>
           <span className="font-mono text-xs text-muted-foreground">{epic.ref}</span>
-          {/* M4: epic notes-editing + archive/un-archive controls land in this header. */}
         </button>
       </h3>
 
+      {/* Notes-editing + archive/un-archive (§9.2). Shown when the epic is expanded. */}
+      {collapsed ? null : <EpicHeaderActions epic={epic} />}
+
       {collapsed ? null : (
-        <div id={regionId} className="border-t border-border/60 px-2 py-3">
+        <div id={regionId} className="px-2 py-3">
           {/* The six happy-path lanes, horizontally scrollable to fit the dense layout. */}
           <div className="flex gap-2 overflow-x-auto pb-1">
             {lanes.map((lane) => (
@@ -148,6 +276,9 @@ export function Board({ projectId }: BoardProperties) {
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
   const [showBlocked, setShowBlocked] = React.useState(false);
+  // The open story for the detail modal (§10), tracked by item_id so the modal always
+  // re-reads the latest row from the store (e.g. after a manual transition reshuffles it).
+  const [openStoryId, setOpenStoryId] = React.useState<string | null>(null);
 
   const toggleCollapse = React.useCallback((epicId: string) => {
     setCollapsed((current) => {
@@ -157,10 +288,10 @@ export function Board({ projectId }: BoardProperties) {
     });
   }, []);
 
-  // Placeholder until M6 — the detail modal opens from here (§10). No-op for now so the
-  // card is already an activatable control and e2e/RTL can assert the click target exists.
-  const handleOpenStory = React.useCallback((_story: CodeStory) => {
-    // M6: open the story detail modal.
+  // Open the detail modal for the clicked card (§10). Tracks the item_id, not the row, so
+  // the modal reflects live store updates rather than a stale snapshot.
+  const handleOpenStory = React.useCallback((story: CodeStory) => {
+    setOpenStoryId(story.item_id);
   }, []);
 
   // The §11 human launch: await the state write then open the prefilled tab (the store
@@ -186,6 +317,14 @@ export function Board({ projectId }: BoardProperties) {
 
   const visibleEpics = showArchived ? [...activeEpics, ...archivedEpics] : activeEpics;
   const hasAnyEpic = activeEpics.length > 0 || archivedEpics.length > 0;
+
+  // Resolve the open story from the current board so the modal reflects live store state
+  // (every epic's lanes + escape bucket cover all of this project's stories).
+  const allStories = [...activeEpics, ...archivedEpics].flatMap((board) => [
+    ...board.lanes.flatMap((lane) => lane.stories),
+    ...board.escapeStories,
+  ]);
+  const openStory = openStoryId === null ? null : allStories.find((s) => s.item_id === openStoryId);
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -240,6 +379,17 @@ export function Board({ projectId }: BoardProperties) {
           </p>
         </div>
       )}
+
+      {/* The story detail modal (§10): opens on a card click; reads the latest row from the
+          store by item_id; reuses the board's §11 launch handler for its primary action. */}
+      <StoryDetailModal
+        story={openStory ?? null}
+        open={openStory !== null && openStory !== undefined}
+        onOpenChange={(next) => {
+          if (!next) setOpenStoryId(null);
+        }}
+        onOpenSession={handleOpenSession}
+      />
     </div>
   );
 }

@@ -1,11 +1,24 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
+import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import { Board } from './board';
+
+// The board now mounts the detail modal, which statically imports react-markdown (pure ESM,
+// not transformed by jest). Mock the seam so the module loads. (See story-detail-modal.test.)
+jest.mock('react-markdown', () => ({
+  __esModule: true,
+  default: ({ children }: { children?: string }) => <div data-testid="markdown">{children}</div>,
+}));
+jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
+
+// The epic-header archive/notes controls go through the store's updateEpic → api-client.
+jest.mock('@/lib/api-client');
+const mockUpdateEpic = jest.mocked(api.updateEpic);
 
 const PROJECT: Project = {
   id: 'p1',
@@ -209,5 +222,66 @@ describe('Board', () => {
     expect(screen.getByText('Blocked')).toBeInTheDocument();
     // Still no "blocked"/"abandoned" swimlane region exists.
     expect(screen.queryByRole('region', { name: /^blocked$/i })).not.toBeInTheDocument();
+  });
+
+  describe('the detail modal (§10)', () => {
+    it('opens the modal for the clicked story card', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-7', title: 'Open me' })],
+      });
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /open ALF-7/i }));
+
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByText('ALF-7')).toBeInTheDocument();
+      expect(dialog.getByText('Open me')).toBeInTheDocument();
+    });
+  });
+
+  describe('the epic header controls (§9.2)', () => {
+    it('edits the epic notes via updateEpic', async () => {
+      mockUpdateEpic.mockResolvedValue(makeEpic('e1', { notes: 'New notes' }));
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      await user.click(screen.getByRole('button', { name: /add epic notes/i }));
+      await user.type(screen.getByRole('textbox', { name: /edit epic notes/i }), 'New notes');
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { notes: 'New notes' });
+    });
+
+    it('archives an epic via updateEpic (sets archived_at)', async () => {
+      mockUpdateEpic.mockResolvedValue(makeEpic('e1', { archived_at: '2026-02-01T00:00:00Z' }));
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      await user.click(screen.getByRole('button', { name: /^archive$/i }));
+
+      await waitFor(() => {
+        expect(mockUpdateEpic).toHaveBeenCalledTimes(1);
+      });
+      const [id, patch] = mockUpdateEpic.mock.calls[0] ?? [];
+      expect(id).toBe('e1');
+      expect((patch as { archived_at?: string | null }).archived_at).toEqual(expect.any(String));
+    });
+
+    it('un-archives an archived epic via updateEpic (clears archived_at)', async () => {
+      mockUpdateEpic.mockResolvedValue(makeEpic('e1', { archived_at: null }));
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [makeEpic('e1', { name: 'Old epic', archived_at: '2026-01-01T00:00:00Z' })],
+      });
+
+      // Reveal the archived epic, expand it, then un-archive from its header.
+      await user.click(screen.getByRole('button', { name: /show archived/i }));
+      await user.click(screen.getByRole('button', { name: /^un-archive$/i }));
+
+      expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { archived_at: null });
+    });
   });
 });
