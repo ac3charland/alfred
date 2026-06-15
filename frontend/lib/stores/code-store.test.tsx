@@ -18,6 +18,7 @@ jest.mock('@/lib/api-client');
 const mockCreateProject = jest.mocked(api.createProject);
 const mockCreateEpic = jest.mocked(api.createEpic);
 const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
+const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 
 const PROJECT_A: Project = {
   id: 'p1',
@@ -88,6 +89,36 @@ function makeStory(
     epic_archived_at: null,
     ...overrides,
   };
+}
+
+/** Build a saved `code_items` sidecar row (the PATCH-route response the store reconciles). */
+function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
+  return {
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 42,
+    ref: 'ALF-42',
+    factory_state: 'in_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-02-02T00:00:00Z',
+    ...overrides,
+  };
+}
+
+/** The factory_state of item `i1` wherever it sits on the board (lane or escape bucket). */
+function findStoryState(board: ReturnType<typeof useProjectBoard>): string | undefined {
+  const story = board.activeEpics
+    .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.escapeStories])
+    .find((s) => s.item_id === 'i1');
+  return story?.factory_state ?? undefined;
 }
 
 function makeWrapper(seed: { projects?: Project[]; epics?: Epic[]; stories?: CodeStory[] }) {
@@ -431,6 +462,202 @@ describe('code-store', () => {
           );
           expect(lane?.stories.map((s) => s.title)).toEqual(['Pending']);
         });
+      });
+    });
+
+    describe('updateCodeState', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      it('patches the story state optimistically, then reconciles with the saved row', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ updated_at: '2025-03-03T00:00:00Z' }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateCodeState('ALF-42', 'in_refinement');
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_refinement', {});
+        expect(findStoryState(result.current.board)).toBe('in_refinement');
+      });
+
+      it('shows the optimistic state before the server resolves', async () => {
+        mockUpdateCodeState.mockImplementation(() => new Promise(() => {}));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        act(() => {
+          void result.current.actions.updateCodeState('ALF-42', 'in_refinement');
+        });
+
+        await waitFor(() => {
+          expect(findStoryState(result.current.board)).toBe('in_refinement');
+        });
+      });
+
+      it('rolls the state back to its prior value on failure', async () => {
+        mockUpdateCodeState.mockRejectedValue(new Error('patch failed'));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateCodeState('ALF-42', 'in_development'),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(findStoryState(result.current.board)).toBe('ready_for_dev');
+      });
+
+      it('forwards extra fields (e.g. blocked_reason) to the api client', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'blocked', blocked_reason: 'checks failing' }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateCodeState('ALF-42', 'blocked', {
+            blocked_reason: 'checks failing',
+          });
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'blocked', {
+          blocked_reason: 'checks failing',
+        });
+      });
+    });
+
+    describe('openClaudeSession (§11.3 await-write-then-open)', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      let openSpy: jest.SpiedFunction<typeof globalThis.open>;
+      beforeEach(() => {
+        openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      });
+      afterEach(() => {
+        openSpy.mockRestore();
+      });
+
+      it('writes in_refinement and opens the refinement url for a needs_refinement story', async () => {
+        mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_refinement' }));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          title: 'Wire the webhook',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'refinement');
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_refinement', {});
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const [url, target] = openSpy.mock.calls[0] ?? [];
+        expect(typeof url === 'string' ? url : url?.toString()).toContain(
+          'https://claude.ai/code?repo=ac3charland%2Falfred',
+        );
+        expect(target).toBe('_blank');
+      });
+
+      it('writes in_development and opens the implementation url for a ready_for_dev story', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'in_development' }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_development', {});
+        expect(openSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('awaits the state write BEFORE opening the tab (order matters)', async () => {
+        const calls: string[] = [];
+        mockUpdateCodeState.mockImplementation(() => {
+          calls.push('write');
+          return Promise.resolve(makeSavedSidecar({ factory_state: 'in_refinement' }));
+        });
+        openSpy.mockImplementation(() => {
+          calls.push('open');
+          return null;
+        });
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'refinement');
+        });
+
+        expect(calls).toEqual(['write', 'open']);
+      });
+
+      it('does NOT open the tab when the state write fails', async () => {
+        mockUpdateCodeState.mockRejectedValue(new Error('write failed'));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.openClaudeSession('ALF-42', 'refinement'),
+          ).rejects.toThrow('write failed');
+        });
+
+        expect(openSpy).not.toHaveBeenCalled();
+      });
+
+      it('throws (and does not write) when the story is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.openClaudeSession('ALF-999', 'refinement')).rejects.toThrow(
+            /not found|missing/i,
+          );
+        });
+        expect(mockUpdateCodeState).not.toHaveBeenCalled();
+        expect(openSpy).not.toHaveBeenCalled();
       });
     });
   });

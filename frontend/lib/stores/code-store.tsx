@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
 import { TEMP_ID_PREFIX } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -87,10 +88,9 @@ export interface CreateProjectInput {
  * Mutation actions for the code module — the optimistic + reconcile/rollback recipe
  * (data-flow skill), mirroring `tasks-store`.
  *
- * SEAM: `updateEpic` (notes + archive/un-archive) and `updateCodeState` (manual
- * transitions + the M5 link-click write) land in M5/M6. The reducer already supports the
- * moves they need (`patchEpic` / `patchStory`), so they slot in as `useCodeActions`
- * members without further store surgery.
+ * SEAM: `updateEpic` (notes + archive/un-archive) lands in M6. The reducer already supports
+ * the moves it needs (`patchEpic`), so it slots in as a `useCodeActions` member without
+ * further store surgery.
  */
 export interface CodeActions {
   /** Optimistically add a project, then reconcile with the saved row (§8.1 / §9.1). */
@@ -112,6 +112,24 @@ export interface CodeActions {
     projectId: string,
     epicId: string,
   ) => Promise<CodeStory>;
+  /**
+   * Transition a story to a new factory state (§5.2), keyed by its `ref`. Optimistically
+   * patches the card into its new swimlane, then reconciles with the saved row (rolling the
+   * state back on error). Used by manual controls and as the write inside `openClaudeSession`.
+   * `extra` carries companion fields like `blocked_reason` (the Block control).
+   */
+  updateCodeState: (
+    ref: string,
+    factoryState: CodeFactoryState,
+    extra?: api.UpdateCodeStateExtra,
+  ) => Promise<void>;
+  /**
+   * The human launch (§11.3): show-spinner → AWAIT the state write → open the prefilled
+   * Claude Code tab. Awaiting before `window.open` eliminates the "looks launched but didn't
+   * persist" edge — the tab only opens once the transition is durable. The URL is derived
+   * from the story + its project (`lib/code/links`), so M6's modal reuses this verbatim.
+   */
+  openClaudeSession: (ref: string, phase: 'refinement' | 'implementation') => Promise<void>;
 }
 
 interface CodeState {
@@ -349,6 +367,49 @@ export function CodeProvider({
       }
     }
 
+    // Shared optimistic state transition (§5.2), so `openClaudeSession` reuses it without
+    // relying on `this` (matching `admitToFactory`'s extraction rationale above).
+    async function transitionState(
+      ref: string,
+      factoryState: CodeFactoryState,
+      extra: api.UpdateCodeStateExtra,
+    ): Promise<void> {
+      const previous = stateRef.current.stories.find((s) => s.ref === ref);
+      if (previous === undefined) {
+        throw new Error(`Code story ${ref} not found in the code store`);
+      }
+      // `v_code_stories` is a view, so its generated row type is all-nullable; a seeded story
+      // always has a real item_id (the inner-join guarantee), but narrow it for the dispatch
+      // key the reducer expects.
+      const itemId = previous.item_id;
+      if (itemId === null) {
+        throw new Error(`Code story ${ref} has no item_id`);
+      }
+      // Capture the fields a transition touches so a failure restores exactly them.
+      const rollback: Partial<CodeStory> = {
+        factory_state: previous.factory_state,
+        blocked_reason: previous.blocked_reason,
+      };
+      const optimistic: Partial<CodeStory> = { factory_state: factoryState };
+      if (extra.blocked_reason !== undefined) optimistic.blocked_reason = extra.blocked_reason;
+      dispatch({ type: 'patchStory', itemId, patch: optimistic });
+      try {
+        const saved = await api.updateCodeState(ref, factoryState, extra);
+        dispatch({
+          type: 'patchStory',
+          itemId,
+          patch: {
+            factory_state: saved.factory_state,
+            blocked_reason: saved.blocked_reason,
+            code_updated_at: saved.updated_at,
+          },
+        });
+      } catch (error) {
+        dispatch({ type: 'patchStory', itemId, patch: rollback });
+        throw error;
+      }
+    }
+
     return {
       async createProject(input) {
         const optimistic = makeOptimisticProject(input);
@@ -386,6 +447,30 @@ export function CodeProvider({
       },
       convertTaskToCode(item, projectId, epicId) {
         return admitToFactory(item, projectId, epicId);
+      },
+      updateCodeState(ref, factoryState, extra = {}) {
+        return transitionState(ref, factoryState, extra);
+      },
+      async openClaudeSession(ref, phase) {
+        const story = stateRef.current.stories.find((s) => s.ref === ref);
+        if (story === undefined) {
+          throw new Error(`Code story ${ref} not found in the code store`);
+        }
+        const project = stateRef.current.projects.find((p) => p.id === story.project_id);
+        if (project === undefined) {
+          throw new Error(`Project for story ${ref} missing from the code store`);
+        }
+        // Build the prefill URL up front (pure, from stored data) so a write failure leaves
+        // nothing half-done. Await the transition BEFORE opening — the tab only appears once
+        // the move is durable (§11.3).
+        const url =
+          phase === 'refinement'
+            ? buildRefinementUrl(project, story)
+            : buildImplementationUrl(project, story);
+        const nextState: CodeFactoryState =
+          phase === 'refinement' ? 'in_refinement' : 'in_development';
+        await transitionState(ref, nextState, {});
+        window.open(url, '_blank');
       },
     };
   }, []);
