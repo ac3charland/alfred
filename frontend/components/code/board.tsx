@@ -288,6 +288,18 @@ export function Board({ projectId }: BoardProperties) {
     });
   }, []);
 
+  const collapseAll = React.useCallback((epicIds: readonly string[]) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      for (const id of epicIds) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const openAll = React.useCallback(() => {
+    setCollapsed(new Set());
+  }, []);
+
   // Open the detail modal for the clicked card (§10). Tracks the item_id, not the row, so
   // the modal reflects live store updates rather than a stale snapshot.
   const handleOpenStory = React.useCallback((story: CodeStory) => {
@@ -317,6 +329,8 @@ export function Board({ projectId }: BoardProperties) {
 
   const visibleEpics = showArchived ? [...activeEpics, ...archivedEpics] : activeEpics;
   const hasAnyEpic = activeEpics.length > 0 || archivedEpics.length > 0;
+  const allCollapsed =
+    visibleEpics.length > 0 && visibleEpics.every((b) => collapsed.has(b.epic.id));
 
   // Resolve the open story from the current board so the modal reflects live store state
   // (every epic's lanes + escape bucket cover all of this project's stories).
@@ -334,6 +348,20 @@ export function Board({ projectId }: BoardProperties) {
           <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
         </div>
         <div className="flex items-center gap-2">
+          {visibleEpics.length > 0 ? (
+            <ToggleButton
+              pressed={false}
+              onToggle={() => {
+                if (allCollapsed) {
+                  openAll();
+                } else {
+                  collapseAll(visibleEpics.map((b) => b.epic.id));
+                }
+              }}
+            >
+              {allCollapsed ? 'Open all' : 'Collapse all'}
+            </ToggleButton>
+          ) : null}
           <ToggleButton
             pressed={showBlocked}
             onToggle={() => {
