@@ -180,6 +180,22 @@ makes the hook die with `EADDRINUSE: address already in use 0.0.0.0:6006` and bl
 the push. After screenshotting, stop it (`pkill -f http-server`) and confirm 6006 is
 free before `git push`.
 
+**The push hook's own server can also be left orphaned.** `check:slow` starts and
+stops its own http-server on 6006 as part of `test:storybook`. If the push fails for
+*any* reason after `test:storybook` runs (e.g., the subsequent E2E step fails), that
+server process may not be cleanly released. The next `git push` then immediately dies
+with the same `EADDRINUSE`. Before every push retry after a failure, run:
+`fuser -k 6006/tcp 2>/dev/null`.
+
+**Playwright scripts must run from within the package that owns `@playwright/test`.**
+A `.mjs` script in `/tmp` (or anywhere outside `frontend/`) that imports
+`@playwright/test` will fail with `ERR_MODULE_NOT_FOUND` — Node ESM resolves packages
+relative to the importing file's directory, not the shell's CWD. And placing the
+script permanently in `frontend/scripts/` is also wrong: ESLint lints that directory
+and will error on top-level-await patterns. Correct approach: write the script to a
+temp file *inside* `frontend/` (e.g. `frontend/capture-temp.mjs`), run it with
+`cd frontend && node capture-temp.mjs`, then `rm` it immediately after.
+
 ### The live authenticated app — via the Playwright mock backend (reproducible)
 
 Storybook shoots components in isolation. When the evidence needs the **whole

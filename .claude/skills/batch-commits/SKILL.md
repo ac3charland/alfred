@@ -44,6 +44,12 @@ This script addresses the problem by running that check **exactly once** and cre
 node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>
 ```
 
+**Must be run from the repo root (`/home/user/alfred`), not from a workspace package.**
+The script path is `.claude/skills/…` — a root-relative path. If CWD is e.g.
+`frontend/`, Node resolves it as `frontend/.claude/skills/…` and throws
+`Cannot find module`. Always confirm CWD before invoking; add `cd /home/user/alfred &&`
+if in doubt.
+
 No coverage is lost (the one run validates the complete end state, same as each
 redundant run would), and **`pre-push` / `check:slow` is untouched** — the push
 gate (Storybook snapshots + Playwright) still fires as-is.
