@@ -5,13 +5,16 @@ import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
 import { IconButton } from '@/components/atoms/icon-button';
+import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { FolderNav } from '@/components/tasks/folder-nav';
 import { cn } from '@/lib/utils';
 
 /**
  * Mobile hamburger nav — a Dialog-based slide-in drawer for narrow viewports.
- * The FolderNav inside reads folders from the store and closes the sheet when a
- * link is clicked (via onClose).
+ * Carries the Tasks ⇄ Code switcher (§6.3 — the switcher lives inside the hamburger on
+ * small screens, not the header bar) above the FolderNav. The FolderNav reads folders from
+ * the store and closes the sheet when a link is clicked (via onClose); the switcher closes
+ * it on navigate too.
  */
 export default function MobileNavClient() {
   const [open, setOpen] = React.useState(false);
@@ -34,8 +37,13 @@ export default function MobileNavClient() {
           )}
         >
           <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-          <div className="flex h-14 items-center px-4 border-b border-border">
+          <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
             <span className="font-serif text-xl text-foreground">alfred</span>
+            <ViewSwitcher
+              onNavigate={() => {
+                setOpen(false);
+              }}
+            />
           </div>
           <div className="overflow-y-auto px-2">
             <FolderNav
