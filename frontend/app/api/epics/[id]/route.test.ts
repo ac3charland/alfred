@@ -94,6 +94,29 @@ describe('PATCH /api/epics/[id]', () => {
     expect(response.status).toBe(400);
   });
 
+  it('updates name and returns the row', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: { ...TEST_EPIC, name: 'New Epic Name' },
+      error: undefined,
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({ name: 'New Epic Name' }), CONTEXT);
+
+    expect(response.status).toBe(200);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ name: 'New Epic Name' });
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({ name: 'New Epic Name' });
+  });
+
+  it('returns 400 when name is an empty string', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({ name: '' }), CONTEXT);
+    expect(response.status).toBe(400);
+  });
+
   it('updates notes and returns the row', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_EPIC, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);

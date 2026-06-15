@@ -117,19 +117,23 @@ export const createEpicSchema = z.object({
 export type CreateEpicInput = z.infer<typeof createEpicSchema>;
 
 /**
- * Body for PATCH /api/epics/[id] — the epic-header edits (§9.2): `notes` (nullable so it
- * clears to null) and `archived_at` (set to an ISO timestamp to archive, null to un-archive,
- * which drops/restores the epic on the active board). Both optional, but the `.refine`
- * rejects an empty body so a PATCH must change something.
+ * Body for PATCH /api/epics/[id] — the epic-header edits (§9.2): `name` (inline rename),
+ * `notes` (nullable so it clears to null) and `archived_at` (set to an ISO timestamp to
+ * archive, null to un-archive, which drops/restores the epic on the active board). All
+ * optional, but the `.refine` rejects an empty body so a PATCH must change something.
  */
 export const updateEpicSchema = z
   .object({
+    name: z.string().min(1).optional(),
     notes: z.string().nullable().optional(),
     archived_at: z.iso.datetime({ offset: true }).nullable().optional(),
   })
-  .refine((data) => data.notes !== undefined || data.archived_at !== undefined, {
-    message: 'At least one of "notes" or "archived_at" is required',
-  });
+  .refine(
+    (data) => data.name !== undefined || data.notes !== undefined || data.archived_at !== undefined,
+    {
+      message: 'At least one of "name", "notes", or "archived_at" is required',
+    },
+  );
 
 export type UpdateEpicInput = z.infer<typeof updateEpicSchema>;
 
