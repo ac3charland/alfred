@@ -1,8 +1,16 @@
 'use client';
 
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  Pencil,
+} from 'lucide-react';
 import * as React from 'react';
 
+import { IconButton } from '@/components/atoms/icon-button';
 import { StoryCard } from '@/components/code/story-card';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
 import { Swimlane } from '@/components/code/swimlane';
@@ -288,6 +296,14 @@ export function Board({ projectId }: BoardProperties) {
     });
   }, []);
 
+  const collapseAll = React.useCallback((epicIds: readonly string[]) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      for (const id of epicIds) next.add(id);
+      return next;
+    });
+  }, []);
+
   // Open the detail modal for the clicked card (§10). Tracks the item_id, not the row, so
   // the modal reflects live store updates rather than a stale snapshot.
   const handleOpenStory = React.useCallback((story: CodeStory) => {
@@ -317,6 +333,7 @@ export function Board({ projectId }: BoardProperties) {
 
   const visibleEpics = showArchived ? [...activeEpics, ...archivedEpics] : activeEpics;
   const hasAnyEpic = activeEpics.length > 0 || archivedEpics.length > 0;
+  const hasAnyExpanded = visibleEpics.some((b) => !collapsed.has(b.epic.id));
 
   // Resolve the open story from the current board so the modal reflects live store state
   // (every epic's lanes + escape bucket cover all of this project's stories).
@@ -334,6 +351,17 @@ export function Board({ projectId }: BoardProperties) {
           <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
         </div>
         <div className="flex items-center gap-2">
+          <IconButton
+            size="md"
+            aria-label="Collapse all"
+            title="Collapse all"
+            disabled={!hasAnyExpanded}
+            onClick={() => {
+              collapseAll(visibleEpics.map((b) => b.epic.id));
+            }}
+          >
+            <ChevronsDownUp size={16} />
+          </IconButton>
           <ToggleButton
             pressed={showBlocked}
             onToggle={() => {

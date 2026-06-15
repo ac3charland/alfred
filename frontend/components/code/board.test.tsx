@@ -242,6 +242,63 @@ describe('Board', () => {
     });
   });
 
+  describe('Collapse all button', () => {
+    it('is enabled when at least one visible epic is expanded', () => {
+      renderBoard({ epics: [makeEpic('e1'), makeEpic('e2')] });
+
+      expect(screen.getByRole('button', { name: /collapse all/i })).toBeEnabled();
+    });
+
+    it('collapses all visible epics on click', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [makeEpic('e1', { name: 'Alpha' }), makeEpic('e2', { name: 'Beta' })],
+      });
+
+      await user.click(screen.getByRole('button', { name: /collapse all/i }));
+
+      expect(screen.getByRole('button', { name: /alpha/i })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      expect(screen.getByRole('button', { name: /beta/i })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+    });
+
+    it('is disabled once all visible epics are collapsed', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: /collapse all/i }));
+
+      expect(screen.getByRole('button', { name: /collapse all/i })).toBeDisabled();
+    });
+
+    it('is disabled when there are no epics to collapse', () => {
+      renderBoard({ epics: [] });
+
+      expect(screen.getByRole('button', { name: /collapse all/i })).toBeDisabled();
+    });
+
+    it('does not collapse hidden archived epics when show archived is off', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [
+          makeEpic('e1', { name: 'Active' }),
+          makeEpic('e2', { name: 'Old', archived_at: '2025-02-01T00:00:00Z' }),
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: /collapse all/i }));
+
+      // Reveal the archived epic — it was not in the visible set, so it starts expanded.
+      await user.click(screen.getByRole('button', { name: /show archived/i }));
+      expect(screen.getByRole('button', { name: /old/i })).toHaveAttribute('aria-expanded', 'true');
+    });
+  });
+
   describe('the epic header controls (§9.2)', () => {
     it('edits the epic notes via updateEpic', async () => {
       mockUpdateEpic.mockResolvedValue(makeEpic('e1', { notes: 'New notes' }));
