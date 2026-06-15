@@ -6,11 +6,11 @@ branch: claude/epic-title-editing-1mzpuj
 
 *2026-06-15T18:05:33.567Z*
 
-Epic title editing replaces the static Archive button with a 3-dot actions menu. The menu exposes two items: Edit title (inline rename of the epic heading) and Archive/Unarchive (toggle the epic's archived state). Epics can be renamed by clicking Edit title, editing the inline input, and pressing Enter to save or Escape/click-outside to cancel. When an epic is archived, the same menu item toggles to Unarchive.
+Epic title editing replaces the static Archive button with a 3-dot actions menu in the top-right corner of each epic's title row. The menu exposes two items: Edit title (inline rename of the epic heading) and Archive/Unarchive (toggle the epic's archived state). Epics can be renamed by clicking Edit title, editing the inline input, and pressing Enter to save or Escape/click-outside to cancel. When an epic is archived, the same menu item toggles to Unarchive.
 
 ![](epic-title-editing-image-1.png)
 
-Step 1: Default state — the 3-dot (⋯) actions menu button replaces the former Archive button. It appears in the expanded epic's action area.
+Step 1: Default state — the 3-dot (⋯) actions menu button sits in the top-right corner of the title row, vertically aligned with the epic name.
 
 ![](epic-title-editing-image-2.png)
 
@@ -37,4 +37,4 @@ Test Suites: 56 passed, 56 total
 Tests:       942 passed, 942 total
 ```
 
-![Storybook snapshot diff for board Seeded story](epic-title-editing-image-6.png)
+![Storybook baseline — menu in the title corner](epic-title-editing-image-6.png)
