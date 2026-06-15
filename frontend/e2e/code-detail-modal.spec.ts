@@ -153,9 +153,10 @@ test('archiving an epic from its header removes it from the active board', async
   await expect(firewallHeader).toBeVisible();
   await expect(page.getByRole('button', { name: /capture pipeline/i })).toBeVisible();
 
-  // Archive the first epic from its header. Scope to its section so the right Archive is hit.
+  // Archive the first epic from its actions menu. Scope to its section so the right menu is hit.
   const firewallSection = page.locator('section', { has: firewallHeader });
-  await firewallSection.getByRole('button', { name: /^archive$/i }).click();
+  await firewallSection.getByRole('button', { name: /epic actions/i }).click();
+  await page.getByRole('menuitem', { name: /^archive$/i }).click();
 
   // It leaves the active board.
   await expect(page.getByRole('button', { name: /communication firewall/i })).toBeHidden();
