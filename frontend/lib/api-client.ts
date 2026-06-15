@@ -183,12 +183,13 @@ export function createEpic(projectId: string, name: string): Promise<Epic> {
 }
 
 /**
- * Patch an epic's header fields (§9.2): `notes` and `archived_at`. Lives in `lib/` (the
- * null-aware layer) because clearing notes / un-archiving sends an explicit `null` — the
- * Postgres absent value — which component code can't mint (unicorn/no-null). Returns the
+ * Patch an epic's header fields (§9.2): `name`, `notes` and `archived_at`. Lives in `lib/`
+ * (the null-aware layer) because clearing notes / un-archiving sends an explicit `null` —
+ * the Postgres absent value — which component code can't mint (unicorn/no-null). Returns the
  * updated `epics` row.
  */
 export interface UpdateEpicInput {
+  name?: string;
   notes?: string | null;
   archived_at?: string | null;
 }

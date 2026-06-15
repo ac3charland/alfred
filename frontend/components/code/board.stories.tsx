@@ -112,3 +112,21 @@ type Story = StoryObj<typeof meta>;
 
 /** A seeded project board: two epics, each expanded into its six happy-path swimlanes. */
 export const Seeded: Story = {};
+
+/** Board with one archived epic — the "Show archived" toggle reveals it. */
+export const WithArchivedEpic: Story = {
+  decorators: [
+    (Story) => {
+      const epics = EPICS.map((epic) =>
+        epic.id === 'e2' ? { ...epic, archived_at: '2026-01-15T00:00:00Z' } : epic,
+      );
+      return (
+        <CodeProvider initialProjects={[PROJECT]} initialEpics={epics} initialStories={STORIES}>
+          <div data-testid="board-frame" className="w-[1100px] bg-background">
+            <Story />
+          </div>
+        </CodeProvider>
+      );
+    },
+  ],
+};

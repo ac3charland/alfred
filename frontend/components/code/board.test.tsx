@@ -334,12 +334,14 @@ describe('Board', () => {
       expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { notes: 'New notes' });
     });
 
-    it('archives an epic via updateEpic (sets archived_at)', async () => {
+    it('archives an epic via the 3-dot menu (sets archived_at)', async () => {
       mockUpdateEpic.mockResolvedValue(makeEpic('e1', { archived_at: '2026-02-01T00:00:00Z' }));
       const user = userEvent.setup();
       renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
 
-      await user.click(screen.getByRole('button', { name: /^archive$/i }));
+      // Open the epic actions dropdown, then click Archive.
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /^archive$/i }));
 
       await waitFor(() => {
         expect(mockUpdateEpic).toHaveBeenCalledTimes(1);
@@ -349,18 +351,59 @@ describe('Board', () => {
       expect((patch as { archived_at?: string | null }).archived_at).toEqual(expect.any(String));
     });
 
-    it('un-archives an archived epic via updateEpic (clears archived_at)', async () => {
+    it('un-archives an archived epic via the 3-dot menu (clears archived_at)', async () => {
       mockUpdateEpic.mockResolvedValue(makeEpic('e1', { archived_at: null }));
       const user = userEvent.setup();
       renderBoard({
         epics: [makeEpic('e1', { name: 'Old epic', archived_at: '2026-01-01T00:00:00Z' })],
       });
 
-      // Reveal the archived epic, expand it, then un-archive from its header.
+      // Reveal the archived epic, expand it, then un-archive via the actions menu.
       await user.click(screen.getByRole('button', { name: /show archived/i }));
-      await user.click(screen.getByRole('button', { name: /^un-archive$/i }));
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /^unarchive$/i }));
 
       expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { archived_at: null });
+    });
+
+    it('renames an epic inline via the 3-dot menu "Edit title"', async () => {
+      mockUpdateEpic.mockResolvedValue(makeEpic('e1', { name: 'New Name' }));
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Old Name' })] });
+
+      // Open menu → Edit title → type new name → press Enter to save.
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /edit title/i }));
+
+      // Wait for the input to appear (Radix closes the dropdown after onSelect fires).
+      const input = await screen.findByRole('textbox', { name: /edit epic title/i });
+      expect(input).toBeInTheDocument();
+
+      await user.clear(input);
+      await user.type(input, 'New Name');
+      await user.keyboard('{Enter}');
+
+      expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { name: 'New Name' });
+    });
+
+    it('cancels the title edit when Escape is pressed', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Keep This' })] });
+
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /edit title/i }));
+
+      // Wait for the input to appear.
+      const input = await screen.findByRole('textbox', { name: /edit epic title/i });
+      await user.type(input, ' changed');
+      await user.keyboard('{Escape}');
+
+      // The input disappears and the original title is still shown.
+      await waitFor(() => {
+        expect(screen.queryByRole('textbox', { name: /edit epic title/i })).not.toBeInTheDocument();
+      });
+      expect(screen.getByText('Keep This')).toBeInTheDocument();
+      expect(mockUpdateEpic).not.toHaveBeenCalled();
     });
   });
 });
