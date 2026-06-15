@@ -5,13 +5,21 @@ import { expect, test } from './support/fixtures';
  * Task row interactions: subtasks, cascade completion, inline editing (title, due
  * date, notes), moving between folders, and deletion. All run in the inbox view
  * against the seeded mock backend.
+ *
+ * Every fixture here is a `task`: completion, due dates and subtasks are task-only
+ * affordances now (§7.3), so these rows must be classified as tasks to expose them.
+ * `makeItem`'s default `unclassified` would render a bare row with none of them.
  */
+type MakeItemOverrides = Parameters<typeof makeItem>[1];
+function makeTask(title: string, overrides: MakeItemOverrides = {}) {
+  return makeItem(title, { item_type: 'task', ...overrides });
+}
 
 test.describe('subtasks', () => {
   test('adds a subtask inline and shows it nested under the parent', async ({ page, seed }) => {
     // Real UUID id: the new subtask is created via POST with parent_id = this id,
     // and the route validates parent_id as a UUID (a readable id would 400 → roll back).
-    await seed({ items: [makeItem('Plan the trip')] });
+    await seed({ items: [makeTask('Plan the trip')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'Add subtask' }).click();
@@ -27,8 +35,8 @@ test.describe('subtasks', () => {
   test('expands and collapses an existing subtree', async ({ page, seed }) => {
     await seed({
       items: [
-        makeItem('Parent task', { id: 'p1' }),
-        makeItem('Hidden child', { id: 'c1', parent_id: 'p1' }),
+        makeTask('Parent task', { id: 'p1' }),
+        makeTask('Hidden child', { id: 'c1', parent_id: 'p1' }),
       ],
     });
     await page.goto('/?view=inbox');
@@ -50,8 +58,8 @@ test.describe('subtasks', () => {
   }) => {
     await seed({
       items: [
-        makeItem('Plan the launch', { id: 'p1' }),
-        makeItem('Draft the brief', {
+        makeTask('Plan the launch', { id: 'p1' }),
+        makeTask('Draft the brief', {
           id: 'c1',
           parent_id: 'p1',
           status: 'completed',
@@ -91,8 +99,8 @@ test.describe('cascade completion', () => {
   }) => {
     await seed({
       items: [
-        makeItem('Ship feature', { id: 'p1' }),
-        makeItem('Write code', { id: 'c1', parent_id: 'p1' }),
+        makeTask('Ship feature', { id: 'p1' }),
+        makeTask('Write code', { id: 'c1', parent_id: 'p1' }),
       ],
     });
     await page.goto('/?view=inbox');
@@ -116,8 +124,8 @@ test.describe('cascade completion', () => {
   test('cancelling the cascade leaves the task active', async ({ page, seed }) => {
     await seed({
       items: [
-        makeItem('Keep me', { id: 'p1' }),
-        makeItem('My child', { id: 'c1', parent_id: 'p1' }),
+        makeTask('Keep me', { id: 'p1' }),
+        makeTask('My child', { id: 'c1', parent_id: 'p1' }),
       ],
     });
     await page.goto('/?view=inbox');
@@ -136,7 +144,7 @@ test.describe('completion', () => {
     page,
     seed,
   }) => {
-    await seed({ items: [makeItem('Buy milk', { id: 'l1' })] });
+    await seed({ items: [makeTask('Buy milk', { id: 'l1' })] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'Mark "Buy milk" complete' }).click();
@@ -153,7 +161,7 @@ test.describe('completion', () => {
 
 test.describe('inline editing', () => {
   test('edits a task title via double-click', async ({ page, seed }) => {
-    await seed({ items: [makeItem('Original title', { id: 't1' })] });
+    await seed({ items: [makeTask('Original title', { id: 't1' })] });
     await page.goto('/?view=inbox');
 
     await page.getByText('Original title').dblclick();
@@ -170,7 +178,7 @@ test.describe('inline editing', () => {
     page,
     seed,
   }) => {
-    await seed({ items: [makeItem('Original title', { id: 't1' })] });
+    await seed({ items: [makeTask('Original title', { id: 't1' })] });
     await page.goto('/?view=inbox');
 
     await page.getByText('Original title').dblclick();
@@ -198,7 +206,7 @@ test.describe('inline editing', () => {
   });
 
   test('sets a due date from the actions menu', async ({ page, seed }) => {
-    await seed({ items: [makeItem('Schedule review', { id: 't1' })] });
+    await seed({ items: [makeTask('Schedule review', { id: 't1' })] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
@@ -214,7 +222,7 @@ test.describe('inline editing', () => {
   });
 
   test('adds notes from the actions menu', async ({ page, seed }) => {
-    await seed({ items: [makeItem('Research options', { id: 't1' })] });
+    await seed({ items: [makeTask('Research options', { id: 't1' })] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
@@ -233,7 +241,7 @@ test.describe('move and delete', () => {
     const work = makeFolder('Work');
     await seed({
       folders: [work],
-      items: [makeItem('Inbox task')],
+      items: [makeTask('Inbox task')],
     });
     await page.goto('/?view=inbox');
 
@@ -260,7 +268,7 @@ test.describe('move and delete', () => {
   });
 
   test('deletes a task', async ({ page, seed }) => {
-    await seed({ items: [makeItem('Delete me', { id: 't1' })] });
+    await seed({ items: [makeTask('Delete me', { id: 't1' })] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
@@ -277,7 +285,7 @@ test.describe('single active inline input across rows', () => {
 
   test('opening a subtask entry box on one row closes another row’s', async ({ page, seed }) => {
     await seed({
-      items: [makeItem('Alpha task', { id: 'a1' }), makeItem('Beta task', { id: 'b1' })],
+      items: [makeTask('Alpha task', { id: 'a1' }), makeTask('Beta task', { id: 'b1' })],
     });
     await page.goto('/?view=inbox');
 
@@ -298,7 +306,7 @@ test.describe('single active inline input across rows', () => {
     seed,
   }) => {
     await seed({
-      items: [makeItem('Alpha task', { id: 'a1' }), makeItem('Beta task', { id: 'b1' })],
+      items: [makeTask('Alpha task', { id: 'a1' }), makeTask('Beta task', { id: 'b1' })],
     });
     await page.goto('/?view=inbox');
 

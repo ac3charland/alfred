@@ -4,6 +4,14 @@ import { makeItem } from './support/constants';
 import { boxOf, pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
+// Re-parenting builds subtask trees (parent_id), which are task-only (§7.3): subtasks nest
+// only under tasks. So every fixture here is classified as a `task` — `makeItem`'s default
+// `unclassified` would expose neither the subtask affordance nor a valid drop target.
+type MakeItemOverrides = Parameters<typeof makeItem>[1];
+function makeTask(title: string, overrides: MakeItemOverrides = {}) {
+  return makeItem(title, { item_type: 'task', ...overrides });
+}
+
 // Expand/collapse is animated (a grid-rows transition). Reduced motion makes it instant so
 // a freshly-revealed subtask is in its final position before we press it to start a drag.
 // `reducedMotion` isn't a top-level use option in this Playwright version — it's set through
@@ -49,8 +57,8 @@ test.describe('re-parent a task by dragging it onto another task', () => {
   // Re-parenting PATCHes parent_id, which the API validates as a UUID — so these seeds use
   // makeItem's generated UUID ids (a readable id like 'p1' would 400 and roll back).
   test('nests a top-level task under another task', async ({ page, seed }) => {
-    const parent = makeItem('Parent task');
-    const dragged = makeItem('Dragged task');
+    const parent = makeTask('Parent task');
+    const dragged = makeTask('Dragged task');
     await seed({ items: [parent, dragged] });
     await page.goto('/?view=inbox');
 
@@ -63,9 +71,9 @@ test.describe('re-parent a task by dragging it onto another task', () => {
   });
 
   test('brings the dragged task’s whole subtree along', async ({ page, seed }) => {
-    const home = makeItem('New home');
-    const dragged = makeItem('Move me');
-    const child = makeItem('My child', { parent_id: dragged.id });
+    const home = makeTask('New home');
+    const dragged = makeTask('Move me');
+    const child = makeTask('My child', { parent_id: dragged.id });
     await seed({ items: [home, dragged, child] });
     await page.goto('/?view=inbox');
 
@@ -80,9 +88,9 @@ test.describe('re-parent a task by dragging it onto another task', () => {
   });
 
   test('re-parents a subtask onto a different task', async ({ page, seed }) => {
-    const first = makeItem('First parent');
-    const loose = makeItem('Loose subtask', { parent_id: first.id });
-    const second = makeItem('Second parent');
+    const first = makeTask('First parent');
+    const loose = makeTask('Loose subtask', { parent_id: first.id });
+    const second = makeTask('Second parent');
     await seed({ items: [first, loose, second] });
     await page.goto('/?view=inbox');
 
@@ -106,9 +114,9 @@ test.describe('re-parent a task by dragging it onto another task', () => {
     page,
     seed,
   }) => {
-    const keep = makeItem('Keep me');
-    const sub = makeItem('My subtask', { parent_id: keep.id });
-    const other = makeItem('Other task');
+    const keep = makeTask('Keep me');
+    const sub = makeTask('My subtask', { parent_id: keep.id });
+    const other = makeTask('Other task');
     await seed({ items: [keep, sub, other] });
     await page.goto('/?view=inbox');
 
