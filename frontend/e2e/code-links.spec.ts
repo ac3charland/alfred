@@ -100,7 +100,7 @@ test('a needs_refinement story launches a refinement session and advances to In 
   expect(opened).toHaveLength(1);
   const url = opened[0] ?? '';
   expect(url).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
-  const prompt = new URL(url).searchParams.get('prompt') ?? '';
+  const prompt = new URL(url).searchParams.get('q') ?? '';
   expect(prompt).toContain('ALF-3: Draft the inbound filter spec');
   expect(prompt).toContain('phase: refinement');
 });
@@ -150,7 +150,7 @@ test('a ready_for_dev story launches an implementation session and advances to I
 
   const opened = await getOpenedUrls(page);
   expect(opened).toHaveLength(1);
-  const prompt = new URL(opened[0] ?? '').searchParams.get('prompt') ?? '';
+  const prompt = new URL(opened[0] ?? '').searchParams.get('q') ?? '';
   expect(prompt).toContain('ALF-5: Implement the allow-list parser');
   expect(prompt).toContain('phase: implementation');
   expect(prompt).toContain('specs/ALF-5.md');
