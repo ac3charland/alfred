@@ -6,6 +6,7 @@ import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { ExpansionProvider } from '../lib/stores/expansion-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
+import { ToastProvider } from '../lib/stores/toast-store';
 import type { Folder, Item } from '../lib/types';
 
 /** Per-story seeds for the data providers, set via `parameters.store`. */
@@ -20,22 +21,27 @@ const preview: Preview = {
       const seed = (context.parameters as { store?: StoreSeed }).store ?? {};
       // Every story renders inside the data providers so components that read the
       // stores (FolderNav, TaskRow, TaskList, CaptureBox) work without boilerplate.
+      // ToastProvider is included because TaskRow fires a toast from the gate (§8).
       return React.createElement(
-        FoldersProvider,
-        { initialFolders: seed.folders ?? [] },
+        ToastProvider,
+        null,
         React.createElement(
-          TasksProvider,
-          { initialTasks: seed.tasks ?? [] },
+          FoldersProvider,
+          { initialFolders: seed.folders ?? [] },
           React.createElement(
-            ActiveEditorProvider,
-            null,
+            TasksProvider,
+            { initialTasks: seed.tasks ?? [] },
             React.createElement(
-              ExpansionProvider,
+              ActiveEditorProvider,
               null,
               React.createElement(
-                'div',
-                { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                React.createElement(Story),
+                ExpansionProvider,
+                null,
+                React.createElement(
+                  'div',
+                  { className: 'dark min-h-screen bg-background text-foreground p-8' },
+                  React.createElement(Story),
+                ),
               ),
             ),
           ),
