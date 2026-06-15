@@ -34,6 +34,130 @@ export type Database = {
   }
   public: {
     Tables: {
+      code_items: {
+        Row: {
+          blocked_reason: string | null
+          created_at: string
+          epic_id: string
+          factory_state: Database["public"]["Enums"]["code_factory_state"]
+          implementation_pr_url: string | null
+          item_id: string
+          lane: Database["public"]["Enums"]["code_lane"]
+          project_id: string
+          ref: string
+          ref_number: number
+          refinement_pr_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
+          updated_at: string
+        }
+        Insert: {
+          blocked_reason?: string | null
+          created_at?: string
+          epic_id: string
+          factory_state?: Database["public"]["Enums"]["code_factory_state"]
+          implementation_pr_url?: string | null
+          item_id: string
+          lane?: Database["public"]["Enums"]["code_lane"]
+          project_id: string
+          ref: string
+          ref_number: number
+          refinement_pr_url?: string | null
+          spec_markdown?: string | null
+          spec_path?: string | null
+          spec_sha?: string | null
+          updated_at?: string
+        }
+        Update: {
+          blocked_reason?: string | null
+          created_at?: string
+          epic_id?: string
+          factory_state?: Database["public"]["Enums"]["code_factory_state"]
+          implementation_pr_url?: string | null
+          item_id?: string
+          lane?: Database["public"]["Enums"]["code_lane"]
+          project_id?: string
+          ref?: string
+          ref_number?: number
+          refinement_pr_url?: string | null
+          spec_markdown?: string | null
+          spec_path?: string | null
+          spec_sha?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_items_epic_id_fkey"
+            columns: ["epic_id"]
+            isOneToOne: false
+            referencedRelation: "epics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "code_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: true
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "code_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: true
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "code_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      epics: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          project_id: string
+          ref: string
+          ref_number: number
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          project_id: string
+          ref: string
+          ref_number: number
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          project_id?: string
+          ref?: string
+          ref_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "epics_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       folders: {
         Row: {
           created_at: string
@@ -110,11 +234,179 @@ export type Database = {
             referencedRelation: "items"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "items_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          github_url: string | null
+          id: string
+          key: string
+          name: string
+          ref_seq: number
+          repo_name: string
+          repo_owner: string
+        }
+        Insert: {
+          created_at?: string
+          github_url?: string | null
+          id?: string
+          key: string
+          name: string
+          ref_seq?: number
+          repo_name: string
+          repo_owner: string
+        }
+        Update: {
+          created_at?: string
+          github_url?: string | null
+          id?: string
+          key?: string
+          name?: string
+          ref_seq?: number
+          repo_name?: string
+          repo_owner?: string
+        }
+        Relationships: []
       }
     }
     Views: {
-      [_ in never]: never
+      task_items: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          due_date: string | null
+          folder_id: string | null
+          id: string | null
+          item_type: Database["public"]["Enums"]["item_type"] | null
+          notes: string | null
+          parent_id: string | null
+          raw_capture: string | null
+          source_url: string | null
+          status: Database["public"]["Enums"]["item_status"] | null
+          title: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          due_date?: string | null
+          folder_id?: string | null
+          id?: string | null
+          item_type?: Database["public"]["Enums"]["item_type"] | null
+          notes?: string | null
+          parent_id?: string | null
+          raw_capture?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["item_status"] | null
+          title?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          due_date?: string | null
+          folder_id?: string | null
+          id?: string | null
+          item_type?: Database["public"]["Enums"]["item_type"] | null
+          notes?: string | null
+          parent_id?: string | null
+          raw_capture?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["item_status"] | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "items_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_code_stories: {
+        Row: {
+          blocked_reason: string | null
+          code_created_at: string | null
+          code_updated_at: string | null
+          epic_archived_at: string | null
+          epic_id: string | null
+          epic_name: string | null
+          epic_ref: string | null
+          factory_state:
+            | Database["public"]["Enums"]["code_factory_state"]
+            | null
+          implementation_pr_url: string | null
+          item_created_at: string | null
+          item_id: string | null
+          lane: Database["public"]["Enums"]["code_lane"] | null
+          notes: string | null
+          project_id: string | null
+          project_key: string | null
+          project_name: string | null
+          ref: string | null
+          ref_number: number | null
+          refinement_pr_url: string | null
+          repo_name: string | null
+          repo_owner: string | null
+          source_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
+          title: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_items_epic_id_fkey"
+            columns: ["epic_id"]
+            isOneToOne: false
+            referencedRelation: "epics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "code_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: true
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "code_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: true
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "code_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       complete_subtree: {
@@ -140,6 +432,51 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      create_epic: {
+        Args: { p_name: string; p_project: string }
+        Returns: {
+          archived_at: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          project_id: string
+          ref: string
+          ref_number: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "epics"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      enter_code_module: {
+        Args: { p_epic: string; p_item: string; p_project: string }
+        Returns: {
+          blocked_reason: string | null
+          created_at: string
+          epic_id: string
+          factory_state: Database["public"]["Enums"]["code_factory_state"]
+          implementation_pr_url: string | null
+          item_id: string
+          lane: Database["public"]["Enums"]["code_lane"]
+          project_id: string
+          ref: string
+          ref_number: number
+          refinement_pr_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "code_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_subtree: {
         Args: { root_id: string }
         Returns: {
@@ -158,8 +495,19 @@ export type Database = {
           title: string
         }[]
       }
+      next_code_ref: { Args: { p_project: string }; Returns: number }
     }
     Enums: {
+      code_factory_state:
+        | "needs_refinement"
+        | "in_refinement"
+        | "ready_for_dev"
+        | "in_development"
+        | "ready_for_review"
+        | "done"
+        | "blocked"
+        | "abandoned"
+      code_lane: "human" | "local"
       item_status: "active" | "completed"
       item_type: "unclassified" | "task" | "code" | "knowledge"
     }
@@ -292,6 +640,17 @@ export const Constants = {
   },
   public: {
     Enums: {
+      code_factory_state: [
+        "needs_refinement",
+        "in_refinement",
+        "ready_for_dev",
+        "in_development",
+        "ready_for_review",
+        "done",
+        "blocked",
+        "abandoned",
+      ],
+      code_lane: ["human", "local"],
       item_status: ["active", "completed"],
       item_type: ["unclassified", "task", "code", "knowledge"],
     },
