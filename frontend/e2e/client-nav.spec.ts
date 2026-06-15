@@ -5,11 +5,13 @@ import { expect, test } from './support/fixtures';
  * The whole tasks module is seeded once (folders + all items) into client stores at
  * the layout, and every view is derived from that store. Switching views must
  * therefore be a pure client-side URL change — no document reload and no RSC payload
- * fetch — so navigating between inbox / a folder / completed feels instant.
+ * fetch — so navigating between a folder / completed feels instant.
  *
  * These guard that: a server round-trip on a view switch (the regression we fixed)
  * would either reload the document or fetch an `?_rsc=` payload, and would wipe the
- * in-memory marker we plant.
+ * in-memory marker we plant. (The Inbox nav link was removed in §6.2 — the wordmark and a
+ * `?view=inbox` deep link still reach the inbox; the cross-view switch is covered here via
+ * Folders + Completed, which are the remaining sidebar links.)
  */
 
 /** The marker we plant on the page's global to detect a document reload. */
@@ -31,6 +33,7 @@ test('switches views client-side, with no document reload or RSC round-trip', as
   seed,
 }) => {
   await seed(seedWorkspace);
+  // Open the inbox via the deep link (the wordmark reaches the landing/capture screen).
   await page.goto('/?view=inbox');
   const tasks = page.getByRole('list', { name: 'Tasks' });
   await expect(tasks.getByText('Inbox thought')).toBeVisible();
@@ -59,10 +62,10 @@ test('switches views client-side, with no document reload or RSC round-trip', as
   await expect(page).toHaveURL('/completed');
   await expect(tasks.getByText('Done thing')).toBeVisible();
 
-  // Completed → inbox.
-  await page.getByRole('link', { name: 'Inbox' }).click();
-  await expect(page).toHaveURL('/?view=inbox');
-  await expect(tasks.getByText('Inbox thought')).toBeVisible();
+  // Completed → folder.
+  await page.getByRole('link', { name: 'Work' }).click();
+  await expect(page).toHaveURL('/folders/f1');
+  await expect(tasks.getByText('Work thing')).toBeVisible();
 
   // No round-trip fired on any switch (a real one would have been recorded before its
   // view rendered), and the in-memory marker survived (the document never reloaded).
@@ -80,16 +83,16 @@ test('keeps deep links and browser back/forward working across views', async ({ 
   await expect(page.getByRole('main').getByText('Work', { exact: true })).toBeVisible();
   await expect(tasks.getByText('Work thing')).toBeVisible();
 
-  // Switch to the inbox client-side, then walk history back to the folder and forward again.
-  await page.getByRole('link', { name: 'Inbox' }).click();
-  await expect(page).toHaveURL('/?view=inbox');
-  await expect(tasks.getByText('Inbox thought')).toBeVisible();
+  // Switch to Completed client-side, then walk history back to the folder and forward again.
+  await page.getByRole('link', { name: 'Completed' }).click();
+  await expect(page).toHaveURL('/completed');
+  await expect(tasks.getByText('Done thing')).toBeVisible();
 
   await page.goBack();
   await expect(page).toHaveURL('/folders/f1');
   await expect(tasks.getByText('Work thing')).toBeVisible();
 
   await page.goForward();
-  await expect(page).toHaveURL('/?view=inbox');
-  await expect(tasks.getByText('Inbox thought')).toBeVisible();
+  await expect(page).toHaveURL('/completed');
+  await expect(tasks.getByText('Done thing')).toBeVisible();
 });

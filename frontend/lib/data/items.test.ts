@@ -15,9 +15,14 @@ interface MockResult {
 }
 
 function makeChain(result: MockResult) {
+  // The reader chains `.overrideTypes<Item[]>()` after `.order()` — a type-only passthrough
+  // in supabase-js — then awaits the result. Model the tail of the chain as an object whose
+  // `overrideTypes()` resolves to the query result (so the final `await` yields it).
+  const builder = { overrideTypes: jest.fn().mockResolvedValue(result) };
   return {
     select: jest.fn().mockReturnThis(),
-    order: jest.fn().mockResolvedValue(result),
+    order: jest.fn().mockReturnValue(builder),
+    _builder: builder,
   };
 }
 
@@ -31,14 +36,21 @@ function mockClient(result: MockResult) {
 const ITEM = { id: 'r-1', title: 'Task', status: 'active' };
 
 describe('getAllItems', () => {
-  it('selects every item, newest first', async () => {
+  it('reads the task_items view (factory items excluded), newest first', async () => {
     const client = mockClient({ data: [ITEM] });
 
     const result = await getAllItems();
 
-    expect(client.from).toHaveBeenCalledWith('items');
+    // The Tasks/Inbox views must exclude factory stories (items with a code_items
+    // sidecar). That membership split lives in the `task_items` view (§4.5), so the
+    // reader queries the view, not the raw `items` table — a factory item never reaches
+    // the tasks store. The mock backend's task_items view exercises the exclusion itself.
+    expect(client.from).toHaveBeenCalledWith('task_items');
     expect(client._chain.select).toHaveBeenCalledWith('*');
     expect(client._chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    // The nullable view row is overridden back to the non-null `Item` shape (the view is
+    // `select i.*`, so it always yields full item rows — see getAllItems).
+    expect(client._chain._builder.overrideTypes).toHaveBeenCalled();
     expect(result).toStrictEqual([ITEM]);
   });
 

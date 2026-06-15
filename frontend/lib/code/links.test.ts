@@ -1,0 +1,207 @@
+import type { CodeStory, Project } from '@/lib/types';
+
+import { buildImplementationUrl, buildRefinementUrl } from './links';
+
+/**
+ * A project row, mirroring what the code store seeds. `repo_owner`/`repo_name` are what the
+ * link builders draw from for the `repo` param — the URL is derived entirely from stored data.
+ */
+function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'p1',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 5,
+    created_at: '2025-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
+  return {
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 42,
+    ref: 'ALF-42',
+    factory_state: 'needs_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    code_created_at: '2025-01-01T00:00:00Z',
+    code_updated_at: '2025-01-01T00:00:00Z',
+    title: 'Verify the GitHub webhook HMAC signature',
+    notes: null,
+    source_url: null,
+    item_created_at: '2025-01-01T00:00:00Z',
+    project_key: 'ALF',
+    project_name: 'Alfred',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    epic_name: 'Communication Firewall',
+    epic_ref: 'ALF-1',
+    epic_archived_at: null,
+    ...overrides,
+  };
+}
+
+/** Parse a built link into its origin/path + the decoded `repo`/`prompt` params. */
+function parse(url: string): { base: string; repo: string | null; prompt: string | null } {
+  const parsed = new URL(url);
+  return {
+    base: `${parsed.origin}${parsed.pathname}`,
+    repo: parsed.searchParams.get('repo'),
+    prompt: parsed.searchParams.get('prompt'),
+  };
+}
+
+describe('buildRefinementUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const url = buildRefinementUrl(makeProject(), makeStory());
+    const { base, repo } = parse(url);
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('derives the repo param entirely from the project row, not the story', () => {
+    const url = buildRefinementUrl(
+      makeProject({ repo_owner: 'octocat', repo_name: 'hello-world' }),
+      makeStory({ repo_owner: 'stale', repo_name: 'stale' }),
+    );
+    expect(parse(url).repo).toBe('octocat/hello-world');
+  });
+
+  it('leads the prompt with the ref and title so the browser tab is scannable', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    // The very first line is "ALF-42: <title>" — nothing precedes it.
+    const firstLine = prompt.split('\n', 1)[0];
+    expect(firstLine).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
+  });
+
+  it('instructs a spec-only artifact (no implementation) saved to specs/<REF>.md', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/spec/i);
+    expect(prompt).toMatch(/no implementation|do not implement|not.*implement/i);
+    expect(prompt).toContain('specs/ALF-42.md');
+  });
+
+  it('references the proposed (not-yet-finalized) refinement guide convention', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toContain('.alfred/refinement.md');
+    // §17: the path is a proposal, not finalized — the prompt must flag that.
+    expect(prompt).toMatch(/proposed|not.*finali[sz]ed|convention/i);
+  });
+
+  it('embeds the alfred frontmatter block with ticket, refinement phase, and spec-path', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-42');
+    expect(prompt).toContain('phase: refinement');
+    expect(prompt).toContain('spec-path: specs/ALF-42.md');
+  });
+
+  it('tells Claude to open a PR carrying that block', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/open.*(pull request|pr)/i);
+  });
+
+  it('does NOT inline the full notes/spec body (length cap, §11.1) — references the file', () => {
+    const longNotes = 'X'.repeat(20_000);
+    const url = buildRefinementUrl(makeProject(), makeStory({ notes: longNotes }));
+    // The whole URL stays well under the desktop ~14k cap; the giant notes are not inlined.
+    expect(url.length).toBeLessThan(14_000);
+    expect(parse(url).prompt ?? '').not.toContain(longNotes);
+  });
+
+  it('includes the short title/notes context safe to inline', () => {
+    const prompt =
+      parse(buildRefinementUrl(makeProject(), makeStory({ notes: 'Use HMAC-SHA256' }))).prompt ??
+      '';
+    expect(prompt).toContain('Use HMAC-SHA256');
+  });
+
+  it('url-encodes the prompt so spaces and newlines survive the query string', () => {
+    const url = buildRefinementUrl(makeProject(), makeStory());
+    // The raw query string must be percent-encoded (no raw spaces/newlines/backticks).
+    const rawQuery = url.split('?', 2)[1] ?? '';
+    expect(rawQuery).not.toMatch(/[ \n`]/);
+    // Round-trips back to the readable prompt.
+    expect(parse(url).prompt).toContain('ALF-42: Verify the GitHub webhook HMAC signature');
+  });
+
+  it('handles a different ref/title/repo combination correctly', () => {
+    const url = buildRefinementUrl(
+      makeProject({ repo_owner: 'me', repo_name: 'relay', key: 'RLP' }),
+      makeStory({ ref: 'RLP-7', title: 'Add the digest scheduler' }),
+    );
+    const { repo, prompt } = parse(url);
+    expect(repo).toBe('me/relay');
+    expect((prompt ?? '').split('\n', 1)[0]).toBe('RLP-7: Add the digest scheduler');
+    expect(prompt).toContain('specs/RLP-7.md');
+    expect(prompt).toContain('alfred-ticket: RLP-7');
+  });
+});
+
+describe('buildImplementationUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const url = buildImplementationUrl(makeProject(), makeStory());
+    const { base, repo } = parse(url);
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('leads the prompt with the ref and title (scannable tab)', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt.split('\n', 1)[0]).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
+  });
+
+  it('instructs implementing the merged spec at the story spec_path', () => {
+    const prompt =
+      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'specs/ALF-42.md' })))
+        .prompt ?? '';
+    expect(prompt).toMatch(/implement/i);
+    expect(prompt).toContain('specs/ALF-42.md');
+  });
+
+  it('falls back to the conventional specs/<REF>.md path when spec_path is null', () => {
+    // spec_path is normally set by the refinement-merge webhook before ready_for_dev, but be
+    // defensive: a null path still yields the conventional location so the link is usable.
+    const prompt =
+      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: null }))).prompt ?? '';
+    expect(prompt).toContain('specs/ALF-42.md');
+  });
+
+  it('embeds the alfred frontmatter block with the implementation phase', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-42');
+    expect(prompt).toContain('phase: implementation');
+  });
+
+  it('does NOT inline the spec markdown body (references the committed file, §11.1)', () => {
+    const longSpec = 'Y'.repeat(20_000);
+    const url = buildImplementationUrl(
+      makeProject(),
+      makeStory({ spec_markdown: longSpec, spec_path: 'specs/ALF-42.md' }),
+    );
+    expect(url.length).toBeLessThan(14_000);
+    expect(parse(url).prompt ?? '').not.toContain(longSpec);
+  });
+
+  it('tells Claude to open a PR carrying the block', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/open.*(pull request|pr)/i);
+  });
+
+  it('url-encodes the prompt', () => {
+    const rawQuery = buildImplementationUrl(makeProject(), makeStory()).split('?', 2)[1] ?? '';
+    expect(rawQuery).not.toMatch(/[ \n`]/);
+  });
+});

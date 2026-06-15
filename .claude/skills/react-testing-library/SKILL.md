@@ -159,6 +159,8 @@ await waitFor(() => {
 
 - **Call `userEvent.setup()` once per test (or once in `beforeEach`), not once per file.** Each `setup()` call creates an isolated pointer/keyboard state. Reusing across tests leaks state.
 
+- **A globally-mounted element with an implicit role collides with `getByRole`.** `renderWithProviders` mounts the toast viewport, so any always-present `role="status"` region there makes `screen.getByRole('status')` (used by the inline `Spinner`) ambiguous and throws. Give a persistent live region a bare `aria-live="polite"` instead of `role="status"` — it's still announced, but `status` stays reserved for the spinner. The general rule: only one element should claim a given role unnamed; otherwise query by `name`.
+
 ---
 
 ## Version Gotchas (user-event v14)

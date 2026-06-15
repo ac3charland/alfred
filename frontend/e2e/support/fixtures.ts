@@ -26,7 +26,13 @@ export const test = base.extend<Fixtures>({
 
     await provide(async (state: SeedState) => {
       const response = await request.post(`${MOCK_URL}/__mock__/seed`, {
-        data: { folders: state.folders ?? [], items: state.items ?? [] },
+        data: {
+          folders: state.folders ?? [],
+          items: state.items ?? [],
+          projects: state.projects ?? [],
+          epics: state.epics ?? [],
+          codeItems: state.codeItems ?? [],
+        },
       });
       expect(response.ok()).toBeTruthy();
     });

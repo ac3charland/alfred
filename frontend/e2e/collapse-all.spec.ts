@@ -5,15 +5,23 @@ import { expect, test } from './support/fixtures';
  * The per-view "Collapse all" header control: one click closes every open subtask tree
  * (at any depth) and every open "Show completed" panel in that view, and it is disabled
  * when the view has nothing open to collapse.
+ *
+ * Fixtures here carry subtasks, completed children and editable due dates — all task-only
+ * (§7.3) — so they classify as `task`s rather than `makeItem`'s default `unclassified`.
  */
+type MakeItemOverrides = Parameters<typeof makeItem>[1];
+function makeTask(title: string, overrides: MakeItemOverrides = {}) {
+  return makeItem(title, { item_type: 'task', ...overrides });
+}
+
 test.describe('collapse all', () => {
   test('collapses every open subtree and completed panel in one click', async ({ page, seed }) => {
     await seed({
       items: [
-        makeItem('Plan the launch party', { id: 'p1' }),
-        makeItem('Draft the invite', { id: 'c1', parent_id: 'p1' }),
-        makeItem('Pick a template', { id: 'gc1', parent_id: 'c1' }),
-        makeItem('Book the venue', {
+        makeTask('Plan the launch party', { id: 'p1' }),
+        makeTask('Draft the invite', { id: 'c1', parent_id: 'p1' }),
+        makeTask('Pick a template', { id: 'gc1', parent_id: 'c1' }),
+        makeTask('Book the venue', {
           id: 'c2',
           parent_id: 'p1',
           status: 'completed',
@@ -50,8 +58,8 @@ test.describe('collapse all', () => {
     await seed({
       folders: [makeFolder('Work', { id: 'f1' })],
       items: [
-        makeItem('Folder task', { id: 'ft', folder_id: 'f1' }),
-        makeItem('Done thing', {
+        makeTask('Folder task', { id: 'ft', folder_id: 'f1' }),
+        makeTask('Done thing', {
           id: 'd1',
           status: 'completed',
           completed_at: '2025-01-02T00:00:00Z',
@@ -69,8 +77,8 @@ test.describe('collapse all', () => {
   test('editing a parent’s due date does not expand its subtree', async ({ page, seed }) => {
     await seed({
       items: [
-        makeItem('Write the proposal', { id: 'p1' }),
-        makeItem('Gather requirements', { id: 'c1', parent_id: 'p1' }),
+        makeTask('Write the proposal', { id: 'p1' }),
+        makeTask('Gather requirements', { id: 'c1', parent_id: 'p1' }),
       ],
     });
     await page.goto('/?view=inbox');

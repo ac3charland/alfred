@@ -39,6 +39,14 @@ interface TaskActions {
   uncompleteTask: (id: string) => Promise<void>;
   /** Optimistically patch a task's editable fields, rolling back on failure. */
   updateTask: (id: string, patch: TaskFieldPatch) => Promise<void>;
+  /**
+   * Classify an inbox item by flipping its `item_type` (the §7.1 inbox-triage gate).
+   * Its own action — not part of `TaskFieldPatch` — so only this deliberate control may
+   * change the type. An `unclassified` row is always free of task-only fields (the §4.6
+   * DB CHECK), so the flip is a bare `item_type` patch that clears nothing; reconciles /
+   * rolls back exactly like `updateTask`.
+   */
+  classifyItem: (id: string, itemType: 'task' | 'code') => Promise<void>;
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
   /**
@@ -50,6 +58,15 @@ interface TaskActions {
   reparentTask: (id: string, newParentId: string | null) => Promise<void>;
   /** Delete a task and its subtree (the DB cascades the children). */
   deleteTask: (id: string) => Promise<void>;
+  /**
+   * Drop an item from the store WITHOUT a server delete — for when a server-side action
+   * has already moved it out of the tasks domain. The gate (§8) admits an item to the
+   * factory via `enter_code_module`, which creates a `code_items` sidecar; the item then
+   * falls out of the `task_items` view, so it must leave this store too. A pure client-side
+   * `remove` (no API call): the row already changed server-side, so there's nothing to
+   * reconcile and nothing to roll back.
+   */
+  removeGatedItem: (id: string) => void;
 }
 
 type TaskAction =
@@ -196,6 +213,17 @@ export function TasksProvider({
           throw error;
         }
       },
+      async classifyItem(id, itemType) {
+        const previous = tasksRef.current.find((item) => item.id === id);
+        dispatch({ type: 'patch', ids: [id], patch: { item_type: itemType } });
+        try {
+          const saved = await api.updateItem(id, { item_type: itemType });
+          dispatch({ type: 'upsert', items: [saved] });
+        } catch (error) {
+          if (previous) dispatch({ type: 'upsert', items: [previous] });
+          throw error;
+        }
+      },
       async moveTask(id, folderId) {
         const affected = collectSubtree(tasksRef.current, id);
         // Stryker disable next-line ConditionalExpression: AT_CEILING — empty subtree → ids=[], so Promise.all maps over [] (zero API calls) and the dispatches are no-ops; identical to the early return. (completeTask/deleteTask call the API unconditionally, so their guards stay killable.)
@@ -284,6 +312,11 @@ export function TasksProvider({
           dispatch({ type: 'upsert', items: affected });
           throw error;
         }
+      },
+      removeGatedItem(id) {
+        // The gate's RPC clears parent_id, so a gated item is always a leaf here — drop
+        // just that row (no subtree, no server call).
+        dispatch({ type: 'remove', ids: [id] });
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].

@@ -5,9 +5,14 @@ import { pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
 /**
- * Drag-to-folder: the whole task row is the drag surface (no handle); the sidebar Inbox and
- * folders are drop targets. A drop routes through the optimistic moveTask action, so the
- * task leaves its current view instantly and is filed under the target folder.
+ * Drag-to-folder: the whole task row is the drag surface (no handle); the sidebar folders
+ * are drop targets. A drop routes through the optimistic moveTask action, so the task
+ * leaves its current view instantly and is filed under the target folder.
+ *
+ * NOTE (§6.2): the Inbox nav link was removed, so it is no longer a drop target — there is
+ * no "drag a filed task back to the Inbox" affordance. That capability still exists via the
+ * row's "Move to… → Inbox" menu (covered elsewhere); only the drag-onto-Inbox-link shortcut
+ * is gone with the link.
  */
 
 /**
@@ -46,26 +51,5 @@ test.describe('drag a task to a folder', () => {
     // ... and is now filed under Work (the store already reconciled; navigate client-side).
     await workFolder.click();
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Drag me')).toBeVisible();
-  });
-
-  test('returns a filed task to the Inbox by dragging it onto the Inbox target', async ({
-    page,
-    seed,
-  }) => {
-    const work = makeFolder('Work');
-    await seed({ folders: [work], items: [makeItem('File me', { folder_id: work.id })] });
-    await page.goto(`/folders/${work.id}`);
-
-    const source = page.getByText('File me');
-    const inbox = page.getByRole('link', { name: 'Inbox' });
-
-    await dragOnto(page, source, inbox);
-
-    // It leaves the Work folder view immediately ...
-    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('File me')).toBeHidden();
-
-    // ... and is back in the Inbox.
-    await inbox.click();
-    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('File me')).toBeVisible();
   });
 });

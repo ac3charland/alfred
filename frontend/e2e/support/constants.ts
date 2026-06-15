@@ -8,7 +8,7 @@
 import path from 'node:path';
 import process from 'node:process';
 
-import type { Folder, Item } from '@/lib/types';
+import type { CodeItem, Epic, Folder, Item, Project } from '@/lib/types';
 
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;
@@ -26,6 +26,9 @@ export const E2E_USER = {
 export interface SeedState {
   folders?: Folder[];
   items?: Item[];
+  projects?: Project[];
+  epics?: Epic[];
+  codeItems?: CodeItem[];
 }
 
 let sequence = 0;
@@ -62,5 +65,58 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     completed_at: overrides.completed_at ?? null,
     folder_id: overrides.folder_id ?? null,
     parent_id: overrides.parent_id ?? null,
+  };
+}
+
+// ── Software Factory seed builders (mirror makeItem/makeFolder). ──
+
+/** A project = a GitHub repo. `key` is the immutable 3-char ref prefix. */
+export function makeProject(name: string, overrides: Partial<Project> = {}): Project {
+  return {
+    id: overrides.id ?? crypto.randomUUID(),
+    created_at: overrides.created_at ?? nextCreatedAt(),
+    name,
+    key: overrides.key ?? 'ALF',
+    repo_owner: overrides.repo_owner ?? 'ac3charland',
+    repo_name: overrides.repo_name ?? 'alfred',
+    github_url: overrides.github_url ?? null,
+    ref_seq: overrides.ref_seq ?? 0,
+  };
+}
+
+/** An epic = an organizing bucket; its `ref` is drawn from the project counter. */
+export function makeEpic(name: string, overrides: Partial<Epic> = {}): Epic {
+  const refNumber = overrides.ref_number ?? 1;
+  return {
+    id: overrides.id ?? crypto.randomUUID(),
+    created_at: overrides.created_at ?? nextCreatedAt(),
+    project_id: overrides.project_id ?? crypto.randomUUID(),
+    name,
+    notes: overrides.notes ?? null,
+    ref_number: refNumber,
+    ref: overrides.ref ?? `ALF-${String(refNumber)}`,
+    archived_at: overrides.archived_at ?? null,
+  };
+}
+
+/** A code story: the `code_items` sidecar row (1:1 on an `items` row). */
+export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
+  const refNumber = overrides.ref_number ?? 1;
+  return {
+    item_id: overrides.item_id ?? crypto.randomUUID(),
+    project_id: overrides.project_id ?? crypto.randomUUID(),
+    epic_id: overrides.epic_id ?? crypto.randomUUID(),
+    ref_number: refNumber,
+    ref: overrides.ref ?? `ALF-${String(refNumber)}`,
+    factory_state: overrides.factory_state ?? 'needs_refinement',
+    lane: overrides.lane ?? 'human',
+    spec_path: overrides.spec_path ?? null,
+    spec_sha: overrides.spec_sha ?? null,
+    spec_markdown: overrides.spec_markdown ?? null,
+    refinement_pr_url: overrides.refinement_pr_url ?? null,
+    implementation_pr_url: overrides.implementation_pr_url ?? null,
+    blocked_reason: overrides.blocked_reason ?? null,
+    created_at: overrides.created_at ?? nextCreatedAt(),
+    updated_at: overrides.updated_at ?? nextCreatedAt(),
   };
 }

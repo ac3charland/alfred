@@ -8,6 +8,13 @@ import { expect, test } from './support/fixtures';
 // subtask is settled before we press it to start a drag.
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
+// Subtask trees are task-only (§7.3: a `parent_id` implies a task), so these fixtures
+// classify as tasks rather than `makeItem`'s default `unclassified`.
+type MakeItemOverrides = Parameters<typeof makeItem>[1];
+function makeTask(title: string, overrides: MakeItemOverrides = {}) {
+  return makeItem(title, { item_type: 'task', ...overrides });
+}
+
 /**
  * Pull a subtask out to the top level by dragging it past the list's top or bottom edge.
  * A dedicated promote-to-root drop zone appears at that edge while a CHILD is being dragged
@@ -32,8 +39,8 @@ async function dragPastEdge(page: Page, childText: string, edge: 'top' | 'bottom
 
 test.describe('pull a subtask out to the top level by dragging it past the list edge', () => {
   test('dropping a subtask below the list makes it a top-level task', async ({ page, seed }) => {
-    const parent = makeItem('Parent');
-    const child = makeItem('Promote me', { parent_id: parent.id });
+    const parent = makeTask('Parent');
+    const child = makeTask('Promote me', { parent_id: parent.id });
     await seed({ items: [parent, child] });
     await page.goto('/?view=inbox');
     await page.getByRole('button', { name: 'Expand subtasks' }).click();
@@ -50,8 +57,8 @@ test.describe('pull a subtask out to the top level by dragging it past the list 
   });
 
   test('dropping a subtask above the list also promotes it', async ({ page, seed }) => {
-    const parent = makeItem('Parent');
-    const child = makeItem('Promote me', { parent_id: parent.id });
+    const parent = makeTask('Parent');
+    const child = makeTask('Promote me', { parent_id: parent.id });
     await seed({ items: [parent, child] });
     await page.goto('/?view=inbox');
     await page.getByRole('button', { name: 'Expand subtasks' }).click();
@@ -69,7 +76,7 @@ test.describe('pull a subtask out to the top level by dragging it past the list 
     page,
     seed,
   }) => {
-    await seed({ items: [makeItem('Root A'), makeItem('Root B')] });
+    await seed({ items: [makeTask('Root A'), makeTask('Root B')] });
     await page.goto('/?view=inbox');
 
     await pickUp(page, page.getByText('Root A'));

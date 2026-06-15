@@ -17,6 +17,16 @@ const mockCompleteTask = jest.mocked(apiClient.completeTask);
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
+// The gate (GateDialog) fetches projects/epics on open; default them to empty so opening
+// the dialog never rejects. Individual gate tests override enterCodeModule.
+const mockListProjects = jest.mocked(apiClient.listProjects);
+const mockListEpics = jest.mocked(apiClient.listEpics);
+const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
+
+beforeEach(() => {
+  mockListProjects.mockResolvedValue([]);
+  mockListEpics.mockResolvedValue([]);
+});
 
 const BASE_ITEM: Item = {
   id: 'item-1',
@@ -126,6 +136,46 @@ function fireTransitionEnd(element: HTMLElement, propertyName: string): void {
  */
 function endCollapse(title: string): void {
   fireTransitionEnd(collapseWrapperFor(title), 'grid-template-rows');
+}
+
+/**
+ * Activate a top-level actions-menu item by its accessible name, order-independently.
+ * Radix portals the menu and sets `pointer-events:none` on the body, so `user.click()`
+ * on a portal item is blocked — keyboard nav is the way in. The menu's exact item order
+ * shifts as items gate on item_type (e.g. the M4 "Convert to Code Story…" entry), so this
+ * presses ArrowDown until the wanted item has focus rather than counting positions.
+ *
+ * Assumes the menu is already open (the caller clicked "More actions" and awaited the
+ * menu). Throws if the item never gains focus within the menu's length.
+ */
+async function activateMenuItem(
+  user: ReturnType<typeof userEvent.setup>,
+  name: RegExp,
+): Promise<void> {
+  const target = screen.getByRole('menuitem', { name });
+  // Cap the walk at the number of menu items so a missing item fails fast.
+  const itemCount = screen.getAllByRole('menuitem').length;
+  for (let index = 0; index < itemCount; index += 1) {
+    if (document.activeElement === target) break;
+    await user.keyboard('[ArrowDown]');
+  }
+  expect(target).toHaveFocus();
+  await user.keyboard('[Enter]');
+}
+
+/**
+ * Focus a submenu trigger by name (order-independently, like `activateMenuItem`) and open
+ * it with ArrowRight, leaving its first item focused. Returns once the submenu is open.
+ */
+async function openSubmenu(user: ReturnType<typeof userEvent.setup>, name: RegExp): Promise<void> {
+  const trigger = screen.getByRole('menuitem', { name });
+  const itemCount = screen.getAllByRole('menuitem').length;
+  for (let index = 0; index < itemCount; index += 1) {
+    if (document.activeElement === trigger) break;
+    await user.keyboard('[ArrowDown]');
+  }
+  expect(trigger).toHaveFocus();
+  await user.keyboard('[ArrowRight]');
 }
 
 // ---------------------------------------------------------------------------
@@ -241,8 +291,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      // No folders → menu is: Set due date (1), Add notes (2), Delete (3).
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       // The meta panel opened, but the subtask tree stayed collapsed.
       expect(screen.getByText('Due date')).toBeInTheDocument();
@@ -255,7 +304,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /add notes/i);
 
       expect(screen.getByRole('textbox', { name: /notes/i })).toBeInTheDocument();
       expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
@@ -517,8 +566,7 @@ describe('TaskRow', () => {
 
     await user.click(screen.getByRole('button', { name: /more actions/i }));
     await screen.findByRole('menu');
-    // Menu (no folders): Set due date, Add notes, Delete.
-    await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][Enter]');
+    await activateMenuItem(user, /^delete$/i);
 
     await waitFor(() => {
       expect(mockDeleteItem).toHaveBeenCalledWith('item-1');
@@ -528,9 +576,10 @@ describe('TaskRow', () => {
 
   describe('move to folder', () => {
     // Radix DropdownMenu portals set pointer-events:none on the body, which blocks
-    // userEvent.click() on portal items. Keyboard navigation bypasses this.
-    //   ArrowDown×1 → "Set due date", ×2 → "Add notes", ×3 → "Move to…" (SubTrigger)
-    //   ArrowRight opens the submenu with "Inbox" auto-focused; ArrowDown → first folder.
+    // userEvent.click() on portal items. Keyboard navigation bypasses this; the helpers
+    // (activateMenuItem / openSubmenu) walk by item NAME so they're robust to the menu's
+    // type-gated ordering. Inside the open "Move to…" submenu, "Inbox" is auto-focused;
+    // ArrowDown → the first folder.
 
     it('calls updateItem once when moving a leaf task to a folder', async () => {
       mockUpdateItem.mockResolvedValue(BASE_ITEM);
@@ -539,7 +588,8 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][ArrowDown][Enter]');
+      await openSubmenu(user, /move to…/i);
+      await user.keyboard('[ArrowDown][Enter]');
 
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledTimes(1);
@@ -554,7 +604,8 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][ArrowDown][Enter]');
+      await openSubmenu(user, /move to…/i);
+      await user.keyboard('[ArrowDown][Enter]');
 
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledTimes(3);
@@ -571,7 +622,8 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][Enter]');
+      await openSubmenu(user, /move to…/i);
+      await user.keyboard('[Enter]');
 
       await waitFor(() => {
         expect(mockMoveToInbox).toHaveBeenCalledTimes(1);
@@ -586,7 +638,8 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowRight][Enter]');
+      await openSubmenu(user, /move to…/i);
+      await user.keyboard('[Enter]');
 
       await waitFor(() => {
         expect(mockMoveToInbox).toHaveBeenCalledTimes(3);
@@ -1268,8 +1321,7 @@ describe('TaskRow', () => {
       // Open the meta panel via the actions menu
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      // ArrowDown×2 → "Add notes"
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       // Notes textarea should be visible with existing content
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
@@ -1561,7 +1613,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
     });
@@ -1573,7 +1625,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, 'New notes');
@@ -1591,7 +1643,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.clear(textarea);
@@ -1608,7 +1660,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       await screen.findByRole('textbox', { name: /notes/i });
       // Save without changing
@@ -1623,7 +1675,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, 'Never saved');
@@ -1651,7 +1703,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       // After notes edit mode opens and then we save/cancel back to view mode
       await screen.findByRole('textbox', { name: /notes/i });
@@ -1725,8 +1777,7 @@ describe('TaskRow', () => {
       // Open meta via "Set due date" menu item, then exit edit mode via Cancel
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      // ArrowDown×1 = "Set due date"
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       // Meta panel is open in editing mode; cancel to get to view mode
       await screen.findByRole('button', { name: /^cancel$/i });
@@ -1749,7 +1800,7 @@ describe('TaskRow', () => {
       // Open meta panel in edit mode via the menu
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       // The date input should have an empty value, not "Stryker was here!"
       const dateInput = document.querySelector('input[type="date"]');
@@ -1763,7 +1814,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       expect(textarea).toHaveValue('');
@@ -1838,7 +1889,7 @@ describe('TaskRow', () => {
       const childMoreBtn = within(childRow).getByRole('button', { name: /more actions/i });
       await user.click(childMoreBtn);
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       // depth=1: metaIndentLeft = `${1*1.25+2.5}rem` = '3.75rem'
       const childLi = childTitle.closest('li');
@@ -1952,7 +2003,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, 'New content');
@@ -1970,7 +2021,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       await screen.findByRole('textbox', { name: /notes/i });
       // Save without changing the value → trim('Existing note') === 'Existing note' → no updateItem
@@ -1989,7 +2040,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       // Add trailing whitespace to simulate user typing spaces
@@ -2010,7 +2061,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       await screen.findByRole('textbox', { name: /notes/i });
       await user.click(screen.getByRole('button', { name: /^save$/i }));
@@ -2025,7 +2076,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.clear(textarea);
@@ -2039,7 +2090,7 @@ describe('TaskRow', () => {
       // After failure, reopen notes to verify draft was reset to original
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const reopenedTextarea = await screen.findByRole('textbox', { name: /notes/i });
       expect(reopenedTextarea).toHaveValue('Original note');
@@ -2053,7 +2104,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.clear(textarea);
@@ -2066,7 +2117,7 @@ describe('TaskRow', () => {
       // After cancel, reopen to verify draft was reset to 'Saved note' not ''
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const reopenedTextarea = await screen.findByRole('textbox', { name: /notes/i });
       expect(reopenedTextarea).toHaveValue('Saved note');
@@ -2096,7 +2147,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByLabelText('Notes');
       expect(textarea.tagName.toLowerCase()).toBe('textarea');
@@ -2109,7 +2160,7 @@ describe('TaskRow', () => {
       // Open meta panel without editing
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       // Cancel to get to view mode
       await screen.findByRole('button', { name: /^cancel$/i });
@@ -2126,7 +2177,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       await screen.findByRole('textbox', { name: /notes/i });
       const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
@@ -2174,7 +2225,7 @@ describe('TaskRow', () => {
       // Open meta panel via menu, cancel to get to view mode
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
       await screen.findByRole('button', { name: /^cancel$/i });
       await user.click(screen.getByRole('button', { name: /^cancel$/i }));
 
@@ -2196,7 +2247,7 @@ describe('TaskRow', () => {
       // Open meta panel in notes view mode
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       await screen.findByRole('textbox', { name: /notes/i });
       const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
@@ -2245,7 +2296,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       // Notes textarea should be visible (editing mode)
       expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
@@ -2261,7 +2312,7 @@ describe('TaskRow', () => {
       // With correct setIsEditingNotes(false), notes should be in VIEW mode (no textarea).
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       // The meta panel is now open (date editing) — notes textarea should NOT be present
       await screen.findByRole('button', { name: /^close$/i });
@@ -2700,7 +2751,7 @@ describe('TaskRow', () => {
       // Open the date editor via the menu ("Set due date").
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       const dateInput = await screen.findByLabelText('Due date');
       // Mutant initializer would seed a non-date sentinel; a real date input shows ''.
@@ -2751,7 +2802,7 @@ describe('TaskRow', () => {
       // Open the date editor via the menu ("Set due date").
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       const dateInput = await screen.findByLabelText('Due date');
       fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
@@ -2784,7 +2835,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][Enter]');
+      await activateMenuItem(user, /set due date/i);
 
       const dateInput = await screen.findByLabelText('Due date');
       fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
@@ -2814,7 +2865,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, ' '.repeat(3));
@@ -2836,7 +2887,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, '  Fresh note  ');
@@ -2859,7 +2910,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       await screen.findByRole('textbox', { name: /notes/i });
 
@@ -2882,7 +2933,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, 'Doomed edit');
@@ -2898,7 +2949,7 @@ describe('TaskRow', () => {
       // verbatim if the `?? "Stryker was here!"` mutant ran.
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const reopened = await screen.findByRole('textbox', { name: /notes/i });
       expect(reopened).toHaveValue('');
@@ -2913,7 +2964,7 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const textarea = await screen.findByRole('textbox', { name: /notes/i });
       await user.type(textarea, 'Never saved');
@@ -2925,7 +2976,7 @@ describe('TaskRow', () => {
       // Re-open notes; the draft must be '' (not the sentinel).
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
 
       const reopened = await screen.findByRole('textbox', { name: /notes/i });
       expect(reopened).toHaveValue('');
@@ -2944,7 +2995,7 @@ describe('TaskRow', () => {
       // Open notes editor via the menu so isEditingNotes = true.
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
-      await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
       expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
 
       // Close the meta panel — this must set isEditingNotes back to false.
@@ -2958,6 +3009,361 @@ describe('TaskRow', () => {
       await user.click(screen.getByRole('button', { name: /due date: 2099-12-31/i }));
       await screen.findByText('Due date');
       expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Classification & type-gating (M2, §7.1 / §7.2 / §7.3)
+//
+// Capture creates `unclassified` items; `Classify as Task` unlocks the task-only
+// affordances (checkbox, due date, subtasks) plus the Task badge; `Classify as Code`
+// shows the Code badge but still no task affordances. `notes` stay generic on every type.
+// ---------------------------------------------------------------------------
+
+const UNCLASSIFIED_ITEM: Item = { ...BASE_ITEM, item_type: 'unclassified' };
+const CODE_ITEM: Item = { ...BASE_ITEM, item_type: 'code' };
+
+describe('TaskRow — classification & type-gating', () => {
+  describe('type badge (§7.2)', () => {
+    it('shows no badge on an unclassified row', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      expect(screen.queryByText('Code')).not.toBeInTheDocument();
+    });
+
+    it('shows a "Task" badge on a task row', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(screen.getByText('Task')).toBeInTheDocument();
+    });
+
+    it('shows a "Code" badge on a code row', () => {
+      renderTasks([CODE_ITEM]);
+
+      expect(screen.getByText('Code')).toBeInTheDocument();
+    });
+  });
+
+  describe('the Classify as… submenu (§7.1)', () => {
+    it('offers Classify as… only while the row is unclassified', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
+    });
+
+    it('hides Classify as… once the row is a task', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+    });
+
+    it('hides Classify as… once the row is code', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+    });
+
+    it('classifies as Task (item_type → task) and reveals the task affordances', async () => {
+      mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'task' });
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      // Drive the Radix submenu by keyboard (synthetic clicks race the safe-triangle):
+      // hover the subtrigger, ArrowRight opens it (focusing "Task"), Enter selects.
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'task' });
+      });
+      // Optimistic flip: the Task badge and the completion checkbox now show.
+      expect(screen.getByText('Task')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Mark "Write tests" complete' }),
+      ).toBeInTheDocument();
+    });
+
+    it('classifies as Code (item_type → code) showing the Code badge but no checkbox', async () => {
+      mockUpdateItem.mockResolvedValue({ ...UNCLASSIFIED_ITEM, item_type: 'code' });
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Code' });
+      // ArrowDown from "Task" to "Code", then select.
+      await user.keyboard('[ArrowDown][Enter]');
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'code' });
+      });
+      expect(screen.getByText('Code')).toBeInTheDocument();
+      // Still no task affordance after classifying as code.
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('rolls the item_type back if the classify request fails', async () => {
+      mockUpdateItem.mockRejectedValue(new Error('network'));
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.hover(screen.getByRole('menuitem', { name: 'Classify as…' }));
+      await user.keyboard('[ArrowRight]');
+      await screen.findByRole('menuitem', { name: 'Task' });
+      await user.keyboard('[Enter]');
+
+      // Optimistic badge appears, then the rollback removes it (back to unclassified).
+      await waitFor(() => {
+        expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('task-only affordances are gated (§7.3)', () => {
+    it('an unclassified row exposes no completion checkbox', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('a code row exposes no completion checkbox', () => {
+      renderTasks([CODE_ITEM]);
+
+      expect(
+        screen.queryByRole('button', { name: /mark "Write tests" complete/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('a task row exposes the completion checkbox', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(
+        screen.getByRole('button', { name: 'Mark "Write tests" complete' }),
+      ).toBeInTheDocument();
+    });
+
+    it('an unclassified row exposes no add-subtask affordance', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+    });
+
+    it('a code row exposes no add-subtask affordance', () => {
+      renderTasks([CODE_ITEM]);
+
+      expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+    });
+
+    it('a task row exposes the add-subtask affordance', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(screen.getByRole('button', { name: 'Add subtask' })).toBeInTheDocument();
+    });
+
+    it('an unclassified row offers no Set due date menu item', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByText('Set due date')).not.toBeInTheDocument();
+      expect(screen.queryByText('Edit due date')).not.toBeInTheDocument();
+    });
+
+    it('a code row offers no Set due date menu item', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByText('Set due date')).not.toBeInTheDocument();
+    });
+
+    it('a task row offers the Set due date menu item', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByText('Set due date')).toBeInTheDocument();
+    });
+  });
+
+  describe('notes stay generic across every type (§7.3)', () => {
+    it('an unclassified row still offers Add notes', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByText('Add notes')).toBeInTheDocument();
+    });
+
+    it('a code row still offers Add notes and opens the notes editor (no due-date field)', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await user.click(screen.getByRole('menuitem', { name: 'Add notes' }));
+
+      // The notes editor is available on a code row…
+      expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
+      // …but the (task-only) due-date field is NOT rendered in the meta panel.
+      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The gate (§8): Send to Code module / Convert to Code Story menu entries
+  // ---------------------------------------------------------------------------
+
+  describe('the gate menu entries (§7.1 / §8)', () => {
+    it('offers "Send to Code module…" on a code-classified item', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: /send to code module/i })).toBeInTheDocument();
+      // A code item is NOT a task/unclassified, so it does not offer Convert.
+      expect(
+        screen.queryByRole('menuitem', { name: /convert to code story/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers "Convert to Code Story…" on a task (not Send to Code module)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: /send to code module/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers "Convert to Code Story…" on an unclassified item', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).toBeInTheDocument();
+    });
+
+    it('opens the gate dialog from "Send to Code module…"', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await activateMenuItem(user, /send to code module/i);
+
+      // The gate dialog opens, naming the item it will admit.
+      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
+      expect(within(dialog).getByText(/write tests/i)).toBeInTheDocument();
+    });
+
+    it('removes the item and toasts the ref when the gate completes', async () => {
+      // One project + epic so the gate can be confirmed end to end.
+      mockListProjects.mockResolvedValue([
+        {
+          id: 'p1',
+          name: 'Alfred',
+          key: 'ALF',
+          repo_owner: 'ac3charland',
+          repo_name: 'alfred',
+          github_url: null,
+          ref_seq: 0,
+          created_at: '2025-01-01T00:00:00Z',
+        },
+      ]);
+      mockListEpics.mockResolvedValue([
+        {
+          id: 'e1',
+          project_id: 'p1',
+          name: 'Firewall',
+          notes: null,
+          ref_number: 1,
+          ref: 'ALF-1',
+          archived_at: null,
+          created_at: '2025-01-01T00:00:00Z',
+        },
+      ]);
+      mockEnterCodeModule.mockResolvedValue({
+        item_id: 'item-1',
+        project_id: 'p1',
+        epic_id: 'e1',
+        ref_number: 42,
+        ref: 'ALF-42',
+        factory_state: 'needs_refinement',
+        lane: 'human',
+        spec_path: null,
+        spec_sha: null,
+        spec_markdown: null,
+        refinement_pr_url: null,
+        implementation_pr_url: null,
+        blocked_reason: null,
+        created_at: '2025-01-02T00:00:00Z',
+        updated_at: '2025-01-02T00:00:00Z',
+      });
+
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await activateMenuItem(user, /send to code module/i);
+
+      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
+      await user.click(await within(dialog).findByRole('option', { name: /alfred/i }));
+      await user.click(await within(dialog).findByRole('option', { name: /firewall/i }));
+      await user.click(within(dialog).getByRole('button', { name: /send to code module/i }));
+
+      // The toast announces the new ref…
+      expect(await screen.findByText('Created ALF-42')).toBeInTheDocument();
+      // …and the gated item has left the inbox view (removed from the store).
+      await waitFor(() => {
+        expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+      });
     });
   });
 });
