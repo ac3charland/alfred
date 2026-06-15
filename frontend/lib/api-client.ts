@@ -5,7 +5,7 @@
  * browser session). After any mutation, call router.refresh() in the component
  * to pull fresh data from the server.
  */
-import type { Folder, Item } from '@/lib/types';
+import type { CodeItem, CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -135,4 +135,61 @@ export function updateFolder(id: string, name: string): Promise<Folder> {
 
 export function deleteFolder(id: string): Promise<{ success: true }> {
   return apiRequest<{ success: true }>(`/api/folders/${id}`, { method: 'DELETE' });
+}
+
+// ---------------------------------------------------------------------------
+// Software Factory — projects / epics / code stories (the gate, §8 / §14)
+// ---------------------------------------------------------------------------
+
+export function listProjects(): Promise<Project[]> {
+  return apiRequest<Project[]>('/api/projects');
+}
+
+export interface CreateProjectInput {
+  name: string;
+  /** The repo URL; the server derives repo_owner/repo_name from it (§4.2). */
+  github_url: string;
+  /** The 3-char ref-prefix key (validated `^[A-Z][A-Z0-9]{2}$`, §4.2). */
+  key: string;
+}
+
+export function createProject(input: CreateProjectInput): Promise<Project> {
+  return apiRequest<Project>('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** List epics, optionally scoped to one project (the board / the gate's Epic selector). */
+export function listEpics(projectId?: string): Promise<Epic[]> {
+  const qs = projectId === undefined ? '' : `?project=${encodeURIComponent(projectId)}`;
+  return apiRequest<Epic[]>(`/api/epics${qs}`);
+}
+
+/** Create an epic (the `create_epic` RPC allocates the shared per-project ref). */
+export function createEpic(projectId: string, name: string): Promise<Epic> {
+  return apiRequest<Epic>('/api/epics', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, name }),
+  });
+}
+
+export function listCode(): Promise<CodeStory[]> {
+  return apiRequest<CodeStory[]>('/api/code');
+}
+
+/**
+ * The gate (§8.3): admit an item to the factory. Calls `enter_code_module`, which flips
+ * `item_type` to `code`, clears the task-only fields, and creates the `code_items`
+ * sidecar at `needs_refinement` with a server-allocated ref. Returns the sidecar row.
+ */
+export function enterCodeModule(
+  itemId: string,
+  projectId: string,
+  epicId: string,
+): Promise<CodeItem> {
+  return apiRequest<CodeItem>('/api/code', {
+    method: 'POST',
+    body: JSON.stringify({ item_id: itemId, project_id: projectId, epic_id: epicId }),
+  });
 }
