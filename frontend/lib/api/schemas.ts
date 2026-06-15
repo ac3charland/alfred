@@ -136,6 +136,30 @@ export const listEpicsQuerySchema = z.object({
 
 export type ListEpicsQuery = z.infer<typeof listEpicsQuerySchema>;
 
+/** The eight factory states (§4.1) — the full set a manual/link-click transition may set. */
+const codeFactoryState = z.enum([
+  'needs_refinement',
+  'in_refinement',
+  'ready_for_dev',
+  'in_development',
+  'ready_for_review',
+  'done',
+  'blocked',
+  'abandoned',
+]);
+
+/**
+ * Body for PATCH /api/code/[ref] — a state transition (§5.2). `factory_state` is required;
+ * `blocked_reason` is the optional companion the Block control sets (nullable so it clears on
+ * any non-blocked hop). Drives both the M5 link-click write and M6's manual controls.
+ */
+export const updateCodeSchema = z.object({
+  factory_state: codeFactoryState,
+  blocked_reason: z.string().nullable().optional(),
+});
+
+export type UpdateCodeInput = z.infer<typeof updateCodeSchema>;
+
 // ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------

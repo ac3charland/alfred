@@ -5,7 +5,15 @@
  * browser session). After any mutation, call router.refresh() in the component
  * to pull fresh data from the server.
  */
-import type { CodeItem, CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
+import type {
+  CodeFactoryState,
+  CodeItem,
+  CodeStory,
+  Epic,
+  Folder,
+  Item,
+  Project,
+} from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -191,5 +199,30 @@ export function enterCodeModule(
   return apiRequest<CodeItem>('/api/code', {
     method: 'POST',
     body: JSON.stringify({ item_id: itemId, project_id: projectId, epic_id: epicId }),
+  });
+}
+
+/** Optional extra fields a state transition may carry (e.g. Block sets `blocked_reason`). */
+export interface UpdateCodeStateExtra {
+  blocked_reason?: string | null;
+}
+
+/**
+ * Transition a code story to a new factory state (§5.2): the link-click write
+ * (`in_refinement` / `in_development`) and M6's manual controls (Block / Abandon /
+ * Advance-Revert). PATCHes the sidecar by its `ref` and returns the updated row.
+ */
+export function updateCodeState(
+  ref: string,
+  factoryState: CodeFactoryState,
+  extra: UpdateCodeStateExtra = {},
+): Promise<CodeItem> {
+  const body: { factory_state: CodeFactoryState; blocked_reason?: string | null } = {
+    factory_state: factoryState,
+  };
+  if (extra.blocked_reason !== undefined) body.blocked_reason = extra.blocked_reason;
+  return apiRequest<CodeItem>(`/api/code/${encodeURIComponent(ref)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
   });
 }
