@@ -705,10 +705,35 @@ Each milestone is independently shippable behind the Code view (which can stay e
 - **M6 — Detail modal.** Jira-style modal: spec render (placeholder until M7 snapshots exist), PR
   links, manual fallback controls. Depends on M4.
 - **M7 — The Worker.** HMAC, parsing, transition table, spec snapshot; `wrangler.toml` secrets;
-  per-repo setup docs. Depends on M1 + M12 contract. Can be built in parallel with M3–M6.
+  per-repo setup docs. Depends on M1 + the §12 contract. Can be built in parallel with M3–M6.
 
 Routine slices (badges, atoms, API-route plumbing, Worker unit tests) are good sub-agent / mid-tier
 work; schema, the state machine, the gate, and the Worker's transition logic want the strongest model.
+
+### 16.1 Orchestration — which sessions run where
+
+Two milestones (**M1**, **M7**) have a **credentialed tail** a web/CI sandbox cannot do (no
+`.env.local`, no `wrangler` secrets — see the §4 Sandbox-limitation note). Everything else is pure
+code + mock-based tests a web session handles fine. So run it in three phases — **manual → independent
+→ manual** — where the two manual bookends are *exactly* the credentialed steps and the whole middle
+is parallel, sandbox-friendly work:
+
+- **Phase A — local, high-touch (`.env.local` present): M1.** Author and **apply** migration `0002`
+  (`supabase db push`), run the §4.6 data migration (promote existing items → `task`, then add the
+  CHECK), **regenerate `frontend/lib/database.types.ts` and commit it**, and commit the frontmatter
+  contract + enforcing-workflow artifact (§12). The committed regenerated types are the **handoff** —
+  they're what lets every later session typecheck against the new schema. (A web session may *draft*
+  the M1 SQL for review, but applying + regenerating + the data migration are local and data-mutating.)
+- **Phase B — independent web sessions: M2–M6 *and* M7's code.** With the types committed these need
+  no credentials — frontend + Worker code with mock-based unit / RTL / Storybook / Playwright tests.
+  One PR per milestone, respecting the dependency order: **M2** and **M3** in parallel after M1;
+  **M4 → M5 → M6** a chain; **M7's Worker (handler, HMAC, parsing, transition table, snapshot fetch) +
+  its unit tests** authored here in parallel — just not deployed yet.
+- **Phase C — local, high-touch: the credentialed closeout.** What no sandbox could do: set the
+  `wrangler` secrets and **deploy the Worker**; create the **GitHub webhook** (+ HMAC secret) and the
+  fine-grained **token** on each project repo; commit the enforcing **GitHub Action** into those
+  repos; then run an **end-to-end smoke** (open a real refinement PR carrying the frontmatter block →
+  confirm the Worker advances the ticket and snapshots the spec). This is where M7 goes live.
 
 ---
 
