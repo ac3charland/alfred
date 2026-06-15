@@ -66,29 +66,13 @@ function ToggleButton({
 }
 
 /**
- * The epic header's notes-editing + 3-dot actions menu (§9.2). The menu contains
- * "Edit title" (triggers inline rename in the header) and "Archive"/"Unarchive". Both
- * archive and notes go through the store's optimistic `updateEpic`. These sit OUTSIDE
- * the collapse toggle button (no nested interactive elements).
+ * The epic header's notes-editing area (§9.2). Notes go through the store's optimistic
+ * `updateEpic`. Sits OUTSIDE the collapse toggle button (no nested interactive elements).
  */
-function EpicHeaderActions({ epic, onEditTitle }: { epic: Epic; onEditTitle: () => void }) {
+function EpicHeaderActions({ epic }: { epic: Epic }) {
   const { updateEpic } = useCodeActions();
-  const archived = epic.archived_at !== null;
   const [editingNotes, setEditingNotes] = React.useState(false);
   const [draftNotes, setDraftNotes] = React.useState(epic.notes ?? '');
-  const [pending, setPending] = React.useState(false);
-
-  const toggleArchive = async () => {
-    setPending(true);
-    try {
-      // Set a timestamp to archive, null to un-archive (§9.2 / §4.2).
-      await updateEpic(epic.id, { archived_at: archived ? null : new Date().toISOString() });
-    } catch {
-      // The store rolled the change back.
-    } finally {
-      setPending(false);
-    }
-  };
 
   const saveNotes = async () => {
     const next = draftNotes.trim();
@@ -119,7 +103,6 @@ function EpicHeaderActions({ epic, onEditTitle }: { epic: Epic; onEditTitle: () 
             <Button
               size="sm"
               variant="ghost"
-              disabled={pending}
               onClick={() => {
                 void saveNotes();
               }}
@@ -141,67 +124,24 @@ function EpicHeaderActions({ epic, onEditTitle }: { epic: Epic; onEditTitle: () 
           </div>
         </div>
       ) : (
-        <div className="flex items-start justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setDraftNotes(epic.notes ?? '');
-              setEditingNotes(true);
-            }}
-            className="group/notes flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
-          >
-            {epic.notes === null || epic.notes === '' ? (
-              <span className="text-muted-foreground hover:text-foreground">Add epic notes…</span>
-            ) : (
-              <span className="truncate whitespace-pre-wrap text-muted-foreground">
-                {epic.notes}
-              </span>
-            )}
-            <Pencil
-              size={12}
-              className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
-            />
-          </button>
-
-          {/* 3-dot actions menu: Edit title + Archive/Unarchive */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Epic actions"
-                className="h-7 w-7 shrink-0 text-muted-foreground"
-              >
-                <MoreHorizontal size={15} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onEditTitle}>
-                <Pencil size={13} />
-                Edit title
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                disabled={pending}
-                onSelect={() => {
-                  void toggleArchive();
-                }}
-              >
-                {archived ? (
-                  <>
-                    <ArchiveRestore size={13} />
-                    Unarchive
-                  </>
-                ) : (
-                  <>
-                    <Archive size={13} />
-                    Archive
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setDraftNotes(epic.notes ?? '');
+            setEditingNotes(true);
+          }}
+          className="group/notes flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+        >
+          {epic.notes === null || epic.notes === '' ? (
+            <span className="text-muted-foreground hover:text-foreground">Add epic notes…</span>
+          ) : (
+            <span className="truncate whitespace-pre-wrap text-muted-foreground">{epic.notes}</span>
+          )}
+          <Pencil
+            size={12}
+            className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
+          />
+        </button>
       )}
     </div>
   );
@@ -227,6 +167,19 @@ function EpicBlock({
   const { updateEpic } = useCodeActions();
   const headingId = `epic-${epic.id}-heading`;
   const regionId = `epic-${epic.id}-lanes`;
+  const archived = epic.archived_at !== null;
+  const [pending, setPending] = React.useState(false);
+
+  const toggleArchive = async () => {
+    setPending(true);
+    try {
+      await updateEpic(epic.id, { archived_at: archived ? null : new Date().toISOString() });
+    } catch {
+      // The store rolled the change back.
+    } finally {
+      setPending(false);
+    }
+  };
 
   // Inline title editing: when active, the header toggle becomes a div with an input.
   const currentTitle = epic.name;
@@ -334,10 +287,51 @@ function EpicBlock({
             <span className="font-mono text-xs text-muted-foreground">{epic.ref}</span>
           </button>
         )}
+
+        {/* 3-dot actions menu in the title corner: Edit title + Archive/Unarchive. */}
+        {editingTitle ? null : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Epic actions"
+                className="mr-2 h-7 w-7 shrink-0 self-center text-muted-foreground"
+              >
+                <MoreHorizontal size={15} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={startEditTitle}>
+                <Pencil size={13} />
+                Edit title
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={pending}
+                onSelect={() => {
+                  void toggleArchive();
+                }}
+              >
+                {archived ? (
+                  <>
+                    <ArchiveRestore size={13} />
+                    Unarchive
+                  </>
+                ) : (
+                  <>
+                    <Archive size={13} />
+                    Archive
+                  </>
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </h3>
 
-      {/* Notes-editing + 3-dot menu (§9.2). Shown when the epic is expanded. */}
-      {collapsed ? null : <EpicHeaderActions epic={epic} onEditTitle={startEditTitle} />}
+      {/* Notes-editing area (§9.2). Shown when the epic is expanded. */}
+      {collapsed ? null : <EpicHeaderActions epic={epic} />}
 
       {collapsed ? null : (
         <div id={regionId} className="px-2 py-3">
