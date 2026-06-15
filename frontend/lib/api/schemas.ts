@@ -117,6 +117,23 @@ export const createEpicSchema = z.object({
 export type CreateEpicInput = z.infer<typeof createEpicSchema>;
 
 /**
+ * Body for PATCH /api/epics/[id] — the epic-header edits (§9.2): `notes` (nullable so it
+ * clears to null) and `archived_at` (set to an ISO timestamp to archive, null to un-archive,
+ * which drops/restores the epic on the active board). Both optional, but the `.refine`
+ * rejects an empty body so a PATCH must change something.
+ */
+export const updateEpicSchema = z
+  .object({
+    notes: z.string().nullable().optional(),
+    archived_at: z.iso.datetime({ offset: true }).nullable().optional(),
+  })
+  .refine((data) => data.notes !== undefined || data.archived_at !== undefined, {
+    message: 'At least one of "notes" or "archived_at" is required',
+  });
+
+export type UpdateEpicInput = z.infer<typeof updateEpicSchema>;
+
+/**
  * Body for POST /api/code — the gate. Calls `enter_code_module(item, project, epic)`,
  * which flips the item to `code`, clears its task-only fields, and creates the sidecar
  * at `needs_refinement` with a server-allocated ref (§4.3 / §8.3).

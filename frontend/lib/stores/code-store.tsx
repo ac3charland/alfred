@@ -113,6 +113,22 @@ export interface CodeActions {
     epicId: string,
   ) => Promise<CodeStory>;
   /**
+   * Edit an epic's header fields (§9.2): `notes` and `archived_at` (set to archive,
+   * `null` to un-archive — archiving drops the epic off the active board). Optimistically
+   * patches the epic via the reducer's `patchEpic`, then reconciles with the saved row,
+   * rolling the touched fields back on error.
+   */
+  updateEpic: (
+    epicId: string,
+    patch: { notes?: string | null; archived_at?: string | null },
+  ) => Promise<void>;
+  /**
+   * Edit a code story's title (§10 header). The title lives on the `items` row, so this
+   * PATCHes the item via `lib/api-client.updateItem` and reflects it on the board via the
+   * reducer's `patchStory`, rolling back the prior title on error.
+   */
+  updateStoryTitle: (itemId: string, title: string) => Promise<void>;
+  /**
    * Transition a story to a new factory state (§5.2), keyed by its `ref`. Optimistically
    * patches the card into its new swimlane, then reconciles with the saved row (rolling the
    * state back on error). Used by manual controls and as the write inside `openClaudeSession`.
@@ -450,6 +466,50 @@ export function CodeProvider({
       },
       updateCodeState(ref, factoryState, extra = {}) {
         return transitionState(ref, factoryState, extra);
+      },
+      async updateEpic(epicId, patch) {
+        const previous = stateRef.current.epics.find((e) => e.id === epicId);
+        if (previous === undefined) {
+          throw new Error(`Epic ${epicId} not found in the code store`);
+        }
+        // Capture exactly the fields this patch touches so a failure restores only them.
+        const rollback: Partial<Epic> = {};
+        const optimistic: Partial<Epic> = {};
+        if (patch.notes !== undefined) {
+          rollback.notes = previous.notes;
+          optimistic.notes = patch.notes;
+        }
+        if (patch.archived_at !== undefined) {
+          rollback.archived_at = previous.archived_at;
+          optimistic.archived_at = patch.archived_at;
+        }
+        dispatch({ type: 'patchEpic', id: epicId, patch: optimistic });
+        try {
+          const saved = await api.updateEpic(epicId, patch);
+          dispatch({
+            type: 'patchEpic',
+            id: epicId,
+            patch: { notes: saved.notes, archived_at: saved.archived_at },
+          });
+        } catch (error) {
+          dispatch({ type: 'patchEpic', id: epicId, patch: rollback });
+          throw error;
+        }
+      },
+      async updateStoryTitle(itemId, title) {
+        const previous = stateRef.current.stories.find((s) => s.item_id === itemId);
+        if (previous === undefined) {
+          throw new Error(`Code story ${itemId} not found in the code store`);
+        }
+        const rollback: Partial<CodeStory> = { title: previous.title };
+        dispatch({ type: 'patchStory', itemId, patch: { title } });
+        try {
+          const saved = await api.updateItem(itemId, { title });
+          dispatch({ type: 'patchStory', itemId, patch: { title: saved.title } });
+        } catch (error) {
+          dispatch({ type: 'patchStory', itemId, patch: rollback });
+          throw error;
+        }
       },
       async openClaudeSession(ref, phase) {
         const story = stateRef.current.stories.find((s) => s.ref === ref);

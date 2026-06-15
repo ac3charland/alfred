@@ -19,6 +19,8 @@ const mockCreateProject = jest.mocked(api.createProject);
 const mockCreateEpic = jest.mocked(api.createEpic);
 const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
+const mockUpdateEpic = jest.mocked(api.updateEpic);
+const mockUpdateItem = jest.mocked(api.updateItem);
 
 const PROJECT_A: Project = {
   id: 'p1',
@@ -45,6 +47,21 @@ function makeEpic(id: string, projectId: string, overrides: Partial<Epic> = {}):
     id,
     project_id: projectId,
     name: `Epic ${id}`,
+    notes: null,
+    ref_number: 1,
+    ref: 'ALF-1',
+    archived_at: null,
+    created_at: '2025-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+/** A saved `epics` row (the PATCH-route response the store reconciles `updateEpic` with). */
+function makeSavedEpic(overrides: Partial<Epic> = {}): Epic {
+  return {
+    id: 'e1',
+    project_id: 'p1',
+    name: 'Epic e1',
     notes: null,
     ref_number: 1,
     ref: 'ALF-1',
@@ -544,6 +561,137 @@ describe('code-store', () => {
         expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'blocked', {
           blocked_reason: 'checks failing',
         });
+      });
+    });
+
+    describe('updateEpic (§9.2 notes + archive)', () => {
+      it('optimistically patches epic notes, then reconciles with the saved row', async () => {
+        mockUpdateEpic.mockResolvedValue(makeSavedEpic({ notes: 'Refine the routing' }));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateEpic('e1', { notes: 'Refine the routing' });
+        });
+
+        expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { notes: 'Refine the routing' });
+        expect(result.current.board.activeEpics[0]?.epic.notes).toBe('Refine the routing');
+      });
+
+      it('archives an epic optimistically (it leaves the active list)', async () => {
+        mockUpdateEpic.mockResolvedValue(makeSavedEpic({ archived_at: '2026-02-01T00:00:00Z' }));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateEpic('e1', { archived_at: '2026-02-01T00:00:00Z' });
+        });
+
+        expect(result.current.board.activeEpics).toEqual([]);
+        expect(result.current.board.archivedEpics.map((b) => b.epic.id)).toEqual(['e1']);
+      });
+
+      it('un-archives an epic by clearing archived_at to null', async () => {
+        mockUpdateEpic.mockResolvedValue(makeSavedEpic({ archived_at: null }));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({
+            projects: [PROJECT_A],
+            epics: [makeEpic('e1', 'p1', { archived_at: '2026-02-01T00:00:00Z' })],
+          }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateEpic('e1', { archived_at: null });
+        });
+
+        expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { archived_at: null });
+        expect(result.current.board.activeEpics.map((b) => b.epic.id)).toEqual(['e1']);
+        expect(result.current.board.archivedEpics).toEqual([]);
+      });
+
+      it('rolls the touched fields back on failure', async () => {
+        mockUpdateEpic.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({
+            projects: [PROJECT_A],
+            epics: [makeEpic('e1', 'p1', { notes: 'original' })],
+          }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateEpic('e1', { notes: 'changed' }),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(result.current.board.activeEpics[0]?.epic.notes).toBe('original');
+      });
+
+      it('throws when the epic is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateEpic('missing', { notes: 'x' })).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockUpdateEpic).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('updateStoryTitle (§10 header inline edit)', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      it('optimistically patches the story title via updateItem, then reconciles', async () => {
+        mockUpdateItem.mockResolvedValue({ title: 'Renamed story' } as never);
+        const story = makeStory('i1', 'e1', 'p1', { title: 'Old title' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateStoryTitle('i1', 'Renamed story');
+        });
+
+        expect(mockUpdateItem).toHaveBeenCalledWith('i1', { title: 'Renamed story' });
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        expect(lane?.stories[0]?.title).toBe('Renamed story');
+      });
+
+      it('rolls the title back on failure', async () => {
+        mockUpdateItem.mockRejectedValue(new Error('rename failed'));
+        const story = makeStory('i1', 'e1', 'p1', { title: 'Old title' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateStoryTitle('i1', 'Renamed story'),
+          ).rejects.toThrow('rename failed');
+        });
+
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        expect(lane?.stories[0]?.title).toBe('Old title');
+      });
+
+      it('throws when the story is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateStoryTitle('nope', 'x')).rejects.toThrow(/not found/i);
+        });
+        expect(mockUpdateItem).not.toHaveBeenCalled();
       });
     });
 
