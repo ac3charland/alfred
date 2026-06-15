@@ -7,9 +7,14 @@
  * title / notes / spec_path), so the URL is always fresh and we persist no URLs.
  *
  * URL contract (verified against https://code.claude.com/docs/en/web-quickstart, June 2026):
- *   https://claude.ai/code?repo=<owner>/<name>&prompt=<urlencoded prompt>
+ *   https://claude.ai/code?repo=<owner>/<name>&q=<urlencoded prompt>
  * - `repo` is the documented alias for `repositories` (single `owner/name` is fine).
- * - `prompt` prefills the composer (alias `q`); the surface prefills-only, no auto-submit.
+ * - `q` prefills the composer (alias `prompt`); the surface prefills-only, no auto-submit.
+ *   We emit `q` (not `prompt`) because it's the param the mobile Claude app's universal-link
+ *   composer reads — the web surface accepts both, so `q` prefills on phone AND desktop, while
+ *   `prompt` silently no-ops in the app. This is also why no mobile detection is needed: the
+ *   same claude.ai/code link is a universal link the OS hands off to the app, or opens in the
+ *   browser when the app is absent.
  * - The web docs state NO character cap, but the desktop app reportedly truncates ~14k, so
  *   prompts REFERENCE the committed spec file and never inline the whole spec/notes (§11.1).
  * - No branch/`ref` URL param is documented (the session UI has a branch selector instead).
@@ -81,7 +86,7 @@ function notesContext(story: CodeStory): string {
 function buildUrl(project: Project, prompt: string): string {
   const parameters = new URLSearchParams({
     repo: `${project.repo_owner}/${project.repo_name}`,
-    prompt,
+    q: prompt,
   });
   return `${CLAUDE_CODE_WEB_URL}?${parameters.toString()}`;
 }

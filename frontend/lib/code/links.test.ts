@@ -58,7 +58,7 @@ function parse(url: string): { base: string; repo: string | null; prompt: string
   return {
     base: `${parsed.origin}${parsed.pathname}`,
     repo: parsed.searchParams.get('repo'),
-    prompt: parsed.searchParams.get('prompt'),
+    prompt: parsed.searchParams.get('q'),
   };
 }
 
