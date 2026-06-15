@@ -149,6 +149,8 @@ useEffect(() => {
 
 - **Never run recursive subtask queries in a JS loop.** Fetching children level-by-level results in N+1 queries. Use a `WITH RECURSIVE` CTE in a Postgres function and call it via `supabase.rpc()`.
 
+- **Reading a view that returns a known-non-null row shape? Override the generated type with `.overrideTypes<Row[]>()`.** Postgres views carry no NOT NULL metadata, so `supabase gen types` types **every** view column as nullable — even a `select t.*` passthrough view whose rows are always full table rows. The result is a cryptic `Type 'string | null' is not assignable to type 'string'` on assignment to the table's `Row` type. Chain `.overrideTypes<Item[]>()` **after** the terminal builder method (e.g. `.order(...)`), not before — it's a type-only passthrough. (alfred's `task_items` view reads this way; see `lib/data/items.ts`.)
+
 - **Always use `await supabase.auth.getUser()` in middleware** (not `getSession()`). The middleware is where the access token is refreshed. Calling `getSession()` in middleware skips the refresh, causing Server Components to receive a stale or expired token.
 
 - **Never mix `@supabase/auth-helpers-nextjs` and `@supabase/ssr` in the same project.** The auth-helpers package is deprecated (April 2024) and the two packages conflict on session state. If you see `createClientComponentClient` or `createServerComponentClient` in the codebase, those are the old API — migrate to `createBrowserClient` / `createServerClient`.
@@ -165,7 +167,7 @@ These are Supabase-specific footguns that silently create vulnerabilities. alfre
 
 - **`SECURITY DEFINER` bypasses RLS — never reach for it to silence a permission error.** A definer function runs as its creator (usually a `bypassrls` role like `postgres`), so it silently removes access control instead of fixing the cause (the cause is almost always a missing GRANT — see the Data-API section above). alfred's `get_subtree` / `complete_subtree` are deliberately `SECURITY INVOKER` so the caller's RLS still applies — keep them that way. Also note Postgres grants `EXECUTE` to `PUBLIC` by default, so any `SECURITY DEFINER` function in `public` is callable by `anon`/`authenticated` with no extra grant — keep such functions out of exposed schemas and add an `auth.uid()` check in the body.
 
-- **Views bypass RLS by default.** A plain view runs with the *view owner's* privileges, leaking rows past the underlying table's RLS. On Postgres 15+ create them `WITH (security_invoker = true)`; on older versions revoke `anon`/`authenticated` access or put the view in an unexposed schema. (alfred uses RPC functions, not views, today — apply this if a view is ever added.)
+- **Views bypass RLS by default.** A plain view runs with the *view owner's* privileges, leaking rows past the underlying table's RLS. On Postgres 15+ create them `WITH (security_invoker = true)`; on older versions revoke `anon`/`authenticated` access or put the view in an unexposed schema. (alfred's Software-Factory views — `task_items`, `v_code_stories` — must stay `security_invoker`.)
 
 - **`auth.role()` is deprecated — target the role with the policy's `TO` clause instead.** Beyond deprecation, `auth.role() = 'authenticated'` passes for anonymous sign-in users (they carry the `authenticated` Postgres role), so it silently fails open if anonymous auth is ever enabled.
 
