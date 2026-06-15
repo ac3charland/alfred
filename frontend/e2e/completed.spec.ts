@@ -48,7 +48,8 @@ test('reactivating a completed task returns it to the inbox', async ({ page, see
   await page.getByRole('button', { name: 'Mark "Reopen me" active' }).click();
   await expect(tasks.getByText('Reopen me')).toBeHidden();
 
-  // Client-side nav via the sidebar: the store already shows the task as active.
-  await page.getByRole('link', { name: 'Inbox' }).click();
+  // The Inbox nav link was removed (§6.2); reach the inbox via its `?view=inbox` deep link.
+  // The reactivation already persisted (status → active), so the inbox shows the task.
+  await page.goto('/?view=inbox');
   await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Reopen me')).toBeVisible();
 });
