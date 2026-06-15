@@ -149,6 +149,15 @@ To keep real URLs but make switching instant, drive navigation with the **native
   deep link / refresh of any path still renders the right view server-side.
 - A missing dynamic segment (e.g. an unknown folder id) becomes a **client-side** not-found
   rendered from the store, since the page no longer fetches it server-side.
+- **This trick works only _within_ a route group.** `pushState` updates the URL hooks but
+  never mounts a different group's layout/page, so it can't cross groups — switching modules
+  (e.g. the Tasks ⇄ Code switcher across `(tasks)` ⇄ `(code)`) must use real `<Link>`/
+  `router.push`, or the URL changes while the other module's layout + providers never load.
+  Within one group it still applies only if *both* routes render the same URL-deriving
+  component; two genuinely different page components under one group also need a real nav (or a
+  shared view-router component mounted on both, like `TaskViews` / the code module's `CodeView`).
+  A persistent `<Link>` switcher should set `prefetch={false}` so its always-visible target
+  isn't RSC-prefetched on every page (which also keeps a "no round-trip" e2e assertion clean).
 
 ---
 
