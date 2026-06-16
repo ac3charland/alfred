@@ -1,11 +1,22 @@
-# Refinement guide (alfred Software Factory)
+---
+name: refinement
+description: >
+  Describes the refinement workflow for turning a code ticket into a spec: in a refinement
+  session you write one spec artifact and open the pull request that advances the ticket — no
+  implementation. Read whenever you're handed a ticket to refine into a spec: a refinement
+  session, or a prompt asking for a SPEC ONLY plus a spec-carrying PR. Trigger on: "refine the
+  ticket", "refinement session", "write the spec for", "spec-only PR", "refinement PR", or a
+  refinement launch prompt.
+---
 
-> **Copy this file to `.alfred/refinement.md` in a project repo.** The Claude Code refinement
-> session is prompted to follow it. It is a committed convention so the
-> refinement output is consistent and the webhook Worker can rely on the PR shape.
+# Refinement (the Software Factory spec step)
 
-You are in a **refinement** session for an alfred story. Your job is to **write a spec** — **not
-to implement anything**. Produce one spec artifact and open a PR; that is the entire deliverable.
+> This skill is **dropped into each project repo** at `.claude/skills/refinement/SKILL.md`.
+> A refinement session auto-loads it; the launch prompt also points here. It's a committed
+> convention so refinement output is consistent and the webhook Worker can rely on the PR shape.
+
+You are in a **refinement** session for a story. Your job is to **write a spec** — **not to
+implement anything**. Produce one spec artifact and open a PR; that is the entire deliverable.
 
 **Before you write anything:** ground yourself in this repo (skim the structure and read any
 `CONTRIBUTING`/`CLAUDE.md`), then decide whether you actually have enough to spec. If the story
@@ -15,15 +26,15 @@ once the scope is clear do you write the spec below.
 
 ## What to produce
 
-1. **A spec markdown file at `specs/<REF>.md`** (e.g. `specs/ALF-42.md`, using the story's ref).
-   Write it OpenSpec-style — implementation-ready, scoped to this one story:
+1. **A spec markdown file at `docs/specs/<REF>.md`** (e.g. `docs/specs/ALF-42.md`, using the
+   story's ref). Write it OpenSpec-style — implementation-ready, scoped to this one story:
    - **Title:** `# <REF> — <story title>` as the first line, so the browser tab is scannable.
    - **Context / problem:** what we're solving and why, drawn from the story title + notes.
    - **Proposed change:** the concrete behavior to build.
    - **Acceptance criteria:** a checklist a reviewer (and the implementation session) can verify.
    - **Out of scope / open questions:** anything deliberately deferred. Resolve the questions you
-     *can* answer with the human up front (see the rule above) and list only the genuinely-open
-     ones here — this section is for deferred decisions, not for guesses you didn't check.
+     *can* answer with the human up front (see above) and list only the genuinely-open ones here
+     — this section is for deferred decisions, not for guesses you didn't check.
 
 2. **A pull request** whose description carries the machine-readable `alfred` block so the Worker
    can advance the ticket. The `spec-path` MUST match the file you created:
@@ -32,7 +43,7 @@ once the scope is clear do you write the spec below.
    ```alfred
    alfred-ticket: <REF>
    phase: refinement
-   spec-path: specs/<REF>.md
+   spec-path: docs/specs/<REF>.md
    ```
    ````
 
@@ -52,8 +63,6 @@ once the scope is clear do you write the spec below.
   actually a story (a question, a bug report, a duplicate of existing behavior), or can't be
   scoped from what you have, stop and tell the human — propose a split or a next step instead of
   forcing a spec to exist.
-- **Precedence.** Where this guide and the launch prompt overlap, this guide is the source of
-  truth for the spec's shape.
 - **Iterate via PR comments.** Refinement back-and-forth happens in review comments on this PR;
   the story stays in `in_refinement` until the PR **merges**, which advances it straight to
   `ready_for_dev` and snapshots your spec into alfred.

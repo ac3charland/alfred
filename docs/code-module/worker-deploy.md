@@ -6,14 +6,14 @@
 > webhook to it. None of this runs in a CI/web sandbox — do it locally with the secrets to hand.
 >
 > Pairs with [`repo-setup/README.md`](repo-setup/README.md), which covers the **per-repo** side
-> (the enforcing Action, the refinement guide, the webhook config).
+> (the enforcing Action, the refinement skill, the webhook config).
 
 ## What you'll end up with
 
 ```
 GitHub repo (ac3charland/alfred, …)                Cloudflare
   ├─ .github/workflows/alfred-frontmatter.yml      ┌───────────────────────────┐
-  ├─ .alfred/refinement.md                         │ alfred-workers Worker     │
+  ├─ .claude/skills/refinement/SKILL.md            │ alfred-workers Worker     │
   └─ Settings → Webhooks ──── pull_request ───────▶│  POST /github/webhook     │
                               (HMAC secret)         │   verify → parse → patch  │
                                                     └─────────┬─────────────────┘
