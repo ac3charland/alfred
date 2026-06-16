@@ -1,1 +1,1 @@
-npm run check:slow
+npm run lint:demos -w tools/demo-lint && npm run check:slow
