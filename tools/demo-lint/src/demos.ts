@@ -45,6 +45,12 @@ export interface DemosContext {
    */
   readonly declaredBranches: readonly string[];
   /**
+   * Contents of every `*.md` file found anywhere under `demosDir`. Each entry has a
+   * path relative to `demosDir` and the raw file text. Rules that need to inspect
+   * demo content (e.g. banned command patterns) read from this field.
+   */
+  readonly demoContents: readonly { relativePath: string; content: string }[];
+  /**
    * True when this branch changed at least one path outside `docs/` — meaning it owes
    * a demo. A docs-only branch (every change under `docs/`) is exempt from
    * `branch-folder`. **Conservative default:** when the diff is unknown (git
@@ -111,6 +117,14 @@ function listMarkdownFiles(dir: string): string[] {
     else if (entry.isFile() && entry.name.endsWith('.md')) files.push(full);
   }
   return files;
+}
+
+/** Raw text of every `*.md` file under `demosDir`, keyed by path relative to `demosDir`. */
+function collectDemoContents(demosDir: string): { relativePath: string; content: string }[] {
+  return listMarkdownFiles(demosDir).map((file) => ({
+    relativePath: path.relative(demosDir, file),
+    content: readFileSync(file, 'utf8'),
+  }));
 }
 
 /** Branches declared in front matter across every demo doc, sorted and de-duplicated. */
@@ -206,6 +220,7 @@ export function gatherDemos(
     branchFolderHasContent:
       branchFolder === undefined ? false : isNonEmptyDir(path.join(absolute, branchFolder)),
     declaredBranches: collectDeclaredBranches(absolute),
+    demoContents: collectDemoContents(absolute),
     // Unknown diff (`undefined`) → assume changes outside docs, so we never grant the
     // docs-only `branch-folder` exception on a guess.
     hasChangesOutsideDocs:

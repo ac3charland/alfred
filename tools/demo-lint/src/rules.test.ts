@@ -11,6 +11,7 @@ function makeDemos(overrides: Partial<DemosContext> = {}): DemosContext {
     branchFolder: undefined,
     branchFolderHasContent: false,
     declaredBranches: [],
+    demoContents: [],
     hasChangesOutsideDocs: true,
     ...overrides,
   };
@@ -112,9 +113,60 @@ describe('branch-folder', () => {
   });
 });
 
+describe('no-test-in-demo', () => {
+  it('passes when no demo files contain npm run test', () => {
+    expect(
+      findingsFor(
+        'no-test-in-demo',
+        makeDemos({
+          demoContents: [
+            { relativePath: 'my-feature/demo.md', content: 'curl localhost:3000/api/items' },
+          ],
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('errors when a demo file contains npm run test', () => {
+    const [finding] = findingsFor(
+      'no-test-in-demo',
+      makeDemos({
+        demoContents: [
+          {
+            relativePath: 'my-feature/demo.md',
+            content: 'npm run test -w frontend -- --testPathPatterns=date-utils',
+          },
+        ],
+      }),
+    );
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('my-feature/demo.md');
+    expect(finding?.message).toContain('npm run test');
+  });
+
+  it('reports one finding per offending file', () => {
+    expect(
+      findingsFor(
+        'no-test-in-demo',
+        makeDemos({
+          demoContents: [
+            { relativePath: 'feat-a/demo.md', content: 'npm run test -w frontend' },
+            { relativePath: 'feat-b/demo.md', content: 'curl localhost/api' },
+            { relativePath: 'feat-c/demo.md', content: 'npm run test -w workers' },
+          ],
+        }),
+      ),
+    ).toHaveLength(2);
+  });
+});
+
 describe('lint orchestration', () => {
-  it('registers the two rules', () => {
-    expect(rules.map((rule) => rule.name)).toEqual(['no-root-files', 'branch-folder']);
+  it('registers the three rules', () => {
+    expect(rules.map((rule) => rule.name)).toEqual([
+      'no-root-files',
+      'branch-folder',
+      'no-test-in-demo',
+    ]);
   });
 
   it('tallies errors and warnings', () => {

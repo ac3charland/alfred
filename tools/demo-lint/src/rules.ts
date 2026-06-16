@@ -73,7 +73,27 @@ const branchFolder: Rule = {
 };
 
 /**
+ * Demo docs must show the new behavior directly — a screenshot, a real request/response,
+ * or a function's output. Running the test suite (`npm run test`) in a demo proves nothing
+ * the pre-commit gate doesn't already prove, and shows a reviewer nothing they can see.
+ */
+const noTestInDemo: Rule = {
+  name: 'no-test-in-demo',
+  description:
+    'Demo exec blocks must not run the test suite — show the new behavior (UI screenshot or real output) instead.',
+  check(demos) {
+    return demos.demoContents
+      .filter(({ content }) => content.includes('npm run test'))
+      .map(({ relativePath }) => ({
+        rule: 'no-test-in-demo',
+        severity: 'error' as const,
+        message: `${demos.displayPath}/${relativePath} contains "npm run test". Tests prove the change doesn't regress; a demo must show the new behavior — screenshot the UI or capture a real request/response.`,
+      }));
+  },
+};
+
+/**
  * The active rule set, applied to the demos directory in registration order. This
  * array is the extension point: append a {@link Rule} to lint something new.
  */
-export const rules: readonly Rule[] = [noRootFiles, branchFolder];
+export const rules: readonly Rule[] = [noRootFiles, branchFolder, noTestInDemo];
