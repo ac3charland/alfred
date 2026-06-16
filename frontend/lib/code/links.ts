@@ -24,8 +24,8 @@ import type { CodeStory, Project } from '@/lib/types';
 
 const CLAUDE_CODE_WEB_URL = 'https://claude.ai/code';
 
-/** The proposed refinement-guide convention path. Not finalized. */
-const REFINEMENT_GUIDE_PATH = '.alfred/refinement.md';
+/** The refinement skill dropped into each project repo; a refinement session auto-loads it. */
+const REFINEMENT_SKILL_PATH = '.claude/skills/refinement/SKILL.md';
 
 /**
  * The story's ref / title as plain strings. `CodeStory` is the `v_code_stories` VIEW row, so
@@ -40,9 +40,9 @@ function titleOf(story: CodeStory): string {
   return story.title ?? '';
 }
 
-/** The conventional spec location for a story (`specs/<REF>.md`). */
+/** The conventional spec location for a story (`docs/specs/<REF>.md`). */
 function specPathFor(story: CodeStory): string {
-  return `specs/${refOf(story)}.md`;
+  return `docs/specs/${refOf(story)}.md`;
 }
 
 /**
@@ -100,13 +100,13 @@ function buildUrl(project: Project, prompt: string): string {
 
 /**
  * Build the REFINEMENT link prompt (active in `needs_refinement`): write a spec markdown
- * artifact only — NO implementation — following the project's refinement guide, save it to
- * `specs/<REF>.md`, and open a PR carrying the machine-readable ticket block with
+ * artifact only — NO implementation — following the refinement skill, save it to
+ * `docs/specs/<REF>.md`, and open a PR carrying the machine-readable ticket block with
  * `phase: refinement`. Ref + title lead the prompt so the new browser tab is scannable.
  *
- * The body carries the agentic guardrails directly (not just in the guide, which may be absent
+ * The body carries the agentic guardrails directly (not just in the skill, which may be absent
  * for the target repo): ground in the repo first, a clarification gate so a thin ticket gets
- * questions instead of invented scope, a self-contained section skeleton for the no-guide
+ * questions instead of invented scope, a self-contained section skeleton for the no-skill
  * fallback, and a verbatim-block self-check. These are what stop a smaller model from
  * one-shotting a confidently-wrong spec.
  */
@@ -120,7 +120,7 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     '',
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base the spec on the code that already exists.`,
     `2. If the title and context below don't pin down the scope and acceptance criteria, ASK ME HERE before writing the spec — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
-    `3. Write the spec following the project's refinement guide at \`${REFINEMENT_GUIDE_PATH}\` (a proposed convention — not yet finalized). If that file is absent, cover these sections: Title, Context/problem, Proposed change, Acceptance criteria, Out of scope / open questions. Save it to \`${specPath}\`.`,
+    `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session). If it's absent, cover these sections: Title, Context/problem, Proposed change, Acceptance criteria, Out of scope / open questions. Save it to \`${specPath}\`.`,
     `4. Open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly (alfred reads it to advance the ticket):`,
     '',
     frontmatterBlock(story, 'refinement', specPath),

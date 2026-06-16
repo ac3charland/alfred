@@ -167,7 +167,7 @@ describe('worker.fetch', () => {
         body: alfredBlock([
           'alfred-ticket: ALF-42',
           'phase: refinement',
-          'spec-path: specs/ALF-42.md',
+          'spec-path: docs/specs/ALF-42.md',
         ]),
       }),
     );
@@ -184,7 +184,7 @@ describe('worker.fetch', () => {
     const calls = spy.mock.calls.map(([input]) => input as string);
     // The state PATCH, the GitHub Contents fetch, and the spec-snapshot PATCH all happened.
     expect(calls).toContain(
-      'https://api.github.com/repos/ac3charland/alfred/contents/specs/ALF-42.md?ref=mergesha123',
+      'https://api.github.com/repos/ac3charland/alfred/contents/docs/specs/ALF-42.md?ref=mergesha123',
     );
     const snapshotBodies = spy.mock.calls
       .map(([, init]) => (init as RequestInit | undefined)?.body)

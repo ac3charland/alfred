@@ -129,7 +129,7 @@ test('a ready_for_dev story launches an implementation session and advances to I
     ref_number: 5,
     ref: 'ALF-5',
     factory_state: 'ready_for_dev',
-    spec_path: 'specs/ALF-5.md',
+    spec_path: 'docs/specs/ALF-5.md',
   });
 
   await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
@@ -153,5 +153,5 @@ test('a ready_for_dev story launches an implementation session and advances to I
   const prompt = new URL(opened[0] ?? '').searchParams.get('q') ?? '';
   expect(prompt).toContain('ALF-5: Implement the allow-list parser');
   expect(prompt).toContain('phase: implementation');
-  expect(prompt).toContain('specs/ALF-5.md');
+  expect(prompt).toContain('docs/specs/ALF-5.md');
 });

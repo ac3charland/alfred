@@ -29,12 +29,18 @@ describe('fetchSpec', () => {
       ),
     );
 
-    const result = await fetchSpec(env, 'ac3charland', 'alfred', 'specs/ALF-42.md', 'mergesha');
+    const result = await fetchSpec(
+      env,
+      'ac3charland',
+      'alfred',
+      'docs/specs/ALF-42.md',
+      'mergesha',
+    );
 
     expect(result).toEqual({ markdown, sha: 'blobsha123' });
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
-      'https://api.github.com/repos/ac3charland/alfred/contents/specs/ALF-42.md?ref=mergesha',
+      'https://api.github.com/repos/ac3charland/alfred/contents/docs/specs/ALF-42.md?ref=mergesha',
     );
     const headers = init.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer pat-123');
@@ -44,14 +50,14 @@ describe('fetchSpec', () => {
   it('returns undefined when the file is missing (non-2xx)', async () => {
     mockFetch(new Response('Not Found', { status: 404 }));
     await expect(
-      fetchSpec(env, 'ac3charland', 'alfred', 'specs/ALF-99.md', 'sha'),
+      fetchSpec(env, 'ac3charland', 'alfred', 'docs/specs/ALF-99.md', 'sha'),
     ).resolves.toBeUndefined();
   });
 
   it('returns undefined when the encoding is not base64', async () => {
     mockFetch(Response.json({ content: '', encoding: 'none', sha: 'x' }, { status: 200 }));
     await expect(
-      fetchSpec(env, 'ac3charland', 'alfred', 'specs/ALF-42.md', 'sha'),
+      fetchSpec(env, 'ac3charland', 'alfred', 'docs/specs/ALF-42.md', 'sha'),
     ).resolves.toBeUndefined();
   });
 });

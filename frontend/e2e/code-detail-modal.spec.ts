@@ -50,7 +50,7 @@ test('opens the detail modal from a card and shows the rendered spec', async ({ 
     ref_number: 5,
     ref: 'ALF-5',
     factory_state: 'ready_for_dev',
-    spec_path: 'specs/ALF-5.md',
+    spec_path: 'docs/specs/ALF-5.md',
     spec_sha: 'abc123',
     spec_markdown: SPEC_MARKDOWN,
     implementation_pr_url: null,
@@ -75,7 +75,7 @@ test('opens the detail modal from a card and shows the rendered spec', async ({ 
   // The View-in-repo link is built from the recorded owner/name + sha + path.
   await expect(dialog.getByRole('link', { name: /view in repo/i })).toHaveAttribute(
     'href',
-    'https://github.com/ac3charland/alfred/blob/abc123/specs/ALF-5.md',
+    'https://github.com/ac3charland/alfred/blob/abc123/docs/specs/ALF-5.md',
   );
 
   // The phase-appropriate launch button shows (ready_for_dev → Implement).

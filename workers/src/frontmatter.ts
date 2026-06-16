@@ -6,7 +6,7 @@
  *   ```alfred
  *   alfred-ticket: ALF-42, ALF-43
  *   phase: refinement
- *   spec-path: specs/ALF-42.md
+ *   spec-path: docs/specs/ALF-42.md
  *   ```
  *
  * This is the ONLY signal the Worker reads — there is no Anthropic session API. So the parse

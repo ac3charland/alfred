@@ -183,7 +183,7 @@ describe('StoryDetailModal', () => {
         makeStory({
           factory_state: 'ready_for_dev',
           spec_markdown: '# The spec\n\n- item one\n- item two',
-          spec_path: 'specs/ALF-42.md',
+          spec_path: 'docs/specs/ALF-42.md',
           spec_sha: 'abc123',
         }),
       );
@@ -199,7 +199,7 @@ describe('StoryDetailModal', () => {
         makeStory({
           factory_state: 'ready_for_dev',
           spec_markdown: '# spec',
-          spec_path: 'specs/ALF-42.md',
+          spec_path: 'docs/specs/ALF-42.md',
           spec_sha: 'deadbeef',
         }),
       );
@@ -207,7 +207,7 @@ describe('StoryDetailModal', () => {
       const link = dialog.getByRole('link', { name: /view in repo/i });
       expect(link).toHaveAttribute(
         'href',
-        'https://github.com/ac3charland/alfred/blob/deadbeef/specs/ALF-42.md',
+        'https://github.com/ac3charland/alfred/blob/deadbeef/docs/specs/ALF-42.md',
       );
     });
 

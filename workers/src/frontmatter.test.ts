@@ -7,13 +7,15 @@ describe('parseFrontmatter', () => {
   it('parses a single-ticket refinement block', () => {
     const result = parseFrontmatter(
       block(
-        ['alfred-ticket: ALF-42', 'phase: refinement', 'spec-path: specs/ALF-42.md'].join('\n'),
+        ['alfred-ticket: ALF-42', 'phase: refinement', 'spec-path: docs/specs/ALF-42.md'].join(
+          '\n',
+        ),
       ),
     );
     expect(result).toEqual({
       tickets: ['ALF-42'],
       phase: 'refinement',
-      specPath: 'specs/ALF-42.md',
+      specPath: 'docs/specs/ALF-42.md',
     });
   });
 

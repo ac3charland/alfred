@@ -85,18 +85,16 @@ describe('buildRefinementUrl', () => {
     expect(firstLine).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
   });
 
-  it('instructs a spec-only artifact (no implementation) saved to specs/<REF>.md', () => {
+  it('instructs a spec-only artifact (no implementation) saved to docs/specs/<REF>.md', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
     expect(prompt).toMatch(/spec/i);
     expect(prompt).toMatch(/no implementation|do not implement|not.*implement/i);
-    expect(prompt).toContain('specs/ALF-42.md');
+    expect(prompt).toContain('docs/specs/ALF-42.md');
   });
 
-  it('references the proposed (not-yet-finalized) refinement guide convention', () => {
+  it('points at the refinement skill dropped into each repo', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
-    expect(prompt).toContain('.alfred/refinement.md');
-    // The path is a proposal, not finalized — the prompt must flag that.
-    expect(prompt).toMatch(/proposed|not.*finali[sz]ed|convention/i);
+    expect(prompt).toContain('.claude/skills/refinement/SKILL.md');
   });
 
   it('embeds the alfred frontmatter block with ticket, refinement phase, and spec-path', () => {
@@ -104,7 +102,7 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toContain('```alfred');
     expect(prompt).toContain('alfred-ticket: ALF-42');
     expect(prompt).toContain('phase: refinement');
-    expect(prompt).toContain('spec-path: specs/ALF-42.md');
+    expect(prompt).toContain('spec-path: docs/specs/ALF-42.md');
   });
 
   it('tells Claude to open a PR carrying that block', () => {
@@ -128,7 +126,7 @@ describe('buildRefinementUrl', () => {
 
   it('carries a self-contained section skeleton for the no-guide fallback', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
-    // When `.alfred/refinement.md` is absent the prompt must still define the spec shape, so
+    // When the refinement skill is absent the prompt must still define the spec shape, so
     // "OpenSpec-style" is no longer an undefined term the model has to guess at.
     expect(prompt).toContain('Acceptance criteria');
     expect(prompt).toContain('Out of scope');
@@ -177,7 +175,7 @@ describe('buildRefinementUrl', () => {
     const { repo, prompt } = parse(url);
     expect(repo).toBe('me/relay');
     expect((prompt ?? '').split('\n', 1)[0]).toBe('RLP-7: Add the digest scheduler');
-    expect(prompt).toContain('specs/RLP-7.md');
+    expect(prompt).toContain('docs/specs/RLP-7.md');
     expect(prompt).toContain('alfred-ticket: RLP-7');
   });
 });
@@ -197,18 +195,18 @@ describe('buildImplementationUrl', () => {
 
   it('instructs implementing the merged spec at the story spec_path', () => {
     const prompt =
-      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'specs/ALF-42.md' })))
+      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/ALF-42.md' })))
         .prompt ?? '';
     expect(prompt).toMatch(/implement/i);
-    expect(prompt).toContain('specs/ALF-42.md');
+    expect(prompt).toContain('docs/specs/ALF-42.md');
   });
 
-  it('falls back to the conventional specs/<REF>.md path when spec_path is null', () => {
+  it('falls back to the conventional docs/specs/<REF>.md path when spec_path is null', () => {
     // spec_path is normally set by the refinement-merge webhook before ready_for_dev, but be
     // defensive: a null path still yields the conventional location so the link is usable.
     const prompt =
       parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: null }))).prompt ?? '';
-    expect(prompt).toContain('specs/ALF-42.md');
+    expect(prompt).toContain('docs/specs/ALF-42.md');
   });
 
   it('embeds the alfred frontmatter block with the implementation phase', () => {
@@ -222,7 +220,7 @@ describe('buildImplementationUrl', () => {
     const longSpec = 'Y'.repeat(20_000);
     const url = buildImplementationUrl(
       makeProject(),
-      makeStory({ spec_markdown: longSpec, spec_path: 'specs/ALF-42.md' }),
+      makeStory({ spec_markdown: longSpec, spec_path: 'docs/specs/ALF-42.md' }),
     );
     expect(url.length).toBeLessThan(14_000);
     expect(parse(url).prompt ?? '').not.toContain(longSpec);
