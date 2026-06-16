@@ -1,13 +1,10 @@
 ---
 name: backpressure
 description: >
-  Documents how the deterministic checks (the back-pressure gates) are wired — where a check
-  belongs and which tier runs it. A package's own typecheck/lint/format/test lives in that
-  workspace's check:fast/check:slow; a monorepo-wide check (linting all of .claude/skills/ or
-  docs/demos/) lives in the root check command. Covers the pre-commit (fast) vs pre-push (slow)
-  tier choice. Use when adding or moving a check, linter, or gate, or wiring
-  check:fast/check:slow — "add a check", "new linter", "monorepo-wide check", "run before
-  storybook/e2e", "check:fast vs check:slow". Pairs with the npm-workspaces skill (the
+  Documents how the deterministic checks (the back-pressure gates) are wired — where a new
+  check belongs and which tier runs it. Use when adding or moving a check, linter, or gate, or
+  wiring check:fast/check:slow — "add a check", "new linter", "monorepo-wide check", "run
+  before storybook/e2e", "check:fast vs check:slow". Pairs with the npm-workspaces skill (the
   --workspaces fan-out) and commitlint (the husky hooks that invoke these).
 ---
 
