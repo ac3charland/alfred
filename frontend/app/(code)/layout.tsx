@@ -8,12 +8,12 @@ import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { CodeProvider } from '@/lib/stores/code-store';
 
 /**
- * Code module layout (Server Component) — the Software Factory's route group (§9, §14).
+ * Code module layout (Server Component) — the Software Factory's route group.
  *
  * - Calls requireUser() as the real auth gate, exactly like the tasks layout.
  * - Fetches projects + epics + code stories once and seeds the CodeProvider for the whole
  *   module; the board derives each project's swimlanes client-side (the data-flow skill).
- * - Renders the shared AppShell (wordmark + Tasks⇄Code switcher + sign-out, §6) with the
+ * - Renders the shared AppShell (wordmark + Tasks⇄Code switcher + sign-out) with the
  *   code-module nav: ProjectNav on desktop, the hamburger drawer on mobile.
  */
 export default async function CodeLayout({ children }: { children: React.ReactNode }) {

@@ -7,7 +7,7 @@ import { expect, test } from './support/fixtures';
  * when the view has nothing open to collapse.
  *
  * Fixtures here carry subtasks, completed children and editable due dates — all task-only
- * (§7.3) — so they classify as `task`s rather than `makeItem`'s default `unclassified`.
+ * — so they classify as `task`s rather than `makeItem`'s default `unclassified`.
  */
 type MakeItemOverrides = Parameters<typeof makeItem>[1];
 function makeTask(title: string, overrides: MakeItemOverrides = {}) {

@@ -4,7 +4,7 @@ import * as React from 'react';
 
 /**
  * Toast store — a tiny cross-cutting notification queue (the gate's "Created ALF-42"
- * confirmation, §8.3). Mounted once in the shared AppShell so any module can fire a toast;
+ * confirmation). Mounted once in the shared AppShell so any module can fire a toast;
  * split into state + actions contexts like the other stores so actions-only callers
  * (`useToastActions`) don't re-render when the queue changes.
  *

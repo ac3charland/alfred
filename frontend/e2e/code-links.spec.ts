@@ -4,8 +4,8 @@ import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/consta
 import { expect, test } from './support/fixtures';
 
 /**
- * M5 — Links & launch (§11). A `needs_refinement` story shows the phase-appropriate
- * **Refine in Claude Code** button on its card. Clicking it is the §11.3 transition trigger:
+ * Links & launch. A `needs_refinement` story shows the phase-appropriate
+ * **Refine in Claude Code** button on its card. Clicking it triggers the transition:
  * the store AWAITS the state write (the card moves from the Needs Refinement swimlane to In
  * Refinement) and THEN opens a prefilled claude.ai/code tab.
  *

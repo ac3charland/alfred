@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
-# ── Routes (code-module §13.1) ────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────────
 # The Worker serves two paths from its one entrypoint (routed in src/index.ts):
 #   GET  /                → health check ("alfred workers ok")
 #   POST /github/webhook  → the GitHub PR webhook ingress (HMAC-verified)
@@ -11,7 +11,7 @@ compatibility_flags = ["nodejs_compat"]
 # matched in code. Add a `routes`/`route` entry here only when fronting it with a
 # custom domain.
 
-# ── Secrets (set with `wrangler secret put <NAME>`, never committed; §13.4/§19.1) ─
+# ── Secrets (set with `wrangler secret put <NAME>`, never committed) ──────────────
 # These back the typed `Env` in src/index.ts. For local `wrangler dev`, put the
 # same keys in a gitignored `.dev.vars` file (dotenv format).
 #   GITHUB_WEBHOOK_SECRET     — shared HMAC secret; must match each repo's webhook config.

@@ -95,7 +95,7 @@ describe('buildRefinementUrl', () => {
   it('references the proposed (not-yet-finalized) refinement guide convention', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
     expect(prompt).toContain('.alfred/refinement.md');
-    // §17: the path is a proposal, not finalized — the prompt must flag that.
+    // The path is a proposal, not finalized — the prompt must flag that.
     expect(prompt).toMatch(/proposed|not.*finali[sz]ed|convention/i);
   });
 
@@ -145,7 +145,7 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toMatch(/truncated/i);
   });
 
-  it('does NOT inline the full notes/spec body (length cap, §11.1) — references the file', () => {
+  it('does NOT inline the full notes/spec body (length cap) — references the file', () => {
     const longNotes = 'X'.repeat(20_000);
     const url = buildRefinementUrl(makeProject(), makeStory({ notes: longNotes }));
     // The whole URL stays well under the desktop ~14k cap; the giant notes are not inlined.
@@ -218,7 +218,7 @@ describe('buildImplementationUrl', () => {
     expect(prompt).toContain('phase: implementation');
   });
 
-  it('does NOT inline the spec markdown body (references the committed file, §11.1)', () => {
+  it('does NOT inline the spec markdown body (references the committed file)', () => {
     const longSpec = 'Y'.repeat(20_000);
     const url = buildImplementationUrl(
       makeProject(),

@@ -22,7 +22,7 @@ export const GET = withSession(async (session) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/projects — create a project (§8.1)
+// POST /api/projects — create a project
 //
 // The body carries a GitHub URL + a 3-char key; the route derives repo_owner/repo_name
 // from the URL (storing the URL too) and inserts. Key uniqueness is enforced by the DB

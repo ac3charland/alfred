@@ -2,10 +2,10 @@ import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/consta
 import { expect, test } from './support/fixtures';
 
 /**
- * The Code module — M6 story detail modal (§10) + the epic-header controls (§9.2).
+ * The Code module — story detail modal + the epic-header controls.
  *
  * Clicking a board card opens the Jira-style modal showing the ref, title, state chip, and
- * (for a story past `ready_for_dev` carrying `spec_markdown`) the rendered spec. The §5.2
+ * (for a story past `ready_for_dev` carrying `spec_markdown`) the rendered spec. The
  * manual controls move a story along the happy path, and the epic header archives an epic
  * off the active board.
  *

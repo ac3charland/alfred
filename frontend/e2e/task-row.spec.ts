@@ -7,7 +7,7 @@ import { expect, test } from './support/fixtures';
  * against the seeded mock backend.
  *
  * Every fixture here is a `task`: completion, due dates and subtasks are task-only
- * affordances now (§7.3), so these rows must be classified as tasks to expose them.
+ * affordances now, so these rows must be classified as tasks to expose them.
  * `makeItem`'s default `unclassified` would render a bare row with none of them.
  */
 type MakeItemOverrides = Parameters<typeof makeItem>[1];

@@ -8,7 +8,7 @@ import { expect, test } from './support/fixtures';
 // subtask is settled before we press it to start a drag.
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-// Subtask trees are task-only (§7.3: a `parent_id` implies a task), so these fixtures
+// Subtask trees are task-only (a `parent_id` implies a task), so these fixtures
 // classify as tasks rather than `makeItem`'s default `unclassified`.
 type MakeItemOverrides = Parameters<typeof makeItem>[1];
 function makeTask(title: string, overrides: MakeItemOverrides = {}) {

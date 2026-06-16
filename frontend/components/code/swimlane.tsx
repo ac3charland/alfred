@@ -11,7 +11,7 @@ export interface SwimlaneProperties {
   lane: BoardLane;
   /** Forwarded to each card's `onOpen` (M6 detail modal seam). */
   onOpenStory?: (story: CodeStory) => void;
-  /** Forwarded to each card's `onOpenSession` (the §11 human-launch action). */
+  /** Forwarded to each card's `onOpenSession` (the human-launch action). */
   onOpenSession?: (
     story: CodeStory,
     phase: 'refinement' | 'implementation',
@@ -19,7 +19,7 @@ export interface SwimlaneProperties {
 }
 
 /**
- * One vertical swimlane within an epic's board row (§9.2): a fixed-width column headed by
+ * One vertical swimlane within an epic's board row: a fixed-width column headed by
  * the factory-state label + a live count, with the state's stories stacked as cards. Lanes
  * are **read-only** here — state changes come from links/webhook/the detail modal (drag is
  * a future enhancement, explicitly out of scope). The fixed width keeps the row of six

@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * Mobile hamburger nav for the Code module — a Dialog-based slide-in drawer for narrow
- * viewports, mirroring the tasks drawer. Carries the Tasks ⇄ Code switcher (§6.3) above the
+ * viewports, mirroring the tasks drawer. Carries the Tasks ⇄ Code switcher above the
  * ProjectNav; both close the sheet on navigate.
  */
 export default function CodeMobileNavClient() {

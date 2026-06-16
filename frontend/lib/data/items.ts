@@ -18,7 +18,7 @@ import type { Item } from '@/lib/types';
  * (see lib/stores/tasks-store).
  *
  * Reads the `task_items` view rather than the raw `items` table: the view drops any
- * item that has a `code_items` sidecar (§4.5), so a story sent to the Software Factory
+ * item that has a `code_items` sidecar, so a story sent to the Software Factory
  * leaves the Tasks/Inbox views. A code-*classified-but-not-yet-sent* item (item_type
  * 'code', no sidecar) still appears here — membership is decided by the sidecar, not the
  * type. The view returns the full `items` row shape, so the per-view client filters and

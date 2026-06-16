@@ -7,7 +7,7 @@ import { isEscapeState } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-/** Which launch button (if any) applies in a given factory state (§11.3). */
+/** Which launch button (if any) applies in a given factory state. */
 type LaunchPhase = 'refinement' | 'implementation';
 
 function launchPhaseFor(story: CodeStory): LaunchPhase | undefined {
@@ -21,11 +21,11 @@ export interface StoryCardProperties {
   story: CodeStory;
   /**
    * Invoked when the card body is activated (click / Enter / Space) — opens the detail modal
-   * in M6 (§10). Optional so the card renders standalone.
+   * in M6. Optional so the card renders standalone.
    */
   onOpen?: (story: CodeStory) => void;
   /**
-   * The human launch (§11.3): open a prefilled Claude Code tab for this story's phase. Wired
+   * The human launch: open a prefilled Claude Code tab for this story's phase. Wired
    * to the store's `openClaudeSession` by the board; M6's modal passes the same handler. The
    * card awaits it so the in-flight spinner reflects the real state write. Optional so the
    * card renders standalone (the launch button then no-ops).
@@ -40,13 +40,13 @@ const LAUNCH_LABELS: Record<LaunchPhase, { idle: string; busy: string }> = {
 };
 
 /**
- * A single story on the board (§9.2): a compact card showing its **ref** and **title**, plus
- * the **phase-appropriate "Open Claude Code" action** (§11) when one applies — *Refine* in
+ * A single story on the board: a compact card showing its **ref** and **title**, plus
+ * the **phase-appropriate "Open Claude Code" action** when one applies — *Refine* in
  * `needs_refinement`, *Implement* in `ready_for_dev`, hidden in every other state.
  *
  * The card body is an activatable control (opens the detail modal in M6). A `blocked`/
  * `abandoned` story gets a distinct treatment (amber/red edge + a state tag) so it reads as
- * off the happy path even when surfaced via the escape filter (§9.2).
+ * off the happy path even when surfaced via the escape filter.
  */
 export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties) {
   const escape = isEscapeState(story.factory_state);

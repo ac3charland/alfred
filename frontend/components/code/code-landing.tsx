@@ -2,7 +2,7 @@ import { GitBranch } from 'lucide-react';
 import * as React from 'react';
 
 /**
- * The Code module's empty/landing state (§9) — shown at `/code` when no project is
+ * The Code module's empty/landing state — shown at `/code` when no project is
  * selected. The board lives at `/code/[project-id]`; this guides the user to pick a project
  * from the sidebar (or, once M4 lands, to create one).
  */

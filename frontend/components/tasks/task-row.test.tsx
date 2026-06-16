@@ -3014,7 +3014,7 @@ describe('TaskRow', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Classification & type-gating (M2, §7.1 / §7.2 / §7.3)
+// Classification & type-gating
 //
 // Capture creates `unclassified` items; `Classify as Task` unlocks the task-only
 // affordances (checkbox, due date, subtasks) plus the Task badge; `Classify as Code`
@@ -3025,7 +3025,7 @@ const UNCLASSIFIED_ITEM: Item = { ...BASE_ITEM, item_type: 'unclassified' };
 const CODE_ITEM: Item = { ...BASE_ITEM, item_type: 'code' };
 
 describe('TaskRow — classification & type-gating', () => {
-  describe('type badge (§7.2)', () => {
+  describe('type badge', () => {
     it('shows no badge on an unclassified row', () => {
       renderTasks([UNCLASSIFIED_ITEM]);
 
@@ -3046,7 +3046,7 @@ describe('TaskRow — classification & type-gating', () => {
     });
   });
 
-  describe('the Classify as… submenu (§7.1)', () => {
+  describe('the Classify as… submenu', () => {
     it('offers Classify as… only while the row is unclassified', async () => {
       const user = userEvent.setup();
       renderTasks([UNCLASSIFIED_ITEM]);
@@ -3146,7 +3146,7 @@ describe('TaskRow — classification & type-gating', () => {
     });
   });
 
-  describe('task-only affordances are gated (§7.3)', () => {
+  describe('task-only affordances are gated', () => {
     it('an unclassified row exposes no completion checkbox', () => {
       renderTasks([UNCLASSIFIED_ITEM]);
 
@@ -3221,7 +3221,7 @@ describe('TaskRow — classification & type-gating', () => {
     });
   });
 
-  describe('notes stay generic across every type (§7.3)', () => {
+  describe('notes stay generic across every type', () => {
     it('an unclassified row still offers Add notes', async () => {
       const user = userEvent.setup();
       renderTasks([UNCLASSIFIED_ITEM]);
@@ -3248,10 +3248,10 @@ describe('TaskRow — classification & type-gating', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // The gate (§8): Send to Code module / Convert to Code Story menu entries
+  // The gate: Send to Code module / Convert to Code Story menu entries
   // ---------------------------------------------------------------------------
 
-  describe('the gate menu entries (§7.1 / §8)', () => {
+  describe('the gate menu entries', () => {
     it('offers "Send to Code module…" on a code-classified item', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_ITEM]);

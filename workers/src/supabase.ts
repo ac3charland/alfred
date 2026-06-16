@@ -1,10 +1,10 @@
 /**
- * Write `code_items` rows from the Worker via Supabase's PostgREST endpoint (code-module §13.2/§13.3).
+ * Write `code_items` rows from the Worker via Supabase's PostgREST endpoint.
  *
  * We hit the REST API with raw `fetch` rather than bundling `@supabase/supabase-js` — it keeps the
- * Worker tiny and needs no `nodejs_compat` (§13.4). The Worker authenticates with the
+ * Worker tiny and needs no `nodejs_compat`. The Worker authenticates with the
  * SERVICE_ROLE key, which bypasses RLS — that is the trusted webhook ingress the schema's RLS
- * comment calls out (§4.4). Keep that key a Worker secret; it must never reach the browser.
+ * comment calls out. Keep that key a Worker secret; it must never reach the browser.
  */
 import type { TicketUpdate } from './transitions';
 
@@ -13,7 +13,7 @@ export interface SupabaseEnv {
   SUPABASE_SERVICE_ROLE_KEY: string;
 }
 
-/** The extra spec-snapshot columns the Worker writes after fetching the file (§13.3). */
+/** The extra spec-snapshot columns the Worker writes after fetching the file. */
 export interface SpecSnapshot {
   spec_markdown: string;
   spec_sha: string;

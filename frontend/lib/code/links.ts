@@ -1,8 +1,9 @@
 /**
- * Pure builders for the Claude Code Web "open a session" deep links (§11).
+ * Pure builders for the Claude Code Web "open a session" deep links.
  *
  * A human clicks one of these to open a claude.ai/code tab with the repo + a prompt
- * PREFILLED but NOT auto-executed (the ToS-clean human launch, §1/§11.1). Both links are
+ * PREFILLED but NOT auto-executed (the ToS-clean human launch — prefilled, never
+ * auto-submitted). Both links are
  * derived ENTIRELY from stored data (the project's repo coordinates + the story's ref /
  * title / notes / spec_path), so the URL is always fresh and we persist no URLs.
  *
@@ -16,14 +17,14 @@
  *   same claude.ai/code link is a universal link the OS hands off to the app, or opens in the
  *   browser when the app is absent.
  * - The web docs state NO character cap, but the desktop app reportedly truncates ~14k, so
- *   prompts REFERENCE the committed spec file and never inline the whole spec/notes (§11.1).
+ *   prompts REFERENCE the committed spec file and never inline the whole spec/notes.
  * - No branch/`ref` URL param is documented (the session UI has a branch selector instead).
  */
 import type { CodeStory, Project } from '@/lib/types';
 
 const CLAUDE_CODE_WEB_URL = 'https://claude.ai/code';
 
-/** The proposed refinement-guide convention path (§11.2). Not finalized — see §17. */
+/** The proposed refinement-guide convention path. Not finalized. */
 const REFINEMENT_GUIDE_PATH = '.alfred/refinement.md';
 
 /**
@@ -39,13 +40,13 @@ function titleOf(story: CodeStory): string {
   return story.title ?? '';
 }
 
-/** The conventional spec location for a story (`specs/<REF>.md`, §11.2). */
+/** The conventional spec location for a story (`specs/<REF>.md`). */
 function specPathFor(story: CodeStory): string {
   return `specs/${refOf(story)}.md`;
 }
 
 /**
- * The machine-readable PR ↔ ticket block every phase's PR must carry (§12). Kept dead simple
+ * The machine-readable PR ↔ ticket block every phase's PR must carry. Kept dead simple
  * so the Worker can regex it: a fenced ```alfred block with `alfred-ticket` + `phase`, plus
  * `spec-path` on refinement PRs only.
  */
@@ -58,7 +59,7 @@ function frontmatterBlock(
     '```alfred',
     `alfred-ticket: ${refOf(story)}`,
     `phase: ${phase}`,
-    // spec-path is declared on refinement PRs (so Alfred renders the recorded path, §10/§12);
+    // spec-path is declared on refinement PRs so Alfred renders the recorded path;
     // including it on the implementation PR too is harmless and keeps the block uniform.
     `spec-path: ${specPath}`,
     '```',
@@ -68,13 +69,13 @@ function frontmatterBlock(
 
 /**
  * Max characters of the story's notes to inline as context. Notes are "short, safe to
- * inline" per §11.2, but a pathologically long notes field must not blow the prompt past the
- * desktop ~14k cap (§11.1) — so cap it and let the spec file carry the full detail.
+ * inline", but a pathologically long notes field must not blow the prompt past the
+ * desktop ~14k cap — so cap it and let the spec file carry the full detail.
  */
 const MAX_INLINE_NOTES = 1000;
 
 /**
- * A short, safe-to-inline context block from the story's notes (§11.2), or '' when absent.
+ * A short, safe-to-inline context block from the story's notes, or '' when absent.
  * When the notes exceed the inline cap they're clipped, and the agent is TOLD they're clipped
  * (and that the full notes live in alfred, not the repo, so it can't fetch them) — otherwise a
  * model treats the partial context as complete and specs from it with false confidence.
@@ -100,8 +101,8 @@ function buildUrl(project: Project, prompt: string): string {
 /**
  * Build the REFINEMENT link prompt (active in `needs_refinement`): write a spec markdown
  * artifact only — NO implementation — following the project's refinement guide, save it to
- * `specs/<REF>.md`, and open a PR carrying the §12 block with `phase: refinement`. Ref + title
- * lead the prompt so the new browser tab is scannable (§11.2).
+ * `specs/<REF>.md`, and open a PR carrying the machine-readable ticket block with
+ * `phase: refinement`. Ref + title lead the prompt so the new browser tab is scannable.
  *
  * The body carries the agentic guardrails directly (not just in the guide, which may be absent
  * for the target repo): ground in the repo first, a clarification gate so a thin ticket gets
@@ -133,8 +134,9 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
 /**
  * Build the IMPLEMENTATION link prompt (active in `ready_for_dev`, after the spec PR merged):
  * implement the merged spec at the story's recorded `spec_path` (falling back to the
- * conventional path), and open a PR carrying the §12 block with `phase: implementation`.
- * References the committed spec file — does NOT inline the spec body (§11.1). Carries the same
+ * conventional path), and open a PR carrying the machine-readable ticket block with
+ * `phase: implementation`.
+ * References the committed spec file — does NOT inline the spec body. Carries the same
  * shared guardrails as refinement (ground in the repo, ask when the spec is ambiguous/stale,
  * verbatim-block self-check) so the implementation path isn't the thinner instruction set.
  */

@@ -77,7 +77,7 @@ function FolderNameForm({
 /**
  * Sidebar navigation: folder list with CRUD, plus a Completed link.
  *
- * No Inbox link (§6.2 — removed): the `alfred` wordmark is the way into the inbox/capture
+ * No Inbox link (removed): the `alfred` wordmark is the way into the inbox/capture
  * screen (it navigates to `/`), and the inbox list still opens via `?view=inbox`. Folders
  * remain a drop target for moving an item back to the Inbox (the FolderDropZone wrapping
  * each folder), so removing the standalone Inbox link doesn't affect drag-to-inbox.

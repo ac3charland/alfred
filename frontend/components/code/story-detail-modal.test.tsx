@@ -245,7 +245,7 @@ describe('StoryDetailModal', () => {
     });
   });
 
-  describe('the primary launch action (§11)', () => {
+  describe('the primary launch action', () => {
     // Match the launch button by its full label so it doesn't collide with the manual
     // "Revert to … Refinement" / "Advance to …" controls that also contain "refine".
     const refineButton = /refine in claude/i;
@@ -280,7 +280,7 @@ describe('StoryDetailModal', () => {
     );
   });
 
-  describe('manual controls (§5.2 fallback)', () => {
+  describe('manual controls (fallback)', () => {
     beforeEach(() => {
       mockUpdateCodeState.mockResolvedValue({
         factory_state: 'in_refinement',

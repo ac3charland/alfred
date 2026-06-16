@@ -1,5 +1,5 @@
 /**
- * Parse the machine-readable `alfred` block a Software-Factory PR carries (code-module §12).
+ * Parse the machine-readable `alfred` block a Software-Factory PR carries.
  *
  * The block is a fenced ```alfred region in the PR description:
  *
@@ -9,18 +9,18 @@
  *   spec-path: specs/ALF-42.md
  *   ```
  *
- * This is the ONLY signal the Worker reads — there is no Anthropic session API (§1). So the parse
- * is a small, dependency-free regex (no `yaml` dep, §13.4), matching the enforcing GitHub check
+ * This is the ONLY signal the Worker reads — there is no Anthropic session API. So the parse
+ * is a small, dependency-free regex (no `yaml` dep), matching the enforcing GitHub check
  * (`alfred-frontmatter.yml`) field-for-field so a PR that passes CI always parses here too.
  */
 
 export type CodePhase = 'refinement' | 'implementation';
 
 export interface AlfredFrontmatter {
-  /** Every ref the PR advances. `alfred-ticket` is always parsed as a list (§12). */
+  /** Every ref the PR advances. `alfred-ticket` is always parsed as a list. */
   tickets: string[];
   phase: CodePhase;
-  /** Declared by refinement PRs only (§12); `undefined` when absent. */
+  /** Declared by refinement PRs only; `undefined` when absent. */
   specPath: string | undefined;
 }
 
@@ -38,7 +38,7 @@ const SPEC_PATH_RE = /spec-path:[ \t]*(\S+)/;
 /**
  * Extract the `alfred` block from a PR body. Returns `undefined` when the body has no block
  * (the PR isn't ours — ignore it) or the block is malformed (missing `alfred-ticket` or `phase`),
- * mirroring the §12 enforcing check. A refinement block missing `spec-path` still parses — the
+ * mirroring the `alfred-frontmatter.yml` enforcing check. A refinement block missing `spec-path` still parses — the
  * transition layer decides what to do without one; CI is what rejects that case on the PR side.
  */
 export function parseFrontmatter(body?: string): AlfredFrontmatter | undefined {

@@ -7,7 +7,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * The Tasks ⇄ Code module switcher (§6) — a two-button segmented control styled after the
+ * The Tasks ⇄ Code module switcher — a two-button segmented control styled after the
  * Claude desktop app. Each segment navigates between the two route groups (Tasks → `/`,
  * Code → `/code`); the active segment is derived from the route.
  *
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
  * (`(tasks)` ⇄ `(code)`), each with its own layout + providers, so it needs a real RSC
  * navigation to mount the target module — `ViewLink`'s `history.pushState` only re-derives
  * views already mounted in the *same* group (the inbox/folder/completed switch), and would
- * change the URL without ever loading the other module. (See the report's note on §6.1.)
+ * change the URL without ever loading the other module.
  *
  * "Code" is active on any `/code` path (the landing or a project board); "Tasks" is active
  * everywhere else (inbox, a folder, completed). The track is one bordered pill; the active

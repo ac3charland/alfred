@@ -1,5 +1,5 @@
 /**
- * Verify GitHub's webhook signature (code-module §13.1).
+ * Verify GitHub's webhook signature.
  *
  * GitHub signs each delivery with `HMAC-SHA256(secret, rawBody)` and sends it as
  * `X-Hub-Signature-256: sha256=<hex>`. We recompute it with Web Crypto (`crypto.subtle` — no
@@ -32,7 +32,7 @@ function constantTimeEqual(a: string, b: string): boolean {
  * Recompute the signature over `rawBody` and compare it constant-time to the header GitHub sent.
  * `signatureHeader` is the full `X-Hub-Signature-256` value (e.g. `sha256=abc…`); a missing or
  * malformed header is a rejection. The raw body string MUST be the exact bytes GitHub signed, so
- * read it with `request.text()` BEFORE any JSON parse (§13.1).
+ * read it with `request.text()` BEFORE any JSON parse.
  */
 export async function verifySignature(
   secret: string,

@@ -106,7 +106,7 @@ function NewEpicForm({
 }
 
 /**
- * The New-epic sub-dialog (§8.2): just an Epic name. On submit it calls `create_epic`
+ * The New-epic sub-dialog: just an Epic name. On submit it calls `create_epic`
  * (which allocates the shared per-project ref), then hands the row back so the gate can
  * select it.
  */

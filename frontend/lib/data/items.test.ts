@@ -42,7 +42,7 @@ describe('getAllItems', () => {
     const result = await getAllItems();
 
     // The Tasks/Inbox views must exclude factory stories (items with a code_items
-    // sidecar). That membership split lives in the `task_items` view (§4.5), so the
+    // sidecar). That membership split lives in the `task_items` view, so the
     // reader queries the view, not the raw `items` table — a factory item never reaches
     // the tasks store. The mock backend's task_items view exercises the exclusion itself.
     expect(client.from).toHaveBeenCalledWith('task_items');

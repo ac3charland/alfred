@@ -27,12 +27,12 @@ const navLinkClass = (active: boolean) =>
   );
 
 /**
- * Code-module sidebar navigation: the project list (§9.1). Mirrors FolderNav's folder list
+ * Code-module sidebar navigation: the project list. Mirrors FolderNav's folder list
  * — each project is a `ViewLink` to `/code/[projectId]` (client-side nav), highlighted when
  * that's the active route. Reads the project list from the CodeProvider store.
  *
  * Each project shows its 3-char key as the ref-prefix hint, since refs everywhere read
- * `KEY-N` (§3). The `+` opens the same New-project dialog as the gate (§8.1 / §9.1),
+ * `KEY-N`. The `+` opens the same New-project dialog as the gate,
  * persisting through the optimistic `createProject` action and then routing to the new
  * board.
  */

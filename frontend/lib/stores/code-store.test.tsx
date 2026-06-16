@@ -564,7 +564,7 @@ describe('code-store', () => {
       });
     });
 
-    describe('updateEpic (§9.2 name + notes + archive)', () => {
+    describe('updateEpic (name + notes + archive)', () => {
       it('optimistically patches epic name, then reconciles with the saved row', async () => {
         mockUpdateEpic.mockResolvedValue(makeSavedEpic({ name: 'Renamed Epic' }));
         const { result } = renderHook(() => useStore('p1'), {
@@ -675,7 +675,7 @@ describe('code-store', () => {
       });
     });
 
-    describe('updateStoryTitle (§10 header inline edit)', () => {
+    describe('updateStoryTitle (header inline edit)', () => {
       const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
 
       it('optimistically patches the story title via updateItem, then reconciles', async () => {
@@ -727,7 +727,7 @@ describe('code-store', () => {
       });
     });
 
-    describe('openClaudeSession (§11.3 await-write-then-open)', () => {
+    describe('openClaudeSession (await-write-then-open)', () => {
       const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
 
       let openSpy: jest.SpiedFunction<typeof globalThis.open>;

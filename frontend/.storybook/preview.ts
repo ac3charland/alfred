@@ -21,7 +21,7 @@ const preview: Preview = {
       const seed = (context.parameters as { store?: StoreSeed }).store ?? {};
       // Every story renders inside the data providers so components that read the
       // stores (FolderNav, TaskRow, TaskList, CaptureBox) work without boilerplate.
-      // ToastProvider is included because TaskRow fires a toast from the gate (§8).
+      // ToastProvider is included because TaskRow fires a toast from the gate.
       return React.createElement(
         ToastProvider,
         null,

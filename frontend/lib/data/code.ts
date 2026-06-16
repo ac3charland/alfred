@@ -9,7 +9,7 @@ import type { CodeStory, Epic, Project } from '@/lib/types';
  * Mirrors `lib/data/items.ts`: the whole code dataset — projects, epics, and the
  * flattened code-story rows — is fetched once at the (code) layout and seeded into the
  * CodeProvider store; the board derives each project's swimlanes client-side. Volume is
- * small (single user), so a fetch-all beats per-project round-trips (see §14 / the
+ * small (single user), so a fetch-all beats per-project round-trips (see the
  * data-flow skill). Client components never import this — they read the store.
  */
 

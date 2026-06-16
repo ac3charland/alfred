@@ -94,8 +94,8 @@ describe('StoryCard', () => {
     expect(screen.getAllByRole('button')[0]).toHaveAttribute('data-factory-state', 'ready_for_dev');
   });
 
-  describe('the "Open Claude Code" action (§11)', () => {
-    /** The set of states in which NO launch button applies (§11.3). */
+  describe('the "Open Claude Code" action', () => {
+    /** The set of states in which NO launch button applies. */
     const noButtonStates = [
       'in_refinement',
       'in_development',

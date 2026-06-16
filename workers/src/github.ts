@@ -1,8 +1,8 @@
 /**
- * Fetch a spec file from a project repo via the GitHub Contents API (code-module §13.3).
+ * Fetch a spec file from a project repo via the GitHub Contents API.
  *
  * On refinement-merge the Worker snapshots the spec into Supabase so the detail modal renders it
- * instantly, offline, and without a GitHub token at view time (§10). We read it with a
+ * instantly, offline, and without a GitHub token at view time. We read it with a
  * fine-grained PAT (Contents:read) pinned to the merge SHA so the snapshot is exactly what merged.
  */
 
@@ -12,7 +12,7 @@ export interface GithubEnv {
 
 export interface FetchedSpec {
   markdown: string;
-  /** The blob sha GitHub reports — stored alongside the markdown for drift detection (§10). */
+  /** The blob sha GitHub reports — stored alongside the markdown for drift detection. */
   sha: string;
 }
 

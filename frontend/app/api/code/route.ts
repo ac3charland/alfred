@@ -4,7 +4,7 @@ import { createCodeSchema } from '@/lib/api/schemas';
 import type { CodeStory } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// GET /api/code — list every code story (the flattened v_code_stories view, §4.5)
+// GET /api/code — list every code story (the flattened v_code_stories view)
 // ---------------------------------------------------------------------------
 
 export const GET = withSession(async (session) => {
@@ -25,7 +25,7 @@ export const GET = withSession(async (session) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/code — the gate. Admits an item to the factory via enter_code_module (§8.3)
+// POST /api/code — the gate. Admits an item to the factory via enter_code_module
 //
 // The RPC flips the item to `code`, clears its task-only fields (so converting a task
 // with a due date / subtasks is safe), and creates the `code_items` sidecar at

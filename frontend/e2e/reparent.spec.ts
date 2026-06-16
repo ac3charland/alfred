@@ -4,7 +4,7 @@ import { makeItem } from './support/constants';
 import { boxOf, pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
-// Re-parenting builds subtask trees (parent_id), which are task-only (§7.3): subtasks nest
+// Re-parenting builds subtask trees (parent_id), which are task-only: subtasks nest
 // only under tasks. So every fixture here is classified as a `task` — `makeItem`'s default
 // `unclassified` would expose neither the subtask affordance nor a valid drop target.
 type MakeItemOverrides = Parameters<typeof makeItem>[1];

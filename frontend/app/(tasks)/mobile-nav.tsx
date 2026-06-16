@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * Mobile hamburger nav — a Dialog-based slide-in drawer for narrow viewports.
- * Carries the Tasks ⇄ Code switcher (§6.3 — the switcher lives inside the hamburger on
+ * Carries the Tasks ⇄ Code switcher (the switcher lives inside the hamburger on
  * small screens, not the header bar) above the FolderNav. The FolderNav reads folders from
  * the store and closes the sheet when a link is clicked (via onClose); the switcher closes
  * it on navigate too.

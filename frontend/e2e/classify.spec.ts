@@ -2,7 +2,7 @@ import { makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
- * Inbox classification & type badges (§7). A captured item starts `unclassified` — no
+ * Inbox classification & type badges. A captured item starts `unclassified` — no
  * type badge, no completion checkbox, no add-subtask affordance. The actions-menu
  * "Classify as…" submenu flips its type: Code shows a Code badge but still no task
  * affordances; Task unlocks the checkbox, due date and subtasks plus the Task badge.

@@ -2,7 +2,7 @@ import { makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
- * The gate (M4, §8): an inbox item is classified as Code, sent to the Code module through
+ * The gate: an inbox item is classified as Code, sent to the Code module through
  * the gate (creating a brand-new project + epic), and the resulting story leaves the inbox
  * and appears on the board in Needs Refinement under its epic. Also covers Convert to Code
  * Story on a task.
@@ -79,7 +79,7 @@ test('classify as Code → gate (new project + epic) → leaves inbox, lands on 
   await expect(gate).toBeHidden();
 
   // 6. A toast announces the new ref, and the item has left the inbox. Epics and stories
-  //    SHARE the per-project counter (§3): the new epic took ALF-1, so this story is ALF-2.
+  //    SHARE the per-project counter: the new epic took ALF-1, so this story is ALF-2.
   await expect(page.getByText(/created alf-2/i)).toBeVisible();
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Ship the inbound webhook' }),
