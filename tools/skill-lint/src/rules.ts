@@ -12,6 +12,12 @@ import type { SkillContext } from './skill.ts';
  * them — point at one source of truth.
  */
 export const DESCRIPTION_MAX_CHARS = 1024;
+/**
+ * A soft target well under the hard cap. A description pushing past this is usually
+ * smuggling in body content (rules, implied context, extra scope) rather than stating the
+ * subject + trigger conditions — so it's an advisory nudge to re-tighten, never a failure.
+ */
+export const DESCRIPTION_SOFT_MAX_CHARS = 700;
 export const BODY_MAX_LINES = 500;
 
 export type Severity = 'error' | 'warn';
@@ -69,6 +75,27 @@ const bodyLength: Rule = {
         rule: 'body-length',
         severity: 'warn',
         message: `body is ${String(skill.bodyLineCount)} lines (recommended < ${String(BODY_MAX_LINES)}). Add a layer of hierarchy and move detail into references/ that loads on demand.`,
+      },
+    ];
+  },
+};
+
+/**
+ * A description under the hard cap but past the soft target. Warns (never fails) so the
+ * author re-checks it for smuggled-in content. Skips the over-cap case — {@link
+ * descriptionLength} already errors there, and one finding per description is enough.
+ */
+const descriptionTightness: Rule = {
+  name: 'description-tightness',
+  description: `A description should stay tight (under ~${String(DESCRIPTION_SOFT_MAX_CHARS)} chars).`,
+  check(skill) {
+    const { length } = skill.description;
+    if (length <= DESCRIPTION_SOFT_MAX_CHARS || length > DESCRIPTION_MAX_CHARS) return [];
+    return [
+      {
+        rule: 'description-tightness',
+        severity: 'warn',
+        message: `description is ${String(length)} chars (recommended < ${String(DESCRIPTION_SOFT_MAX_CHARS)}). Check whether it includes rule content, implied context (the repo or package it's in), or other extraneous information — a description states the subject and trigger conditions, not the body's guidance.`,
       },
     ];
   },
@@ -146,6 +173,7 @@ const compoundToc: Rule = {
  */
 export const rules: readonly Rule[] = [
   descriptionLength,
+  descriptionTightness,
   descriptionNoRepoName,
   bodyLength,
   compoundToc,
