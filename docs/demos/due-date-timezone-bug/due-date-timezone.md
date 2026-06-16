@@ -4,23 +4,24 @@ branch: claude/due-date-timezone-bug-4t4s0r
 
 # Fix: due date timezone off-by-one
 
-*2026-06-16*
+*2026-06-16T19:52:43.377Z*
 
-`new Date('YYYY-MM-DD')` parses as UTC midnight. In negative-UTC timezones like CDT (UTC-5), UTC midnight is the previous local evening — so a task saved as due `2026-06-16` (today) displayed as "Jun 15", and one saved as `2026-06-17` (tomorrow) showed as "Today".
+JavaScript's `new Date('YYYY-MM-DD')` parses date-only strings as UTC midnight. In CDT (UTC−5), UTC midnight is 7 pm the prior evening — so a task stored as due `2026-06-16` displayed as Jun 15, one day early.
 
-The fix adds a `parseDueDate()` helper in `frontend/lib/date-utils.ts` that appends `T00:00:00` (no Z) to date-only strings, making the engine treat them as local midnight. Tests were updated to use plain `YYYY-MM-DD` strings directly (removing the old UTC-offset compensation workaround from `localDueDate`), and two new regression tests confirm the correct behavior.
-
-```sh
-npm run test -w frontend -- --testPathPatterns=date-utils 2>&1 | grep -v "^Time:"
+```bash
+TZ=America/Chicago node -e "console.log(new Date('2026-06-16').toDateString())"
 ```
 
 ```output
+Mon Jun 15 2026
+```
 
-> frontend@0.1.0 test
-> jest --passWithNoTests --testPathPatterns=date-utils
+`parseDueDate()` in `frontend/lib/date-utils.ts` appends `T00:00:00` (no `Z`) to date-only strings, forcing the engine to parse as local midnight instead of UTC midnight.
 
-Test Suites: 1 passed, 1 total
-Tests:       37 passed, 37 total
-Snapshots:   0 total
-Ran all test suites matching date-utils.
+```bash
+TZ=America/Chicago node -e "console.log(new Date('2026-06-16T00:00:00').toDateString())"
+```
+
+```output
+Tue Jun 16 2026
 ```
