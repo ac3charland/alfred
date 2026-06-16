@@ -6,7 +6,7 @@
 > end — inbox classification → Project/Epic/Story model → a Kanban "Code" view → human-launched
 > Claude Code Web sessions (refine, then implement) → a GitHub-webhook Worker that turns PR
 > events into deterministic ticket-state transitions. This is the concrete build-out of
-> [`SPEC.md`](SPEC.md) §13.3 (Software Factory) and the type-specific edges of §3.
+> [`SPEC.md`](../product/SPEC.md) §13.3 (Software Factory) and the type-specific edges of §3.
 >
 > **In scope:** the human-driven "open Claude Code in a new tab" lane (the doc below calls it
 > **Lane 2**). **Out of scope (reserved, not built):** the local-LLM-implements / Claude-reviews
@@ -522,10 +522,11 @@ from stored data, so links are always fresh and we store no URLs.
 
 - **Refinement** (active in `needs_refinement`): instruct Claude to **write a spec markdown
   artifact** for this story — *no implementation* — following the project's refinement guide
-  (a committed convention, e.g. `.alfred/refinement.md` in the repo, OpenSpec-style), using the
-  story's title + notes (short, safe to inline), saving it to `specs/<REF>.md`, and **opening a PR**
+  (a committed convention — the refinement skill at `.claude/skills/refinement/SKILL.md`,
+  OpenSpec-style), using the
+  story's title + notes (short, safe to inline), saving it to `docs/specs/<REF>.md`, and **opening a PR**
   whose description carries the frontmatter block (§12) with `phase: refinement` and
-  `spec-path: specs/<REF>.md`. Put the **ref + title first** so the browser tab is scannable.
+  `spec-path: docs/specs/<REF>.md`. Put the **ref + title first** so the browser tab is scannable.
   The prompt body **carries the agentic guardrails inline** (not only in the maybe-absent guide):
   ground in the repo and its own conventions first; a **clarification gate** — ask the human (who
   is in the launched tab) when the ticket is too thin to scope, instead of inventing it; a
@@ -566,7 +567,7 @@ regex — a fenced block tagged `alfred`:
 ```alfred
 alfred-ticket: ALF-42
 phase: refinement
-spec-path: specs/ALF-42.md
+spec-path: docs/specs/ALF-42.md
 ```
 ````
 
@@ -765,7 +766,7 @@ rather than auto-abandons.
 **Still open (flag at implementation, don't block):** exact Claude Code Web param names + prompt
 length cap (§11.1 — verify via `claude-code-guide`); whether specs are edited post-merge often enough
 to warrant `push`-event snapshot refresh (§13.3); the refinement-guide convention's exact path/shape
-(`.alfred/refinement.md` proposed).
+(the refinement skill at `.claude/skills/refinement/SKILL.md`).
 
 ---
 

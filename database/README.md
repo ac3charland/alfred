@@ -1,6 +1,6 @@
 # database — alfred schema & migrations
 
-Supabase (PostgreSQL) schema for alfred. See `docs/SPEC.md` §3 for the data model.
+Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 for the data model.
 
 ## Layout
 

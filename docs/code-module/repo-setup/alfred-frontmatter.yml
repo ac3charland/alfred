@@ -9,7 +9,7 @@
 #   ```alfred
 #   alfred-ticket: ALF-42            # one ref, or a comma-separated list
 #   phase: refinement                # refinement | implementation
-#   spec-path: specs/ALF-42.md       # refinement PRs only
+#   spec-path: docs/specs/ALF-42.md  # refinement PRs only
 #   ```
 
 name: alfred-frontmatter

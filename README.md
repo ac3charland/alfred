@@ -1,7 +1,7 @@
 # Alfred
 
 A single-user, **capture-first** personal task system — TypeScript end to end.
-See [`docs/SPEC.md`](docs/SPEC.md) for the full design and [`CLAUDE.md`](CLAUDE.md)
+See [`docs/specs/product/SPEC.md`](docs/specs/product/SPEC.md) for the full design and [`CLAUDE.md`](CLAUDE.md)
 for the agent operating rules.
 
 ## Monorepo layout (npm workspaces)
@@ -9,6 +9,8 @@ for the agent operating rules.
 - `frontend/` — Next.js (App Router) app → Vercel.
 - `workers/` — Cloudflare Workers (future LLM processing layer; scaffolded only).
 - `database/` — Supabase schema, migrations, and dev seed.
+
+Spec docs live under `docs/specs/`, each spec in its own folder (e.g. `docs/specs/product/`, `docs/specs/code-module/`).
 
 One repo, one root `package.json`, one lockfile. The root `check` / `check:fast` /
 `check:slow` scripts fan out to every workspace.

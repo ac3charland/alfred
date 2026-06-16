@@ -1,7 +1,7 @@
 # CLAUDE.md — Agent Guidance for `alfred`
 
 `alfred` is a single-user, TypeScript, capture-first personal task system. The
-full design lives in [`docs/SPEC.md`](docs/SPEC.md); read it before making
+full design lives in [`docs/specs/product/SPEC.md`](docs/specs/product/SPEC.md); read it before making
 architectural decisions. This file holds the **non-negotiable operating rules**
 for every agent (lead and teammates) working in this repo.
 
@@ -12,6 +12,7 @@ npm workspaces, one repo so agents have full context:
 - `frontend/` — Next.js (App Router) → Vercel. Owns `check:fast` + `check:slow`.
 - `workers/` — Cloudflare Workers (Wrangler). Owns `check:fast` (no `check:slow`).
 - `database/` — Supabase migrations / SQL schema.
+- `docs/specs/` — spec docs, each in its own folder (e.g. `docs/specs/product/`, `docs/specs/code-module/`).
 - `tools/` — repo-local dev tooling. `tools/showboat` is the self-contained demo-doc
   CLI (run via `npm run demo`; see the `showboat` skill). Owns `check:fast`.
 - `.husky/` — root git hooks (one `.git/hooks` for the whole repo).
