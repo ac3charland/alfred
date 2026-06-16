@@ -46,7 +46,7 @@ Cool? Cool.
 **Bundled resources** (each described under [Reference files](#reference-files))
 
 - **agents/** — grader / comparator / analyzer subagent instructions
-- **references/** — `schemas.md`, `description-triggering.md`, `example-libraries.md`
+- **references/** — `schemas.md`, `description-triggering.md`, `description-examples.md`, `example-libraries.md`
 - **scripts/** — the eval, benchmark, optimization, and packaging Python CLIs
 - **assets/** — `eval_review.html` (the trigger-eval review template)
 - **eval-viewer/** — `generate_review.py` + `viewer.html` (the results viewer)
@@ -92,7 +92,7 @@ Based on the user interview, fill in these components:
 
 #### Writing a description that triggers
 
-The description is the only thing Claude sees when deciding whether to reach for a skill, so it's worth getting right. The checklist below is the *what to do*; the reasoning, evidence, and caveats behind each rule live in [`references/description-triggering.md`](references/description-triggering.md) — read it when a rule isn't obvious.
+The description is the only thing Claude sees when deciding whether to reach for a skill, so it's worth getting right. The checklist below is the *what to do*; the reasoning, evidence, and caveats behind each rule live in [`references/description-triggering.md`](references/description-triggering.md) — read it when a rule isn't obvious. **Before you finalize a description — when creating *or* editing a skill — skim [`references/description-examples.md`](references/description-examples.md), a before/after library of real fixes, and check your draft against the smell that's easiest to fall into: inlining the skill's content (its rules/steps) instead of naming its subject.** When you fix a description after review, add the before/after to that library so the next author dodges it.
 
 - **Lead with what-it-does + the distinctive keywords, in the first ~250 characters.** The listing the model sees is truncated and the opening carries the most weight, so don't bury high-signal vocabulary in a tail that may get cut — and don't open with a generic "Use when working in the X package."
 - **Don't spend the front on redundant scope.** The agent already knows which repo it's in (CLAUDE.md), so "Covers \<X\> in the alfred repo/project/monorepo" wastes the highest-value position and pushes the real keywords back — just write "Covers \<X\>". Add a scope clause only when it genuinely disambiguates *which part* of the project, and then drop the repo name: "in the frontend", "in the monorepo".
@@ -546,6 +546,7 @@ The agents/ directory contains instructions for specialized subagents. Read them
 The references/ directory has additional documentation:
 - `references/schemas.md` — JSON structures for evals.json, grading.json, etc.
 - `references/description-triggering.md` — the reasoning, evidence, and caveats behind the "Writing a description that triggers" checklist (front-loading, keyword overlap, sibling disambiguation, pushiness vs false-positives, and the verb-choice litmus test). Read it when a checklist rule isn't obvious.
+- `references/description-examples.md` — a before/after library of real description fixes (inlining the skill's content, enumerating every rule, naming the repo). Skim it whenever you write or edit a description, and append the before/after when you fix one after review.
 - `references/example-libraries.md` — how to structure a skill whose value is a library of references or example scenarios (folder vocabulary, the three library layouts, grep-hint / one-level-deep / no-duplication rules, and the RAG boundary). Read it when building a skill "with examples" or "with references."
 
 ---
