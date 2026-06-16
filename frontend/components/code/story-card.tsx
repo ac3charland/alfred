@@ -20,13 +20,13 @@ export interface StoryCardProperties {
   /** The flattened code-story row to render. */
   story: CodeStory;
   /**
-   * Invoked when the card body is activated (click / Enter / Space) — opens the detail modal
-   * in M6. Optional so the card renders standalone.
+   * Invoked when the card body is activated (click / Enter / Space) — opens the detail modal.
+   * Optional so the card renders standalone.
    */
   onOpen?: (story: CodeStory) => void;
   /**
    * The human launch: open a prefilled Claude Code tab for this story's phase. Wired
-   * to the store's `openClaudeSession` by the board; M6's modal passes the same handler. The
+   * to the store's `openClaudeSession` by the board; the detail modal passes the same handler. The
    * card awaits it so the in-flight spinner reflects the real state write. Optional so the
    * card renders standalone (the launch button then no-ops).
    */
@@ -44,7 +44,7 @@ const LAUNCH_LABELS: Record<LaunchPhase, { idle: string; busy: string }> = {
  * the **phase-appropriate "Open Claude Code" action** when one applies — *Refine* in
  * `needs_refinement`, *Implement* in `ready_for_dev`, hidden in every other state.
  *
- * The card body is an activatable control (opens the detail modal in M6). A `blocked`/
+ * The card body is an activatable control (opens the detail modal). A `blocked`/
  * `abandoned` story gets a distinct treatment (amber/red edge + a state tag) so it reads as
  * off the happy path even when surfaced via the escape filter.
  */

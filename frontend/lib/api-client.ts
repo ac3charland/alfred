@@ -228,7 +228,7 @@ export interface UpdateCodeStateExtra {
 
 /**
  * Transition a code story to a new factory state: the link-click write
- * (`in_refinement` / `in_development`) and M6's manual controls (Block / Abandon /
+ * (`in_refinement` / `in_development`) and the manual controls (Block / Abandon /
  * Advance-Revert). PATCHes the sidecar by its `ref` and returns the updated row.
  */
 export function updateCodeState(

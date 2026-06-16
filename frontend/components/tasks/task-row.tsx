@@ -652,7 +652,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                     {/* Classify as ▸ — inbox triage, offered only while the row is
                         still unclassified. Picking a type flips item_type (the optimistic
                         classifyItem action). Knowledge is reserved — leave room, don't build
-                        it. "Send to Code module…" / "Convert to Code Story…" are M4. */}
+                        it. "Send to Code module…" / "Convert to Code Story…" route into the Code module. */}
                     {isUnclassified && (
                       <DropdownMenu.Sub>
                         <DropdownMenu.SubTrigger className="flex cursor-pointer select-none items-center justify-between rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary">

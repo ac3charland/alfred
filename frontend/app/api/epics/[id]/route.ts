@@ -7,8 +7,8 @@ import type { EpicUpdate } from '@/lib/types';
 // PATCH /api/epics/[id] — edit an epic's header fields
 //
 // Supports `name` (inline rename), `notes` and `archived_at` (set to an ISO timestamp to
-// archive, null to un-archive). Archiving drops the epic off the active board (the M3 read
-// filter on `archived_at`); un-archiving restores it.
+// archive, null to un-archive). Archiving drops the epic off the active board (the board's
+// read filter on `archived_at`); un-archiving restores it.
 // ---------------------------------------------------------------------------
 
 export const PATCH = withSession(

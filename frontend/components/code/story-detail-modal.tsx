@@ -470,7 +470,7 @@ export interface StoryDetailModalProperties {
   onOpenChange: (open: boolean) => void;
   /**
    * The human-launch handler the board threads in (the store's `openClaudeSession`), so
-   * the modal's primary action reuses M5's await-write-then-open verbatim.
+   * the modal's primary action reuses the await-write-then-open launch verbatim.
    */
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }

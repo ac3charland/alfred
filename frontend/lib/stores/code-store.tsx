@@ -19,8 +19,8 @@ import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib
  * state and calls `lib/api-client` directly; it does not use these actions. These actions
  * exist for mutations made from WITHIN the Code view (ProjectNav's `+`, and conversions
  * surfaced on the board). The board re-seeds from the server on a real cross-group
- * navigation, so a gate-from-Tasks story shows up there without sharing this store (the M3
- * gotcha).
+ * navigation, so a gate-from-Tasks story shows up there without sharing this store (the
+ * cross-group-navigation gotcha).
  */
 
 // ── The happy-path swimlanes, in board order. ──
@@ -88,8 +88,8 @@ export interface CreateProjectInput {
  * Mutation actions for the code module — the optimistic + reconcile/rollback recipe
  * (data-flow skill), mirroring `tasks-store`.
  *
- * SEAM: `updateEpic` (notes + archive/un-archive) lands in M6. The reducer already supports
- * the moves it needs (`patchEpic`), so it slots in as a `useCodeActions` member without
+ * SEAM: `updateEpic` (notes + archive/un-archive) is a later addition. The reducer already
+ * supports the moves it needs (`patchEpic`), so it slots in as a `useCodeActions` member without
  * further store surgery.
  */
 export interface CodeActions {
@@ -143,7 +143,7 @@ export interface CodeActions {
    * The human launch: show-spinner → AWAIT the state write → open the prefilled
    * Claude Code tab. Awaiting before `window.open` eliminates the "looks launched but didn't
    * persist" edge — the tab only opens once the transition is durable. The URL is derived
-   * from the story + its project (`lib/code/links`), so M6's modal reuses this verbatim.
+   * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
   openClaudeSession: (ref: string, phase: 'refinement' | 'implementation') => Promise<void>;
 }

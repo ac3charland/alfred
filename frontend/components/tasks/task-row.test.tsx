@@ -142,7 +142,7 @@ function endCollapse(title: string): void {
  * Activate a top-level actions-menu item by its accessible name, order-independently.
  * Radix portals the menu and sets `pointer-events:none` on the body, so `user.click()`
  * on a portal item is blocked — keyboard nav is the way in. The menu's exact item order
- * shifts as items gate on item_type (e.g. the M4 "Convert to Code Story…" entry), so this
+ * shifts as items gate on item_type (e.g. the "Convert to Code Story…" entry), so this
  * presses ArrowDown until the wanted item has focus rather than counting positions.
  *
  * Assumes the menu is already open (the caller clicked "More actions" and awaited the

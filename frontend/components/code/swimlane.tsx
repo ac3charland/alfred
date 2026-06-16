@@ -9,7 +9,7 @@ import type { CodeStory } from '@/lib/types';
 export interface SwimlaneProperties {
   /** The lane to render: one happy-path state, its label, and the stories in it. */
   lane: BoardLane;
-  /** Forwarded to each card's `onOpen` (M6 detail modal seam). */
+  /** Forwarded to each card's `onOpen` (the detail-modal seam). */
   onOpenStory?: (story: CodeStory) => void;
   /** Forwarded to each card's `onOpenSession` (the human-launch action). */
   onOpenSession?: (

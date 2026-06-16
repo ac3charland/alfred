@@ -392,8 +392,8 @@ function EpicBlock({
  * - **blocked/abandoned** stories never get a column; a *Show blocked* toggle reveals them
  *   per-epic as off-track cards with their distinct treatment.
  *
- * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder this
- * milestone; the detail modal hangs off it in M6.
+ * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder for
+ * now; the detail modal hangs off it.
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);

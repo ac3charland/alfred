@@ -38,7 +38,7 @@ export async function getEpics(): Promise<Epic[]> {
  *
  * `v_code_stories` is a view, so Postgres carries no NOT NULL metadata and the generated
  * type makes every column nullable. The view's inner joins guarantee a fully-resolved row
- * for every story it returns, so override the result back to `CodeStory` (same gotcha M2
+ * for every story it returns, so override the result back to `CodeStory` (the same gotcha
  * handled for `task_items`; see the supabase skill).
  */
 export async function getCodeStories(): Promise<CodeStory[]> {

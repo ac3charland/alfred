@@ -2,7 +2,7 @@ import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/consta
 import { expect, test } from './support/fixtures';
 
 /**
- * The Code module (M3 shell + board): the Tasks ⇄ Code switcher reaches the `(code)` route
+ * The Code module (shell + board): the Tasks ⇄ Code switcher reaches the `(code)` route
  * group, and a seeded project renders its board — epics stacked & collapsible, each
  * expanded into the six happy-path swimlanes, with stories as cards (ref + title) in the
  * lane matching their factory_state.

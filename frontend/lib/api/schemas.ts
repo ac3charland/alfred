@@ -172,7 +172,7 @@ const codeFactoryState = z.enum([
 /**
  * Body for PATCH /api/code/[ref] — a state transition. `factory_state` is required;
  * `blocked_reason` is the optional companion the Block control sets (nullable so it clears on
- * any non-blocked hop). Drives both the M5 link-click write and M6's manual controls.
+ * any non-blocked hop). Drives both the link-click write and the manual controls.
  */
 export const updateCodeSchema = z.object({
   factory_state: codeFactoryState,
