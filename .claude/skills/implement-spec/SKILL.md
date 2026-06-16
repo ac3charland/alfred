@@ -1,14 +1,11 @@
 ---
 name: implement-spec
 description: >
-  Documents the house style for implementing a written spec, ticket, or design doc:
-  which of the spec's references belong in the resulting code, comments, commits, PRs,
-  and tests versus what to leave behind, plus grounding in the existing codebase first,
-  handling a spec that's ambiguous or has drifted, and test coverage. Read whenever
-  you've been handed a spec, ticket, or design doc and asked to build it. Trigger on:
-  "implement this spec", "build the spec", "implement the ticket", "build specs/ALF-*.md",
-  "the refinement spec", "implement from the design doc", or starting any work from a
-  written specification.
+  Documents the house style for implementing a written spec, ticket, or design doc into
+  code. Read whenever you've been handed a spec, ticket, or design doc and asked to build
+  it. Trigger on: "implement this spec", "build the spec", "implement the ticket", "build
+  specs/ALF-*.md", "the refinement spec", "implement from the design doc", or starting any
+  work from a written specification.
 ---
 
 # Implementing a spec
