@@ -92,6 +92,14 @@ export const WithDueDate: Story = {
   },
 };
 
+// Story used by the timezone-fix demo: a task due exactly today, which was displayed
+// one day early in negative-UTC timezones (CDT) before parseDueDate() was added.
+export const DueDateToday: Story = {
+  args: {
+    node: { ...BASE_NODE, due_date: '2026-06-16' },
+  },
+};
+
 export const WithNotes: Story = {
   args: {
     node: { ...BASE_NODE, notes: 'Check the style guide before starting.' },
