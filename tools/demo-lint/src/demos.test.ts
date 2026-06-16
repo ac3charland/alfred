@@ -120,7 +120,9 @@ describe('gatherDemos', () => {
     write('# new\n', 'new-demo', 'demo.md');
     touch('stray.png'); // a root file that did not change
     const demos = gatherDemos(root, root, 'feat/x', ['docs/demos/new-demo/demo.md'], true);
-    expect(demos.demoContents.map((c) => c.relativePath)).toEqual([path.join('new-demo', 'demo.md')]);
+    expect(demos.demoContents.map((c) => c.relativePath)).toEqual([
+      path.join('new-demo', 'demo.md'),
+    ]);
     expect(demos.rootFiles).toEqual([]);
   });
 
@@ -140,7 +142,9 @@ describe('gatherDemos', () => {
   it('default (not changed-only) lints every demo even with a known diff', () => {
     write('# a\n', 'a', 'demo.md');
     write('# b\n', 'b', 'demo.md');
-    expect(gatherDemos(root, root, 'feat/x', ['docs/demos/a/demo.md']).demoContents).toHaveLength(2);
+    expect(gatherDemos(root, root, 'feat/x', ['docs/demos/a/demo.md']).demoContents).toHaveLength(
+      2,
+    );
   });
 });
 

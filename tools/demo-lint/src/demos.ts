@@ -216,7 +216,7 @@ export function changedDemoKeys(changedPaths?: readonly string[]): Set<string> |
 
 /** The demo key a `demosDir`-relative path belongs to — its first path segment. */
 function demoKeyOf(relativePath: string): string {
-  return relativePath.split(/[/\\]/)[0] ?? relativePath;
+  return relativePath.split(/[/\\]/, 1)[0] ?? relativePath;
 }
 
 /**
