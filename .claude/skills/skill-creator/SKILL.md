@@ -94,6 +94,8 @@ Based on the user interview, fill in these components:
 
 The description is the only thing Claude sees when deciding whether to reach for a skill, so it's worth getting right. The checklist below is the *what to do*; the reasoning, evidence, and caveats behind each rule live in [`references/description-triggering.md`](references/description-triggering.md) — read it when a rule isn't obvious.
 
+**Quick check before you write it — the three that get missed most** (the rest of the list elaborates, but these are the ones that bite, and position bias means they have to lead): **(1)** name the *subject* the skill covers — never restate its rules or guidance, even nominalized; **(2)** cut redundant scope from the front (the repo name especially — the agent already knows the repo); **(3)** front-load the distinctive keywords into the first ~250 characters before truncation.
+
 - **Lead with what-it-does + the distinctive keywords, in the first ~250 characters.** The listing the model sees is truncated and the opening carries the most weight, so don't bury high-signal vocabulary in a tail that may get cut — and don't open with a generic "Use when working in the X package."
 - **Don't spend the front on redundant scope.** The agent already knows which repo it's in (CLAUDE.md), so "Covers \<X\> in the alfred repo/project/monorepo" wastes the highest-value position and pushes the real keywords back — just write "Covers \<X\>". Add a scope clause only when it genuinely disambiguates *which part* of the project, and then drop the repo name: "in the frontend", "in the monorepo".
 - **Name what the skill *is*, not the action it describes.** It's a reference the agent reads, not code that runs; pick the verb from the table below.
