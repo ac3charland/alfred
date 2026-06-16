@@ -112,6 +112,39 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toMatch(/open.*(pull request|pr)/i);
   });
 
+  it('gates on context: ask the human before writing when the ticket is thin', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    // The clarification gate is the headline guardrail — a smaller model must be told to ask
+    // rather than invent scope. It must reference asking before the spec is written.
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/before writing the spec/i);
+  });
+
+  it('tells Claude to ground itself in the repo and its own conventions first', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+  });
+
+  it('carries a self-contained section skeleton for the no-guide fallback', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    // When `.alfred/refinement.md` is absent the prompt must still define the spec shape, so
+    // "OpenSpec-style" is no longer an undefined term the model has to guess at.
+    expect(prompt).toContain('Acceptance criteria');
+    expect(prompt).toContain('Out of scope');
+  });
+
+  it('asks Claude to self-check the saved spec and verbatim block before the PR', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/verbatim|reproduced exactly/i);
+  });
+
+  it('flags truncated notes so partial context is not mistaken for the whole', () => {
+    const prompt =
+      parse(buildRefinementUrl(makeProject(), makeStory({ notes: 'Z'.repeat(2000) }))).prompt ?? '';
+    expect(prompt).toMatch(/truncated/i);
+  });
+
   it('does NOT inline the full notes/spec body (length cap, §11.1) — references the file', () => {
     const longNotes = 'X'.repeat(20_000);
     const url = buildRefinementUrl(makeProject(), makeStory({ notes: longNotes }));
@@ -203,5 +236,14 @@ describe('buildImplementationUrl', () => {
   it('url-encodes the prompt', () => {
     const rawQuery = buildImplementationUrl(makeProject(), makeStory()).split('?', 2)[1] ?? '';
     expect(rawQuery).not.toMatch(/[ \n`]/);
+  });
+
+  it('carries the shared guardrails: ground in the repo and ask when the spec is ambiguous', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+    // The implementation analog of the clarification gate: don't guess past a stale/ambiguous spec.
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/verbatim|reproduced exactly/i);
   });
 });
