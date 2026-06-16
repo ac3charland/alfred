@@ -1,12 +1,10 @@
 ---
 name: skill-lint
 description: >
-  Covers skill-lint, the linter that checks every .claude/skills SKILL.md against the
-  skill-creator authoring guidance and runs inside check:fast — flagging descriptions that
-  exceed the char cap, run long/verbose, or name the repo, bodies past ~500 lines, and
-  compound skills missing a Table of Contents. Use when running or interpreting skill-lint,
-  fixing a skill-lint finding, adding or changing a lint rule, or wiring the tool into the
-  build. Trigger on: "skill-lint", "lint the skills", "skill lint failing", "compound-toc",
+  Covers skill-lint, the linter that checks SKILL.md files for deterministic failure modes.
+  Use when running or interpreting skill-lint, fixing a skill-lint finding, adding or changing
+  a lint rule, or wiring the tool into the build. Trigger on: "skill-lint", "lint the skills",
+  "skill lint failing", "compound-toc",
   "description too long", "description too verbose", "description names the repo", "SKILL.md
   too long", "add a skill-lint rule", or editing tools/skill-lint.
 ---
