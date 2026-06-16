@@ -32,17 +32,22 @@ Subject-naming answers "*what is this about?*" instead.
 ## Enumerates every rule/item the skill contains
 
 A variant of inlining: listing each rule, command, or option turns the description into a
-table of contents and forces a re-edit every time the skill grows. State the *kind* of thing
-it covers.
+table of contents and forces a re-edit every time the skill grows. **Rephrasing the list as
+prose is not enough** — it's the same enumeration in different words. Name the *kind* of thing
+the skill covers and let the body hold the list.
 
-❌ **Before** (`skill-lint`):
+❌ **Before** (`skill-lint`) — an explicit count + list, stale the moment a rule is added:
 > …runs inside check:fast. **Four rules ship today: a description-length error (the
-> ~1024-char cap), a description-no-repo-name error (a description must not name the repo), a
-> body-length warning (over ~500 lines), and a compound-TOC error…**
+> ~1024-char cap), a description-no-repo-name error, a body-length warning (over ~500 lines),
+> and a compound-TOC error…**
 
-✅ **After** — describe what it flags, not each rule:
-> …runs inside check:fast — flagging descriptions that exceed the char cap, run long/verbose,
-> or name the repo, bodies past ~500 lines, and compound skills missing a Table of Contents.
+⚠️ **Still too verbose** — the count is gone, but it still enumerates every failure mode:
+> …runs inside check:fast — **flagging descriptions that exceed the char cap, run
+> long/verbose, or name the repo, bodies past ~500 lines, and compound skills missing a Table
+> of Contents.**
+
+✅ **After** — name the subject; the rules table in the body is the list:
+> Covers skill-lint, the linter that **checks SKILL.md files for deterministic failure modes.**
 
 ## Names the repo (redundant scope)
 
