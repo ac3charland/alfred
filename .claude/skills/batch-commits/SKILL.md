@@ -8,7 +8,7 @@ description: >
   script (run it directly: `node .claude/skills/batch-commits/scripts/batch-commit.mjs
   <input-file>`) runs the gate ONCE up front, validates every message with
   commitlint, then creates all the commits with --no-verify — the only sanctioned
-  use of --no-verify in alfred. Trigger on:
+  use of --no-verify in the repo. Trigger on:
   "multiple commits", "split into commits", "group commits by concern", "commit
   groups", "batch commit", "create several commits", "commit the work in pieces",
   or any wrap-up where you're about to run `git commit` more than once for one
