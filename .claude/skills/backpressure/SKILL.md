@@ -63,19 +63,22 @@ about how fast to fail:
 
 Default cheap repo-wide checks to **ahead** so the cheapest signal arrives first.
 
-## Pick the tier for what the check needs
+## Pick the tier for when the check is needed
 
 The hooks (see the `commitlint` skill) map tiers to git events:
 
-- **`check:fast` → pre-commit** — cheap, every commit. Type-check, lint/format, unit tests, and
-  fast repo-wide linters like `skill-lint` (it just reads markdown).
-- **`check:slow` → pre-push** — expensive, or needs state a single commit lacks. Storybook
-  snapshots + Playwright E2E. `demo-lint` is here because it needs the **git branch** (it checks
-  the branch owns a demo doc), and the demo is the last thing produced before pushing.
+- **`check:fast` → pre-commit** — cheap, and relevant on *every* commit. Type-check,
+  lint/format, unit tests, and fast repo-wide linters like `skill-lint` (it just reads
+  markdown).
+- **`check:slow` → pre-push** — expensive, **or not needed until you push / open the PR**.
+  Storybook snapshots + Playwright E2E. `demo-lint` is here for the second reason: a demo isn't
+  needed until right before the PR, so gating it per-push instead of per-commit keeps it from
+  **harassing an agent committing as it goes**. (It also can't run earlier than it does: it
+  reads the git branch to check the branch owns a demo doc.)
 
-Put a check in the **fastest tier consistent with what it needs** — fast feedback is the point,
-but a check that needs the branch or costs seconds belongs in slow so it doesn't tax every
-commit.
+Put a check in the **earliest tier where it's actually relevant** — fast feedback is the point,
+but a check that's only needed at push/PR time, or that costs seconds, belongs in slow so it
+doesn't tax every commit.
 
 ## Hoisting to root means deleting from the workspace
 
