@@ -14,7 +14,7 @@ day-to-day use (running it, the rules, fixing findings), stay in the SKILL.md bo
 
 ## Architecture: a rule registry over parsed skills
 
-The tool is five small modules under `tools/skill-lint/src/`, deliberately split so the
+The tool consists of small modules under `tools/skill-lint/src/`, deliberately split so the
 extension point (rules) is isolated from parsing and I/O:
 
 - **`skill.ts`** — turns a `SKILL.md` path into a `SkillContext`: frontmatter `name` /
