@@ -6,11 +6,9 @@ description: >
   workspace's check:fast/check:slow; a monorepo-wide check (linting all of .claude/skills/ or
   docs/demos/) lives in the root check command. Covers the pre-commit (fast) vs pre-push (slow)
   tier choice. Use when adding or moving a check, linter, or gate, or wiring
-  check:fast/check:slow — "add a check", "new linter", "monorepo-wide check", "gate the whole
-  repo", "where does this lint go", "run before storybook/e2e", "check:fast vs check:slow".
-  Pairs with the npm-workspaces skill (the --workspaces fan-out) and commitlint (the husky
-  hooks that invoke these). For not weakening a gate to make it pass, see CLAUDE.md's
-  back-pressure hard rules.
+  check:fast/check:slow — "add a check", "new linter", "monorepo-wide check", "run before
+  storybook/e2e", "check:fast vs check:slow". Pairs with the npm-workspaces skill (the
+  --workspaces fan-out) and commitlint (the husky hooks that invoke these).
 ---
 
 # backpressure — wiring deterministic checks
