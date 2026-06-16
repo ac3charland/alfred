@@ -40,6 +40,22 @@ describe('description-length', () => {
   });
 });
 
+describe('description-no-repo-name', () => {
+  it('passes a description that names no repo', () => {
+    const skill = makeSkill({ description: 'Covers the --workspaces fan-out in the monorepo.' });
+    expect(findingsFor('description-no-repo-name', skill)).toHaveLength(0);
+  });
+
+  it.each([
+    ['lowercase', "Documents alfred's check wiring."],
+    ['capitalized', 'Documents Alfred check wiring.'],
+  ])('errors when the description names the repo (%s)', (_label, description) => {
+    const [finding] = findingsFor('description-no-repo-name', makeSkill({ description }));
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('names the repo');
+  });
+});
+
 describe('body-length', () => {
   it('passes a body at the limit', () => {
     expect(findingsFor('body-length', makeSkill({ bodyLineCount: BODY_MAX_LINES }))).toHaveLength(
@@ -99,9 +115,10 @@ describe('compound-toc', () => {
 });
 
 describe('lint orchestration', () => {
-  it('registers the three rules', () => {
+  it('registers the rules', () => {
     expect(rules.map((rule) => rule.name)).toEqual([
       'description-length',
+      'description-no-repo-name',
       'body-length',
       'compound-toc',
     ]);

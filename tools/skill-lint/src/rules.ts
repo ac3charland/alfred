@@ -74,6 +74,31 @@ const bodyLength: Rule = {
   },
 };
 
+/** The repo name in a description is redundant scope — see {@link descriptionNoRepoName}. */
+const REPO_NAME = /alfred/i;
+
+/**
+ * The agent already knows which repo it's in (CLAUDE.md supplies that), so naming the
+ * repo in a description wastes the front-loaded, length-capped triggering budget on
+ * scope every skill shares. Disambiguate *which part* of the project with "the frontend"
+ * / "the monorepo" instead — never the repo name.
+ */
+const descriptionNoRepoName: Rule = {
+  name: 'description-no-repo-name',
+  description: 'A description must not name the repo — it is redundant scope.',
+  check(skill) {
+    const match = REPO_NAME.exec(skill.description);
+    if (!match) return [];
+    return [
+      {
+        rule: 'description-no-repo-name',
+        severity: 'error',
+        message: `description names the repo ("${match[0]}"). The agent already knows which repo it's in (CLAUDE.md), so drop it — it wastes the front-loaded triggering budget. Disambiguate which part with "the frontend" / "the monorepo" if needed.`,
+      },
+    ];
+  },
+};
+
 const TOC_HEADING = /^(table of contents|contents)$/i;
 /** The TOC must be the 1st or 2nd top-level section — `<=` this 0-based index. */
 const MAX_TOC_SECTION_INDEX = 1;
@@ -119,4 +144,9 @@ const compoundToc: Rule = {
  * The active rule set, applied to every skill in registration order. This array
  * is the extension point: append a {@link Rule} to lint something new.
  */
-export const rules: readonly Rule[] = [descriptionLength, bodyLength, compoundToc];
+export const rules: readonly Rule[] = [
+  descriptionLength,
+  descriptionNoRepoName,
+  bodyLength,
+  compoundToc,
+];

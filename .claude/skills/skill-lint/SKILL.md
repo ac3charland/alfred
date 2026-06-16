@@ -2,14 +2,15 @@
 name: skill-lint
 description: >
   Covers skill-lint, the linter that checks every .claude/skills SKILL.md against the
-  skill-creator authoring guidance and runs inside check:fast. Three rules ship today:
-  a description-length error (the ~1024-char cap), a body-length warning (over ~500
-  lines), and a compound-TOC error (a skill that bundles scripts/ or references/ needs a
-  Table of Contents near the top). Use when running or interpreting skill-lint, fixing a
-  skill-lint finding, adding or changing a lint rule, or wiring the tool into the build.
-  Trigger on: "skill-lint", "lint the skills", "skill lint failing", "compound-toc",
-  "description too long", "SKILL.md too long", "add a skill-lint rule", or editing
-  tools/skill-lint.
+  skill-creator authoring guidance and runs inside check:fast. Four rules ship today:
+  a description-length error (the ~1024-char cap), a description-no-repo-name error (a
+  description must not name the repo), a body-length warning (over ~500 lines), and a
+  compound-TOC error (a skill that bundles scripts/ or references/ needs a Table of
+  Contents near the top). Use when running or interpreting skill-lint, fixing a skill-lint
+  finding, adding or changing a lint rule, or wiring the tool into the build. Trigger on:
+  "skill-lint", "lint the skills", "skill lint failing", "compound-toc", "description too
+  long", "description names the repo", "SKILL.md too long", "add a skill-lint rule", or
+  editing tools/skill-lint.
 ---
 
 # skill-lint — lint the skill library
@@ -70,6 +71,7 @@ Each rule maps to a piece of `skill-creator` guidance. Severity decides whether 
 | Rule | Severity | Fires when | Fix |
 | --- | --- | --- | --- |
 | `description-length` | error | the frontmatter `description` exceeds ~1024 chars (the listing budget Claude sees) | tighten it — lead with what-it-does + distinctive keywords in the first ~250 chars, drop redundant scope |
+| `description-no-repo-name` | error | the frontmatter `description` names the repo (matches `/alfred/i`) | drop it — the agent already knows the repo from CLAUDE.md, so it's redundant scope that wastes the front-loaded triggering budget; disambiguate *which part* with "the frontend" / "the monorepo" if needed |
 | `body-length` | warn | the SKILL.md body runs past ~500 lines | add a layer of hierarchy and move detail into `references/` that loads on demand |
 | `compound-toc` | error | a **compound** skill (it bundles a `scripts/`, `references/`, `assets/`, … directory) has no `## Contents` / `## Table of Contents` section among its first two top-level sections | add a Table of Contents near the top that lists the body sections and links the bundled resources |
 
