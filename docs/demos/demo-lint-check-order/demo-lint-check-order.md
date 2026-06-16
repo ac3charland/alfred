@@ -43,7 +43,7 @@ rm -rf .claude/skills/zzz-demo-broken
 
 ```output
 check:fast exit=1
-skill-lint: 30 skill(s), 1 error(s), 1 warning(s).
+skill-lint: 31 skill(s), 1 error(s), 1 warning(s).
 frontend unit tests ran: 0
 ```
 
@@ -72,7 +72,7 @@ npm run lint:demos -w tools/demo-lint 2>/dev/null | grep 'demo-lint:'
 ```
 
 ```output
-skill-lint: 29 skill(s), 0 error(s), 1 warning(s).
+skill-lint: 30 skill(s), 0 error(s), 1 warning(s).
 demo-lint: 0 error(s), 0 warning(s).
 ```
 
@@ -89,5 +89,5 @@ rm -rf .claude/skills/zzz-repo-name
 ```output
 lint:skills exit=1
   ✗ error [description-no-repo-name] description names the repo ("alfred"). The agent already knows which repo it's in (CLAUDE.md), so drop it — it wastes the front-loaded triggering budget. Disambiguate which part with "the frontend" / "the monorepo" if needed.
-skill-lint: 30 skill(s), 1 error(s), 1 warning(s).
+skill-lint: 31 skill(s), 1 error(s), 1 warning(s).
 ```
