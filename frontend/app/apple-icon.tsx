@@ -6,9 +6,8 @@ import { ImageResponse } from 'next/og';
 export const size = { width: 180, height: 180 };
 export const contentType = 'image/png';
 
-const font = readFileSync(path.join(process.cwd(), 'public/fonts/liberation-serif.ttf'));
+const font = readFileSync(path.join(process.cwd(), 'public/fonts/lora.ttf'));
 
-// Matches the icon.svg favicon: dark navy rounded square with white serif "a".
 // marginBottom shifts the letter upward in flexbox centering so dark space above
 // and below the glyph is equal (measured: 52px each at 180×180).
 export default function AppleIcon() {
@@ -18,7 +17,6 @@ export default function AppleIcon() {
         width: '100%',
         height: '100%',
         background: '#1E2A3F',
-        borderRadius: 56,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
