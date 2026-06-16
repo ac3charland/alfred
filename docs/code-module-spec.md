@@ -526,9 +526,16 @@ from stored data, so links are always fresh and we store no URLs.
   story's title + notes (short, safe to inline), saving it to `specs/<REF>.md`, and **opening a PR**
   whose description carries the frontmatter block (§12) with `phase: refinement` and
   `spec-path: specs/<REF>.md`. Put the **ref + title first** so the browser tab is scannable.
+  The prompt body **carries the agentic guardrails inline** (not only in the maybe-absent guide):
+  ground in the repo and its own conventions first; a **clarification gate** — ask the human (who
+  is in the launched tab) when the ticket is too thin to scope, instead of inventing it; a
+  self-contained section skeleton for the no-guide fallback (so "OpenSpec-style" isn't an
+  undefined term); a flag when inlined notes were truncated; and a verbatim-block self-check
+  before the PR. These keep a smaller model from one-shotting a confidently-wrong spec.
 - **Implementation** (active in `ready_for_dev`, after the spec PR merged): instruct Claude to
   **implement the merged spec** at `code_items.spec_path`, and open a PR whose description carries the
-  frontmatter with `phase: implementation`.
+  frontmatter with `phase: implementation`. Carries the same shared guardrails (ground in the repo,
+  ask when the merged spec is ambiguous or has drifted from the code, verbatim-block self-check).
 
 ### 11.3 Link-click handler (the state transition)
 
