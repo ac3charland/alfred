@@ -83,7 +83,7 @@ const noTestInDemo: Rule = {
     'Demo exec blocks must not run the test suite — show the new behavior (UI screenshot or real output) instead.',
   check(demos) {
     return demos.demoContents
-      .filter(({ content }) => content.includes('npm run test'))
+      .filter(({ content }) => /npm run test(?!:)/.test(content))
       .map(({ relativePath }) => ({
         rule: 'no-test-in-demo',
         severity: 'error' as const,

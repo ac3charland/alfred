@@ -158,6 +158,22 @@ describe('no-test-in-demo', () => {
       ),
     ).toHaveLength(2);
   });
+
+  it('passes when a demo mentions npm run test:storybook:update (a different script)', () => {
+    expect(
+      findingsFor(
+        'no-test-in-demo',
+        makeDemos({
+          demoContents: [
+            {
+              relativePath: 'my-feature/demo.md',
+              content: 'npm run test:storybook:update -w frontend',
+            },
+          ],
+        }),
+      ),
+    ).toHaveLength(0);
+  });
 });
 
 describe('lint orchestration', () => {
