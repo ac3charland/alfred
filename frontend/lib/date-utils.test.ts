@@ -1,23 +1,22 @@
 import { MONTHS, formatDueDate, isDueDateOverdue } from './date-utils';
 
 // ---------------------------------------------------------------------------
-// Timezone-safe helpers (same approach as task-row.test.tsx)
+// Helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the ISO YYYY-MM-DD string that, when passed to `new Date('YYYY-MM-DD')`,
- * produces a Date whose LOCAL date fields (getFullYear/getMonth/getDate) match the
- * intended (year, month0, day). Accounts for the UTC-midnight parsing rule so tests
- * are correct in any timezone.
- *
- * Uses `Math.ceil` of the timezone offset in fractional days. For negative UTC offsets
- * (e.g. UTC-7 = 420 min), ceil(420/1440) = 1, so the helper returns (day+1)'s UTC
- * midnight, which equals (day)'s local time — correct for the month+day label tests.
- * Do NOT use this for Yesterday/Tomorrow/Today tests; use dueForDayOffset instead.
+ * Returns a YYYY-MM-DD string for the given local calendar date. After the
+ * parseDueDate fix, date-utils treats YYYY-MM-DD as local midnight, so this
+ * no longer needs the UTC-offset workaround that was here previously.
  */
 function localDueDate(year: number, month0: number, day: number): string {
-  const tzOffsetDays = Math.ceil(new Date().getTimezoneOffset() / (24 * 60));
-  return new Date(year, month0, day + tzOffsetDays).toISOString().slice(0, 10);
+  return `${String(year)}-${String(month0 + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Returns today's YYYY-MM-DD string in the local timezone. */
+function todayLocalYMD(): string {
+  const d = new Date();
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -106,6 +105,19 @@ describe('formatDueDate', () => {
     expect(label).not.toBe('Yesterday');
     expect(label).toMatch(/^[A-Z][a-z]{2} \d+$/);
   });
+
+  // Timezone regression: YYYY-MM-DD strings (what <input type="date"> produces and
+  // what the DB stores) must be treated as local midnight, not UTC midnight. In
+  // negative-UTC timezones (e.g. CDT = UTC-5), UTC midnight is the previous local
+  // day, causing off-by-one display bugs (today's date shows as "yesterday").
+  it('returns "Today" when given today\'s local date as a YYYY-MM-DD string', () => {
+    expect(formatDueDate(todayLocalYMD())).toBe('Today');
+  });
+
+  it('returns the correct month and day for a YYYY-MM-DD date string', () => {
+    // Jun 20 2025 in local time — must not shift to Jun 19 in negative-UTC zones.
+    expect(formatDueDate(localDueDate(2025, 5, 20))).toBe('Jun 20');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -138,5 +150,10 @@ describe('isDueDateOverdue', () => {
     const todayMidnightLocal = new Date(new Date().toDateString());
     const isoEquivalent = todayMidnightLocal.toISOString(); // full datetime ISO string
     expect(isDueDateOverdue(isoEquivalent)).toBe(false);
+  });
+
+  // Timezone regression: YYYY-MM-DD strings must be treated as local midnight.
+  it("returns false for today's local date as a YYYY-MM-DD string (not overdue)", () => {
+    expect(isDueDateOverdue(todayLocalYMD())).toBe(false);
   });
 });
