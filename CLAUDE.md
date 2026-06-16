@@ -221,11 +221,9 @@ relevant meta-skill **before** you touch it:
 only text an agent sees when deciding whether to load the skill. Don't write it from memory:
 after drafting, **walk the `skill-creator` "Writing a description that triggers" checklist
 line by line against your draft** (and skim its `references/description-examples.md` before/after
-library) and fix each miss. The failures that recur across the
-library are naming the repo (the agent already knows it — now a `skill-lint` error), inlining
-the body's guidance instead of stating the subject, and burying the distinctive keywords past
-the first ~250 chars. `skill-lint` catches the mechanizable smells; the rest are yours to
-check, every time.
+library) and fix each miss. The failures that recur across the library are inlining the body's 
+guidance and burying the distinctive keywords past the first ~250 chars. `skill-lint` catches 
+the mechanizable smells; the rest are yours to check, every time.
 
 ---
 
