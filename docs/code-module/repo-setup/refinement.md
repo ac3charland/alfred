@@ -1,8 +1,8 @@
 # Refinement guide (alfred Software Factory)
 
 > **Copy this file to `.alfred/refinement.md` in a project repo.** The Claude Code refinement
-> session is prompted to follow it (code-module spec §11.2). It is a committed convention so the
-> refinement output is consistent and the webhook Worker (§13) can rely on the PR shape.
+> session is prompted to follow it. It is a committed convention so the
+> refinement output is consistent and the webhook Worker can rely on the PR shape.
 
 You are in a **refinement** session for an alfred story. Your job is to **write a spec** — **not
 to implement anything**. Produce one spec artifact and open a PR; that is the entire deliverable.

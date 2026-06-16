@@ -1,8 +1,8 @@
 # Deploying the Software Factory webhook Worker (M7, Phase C)
 
 > The Worker code (HMAC verify, frontmatter parse, transition table, spec snapshot) ships in
-> `workers/src/` with full unit coverage. This doc is the **credentialed closeout** (spec §16.1
-> Phase C): get a Cloudflare account, set the four secrets, deploy, and wire each project repo's
+> `workers/src/` with full unit coverage. This doc is the **credentialed Phase-C closeout**:
+> get a Cloudflare account, set the four secrets, deploy, and wire each project repo's
 > webhook to it. None of this runs in a CI/web sandbox — do it locally with the secrets to hand.
 >
 > Pairs with [`repo-setup/README.md`](repo-setup/README.md), which covers the **per-repo** side
@@ -55,7 +55,7 @@ you set them:
 | Secret | Where it comes from |
 |---|---|
 | `GITHUB_WEBHOOK_SECRET` | **You invent it.** Any high-entropy string — generate one with `openssl rand -hex 32`. You'll paste the *same* value into each repo's webhook config (step 4). |
-| `GITHUB_TOKEN` | A **fine-grained PAT**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Scope it to the project repos with **Repository permissions → Contents: Read-only**. Used to snapshot the spec on refinement-merge (§13.3). |
+| `GITHUB_TOKEN` | A **fine-grained PAT**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Scope it to the project repos with **Repository permissions → Contents: Read-only**. Used to snapshot the spec on refinement-merge. |
 | `SUPABASE_URL` | Supabase dashboard → Project Settings → Data API → **Project URL** (`https://<ref>.supabase.co`). Same value as `frontend/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API Keys → **`service_role`** secret. This bypasses RLS — treat it like a password; it only ever lives as a Worker secret, never in the frontend. |
 
@@ -107,7 +107,7 @@ for you), then:
    and the detail modal should render the snapshotted spec.
 2. If nothing happens, check GitHub → repo → Settings → Webhooks → **Recent Deliveries**: a `401`
    means the secret mismatches step 3; a `200` with no board change means the `alfred` block didn't
-   parse (compare it to §12) or the ref isn't a story in `code_items`.
+   parse (compare it to the contract format in `repo-setup/README.md`) or the ref isn't a story in `code_items`.
 3. Tail the Worker logs live with `npx wrangler tail` while you redeliver from the Recent Deliveries
    panel.
 

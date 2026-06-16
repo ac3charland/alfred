@@ -1,11 +1,11 @@
-# alfred Software Factory — PR frontmatter enforcing check (code-module §12).
+# alfred Software Factory — PR frontmatter enforcing check.
 #
 # Copy this file to a project repo's `.github/workflows/alfred-frontmatter.yml`.
 # It fails the PR check when the machine-readable `alfred` block is missing or
-# malformed, so the webhook Worker (§13) can always parse a valid block. Coding
+# malformed, so the webhook Worker can always parse a valid block. Coding
 # agents are configured to fix failing checks, so they self-correct.
 #
-# Contract (§12):
+# Contract:
 #   ```alfred
 #   alfred-ticket: ALF-42            # one ref, or a comma-separated list
 #   phase: refinement                # refinement | implementation
