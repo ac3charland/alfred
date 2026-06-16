@@ -1,7 +1,7 @@
 ---
 name: dnd-kit
 description: >
-  Covers dnd-kit drag-and-drop in alfred's frontend: the stable @dnd-kit/core + @dnd-kit/sortable
+  Covers dnd-kit drag-and-drop in the frontend: the stable @dnd-kit/core + @dnd-kit/sortable
   line (DndContext, useSortable, SortableContext, useDroppable, sensors, collision detection,
   DragOverlay) and how it wires into the existing optimistic task/folder stores. Use when adding
   or debugging any drag interaction — reorder tasks in a list, drag a task into a sidebar folder,
@@ -11,7 +11,7 @@ description: >
   "arrayMove", or "sortable tree". Pairs with the data-flow skill (optimistic moveTask/reorder
   actions), the motion skill (reduced-motion), the react skill (hooks), and the
   playwright/storybook skills (testing drags). Note: the newer @dnd-kit/react rewrite is a
-  separate, pre-1.0 package alfred does NOT use.
+  separate, pre-1.0 package the frontend does NOT use.
 ---
 
 # dnd-kit Skill — alfred project

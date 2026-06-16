@@ -179,27 +179,16 @@ async function openSubmenu(user: ReturnType<typeof userEvent.setup>, name: RegEx
 }
 
 // ---------------------------------------------------------------------------
-// Timezone-safe due-date helpers
-//
-// new Date('YYYY-MM-DD') parses as UTC midnight, which in non-UTC timezones
-// shifts to the previous local day. These helpers account for the UTC offset
-// so that `new Date(result).toDateString()` matches the intended local date.
+// Due-date helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the ISO YYYY-MM-DD string that, when passed to `new Date('YYYY-MM-DD')`,
- * produces a Date whose LOCAL date fields (getFullYear/getMonth/getDate) match the
- * intended (year, month0, day). Accounts for the UTC-midnight parsing rule so tests
- * are correct in any timezone.
- *
- * Uses `Math.ceil` of the timezone offset in fractional days. For negative UTC offsets
- * (e.g. UTC-7 = 420 min), ceil(420/1440) = 1, so the helper returns (day+1)'s UTC
- * midnight, which equals (day)'s local time — correct for the month+day label tests.
- * Do NOT use this for Yesterday/Tomorrow/Today tests; use dueForDayOffset instead.
+ * Returns a YYYY-MM-DD string for the given local calendar date. After the
+ * parseDueDate fix in date-utils, YYYY-MM-DD strings are treated as local
+ * midnight, so no UTC-offset adjustment is needed here.
  */
 function localDueDate(year: number, month0: number, day: number): string {
-  const tzOffsetDays = Math.ceil(new Date().getTimezoneOffset() / (24 * 60));
-  return new Date(year, month0, day + tzOffsetDays).toISOString().slice(0, 10);
+  return `${String(year)}-${String(month0 + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /**

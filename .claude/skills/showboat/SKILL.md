@@ -56,6 +56,16 @@ they can see*. If you catch yourself piping or `grep`-ing test output to make it
 "presentable", stop — that effort is the symptom. Screenshot the UI instead (for a
 visual change) or capture a real request/response (for a non-visual one).
 
+**Don't show "in principle" behavior with a raw `node -e` snippet** — that proves
+the math is right, not that the app uses it correctly. A fix to a component's
+rendering (a date label, a formatted value, a colour, etc.) has a visual surface:
+the component. Screenshot the component showing the corrected output. When the bug
+only manifests under a specific environment condition (a timezone, a locale, a
+feature flag), use Playwright's `timezoneId` / `locale` context option (see
+*Playwright timezone screenshots* below) so the screenshot reproduces the real
+condition. `node -e` with `TZ=…` shows the JS engine works; a Playwright shot in
+CDT shows the *app* works.
+
 ## Cover every requirement, not just one
 
 A demo is the evidence that the **whole** change works, so it must exercise **every
@@ -179,6 +189,35 @@ port the pre-push hook's `test:storybook` uses. A background server left running
 makes the hook die with `EADDRINUSE: address already in use 0.0.0.0:6006` and blocks
 the push. After screenshotting, stop it (`pkill -f http-server`) and confirm 6006 is
 free before `git push`.
+
+### Playwright timezone / locale screenshots
+
+When a fix only manifests in a specific timezone (or locale), the `screenshot` helper
+won't reproduce it — it uses the system timezone (UTC here). Instead write a
+**throwaway capture script** that opens a Playwright context with `timezoneId`:
+
+```ts
+// frontend/e2e/capture-tz.ts  — delete after capturing
+import { chromium } from '@playwright/test';
+
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ timezoneId: 'America/Chicago' });
+const page = await ctx.newPage({ viewport: { width: 1280, height: 200 } });
+await page.goto('http://127.0.0.1:6006/iframe.html?id=tasks-taskrow--due-date-today&viewMode=story',
+  { waitUntil: 'networkidle' });
+await page.screenshot({ path: '/tmp/tz-shot.png' });
+await browser.close();
+```
+
+Run it with `node --import tsx/esm frontend/e2e/capture-tz.ts` (tsx is already a
+dev dep). Build Storybook first, serve it on 6006, take the shot, then kill the
+server. Do this **twice** when you need before/after screenshots for a bug:
+
+1. Temporarily revert the fix in the source file.
+2. `npm run storybook:build -w frontend` → serve → shoot → embed "before" image.
+3. Restore the fix.
+4. `npm run storybook:build -w frontend` → serve → shoot → embed "after" image.
+5. Delete the capture script.
 
 ### The live authenticated app — via the Playwright mock backend (reproducible)
 

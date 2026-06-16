@@ -2,6 +2,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { changedPathsSinceTrunk, changedSkillNames, selectChangedSkills } from './git.ts';
 import { countBySeverity, lintSkills } from './lint.ts';
 import { parseSkill, resolveSkillMdPaths } from './skill.ts';
 
@@ -9,15 +10,18 @@ const HELP = `skill-lint — lint .claude/skills SKILL.md files against the auth
 
 Usage:
   skill-lint [path-or-glob ...]   Lint the given SKILL.md files, skill directories,
-                                  or globs. With no arguments, lints every skill in
-                                  .claude/skills/.
+                                  or globs. With no arguments, lints only the skills
+                                  changed on this branch vs trunk (the check:fast mode);
+                                  pass --all to lint every skill (the audit).
 
 Examples:
-  skill-lint                                # all skills
+  skill-lint                                # changed skills only (the gate)
+  skill-lint --all                          # every skill (the audit)
   skill-lint .claude/skills/showboat        # one skill (by directory)
   skill-lint '.claude/skills/*/SKILL.md'    # an explicit glob (quote it)
 
 Options:
+  --all         Lint every skill, not just the ones changed vs trunk.
   --help, -h    Show this help.
 
 Findings:
@@ -38,10 +42,15 @@ const DEFAULT_SKILLS_DIR = path.resolve(
 
 function main(argv: readonly string[]): number {
   const inputs: string[] = [];
+  let all = false;
   for (const arg of argv) {
     if (arg === '--help' || arg === '-h') {
       process.stdout.write(HELP);
       return 0;
+    }
+    if (arg === '--all') {
+      all = true;
+      continue;
     }
     if (arg.startsWith('-')) {
       throw new UsageError(`unknown option "${arg}". Run "skill-lint --help".`);
@@ -50,13 +59,24 @@ function main(argv: readonly string[]): number {
   }
 
   const cwd = process.cwd();
-  const skillMdPaths = resolveSkillMdPaths(inputs, cwd, DEFAULT_SKILLS_DIR);
+  let skillMdPaths = resolveSkillMdPaths(inputs, cwd, DEFAULT_SKILLS_DIR);
   if (skillMdPaths.length === 0) {
     if (inputs.length > 0) {
       throw new UsageError(`no SKILL.md files matched: ${inputs.join(', ')}`);
     }
     process.stdout.write('skill-lint: no skills found.\n');
     return 0;
+  }
+
+  // The gate (no paths, no --all) lints only skills changed vs trunk, so editing one skill
+  // never surfaces findings on the rest of the library. An unknown diff lints everything.
+  const checkMode = inputs.length === 0 && !all;
+  if (checkMode) {
+    skillMdPaths = selectChangedSkills(skillMdPaths, changedSkillNames(changedPathsSinceTrunk()));
+    if (skillMdPaths.length === 0) {
+      process.stdout.write('skill-lint: no changed skills to lint.\n');
+      return 0;
+    }
   }
 
   const reports = lintSkills(skillMdPaths.map((skillMdPath) => parseSkill(skillMdPath, cwd)));

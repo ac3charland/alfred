@@ -28,13 +28,4 @@ Step 4: Pressing Enter saves optimistically and exits edit mode. The heading is 
 
 Step 5: For an archived epic (archive icon in header, shown via Show archived toggle), the menu shows Unarchive instead of Archive.
 
-```bash
-npm run test -w frontend 2>&1 | grep -E 'Tests:|Suites:' | tail -4
-```
-
-```output
-Test Suites: 56 passed, 56 total
-Tests:       942 passed, 942 total
-```
-
 ![Storybook baseline — menu in the title corner](epic-title-editing-image-6.png)

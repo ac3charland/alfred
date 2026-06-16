@@ -1,37 +1,76 @@
-# Before/after descriptions — a calibration library
+# Description before/after library
 
-Real description rewrites from this repo, each pairing a flawed `description` with its fix and
-the rule it broke. Read this when writing or revising any skill description; grep for a
-symptom rather than reading end to end. Add the next correction you make here, trimmed to the
-essentials (per the lean rule in the compounding-learning skill).
+A growing set of real description fixes — each a concrete *before → after* with the smell it
+cures. Read it when **writing or editing any skill description**: skim for the smell your
+draft might have, then check your draft against the matching pair. The *rules* and their
+*reasoning* live in [`description-triggering.md`](description-triggering.md); this file is the
+worked examples, so don't restate the theory here — add a pair.
 
-## Contents
+grep for a smell: `grep -iE 'inlines|repo name|enumerates|buried' description-examples.md`
 
-- Nominalized guidance masquerading as subject-naming (implement-spec)
+## Inlines the skill's content (especially at the front)
 
-## Nominalized guidance masquerading as subject-naming — implement-spec
+A description says *what the skill covers and when to reach for it* — not the skill's actual
+guidance. Spelling out the rules reproduces the body, drifts from it, and burns the
+front-loaded triggering budget. Name the subject; stop there.
 
-A conventions / house-style skill's content *is* a small set of rules, so every attempt to
-"list what it covers" turns into a list of the advice. The tell: a `subject: a, b, c` clause
-where a, b, c read as things-to-do, not subject-nouns. (An even blunter earlier draft led with
-`Core rule: never carry spec-only references…` — the same leak, just undisguised.)
+❌ **Before** (`backpressure`):
+> Documents how the deterministic checks (the back-pressure gates) are wired — where a check
+> belongs and which tier runs it. **A package's own typecheck/lint/format/test lives in that
+> workspace's check:fast/check:slow; a monorepo-wide check (linting all of .claude/skills/ or
+> docs/demos/) lives in the root check command. Covers the pre-commit (fast) vs pre-push
+> (slow) tier choice.** Use when adding or moving a check…
 
-BEFORE (still wrong — the colon-list is the body, nominalized):
-```
-Documents the house style for implementing a written spec, ticket, or design doc: which of
-the spec's references belong in the resulting code, comments, commits, PRs, and tests versus
-what to leave behind, plus grounding in the existing codebase first, handling a spec that's
-ambiguous or has drifted, and test coverage. Read whenever… Trigger on: …
-```
-AFTER:
-```
-Documents the house style for implementing a written spec, ticket, or design doc into code.
-Read whenever you've been handed a spec, ticket, or design doc and asked to build it. Trigger
-on: "implement this spec", "build the spec", …
-```
+✅ **After** — cut the bolded sentences; the framing ("where a new check belongs and which tier
+runs it") already names the subject, and the body holds the answer:
+> Documents how the deterministic checks (the back-pressure gates) are wired — where a new
+> check belongs and which tier runs it. Use when adding or moving a check, linter, or gate…
 
-**Rule:** "Describe the skill; don't inline its content." Naming the subject in one phrase is
-the whole job for a house-style skill — it has no inventory of subject-nouns to enumerate, so
-a colon-list there is always the guidance leaking in. A broad *reference* skill is the opposite
-case, where the list is legitimate: `the Messages API, tool definitions, streaming` are real
-subjects, not advice.
+The tell: if a sentence would answer "*how does the skill say to do it?*", it's body content.
+Subject-naming answers "*what is this about?*" instead.
+
+## Enumerates every rule/item the skill contains
+
+A variant of inlining: listing each rule, command, or option turns the description into a
+table of contents and forces a re-edit every time the skill grows. **Rephrasing the list as
+prose is not enough** — it's the same enumeration in different words. Name the *kind* of thing
+the skill covers and let the body hold the list.
+
+❌ **Before** (`skill-lint`) — an explicit count + list, stale the moment a rule is added:
+> …runs inside check:fast. **Four rules ship today: a description-length error (the
+> ~1024-char cap), a description-no-repo-name error, a body-length warning (over ~500 lines),
+> and a compound-TOC error…**
+
+⚠️ **Still too verbose** — the count is gone, but it still enumerates every failure mode:
+> …runs inside check:fast — **flagging descriptions that exceed the char cap, run
+> long/verbose, or name the repo, bodies past ~500 lines, and compound skills missing a Table
+> of Contents.**
+
+✅ **After** — name the subject; the rules table in the body is the list:
+> Covers skill-lint, the linter that **checks SKILL.md files for deterministic failure modes.**
+
+The nominalized variant is the sneakiest: a `subject: a, b, c` colon-list where each item is
+*advice*, not a subject-noun. A house-style skill has no inventory of subjects to list, so the
+list is always the body leaking in.
+
+❌ **Before** (`implement-spec`):
+> Documents the house style for implementing a written spec, ticket, or design doc: which of
+> the spec's references belong in the resulting code, comments, commits, PRs, and tests versus
+> what to leave behind, plus grounding in the existing codebase first, handling a spec that's
+> ambiguous or has drifted, and test coverage. Read whenever… Trigger on: …
+
+✅ **After** — name the subject in one phrase; the rules live in the body:
+> Documents the house style for implementing a written spec, ticket, or design doc into code.
+> Read whenever you've been handed a spec, ticket, or design doc and asked to build it. Trigger
+> on: "implement this spec", "build the spec", …
+
+## Names the repo (redundant scope)
+
+The agent already knows which repo it's in (CLAUDE.md), so the repo name is wasted scope in
+the highest-value position — and `skill-lint`'s `description-no-repo-name` rule now errors on
+it. Drop it, or disambiguate *which part* with "the frontend" / "the monorepo".
+
+❌ **Before** → ✅ **After**:
+- `dnd-kit`: "Covers dnd-kit drag-and-drop **in alfred's frontend**" → "…**in the frontend**"
+- `batch-commits`: "the only sanctioned use of --no-verify **in alfred**" → "…**in the repo**"
+- `git`: "Covers git CLI workflows **in alfred**" → "…**in the monorepo**"
