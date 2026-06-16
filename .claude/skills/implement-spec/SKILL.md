@@ -47,10 +47,12 @@ After:  `// spec-path is declared on refinement PRs so the recorded path renders
 
 This is **not** a ban on references — it's a ban on *unresolvable* ones. A pointer to
 something durable the reader can actually open is fine and often valuable: a file path
-(`frontend/lib/code/links.ts`), a symbol name, an external doc with a stable title
+(`frontend/lib/code/links.ts`), a symbol name, **a section of a stable central doc that
+lives in the repo** (`README §3`, a CLAUDE.md heading), an external doc with a stable title
 (`PostgreSQL docs §7.8 "WITH Queries"`), or a real URL. The test is simple: **can the
-reader follow it with only the repo in hand?** A bare spec section number fails that test;
-a file path passes it.
+reader follow it with only the repo in hand?** A section number in the *spec you're
+implementing* fails that test — the spec isn't part of the delivered code, so don't keep a
+coordinate into it; a `README`/CLAUDE.md section or a file path passes it, so keep it.
 
 ## A few more practices when building from a spec
 
