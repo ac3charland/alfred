@@ -20,7 +20,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'alfred',
+  title: 'Alfred',
   description: 'A capture-first personal task system',
 };
 
