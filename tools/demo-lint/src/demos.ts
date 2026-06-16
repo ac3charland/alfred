@@ -194,6 +194,31 @@ export function changedPathsSinceTrunk(): readonly string[] | undefined {
     .filter((line) => line.length > 0);
 }
 
+/** A changed path under `docs/demos/<key>` → the `<key>`: a demo folder or a root file name. */
+const DEMO_PATH = /(?:^|\/)docs\/demos\/([^/]+)/;
+
+/**
+ * The set of demo "keys" touched by `changedPaths` — a key is the first segment under
+ * `docs/demos/`: a demo folder name (`foo` for `docs/demos/foo/bar.md`) or a root file name
+ * (`stray.md` for `docs/demos/stray.md`). `undefined` when the diff is unknown (mirrors
+ * {@link changedPathsSinceTrunk}), the caller's signal to lint **every** demo rather than
+ * silently skip on a guess.
+ */
+export function changedDemoKeys(changedPaths?: readonly string[]): Set<string> | undefined {
+  if (changedPaths === undefined) return undefined;
+  const keys = new Set<string>();
+  for (const changed of changedPaths) {
+    const match = DEMO_PATH.exec(changed);
+    if (match?.[1] !== undefined) keys.add(match[1]);
+  }
+  return keys;
+}
+
+/** The demo key a `demosDir`-relative path belongs to — its first path segment. */
+function demoKeyOf(relativePath: string): string {
+  return relativePath.split(/[/\\]/)[0] ?? relativePath;
+}
+
 /**
  * Parse the demos directory and the branch context rules consume. `branch` is a
  * plain value (the CLI reads it from {@link currentBranch}); pass `undefined` for
@@ -201,26 +226,37 @@ export function changedPathsSinceTrunk(): readonly string[] | undefined {
  * repo-relative diff vs trunk (the CLI reads it from {@link changedPathsSinceTrunk});
  * pass `undefined` for "diff unknown", which conservatively keeps
  * `hasChangesOutsideDocs === true` so no docs-only exception is granted on a guess.
+ *
+ * `changedOnly` is the gate mode: when `true`, the content/structure inputs (`demoContents`
+ * and `rootFiles`) are narrowed to demos touched on this branch vs trunk, so a newly-added
+ * rule never retroactively fails an untouched demo. An unknown diff still lints every demo.
+ * `branchFolder` / `declaredBranches` stay computed over all demos — the branch-folder rule
+ * needs the whole picture regardless of what changed.
  */
 export function gatherDemos(
   demosDir: string,
   cwd: string = process.cwd(),
   branch?: string,
   changedPaths?: readonly string[],
+  changedOnly = false,
 ): DemosContext {
   const absolute = path.resolve(demosDir);
   const isTrunk = branch !== undefined && TRUNK_BRANCHES.has(branch);
   const branchFolder = branch === undefined || isTrunk ? undefined : branch;
+  // `undefined` keys (not in changed-only mode, or an unknown diff) keeps everything.
+  const changedKeys = changedOnly ? changedDemoKeys(changedPaths) : undefined;
+  const keep = (relativePath: string): boolean =>
+    changedKeys === undefined || changedKeys.has(demoKeyOf(relativePath));
   return {
     demosDir: absolute,
     displayPath: path.relative(cwd, absolute) || absolute,
-    rootFiles: listRootFiles(absolute),
+    rootFiles: listRootFiles(absolute).filter((name) => keep(name)),
     branch,
     branchFolder,
     branchFolderHasContent:
       branchFolder === undefined ? false : isNonEmptyDir(path.join(absolute, branchFolder)),
     declaredBranches: collectDeclaredBranches(absolute),
-    demoContents: collectDemoContents(absolute),
+    demoContents: collectDemoContents(absolute).filter(({ relativePath }) => keep(relativePath)),
     // Unknown diff (`undefined`) → assume changes outside docs, so we never grant the
     // docs-only `branch-folder` exception on a guess.
     hasChangesOutsideDocs:

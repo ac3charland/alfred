@@ -31,14 +31,19 @@ push-time is when the branch's demo must exist.
 Always go through an `npm run` script, never the binary directly:
 
 ```bash
-npm run lint:demos -w tools/demo-lint              # lint docs/demos (the check:slow default)
+npm run lint:demos -w tools/demo-lint              # the gate: only demos changed vs trunk
+npm run audit:demos                                # every demo (root script, --all)
 npm run lint:demos -w tools/demo-lint -- <dir>     # lint a different demos directory
 npm run lint:demos -w tools/demo-lint -- --branch <name> <dir>  # pretend you're on <name>
 ```
 
 With no directory it lints `docs/demos` (resolved relative to the tool, so it works from
-any cwd). `--branch` overrides the git branch — handy for checking what a given branch
-owes, and what the tests/demo use for deterministic output. `--help` prints usage.
+any cwd). The gate scopes the content/structure checks to demos **changed on this branch vs
+trunk**, so a newly-added rule never retroactively fails an untouched demo; `--all` (or the
+root `audit:demos`) lints every demo, and an unknown diff conservatively lints everything.
+`branch-folder` always evaluates the whole tree — it's about what this branch owes, not what
+changed. `--branch` overrides the git branch — handy for checking what a given branch owes,
+and what the tests/demo use for deterministic output. `--help` prints usage.
 
 ## The rules
 
@@ -80,10 +85,13 @@ It's a standard rule-registry split: `src/demos.ts` gathers a pure `DemosContext
 holds the rule registry (add a `Rule` to the exported `rules` array to lint something new),
 `src/lint.ts` runs them, and `src/cli.ts` is the entry point. Git facts are computed in the
 CLI and injected for testability: `currentBranch()` and `changedPathsSinceTrunk()` shell out
-to git, the CLI passes both into `gatherDemos(demosDir, cwd, branch, changedPaths)`, and tests
-pass literals (so the raw git calls stay untested). `hasChangesOutsideDocs` is `changedPaths`
-classified by whether any path falls outside `docs/`, defaulting to `true` on an `undefined`
-(unknown) diff so the docs-only exception is never granted on a guess. `declaredBranches` is built by walking every
+to git, the CLI passes both into `gatherDemos(demosDir, cwd, branch, changedPaths, changedOnly)`,
+and tests pass literals (so the raw git calls stay untested). `hasChangesOutsideDocs` is
+`changedPaths` classified by whether any path falls outside `docs/`, defaulting to `true` on an
+`undefined` (unknown) diff so the docs-only exception is never granted on a guess. `changedOnly`
+(the gate, set when no dir/`--all` is given) narrows `rootFiles` + `demoContents` to demos whose
+key — the first segment under `docs/demos/`, via `changedDemoKeys` — changed vs trunk; an
+unknown diff lints everything. `declaredBranches` is built by walking every
 `*.md` under `docs/demos/` and reading each doc's `branch:` front matter via
 `readDeclaredBranch` (a deliberately tiny YAML-scalar reader — demo-lint needs only that
 one field, so it does **not** depend on `tools/showboat`'s parser). The same
