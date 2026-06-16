@@ -14,7 +14,7 @@ day-to-day use (running it, the rules, fixing findings), stay in the SKILL.md bo
 
 ## Architecture: a rule registry over parsed skills
 
-The tool is four small modules under `tools/skill-lint/src/`, deliberately split so the
+The tool consists of small modules under `tools/skill-lint/src/`, deliberately split so the
 extension point (rules) is isolated from parsing and I/O:
 
 - **`skill.ts`** — turns a `SKILL.md` path into a `SkillContext`: frontmatter `name` /
@@ -28,13 +28,19 @@ extension point (rules) is isolated from parsing and I/O:
   named constants.
 - **`lint.ts`** — orchestration: run every rule over every skill, collect `SkillReport`s,
   tally severities.
-- **`cli.ts`** — argument parsing, the default-skills-dir resolution, human-readable
-  output, and the exit code (1 if any error, else 0; usage errors exit 2).
+- **`git.ts`** — the changed-skill detection for the gate: `changedPathsSinceTrunk()` (the
+  one impure spot — it shells out to git) feeds the pure `changedSkillNames()` and
+  `selectChangedSkills()`. The git call is isolated so the mapping/filter logic stays
+  unit-testable with literal paths (mirroring how `demo-lint` keeps its raw git calls out of
+  the tested core).
+- **`cli.ts`** — argument parsing (`--all`), the default-skills-dir resolution, the
+  check-mode changed-set filter, human-readable output, and the exit code (1 if any error,
+  else 0; usage errors exit 2).
 
-The data flow is one direction: `cli → resolve paths → parseSkill → lintSkills(rules) →
-report`. A rule never touches the filesystem or argv; everything it needs is on
-`SkillContext`. That's what keeps rules trivial to unit-test (construct a context literal,
-call the rule) and the set easy to grow.
+The data flow is one direction: `cli → resolve paths → (check mode: filter to changed) →
+parseSkill → lintSkills(rules) → report`. A rule never touches the filesystem or argv;
+everything it needs is on `SkillContext`. That's what keeps rules trivial to unit-test
+(construct a context literal, call the rule) and the set easy to grow.
 
 ## Adding a rule
 
@@ -66,6 +72,15 @@ authoring:
   ~1024-char cap." That cap is the per-skill slice of the `available_skills` listing
   budget Claude sees; past it the description is silently truncated and triggering
   degrades. Hence an **error**.
+- **`DESCRIPTION_SOFT_MAX_CHARS = 700`** — a tightness target well under the hard cap. A
+  description past it is usually smuggling in body content (rule details, implied context,
+  extra scope) instead of stating the subject + triggers, so it's a **warning** that nudges a
+  re-check, never a failure. It only surfaces on skills you actually changed (the gate is
+  changed-only), so the nudge lands on the description you're editing, not the whole library.
+- **repo name ⇒ no-repo-name** — skill-creator: the agent already knows which repo it's in
+  (CLAUDE.md), so naming it ("…in alfred") is redundant scope that wastes the front-loaded,
+  length-capped triggering budget. Mechanically checkable, so it's an **error** rather than
+  prose nobody enforces.
 - **`BODY_MAX_LINES = 500`** — skill-creator: keep SKILL.md "under 500 lines" ideal, and
   past that add hierarchy / push detail into `references/`. The guidance explicitly says
   you may go longer when warranted, so this is a **warning**, not an error.
@@ -80,24 +95,31 @@ number across rules.
 
 ## How it's wired into check:fast
 
-`tools/skill-lint` is an npm workspace (under the root `package.json` `workspaces:
-["tools/*"]`). Its own `check:fast` runs the standard package gate **and then** the
-linter over the whole library:
+`lint:skills` is **monorepo-wide** — its scope is the whole `.claude/skills/` tree, not the
+`tools/skill-lint` package — so it's hoisted into the **root** `check:fast`, ahead of the
+workspace fan-out, not buried in the package's own `check:fast` (see the `backpressure` skill
+for the where-a-check-lives rule):
 
 ```jsonc
+// root package.json
+"check:fast": "npm run lint:skills -w tools/skill-lint && npm run check:fast --workspaces --if-present",
 // tools/skill-lint/package.json
-"lint:skills": "node src/cli.ts",
-"check:fast": "npm run typecheck && npm run lint && npm run format && npm run test && npm run lint:skills"
+"lint:skills":       "node src/cli.ts",          // the gate: changed skills only
+"lint:skills:audit": "node src/cli.ts --all"      // the full sweep
 ```
 
-The root `check:fast` fans out to every workspace (`npm run check:fast --workspaces
---if-present`), so the skill lint runs on every commit with no root-level wiring. Because
-`lint:skills` passes no path, `cli.ts` falls back to its default: the repo's
-`.claude/skills`, located relative to the CLI file (via `fileURLToPath(import.meta.url)`,
-three levels up) rather than the cwd — so it lints the real library whether it's invoked
-from the package dir during the fan-out or from the repo root by hand.
+`tools/skill-lint`'s own `check:fast` is just the standard package gate (typecheck → lint →
+format → test) over its **own** source — it does **not** call `lint:skills`, or the root call
+plus the fan-out would run it twice.
 
-Only **errors** fail the gate; the `body-length` warning is printed but exits 0.
+Because `lint:skills` passes no path, `cli.ts` resolves its default library — the repo's
+`.claude/skills`, located relative to the CLI file (`fileURLToPath(import.meta.url)`, three
+levels up) rather than the cwd, so it works whether invoked from the package dir or the repo
+root — and then **filters to the skills changed vs trunk**. The root `audit:skills` script
+(`--all`) skips that filter to sweep everything.
+
+Only **errors** fail the gate; warnings (`body-length`, `description-tightness`) are printed
+but exit 0.
 
 ## Maintaining the TypeScript source
 

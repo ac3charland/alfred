@@ -32,11 +32,13 @@ repo root (package.json: "workspaces": ["frontend","workers","database"])
 └─ database/package.json  ← may own no check scripts at all
 ```
 
-The root `check:fast`, `check:slow`, and `check` scripts each run:
+The root `check:fast`, `check:slow`, and `check` scripts each fan out with:
 ```
 npm run <tier> --workspaces --if-present
 ```
 This fans the command to every workspace and **gracefully skips** any workspace whose `package.json` does not define that script. That's how workers' missing `check:slow` and database's missing checks are silently bypassed without failing the root command.
+
+The root tiers may also compose a **monorepo-wide** check (one whose scope is the whole repo, not any package) *around* the fan-out — e.g. `npm run lint:skills -w tools/skill-lint && npm run check:fast --workspaces --if-present`. That belongs in the root, not buried in a workspace's `check:*`; see the `backpressure` skill for the where/which-tier/avoid-double-run rules.
 
 ---
 

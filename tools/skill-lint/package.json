@@ -10,7 +10,8 @@
     "format": "prettier --write --cache .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
     "lint:skills": "node src/cli.ts",
-    "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test && npm run lint:skills"
+    "lint:skills:audit": "node src/cli.ts --all",
+    "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

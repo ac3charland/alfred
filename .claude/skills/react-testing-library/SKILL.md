@@ -4,9 +4,9 @@ description: >
   Covers React component testing with React Testing Library:
   query selection (getBy/queryBy/findBy, role/label/text priority), user interactions
   via @testing-library/user-event v14 (async/await, setup()), async patterns (findBy,
-  waitFor), rendering with context providers, and patterns specific to alfred
-  components — capture box, task rows, subtask lists, Radix Dialog modals, and folder
-  navigation. Use before writing any file that imports from @testing-library/react.
+  waitFor), rendering with context providers, and project-specific component patterns —
+  capture box, task rows, subtask lists, Radix Dialog modals, and folder navigation. Use
+  before writing any file that imports from @testing-library/react.
   Do NOT use for end-to-end browser flows (playwright skill) or pure-logic unit tests
   with no rendered component (jest skill).
 ---

@@ -1,7 +1,7 @@
 ---
 name: git
 description: >
-  Covers git CLI workflows in alfred: author/committer identity for verified commits,
+  Covers git CLI workflows in the monorepo: author/committer identity for verified commits,
   rewriting commit metadata, safe rebase patterns, and the "stale local main" trap.
   Use when running git rebase, git filter-branch, git push --force, amending commits,
   or fixing unverified commit warnings from the stop hook.

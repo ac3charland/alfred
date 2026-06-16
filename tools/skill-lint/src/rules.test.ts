@@ -1,5 +1,10 @@
 import { countBySeverity, lintSkill, lintSkills } from './lint.ts';
-import { BODY_MAX_LINES, DESCRIPTION_MAX_CHARS, rules } from './rules.ts';
+import {
+  BODY_MAX_LINES,
+  DESCRIPTION_MAX_CHARS,
+  DESCRIPTION_SOFT_MAX_CHARS,
+  rules,
+} from './rules.ts';
 import type { Heading, SkillContext } from './skill.ts';
 
 function makeSkill(overrides: Partial<SkillContext> = {}): SkillContext {
@@ -37,6 +42,41 @@ describe('description-length', () => {
     const [finding] = findingsFor('description-length', skill);
     expect(finding?.severity).toBe('error');
     expect(finding?.message).toContain(String(DESCRIPTION_MAX_CHARS + 1));
+  });
+});
+
+describe('description-tightness', () => {
+  it('passes a description at the soft target', () => {
+    const skill = makeSkill({ description: 'a'.repeat(DESCRIPTION_SOFT_MAX_CHARS) });
+    expect(findingsFor('description-tightness', skill)).toHaveLength(0);
+  });
+
+  it('warns (does not error) one char over the soft target', () => {
+    const skill = makeSkill({ description: 'a'.repeat(DESCRIPTION_SOFT_MAX_CHARS + 1) });
+    const [finding] = findingsFor('description-tightness', skill);
+    expect(finding?.severity).toBe('warn');
+    expect(finding?.message).toContain(String(DESCRIPTION_SOFT_MAX_CHARS));
+  });
+
+  it('defers to description-length over the hard cap (no duplicate finding)', () => {
+    const skill = makeSkill({ description: 'a'.repeat(DESCRIPTION_MAX_CHARS + 1) });
+    expect(findingsFor('description-tightness', skill)).toHaveLength(0);
+  });
+});
+
+describe('description-no-repo-name', () => {
+  it('passes a description that names no repo', () => {
+    const skill = makeSkill({ description: 'Covers the --workspaces fan-out in the monorepo.' });
+    expect(findingsFor('description-no-repo-name', skill)).toHaveLength(0);
+  });
+
+  it.each([
+    ['lowercase', "Documents alfred's check wiring."],
+    ['capitalized', 'Documents Alfred check wiring.'],
+  ])('errors when the description names the repo (%s)', (_label, description) => {
+    const [finding] = findingsFor('description-no-repo-name', makeSkill({ description }));
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('names the repo');
   });
 });
 
@@ -99,9 +139,11 @@ describe('compound-toc', () => {
 });
 
 describe('lint orchestration', () => {
-  it('registers the three rules', () => {
+  it('registers the rules', () => {
     expect(rules.map((rule) => rule.name)).toEqual([
       'description-length',
+      'description-tightness',
+      'description-no-repo-name',
       'body-length',
       'compound-toc',
     ]);

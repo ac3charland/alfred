@@ -203,6 +203,30 @@ Being told to skip a step implies skipping all later steps as well:
 
 ---
 
+## Editing the skill library is high-leverage — slow down
+
+A skill steers **every future agent** in the swarm, so a mistake in one — wrong guidance, a
+description that misfires, stale text — compounds across sessions instead of being caught
+once. Treat any change under `.claude/skills/` as higher-stakes than app code, and read the
+relevant meta-skill **before** you touch it:
+
+- **Creating a skill** → read the `skill-creator` skill first.
+- **Updating a skill** → read the `compounding-learning` skill first (the house style for
+  *how* to record: lean, current, right altitude, no duplication, no narration of the edit).
+- **Either way** → the `skill-lint` skill documents the gate your edit must pass. Run
+  `npm run lint:skills -w tools/skill-lint` **while drafting**, not just at commit, so its
+  feedback lands before you've moved on.
+
+**The `description` is the highest-leverage line and the easiest to get wrong** — it's the
+only text an agent sees when deciding whether to load the skill. Don't write it from memory:
+after drafting, **walk the `skill-creator` "Writing a description that triggers" checklist
+line by line against your draft** (and skim its `references/description-examples.md` before/after
+library) and fix each miss. The failures that recur across the library are inlining the body's 
+guidance and burying the distinctive keywords past the first ~250 chars. `skill-lint` catches 
+the mechanizable smells; the rest are yours to check, every time.
+
+---
+
 ## Compounding-learning rule (memory layer)
 
 Agent knowledge is a durable, compounding asset. Back-pressure prevents

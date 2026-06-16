@@ -12,6 +12,12 @@ import type { SkillContext } from './skill.ts';
  * them — point at one source of truth.
  */
 export const DESCRIPTION_MAX_CHARS = 1024;
+/**
+ * A soft target well under the hard cap. A description pushing past this is usually
+ * smuggling in body content (rules, implied context, extra scope) rather than stating the
+ * subject + trigger conditions — so it's an advisory nudge to re-tighten, never a failure.
+ */
+export const DESCRIPTION_SOFT_MAX_CHARS = 700;
 export const BODY_MAX_LINES = 500;
 
 export type Severity = 'error' | 'warn';
@@ -74,6 +80,52 @@ const bodyLength: Rule = {
   },
 };
 
+/**
+ * A description under the hard cap but past the soft target. Warns (never fails) so the
+ * author re-checks it for smuggled-in content. Skips the over-cap case — {@link
+ * descriptionLength} already errors there, and one finding per description is enough.
+ */
+const descriptionTightness: Rule = {
+  name: 'description-tightness',
+  description: `A description should stay tight (under ~${String(DESCRIPTION_SOFT_MAX_CHARS)} chars).`,
+  check(skill) {
+    const { length } = skill.description;
+    if (length <= DESCRIPTION_SOFT_MAX_CHARS || length > DESCRIPTION_MAX_CHARS) return [];
+    return [
+      {
+        rule: 'description-tightness',
+        severity: 'warn',
+        message: `description is ${String(length)} chars (recommended < ${String(DESCRIPTION_SOFT_MAX_CHARS)}). Check whether it includes rule content, implied context (the repo or package it's in), or other extraneous information — a description states the subject and trigger conditions, not the body's guidance.`,
+      },
+    ];
+  },
+};
+
+/** The repo name in a description is redundant scope — see {@link descriptionNoRepoName}. */
+const REPO_NAME = /alfred/i;
+
+/**
+ * The agent already knows which repo it's in (CLAUDE.md supplies that), so naming the
+ * repo in a description wastes the front-loaded, length-capped triggering budget on
+ * scope every skill shares. Disambiguate *which part* of the project with "the frontend"
+ * / "the monorepo" instead — never the repo name.
+ */
+const descriptionNoRepoName: Rule = {
+  name: 'description-no-repo-name',
+  description: 'A description must not name the repo — it is redundant scope.',
+  check(skill) {
+    const match = REPO_NAME.exec(skill.description);
+    if (!match) return [];
+    return [
+      {
+        rule: 'description-no-repo-name',
+        severity: 'error',
+        message: `description names the repo ("${match[0]}"). The agent already knows which repo it's in (CLAUDE.md), so drop it — it wastes the front-loaded triggering budget. Disambiguate which part with "the frontend" / "the monorepo" if needed.`,
+      },
+    ];
+  },
+};
+
 const TOC_HEADING = /^(table of contents|contents)$/i;
 /** The TOC must be the 1st or 2nd top-level section — `<=` this 0-based index. */
 const MAX_TOC_SECTION_INDEX = 1;
@@ -119,4 +171,10 @@ const compoundToc: Rule = {
  * The active rule set, applied to every skill in registration order. This array
  * is the extension point: append a {@link Rule} to lint something new.
  */
-export const rules: readonly Rule[] = [descriptionLength, bodyLength, compoundToc];
+export const rules: readonly Rule[] = [
+  descriptionLength,
+  descriptionTightness,
+  descriptionNoRepoName,
+  bodyLength,
+  compoundToc,
+];
