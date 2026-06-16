@@ -75,3 +75,19 @@ npm run lint:demos -w tools/demo-lint 2>/dev/null | grep 'demo-lint:'
 skill-lint: 29 skill(s), 0 error(s), 1 warning(s).
 demo-lint: 0 error(s), 0 warning(s).
 ```
+
+A new repo-wide rule on this branch: skill-lint now errors when a skill description names the repo (matches /alfred/i) — redundant scope that wastes the front-loaded triggering budget, since the agent already knows the repo from CLAUDE.md. It runs inside check:fast (skill-lint), so it gates every commit:
+
+```bash
+mkdir -p .claude/skills/zzz-repo-name
+printf -- '---\nname: zzz-repo-name\ndescription: Documents alfred check wiring.\n---\n\n# X\n\nbody\n' > .claude/skills/zzz-repo-name/SKILL.md
+npm run lint:skills -w tools/skill-lint > /tmp/bp-e.log 2>&1; echo "lint:skills exit=$?"
+grep -E 'description-no-repo-name|skill-lint:' /tmp/bp-e.log
+rm -rf .claude/skills/zzz-repo-name
+```
+
+```output
+lint:skills exit=1
+  ✗ error [description-no-repo-name] description names the repo ("alfred"). The agent already knows which repo it's in (CLAUDE.md), so drop it — it wastes the front-loaded triggering budget. Disambiguate which part with "the frontend" / "the monorepo" if needed.
+skill-lint: 30 skill(s), 1 error(s), 1 warning(s).
+```
