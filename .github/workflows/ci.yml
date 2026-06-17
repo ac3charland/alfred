@@ -27,16 +27,11 @@ jobs:
 
   check-slow:
     needs: [check-fast]
-    # Run on an arm64 runner inside the SAME pinned Playwright image the Mac renders in, so
-    # image snapshots are byte-identical everywhere (same arch, same Chromium, same fonts).
-    # The image already bundles the browsers + Noble font stack, so no `playwright install`.
+    # arm64 runner so the snapshot render (inside the pinned Playwright image, via the
+    # `test:storybook` Docker wrapper) is the same arch as the committed baselines — no QEMU
+    # emulation. The check command stays the full-scope root `npm run check:slow`; the wrapper
+    # just launches Docker on the runner host.
     runs-on: ubuntu-24.04-arm
-    container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
-      # Chromium needs a real /dev/shm or it crashes mid-render.
-      options: --ipc=host
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,8 +48,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Already inside the canonical image, so call the in-container runner directly (the
-      # `test:storybook` wrapper would try to launch Docker again). frontend is the only
-      # package with slow checks.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
       - name: Run slow checks
-        run: npm run check:slow:linux -w frontend
+        run: npm run check:slow
