@@ -221,6 +221,30 @@ export function enterCodeModule(
   });
 }
 
+/**
+ * Create a brand-new code story from the board: mints a fresh item + sidecar at
+ * `needs_refinement` with a server-allocated ref via `create_code_story`. Lives in
+ * `lib/` (the null-aware layer) because `notes` can be `null` to represent "no notes"
+ * — component code maps empty textarea values to `null` before calling the store, and
+ * the store passes them through here.
+ */
+export function createCodeStory(
+  projectId: string,
+  epicId: string,
+  title: string,
+  notes: string | null,
+): Promise<CodeItem> {
+  return apiRequest<CodeItem>('/api/code', {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      notes,
+      project_id: projectId,
+      epic_id: epicId,
+    }),
+  });
+}
+
 /** Optional extra fields a state transition may carry (e.g. Block sets `blocked_reason`). */
 export interface UpdateCodeStateExtra {
   blocked_reason?: string | null;

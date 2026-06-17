@@ -1,7 +1,7 @@
 import { withSession } from '@/lib/api/auth';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createCodeSchema } from '@/lib/api/schemas';
-import type { CodeStory } from '@/lib/types';
+import type { CodeItem, CodeStory } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // GET /api/code — list every code story (the flattened v_code_stories view)
@@ -47,15 +47,31 @@ export const POST = withSession(async (session, request) => {
     return jsonError(400, 'Invalid request body', parsed.error.issues);
   }
 
-  const { data, error } = await supabase
-    .rpc('enter_code_module', {
-      p_item: parsed.data.item_id,
-      p_project: parsed.data.project_id,
-      p_epic: parsed.data.epic_id,
-    })
-    .single();
+  // create_code_story is in migration 0003 (applied locally); database.types.ts is not
+  // yet regenerated in this sandbox. Cast the function name to satisfy the type registry
+  // until types are regenerated after the migration is applied.
+  const result: { data: CodeItem | null; error: { message: string } | null } =
+    'item_id' in parsed.data
+      ? await supabase
+          .rpc('enter_code_module', {
+            p_item: parsed.data.item_id,
+            p_project: parsed.data.project_id,
+            p_epic: parsed.data.epic_id,
+          })
+          .single()
+      : await supabase
+          .rpc(
+            'create_code_story' as never,
+            {
+              p_project: parsed.data.project_id,
+              p_epic: parsed.data.epic_id,
+              p_title: parsed.data.title,
+              p_notes: parsed.data.notes ?? null,
+            } as never,
+          )
+          .single();
 
-  if (error) return jsonError(500, error.message);
+  if (result.error) return jsonError(500, result.error.message);
 
-  return jsonOk(data, 201);
+  return jsonOk(result.data, 201);
 });

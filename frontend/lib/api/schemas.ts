@@ -138,15 +138,31 @@ export const updateEpicSchema = z
 export type UpdateEpicInput = z.infer<typeof updateEpicSchema>;
 
 /**
- * Body for POST /api/code — the gate. Calls `enter_code_module(item, project, epic)`,
- * which flips the item to `code`, clears its task-only fields, and creates the sidecar
- * at `needs_refinement` with a server-allocated ref.
+ * Body for POST /api/code — two discriminated shapes:
+ *
+ * - **gate** (existing): `{ item_id, project_id, epic_id }` — flips an existing item to the
+ *   factory via `enter_code_module`.
+ * - **new story** (added): `{ title, notes?, project_id, epic_id }` — mints a fresh item +
+ *   sidecar via `create_code_story`. The discriminant is the presence of `item_id` vs `title`.
  */
-export const createCodeSchema = z.object({
+export const gateCodeSchema = z.object({
   item_id: uuid,
   project_id: uuid,
   epic_id: uuid,
 });
+
+export type GateCodeInput = z.infer<typeof gateCodeSchema>;
+
+export const newCodeStorySchema = z.object({
+  title: z.string().min(1),
+  notes: z.string().nullable().optional(),
+  project_id: uuid,
+  epic_id: uuid,
+});
+
+export type NewCodeStoryInput = z.infer<typeof newCodeStorySchema>;
+
+export const createCodeSchema = z.union([gateCodeSchema, newCodeStorySchema]);
 
 export type CreateCodeInput = z.infer<typeof createCodeSchema>;
 
