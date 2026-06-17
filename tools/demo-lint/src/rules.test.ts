@@ -159,6 +159,23 @@ describe('no-test-in-demo', () => {
     ).toHaveLength(2);
   });
 
+  it('passes when npm run test appears only inside an output block', () => {
+    expect(
+      findingsFor(
+        'no-test-in-demo',
+        makeDemos({
+          demoContents: [
+            {
+              relativePath: 'my-feature/demo.md',
+              content:
+                "```bash\nnode -e \"console.log(require('./package.json').scripts['check:fast'])\"\n```\n\n```output\nnpm run typecheck && npm run lint && npm run test\n```",
+            },
+          ],
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
   it('passes when a demo mentions npm run test:storybook:update (a different script)', () => {
     expect(
       findingsFor(

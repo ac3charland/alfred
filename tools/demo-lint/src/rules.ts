@@ -83,7 +83,10 @@ const noTestInDemo: Rule = {
     'Demo exec blocks must not run the test suite — show the new behavior (UI screenshot or real output) instead.',
   check(demos) {
     return demos.demoContents
-      .filter(({ content }) => /npm run test(?!:)/.test(content))
+      .filter(({ content }) => {
+        const stripped = content.replaceAll(/^```output\r?\n[\s\S]*?^```/gm, '');
+        return /npm run test(?!:)/.test(stripped);
+      })
       .map(({ relativePath }) => ({
         rule: 'no-test-in-demo',
         severity: 'error' as const,
