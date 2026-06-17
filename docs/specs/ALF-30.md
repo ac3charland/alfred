@@ -78,13 +78,15 @@ fix only true violations"):
 | `ui/dropdown-menu.tsx` (+ `folder-nav.tsx` etc.) | overlay (menu) | fade + `zoom-95` + per-side `slide-in-from-*` | ✅ conforms (fade present; zoom/slide are allowed accents) |
 | `shell/toast-viewport.tsx` | overlay (toast) | `animate-fade-in` | ✅ conforms (toast treated as an overlay → fade; decided in refinement) |
 | `tasks/task-row.tsx` (subtask list) | in-flow disclosure | grid-rows slide | ✅ conforms |
+| `tasks/task-row.tsx` (inline meta panel — due date + notes detail, `isMetaOpen`) | in-flow disclosure | **conditional render (`{isMetaOpen && …}`), no animation** | ❌ **violation — open/close has no slide; fix alongside board** |
 | `tasks/inbox-screen.tsx` (landing ⇆ inbox) | in-flow disclosure | `animate-expand-y` / `animate-collapse-y` (slide) | ✅ conforms — **but the motion skill text still describes this as the *fade* reveal pattern; that example is stale and must be corrected** |
 | `code/board.tsx` (per-epic collapse) | in-flow disclosure | **conditional render (`collapsed ? null : …`), no animation** | ❌ **violation — collapse/expand has no slide; this is the headline fix** |
 
 **Net:** the overlays already fade and the other expansions already slide; the
-one true behavioral violation is `code/board.tsx`, whose per-epic
-collapse/expand mounts/unmounts with no animation. Plus one **documentation**
-correction (the stale `inbox-screen` example in the skill).
+true behavioral violations are **two in-flow disclosures that mount/unmount with
+no animation** — `code/board.tsx`'s per-epic collapse and `task-row.tsx`'s inline
+meta panel (due date + notes detail). Plus one **documentation** correction (the
+stale `inbox-screen` example in the skill).
 
 ## Proposed change
 
@@ -125,12 +127,20 @@ correction (the stale `inbox-screen` example in the skill).
    patterns — **no new motion token.** Keep the board-local collapsed-set state
    and the collapse-all behavior unchanged; this is a presentation change to *how*
    the content appears/disappears, not *whether* it does.
-2. **Re-run the audit method while implementing.** The table above is the known
+2. **`task-row.tsx` — give the inline meta panel a slide.** The due-date + notes
+   detail panel at `task-row.tsx` opens via `{isMetaOpen && (…)}` with no
+   animation. Apply the same in-flow disclosure pattern (grid-rows `0fr ⇆ 1fr`
+   expand/collapse with `overflow-hidden` inner div, `aria-hidden`/`inert` on the
+   collapsed region, `motion-reduce:` guard), reusing the existing tokens/pattern —
+   **no new token.** This is the same shape as the sibling subtask list already in
+   this component, so follow that implementation. Notes/due-date editing behavior
+   itself is unchanged — only *how* the panel appears/disappears.
+3. **Re-run the audit method while implementing.** The table above is the known
    set; before finishing, sweep for any other in-flow disclosure that renders
    conditionally with no slide (the `x ? null : <…/>` / `{open && <…/>}` shape on
    content that reflows the page) and fix it the same way, or note in the PR that
    none were found.
-3. **No change to the conforming components.** Per the pragmatic decision, the
+4. **No change to the conforming components.** Per the pragmatic decision, the
    fading overlays and their zoom/slide accents are left as-is; toasts stay a fade.
 
 ## Acceptance criteria
@@ -158,23 +168,28 @@ correction (the stale `inbox-screen` example in the skill).
       token), with `aria-hidden`/`inert` on the collapsed content and a
       `motion-reduce:` guard; collapse-all and the collapsed-set state behavior are
       unchanged.
+- [ ] `task-row.tsx`'s inline meta panel (due date + notes detail) **animates with
+      a slide** on open/close, using the same in-flow disclosure pattern as the
+      sibling subtask list (grid-rows, `aria-hidden`/`inert`, `motion-reduce:`
+      guard); due-date and notes editing behavior is unchanged.
 - [ ] The remaining audited overlays still fade and the remaining in-flow
       disclosures still slide (no regressions); conforming components are untouched.
-- [ ] The board change is covered by a test that would fail without it. Because the
-      slide is CSS (not observable in jsdom), the primary evidence is a **Storybook
-      image snapshot** (mid/expanded vs. collapsed board epic) with the approved
-      baseline committed; optionally an RTL assertion that the collapsed region is
-      `aria-hidden` / not in the accessibility tree (mirroring the subtask-list
-      tests), and/or a Playwright check.
+- [ ] Each fix is covered by a test that would fail without it. Because the slide is
+      CSS (not observable in jsdom), the primary evidence is a **Storybook image
+      snapshot** for each (expanded vs. collapsed board epic; open vs. closed meta
+      panel) with approved baselines committed; optionally RTL assertions that the
+      collapsed regions are `aria-hidden` / not in the accessibility tree (mirroring
+      the subtask-list tests), and/or a Playwright check.
 
 **General**
 
 - [ ] `npm run lint:skills -w tools/skill-lint` is green and `npm run check` is
       green.
-- [ ] A demo doc at `docs/demos/ALF-30.md` captures the board collapse/expand
-      slide (before/after or the Storybook snapshot diff), per the repo workflow,
-      and `npm run demo -- verify` passes. (Part A alone wouldn't need a demo, but
-      Part B is a user-facing behavioral change, so the demo is required.)
+- [ ] A demo doc at `docs/demos/ALF-30.md` captures both slide fixes (the board
+      collapse/expand and the task-row meta panel open/close — before/after or the
+      Storybook snapshot diffs), per the repo workflow, and `npm run demo -- verify`
+      passes. (Part A alone wouldn't need a demo, but Part B is a user-facing
+      behavioral change, so the demo is required.)
 
 ## Out of scope / open questions
 
@@ -191,4 +206,5 @@ correction (the stale `inbox-screen` example in the skill).
 - **Open question — exact skill prose & section placement** are left to the
   implementing session, constrained by the acceptance criteria and `skill-lint`;
   the spec fixes the *content* (the mapping, the reconciliation, the stale-example
-  correction) and the *one behavioral fix* (`board.tsx`), not the wording.
+  correction) and the *behavioral fixes* (`board.tsx` collapse and `task-row.tsx`
+  meta panel), not the wording.
