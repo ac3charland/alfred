@@ -134,8 +134,7 @@ describe('no-test-in-demo', () => {
         demoContents: [
           {
             relativePath: 'my-feature/demo.md',
-            content:
-              '```bash\nnpm run test -w frontend -- --testPathPatterns=date-utils\n```\n',
+            content: '```bash\nnpm run test -w frontend -- --testPathPatterns=date-utils\n```\n',
           },
         ],
       }),
@@ -175,7 +174,7 @@ describe('no-test-in-demo', () => {
             {
               relativePath: 'my-feature/demo.md',
               content:
-                '```bash\nnode -e "console.log(require(\'./package.json\').scripts[\'check:fast\'])"\n```\n\n```output\nnpm run typecheck && npm run lint && npm run format && npm run test\n```\n',
+                "```bash\nnode -e \"console.log(require('./package.json').scripts['check:fast'])\"\n```\n\n```output\nnpm run typecheck && npm run lint && npm run format && npm run test\n```\n",
             },
           ],
         }),
