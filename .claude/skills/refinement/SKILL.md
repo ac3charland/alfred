@@ -1,19 +1,18 @@
 ---
 name: refinement
 description: >
-  Describes the refinement workflow for turning a code ticket into a spec: in a refinement
-  session you write one spec artifact and open the pull request that advances the ticket — no
-  implementation. Read whenever you're handed a ticket to refine into a spec: a refinement
+  Describes the refinement workflow for turning a code ticket into a spec. 
+  Read whenever you're handed a ticket to refine into a spec: a refinement
   session, or a prompt asking for a SPEC ONLY plus a spec-carrying PR. Trigger on: "refine the
   ticket", "refinement session", "write the spec for", "spec-only PR", "refinement PR", or a
   refinement launch prompt.
 ---
 
-# Refinement (the Software Factory spec step)
+# Refinement
 
 > This skill is **dropped into each project repo** at `.claude/skills/refinement/SKILL.md`.
-> A refinement session auto-loads it; the launch prompt also points here. It's a committed
-> convention so refinement output is consistent and the webhook Worker can rely on the PR shape.
+> A refinement session triggered by our agent orchestrator (alfred) auto-loads it; the launch prompt also points here. 
+> It's a committed convention so refinement output is consistent and the orchestrator's webhook Worker can rely on the PR shape.
 
 You are in a **refinement** session for a story. Your job is to **write a spec** — **not to
 implement anything**. Produce one spec artifact and open a PR; that is the entire deliverable.
@@ -27,9 +26,9 @@ once the scope is clear do you write the spec below.
 ## What to produce
 
 1. **A spec markdown file at `docs/specs/<REF>.md`** (e.g. `docs/specs/ALF-42.md`, using the
-   story's ref). Write it OpenSpec-style — implementation-ready, scoped to this one story:
+   story's ref). Write it so it is implementation-ready, scoped to this one story:
    - **Title:** `# <REF> — <story title>` as the first line, so the browser tab is scannable.
-   - **Context / problem:** what we're solving and why, drawn from the story title + notes.
+   - **Context / problem:** what we're solving and why, drawn from the story title + notes + user feedback.
    - **Proposed change:** the concrete behavior to build.
    - **Acceptance criteria:** a checklist a reviewer (and the implementation session) can verify.
    - **Out of scope / open questions:** anything deliberately deferred. Resolve the questions you
@@ -63,6 +62,4 @@ once the scope is clear do you write the spec below.
   actually a story (a question, a bug report, a duplicate of existing behavior), or can't be
   scoped from what you have, stop and tell the human — propose a split or a next step instead of
   forcing a spec to exist.
-- **Iterate via PR comments.** Refinement back-and-forth happens in review comments on this PR;
-  the story stays in `in_refinement` until the PR **merges**, which advances it straight to
-  `ready_for_dev` and snapshots your spec into alfred.
+- **Iterate via PR comments.** Refinement back-and-forth happens in review comments on this PR.
