@@ -22,8 +22,7 @@
     "test:storybook:linux:update": "npm run setup:chromium && npm run storybook:build && concurrently --kill-others --success=first \"http-server storybook-static -p 6006 --silent\" \"wait-on http://127.0.0.1:6006 && test-storybook --url http://127.0.0.1:6006 -u\"",
     "test:e2e": "node scripts/setup-chromium.mjs && playwright test",
     "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test",
-    "check:slow": "npm run test:storybook && npm run test:e2e",
-    "check:slow:linux": "npm run test:storybook:linux && npm run test:e2e"
+    "check:slow": "npm run test:storybook && npm run test:e2e"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
