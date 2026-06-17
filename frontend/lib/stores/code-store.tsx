@@ -146,6 +146,13 @@ export interface CodeActions {
    * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
   openClaudeSession: (ref: string, phase: 'refinement' | 'implementation') => Promise<void>;
+  /**
+   * Create a brand-new story in the given epic directly from the board. Mints a fresh
+   * `items` row + `code_items` sidecar at `needs_refinement` (the `create_code_story` RPC),
+   * with an optimistic card keyed by a temp id that reconciles to the server's real `item_id`
+   * + `ref` on success, or rolls back on error.
+   */
+  createStory: (epicId: string, title: string, notes: string | null) => Promise<CodeStory>;
 }
 
 interface CodeState {
@@ -535,6 +542,37 @@ export function CodeProvider({
           phase === 'refinement' ? 'in_refinement' : 'in_development';
         await transitionState(ref, nextState, {});
         window.open(url, '_blank');
+      },
+      async createStory(epicId, title, notes) {
+        const { projects, epics } = stateRef.current;
+        const epic = epics.find((e) => e.id === epicId);
+        if (epic === undefined) {
+          throw new Error(`Epic ${epicId} missing from the code store`);
+        }
+        const project = projects.find((p) => p.id === epic.project_id);
+        if (project === undefined) {
+          throw new Error(`Project for epic ${epicId} missing from the code store`);
+        }
+        const tempItemId = tempId();
+        const optimistic = makeOptimisticStory(
+          { id: tempItemId, title, notes, source_url: null },
+          project,
+          epic,
+        );
+        dispatch({ type: 'insertStory', story: optimistic });
+        try {
+          const saved = await api.createCodeStory(epic.project_id, epicId, title, notes);
+          // Replace both the temp id AND the ref/ref_number/timestamps from the server sidecar.
+          const reconciled: CodeStory = {
+            ...reconcileStory(optimistic, saved),
+            item_id: saved.item_id,
+          };
+          dispatch({ type: 'replaceStory', itemId: tempItemId, story: reconciled });
+          return reconciled;
+        } catch (error) {
+          dispatch({ type: 'removeStory', itemId: tempItemId });
+          throw error;
+        }
       },
     };
   }, []);
