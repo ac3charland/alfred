@@ -1,15 +1,16 @@
 ---
 name: motion
 description: >
-  Documents the frontend's motion conventions: the reusable animation design tokens (the `--animate-*`
-  theme tokens in globals.css, e.g. `animate-fade-in` / `animate-fade-out`), the pattern for
-  revealing/collapsing content with a fade (mount → fade-in, fade-out → unmount), how to add a
-  new motion token, and the jsdom `matchMedia` gotcha when testing motion-aware components. Use
-  whenever you add, reuse, or reason about fade/slide reveals, expand/collapse, hover lift,
-  entrance/exit transitions, or prefers-reduced-motion handling — "fade in/out", "transition",
-  "animate", "reveal", "collapse", "slide in", "reduced motion", "useSyncExternalStore for media
-  query", or "add a motion token". Pairs with the tailwindcss skill (token mechanics) and the
-  react / react-testing-library skills (component + test mechanics).
+  Documents the frontend's motion conventions, including the default mapping from UI element type to
+  motion: overlay surfaces fade in/out; in-flow disclosures slide open/closed; inline editing swaps
+  fade. Also the reusable `--animate-*` tokens in globals.css (`animate-fade-in`/`-out`,
+  `animate-expand-y`/`-collapse-y`), the grid-rows height expand/collapse, mandatory
+  `prefers-reduced-motion` guards, and the jsdom `matchMedia` testing gotcha. Use whenever you add or
+  reason about an animation/transition, or decide WHICH animation an element should use — "fade
+  in/out", "slide open/close", "expand/collapse", "reveal", "modal", "dialog", "dropdown", "floating
+  menu", "popover", "tooltip", "drawer", "overlay", "which animation to use", "reduced motion", "hover
+  lift", "add a motion token". Pairs with the tailwindcss skill (token mechanics) and the react /
+  react-testing-library skills.
 ---
 
 # Motion Skill — alfred project
@@ -98,14 +99,60 @@ Content is conditionally rendered ({open && <X/>})?
 
 ---
 
+## Default motion by element type
+
+Pick motion by **what kind of UI element it is**, so the same category always animates the
+same way — inconsistent choices across components are what read as AI-generated. Two
+categories:
+
+- **Overlay surface** — floats *above* the page (usually portalled), transient and
+  dismissible, doesn't reflow surrounding content: modals/dialogs, dropdown & context menus,
+  popovers, tooltips, command palettes, **toasts**. → **fade in / fade out** (opacity is the
+  through-line).
+- **In-flow disclosure** — expands/collapses *within* the document flow, pushing siblings as
+  it opens/closes: inline subtask lists, the landing ⇆ inbox reveal, the per-epic board
+  collapse, accordions, collapsible panels, edge drawers/sheets. → **slide open / slide
+  closed** — animate size/position (the grid-rows height expand/collapse), not opacity alone.
+
+**One-line principle:** *an overlay that floats over the page fades; content that opens
+within the page slides.*
+
+**Inline editing swaps fade.** A transient control that swaps in place between a display
+state and an editor (the task due-date display ⇆ `type="date"` input, the notes display ⇆
+textarea) is an editing affordance, not a flow-expanding disclosure — so it **fades**, like an
+overlay, even when nested inside a disclosure that itself slides. (The browser-native
+`type="date"` calendar popup is the browser's, not ours — the fade is on our display⇆editor swap.)
+
+**Required, not decorative.** A fade on every overlay; a real size/position change on every
+in-flow disclosure. The **wrong** choices are a pure slide with no fade on an overlay, a pure
+fade with no size change on a drawer (it reads as a popup, not a drawer), or **no animation at
+all** on a disclosure. A documented compound *accent* on top of the required fade is fine — the
+Radix `zoom-in-95` / per-side `slide-in-from-*` on a menu or modal stay. Every default still
+pairs with its `motion-reduce:` guard.
+
+Apply it with the patterns already documented below — the fade tokens / reveal-collapse for
+overlays, the grid-rows expand/collapse (or `animate-expand-y` / `animate-collapse-y`) for
+disclosures, animate-then-commit when a store removes the element. Don't re-derive them here.
+
+| Element | Category | Motion | Repo examples |
+|---|---|---|---|
+| Modal / dialog | overlay | fade (+ zoom accent ok) | `tasks/cascade-modal`, `code/story-detail-modal`, `code/*-dialog` |
+| Dropdown / context menu, popover, tooltip | overlay | fade (+ zoom/slide accent ok) | `ui/dropdown-menu` and its users |
+| Toast | overlay | fade | `shell/toast-viewport` |
+| Subtask list, board epic, landing ⇆ inbox | in-flow disclosure | slide (height) | `tasks/task-row` subtree, `code/board`, `tasks/inbox-screen` |
+| Inline meta panel (due date + notes) | in-flow disclosure | slide (height) | `tasks/task-row` (`isMetaOpen`) |
+| Due-date / notes editor swap | inline editing swap | fade | `tasks/task-row` (`isEditingDueDate` / `isEditingNotes`) |
+
+---
+
 ## Plain-English → Pattern Table
 
 | When you need to... | Use this pattern | Key things to know |
 |---|---|---|
 | **Fade something in on mount** | `className="animate-fade-in motion-reduce:animate-none"` | The `motion-reduce:animate-none` guard is mandatory (see Pitfalls). |
-| **Fade + slide a panel in** | compose with tw-animate-css: `animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none` | `animate-in` / `slide-in-*` come from `tw-animate-css` (already imported). Our `--animate-fade-*` tokens are for the pure-opacity reusable case. |
+| **Fade an overlay in, optionally with a slide/zoom accent** | fade is the default (`animate-fade-in`, or `animate-in fade-in-0`); add a compound accent with tw-animate-css: `animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none` | The fade is **required**; `slide-in-*` / `zoom-*` (from `tw-animate-css`, already imported) are *accents on top* — never a pure slide with no fade on an overlay. See "Default motion by element type". Our `--animate-fade-*` tokens are the pure-opacity reusable case. |
 | **Reveal/collapse a region with a real fade both ways** | The reveal/collapse pattern (below) | Keep mounted through the exit; unmount on `animationend`; honour reduced motion. |
-| **Reveal/collapse a region with a height expand both ways** | Use `animate-expand-y` / `animate-collapse-y` on a `grid` wrapper, with `overflow-hidden` inner div (same two-div as the grid-rows transition). `onAnimationEnd` with `event.target === event.currentTarget && !open` unmounts on collapse. | Analogous to the fade reveal/collapse pattern but for height. `forwards` on collapse-y holds height at 0 between `animationend` and unmount (same flash reason as fade-out). |
+| **Reveal/collapse a region with a height expand both ways** | Use `animate-expand-y` / `animate-collapse-y` on a `grid` wrapper, with `overflow-hidden` inner div (same two-div as the grid-rows transition). `onAnimationEnd` with `event.target === event.currentTarget && !open` unmounts on collapse. Used by `inbox-screen.tsx` (landing ⇆ inbox). | The slide variant of the mount-through-exit choreography (the fade reveal/collapse, but for height). `forwards` on collapse-y holds height at 0 between `animationend` and unmount (same flash reason as fade-out). |
 | **Smooth height expand/collapse (height: 0 → auto)** | CSS grid-rows trick (below) | `height: 0 → auto` can't be transitioned directly; `grid-template-rows: 0fr → 1fr` can. Drive it with a **`transition`** (class toggle), and for a _collapse_ prefer **`ease-out`** — `ease-in` crawls at the start and reads as sluggish. |
 | **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): the grid-rows transition + commit the store mutation on `transitionend` | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Used by `task-row.tsx` completion. |
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
@@ -117,7 +164,10 @@ Content is conditionally rendered ({open && <X/>})?
 ## The reveal / collapse pattern (fade in → mount, fade out → unmount)
 
 This is the canonical alfred pattern for "show this region with a fade, hide it with a fade".
-Used by `components/tasks/inbox-screen.tsx` (the landing ⇆ inbox reveal).
+The same mount-through-exit choreography also drives the **slide** variant:
+`components/tasks/inbox-screen.tsx` (the landing ⇆ inbox reveal) uses this structure with the
+`animate-expand-y` / `animate-collapse-y` tokens instead of the fade — an in-flow disclosure
+slides, so it animates height, not opacity.
 
 ```tsx
 'use client';
