@@ -54,6 +54,14 @@ Two categories, named so the mapping is unambiguous:
   just opacity — e.g. the grid-rows height expand/collapse).
 - **One-line principle:** *an overlay that floats over the page fades; content
   that opens within the page slides.*
+- **Inline editing swaps fade.** A transient *editing affordance* that swaps in
+  place between a display state and an editor (e.g. the task due-date
+  display ⇆ `type="date"` editor, the notes display ⇆ textarea) is a transient
+  control, **not** a flow-expanding disclosure — so it **fades** in/out, like an
+  overlay, even when it lives *inside* an in-flow disclosure that itself slides.
+  (The browser-native calendar popup of a `type="date"` input is rendered by the
+  browser and is out of our control — the fade applies to the editor swap, not the
+  native popup.)
 - **Allowed accents (pragmatic, not strict):** a fade is *required* on every
   overlay, but a documented compound flourish on top of it is fine — e.g. the
   Radix `zoom-in-95` / per-side `slide-in-from-*` accents on a menu or modal stay.
@@ -79,14 +87,18 @@ fix only true violations"):
 | `shell/toast-viewport.tsx` | overlay (toast) | `animate-fade-in` | ✅ conforms (toast treated as an overlay → fade; decided in refinement) |
 | `tasks/task-row.tsx` (subtask list) | in-flow disclosure | grid-rows slide | ✅ conforms |
 | `tasks/task-row.tsx` (inline meta panel — due date + notes detail, `isMetaOpen`) | in-flow disclosure | **conditional render (`{isMetaOpen && …}`), no animation** | ❌ **violation — open/close has no slide; fix alongside board** |
+| `tasks/task-row.tsx` (inline due-date editor swap, `isEditingDueDate` — the "datepicker") | inline editing swap → fade | **conditional swap (display ⇆ `type="date"` editor), no animation** | ❌ **violation — should fade in/out** |
+| `tasks/task-row.tsx` (inline notes editor swap, `isEditingNotes`) | inline editing swap → fade | **conditional swap (display ⇆ textarea), no animation** | ❌ **violation — should fade in/out (same treatment as the datepicker, for consistency)** |
 | `tasks/inbox-screen.tsx` (landing ⇆ inbox) | in-flow disclosure | `animate-expand-y` / `animate-collapse-y` (slide) | ✅ conforms — **but the motion skill text still describes this as the *fade* reveal pattern; that example is stale and must be corrected** |
 | `code/board.tsx` (per-epic collapse) | in-flow disclosure | **conditional render (`collapsed ? null : …`), no animation** | ❌ **violation — collapse/expand has no slide; this is the headline fix** |
 
-**Net:** the overlays already fade and the other expansions already slide; the
-true behavioral violations are **two in-flow disclosures that mount/unmount with
-no animation** — `code/board.tsx`'s per-epic collapse and `task-row.tsx`'s inline
-meta panel (due date + notes detail). Plus one **documentation** correction (the
-stale `inbox-screen` example in the skill).
+**Net:** the overlays already fade and the other expansions already slide. The
+behavioral violations are all in-flow / inline affordances that change with **no
+animation**: two **disclosures that should slide** (`code/board.tsx`'s per-epic
+collapse and `task-row.tsx`'s inline meta panel) and the inline **editor swaps
+that should fade** (`task-row.tsx`'s due-date "datepicker" and, for consistency,
+its notes editor). Plus one **documentation** correction (the stale `inbox-screen`
+example in the skill).
 
 ## Proposed change
 
@@ -97,7 +109,9 @@ stale `inbox-screen` example in the skill).
    capturing the mapping and the one-line principle above, naming concrete repo
    examples per category, and pointing at the already-written patterns (fade
    reveal/collapse, grid-rows expand/collapse, animate-then-commit) rather than
-   re-explaining them.
+   re-explaining them. Include the **inline-editing-swap → fade** nuance (a
+   transient display ⇆ editor swap fades even when nested inside a sliding
+   disclosure) so the distinction is captured.
 2. **Reconcile the existing "Fade + slide a panel in" row** with the new default:
    fade is the default for overlays, the compound slide/zoom is an *allowed
    accent*, and pure-slide-overlay / pure-fade-drawer / no-animation-disclosure
@@ -135,12 +149,20 @@ stale `inbox-screen` example in the skill).
    **no new token.** This is the same shape as the sibling subtask list already in
    this component, so follow that implementation. Notes/due-date editing behavior
    itself is unchanged — only *how* the panel appears/disappears.
-3. **Re-run the audit method while implementing.** The table above is the known
+3. **`task-row.tsx` — fade the inline editor swaps.** The due-date editor (the
+   "datepicker": `isEditingDueDate ? <input type="date"> : <display button>`) and
+   the notes editor (`isEditingNotes ? <textarea> : <display>`) currently swap with
+   no animation. Fade the entering editor in / display back in with the
+   `--animate-fade-*` tokens (or the fade reveal pattern) and a
+   `motion-reduce:animate-none` guard. The fade applies to **our** display⇆editor
+   swap only — the browser-native `type="date"` calendar popup is out of scope.
+   Save/cancel/blur persistence behavior is unchanged.
+4. **Re-run the audit method while implementing.** The table above is the known
    set; before finishing, sweep for any other in-flow disclosure that renders
-   conditionally with no slide (the `x ? null : <…/>` / `{open && <…/>}` shape on
-   content that reflows the page) and fix it the same way, or note in the PR that
-   none were found.
-4. **No change to the conforming components.** Per the pragmatic decision, the
+   conditionally with no slide, or inline editor swap with no fade (the
+   `x ? null : <…/>` / `{open && <…/>}` / `editing ? <editor> : <display>` shapes),
+   and fix it the same way, or note in the PR that none were found.
+5. **No change to the conforming components.** Per the pragmatic decision, the
    fading overlays and their zoom/slide accents are left as-is; toasts stay a fade.
 
 ## Acceptance criteria
@@ -172,24 +194,30 @@ stale `inbox-screen` example in the skill).
       a slide** on open/close, using the same in-flow disclosure pattern as the
       sibling subtask list (grid-rows, `aria-hidden`/`inert`, `motion-reduce:`
       guard); due-date and notes editing behavior is unchanged.
+- [ ] `task-row.tsx`'s inline due-date editor (the "datepicker") and notes editor
+      **fade in/out** on the display ⇆ editor swap, using the `--animate-fade-*`
+      tokens with a `motion-reduce:animate-none` guard; save/cancel/blur behavior is
+      unchanged. (The native `type="date"` calendar popup is unaffected and out of
+      scope.)
 - [ ] The remaining audited overlays still fade and the remaining in-flow
       disclosures still slide (no regressions); conforming components are untouched.
-- [ ] Each fix is covered by a test that would fail without it. Because the slide is
+- [ ] Each fix is covered by a test that would fail without it. Because the motion is
       CSS (not observable in jsdom), the primary evidence is a **Storybook image
       snapshot** for each (expanded vs. collapsed board epic; open vs. closed meta
-      panel) with approved baselines committed; optionally RTL assertions that the
-      collapsed regions are `aria-hidden` / not in the accessibility tree (mirroring
-      the subtask-list tests), and/or a Playwright check.
+      panel; display vs. editing date/notes) with approved baselines committed;
+      optionally RTL assertions that the collapsed regions are `aria-hidden` / not in
+      the accessibility tree (mirroring the subtask-list tests), and/or a Playwright
+      check.
 
 **General**
 
 - [ ] `npm run lint:skills -w tools/skill-lint` is green and `npm run check` is
       green.
-- [ ] A demo doc at `docs/demos/ALF-30.md` captures both slide fixes (the board
-      collapse/expand and the task-row meta panel open/close — before/after or the
-      Storybook snapshot diffs), per the repo workflow, and `npm run demo -- verify`
-      passes. (Part A alone wouldn't need a demo, but Part B is a user-facing
-      behavioral change, so the demo is required.)
+- [ ] A demo doc at `docs/demos/ALF-30.md` captures the fixes (the board
+      collapse/expand slide, the task-row meta panel slide, and the due-date/notes
+      editor fades — before/after or the Storybook snapshot diffs), per the repo
+      workflow, and `npm run demo -- verify` passes. (Part A alone wouldn't need a
+      demo, but Part B is a user-facing behavioral change, so the demo is required.)
 
 ## Out of scope / open questions
 
@@ -206,5 +234,6 @@ stale `inbox-screen` example in the skill).
 - **Open question — exact skill prose & section placement** are left to the
   implementing session, constrained by the acceptance criteria and `skill-lint`;
   the spec fixes the *content* (the mapping, the reconciliation, the stale-example
-  correction) and the *behavioral fixes* (`board.tsx` collapse and `task-row.tsx`
-  meta panel), not the wording.
+  correction) and the *behavioral fixes* (`board.tsx` collapse, `task-row.tsx`
+  meta panel slide, and the `task-row.tsx` due-date/notes editor fades), not the
+  wording.
