@@ -123,11 +123,17 @@ example in the skill).
    the landing ⇆ inbox swap is an in-flow disclosure, so a slide is correct).
 4. **Reduced motion stays mandatory** — restate that each default still pairs with
    its `motion-reduce:` guard.
-5. **Authoring constraints:** read the `compounding-learning` skill first
-   (house style); extend the `description` frontmatter with the new trigger
-   vocabulary (modal, dropdown, floating menu, drawer, overlay, "which animation
-   to use") without exceeding `skill-lint`'s limits; the edited `SKILL.md` must
-   pass `skill-lint` (`npm run lint:skills -w tools/skill-lint`).
+5. **Authoring constraints:**
+   - Read the `compounding-learning` skill first — it's the house style for *how*
+     to record body guidance (lean, current, right altitude, no duplication).
+   - Because this edit changes the skill's **`description`** (the highest-leverage,
+     easiest-to-get-wrong line), read the **`skill-creator`** skill and walk its
+     "Writing a description that triggers" checklist against the revised
+     description, extending it with the new trigger vocabulary (modal, dropdown,
+     floating menu, drawer, overlay, "which animation to use") without burying the
+     distinctive keywords or exceeding `skill-lint`'s limits.
+   - The edited `SKILL.md` must pass `skill-lint`
+     (`npm run lint:skills -w tools/skill-lint`).
 
 ### Part B — Bring components into line (the fix)
 
@@ -180,8 +186,9 @@ example in the skill).
 - [ ] The new guidance restates the mandatory `motion-reduce:` pairing and points
       to the existing patterns instead of duplicating them.
 - [ ] The skill `description` triggers on the new decision vocabulary
-      (modal/dropdown/floating-menu/drawer/overlay/"which animation") and still
-      passes `skill-lint`.
+      (modal/dropdown/floating-menu/drawer/overlay/"which animation"), was checked
+      against the `skill-creator` "Writing a description that triggers" checklist,
+      and still passes `skill-lint`.
 
 **Component fix**
 
