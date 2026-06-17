@@ -16,9 +16,10 @@ jest.mock('react-markdown', () => ({
 }));
 jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 
-// The epic-header archive/notes controls go through the store's updateEpic → api-client.
+// The epic-header controls and the new-story action go through the store → api-client.
 jest.mock('@/lib/api-client');
 const mockUpdateEpic = jest.mocked(api.updateEpic);
+const mockCreateCodeStory = jest.mocked(api.createCodeStory);
 
 const PROJECT: Project = {
   id: 'p1',
@@ -117,7 +118,7 @@ describe('Board', () => {
   it('renders an epic header with its name and ref', () => {
     renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing', ref: 'ALF-3' })] });
 
-    expect(screen.getByRole('button', { name: /plumbing/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^plumbing/i })).toBeInTheDocument();
     expect(screen.getByText('ALF-3')).toBeInTheDocument();
   });
 
@@ -155,7 +156,7 @@ describe('Board', () => {
     const user = userEvent.setup();
     renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
 
-    const header = screen.getByRole('button', { name: /plumbing/i });
+    const header = screen.getByRole('button', { name: /^plumbing/i });
     expect(header).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Needs Refinement' })).toBeInTheDocument();
 
@@ -172,14 +173,14 @@ describe('Board', () => {
     const user = userEvent.setup();
     renderBoard({ epics: [makeEpic('e1', { name: 'Alpha' }), makeEpic('e2', { name: 'Beta' })] });
 
-    await user.click(screen.getByRole('button', { name: /alpha/i }));
+    await user.click(screen.getByRole('button', { name: /^alpha/i }));
 
-    expect(screen.getByRole('button', { name: /alpha/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^alpha/i })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
     // Beta stays open and still shows its swimlanes.
-    expect(screen.getByRole('button', { name: /beta/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^beta/i })).toHaveAttribute('aria-expanded', 'true');
     // Beta's lanes are still present (one region per state per open epic).
     expect(screen.getAllByRole('region', { name: 'Needs Refinement' })).toHaveLength(1);
   });
@@ -193,11 +194,11 @@ describe('Board', () => {
       ],
     });
 
-    expect(screen.queryByRole('button', { name: /old epic/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^old epic/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /show archived/i }));
 
-    expect(screen.getByRole('button', { name: /old epic/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^old epic/i })).toBeInTheDocument();
   });
 
   it('does not offer Show archived when no epic is archived', () => {
@@ -258,11 +259,11 @@ describe('Board', () => {
 
       await user.click(screen.getByRole('button', { name: /collapse all/i }));
 
-      expect(screen.getByRole('button', { name: /alpha/i })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: /^alpha/i })).toHaveAttribute(
         'aria-expanded',
         'false',
       );
-      expect(screen.getByRole('button', { name: /beta/i })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: /^beta/i })).toHaveAttribute(
         'aria-expanded',
         'false',
       );
@@ -287,11 +288,11 @@ describe('Board', () => {
       await user.click(screen.getByRole('button', { name: /collapse all/i }));
       await user.click(screen.getByRole('button', { name: /open all/i }));
 
-      expect(screen.getByRole('button', { name: /alpha/i })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: /^alpha/i })).toHaveAttribute(
         'aria-expanded',
         'true',
       );
-      expect(screen.getByRole('button', { name: /beta/i })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: /^beta/i })).toHaveAttribute(
         'aria-expanded',
         'true',
       );
@@ -317,7 +318,74 @@ describe('Board', () => {
 
       // Reveal the archived epic — it was not in the visible set, so it starts expanded.
       await user.click(screen.getByRole('button', { name: /show archived/i }));
-      expect(screen.getByRole('button', { name: /old/i })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('button', { name: /^old/i })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+    });
+  });
+
+  describe('the + button and NewStoryDialog', () => {
+    it('shows a "New story in {epic name}" button in the epic header', () => {
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      expect(screen.getByRole('button', { name: /new story in plumbing/i })).toBeInTheDocument();
+    });
+
+    it('opens the NewStoryDialog when the + button is clicked', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      await user.click(screen.getByRole('button', { name: /new story in plumbing/i }));
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /new story in plumbing/i })).toBeInTheDocument();
+    });
+
+    it('creates a story and shows it in the Needs Refinement lane', async () => {
+      const user = userEvent.setup();
+      const serverItem = {
+        item_id: 'server-uuid',
+        project_id: 'p1',
+        epic_id: 'e1',
+        ref_number: 5,
+        ref: 'ALF-5',
+        factory_state: 'needs_refinement' as const,
+        lane: 'human' as const,
+        spec_path: null,
+        spec_sha: null,
+        spec_markdown: null,
+        refinement_pr_url: null,
+        implementation_pr_url: null,
+        blocked_reason: null,
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-01T00:00:00Z',
+      };
+      mockCreateCodeStory.mockResolvedValue(serverItem);
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      await user.click(screen.getByRole('button', { name: /new story in plumbing/i }));
+      await user.type(screen.getByLabelText(/^title$/i), 'New story from board');
+      await user.click(screen.getByRole('button', { name: /^create$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('ALF-5')).toBeInTheDocument();
+      });
+    });
+
+    it('hides the + button while the epic title is being edited', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      // Open the 3-dot menu and click Edit title.
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /edit title/i }));
+
+      // While editing, the + button is hidden.
+      await screen.findByRole('textbox', { name: /edit epic title/i });
+      expect(
+        screen.queryByRole('button', { name: /new story in plumbing/i }),
+      ).not.toBeInTheDocument();
     });
   });
 

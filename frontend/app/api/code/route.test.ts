@@ -170,3 +170,80 @@ describe('POST /api/code (the gate)', () => {
     expect(response.status).toBe(500);
   });
 });
+
+describe('POST /api/code (new story)', () => {
+  const TITLE = 'Wire the webhook';
+  const VALID_NEW_BODY = { title: TITLE, project_id: PROJECT_ID, epic_id: EPIC_ID };
+  const NEW_SIDECAR = {
+    item_id: '44444444-4444-4444-8444-444444444444',
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref: 'ALF-10',
+    ref_number: 10,
+    factory_state: 'needs_refinement',
+  };
+
+  it('calls create_code_story with the right params and returns 201', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: NEW_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(postRequest(VALID_NEW_BODY), STUB_CONTEXT);
+
+    expect(response.status).toBe(201);
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: TITLE,
+      p_notes: null,
+    });
+    const body: unknown = await response.json();
+    expect(body).toStrictEqual(NEW_SIDECAR);
+  });
+
+  it('forwards a supplied notes value to create_code_story', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: NEW_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest({ ...VALID_NEW_BODY, notes: 'Some context' }), STUB_CONTEXT);
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: TITLE,
+      p_notes: 'Some context',
+    });
+  });
+
+  it('returns 400 when title is missing and item_id is also absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      postRequest({ project_id: PROJECT_ID, epic_id: EPIC_ID }),
+      STUB_CONTEXT,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 when title is an empty string', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      postRequest({ title: '', project_id: PROJECT_ID, epic_id: EPIC_ID }),
+      STUB_CONTEXT,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 500 when create_code_story errors', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: undefined,
+      error: { message: 'rpc error' },
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(postRequest(VALID_NEW_BODY), STUB_CONTEXT);
+    expect(response.status).toBe(500);
+  });
+});
