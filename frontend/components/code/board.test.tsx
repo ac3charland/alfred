@@ -168,6 +168,22 @@ describe('Board', () => {
     expect(screen.getByRole('region', { name: 'Needs Refinement' })).toBeInTheDocument();
   });
 
+  it("keeps a collapsed epic's content mounted (for the slide) but out of the accessibility tree", async () => {
+    const user = userEvent.setup();
+    renderBoard({
+      epics: [makeEpic('e1', { name: 'Plumbing' })],
+      stories: [makeStory('i1', 'e1', { title: 'Still mounted', factory_state: 'in_development' })],
+    });
+
+    await user.click(screen.getByRole('button', { name: /plumbing/i }));
+
+    // Collapsed: the swimlane regions leave the accessibility tree (aria-hidden)…
+    expect(screen.queryByRole('region', { name: 'In Development' })).not.toBeInTheDocument();
+    // …but the content stays in the DOM so the grid-rows height collapse can animate it out
+    // (the old conditional render removed it outright, with no slide).
+    expect(screen.getByText('Still mounted')).toBeInTheDocument();
+  });
+
   it('tracks collapsed state per epic (collapsing one leaves the other open)', async () => {
     const user = userEvent.setup();
     renderBoard({ epics: [makeEpic('e1', { name: 'Alpha' }), makeEpic('e2', { name: 'Beta' })] });

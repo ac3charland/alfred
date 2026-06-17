@@ -344,38 +344,53 @@ function EpicBlock({
         )}
       </h3>
 
-      {/* Notes-editing area. Shown when the epic is expanded. */}
-      {collapsed ? null : <EpicHeaderActions epic={epic} />}
+      {/* The expanded content — the notes editor + the swimlane row — is an in-flow
+          disclosure, so it slides open/closed with the grid-rows height pattern rather than
+          popping in (see the motion skill: in-flow disclosures slide). It stays mounted while
+          collapsed; aria-hidden + inert keep the collapsed content out of the accessibility
+          tree and the tab order, and the overflow-hidden inner div clips it to the 0fr track. */}
+      <div
+        id={regionId}
+        className={cn(
+          'grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none',
+          collapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
+        )}
+        aria-hidden={collapsed}
+        inert={collapsed}
+      >
+        <div className="overflow-hidden">
+          {/* Notes-editing area. */}
+          <EpicHeaderActions epic={epic} />
 
-      {collapsed ? null : (
-        <div id={regionId} className="px-2 py-3">
-          {/* The six happy-path lanes, horizontally scrollable to fit the dense layout. */}
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {lanes.map((lane) => (
-              <Swimlane
-                key={lane.state}
-                lane={lane}
-                onOpenStory={onOpenStory}
-                onOpenSession={onOpenSession}
-              />
-            ))}
-          </div>
-
-          {/* Off-track stories (blocked / abandoned): revealed only by the filter toggle. */}
-          {showBlocked && escapeStories.length > 0 ? (
-            <div className="mt-3 border-t border-border/60 pt-3">
-              <h4 className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Off track
-              </h4>
-              <div className="grid grid-cols-1 gap-2 px-2 sm:grid-cols-2 lg:grid-cols-3">
-                {escapeStories.map((story) => (
-                  <StoryCard key={story.item_id} story={story} onOpen={onOpenStory} />
-                ))}
-              </div>
+          <div className="px-2 py-3">
+            {/* The six happy-path lanes, horizontally scrollable to fit the dense layout. */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {lanes.map((lane) => (
+                <Swimlane
+                  key={lane.state}
+                  lane={lane}
+                  onOpenStory={onOpenStory}
+                  onOpenSession={onOpenSession}
+                />
+              ))}
             </div>
-          ) : null}
+
+            {/* Off-track stories (blocked / abandoned): revealed only by the filter toggle. */}
+            {showBlocked && escapeStories.length > 0 ? (
+              <div className="mt-3 border-t border-border/60 pt-3">
+                <h4 className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Off track
+                </h4>
+                <div className="grid grid-cols-1 gap-2 px-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {escapeStories.map((story) => (
+                    <StoryCard key={story.item_id} story={story} onOpen={onOpenStory} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }
