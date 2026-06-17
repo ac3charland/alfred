@@ -82,7 +82,7 @@ export async function POST(request: Request): Promise<Response> {
       notes: input.notes ?? null,
       source_url: input.source_url ?? null,
       raw_capture: resolvedRawCapture,
-      item_type: input.item_type ?? 'unclassified',
+      item_type: input.parent_id == null ? (input.item_type ?? 'unclassified') : 'task',
       due_date: input.due_date ?? null,
       folder_id: input.folder_id ?? null,
       parent_id: input.parent_id ?? null,

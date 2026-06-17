@@ -147,7 +147,7 @@ export function TasksProvider({
         const createInput: api.CreateItemInput = {
           text: input.text,
           raw_capture: input.text,
-          item_type: 'unclassified',
+          item_type: parentId === undefined ? 'unclassified' : 'task',
           ...(folderId !== undefined && { folder_id: folderId }),
           ...(parentId !== undefined && { parent_id: parentId }),
         };
