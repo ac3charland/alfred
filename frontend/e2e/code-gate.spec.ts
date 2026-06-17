@@ -93,7 +93,7 @@ test('classify as Code → gate (new project + epic) → leaves inbox, lands on 
     .getByRole('link', { name: /alfred/i })
     .click();
 
-  await expect(page.getByRole('button', { name: /communication firewall/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^communication firewall/i })).toBeVisible();
   const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
   await expect(needsRefinement.getByText('ALF-2')).toBeVisible();
   await expect(needsRefinement.getByText('Ship the inbound webhook')).toBeVisible();

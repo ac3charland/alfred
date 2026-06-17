@@ -80,7 +80,7 @@ test('renders seeded stories grouped into the right swimlanes under collapsible 
   await page.goto('/code/p1');
 
   // The epic header shows its name + ref and is collapsible.
-  const epicHeader = page.getByRole('button', { name: /communication firewall/i });
+  const epicHeader = page.getByRole('button', { name: /^communication firewall/i });
   await expect(epicHeader).toBeVisible();
   await expect(epicHeader).toHaveAttribute('aria-expanded', 'true');
 
