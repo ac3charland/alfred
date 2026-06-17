@@ -401,6 +401,13 @@ Skia AA differs, which `failureThreshold: 0.01` absorbs while a real tone/hover/
 (far more than 1% of a tight crop) still fails. Regenerate baselines only through the wrapper
 and commit the PNGs verbatim.
 
+**Linux sandbox / cloud environment without Docker socket.** In ephemeral Linux environments (e.g.
+remote Claude Code sessions) the Docker CLI may be present but the daemon is not
+(`/var/run/docker.sock` absent). `snapshot-docker.mjs` detects this (`existsSync(socket)`) and
+falls back to running `test:storybook:linux` directly — on Linux the font stack and Chromium are
+already the same as in the pinned image, so the check is equivalent. This means the pre-push hook
+still validates snapshots in these environments without manual intervention.
+
 **CI keeps the full-scope `npm run check:slow`.** Don't swap CI to a `container:` job that calls
 a frontend-only script — that silently drops every *other* workspace's slow checks. Instead the
 slow job just runs on an **`ubuntu-24.04-arm`** runner (config only) and runs the unchanged root
