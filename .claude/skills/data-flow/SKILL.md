@@ -203,8 +203,15 @@ completing a task flips its `status`, so it drops out of the active views automa
 
 ## What's Deliberately Left Out
 
-- **Realtime / multi-device sync.** Single-user; a hard reload re-seeds. Add Supabase realtime
-  only if live multi-device sync becomes a goal.
+- **Realtime / multi-device sync** for **Tasks / Folders.** They have a single browser writer,
+  so they stay seed-once (a hard reload re-seeds). **Exception — the code module:** a story's
+  `factory_state` is written out-of-band by the webhook Worker (a second, non-browser writer),
+  so `CodeProvider` subscribes to `code_items` Realtime and applies each UPDATE through the
+  reducer's `patchStory` — the card moves swimlanes live, no `router.refresh()`. Re-applying the
+  sidecar→story patch is **idempotent**, so an echo of the user's own optimistic write is
+  harmless (the card stays put, no flicker) and needs no self-write filtering; a patch for an
+  `item_id` not in the store is a no-op (the race rule above). It listens to the base table, not
+  the `v_code_stories` view — see the supabase skill for the channel mechanics.
 - **A third-party state library (Zustand/Jotai/Redux/react-query) and a normalized cache.**
   Context + `useReducer` + flat arrays + `buildTree` cover the need with zero deps at this
   scale. `useSyncExternalStore` is the integration seam if an external store is ever adopted.

@@ -203,7 +203,7 @@ The `@supabase/ssr` cookie API changed from the single-method `get/set/remove` s
 
 ## What Was Deliberately Left Out
 
-- **Realtime subscriptions** (`supabase.channel()`, `.on('postgres_changes', ...)`): alfred is a personal app with one user on one device at a time; realtime adds complexity with no benefit. If concurrent-device sync is ever needed, add it then.
+- **Realtime subscriptions** are used **only for `code_items`** (the code board's live swimlanes), not Tasks/Folders. The webhook Worker writes `factory_state` out-of-band, so the open board subscribes from `CodeProvider` via `createClient().channel('code_items').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'code_items' }, …)`, and tears down with `removeChannel` on unmount. Gotchas: **subscribe to the base `code_items` table, not the `v_code_stories` view** — you can't subscribe to a view, and the payload is a `CodeItem` row; the table must be in the `supabase_realtime` publication (`alter publication supabase_realtime add table code_items`, migration `0003` — no `database.types.ts` regen); and **RLS still gates the stream** — the existing `authenticated full access` policy delivers changes to the anon-key browser session, no new policy. Tasks/Folders have a single browser writer and stay seed-once (see the data-flow skill). Storage, Edge Functions, etc. below remain unused.
 
 - **Supabase Storage** (file uploads, buckets): not used in alfred's schema. Don't reach for `supabase.storage` unless a future feature explicitly requires it.
 
