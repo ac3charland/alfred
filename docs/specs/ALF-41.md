@@ -122,7 +122,34 @@ emitted. Therefore the subscription needs **no self-write filtering**; the exist
 behavior is preserved unchanged. The detail modal (opened by `item_id`, `board.tsx`) re-reads the
 live row, so an open modal reflects a realtime transition too.
 
-### 5. Tests & demo
+### 5. Notify on a live transition (toast + tab title)
+
+A swimlane move that happens *while the user watches* should announce itself — the user launched a
+Claude session and is waiting for the PR to land, possibly on another tab. When a realtime UPDATE
+**changes `factory_state`** (only then — ignore spec-markdown / PR-url-only updates), fire two
+notifications from the same handler:
+
+- **Toast.** Reuse the existing `useToastActions().showToast(message)` (`lib/stores/toast-store.tsx`,
+  mounted in the shared `AppShell` that wraps `CodeProvider` — the same one the gate uses for
+  "Created ALF-42"). Message: `` `${ref} moved to ${STATE_LABELS[next]}` `` for a happy-path state,
+  or the escape-state label (Blocked / Abandoned) otherwise. **No new toast variant** — the existing
+  transient, `aria-live` toast is enough.
+- **Browser tab title.** When a transition arrives **while the tab is backgrounded**
+  (`document.hidden`), prefix `document.title` with a marker so a glance at the tab strip shows
+  something happened — e.g. `` `● ${ref} → ${STATE_LABELS[next]}` `` for the latest, or a rolling
+  `` `(${n}) updates · …` `` count if several land while hidden. Restore the original title on the
+  next `visibilitychange` to visible (or window `focus`). Capture the pre-existing title once so the
+  restore is exact and this doesn't fight any route-level title.
+
+**Fire only for real, external transitions.** Compute the previous state from
+`stateRef.current.stories` **before** dispatching the patch; notify only when
+`previous.factory_state !== row.factory_state`. This naturally **dedupes the user's own writes**: an
+optimistic action already set the new state in the store before the echo arrives, so
+`previous === next` and neither the toast nor the title fires for self-writes — exactly the same
+idempotent-echo reasoning as §4. `CodeProvider` can read `useToastActions()` directly (it renders
+inside `AppShell`/`ToastProvider`).
+
+### 6. Tests & demo
 
 - **Unit (jest)** — `code-store.test.tsx`: `codeItemToStoryPatch` maps every sidecar field; feeding
   a simulated UPDATE payload through the handler dispatches a `patchStory` that moves a story to its
@@ -133,6 +160,11 @@ live row, so an open modal reflects a realtime transition too.
 - **RTL** — render the board within a `CodeProvider`, capture the subscribed handler from the mocked
   client, emit an UPDATE moving a seeded story from `In Refinement` → `Ready for Dev`, and assert the
   card now renders under the `Ready for Dev` swimlane without any user interaction or refresh.
+- **Notifications (RTL/jest)** — a state-changing UPDATE calls `showToast` with the
+  `"<ref> moved to <label>"` message; a non-state UPDATE (e.g. only `spec_markdown`) and an echo of
+  the current state do **not**; with `document.hidden` mocked true the `document.title` gains the
+  marker and is restored on `visibilitychange`/`focus`. Mock the toast actions (as existing tests
+  do) and `document.hidden`.
 - **No Playwright e2e:** end-to-end Realtime needs a live Supabase project (the §1 sandbox
   limitation) and a real second writer; the behavior is covered deterministically by the unit/RTL
   tests against a mocked channel, mirroring how the Worker's transitions are unit-tested rather than
@@ -142,7 +174,7 @@ live row, so an open modal reflects a realtime transition too.
   payload to the Worker as in the M7 demo — and show the card move swimlanes live. Because Realtime
   needs the credentialed Supabase project, note this as a local/high-touch capture step.
 
-### 6. Record the decision in the skill library
+### 7. Record the decision in the skill library
 
 This reverses the explicit "realtime deliberately left out" notes. As part of the change (per the
 CLAUDE.md compounding-learning rule), update both:
@@ -168,8 +200,13 @@ CLAUDE.md compounding-learning rule), update both:
 - [ ] A change for an `item_id` not in the store, or for a since-removed story, is a no-op (no
       resurrection, no error). An echo of the user's own optimistic write leaves the board stable
       (no flicker / no regression to the optimistic + reconcile/rollback behavior).
-- [ ] Tests cover the mapper, a live swimlane move via a simulated UPDATE, the unknown-id no-op, and
-      the idempotent echo; `check` is green and the change is captured in a demo doc.
+- [ ] A realtime UPDATE that **changes `factory_state`** fires a toast (`"<ref> moved to <label>"`,
+      via the existing `showToast`) and, when the tab is backgrounded, marks the browser tab title;
+      the title is restored when the tab regains focus. Non-state updates and self-write echoes fire
+      neither.
+- [ ] Tests cover the mapper, a live swimlane move via a simulated UPDATE, the unknown-id no-op, the
+      idempotent echo, and the toast + tab-title notifications; `check` is green and the change is
+      captured in a demo doc.
 - [ ] The `supabase` and `data-flow` skills' "left out" notes are updated to record that the code
       module now uses Realtime (with the view-vs-base-table and idempotent-echo gotchas).
 
@@ -187,6 +224,11 @@ CLAUDE.md compounding-learning rule), update both:
   (`data-flow` skill). This ticket does not generalize realtime across the app.
 - **Drag-to-move between swimlanes.** Still out of scope (code-module-spec §9.2); swimlanes remain
   read-only — this ticket only makes externally-written state changes *appear* live.
+- **Notification depth.** The toast + tab-title marker are the whole notification surface here — no
+  OS/browser push notifications, no per-story notification preferences, no notification history, and
+  no sound. (code-module-spec §11.3 mentions browser notifications as a separate "good-enough live
+  monitoring" idea; that's not built here.) The tab-title marker reuses `document.title`; a richer
+  unread-badge/favicon treatment is a future enhancement.
 - **Credentialed closeout (local/high-touch).** Applying `0003` (`supabase db push`) and verifying
   end-to-end against the live project + Worker cannot be done in a web/CI sandbox (no `.env.local`);
   leave them as an explicit checklist for a local session, per code-module-spec §4 / §16.1 Phase C.
