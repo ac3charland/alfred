@@ -3,14 +3,15 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { CodeProvider } from '@/lib/stores/code-store';
 import type { CodeItem, Epic, Project } from '@/lib/types';
 
 import { GateDialog, type GateItem } from './gate-dialog';
 
-// The gate is CodeProvider-free: it calls api-client directly. Mock that seam.
+// Since ALF-27 the gate reads the project/epic lists from the CodeProvider and routes its
+// creates + the send through the store's optimistic actions, which call api-client under the
+// hood. Mock that seam; seed the lists by wrapping in a CodeProvider.
 jest.mock('@/lib/api-client');
-const mockListProjects = jest.mocked(api.listProjects);
-const mockListEpics = jest.mocked(api.listEpics);
 const mockCreateProject = jest.mocked(api.createProject);
 const mockCreateEpic = jest.mocked(api.createEpic);
 const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
@@ -57,27 +58,31 @@ const SIDECAR: CodeItem = {
   updated_at: '2025-01-02T00:00:00Z',
 };
 
-function renderGate(overrides: Partial<React.ComponentProps<typeof GateDialog>> = {}) {
+function renderGate(
+  overrides: Partial<React.ComponentProps<typeof GateDialog>> = {},
+  seed: { projects?: Project[]; epics?: Epic[] } = {},
+) {
   const onComplete = overrides.onComplete ?? jest.fn();
   const onOpenChange = overrides.onOpenChange ?? jest.fn();
   render(
-    <GateDialog
-      open
-      onOpenChange={onOpenChange}
-      item={overrides.item ?? ITEM}
-      onComplete={onComplete}
-    />,
+    <CodeProvider
+      initialProjects={seed.projects ?? [PROJECT]}
+      initialEpics={seed.epics ?? [EPIC]}
+      initialStories={[]}
+    >
+      <GateDialog
+        open
+        onOpenChange={onOpenChange}
+        item={overrides.item ?? ITEM}
+        onComplete={onComplete}
+      />
+    </CodeProvider>,
   );
   return { onComplete, onOpenChange };
 }
 
-beforeEach(() => {
-  mockListProjects.mockResolvedValue([PROJECT]);
-  mockListEpics.mockResolvedValue([EPIC]);
-});
-
 describe('GateDialog', () => {
-  it('fetches and lists existing projects on open', async () => {
+  it('lists the seeded projects on open', async () => {
     renderGate();
     expect(await screen.findByRole('option', { name: /alfred/i })).toBeInTheDocument();
   });
@@ -112,7 +117,7 @@ describe('GateDialog', () => {
     });
   });
 
-  it('calls enter_code_module and fires onComplete on confirm', async () => {
+  it('routes the send through the store and fires onComplete with the reconciled story', async () => {
     mockEnterCodeModule.mockResolvedValue(SIDECAR);
     const user = userEvent.setup();
     const { onComplete } = renderGate();
@@ -124,7 +129,11 @@ describe('GateDialog', () => {
     await waitFor(() => {
       expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1');
     });
-    expect(onComplete).toHaveBeenCalledWith(SIDECAR);
+    // onComplete gets the flattened, reconciled CodeStory (carrying the allocated ref), not
+    // the raw sidecar.
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ item_id: 'item-1', ref: 'ALF-42' }),
+    );
   });
 
   describe('New project sub-dialog', () => {
@@ -199,7 +208,7 @@ describe('GateDialog', () => {
       expect(within(dialog).getByRole('button', { name: /create project/i })).toBeDisabled();
     });
 
-    it('optimistically inserts and auto-selects the created project', async () => {
+    it('creates via the store, then inserts and auto-selects the project', async () => {
       const created: Project = {
         ...PROJECT,
         id: 'p2',
@@ -222,6 +231,13 @@ describe('GateDialog', () => {
       await user.type(within(dialog).getByRole('textbox', { name: /ticket key/i }), 'RLP');
       await user.click(within(dialog).getByRole('button', { name: /create project/i }));
 
+      await waitFor(() => {
+        expect(mockCreateProject).toHaveBeenCalledWith({
+          name: 'Relay',
+          github_url: 'https://github.com/ac3charland/relay',
+          key: 'RLP',
+        });
+      });
       // The new project appears in the combobox AND is auto-selected.
       const option = await screen.findByRole('option', { name: /relay/i });
       await waitFor(() => {
@@ -231,7 +247,7 @@ describe('GateDialog', () => {
   });
 
   describe('New epic sub-dialog', () => {
-    it('creates an epic and auto-selects it', async () => {
+    it('creates an epic via the store and auto-selects it', async () => {
       const newEpic: Epic = {
         ...EPIC,
         id: 'e2',

@@ -1,5 +1,7 @@
 import * as React from 'react';
 
+import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
+import { ShellNav } from '@/components/shell/shell-nav';
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
@@ -8,27 +10,19 @@ import { signOut } from '@/lib/auth/actions';
 import { ToastProvider } from '@/lib/stores/toast-store';
 
 /**
- * Shared application shell (Server Component) used by BOTH module layouts — `(tasks)` and
- * `(code)`. It owns the chrome that's identical across modules: the `alfred` wordmark
- * (links to `/` capture, unchanged), the Tasks ⇄ Code switcher, the sign-out form, and the
- * desktop sidebar / mobile header frame. Each layout passes in the module-appropriate
- * `nav` (desktop sidebar) and `mobileNav` (the hamburger drawer, which carries the switcher
- * on small screens) and seeds its own providers around `<AppShell>`.
+ * Shared application shell (Server Component) mounted once by the `(shell)` layout that
+ * seeds every module's providers. It owns the chrome that's identical across modules: the
+ * `alfred` wordmark (links to `/` capture, unchanged), the Tasks ⇄ Code switcher, the
+ * sign-out form, and the desktop sidebar / mobile header frame.
+ *
+ * The module-specific nav is no longer a prop: with one shared layout it must follow the URL
+ * client-side, so the sidebar mounts `ShellNav` (FolderNav vs ProjectNav) and the header
+ * mounts `ShellMobileNav` (the hamburger drawer), each deriving the active module itself.
  *
  * The switcher sits beneath the wordmark in the desktop sidebar's top-left square; on
  * mobile it moves into the hamburger, so the header bar there is just hamburger + wordmark.
  */
-export function AppShell({
-  nav,
-  mobileNav,
-  children,
-}: {
-  /** The module's desktop sidebar navigation (FolderNav / ProjectNav). */
-  nav: React.ReactNode;
-  /** The mobile hamburger drawer (carries the switcher + nav on small screens). */
-  mobileNav: React.ReactNode;
-  children: React.ReactNode;
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
       <div className="flex h-full min-h-screen bg-background">
@@ -43,7 +37,9 @@ export function AppShell({
             </AlfredLink>
             <ViewSwitcher />
           </div>
-          <div className="flex-1 overflow-y-auto px-2">{nav}</div>
+          <div className="flex-1 overflow-y-auto px-2">
+            <ShellNav />
+          </div>
         </aside>
 
         {/* Main content area */}
@@ -52,7 +48,7 @@ export function AppShell({
           <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
             {/* Mobile: hamburger + wordmark (the switcher lives inside the hamburger) */}
             <div className="flex items-center gap-3 md:hidden">
-              {mobileNav}
+              <ShellMobileNav />
               <AlfredLink
                 aria-label="alfred — back to capture"
                 className="font-serif text-xl text-foreground transition-colors duration-150 hover:text-accent-teal motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"

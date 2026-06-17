@@ -86,7 +86,19 @@ holds the rule registry (add a `Rule` to the exported `rules` array to lint some
 `src/lint.ts` runs them, and `src/cli.ts` is the entry point. Git facts are computed in the
 CLI and injected for testability: `currentBranch()` and `changedPathsSinceTrunk()` shell out
 to git, the CLI passes both into `gatherDemos(demosDir, cwd, branch, changedPaths, changedOnly)`,
-and tests pass literals (so the raw git calls stay untested). `hasChangesOutsideDocs` is
+and tests pass literals (so the raw git calls stay untested).
+
+**Trunk resolution must match CI, or the changed-only gate retroactively fires on old demos.**
+`changedPathsSinceTrunk()` diffs `merge-base(HEAD, trunk)..HEAD`, so the trunk ref it picks
+decides the whole changed-set. The trap: a **stale local `main`** (a clone whose local trunk is
+behind `origin/main`) makes the merge-base land far in the past, so every demo merged since is
+treated as "changed" and the content rules (e.g. `no-test-in-demo`) fail on untouched demos that
+pass in CI. The fix is the pure `chooseTrunkRef(facts)`: prefer the **remote** trunk
+(`origin/HEAD` → `origin/main`/`origin/master`, what a fresh CI checkout diffs against) and
+**never fall back to a local `main`/`master` while an `origin` remote exists** — return
+`undefined` ("trunk unknown") instead of trusting a possibly-stale local branch. A local trunk
+is used only in a standalone repo with no `origin`. Keep the git probing in the (untested) gather
+helpers and the decision in `chooseTrunkRef` (unit-tested with literal facts). `hasChangesOutsideDocs` is
 `changedPaths` classified by whether any path falls outside `docs/`, defaulting to `true` on an
 `undefined` (unknown) diff so the docs-only exception is never granted on a guess. `changedOnly`
 (the gate, set when no dir/`--all` is given) narrows `rootFiles` + `demoContents` to demos whose
