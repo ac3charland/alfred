@@ -76,14 +76,28 @@ const branchFolder: Rule = {
  * Demo docs must show the new behavior directly — a screenshot, a real request/response,
  * or a function's output. Running the test suite (`npm run test`) in a demo proves nothing
  * the pre-commit gate doesn't already prove, and shows a reviewer nothing they can see.
+ *
+ * Only ```bash exec blocks are checked — output blocks may mention "npm run test" as part
+ * of captured terminal output (e.g. showing what a script expands to) without triggering
+ * this rule.
  */
+function bashExecContent(content: string): string {
+  const blocks: string[] = [];
+  const re = /^```bash\r?\n([\s\S]*?)^```/gm;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    blocks.push(match[1] ?? '');
+  }
+  return blocks.join('\n');
+}
+
 const noTestInDemo: Rule = {
   name: 'no-test-in-demo',
   description:
     'Demo exec blocks must not run the test suite — show the new behavior (UI screenshot or real output) instead.',
   check(demos) {
     return demos.demoContents
-      .filter(({ content }) => /npm run test(?!:)/.test(content))
+      .filter(({ content }) => /npm run test(?!:)/.test(bashExecContent(content)))
       .map(({ relativePath }) => ({
         rule: 'no-test-in-demo',
         severity: 'error' as const,

@@ -127,14 +127,14 @@ describe('no-test-in-demo', () => {
     ).toHaveLength(0);
   });
 
-  it('errors when a demo file contains npm run test', () => {
+  it('errors when a demo bash block contains npm run test', () => {
     const [finding] = findingsFor(
       'no-test-in-demo',
       makeDemos({
         demoContents: [
           {
             relativePath: 'my-feature/demo.md',
-            content: 'npm run test -w frontend -- --testPathPatterns=date-utils',
+            content: '```bash\nnpm run test -w frontend -- --testPathPatterns=date-utils\n```\n',
           },
         ],
       }),
@@ -150,13 +150,36 @@ describe('no-test-in-demo', () => {
         'no-test-in-demo',
         makeDemos({
           demoContents: [
-            { relativePath: 'feat-a/demo.md', content: 'npm run test -w frontend' },
-            { relativePath: 'feat-b/demo.md', content: 'curl localhost/api' },
-            { relativePath: 'feat-c/demo.md', content: 'npm run test -w workers' },
+            {
+              relativePath: 'feat-a/demo.md',
+              content: '```bash\nnpm run test -w frontend\n```\n',
+            },
+            { relativePath: 'feat-b/demo.md', content: '```bash\ncurl localhost/api\n```\n' },
+            {
+              relativePath: 'feat-c/demo.md',
+              content: '```bash\nnpm run test -w workers\n```\n',
+            },
           ],
         }),
       ),
     ).toHaveLength(2);
+  });
+
+  it('passes when npm run test appears only in an output block (not an exec block)', () => {
+    expect(
+      findingsFor(
+        'no-test-in-demo',
+        makeDemos({
+          demoContents: [
+            {
+              relativePath: 'my-feature/demo.md',
+              content:
+                "```bash\nnode -e \"console.log(require('./package.json').scripts['check:fast'])\"\n```\n\n```output\nnpm run typecheck && npm run lint && npm run format && npm run test\n```\n",
+            },
+          ],
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('passes when a demo mentions npm run test:storybook:update (a different script)', () => {
