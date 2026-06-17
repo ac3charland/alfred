@@ -22,7 +22,11 @@ jobs:
 
   check-slow:
     needs: [check-fast]
-    runs-on: ubuntu-latest
+    # arm64 runner so the snapshot render (inside the pinned Playwright image, via the
+    # `test:storybook` Docker wrapper) is the same arch as the committed baselines — no QEMU
+    # emulation. The check command stays the full-scope root `npm run check:slow`; the wrapper
+    # just launches Docker on the runner host.
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
