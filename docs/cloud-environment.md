@@ -8,9 +8,10 @@ and the E2E half of `check:slow` can't get a browser.
 
 > **Storybook image snapshots don't use this path.** They render inside a pinned Docker image
 > (`mcr.microsoft.com/playwright:v<version>-noble`) so the pixels are identical on every OS —
-> see the `storybook` skill §7. `npm run test:storybook` shells out to Docker locally; CI runs
-> them in an `ubuntu-24.04-arm` container. That needs Docker + registry access, not the
-> Playwright CDN — so where Docker isn't available, CI is the authoritative snapshot gate.
+> see the `storybook` skill §7. `npm run test:storybook` shells out to Docker (locally and in
+> CI's `npm run check:slow`); CI's slow job runs on an `ubuntu-24.04-arm` runner so its native
+> render matches the arm64 baselines. That needs Docker + registry access, not the Playwright
+> CDN — so where Docker isn't available, CI is the authoritative snapshot gate.
 
 Rather than bundle a serverless Chromium fallback, a **custom cloud environment** has been
 created that allowlists the CDN and installs Chromium once at setup. With it selected, the
