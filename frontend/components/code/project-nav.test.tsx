@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { ToastProvider } from '@/lib/stores/toast-store';
 import type { Project } from '@/lib/types';
 
 import { ProjectNav } from './project-nav';
@@ -11,6 +12,15 @@ import { ProjectNav } from './project-nav';
 const mockPathname = jest.fn<string, []>(() => '/code');
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
+}));
+
+// CodeProvider opens a Realtime channel on mount; stub the browser client with an inert,
+// chainable channel so no websocket is attempted under jsdom.
+jest.mock('@/lib/supabase/client', () => ({
+  createClient: () => {
+    const channel = { on: () => channel, subscribe: () => channel };
+    return { channel: () => channel, removeChannel: () => {} };
+  },
 }));
 
 // The New-project dialog persists via the optimistic createProject action, which calls
@@ -50,9 +60,11 @@ const PROJECTS: Project[] = [
 function renderNav(projects: Project[], properties: Partial<{ onClose: () => void }> = {}) {
   const onCloseProperty = properties.onClose ? { onClose: properties.onClose } : {};
   return render(
-    <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
-      <ProjectNav {...onCloseProperty} />
-    </CodeProvider>,
+    <ToastProvider>
+      <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
+        <ProjectNav {...onCloseProperty} />
+      </CodeProvider>
+    </ToastProvider>,
   );
 }
 

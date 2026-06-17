@@ -2,11 +2,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import * as toastStore from '@/lib/stores/toast-store';
+import { createClient } from '@/lib/supabase/client';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   CodeProvider,
   HAPPY_PATH_STATES,
+  codeItemToStoryPatch,
   isEscapeState,
   useCodeActions,
   useProjectBoard,
@@ -21,6 +24,58 @@ const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockUpdateEpic = jest.mocked(api.updateEpic);
 const mockUpdateItem = jest.mocked(api.updateItem);
+
+// CodeProvider opens a Supabase Realtime channel on mount. Mock the browser client so the
+// channel's `.on` captures the postgres_changes handler the realtime tests drive directly,
+// and `removeChannel` records teardown — no live connection.
+jest.mock('@/lib/supabase/client');
+const mockCreateClient = jest.mocked(createClient);
+type RealtimeHandler = (payload: { new: CodeItem }) => void;
+let realtimeHandler: RealtimeHandler | undefined;
+const mockRemoveChannel = jest.fn();
+let mockShowToast: jest.Mock;
+
+beforeEach(() => {
+  realtimeHandler = undefined;
+  const channel: { on: jest.Mock; subscribe: jest.Mock } = {
+    on: jest.fn((_type: string, _filter: unknown, handler: RealtimeHandler) => {
+      realtimeHandler = handler;
+      return channel;
+    }),
+    subscribe: jest.fn(() => channel),
+  };
+  mockCreateClient.mockReturnValue({
+    channel: jest.fn(() => channel),
+    removeChannel: mockRemoveChannel,
+  } as unknown as ReturnType<typeof createClient>);
+
+  mockShowToast = jest.fn();
+  jest.spyOn(toastStore, 'useToastActions').mockReturnValue({
+    showToast: mockShowToast,
+    dismissToast: jest.fn(),
+  });
+});
+
+/** Drive a code_items UPDATE through the subscribed handler, wrapped in act. */
+function emitCodeItemUpdate(row: CodeItem): void {
+  if (realtimeHandler === undefined) {
+    throw new Error('no realtime handler captured — did CodeProvider mount?');
+  }
+  const handler = realtimeHandler;
+  act(() => {
+    handler({ new: row });
+  });
+}
+
+/** Override document.hidden (jsdom has no real visibility model). */
+function setDocumentHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+}
+
+afterEach(() => {
+  setDocumentHidden(false);
+  document.title = '';
+});
 
 const PROJECT_A: Project = {
   id: 'p1',
@@ -838,6 +893,231 @@ describe('code-store', () => {
         });
         expect(mockUpdateCodeState).not.toHaveBeenCalled();
         expect(openSpy).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('realtime swimlanes', () => {
+    const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+    describe('codeItemToStoryPatch', () => {
+      it('maps every sidecar field a transition can touch', () => {
+        const row = makeSavedSidecar({
+          item_id: 'i1',
+          ref: 'ALF-42',
+          ref_number: 42,
+          factory_state: 'ready_for_dev',
+          lane: 'human',
+          spec_path: 'docs/specs/ALF-42.md',
+          spec_sha: 'abc123',
+          spec_markdown: '# Spec',
+          refinement_pr_url: 'https://github.com/x/y/pull/1',
+          implementation_pr_url: 'https://github.com/x/y/pull/2',
+          blocked_reason: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-05-05T00:00:00Z',
+        });
+
+        expect(codeItemToStoryPatch(row)).toEqual({
+          ref: 'ALF-42',
+          ref_number: 42,
+          factory_state: 'ready_for_dev',
+          lane: 'human',
+          spec_path: 'docs/specs/ALF-42.md',
+          spec_sha: 'abc123',
+          spec_markdown: '# Spec',
+          refinement_pr_url: 'https://github.com/x/y/pull/1',
+          implementation_pr_url: 'https://github.com/x/y/pull/2',
+          blocked_reason: null,
+          code_created_at: '2025-01-01T00:00:00Z',
+          code_updated_at: '2025-05-05T00:00:00Z',
+        });
+      });
+    });
+
+    it('moves a seeded story to its new factory_state lane on a realtime UPDATE', async () => {
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+      expect(findStoryState(result.current)).toBe('in_refinement');
+
+      emitCodeItemUpdate(
+        makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
+      );
+
+      await waitFor(() => {
+        expect(findStoryState(result.current)).toBe('ready_for_dev');
+      });
+    });
+
+    it('ignores an UPDATE for an item_id not in the store (no resurrection, no error)', () => {
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      emitCodeItemUpdate(
+        makeSavedSidecar({ item_id: 'ghost', ref: 'ALF-99', factory_state: 'done' }),
+      );
+
+      const allStories = result.current.activeEpics.flatMap((b) => [
+        ...b.lanes.flatMap((l) => l.stories),
+        ...b.escapeStories,
+      ]);
+      expect(allStories.map((s) => s.item_id)).toEqual(['i1']);
+      expect(findStoryState(result.current)).toBe('in_refinement');
+      expect(mockShowToast).not.toHaveBeenCalled();
+    });
+
+    it('leaves the board stable on an echo of the current value', () => {
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'ready_for_dev' });
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      emitCodeItemUpdate(
+        makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
+      );
+
+      expect(findStoryState(result.current)).toBe('ready_for_dev');
+      expect(mockShowToast).not.toHaveBeenCalled();
+    });
+
+    it('creates the channel once and tears it down on unmount', () => {
+      const { rerender, unmount } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+      });
+      rerender();
+      expect(mockCreateClient).toHaveBeenCalledTimes(1);
+
+      unmount();
+      expect(mockRemoveChannel).toHaveBeenCalledTimes(1);
+    });
+
+    describe('notifications', () => {
+      it('toasts "<ref> moved to <label>" on a state-changing UPDATE', () => {
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_refinement',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitCodeItemUpdate(
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
+        );
+
+        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Ready for Dev');
+      });
+
+      it('labels an escape-state transition (Blocked)', () => {
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_development',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitCodeItemUpdate(
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'blocked' }),
+        );
+
+        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Blocked');
+      });
+
+      it('does not toast a non-state UPDATE (e.g. spec_markdown only)', () => {
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_refinement',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitCodeItemUpdate(
+          makeSavedSidecar({
+            item_id: 'i1',
+            ref: 'ALF-42',
+            factory_state: 'in_refinement',
+            spec_markdown: '# A freshly written spec',
+          }),
+        );
+
+        expect(mockShowToast).not.toHaveBeenCalled();
+      });
+
+      it('marks the tab title when backgrounded and restores it on visibilitychange', () => {
+        setDocumentHidden(true);
+        document.title = 'Alfred';
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_refinement',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitCodeItemUpdate(
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
+        );
+
+        expect(document.title).toContain('ALF-42');
+        expect(document.title).toContain('Ready for Dev');
+        expect(document.title).not.toBe('Alfred');
+
+        // Tab returns to the foreground → the original title is restored exactly.
+        setDocumentHidden(false);
+        act(() => {
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+        expect(document.title).toBe('Alfred');
+      });
+
+      it('restores the tab title on window focus', () => {
+        setDocumentHidden(true);
+        document.title = 'Alfred';
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_refinement',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitCodeItemUpdate(
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
+        );
+        expect(document.title).not.toBe('Alfred');
+
+        setDocumentHidden(false);
+        act(() => {
+          globalThis.dispatchEvent(new Event('focus'));
+        });
+        expect(document.title).toBe('Alfred');
+      });
+
+      it('rolls multiple backgrounded updates into a count in the title', () => {
+        setDocumentHidden(true);
+        document.title = 'Alfred';
+        const stories = [
+          makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' }),
+          makeStory('i2', 'e1', 'p1', { ref: 'ALF-43', factory_state: 'in_development' }),
+        ];
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories }),
+        });
+
+        emitCodeItemUpdate(
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
+        );
+        emitCodeItemUpdate(
+          makeSavedSidecar({ item_id: 'i2', ref: 'ALF-43', factory_state: 'ready_for_review' }),
+        );
+
+        expect(document.title).toContain('(2)');
       });
     });
   });

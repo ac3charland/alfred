@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import { Board } from './board';
@@ -15,6 +16,15 @@ jest.mock('react-markdown', () => ({
   default: ({ children }: { children?: string }) => <div data-testid="markdown">{children}</div>,
 }));
 jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
+
+// CodeProvider opens a Realtime channel on mount; stub the browser client with an inert,
+// chainable channel so no websocket is attempted under jsdom.
+jest.mock('@/lib/supabase/client', () => ({
+  createClient: () => {
+    const channel = { on: () => channel, subscribe: () => channel };
+    return { channel: () => channel, removeChannel: () => {} };
+  },
+}));
 
 // The epic-header archive/notes controls go through the store's updateEpic → api-client.
 jest.mock('@/lib/api-client');
@@ -84,13 +94,15 @@ function renderBoard(seed: {
   projectId?: string;
 }) {
   return render(
-    <CodeProvider
-      initialProjects={seed.projects ?? [PROJECT]}
-      initialEpics={seed.epics ?? []}
-      initialStories={seed.stories ?? []}
-    >
-      <Board projectId={seed.projectId ?? 'p1'} />
-    </CodeProvider>,
+    <ToastProvider>
+      <CodeProvider
+        initialProjects={seed.projects ?? [PROJECT]}
+        initialEpics={seed.epics ?? []}
+        initialStories={seed.stories ?? []}
+      >
+        <Board projectId={seed.projectId ?? 'p1'} />
+      </CodeProvider>
+    </ToastProvider>,
   );
 }
 
