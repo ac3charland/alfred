@@ -177,6 +177,43 @@ describe('addTask', () => {
     const callArg = mockCreateItem.mock.calls[0]?.[0];
     expect(callArg).not.toHaveProperty('parent_id');
   });
+
+  it('uses item_type task when parentId is provided (subtask must be a task)', async () => {
+    const saved = item({ id: 'server-1', parent_id: 'parent-1', item_type: 'task' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Subtask', parentId: 'parent-1' });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ item_type: 'task' }));
+  });
+
+  it('uses item_type unclassified when no parentId is provided (top-level capture)', async () => {
+    const saved = item({ id: 'server-1' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Root task' });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({ item_type: 'unclassified' }),
+    );
+  });
+
+  it('optimistic subtask row has item_type task before the server responds', () => {
+    mockCreateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    act(() => {
+      void result.current.actions.addTask({ text: 'Subtask', parentId: 'parent-1' });
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('task');
+  });
 });
 
 // ---------------------------------------------------------------------------
