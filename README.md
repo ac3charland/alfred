@@ -9,8 +9,8 @@ for the agent operating rules.
 - `frontend/` — Next.js (App Router) app → Vercel.
 - `workers/` — Cloudflare Workers (future LLM processing layer; scaffolded only).
 - `database/` — Supabase schema, migrations, and dev seed.
-
-Spec docs live under `docs/specs/`, each spec in its own folder (e.g. `docs/specs/product/`, `docs/specs/code-module/`).
+- `docs/` - Various written documentation and context.
+  - `docs/specs/` - Specs for implementing changes to alfred.
 
 One repo, one root `package.json`, one lockfile. The root `check` / `check:fast` /
 `check:slow` scripts fan out to every workspace.
