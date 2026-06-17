@@ -165,22 +165,90 @@ function isDocsPath(p: string): boolean {
   return p === 'docs' || p.startsWith('docs/');
 }
 
-/** Trunk refs to diff against, in priority order (first existing one wins). */
-const TRUNK_REFS: readonly string[] = ['origin/main', 'main', 'origin/master', 'master'];
+/** Remote-tracking trunk refs, in priority order — what a fresh CI checkout diffs against. */
+const REMOTE_TRUNK_REFS: readonly string[] = ['origin/main', 'origin/master'];
+/** Local trunk branches — a LAST resort, used only when there is no `origin` remote. */
+const LOCAL_TRUNK_REFS: readonly string[] = ['main', 'master'];
+
+/**
+ * The git facts {@link chooseTrunkRef} needs, gathered up front so the choice itself stays a
+ * pure (unit-testable) function rather than shelling out.
+ */
+export interface TrunkRefFacts {
+  /** `origin/<branch>` resolved from `refs/remotes/origin/HEAD`, when that ref is set. */
+  readonly originHead: string | undefined;
+  /** Remote-tracking trunk refs that exist, in priority order. */
+  readonly remote: readonly string[];
+  /** Local trunk branches that exist, in priority order. */
+  readonly local: readonly string[];
+  /** Whether an `origin` remote is configured at all. */
+  readonly hasOrigin: boolean;
+}
+
+/**
+ * Choose the ref to diff against for the changed-since-trunk set. Prefers the **remote**
+ * trunk — the same ref a fresh CI checkout uses — so the gate flags the same demos locally
+ * and in CI. Crucially this never falls back to a **stale local `main`** (one left behind its
+ * origin): a stale local trunk pushes the merge-base into the distant past and retroactively
+ * lints every demo merged since, which is exactly the false positive this avoids. A local
+ * trunk branch is used only when there is no `origin` remote at all (a standalone repo); with
+ * an origin remote present but its trunk ref missing locally, we return `undefined` ("trunk
+ * unknown") rather than trust a possibly-stale local branch.
+ */
+export function chooseTrunkRef(facts: TrunkRefFacts): string | undefined {
+  if (facts.originHead !== undefined) return facts.originHead;
+  if (facts.remote.length > 0) return facts.remote[0];
+  if (facts.hasOrigin) return undefined;
+  return facts.local[0];
+}
+
+/** True when the git ref resolves to a commit. */
+function refExists(ref: string): boolean {
+  return (
+    spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { encoding: 'utf8' }).status === 0
+  );
+}
+
+/** `origin/<branch>` from the remote's default-branch symbolic ref, when set and resolvable. */
+function resolveOriginHead(): string | undefined {
+  const result = spawnSync('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], {
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) return undefined;
+  const ref = result.stdout.trim().replace(/^refs\/remotes\//, '');
+  return ref.length > 0 && refExists(ref) ? ref : undefined;
+}
+
+/** Whether an `origin` remote is configured. */
+function hasOriginRemote(): boolean {
+  const result = spawnSync('git', ['remote'], { encoding: 'utf8' });
+  if (result.status !== 0) return false;
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .includes('origin');
+}
+
+/** Gather the trunk-ref facts from git for {@link chooseTrunkRef}. */
+function gatherTrunkRefFacts(): TrunkRefFacts {
+  return {
+    originHead: resolveOriginHead(),
+    remote: REMOTE_TRUNK_REFS.filter((ref) => refExists(ref)),
+    local: LOCAL_TRUNK_REFS.filter((ref) => refExists(ref)),
+    hasOrigin: hasOriginRemote(),
+  };
+}
 
 /**
  * Repo-relative paths changed on the current branch vs the trunk merge-base, or
- * `undefined` when git can't tell us — no git, no trunk ref among {@link TRUNK_REFS},
- * or any command failing. Git emits POSIX, repo-relative paths already; we trim and
- * drop blank lines. The CLI passes this into {@link gatherDemos} (mirroring how it
- * passes {@link currentBranch}); an `undefined` result yields the conservative
- * `hasChangesOutsideDocs === true` default.
+ * `undefined` when git can't tell us — no git, no usable trunk ref (see
+ * {@link chooseTrunkRef}), or any command failing. Git emits POSIX, repo-relative paths
+ * already; we trim and drop blank lines. The CLI passes this into {@link gatherDemos}
+ * (mirroring how it passes {@link currentBranch}); an `undefined` result yields the
+ * conservative `hasChangesOutsideDocs === true` default.
  */
 export function changedPathsSinceTrunk(): readonly string[] | undefined {
-  const trunk = TRUNK_REFS.find((ref) => {
-    const probe = spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { encoding: 'utf8' });
-    return probe.status === 0;
-  });
+  const trunk = chooseTrunkRef(gatherTrunkRefFacts());
   if (trunk === undefined) return undefined;
   const base = spawnSync('git', ['merge-base', 'HEAD', trunk], { encoding: 'utf8' });
   if (base.status !== 0) return undefined;

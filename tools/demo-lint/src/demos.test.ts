@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { changedDemoKeys, gatherDemos, readDeclaredBranch } from './demos.ts';
+import { changedDemoKeys, chooseTrunkRef, gatherDemos, readDeclaredBranch } from './demos.ts';
 
 let root: string;
 
@@ -145,6 +145,55 @@ describe('gatherDemos', () => {
     expect(gatherDemos(root, root, 'feat/x', ['docs/demos/a/demo.md']).demoContents).toHaveLength(
       2,
     );
+  });
+});
+
+describe('chooseTrunkRef', () => {
+  it('prefers the remote default branch (origin/HEAD) above all', () => {
+    expect(
+      chooseTrunkRef({
+        originHead: 'origin/main',
+        remote: ['origin/master'],
+        local: ['main'],
+        hasOrigin: true,
+      }),
+    ).toBe('origin/main');
+  });
+
+  it('falls back to the first existing remote trunk ref when origin/HEAD is unset', () => {
+    expect(
+      chooseTrunkRef({
+        originHead: undefined,
+        remote: ['origin/master'],
+        local: ['main'],
+        hasOrigin: true,
+      }),
+    ).toBe('origin/master');
+  });
+
+  it('never uses a local trunk when an origin remote exists — a stale local main would widen the diff', () => {
+    // origin remote present but its trunk ref isn't fetched locally: prefer "unknown" over a
+    // possibly-stale local `main`, so the gate matches CI instead of diffing a far-back base.
+    expect(
+      chooseTrunkRef({
+        originHead: undefined,
+        remote: [],
+        local: ['main', 'master'],
+        hasOrigin: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('uses a local trunk branch only when there is no origin remote (standalone repo)', () => {
+    expect(
+      chooseTrunkRef({ originHead: undefined, remote: [], local: ['main'], hasOrigin: false }),
+    ).toBe('main');
+  });
+
+  it('returns undefined when nothing resolves at all', () => {
+    expect(
+      chooseTrunkRef({ originHead: undefined, remote: [], local: [], hasOrigin: false }),
+    ).toBeUndefined();
   });
 });
 
