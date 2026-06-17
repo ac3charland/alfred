@@ -1,30 +1,24 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
+import { ViewLink } from '@/components/tasks/view-link';
+import { isCodePath } from '@/lib/modules';
 import { cn } from '@/lib/utils';
 
 /**
  * The Tasks ⇄ Code module switcher — a two-button segmented control styled after the
- * Claude desktop app. Each segment navigates between the two route groups (Tasks → `/`,
- * Code → `/code`); the active segment is derived from the route.
+ * Claude desktop app. Each segment navigates between the two modules (Tasks → `/`,
+ * Code → `/code`); the active segment is derived from the route via the shared `isCodePath`
+ * rule, so URL, content, sidebar, and switcher highlight never disagree.
  *
- * Uses `next/link`, NOT the in-group `ViewLink`: switching modules crosses route groups
- * (`(tasks)` ⇄ `(code)`), each with its own layout + providers, so it needs a real RSC
- * navigation to mount the target module — `ViewLink`'s `history.pushState` only re-derives
- * views already mounted in the *same* group (the inbox/folder/completed switch), and would
- * change the URL without ever loading the other module.
- *
- * "Code" is active on any `/code` path (the landing or a project board); "Tasks" is active
- * everywhere else (inbox, a folder, completed). The track is one bordered pill; the active
- * segment lifts onto the surface with the teal accent, the inactive one stays muted.
- *
- * `prefetch={false}`: the switcher is always on screen, so default prefetch would fire an
- * RSC request for the other module on every page — needless for two top-level destinations,
- * and it would pollute the "no round-trip on a client view switch" guarantee the tasks views
- * rely on. A click still navigates normally.
+ * Since ALF-27 both modules are seeded under one shared shell layout, so switching modules no
+ * longer needs an RSC navigation: this uses `ViewLink` (the History-API switch the in-module
+ * views already use), NOT `next/link`. A plain primary click is a `history.pushState` — no
+ * document reload, no `?_rsc=` round-trip — and every page renders the same URL-deriving
+ * `ModuleRouter`, so the view follows the new URL. The segments stay real `<a href>`s:
+ * modified/middle clicks and hard loads navigate natively, and keyboard users get real links.
  */
 const segmentClass = (active: boolean) =>
   cn(
@@ -42,7 +36,7 @@ interface ViewSwitcherProperties {
 
 export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
   const pathname = usePathname();
-  const codeActive = pathname === '/code' || pathname.startsWith('/code/');
+  const codeActive = isCodePath(pathname);
   const tasksActive = !codeActive;
 
   // exactOptionalPropertyTypes: only forward onClick when a handler was given.
@@ -54,24 +48,22 @@ export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
       aria-label="Switch module"
       className="inline-flex items-center gap-1 rounded-lg border border-border bg-background/60 p-1"
     >
-      <Link
+      <ViewLink
         href="/"
-        prefetch={false}
         aria-current={tasksActive ? 'page' : undefined}
         className={segmentClass(tasksActive)}
         {...navigateProperty}
       >
         Tasks
-      </Link>
-      <Link
+      </ViewLink>
+      <ViewLink
         href="/code"
-        prefetch={false}
         aria-current={codeActive ? 'page' : undefined}
         className={segmentClass(codeActive)}
         {...navigateProperty}
       >
         Code
-      </Link>
+      </ViewLink>
     </div>
   );
 }

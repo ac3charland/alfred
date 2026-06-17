@@ -3,8 +3,9 @@ import * as React from 'react';
 
 import { ViewSwitcher } from './view-switcher';
 
-// Mock next/navigation so the test controls the active route. (The segments are
-// next/link anchors — a real cross-group navigation — so there's no pushState to stub.)
+// Mock next/navigation so the test controls the active route. The segments are now
+// ViewLink anchors (a History-API switch since ALF-27), so a plain click calls
+// history.pushState — stub it so jsdom doesn't actually mutate the test URL.
 const mockPathname = jest.fn<string, []>(() => '/');
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
@@ -13,6 +14,7 @@ jest.mock('next/navigation', () => ({
 describe('ViewSwitcher', () => {
   beforeEach(() => {
     mockPathname.mockReturnValue('/');
+    jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
   });
 
   it('renders Tasks and Code segments as links', () => {
