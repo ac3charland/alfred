@@ -386,22 +386,32 @@ See the `withVisualFrame` decorator + `VISUAL_TARGET` in
 entry that renders every story at once. Guard `postVisit` with
 `if (storyContext.tags.includes('docs')) return;` or it screenshots the whole docs page.
 
-**Cross-environment antialiasing.** Sub-pixel font/edge rendering differs between the
-sandbox SwiftShader Chromium that generated the baselines and a machine with a real GPU.
-Set a small tolerance — `failureThreshold: 0.01, failureThresholdType: 'percent'` — so
-antialiasing noise doesn't fail the gate while a real tone/hover/focus change (far more
-than 1% of a tight crop) still does. Always (re)generate baselines in the **same**
-environment the gate runs in, and commit the regenerated PNGs verbatim.
+**Snapshots render inside a pinned Docker image — identical everywhere, macOS included.**
+Text width + antialiasing depend on the OS font stack/rasteriser, so a baseline made on one
+OS can't be verified on another: macOS text is a *different width* than Linux, a hard image-
+**size** mismatch the percent-threshold can't absorb. The fix is to always render in one
+frozen environment — `mcr.microsoft.com/playwright:v<playwright-version>-noble` (currently
+`v1.60.0-noble`), which bundles exactly the Chromium our Playwright launches plus the Noble
+fonts. `npm run test:storybook` (verify) and `test:storybook:update` (rebaseline) route
+through `frontend/scripts/snapshot-docker.mjs`, which runs the real `test:storybook:linux[:update]`
+script in that image — so **Docker is required locally**. The image runs at the **host arch**
+so it's always native (never emulated — emulating the other arch under QEMU segfaults Chromium,
+exit 139). Because the fonts are frozen, text width is identical across arches; only sub-pixel
+Skia AA differs, which `failureThreshold: 0.01` absorbs while a real tone/hover/focus change
+(far more than 1% of a tight crop) still fails. Regenerate baselines only through the wrapper
+and commit the PNGs verbatim.
 
-**macOS can't pass this gate — push from the Linux sandbox.** On local macOS the text
-renders at a *different width* than the Linux-sandbox baselines (e.g. 196px vs 216px), so
-`test-storybook` fails with `Expected image to be the same size as the snapshot` — a hard
-**size** mismatch the `failureThreshold` percent-tolerance can't absorb (it only compares
-same-size images). This makes the `pre-push` `check:slow` gate **unpassable on macOS** for
-any branch, regardless of what you changed. Do feature dev + the `git push`/PR from the web
-sandbox (where the baselines were made); reserve local sessions for credentialed work
-(DB migrations, `wrangler` secrets) and let the sandbox own the push. Never regenerate the
-baselines on macOS to "fix" it — that just breaks the gate for everyone else.
+**CI keeps the full-scope `npm run check:slow`.** Don't swap CI to a `container:` job that calls
+a frontend-only script — that silently drops every *other* workspace's slow checks. Instead the
+slow job just runs on an **`ubuntu-24.04-arm`** runner (config only) and runs the unchanged root
+`npm run check:slow`; the `test:storybook` wrapper launches Docker on the runner host and renders
+**native arm64**, matching the committed (arm64) baselines exactly. Baselines are arm64 because
+that's what Apple Silicon dev machines and the arm64 runner both produce natively.
+
+**Per-arch node_modules cache gotcha.** The wrapper shadows every workspace's `node_modules` with
+a named cache volume **keyed by arch**: native bindings (`@oxc-parser`, `lightningcss`) are
+arch-specific, so a volume shared across arches feeds the wrong binaries to the container and
+crashes the Storybook build with `Cannot find native binding`.
 
 **`getStoryContext` for per-story directives.** `getStoryContext(page, context)` (from
 `@storybook/test-runner`) returns the resolved story context — read

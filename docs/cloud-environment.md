@@ -1,10 +1,17 @@
 # Claude Code on the web: custom environment for Chromium E2E
 
-The E2E (`playwright test`) and Storybook test-runner suites need a real Chromium. On a
-normal machine Playwright downloads its managed Chromium and everything just works. In
-**Claude Code on the web**, the default **Trusted** network policy allowlists npm and the
-Ubuntu apt mirrors but **not Playwright's browser CDN** (`cdn.playwright.dev`), so
-`playwright install chromium` is blocked and `check:slow` can't get a browser.
+The E2E suite (`playwright test`) needs a real Chromium. On a normal machine Playwright
+downloads its managed Chromium and everything just works. In **Claude Code on the web**, the
+default **Trusted** network policy allowlists npm and the Ubuntu apt mirrors but **not
+Playwright's browser CDN** (`cdn.playwright.dev`), so `playwright install chromium` is blocked
+and the E2E half of `check:slow` can't get a browser.
+
+> **Storybook image snapshots don't use this path.** They render inside a pinned Docker image
+> (`mcr.microsoft.com/playwright:v<version>-noble`) so the pixels are identical on every OS —
+> see the `storybook` skill §7. `npm run test:storybook` shells out to Docker (locally and in
+> CI's `npm run check:slow`); CI's slow job runs on an `ubuntu-24.04-arm` runner so its native
+> render matches the arm64 baselines. That needs Docker + registry access, not the Playwright
+> CDN — so where Docker isn't available, CI is the authoritative snapshot gate.
 
 Rather than bundle a serverless Chromium fallback, a **custom cloud environment** has been
 created that allowlists the CDN and installs Chromium once at setup. With it selected, the
@@ -62,9 +69,11 @@ snapshotted by environment caching, so later sessions start with Chromium alread
 
 `frontend` exposes `setup:chromium` → [`scripts/setup-chromium.mjs`](../frontend/scripts/setup-chromium.mjs),
 which checks whether Playwright's Chromium binary already exists and **skips the install
-when it does**, only running `playwright install chromium` otherwise. `test:e2e` and
-`test:storybook` invoke it first, so they self-heal the browser binary in any session
-(the setup script is what provides the OS libraries up front).
+when it does**, only running `playwright install chromium` otherwise. `test:e2e` invokes it
+first, so it self-heals the browser binary in any session (the setup script is what provides
+the OS libraries up front). The snapshot runner (`test:storybook:linux`) invokes it too, but
+inside the Docker image `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` points at the pre-bundled
+browsers, so it's a no-op there.
 
 ## Verify
 
