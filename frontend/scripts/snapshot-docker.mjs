@@ -20,10 +20,13 @@
  * USAGE
  *   node scripts/snapshot-docker.mjs                      # verify against committed baselines
  *   node scripts/snapshot-docker.mjs --update             # (re)generate baselines
- *   node scripts/snapshot-docker.mjs --platform=linux/amd64  # force an arch (default: linux/arm64)
+ *   node scripts/snapshot-docker.mjs --platform=linux/amd64  # force an arch (default: host arch)
  *
- * CI runs the gate natively *inside* this same image, so it calls `test:storybook:linux`
- * directly and never needs this wrapper (see .github/workflows/ci.yml).
+ * The image runs at the HOST arch so it's always native (arm64 on Apple Silicon, amd64 on the
+ * Linux CI runner) — emulating the other arch under QEMU segfaults Chromium. The pinned image
+ * fixes the fonts + Chromium so text width is identical across arches; only sub-pixel AA can
+ * differ, which the snapshot threshold absorbs. CI just runs `npm run check:slow`, which calls
+ * this wrapper the same way (see .github/workflows/ci.yml).
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
@@ -39,14 +42,17 @@ const repoRoot = path.resolve(frontendDir, '..');
 const argv = process.argv.slice(2);
 const update = argv.includes('--update');
 const platformArg = argv.find((a) => a.startsWith('--platform='))?.split('=', 2)[1];
-// Pin the canonical render arch. linux/arm64 is native on Apple Silicon AND on the CI arm64
-// runner, so snapshots render in the same place everywhere with zero emulation — emulating the
-// other arch under QEMU segfaults Chromium. Override only for experiments.
-const platform = platformArg ?? process.env.SNAPSHOT_PLATFORM ?? 'linux/arm64';
+// Default to the host arch so the container runs natively everywhere (never emulated). Override
+// with --platform only for experiments.
+const platform = platformArg ?? process.env.SNAPSHOT_PLATFORM ?? '';
 // node_modules holds platform-specific native bindings (@oxc-parser, lightningcss, …), so each
-// target arch needs its OWN cache volume — a shared one feeds the wrong arch's binaries to the
+// arch needs its OWN cache volume — a shared one feeds the wrong arch's binaries to the
 // container and crashes the Storybook build mid-render.
-const archKey = platform.split('/').pop();
+const archKey = platform
+  ? platform.split('/').pop()
+  : process.arch === 'x64'
+    ? 'amd64'
+    : process.arch;
 
 // --- image tag derived from the *resolved* Playwright version ----------------
 // The image tag must match the Chromium that `test-storybook` actually launches, which is
@@ -114,7 +120,9 @@ const dockerArgs = [
   containerCmd,
 ];
 
-console.log(`▶ snapshots in ${image} (${platform}) — ${update ? 'update' : 'verify'}`);
+console.log(
+  `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
+);
 try {
   execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
 } catch (error) {
