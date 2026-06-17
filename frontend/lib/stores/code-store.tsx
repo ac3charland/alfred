@@ -14,13 +14,11 @@ import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib
  * never fetches (see the data-flow skill). Mutations edit the seeded slices instantly and
  * reconcile with the server row(s), rolling back on error.
  *
- * Cross-module note (the gate): the gate is also reachable from the Tasks view, which
- * is NOT wrapped by CodeProvider — so the gate dialog drives its OWN local project/epic
- * state and calls `lib/api-client` directly; it does not use these actions. These actions
- * exist for mutations made from WITHIN the Code view (ProjectNav's `+`, and conversions
- * surfaced on the board). The board re-seeds from the server on a real cross-group
- * navigation, so a gate-from-Tasks story shows up there without sharing this store (the
- * cross-group-navigation gotcha).
+ * Cross-module note (the gate): since ALF-27 the CodeProvider is seeded once at the shared
+ * shell layout, so it wraps the Tasks view too — and module switching no longer re-seeds the
+ * board from the server. The gate therefore routes its creates and the gated story THROUGH
+ * these actions (createProject / createEpic / convertTaskToCode) so a gate-from-Tasks story
+ * appears on the board without a refetch, instead of relying on the old cross-group re-seed.
  */
 
 // ── The happy-path swimlanes, in board order. ──
@@ -567,6 +565,11 @@ function useCodeEpics(): Epic[] {
     throw new Error('useCodeEpics must be used within a CodeProvider');
   }
   return context;
+}
+
+/** Read the epic list (the gate's epic picker filters it by project). Throws outside a CodeProvider. */
+export function useEpics(): Epic[] {
+  return useCodeEpics();
 }
 
 function useCodeStories(): CodeStory[] {

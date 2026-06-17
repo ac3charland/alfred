@@ -6,7 +6,7 @@ import * as apiClient from '@/lib/api-client';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree } from '@/lib/tree';
-import type { Folder, Item } from '@/lib/types';
+import type { Epic, Folder, Item, Project } from '@/lib/types';
 
 import { TaskList } from './task-list';
 import { TaskRow } from './task-row';
@@ -17,16 +17,9 @@ const mockCompleteTask = jest.mocked(apiClient.completeTask);
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
-// The gate (GateDialog) fetches projects/epics on open; default them to empty so opening
-// the dialog never rejects. Individual gate tests override enterCodeModule.
-const mockListProjects = jest.mocked(apiClient.listProjects);
-const mockListEpics = jest.mocked(apiClient.listEpics);
+// The gate (GateDialog) reads projects/epics from the CodeProvider and routes the send
+// through the store's convertTaskToCode, which calls enterCodeModule under the hood.
 const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
-
-beforeEach(() => {
-  mockListProjects.mockResolvedValue([]);
-  mockListEpics.mockResolvedValue([]);
-});
 
 const BASE_ITEM: Item = {
   id: 'item-1',
@@ -77,10 +70,15 @@ const FOLDER: Folder = { id: 'folder-1', name: 'Work', created_at: '2025-01-01T0
  * the scoped selector, so changing an item's status/folder (complete/move) filters it out
  * of the view — exactly as in the app. Defaults to the inbox view.
  */
-function renderTasks(items: Item[], options: { folders?: Folder[]; scope?: TaskScope } = {}) {
+function renderTasks(
+  items: Item[],
+  options: { folders?: Folder[]; scope?: TaskScope; projects?: Project[]; epics?: Epic[] } = {},
+) {
   return renderWithProviders(<TaskList scope={options.scope ?? { type: 'inbox' }} />, {
     tasks: items,
     folders: options.folders ?? [],
+    projects: options.projects ?? [],
+    epics: options.epics ?? [],
   });
 }
 
@@ -3292,31 +3290,27 @@ describe('TaskRow — classification & type-gating', () => {
     });
 
     it('removes the item and toasts the ref when the gate completes', async () => {
-      // One project + epic so the gate can be confirmed end to end.
-      mockListProjects.mockResolvedValue([
-        {
-          id: 'p1',
-          name: 'Alfred',
-          key: 'ALF',
-          repo_owner: 'ac3charland',
-          repo_name: 'alfred',
-          github_url: null,
-          ref_seq: 0,
-          created_at: '2025-01-01T00:00:00Z',
-        },
-      ]);
-      mockListEpics.mockResolvedValue([
-        {
-          id: 'e1',
-          project_id: 'p1',
-          name: 'Firewall',
-          notes: null,
-          ref_number: 1,
-          ref: 'ALF-1',
-          archived_at: null,
-          created_at: '2025-01-01T00:00:00Z',
-        },
-      ]);
+      // One project + epic seeded into the CodeProvider so the gate can be confirmed end to end.
+      const project: Project = {
+        id: 'p1',
+        name: 'Alfred',
+        key: 'ALF',
+        repo_owner: 'ac3charland',
+        repo_name: 'alfred',
+        github_url: null,
+        ref_seq: 0,
+        created_at: '2025-01-01T00:00:00Z',
+      };
+      const epic: Epic = {
+        id: 'e1',
+        project_id: 'p1',
+        name: 'Firewall',
+        notes: null,
+        ref_number: 1,
+        ref: 'ALF-1',
+        archived_at: null,
+        created_at: '2025-01-01T00:00:00Z',
+      };
       mockEnterCodeModule.mockResolvedValue({
         item_id: 'item-1',
         project_id: 'p1',
@@ -3336,7 +3330,7 @@ describe('TaskRow — classification & type-gating', () => {
       });
 
       const user = userEvent.setup();
-      renderTasks([CODE_ITEM]);
+      renderTasks([CODE_ITEM], { projects: [project], epics: [epic] });
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');

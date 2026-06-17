@@ -8,8 +8,8 @@ import { FieldLabel } from '@/components/atoms/field-label';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { Button } from '@/components/ui/button';
-import * as api from '@/lib/api-client';
-import type { CodeItem, Epic, Project } from '@/lib/types';
+import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
+import type { CodeStory, Epic, Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 /** The item being admitted to the factory — the fields the optimistic card needs. */
@@ -26,10 +26,10 @@ interface GateDialogProperties {
   /** The inbox/task row being sent into the factory. */
   item: GateItem;
   /**
-   * Called with the created `code_items` sidecar after a successful gate. The caller
-   * (task-row) removes the gated item from the tasks store and toasts the ref.
+   * Called with the created code story after a successful gate. The caller (task-row)
+   * removes the gated item from the tasks store and toasts the allocated ref.
    */
-  onComplete: (story: CodeItem) => void;
+  onComplete: (story: CodeStory) => void;
 }
 
 /** One selectable option in a combobox-style list (a project or an epic). */
@@ -90,79 +90,43 @@ function AddNewRow({ label, onClick }: { label: string; onClick: () => void }) {
 
 /**
  * The gate's stateful body — a separate component so it MOUNTS FRESH each time the dialog
- * opens (Radix only renders Content while open). Mounting fresh resets the selection
- * without a setState-in-effect, and the project fetch runs once on mount.
+ * opens (Radix only renders Content while open). Mounting fresh resets the selection without
+ * a setState-in-effect.
+ *
+ * Since ALF-27 the CodeProvider wraps the Tasks view too, so the gate reads the project/epic
+ * lists straight from the store and routes its creates + the gated story through
+ * `useCodeActions` — no local fetch, and the new story lands on the board with no refetch.
  */
 function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties, 'open'>) {
-  const [projects, setProjects] = React.useState<Project[]>([]);
-  const [epics, setEpics] = React.useState<Epic[]>([]);
+  const projects = useProjects();
+  const epics = useEpics();
+  const { createProject, createEpic, convertTaskToCode } = useCodeActions();
   const [projectId, setProjectId] = React.useState<string | null>(null);
   const [epicId, setEpicId] = React.useState<string | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [confirmError, setConfirmError] = React.useState<string | null>(null);
   const [isConfirming, setIsConfirming] = React.useState(false);
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
 
-  // Fetch the project list once on mount (the async `.then` setState is not a synchronous
-  // effect write). Epics load when a project is chosen — but that selection is cleared in
-  // the select handler, not an effect, to avoid a synchronous effect setState.
-  React.useEffect(() => {
-    let cancelled = false;
-    void api
-      .listProjects()
-      .then((rows) => {
-        if (!cancelled) setProjects(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError('Could not load projects.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Load the chosen project's epics. The effect only fetches; `epicId` is reset by the
-  // project-select handler below, so nothing is set synchronously here.
-  React.useEffect(() => {
-    if (projectId === null) return;
-    let cancelled = false;
-    void api
-      .listEpics(projectId)
-      .then((rows) => {
-        if (!cancelled) setEpics(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setEpics([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
   const selectedProject = projects.find((p) => p.id === projectId) ?? null;
   const epicsForProject = epics.filter((e) => e.project_id === projectId);
   const canConfirm = projectId !== null && epicId !== null && !isConfirming;
 
-  // Picking a (different) project clears the epic selection + list — done in the handler,
-  // not an effect, so there's no synchronous effect setState (react-hooks/set-state-in-effect).
+  // Picking a (different) project clears the epic selection. The epic list is derived from
+  // the store by project_id, so there's nothing to clear — switching projects instantly shows
+  // the right epics.
   const selectProject = (id: string) => {
     if (id === projectId) return;
     setProjectId(id);
     setEpicId(null);
-    setEpics([]);
   };
 
   const handleProjectCreated = (project: Project) => {
-    // Optimistic insert into the local combobox + auto-select it.
-    setProjects((current) =>
-      current.some((p) => p.id === project.id) ? current : [...current, project],
-    );
+    // The store already inserted it optimistically; just auto-select it.
     selectProject(project.id);
   };
 
   const handleEpicCreated = (epic: Epic) => {
-    setEpics((current) => (current.some((e) => e.id === epic.id) ? current : [...current, epic]));
     setEpicId(epic.id);
   };
 
@@ -171,7 +135,8 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
     setConfirmError(null);
     setIsConfirming(true);
     try {
-      const story = await api.enterCodeModule(item.id, projectId, epicId);
+      // Route through the store so the optimistic card lands on the board with no refetch.
+      const story = await convertTaskToCode(item, projectId, epicId);
       onComplete(story);
       onOpenChange(false);
     } catch {
@@ -200,9 +165,6 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
             aria-label="Project"
             className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-sm border border-border bg-input/40 p-1"
           >
-            {loadError !== null && (
-              <p className="px-3 py-2 text-sm text-destructive">{loadError}</p>
-            )}
             {projects.map((project) => (
               <OptionRow
                 key={project.id}
@@ -284,11 +246,12 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
         </Button>
       </div>
 
-      {/* Nested create dialogs — gate context, so they persist via api-client directly. */}
+      {/* Nested create dialogs — routed through the store's optimistic actions so the new
+          project/epic land in the CodeProvider the board reads from. */}
       <NewProjectDialog
         open={newProjectOpen}
         onOpenChange={setNewProjectOpen}
-        onCreateProject={(input) => api.createProject(input)}
+        onCreateProject={(input) => createProject(input)}
         onCreated={handleProjectCreated}
         existingKeys={projects.map((p) => p.key)}
       />
@@ -297,7 +260,7 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
           open={newEpicOpen}
           onOpenChange={setNewEpicOpen}
           projectName={selectedProject.name}
-          onCreateEpic={(name) => api.createEpic(selectedProject.id, name)}
+          onCreateEpic={(name) => createEpic(selectedProject.id, name)}
           onCreated={handleEpicCreated}
         />
       )}
@@ -311,10 +274,10 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
  * Story…" (a task). The user picks a Project then an Epic (both blank until chosen; both
  * offer "+ New …"); Confirm is disabled until BOTH are set, then calls `enter_code_module`.
  *
- * It is deliberately CodeProvider-free: it's mounted in the Tasks view, so it fetches
- * projects on open and holds its own project/epic lists, calling `lib/api-client` directly.
- * New project/epic creations insert optimistically into these local lists (a temp id) and
- * reconcile with the server row. See the data-flow skill.
+ * Since ALF-27 the CodeProvider is seeded at the shared shell layout, so it wraps the Tasks
+ * view too: the gate reads the project/epic lists from the store and routes its creates + the
+ * gated story through `useCodeActions`, so the new card lands on the board with no refetch
+ * after a (now client-side) module switch. See the data-flow skill.
  */
 export function GateDialog({ open, onOpenChange, item, onComplete }: GateDialogProperties) {
   return (

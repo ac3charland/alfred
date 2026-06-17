@@ -116,9 +116,9 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const isCode = node.item_type === 'code';
 
   // The gate: "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
-  // unclassified rows). Both open the SAME dialog, which is CodeProvider-free (this row
-  // lives under TasksProvider, not CodeProvider). On confirm the item leaves task_items
-  // server-side, so we drop it from the tasks store and toast the allocated ref.
+  // unclassified rows). Both open the SAME dialog, which (since ALF-27) routes through the
+  // shell-seeded CodeProvider. On confirm the item leaves task_items server-side, so we drop
+  // it from the tasks store and toast the allocated ref.
   const [showGate, setShowGate] = React.useState(false);
   const canConvert = isTask || isUnclassified;
 
@@ -1097,7 +1097,9 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
         }}
         onComplete={(story) => {
           removeGatedItem(node.id);
-          showToast(`Created ${story.ref}`);
+          // The reconciled story always carries its allocated ref by now (`?? ''` only
+          // satisfies the all-nullable view row type).
+          showToast(`Created ${story.ref ?? ''}`);
         }}
       />
     </li>
