@@ -8,9 +8,11 @@ import {
   ChevronRight,
   MoreHorizontal,
   Pencil,
+  Plus,
 } from 'lucide-react';
 import * as React from 'react';
 
+import { NewStoryDialog } from '@/components/code/new-story-dialog';
 import { StoryCard } from '@/components/code/story-card';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
 import { Swimlane } from '@/components/code/swimlane';
@@ -165,11 +167,12 @@ function EpicBlock({
   onOpenSession: OpenSessionHandler;
 }) {
   const { epic, lanes, escapeStories } = board;
-  const { updateEpic } = useCodeActions();
+  const { updateEpic, createStory } = useCodeActions();
   const headingId = `epic-${epic.id}-heading`;
   const regionId = `epic-${epic.id}-lanes`;
   const archived = epic.archived_at !== null;
   const [pending, setPending] = React.useState(false);
+  const [newStoryOpen, setNewStoryOpen] = React.useState(false);
 
   const toggleArchive = async () => {
     setPending(true);
@@ -302,45 +305,58 @@ function EpicBlock({
           </button>
         )}
 
-        {/* 3-dot actions menu in the title corner: Edit title + Archive/Unarchive. */}
+        {/* + button (new story) and 3-dot actions menu — hidden while editing the title. */}
         {editingTitle ? null : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Epic actions"
-                className="mr-2 h-7 w-7 shrink-0 self-center text-muted-foreground"
-              >
-                <MoreHorizontal size={15} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={startEditTitle}>
-                <Pencil size={13} />
-                Edit title
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                disabled={pending}
-                onSelect={() => {
-                  void toggleArchive();
-                }}
-              >
-                {archived ? (
-                  <>
-                    <ArchiveRestore size={13} />
-                    Unarchive
-                  </>
-                ) : (
-                  <>
-                    <Archive size={13} />
-                    Archive
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={`New story in ${epic.name}`}
+              onClick={() => {
+                setNewStoryOpen(true);
+              }}
+              className="h-7 w-7 shrink-0 self-center text-muted-foreground"
+            >
+              <Plus size={15} />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Epic actions"
+                  className="mr-2 h-7 w-7 shrink-0 self-center text-muted-foreground"
+                >
+                  <MoreHorizontal size={15} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={startEditTitle}>
+                  <Pencil size={13} />
+                  Edit title
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={pending}
+                  onSelect={() => {
+                    void toggleArchive();
+                  }}
+                >
+                  {archived ? (
+                    <>
+                      <ArchiveRestore size={13} />
+                      Unarchive
+                    </>
+                  ) : (
+                    <>
+                      <Archive size={13} />
+                      Archive
+                    </>
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         )}
       </h3>
 
@@ -376,6 +392,15 @@ function EpicBlock({
           ) : null}
         </div>
       )}
+
+      <NewStoryDialog
+        open={newStoryOpen}
+        onOpenChange={setNewStoryOpen}
+        epicName={epic.name}
+        onCreateStory={async (storyTitle, storyNotes) => {
+          await createStory(epic.id, storyTitle, storyNotes);
+        }}
+      />
     </section>
   );
 }
