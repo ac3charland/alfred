@@ -7,7 +7,7 @@ import { useToastActions, useToasts } from '@/lib/stores/toast-store';
 import { cn } from '@/lib/utils';
 
 /**
- * Renders the toast queue (§8.3) into a fixed, bottom-right `aria-live` region so a
+ * Renders the toast queue into a fixed, bottom-right `aria-live` region so a
  * screen reader announces each new message. Each toast is dismissable and auto-expires
  * (see the toast store). Kept tiny and styled to the dense dark UI.
  */

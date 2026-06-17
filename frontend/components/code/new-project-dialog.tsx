@@ -11,7 +11,7 @@ import { parseGithubRepo } from '@/lib/code/github';
 import type { Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-/** The §4.2 key rule, mirrored client-side for a live validity check + preview. */
+/** The key rule, mirrored client-side for a live validity check + preview. */
 const KEY_REGEX = /^[A-Z][A-Z0-9]{2}$/;
 
 interface NewProjectDialogProperties {
@@ -171,7 +171,7 @@ function NewProjectForm({
 }
 
 /**
- * The New-project sub-dialog (§8.1): Name + GitHub link + a 3-char uppercase Ticket key
+ * The New-project sub-dialog: Name + GitHub link + a 3-char uppercase Ticket key
  * with a live "Refs will look like ALF-12" preview. On submit it parses the URL into
  * repo_owner/repo_name (server-side, but validated here too), creates the project via the
  * injected callback, and hands the row back so the caller can select/route to it.

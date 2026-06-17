@@ -1,10 +1,10 @@
 /**
- * The PR → ticket state machine (code-module §5.2 / §13.2).
+ * The PR → ticket state machine.
  *
  * Pure logic, no I/O: given the `(phase, action, merged)` of a `pull_request` webhook, decide
  * which `code_items` columns to patch and whether to snapshot the spec. Because both lifecycle
  * phases end in a PR, this table is the whole system's clock — every transition row lives here so
- * it can be unit-tested exhaustively (§13.4).
+ * it can be unit-tested exhaustively.
  */
 import type { CodePhase } from './frontmatter';
 
@@ -38,7 +38,7 @@ export interface TicketUpdate {
   spec_path?: string;
 }
 
-/** The decision for one PR event: columns to patch + whether to snapshot the spec (§13.3). */
+/** The decision for one PR event: columns to patch + whether to snapshot the spec. */
 export interface TransitionPlan {
   updates: TicketUpdate;
   snapshotSpec: boolean;
@@ -48,7 +48,7 @@ export interface TransitionPlan {
  * Map a PR event to its transition plan, or `undefined` when the event is a no-op for us
  * (any action other than `opened` / `closed` — e.g. `edited`, `synchronize`, `reopened`).
  *
- * The §13.2 table, verbatim:
+ * The transition table, verbatim:
  *   refinement     + opened          → no state change; record refinement_pr_url
  *   refinement     + closed & merged → ready_for_dev; record spec_path; snapshot spec
  *   refinement     + closed & !merged→ needs_refinement (revert; abandon is manual)
@@ -61,7 +61,7 @@ export function planTransition(event: PrEvent): TransitionPlan | undefined {
 
   if (phase === 'refinement') {
     if (action === 'opened') {
-      // A refinement PR opening is a no-op for the state machine (§5.3) — just record the URL.
+      // A refinement PR opening is a no-op for the state machine — just record the URL.
       return { updates: { refinement_pr_url: prUrl }, snapshotSpec: false };
     }
     if (action === 'closed') {

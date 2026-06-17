@@ -27,7 +27,7 @@ interface GateDialogProperties {
   item: GateItem;
   /**
    * Called with the created `code_items` sidecar after a successful gate. The caller
-   * (task-row) removes the gated item from the tasks store and toasts the ref (§8.3).
+   * (task-row) removes the gated item from the tasks store and toasts the ref.
    */
   onComplete: (story: CodeItem) => void;
 }
@@ -306,7 +306,7 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
 }
 
 /**
- * The gate (§8): a Radix Dialog that admits an item to the Software Factory. Entered from
+ * The gate: a Radix Dialog that admits an item to the Software Factory. Entered from
  * either "Send to Code module…" (a code-classified inbox item) or "Convert to Code
  * Story…" (a task). The user picks a Project then an Epic (both blank until chosen; both
  * offer "+ New …"); Confirm is disabled until BOTH are set, then calls `enter_code_module`.
@@ -314,7 +314,7 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
  * It is deliberately CodeProvider-free: it's mounted in the Tasks view, so it fetches
  * projects on open and holds its own project/epic lists, calling `lib/api-client` directly.
  * New project/epic creations insert optimistically into these local lists (a temp id) and
- * reconcile with the server row. See the data-flow skill + §8.
+ * reconcile with the server row. See the data-flow skill.
  */
 export function GateDialog({ open, onOpenChange, item, onComplete }: GateDialogProperties) {
   return (

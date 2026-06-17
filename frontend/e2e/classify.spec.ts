@@ -2,7 +2,7 @@ import { makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
- * Inbox classification & type badges (§7). A captured item starts `unclassified` — no
+ * Inbox classification & type badges. A captured item starts `unclassified` — no
  * type badge, no completion checkbox, no add-subtask affordance. The actions-menu
  * "Classify as…" submenu flips its type: Code shows a Code badge but still no task
  * affordances; Task unlocks the checkbox, due date and subtasks plus the Task badge.
@@ -39,7 +39,7 @@ test.describe('inbox classification', () => {
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Classify as…' }).hover();
     await page.keyboard.press('ArrowRight');
-    // `exact` so "Code" doesn't also match the M4 "Convert to Code Story…" menu item.
+    // `exact` so "Code" doesn't also match the "Convert to Code Story…" menu item.
     await expect(page.getByRole('menuitem', { name: 'Code', exact: true })).toBeVisible();
     // ArrowDown moves from "Task" (first) to "Code"; wait for focus before selecting.
     await page.keyboard.press('ArrowDown');

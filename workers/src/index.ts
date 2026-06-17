@@ -1,9 +1,9 @@
 /**
- * alfred Software Factory — the GitHub PR webhook Worker (code-module §13).
+ * alfred Software Factory — the GitHub PR webhook Worker.
  *
  * One signature-verified Worker, no LLM: it turns `pull_request` webhooks into deterministic
  * `code_items` state transitions. Because both lifecycle phases end in a PR, this single endpoint
- * tracks the whole factory (§1 keystone). Flow per delivery:
+ * tracks the whole factory. Flow per delivery:
  *   verify HMAC → it's a pull_request → parse the `alfred` block → plan the transition →
  *   PATCH the ticket(s) → (on refinement-merge) snapshot the spec in the background.
  */
@@ -14,7 +14,7 @@ import { patchCodeItem } from './supabase';
 import { planTransition } from './transitions';
 
 /**
- * Worker secrets (code-module §13.4 / §19.1). Hand-written because these are SECRETS, not
+ * Worker secrets. Hand-written because these are SECRETS, not
  * `wrangler.toml` bindings — `wrangler types` only generates bindings, so secret typing must be
  * declared here. Values are set with `wrangler secret put`, never committed.
  */
@@ -49,7 +49,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    // Health check (keep the skeleton's default 200, §13.1).
+    // Health check (keep the skeleton's default 200).
     if (request.method === 'GET' && url.pathname === '/') {
       return new Response('alfred workers ok');
     }
@@ -63,14 +63,14 @@ export default {
 };
 
 async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  // 1. Verify GitHub's HMAC over the RAW body before anything else (§13.1) — reject forgeries.
+  // 1. Verify GitHub's HMAC over the RAW body before anything else — reject forgeries.
   const rawBody = await request.text();
   const signature = request.headers.get('X-Hub-Signature-256') ?? undefined;
   if (!(await verifySignature(env.GITHUB_WEBHOOK_SECRET, rawBody, signature))) {
     return json(401, { error: 'invalid signature' });
   }
 
-  // 2. We only act on pull_request events (§13.2).
+  // 2. We only act on pull_request events.
   if (request.headers.get('X-GitHub-Event') !== 'pull_request') {
     return json(200, { ignored: 'not a pull_request event' });
   }
@@ -100,7 +100,7 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
     return json(200, { ignored: `no-op for action '${payload.action}'` });
   }
 
-  // 5. Apply the column updates to every ticket the PR names (§12 — always a list).
+  // 5. Apply the column updates to every ticket the PR names (always a list).
   const results = await Promise.all(
     frontmatter.tickets.map(async (ref) => ({
       ref,
@@ -109,7 +109,7 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
   );
   const matched = results.filter((result) => result.count > 0).map((result) => result.ref);
 
-  // 6. Snapshot the spec in the background on refinement-merge (§13.3) — best-effort, post-response.
+  // 6. Snapshot the spec in the background on refinement-merge — best-effort, post-response.
   if (plan.snapshotSpec && frontmatter.specPath !== undefined && matched.length > 0) {
     ctx.waitUntil(snapshotSpec(env, payload, matched, frontmatter.specPath));
   }
@@ -118,7 +118,7 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
 }
 
 /**
- * Fetch the merged spec from GitHub and store it on each matched ticket (§13.3). Best-effort: a
+ * Fetch the merged spec from GitHub and store it on each matched ticket. Best-effort: a
  * failed fetch leaves `spec_markdown` null and the modal falls back to the live "view in repo"
  * link — the state transition is already recorded, so this never blocks it.
  */

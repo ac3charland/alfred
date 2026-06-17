@@ -27,7 +27,7 @@ import { useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
 import type { CodeStory, Epic } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-/** The phase-appropriate launch handler the board threads to every card (§11). */
+/** The phase-appropriate launch handler the board threads to every card. */
 type OpenSessionHandler = (
   story: CodeStory,
   phase: 'refinement' | 'implementation',
@@ -67,7 +67,7 @@ function ToggleButton({
 }
 
 /**
- * The epic header's notes-editing area (§9.2). Notes go through the store's optimistic
+ * The epic header's notes-editing area. Notes go through the store's optimistic
  * `updateEpic`. Sits OUTSIDE the collapse toggle button (no nested interactive elements).
  */
 function EpicHeaderActions({ epic }: { epic: Epic }) {
@@ -344,7 +344,7 @@ function EpicBlock({
         )}
       </h3>
 
-      {/* Notes-editing area (§9.2). Shown when the epic is expanded. */}
+      {/* Notes-editing area. Shown when the epic is expanded. */}
       {collapsed ? null : <EpicHeaderActions epic={epic} />}
 
       {collapsed ? null : (
@@ -381,7 +381,7 @@ function EpicBlock({
 }
 
 /**
- * The Code board pane for one project (§9.2): the project's epics **stacked vertically,
+ * The Code board pane for one project: the project's epics **stacked vertically,
  * each collapsible**; an expanded epic shows a **horizontal row of swimlanes** for the six
  * happy-path states, with **stories as cards** (ref + title) in their state's lane.
  *
@@ -392,8 +392,8 @@ function EpicBlock({
  * - **blocked/abandoned** stories never get a column; a *Show blocked* toggle reveals them
  *   per-epic as off-track cards with their distinct treatment.
  *
- * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder this
- * milestone; the detail modal (§10) hangs off it in M6.
+ * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder for
+ * now; the detail modal hangs off it.
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
@@ -402,7 +402,7 @@ export function Board({ projectId }: BoardProperties) {
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
   const [showBlocked, setShowBlocked] = React.useState(false);
-  // The open story for the detail modal (§10), tracked by item_id so the modal always
+  // The open story for the detail modal, tracked by item_id so the modal always
   // re-reads the latest row from the store (e.g. after a manual transition reshuffles it).
   const [openStoryId, setOpenStoryId] = React.useState<string | null>(null);
 
@@ -426,13 +426,13 @@ export function Board({ projectId }: BoardProperties) {
     setCollapsed(new Set());
   }, []);
 
-  // Open the detail modal for the clicked card (§10). Tracks the item_id, not the row, so
+  // Open the detail modal for the clicked card. Tracks the item_id, not the row, so
   // the modal reflects live store updates rather than a stale snapshot.
   const handleOpenStory = React.useCallback((story: CodeStory) => {
     setOpenStoryId(story.item_id);
   }, []);
 
-  // The §11 human launch: await the state write then open the prefilled tab (the store
+  // The human launch: await the state write then open the prefilled tab (the store
   // action owns the await-then-open; the card owns the in-flight spinner). A failed write
   // rejects — swallow it here so an unhandled rejection doesn't surface; the card re-enables.
   const handleOpenSession = React.useCallback<OpenSessionHandler>(
@@ -534,8 +534,8 @@ export function Board({ projectId }: BoardProperties) {
         </div>
       )}
 
-      {/* The story detail modal (§10): opens on a card click; reads the latest row from the
-          store by item_id; reuses the board's §11 launch handler for its primary action. */}
+      {/* The story detail modal: opens on a card click; reads the latest row from the
+          store by item_id; reuses the board's launch handler for its primary action. */}
       <StoryDetailModal
         story={openStory ?? null}
         open={openStory !== null && openStory !== undefined}

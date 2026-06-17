@@ -49,6 +49,21 @@ the skill covers and let the body hold the list.
 ✅ **After** — name the subject; the rules table in the body is the list:
 > Covers skill-lint, the linter that **checks SKILL.md files for deterministic failure modes.**
 
+The nominalized variant is the sneakiest: a `subject: a, b, c` colon-list where each item is
+*advice*, not a subject-noun. A house-style skill has no inventory of subjects to list, so the
+list is always the body leaking in.
+
+❌ **Before** (`implement-spec`):
+> Documents the house style for implementing a written spec, ticket, or design doc: which of
+> the spec's references belong in the resulting code, comments, commits, PRs, and tests versus
+> what to leave behind, plus grounding in the existing codebase first, handling a spec that's
+> ambiguous or has drifted, and test coverage. Read whenever… Trigger on: …
+
+✅ **After** — name the subject in one phrase; the rules live in the body:
+> Documents the house style for implementing a written spec, ticket, or design doc into code.
+> Read whenever you've been handed a spec, ticket, or design doc and asked to build it. Trigger
+> on: "implement this spec", "build the spec", …
+
 ## Names the repo (redundant scope)
 
 The agent already knows which repo it's in (CLAUDE.md), so the repo name is wasted scope in

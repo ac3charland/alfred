@@ -52,7 +52,7 @@ const STORY: CodeStory = {
   ref: 'ALF-42',
   factory_state: 'ready_for_dev',
   lane: 'human',
-  spec_path: 'specs/ALF-42.md',
+  spec_path: 'docs/specs/ALF-42.md',
   spec_sha: 'a1b2c3d4',
   spec_markdown: SPEC_MARKDOWN,
   refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',

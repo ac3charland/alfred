@@ -87,10 +87,10 @@ export const updateFolderSchema = z.object({
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>;
 
 // ---------------------------------------------------------------------------
-// Software Factory — projects / epics / code stories (the gate, §8 / §14)
+// Software Factory — projects / epics / code stories (the gate)
 // ---------------------------------------------------------------------------
 
-/** A project ref key: exactly 3 chars, leading uppercase letter then upper-alnum (§4.2). */
+/** A project ref key: exactly 3 chars, leading uppercase letter then upper-alnum. */
 const projectKey = z.string().regex(/^[A-Z][A-Z0-9]{2}$/, {
   message: 'Key must be exactly 3 characters: an uppercase letter then two letters or digits',
 });
@@ -98,7 +98,7 @@ const projectKey = z.string().regex(/^[A-Z][A-Z0-9]{2}$/, {
 /**
  * Body for POST /api/projects. The route derives `repo_owner`/`repo_name` from the
  * GitHub URL (the `lib/code/github` parser) and persists the URL too. `key` is validated
- * against the §4.2 regex here; uniqueness is enforced by the DB `unique` constraint.
+ * against the key regex here; uniqueness is enforced by the DB `unique` constraint.
  */
 export const createProjectSchema = z.object({
   name: z.string().min(1),
@@ -117,7 +117,7 @@ export const createEpicSchema = z.object({
 export type CreateEpicInput = z.infer<typeof createEpicSchema>;
 
 /**
- * Body for PATCH /api/epics/[id] — the epic-header edits (§9.2): `name` (inline rename),
+ * Body for PATCH /api/epics/[id] — the epic-header edits: `name` (inline rename),
  * `notes` (nullable so it clears to null) and `archived_at` (set to an ISO timestamp to
  * archive, null to un-archive, which drops/restores the epic on the active board). All
  * optional, but the `.refine` rejects an empty body so a PATCH must change something.
@@ -140,7 +140,7 @@ export type UpdateEpicInput = z.infer<typeof updateEpicSchema>;
 /**
  * Body for POST /api/code — the gate. Calls `enter_code_module(item, project, epic)`,
  * which flips the item to `code`, clears its task-only fields, and creates the sidecar
- * at `needs_refinement` with a server-allocated ref (§4.3 / §8.3).
+ * at `needs_refinement` with a server-allocated ref.
  */
 export const createCodeSchema = z.object({
   item_id: uuid,
@@ -157,7 +157,7 @@ export const listEpicsQuerySchema = z.object({
 
 export type ListEpicsQuery = z.infer<typeof listEpicsQuerySchema>;
 
-/** The eight factory states (§4.1) — the full set a manual/link-click transition may set. */
+/** The eight factory states — the full set a manual/link-click transition may set. */
 const codeFactoryState = z.enum([
   'needs_refinement',
   'in_refinement',
@@ -170,9 +170,9 @@ const codeFactoryState = z.enum([
 ]);
 
 /**
- * Body for PATCH /api/code/[ref] — a state transition (§5.2). `factory_state` is required;
+ * Body for PATCH /api/code/[ref] — a state transition. `factory_state` is required;
  * `blocked_reason` is the optional companion the Block control sets (nullable so it clears on
- * any non-blocked hop). Drives both the M5 link-click write and M6's manual controls.
+ * any non-blocked hop). Drives both the link-click write and the manual controls.
  */
 export const updateCodeSchema = z.object({
   factory_state: codeFactoryState,

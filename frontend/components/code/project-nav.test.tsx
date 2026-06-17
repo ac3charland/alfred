@@ -116,7 +116,7 @@ describe('ProjectNav', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the New project button (§9.1)', () => {
+  it('renders the New project button', () => {
     renderNav(PROJECTS);
 
     expect(screen.getByRole('button', { name: /new project/i })).toBeInTheDocument();

@@ -146,7 +146,7 @@ export function deleteFolder(id: string): Promise<{ success: true }> {
 }
 
 // ---------------------------------------------------------------------------
-// Software Factory — projects / epics / code stories (the gate, §8 / §14)
+// Software Factory — projects / epics / code stories (the gate)
 // ---------------------------------------------------------------------------
 
 export function listProjects(): Promise<Project[]> {
@@ -155,9 +155,9 @@ export function listProjects(): Promise<Project[]> {
 
 export interface CreateProjectInput {
   name: string;
-  /** The repo URL; the server derives repo_owner/repo_name from it (§4.2). */
+  /** The repo URL; the server derives repo_owner/repo_name from it. */
   github_url: string;
-  /** The 3-char ref-prefix key (validated `^[A-Z][A-Z0-9]{2}$`, §4.2). */
+  /** The 3-char ref-prefix key (validated `^[A-Z][A-Z0-9]{2}$`). */
   key: string;
 }
 
@@ -183,7 +183,7 @@ export function createEpic(projectId: string, name: string): Promise<Epic> {
 }
 
 /**
- * Patch an epic's header fields (§9.2): `name`, `notes` and `archived_at`. Lives in `lib/`
+ * Patch an epic's header fields: `name`, `notes` and `archived_at`. Lives in `lib/`
  * (the null-aware layer) because clearing notes / un-archiving sends an explicit `null` —
  * the Postgres absent value — which component code can't mint (unicorn/no-null). Returns the
  * updated `epics` row.
@@ -206,7 +206,7 @@ export function listCode(): Promise<CodeStory[]> {
 }
 
 /**
- * The gate (§8.3): admit an item to the factory. Calls `enter_code_module`, which flips
+ * The gate: admit an item to the factory. Calls `enter_code_module`, which flips
  * `item_type` to `code`, clears the task-only fields, and creates the `code_items`
  * sidecar at `needs_refinement` with a server-allocated ref. Returns the sidecar row.
  */
@@ -227,8 +227,8 @@ export interface UpdateCodeStateExtra {
 }
 
 /**
- * Transition a code story to a new factory state (§5.2): the link-click write
- * (`in_refinement` / `in_development`) and M6's manual controls (Block / Abandon /
+ * Transition a code story to a new factory state: the link-click write
+ * (`in_refinement` / `in_development`) and the manual controls (Block / Abandon /
  * Advance-Revert). PATCHes the sidecar by its `ref` and returns the updated row.
  */
 export function updateCodeState(

@@ -522,7 +522,7 @@ describe('updateTask', () => {
 });
 
 // ---------------------------------------------------------------------------
-// classifyItem — inbox triage: flip item_type only (§7.1). Mirrors updateTask's
+// classifyItem — inbox triage: flip item_type only. Mirrors updateTask's
 // optimistic patch → reconcile → rollback, but is its own action so the field
 // isn't exposed on TaskFieldPatch (only this gate may change item_type).
 // ---------------------------------------------------------------------------

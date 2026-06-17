@@ -9,7 +9,7 @@ import { expect, test } from './support/fixtures';
  *
  * These guard that: a server round-trip on a view switch (the regression we fixed)
  * would either reload the document or fetch an `?_rsc=` payload, and would wipe the
- * in-memory marker we plant. (The Inbox nav link was removed in §6.2 — the wordmark and a
+ * in-memory marker we plant. (The Inbox nav link was removed — the wordmark and a
  * `?view=inbox` deep link still reach the inbox; the cross-view switch is covered here via
  * Folders + Completed, which are the remaining sidebar links.)
  */

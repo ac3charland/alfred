@@ -9,7 +9,7 @@ import { CodeLanding } from '@/components/code/code-landing';
 const CODE_PREFIX = '/code/';
 
 /**
- * Client-side view router for the Code module — the §9 board's counterpart to `TaskViews`.
+ * Client-side view router for the Code module — the board's counterpart to `TaskViews`.
  *
  * Both code pages (the landing `/code` and a board `/code/[project-id]`) render this one
  * component, which derives the active view purely from the URL: a `/code/<id>` path shows

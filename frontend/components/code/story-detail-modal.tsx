@@ -17,7 +17,7 @@ import {
 import type { CodeFactoryState, CodeStory, Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-/** Which launch phase (if any) the primary action offers in a given state (§11.3 / §10). */
+/** Which launch phase (if any) the primary action offers in a given state. */
 type LaunchPhase = 'refinement' | 'implementation';
 function launchPhaseFor(state: CodeFactoryState | null): LaunchPhase | undefined {
   if (state === 'needs_refinement') return 'refinement';
@@ -38,7 +38,7 @@ function stateLabel(state: CodeFactoryState | null): string {
   return STATE_LABELS[state];
 }
 
-/** The happy-path neighbour one step forward / back, clamped at the ends (§5.2 manual hop). */
+/** The happy-path neighbour one step forward / back, clamped at the ends (manual hop). */
 function neighbourState(
   state: CodeFactoryState | null,
   direction: 'advance' | 'revert',
@@ -51,7 +51,7 @@ function neighbourState(
   return HAPPY_PATH_STATES[nextIndex];
 }
 
-/** The View-in-repo blob URL for the recorded spec (§10): owner/name + spec_sha + spec_path. */
+/** The View-in-repo blob URL for the recorded spec: owner/name + spec_sha + spec_path. */
 function viewInRepoUrl(story: CodeStory): string | undefined {
   const { repo_owner, repo_name, spec_path } = story;
   if (repo_owner === null || repo_name === null || spec_path === null) return undefined;
@@ -80,7 +80,7 @@ function StateChip({ state }: { state: CodeFactoryState | null }) {
   );
 }
 
-/** A PR link row (refinement / implementation), shown when the url is present (§10). */
+/** A PR link row (refinement / implementation), shown when the url is present. */
 function PrLink({ label, url }: { label: string; url: string }) {
   return (
     <a
@@ -189,10 +189,10 @@ function EditableTitle({ story }: { story: CodeStory }) {
 }
 
 /**
- * The primary "Open Claude Code" action (§11), reusing the card's await-spinner contract:
+ * The primary "Open Claude Code" action, reusing the card's await-spinner contract:
  * the modal awaits `onOpenSession` (the store's `openClaudeSession`) so the button reflects
  * the real state write. Rendered only in `needs_refinement` (refinement) / `ready_for_dev`
- * (implementation) — hidden in every other state (§10).
+ * (implementation) — hidden in every other state.
  */
 function PrimaryAction({
   story,
@@ -232,7 +232,7 @@ function PrimaryAction({
   );
 }
 
-/** The §5.2 manual fallback controls — Block (with reason), Abandon, Advance/Revert. */
+/** The manual fallback controls — Block (with reason), Abandon, Advance/Revert. */
 function ManualControls({ story }: { story: CodeStory }) {
   const { updateCodeState } = useCodeActions();
   const ref = story.ref;
@@ -361,7 +361,7 @@ function ManualControls({ story }: { story: CodeStory }) {
   );
 }
 
-/** The spec body (§10): rendered `spec_markdown` when present, else the repo link / a note. */
+/** The spec body: rendered `spec_markdown` when present, else the repo link / a note. */
 function SpecBody({ story }: { story: CodeStory }) {
   const repoUrl = viewInRepoUrl(story);
   const hasSpec = story.spec_markdown !== null && story.spec_markdown.trim() !== '';
@@ -429,7 +429,7 @@ function DetailBody({
         </Dialog.Close>
       </div>
 
-      {/* The primary launch action sits in the header region (§10/§11). */}
+      {/* The primary launch action sits in the header region. */}
       <div className="mt-4 flex items-center gap-3">
         <PrimaryAction story={story} onOpenSession={onOpenSession} />
         {story.refinement_pr_url === null ? null : (
@@ -441,7 +441,7 @@ function DetailBody({
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
-        {/* Notes — generic on any item (§7.3). */}
+        {/* Notes — generic on any item. */}
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Notes
@@ -469,18 +469,18 @@ export interface StoryDetailModalProperties {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
-   * The §11 human-launch handler the board threads in (the store's `openClaudeSession`), so
-   * the modal's primary action reuses M5's await-write-then-open verbatim.
+   * The human-launch handler the board threads in (the store's `openClaudeSession`), so
+   * the modal's primary action reuses the await-write-then-open launch verbatim.
    */
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }
 
 /**
- * The Jira-style story detail modal (§10): a Radix Dialog (modelled on `cascade-modal` /
+ * The Jira-style story detail modal: a Radix Dialog (modelled on `cascade-modal` /
  * `gate-dialog`, sized up) opened from a board card. Shows the ref + inline-editable title,
  * the Project › Epic breadcrumb, the factory-state chip, notes, the rendered spec markdown
  * (react-markdown + remark-gfm) with a "View in repo" link, PR links, the phase-appropriate
- * "Open Claude Code" launch button (§11), and the §5.2 manual fallback controls.
+ * "Open Claude Code" launch button, and the manual fallback controls.
  *
  * Must be mounted under a `CodeProvider` — it reads `useCodeActions` for the title edit and
  * the manual transitions. The board owns the open story + the `onOpenSession` handler.

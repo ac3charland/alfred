@@ -4,11 +4,11 @@ import { updateCodeSchema } from '@/lib/api/schemas';
 import type { CodeItemUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// PATCH /api/code/[ref] — transition a code story to a new factory state (§5.2)
+// PATCH /api/code/[ref] — transition a code story to a new factory state
 //
 // The keyed lookup is by `ref` (the human id, KEY-N) — refs are unique per project by
-// construction (§4.3), so a single ref names one story. Drives both the M5 link-click write
-// (in_refinement / in_development) and M6's manual controls (Block / Abandon / hop).
+// construction, so a single ref names one story. Drives both the link-click write
+// (in_refinement / in_development) and the manual controls (Block / Abandon / hop).
 // ---------------------------------------------------------------------------
 
 export const PATCH = withSession(

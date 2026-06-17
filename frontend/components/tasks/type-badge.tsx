@@ -6,7 +6,7 @@ import type { ItemType } from '@/lib/types';
 const TYPE_LABELS: Partial<Record<ItemType, string>> = {
   task: 'Task',
   code: 'Code',
-  // knowledge: reserved (§7.2) — leave room, don't render a badge yet.
+  // knowledge: reserved — leave room, don't render a badge yet.
 };
 
 interface TypeBadgeProperties {
@@ -15,7 +15,7 @@ interface TypeBadgeProperties {
 
 /**
  * A small muted chip naming an item's classified type — `Task` or `Code` — shown on
- * inbox/task rows once `item_type !== 'unclassified'` (§7.2). An `unclassified` (or the
+ * inbox/task rows once `item_type !== 'unclassified'`. An `unclassified` (or the
  * reserved `knowledge`) item renders nothing, so the row carries no type affordance until
  * it's classified. Styling mirrors the row's count chips (the muted bordered pill).
  */

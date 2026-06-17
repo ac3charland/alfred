@@ -224,7 +224,7 @@ describe('Board', () => {
     expect(screen.queryByRole('region', { name: /^blocked$/i })).not.toBeInTheDocument();
   });
 
-  describe('the detail modal (§10)', () => {
+  describe('the detail modal', () => {
     it('opens the modal for the clicked story card', async () => {
       const user = userEvent.setup();
       renderBoard({
@@ -321,7 +321,7 @@ describe('Board', () => {
     });
   });
 
-  describe('the epic header controls (§9.2)', () => {
+  describe('the epic header controls', () => {
     it('edits the epic notes via updateEpic', async () => {
       mockUpdateEpic.mockResolvedValue(makeEpic('e1', { notes: 'New notes' }));
       const user = userEvent.setup();

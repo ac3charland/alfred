@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { gatherDemos, readDeclaredBranch } from './demos.ts';
+import { changedDemoKeys, gatherDemos, readDeclaredBranch } from './demos.ts';
 
 let root: string;
 
@@ -113,6 +113,60 @@ describe('gatherDemos', () => {
 
   it('conservatively reports changes outside docs when the diff is unknown', () => {
     expect(gatherDemos(root, root, 'feat/x').hasChangesOutsideDocs).toBe(true);
+  });
+
+  it('changed-only mode narrows demoContents and rootFiles to the demos that changed', () => {
+    write('# old — runs npm run test\n', 'old-demo', 'demo.md');
+    write('# new\n', 'new-demo', 'demo.md');
+    touch('stray.png'); // a root file that did not change
+    const demos = gatherDemos(root, root, 'feat/x', ['docs/demos/new-demo/demo.md'], true);
+    expect(demos.demoContents.map((c) => c.relativePath)).toEqual([
+      path.join('new-demo', 'demo.md'),
+    ]);
+    expect(demos.rootFiles).toEqual([]);
+  });
+
+  it('changed-only mode keeps a changed root file', () => {
+    touch('stray.md');
+    expect(gatherDemos(root, root, 'feat/x', ['docs/demos/stray.md'], true).rootFiles).toEqual([
+      'stray.md',
+    ]);
+  });
+
+  it('changed-only mode lints every demo when the diff is unknown (conservative)', () => {
+    write('# a\n', 'a', 'demo.md');
+    write('# b\n', 'b', 'demo.md');
+    expect(gatherDemos(root, root, 'feat/x', undefined, true).demoContents).toHaveLength(2);
+  });
+
+  it('default (not changed-only) lints every demo even with a known diff', () => {
+    write('# a\n', 'a', 'demo.md');
+    write('# b\n', 'b', 'demo.md');
+    expect(gatherDemos(root, root, 'feat/x', ['docs/demos/a/demo.md']).demoContents).toHaveLength(
+      2,
+    );
+  });
+});
+
+describe('changedDemoKeys', () => {
+  it('maps changed paths to demo keys — a folder name, or a root file name', () => {
+    expect(
+      changedDemoKeys([
+        'docs/demos/foo/bar.md',
+        'docs/demos/foo/img.png',
+        'docs/demos/stray.md',
+        'frontend/app/page.tsx',
+        'docs/code-module-spec.md',
+      ]),
+    ).toEqual(new Set(['foo', 'stray.md']));
+  });
+
+  it('passes through an unknown diff as undefined (lint everything)', () => {
+    expect(changedDemoKeys()).toBeUndefined();
+  });
+
+  it('returns an empty set when nothing under docs/demos changed', () => {
+    expect(changedDemoKeys(['frontend/app/page.tsx'])).toEqual(new Set());
   });
 });
 

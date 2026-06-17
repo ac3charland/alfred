@@ -262,7 +262,7 @@ function subtreeIds(rootId) {
   return ids;
 }
 
-// ── Computed views (migration 0002 §4.5) ─────────────────────────────────────
+// ── Computed views (migration 0002) ─────────────────────────────────────────
 // These are derived on read from the real arrays, never stored.
 
 /**
@@ -406,7 +406,7 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
-  // ── Software Factory RPCs (migration 0002 §4.3) ──
+  // ── Software Factory RPCs (migration 0002) ──
   if (fn === 'next_code_ref' && req.method === 'POST') {
     const n = allocateRef(body?.p_project);
     // A scalar-returning RPC sends the bare value.
@@ -433,7 +433,7 @@ function handleRpc(req, res, fn, body) {
     const project = projects.find((row) => String(row.id) === String(body?.p_project));
     const key = project?.key ?? null;
     const n = allocateRef(body?.p_project);
-    // Flip the item to `code` and clear task-only fields (the §4.6 CHECK).
+    // Flip the item to `code` and clear task-only fields (the DB CHECK constraint).
     const item = items.find((row) => String(row.id) === String(body?.p_item));
     if (item !== undefined) {
       item.item_type = 'code';

@@ -18,7 +18,7 @@ import { TasksProvider } from '@/lib/stores/tasks-store';
  * - Calls requireUser() as the real auth gate (middleware is defense-in-depth only).
  * - Fetches folders + ALL items once and seeds both stores for the whole module; pages
  *   filter the item list client-side per view (see the data-flow skill).
- * - Renders the shared AppShell (wordmark + Tasks⇄Code switcher + sign-out, §6) with the
+ * - Renders the shared AppShell (wordmark + Tasks⇄Code switcher + sign-out) with the
  *   tasks-module nav: FolderNav on desktop, the hamburger drawer on mobile.
  */
 export default async function TasksLayout({ children }: { children: React.ReactNode }) {

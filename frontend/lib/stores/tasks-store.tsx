@@ -40,9 +40,9 @@ interface TaskActions {
   /** Optimistically patch a task's editable fields, rolling back on failure. */
   updateTask: (id: string, patch: TaskFieldPatch) => Promise<void>;
   /**
-   * Classify an inbox item by flipping its `item_type` (the §7.1 inbox-triage gate).
+   * Classify an inbox item by flipping its `item_type` (the inbox-triage gate).
    * Its own action — not part of `TaskFieldPatch` — so only this deliberate control may
-   * change the type. An `unclassified` row is always free of task-only fields (the §4.6
+   * change the type. An `unclassified` row is always free of task-only fields (the
    * DB CHECK), so the flip is a bare `item_type` patch that clears nothing; reconciles /
    * rolls back exactly like `updateTask`.
    */
@@ -60,7 +60,7 @@ interface TaskActions {
   deleteTask: (id: string) => Promise<void>;
   /**
    * Drop an item from the store WITHOUT a server delete — for when a server-side action
-   * has already moved it out of the tasks domain. The gate (§8) admits an item to the
+   * has already moved it out of the tasks domain. The gate admits an item to the
    * factory via `enter_code_module`, which creates a `code_items` sidecar; the item then
    * falls out of the `task_items` view, so it must leave this store too. A pure client-side
    * `remove` (no API call): the row already changed server-side, so there's nothing to

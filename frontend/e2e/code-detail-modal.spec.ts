@@ -2,10 +2,10 @@ import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/consta
 import { expect, test } from './support/fixtures';
 
 /**
- * The Code module — M6 story detail modal (§10) + the epic-header controls (§9.2).
+ * The Code module — story detail modal + the epic-header controls.
  *
  * Clicking a board card opens the Jira-style modal showing the ref, title, state chip, and
- * (for a story past `ready_for_dev` carrying `spec_markdown`) the rendered spec. The §5.2
+ * (for a story past `ready_for_dev` carrying `spec_markdown`) the rendered spec. The
  * manual controls move a story along the happy path, and the epic header archives an epic
  * off the active board.
  *
@@ -50,7 +50,7 @@ test('opens the detail modal from a card and shows the rendered spec', async ({ 
     ref_number: 5,
     ref: 'ALF-5',
     factory_state: 'ready_for_dev',
-    spec_path: 'specs/ALF-5.md',
+    spec_path: 'docs/specs/ALF-5.md',
     spec_sha: 'abc123',
     spec_markdown: SPEC_MARKDOWN,
     implementation_pr_url: null,
@@ -75,7 +75,7 @@ test('opens the detail modal from a card and shows the rendered spec', async ({ 
   // The View-in-repo link is built from the recorded owner/name + sha + path.
   await expect(dialog.getByRole('link', { name: /view in repo/i })).toHaveAttribute(
     'href',
-    'https://github.com/ac3charland/alfred/blob/abc123/specs/ALF-5.md',
+    'https://github.com/ac3charland/alfred/blob/abc123/docs/specs/ALF-5.md',
   );
 
   // The phase-appropriate launch button shows (ready_for_dev → Implement).

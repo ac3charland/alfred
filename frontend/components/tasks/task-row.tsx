@@ -103,19 +103,19 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   // reactivates rather than completes.
   const isCompleted = node.status === 'completed';
 
-  // Completion, due dates, and subtasks are `task`-only (§7.3) — gated here in the UI and
-  // structurally in the DB (§4.6 CHECK). An `unclassified` (or `code`) row exposes none of
+  // Completion, due dates, and subtasks are `task`-only — gated here in the UI and
+  // structurally in the DB (the CHECK constraint). An `unclassified` (or `code`) row exposes none of
   // them; classifying it as `task` is what unlocks them. `notes` stay generic (all types).
   const isTask = node.item_type === 'task';
-  // The Classify-as submenu (§7.1) is inbox triage, so it's offered ONLY while the row is
+  // The Classify-as submenu is inbox triage, so it's offered ONLY while the row is
   // still unclassified — `Classify as Code` is a bare item_type flip that's safe precisely
   // because an unclassified row is already clean (no due_date/parent_id/completed to clear).
   const isUnclassified = node.item_type === 'unclassified';
   // A code-classified-but-not-yet-sent row (no code_items sidecar) — it's still in the
-  // inbox, and offers "Send to Code module…" to open the gate (§7.1 / §8).
+  // inbox, and offers "Send to Code module…" to open the gate.
   const isCode = node.item_type === 'code';
 
-  // The gate (§8): "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
+  // The gate: "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
   // unclassified rows). Both open the SAME dialog, which is CodeProvider-free (this row
   // lives under TasksProvider, not CodeProvider). On confirm the item leaves task_items
   // server-side, so we drop it from the tasks store and toast the allocated ref.
@@ -146,7 +146,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const { setNodeRef: setDropNodeRef, isOver } = useDroppable({ id: node.id });
   // Only a valid landing spot lights up: a different, active, reconciled task outside the
   // dragged item's own subtree (re-parenting onto self/a descendant would make a cycle).
-  // A non-`task` row can never be a parent (subtask trees stay all-`task`, §4.6), so it's
+  // A non-`task` row can never be a parent (subtask trees stay all-`task`), so it's
   // never a valid drop target.
   const isValidDropTarget =
     isTask && !isCompleted && !isTempId(node.id) && !draggedSubtreeIds.has(node.id);
@@ -415,7 +415,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               />
             </IconButton>
 
-            {/* Completion is `task`-only (§7.3): an unclassified/code row shows no checkbox,
+            {/* Completion is `task`-only: an unclassified/code row shows no checkbox,
                 just a spacer so its title stays aligned with task rows. */}
             {isTask ? (
               isDropTarget ? (
@@ -551,10 +551,10 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
             )}
 
             {/* Type badge — shown once the item is classified (Task / Code); nothing for
-                an unclassified row (§7.2). */}
+                an unclassified row. */}
             <TypeBadge itemType={node.item_type} />
 
-            {/* Due date chip — `task`-only (§7.3). */}
+            {/* Due date chip — `task`-only. */}
             {isTask && node.due_date && !isEditingDueDate && (
               <button
                 type="button"
@@ -595,7 +595,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
 
             {/* Row actions — visible on hover */}
             <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
-              {/* Add subtask — `task`-only (§7.3): subtasks nest only under tasks, so an
+              {/* Add subtask — `task`-only: subtasks nest only under tasks, so an
                   unclassified/code row exposes no add-subtask affordance. */}
               {isTask && (
                 <IconButton
@@ -649,10 +649,10 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                     align="end"
                     sideOffset={4}
                   >
-                    {/* Classify as ▸ — inbox triage (§7.1), offered only while the row is
+                    {/* Classify as ▸ — inbox triage, offered only while the row is
                         still unclassified. Picking a type flips item_type (the optimistic
                         classifyItem action). Knowledge is reserved — leave room, don't build
-                        it. "Send to Code module…" / "Convert to Code Story…" are M4. */}
+                        it. "Send to Code module…" / "Convert to Code Story…" route into the Code module. */}
                     {isUnclassified && (
                       <DropdownMenu.Sub>
                         <DropdownMenu.SubTrigger className="flex cursor-pointer select-none items-center justify-between rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary">
@@ -687,14 +687,14 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                             >
                               Code
                             </DropdownMenu.Item>
-                            {/* Knowledge: reserved (§7.1) — future type, not built. */}
+                            {/* Knowledge: reserved — future type, not built. */}
                           </DropdownMenu.SubContent>
                         </DropdownMenu.Portal>
                       </DropdownMenu.Sub>
                     )}
 
-                    {/* Send to Code module… — a code-classified inbox item enters the gate
-                        (§7.1 / §8). The RPC creates the code_items sidecar; the item then
+                    {/* Send to Code module… — a code-classified inbox item enters the gate.
+                        The RPC creates the code_items sidecar; the item then
                         leaves the Tasks/Inbox views. */}
                     {isCode && (
                       <DropdownMenu.Item
@@ -710,7 +710,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                     {/* Convert to Code Story… — the path for an existing task (or an
                         unclassified item): the gate both flips item_type and creates the
                         factory row in one step (the enter_code_module RPC clears task-only
-                        fields, §4.3, so a task with a due date / subtasks converts safely). */}
+                        fields, so a task with a due date / subtasks converts safely). */}
                     {canConvert && (
                       <DropdownMenu.Item
                         className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
@@ -722,7 +722,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                       </DropdownMenu.Item>
                     )}
 
-                    {/* Set/Edit due date — `task`-only (§7.3). */}
+                    {/* Set/Edit due date — `task`-only. */}
                     {isTask && (
                       <DropdownMenu.Item
                         className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
@@ -812,7 +812,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               className="rounded-sm border border-border/50 bg-surface/50 px-3 py-3 space-y-3 mr-2"
               style={{ marginLeft: metaIndentLeft }}
             >
-              {/* Due date field — `task`-only (§7.3); notes (below) stay generic. */}
+              {/* Due date field — `task`-only; notes (below) stay generic. */}
               {isTask && (
                 <div className="flex flex-col gap-1">
                   <FieldLabel htmlFor={`due-date-${node.id}`}>Due date</FieldLabel>
@@ -1084,7 +1084,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
         isPending={false}
       />
 
-      {/* The gate (§8) — Send to Code module / Convert to Code Story. On success the item
+      {/* The gate — Send to Code module / Convert to Code Story. On success the item
           has left task_items, so drop it from the store and toast its new ref. */}
       <GateDialog
         open={showGate}

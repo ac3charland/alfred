@@ -60,7 +60,7 @@ export const Simple: Story = {
   },
 };
 
-// ── Classification variants (§7) — the type-gating matrix made visible. ──
+// ── Classification variants — the type-gating matrix made visible. ──
 
 // An unclassified row (what capture creates): no type badge, no completion checkbox, no
 // add-subtask affordance — just the title. Classifying it unlocks those (see below).

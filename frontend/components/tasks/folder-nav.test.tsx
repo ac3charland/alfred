@@ -69,7 +69,7 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /personal/i })).toBeInTheDocument();
   });
 
-  it('does NOT render an Inbox link (§6.2 — removed; reach the inbox via the wordmark)', () => {
+  it('does NOT render an Inbox link (removed; reach the inbox via the wordmark)', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     expect(screen.queryByRole('link', { name: /inbox/i })).not.toBeInTheDocument();

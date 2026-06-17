@@ -30,7 +30,7 @@ export const GET = withSession(async (session, request) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/epics — create an epic via the create_epic RPC (§4.3 / §8.2)
+// POST /api/epics — create an epic via the create_epic RPC
 //
 // The RPC allocates the shared per-project ref counter and denormalizes KEY-N, so the
 // epic is never client-minted. Returns the inserted `epics` row.

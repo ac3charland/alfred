@@ -21,10 +21,10 @@ describe('planTransition', () => {
 
     it('closed & merged → ready_for_dev, records spec_path, snapshots', () => {
       const plan = planTransition(
-        event({ action: 'closed', merged: true, specPath: 'specs/ALF-42.md' }),
+        event({ action: 'closed', merged: true, specPath: 'docs/specs/ALF-42.md' }),
       );
       expect(plan).toEqual({
-        updates: { factory_state: 'ready_for_dev', spec_path: 'specs/ALF-42.md' },
+        updates: { factory_state: 'ready_for_dev', spec_path: 'docs/specs/ALF-42.md' },
         snapshotSpec: true,
       });
     });

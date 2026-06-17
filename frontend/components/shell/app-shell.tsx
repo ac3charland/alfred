@@ -9,11 +9,11 @@ import { ToastProvider } from '@/lib/stores/toast-store';
 
 /**
  * Shared application shell (Server Component) used by BOTH module layouts — `(tasks)` and
- * `(code)` (§6). It owns the chrome that's identical across modules: the `alfred` wordmark
+ * `(code)`. It owns the chrome that's identical across modules: the `alfred` wordmark
  * (links to `/` capture, unchanged), the Tasks ⇄ Code switcher, the sign-out form, and the
  * desktop sidebar / mobile header frame. Each layout passes in the module-appropriate
  * `nav` (desktop sidebar) and `mobileNav` (the hamburger drawer, which carries the switcher
- * on small screens, §6.3) and seeds its own providers around `<AppShell>`.
+ * on small screens) and seeds its own providers around `<AppShell>`.
  *
  * The switcher sits beneath the wordmark in the desktop sidebar's top-left square; on
  * mobile it moves into the hamburger, so the header bar there is just hamburger + wordmark.

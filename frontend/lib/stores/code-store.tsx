@@ -14,17 +14,17 @@ import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib
  * never fetches (see the data-flow skill). Mutations edit the seeded slices instantly and
  * reconcile with the server row(s), rolling back on error.
  *
- * Cross-module note (the gate, §8): the gate is also reachable from the Tasks view, which
+ * Cross-module note (the gate): the gate is also reachable from the Tasks view, which
  * is NOT wrapped by CodeProvider — so the gate dialog drives its OWN local project/epic
  * state and calls `lib/api-client` directly; it does not use these actions. These actions
  * exist for mutations made from WITHIN the Code view (ProjectNav's `+`, and conversions
  * surfaced on the board). The board re-seeds from the server on a real cross-group
- * navigation, so a gate-from-Tasks story shows up there without sharing this store (the M3
- * gotcha).
+ * navigation, so a gate-from-Tasks story shows up there without sharing this store (the
+ * cross-group-navigation gotcha).
  */
 
-// ── The happy-path swimlanes, in board order (§9.2). ──
-// blocked/abandoned are NOT columns — they surface via a card treatment + filter (§9.2),
+// ── The happy-path swimlanes, in board order. ──
+// blocked/abandoned are NOT columns — they surface via a card treatment + filter,
 // so they're excluded from the lane list deliberately.
 export const HAPPY_PATH_STATES = [
   'needs_refinement',
@@ -77,7 +77,7 @@ export interface ProjectBoard {
   archivedEpics: BoardEpic[];
 }
 
-/** What the gate (or ProjectNav `+`) needs to optimistically create a project (§8.1). */
+/** What the gate (or ProjectNav `+`) needs to optimistically create a project. */
 export interface CreateProjectInput {
   name: string;
   github_url: string;
@@ -88,24 +88,24 @@ export interface CreateProjectInput {
  * Mutation actions for the code module — the optimistic + reconcile/rollback recipe
  * (data-flow skill), mirroring `tasks-store`.
  *
- * SEAM: `updateEpic` (notes + archive/un-archive) lands in M6. The reducer already supports
- * the moves it needs (`patchEpic`), so it slots in as a `useCodeActions` member without
+ * SEAM: `updateEpic` (notes + archive/un-archive) is a later addition. The reducer already
+ * supports the moves it needs (`patchEpic`), so it slots in as a `useCodeActions` member without
  * further store surgery.
  */
 export interface CodeActions {
-  /** Optimistically add a project, then reconcile with the saved row (§8.1 / §9.1). */
+  /** Optimistically add a project, then reconcile with the saved row. */
   createProject: (input: CreateProjectInput) => Promise<Project>;
   /** Optimistically add an epic (the `create_epic` RPC allocates its ref), then reconcile. */
   createEpic: (projectId: string, name: string) => Promise<Epic>;
   /**
-   * The gate from within the Code view (§8.3): admit an item already known here to the
+   * The gate from within the Code view: admit an item already known here to the
    * factory. Inserts an optimistic story card and reconciles with the allocated ref.
    */
   enterCodeModule: (itemId: string, projectId: string, epicId: string) => Promise<CodeStory>;
   /**
    * Convert a task surfaced inside the Code view into a code story — same RPC + same
    * optimistic insert as `enterCodeModule`; distinct name so the call site reads as the
-   * §7.1 "Convert to Code Story" intent.
+   * "Convert to Code Story" intent.
    */
   convertTaskToCode: (
     item: { id: string; title: string; notes: string | null; source_url: string | null },
@@ -113,7 +113,7 @@ export interface CodeActions {
     epicId: string,
   ) => Promise<CodeStory>;
   /**
-   * Edit an epic's header fields (§9.2): `name` (inline rename), `notes` and `archived_at`
+   * Edit an epic's header fields: `name` (inline rename), `notes` and `archived_at`
    * (set to archive, `null` to un-archive — archiving drops the epic off the active board).
    * Optimistically patches the epic via the reducer's `patchEpic`, then reconciles with the
    * saved row, rolling the touched fields back on error.
@@ -123,13 +123,13 @@ export interface CodeActions {
     patch: { name?: string; notes?: string | null; archived_at?: string | null },
   ) => Promise<void>;
   /**
-   * Edit a code story's title (§10 header). The title lives on the `items` row, so this
+   * Edit a code story's title (shown in the detail-modal header). The title lives on the `items` row, so this
    * PATCHes the item via `lib/api-client.updateItem` and reflects it on the board via the
    * reducer's `patchStory`, rolling back the prior title on error.
    */
   updateStoryTitle: (itemId: string, title: string) => Promise<void>;
   /**
-   * Transition a story to a new factory state (§5.2), keyed by its `ref`. Optimistically
+   * Transition a story to a new factory state, keyed by its `ref`. Optimistically
    * patches the card into its new swimlane, then reconciles with the saved row (rolling the
    * state back on error). Used by manual controls and as the write inside `openClaudeSession`.
    * `extra` carries companion fields like `blocked_reason` (the Block control).
@@ -140,10 +140,10 @@ export interface CodeActions {
     extra?: api.UpdateCodeStateExtra,
   ) => Promise<void>;
   /**
-   * The human launch (§11.3): show-spinner → AWAIT the state write → open the prefilled
+   * The human launch: show-spinner → AWAIT the state write → open the prefilled
    * Claude Code tab. Awaiting before `window.open` eliminates the "looks launched but didn't
    * persist" edge — the tab only opens once the transition is durable. The URL is derived
-   * from the story + its project (`lib/code/links`), so M6's modal reuses this verbatim.
+   * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
   openClaudeSession: (ref: string, phase: 'refinement' | 'implementation') => Promise<void>;
 }
@@ -356,7 +356,7 @@ export function CodeProvider({
 
   const actions = React.useMemo<CodeActions>(() => {
     // Shared insert-optimistic-then-reconcile path for both gate entry points (the
-    // §7.1 "Send to Code module" and "Convert to Code Story"), so neither relies on `this`.
+    // "Send to Code module" and "Convert to Code Story"), so neither relies on `this`.
     async function admitToFactory(
       item: { id: string; title: string; notes: string | null; source_url: string | null },
       projectId: string,
@@ -383,7 +383,7 @@ export function CodeProvider({
       }
     }
 
-    // Shared optimistic state transition (§5.2), so `openClaudeSession` reuses it without
+    // Shared optimistic state transition, so `openClaudeSession` reuses it without
     // relying on `this` (matching `admitToFactory`'s extraction rationale above).
     async function transitionState(
       ref: string,
@@ -526,7 +526,7 @@ export function CodeProvider({
         }
         // Build the prefill URL up front (pure, from stored data) so a write failure leaves
         // nothing half-done. Await the transition BEFORE opening — the tab only appears once
-        // the move is durable (§11.3).
+        // the move is durable.
         const url =
           phase === 'refinement'
             ? buildRefinementUrl(project, story)

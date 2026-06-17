@@ -85,18 +85,16 @@ describe('buildRefinementUrl', () => {
     expect(firstLine).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
   });
 
-  it('instructs a spec-only artifact (no implementation) saved to specs/<REF>.md', () => {
+  it('instructs a spec-only artifact (no implementation) saved to docs/specs/<REF>.md', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
     expect(prompt).toMatch(/spec/i);
     expect(prompt).toMatch(/no implementation|do not implement|not.*implement/i);
-    expect(prompt).toContain('specs/ALF-42.md');
+    expect(prompt).toContain('docs/specs/ALF-42.md');
   });
 
-  it('references the proposed (not-yet-finalized) refinement guide convention', () => {
+  it('points at the refinement skill dropped into each repo', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
-    expect(prompt).toContain('.alfred/refinement.md');
-    // §17: the path is a proposal, not finalized — the prompt must flag that.
-    expect(prompt).toMatch(/proposed|not.*finali[sz]ed|convention/i);
+    expect(prompt).toContain('.claude/skills/refinement/SKILL.md');
   });
 
   it('embeds the alfred frontmatter block with ticket, refinement phase, and spec-path', () => {
@@ -104,7 +102,7 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toContain('```alfred');
     expect(prompt).toContain('alfred-ticket: ALF-42');
     expect(prompt).toContain('phase: refinement');
-    expect(prompt).toContain('spec-path: specs/ALF-42.md');
+    expect(prompt).toContain('spec-path: docs/specs/ALF-42.md');
   });
 
   it('tells Claude to open a PR carrying that block', () => {
@@ -112,7 +110,40 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toMatch(/open.*(pull request|pr)/i);
   });
 
-  it('does NOT inline the full notes/spec body (length cap, §11.1) — references the file', () => {
+  it('gates on context: ask the human before writing when the ticket is thin', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    // The clarification gate is the headline guardrail — a smaller model must be told to ask
+    // rather than invent scope. It must reference asking before the spec is written.
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/before writing the spec/i);
+  });
+
+  it('tells Claude to ground itself in the repo and its own conventions first', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+  });
+
+  it('carries a self-contained section skeleton for the no-guide fallback', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    // When the refinement skill is absent the prompt must still define the spec shape, so
+    // "OpenSpec-style" is no longer an undefined term the model has to guess at.
+    expect(prompt).toContain('Acceptance criteria');
+    expect(prompt).toContain('Out of scope');
+  });
+
+  it('asks Claude to self-check the saved spec and verbatim block before the PR', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/verbatim|reproduced exactly/i);
+  });
+
+  it('flags truncated notes so partial context is not mistaken for the whole', () => {
+    const prompt =
+      parse(buildRefinementUrl(makeProject(), makeStory({ notes: 'Z'.repeat(2000) }))).prompt ?? '';
+    expect(prompt).toMatch(/truncated/i);
+  });
+
+  it('does NOT inline the full notes/spec body (length cap) — references the file', () => {
     const longNotes = 'X'.repeat(20_000);
     const url = buildRefinementUrl(makeProject(), makeStory({ notes: longNotes }));
     // The whole URL stays well under the desktop ~14k cap; the giant notes are not inlined.
@@ -144,7 +175,7 @@ describe('buildRefinementUrl', () => {
     const { repo, prompt } = parse(url);
     expect(repo).toBe('me/relay');
     expect((prompt ?? '').split('\n', 1)[0]).toBe('RLP-7: Add the digest scheduler');
-    expect(prompt).toContain('specs/RLP-7.md');
+    expect(prompt).toContain('docs/specs/RLP-7.md');
     expect(prompt).toContain('alfred-ticket: RLP-7');
   });
 });
@@ -164,18 +195,18 @@ describe('buildImplementationUrl', () => {
 
   it('instructs implementing the merged spec at the story spec_path', () => {
     const prompt =
-      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'specs/ALF-42.md' })))
+      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/ALF-42.md' })))
         .prompt ?? '';
     expect(prompt).toMatch(/implement/i);
-    expect(prompt).toContain('specs/ALF-42.md');
+    expect(prompt).toContain('docs/specs/ALF-42.md');
   });
 
-  it('falls back to the conventional specs/<REF>.md path when spec_path is null', () => {
+  it('falls back to the conventional docs/specs/<REF>.md path when spec_path is null', () => {
     // spec_path is normally set by the refinement-merge webhook before ready_for_dev, but be
     // defensive: a null path still yields the conventional location so the link is usable.
     const prompt =
       parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: null }))).prompt ?? '';
-    expect(prompt).toContain('specs/ALF-42.md');
+    expect(prompt).toContain('docs/specs/ALF-42.md');
   });
 
   it('embeds the alfred frontmatter block with the implementation phase', () => {
@@ -185,11 +216,11 @@ describe('buildImplementationUrl', () => {
     expect(prompt).toContain('phase: implementation');
   });
 
-  it('does NOT inline the spec markdown body (references the committed file, §11.1)', () => {
+  it('does NOT inline the spec markdown body (references the committed file)', () => {
     const longSpec = 'Y'.repeat(20_000);
     const url = buildImplementationUrl(
       makeProject(),
-      makeStory({ spec_markdown: longSpec, spec_path: 'specs/ALF-42.md' }),
+      makeStory({ spec_markdown: longSpec, spec_path: 'docs/specs/ALF-42.md' }),
     );
     expect(url.length).toBeLessThan(14_000);
     expect(parse(url).prompt ?? '').not.toContain(longSpec);
@@ -203,5 +234,14 @@ describe('buildImplementationUrl', () => {
   it('url-encodes the prompt', () => {
     const rawQuery = buildImplementationUrl(makeProject(), makeStory()).split('?', 2)[1] ?? '';
     expect(rawQuery).not.toMatch(/[ \n`]/);
+  });
+
+  it('carries the shared guardrails: ground in the repo and ask when the spec is ambiguous', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+    // The implementation analog of the clarification gate: don't guess past a stale/ambiguous spec.
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/verbatim|reproduced exactly/i);
   });
 });

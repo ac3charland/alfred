@@ -12,6 +12,7 @@ one-time style nit.
 - A derivation spelled out before the point (batch-commits)
 - A generic preamble in front of the specific gotcha (playwright)
 - A redundant forward-pointer (showboat)
+- A one-idea rule inflated into a multi-paragraph section (implement-spec)
 
 ## A "Why:" paragraph re-justifying the line above it — skill-creator (`5f1b0ab`)
 
@@ -106,3 +107,30 @@ AFTER:
 ```
 description (see *Linking the demo in the PR* below).
 ```
+
+## A one-idea rule inflated into a multi-paragraph section — implement-spec
+
+One rule — "don't carry spec-only references into the code" — was spread across a standalone
+sentence restating it plus three labelled, near-identical before/after examples.
+
+BEFORE:
+```
+**Translate the meaning into self-contained prose instead.** If the section was saying
+something worth keeping, say *that thing*; if the sentence already stands on its own, just
+drop the citation.
+
+**Example 1** — drop a citation… **Example 2** — keep the meaning… **Example 3** — a
+comment that only pointed at the spec…   [three Before/After pairs]
+```
+AFTER:
+```
+Translate the meaning into self-contained prose, or drop the citation when the sentence
+already stands alone:
+
+- `… deep links (§11).` → `… deep links.`
+- `the ToS-clean human launch (§1/§11.1)` → `… — prefilled, never auto-submitted`
+```
+
+**Lesson:** a rule that fits in a sentence needs one or two examples, not three labelled ones
+plus a paragraph re-stating the rule. Fold the restatement into the rule, and keep only the
+examples that show *distinct* cases (drop vs. translate) — cut the duplicates.

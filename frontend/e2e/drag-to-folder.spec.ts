@@ -9,7 +9,7 @@ import { expect, test } from './support/fixtures';
  * are drop targets. A drop routes through the optimistic moveTask action, so the task
  * leaves its current view instantly and is filed under the target folder.
  *
- * NOTE (§6.2): the Inbox nav link was removed, so it is no longer a drop target — there is
+ * NOTE: the Inbox nav link was removed, so it is no longer a drop target — there is
  * no "drag a filed task back to the Inbox" affordance. That capability still exists via the
  * row's "Move to… → Inbox" menu (covered elsewhere); only the drag-onto-Inbox-link shortcut
  * is gone with the link.

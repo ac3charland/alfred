@@ -18,6 +18,13 @@ CLI workflows the swarm leans on (git, `gh`, `vercel`, `wrangler`, `supabase`,
 `psql`, husky, CI). A reproducible quirk in any of those is just as skill-worthy as a
 framework gotcha.
 
+**Recording an insight is one task; _authoring or restructuring_ a skill — above all its
+`description` — is another, with its own rules.** Before you write or revise a description,
+read `skill-creator`'s "Writing a description that triggers" checklist (and
+`references/description-triggering.md`): the description is the only thing that routes future
+agents to a skill, so a weak one fails silently and the cost compounds across the swarm. This
+skill covers the recording side, not how to author a description.
+
 ## Contents
 
 **This file**

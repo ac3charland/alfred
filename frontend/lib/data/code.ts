@@ -9,7 +9,7 @@ import type { CodeStory, Epic, Project } from '@/lib/types';
  * Mirrors `lib/data/items.ts`: the whole code dataset — projects, epics, and the
  * flattened code-story rows — is fetched once at the (code) layout and seeded into the
  * CodeProvider store; the board derives each project's swimlanes client-side. Volume is
- * small (single user), so a fetch-all beats per-project round-trips (see §14 / the
+ * small (single user), so a fetch-all beats per-project round-trips (see the
  * data-flow skill). Client components never import this — they read the store.
  */
 
@@ -38,7 +38,7 @@ export async function getEpics(): Promise<Epic[]> {
  *
  * `v_code_stories` is a view, so Postgres carries no NOT NULL metadata and the generated
  * type makes every column nullable. The view's inner joins guarantee a fully-resolved row
- * for every story it returns, so override the result back to `CodeStory` (same gotcha M2
+ * for every story it returns, so override the result back to `CodeStory` (the same gotcha
  * handled for `task_items`; see the supabase skill).
  */
 export async function getCodeStories(): Promise<CodeStory[]> {

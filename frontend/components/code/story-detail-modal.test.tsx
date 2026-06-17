@@ -183,7 +183,7 @@ describe('StoryDetailModal', () => {
         makeStory({
           factory_state: 'ready_for_dev',
           spec_markdown: '# The spec\n\n- item one\n- item two',
-          spec_path: 'specs/ALF-42.md',
+          spec_path: 'docs/specs/ALF-42.md',
           spec_sha: 'abc123',
         }),
       );
@@ -199,7 +199,7 @@ describe('StoryDetailModal', () => {
         makeStory({
           factory_state: 'ready_for_dev',
           spec_markdown: '# spec',
-          spec_path: 'specs/ALF-42.md',
+          spec_path: 'docs/specs/ALF-42.md',
           spec_sha: 'deadbeef',
         }),
       );
@@ -207,7 +207,7 @@ describe('StoryDetailModal', () => {
       const link = dialog.getByRole('link', { name: /view in repo/i });
       expect(link).toHaveAttribute(
         'href',
-        'https://github.com/ac3charland/alfred/blob/deadbeef/specs/ALF-42.md',
+        'https://github.com/ac3charland/alfred/blob/deadbeef/docs/specs/ALF-42.md',
       );
     });
 
@@ -245,7 +245,7 @@ describe('StoryDetailModal', () => {
     });
   });
 
-  describe('the primary launch action (§11)', () => {
+  describe('the primary launch action', () => {
     // Match the launch button by its full label so it doesn't collide with the manual
     // "Revert to … Refinement" / "Advance to …" controls that also contain "refine".
     const refineButton = /refine in claude/i;
@@ -280,7 +280,7 @@ describe('StoryDetailModal', () => {
     );
   });
 
-  describe('manual controls (§5.2 fallback)', () => {
+  describe('manual controls (fallback)', () => {
     beforeEach(() => {
       mockUpdateCodeState.mockResolvedValue({
         factory_state: 'in_refinement',

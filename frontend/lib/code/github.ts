@@ -1,9 +1,9 @@
 /**
  * Pure helpers for GitHub repo coordinates (the New-project dialog + the projects route).
  *
- * A project = a GitHub repo (§3). The user pastes a repo URL; we derive `repo_owner` /
- * `repo_name` from it and store the URL too (the owner/name pair is the source of truth,
- * §4.2). Kept dependency-free so it's trivially unit-tested and reused server-side.
+ * A project = a GitHub repo. The user pastes a repo URL; we derive `repo_owner` /
+ * `repo_name` from it and store the URL too (the owner/name pair is the source of truth).
+ * Kept dependency-free so it's trivially unit-tested and reused server-side.
  */
 
 export interface RepoCoordinates {

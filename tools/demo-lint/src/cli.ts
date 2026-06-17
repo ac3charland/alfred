@@ -10,9 +10,11 @@ const HELP = `demo-lint — enforce the docs/demos folder-per-demo structure.
 
 Usage:
   demo-lint [dir]   Lint a demos directory. With no argument, lints docs/demos
-                    at the repo root.
+                    at the repo root and only the demos changed on this branch vs
+                    trunk (the check:slow mode); pass --all to lint every demo.
 
 Options:
+  --all             Lint every demo, not just the ones changed vs trunk (the audit).
   --branch <name>   Treat <name> as the current branch (default: git HEAD). Use it
                     to check what a given branch owes without switching branches.
   --help, -h        Show this help.
@@ -40,11 +42,16 @@ function main(argv: readonly string[]): number {
   const inputs: string[] = [];
   let branch: string | undefined;
   let branchOverridden = false;
+  let all = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? '';
     if (arg === '--help' || arg === '-h') {
       process.stdout.write(HELP);
       return 0;
+    }
+    if (arg === '--all') {
+      all = true;
+      continue;
     }
     if (arg === '--branch') {
       const value = argv[i + 1];
@@ -69,12 +76,17 @@ function main(argv: readonly string[]): number {
     throw new UsageError(`demos directory not found: ${demosDir}`);
   }
 
-  // The diff always runs against the real HEAD, even when --branch is overridden.
+  // The gate (no dir argument, no --all) narrows the content/structure checks to demos
+  // changed vs trunk, so a new rule never retroactively fails an untouched demo; --all or an
+  // explicit dir audits everything. The diff always runs against the real HEAD, even when
+  // --branch is overridden.
+  const changedOnly = inputs.length === 0 && !all;
   const demos = gatherDemos(
     demosDir,
     cwd,
     branchOverridden ? branch : currentBranch(),
     changedPathsSinceTrunk(),
+    changedOnly,
   );
   const findings = lintDemos(demos);
 
