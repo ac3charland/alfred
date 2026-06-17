@@ -4,6 +4,8 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
+import { useToastActions } from '@/lib/stores/toast-store';
+import { createClient } from '@/lib/supabase/client';
 import { TEMP_ID_PREFIX } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -51,6 +53,17 @@ export const STATE_LABELS: Record<HappyPathState, string> = {
 export function isEscapeState(state: CodeFactoryState | null): boolean {
   return state === 'blocked' || state === 'abandoned';
 }
+
+/**
+ * Human-readable label for ANY factory state, including the escape states (Blocked /
+ * Abandoned) that `STATE_LABELS` omits because they aren't swimlanes. Used by the live
+ * transition notification, which must label whatever state a row moved into.
+ */
+export const FACTORY_STATE_LABELS: Record<CodeFactoryState, string> = {
+  ...STATE_LABELS,
+  blocked: 'Blocked',
+  abandoned: 'Abandoned',
+};
 
 /** One swimlane: a happy-path state and the stories currently in it (ref order). */
 export interface BoardLane {
@@ -305,23 +318,31 @@ function makeOptimisticStory(
   };
 }
 
+/**
+ * The sidecar fields a `code_items` row contributes to its flattened `CodeStory`. The single
+ * source of truth for the sidecar→story projection — used by both the optimistic reconcile
+ * and the realtime patch path so the two can never drift.
+ */
+export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
+  return {
+    ref: row.ref,
+    ref_number: row.ref_number,
+    factory_state: row.factory_state,
+    lane: row.lane,
+    spec_path: row.spec_path,
+    spec_sha: row.spec_sha,
+    spec_markdown: row.spec_markdown,
+    refinement_pr_url: row.refinement_pr_url,
+    implementation_pr_url: row.implementation_pr_url,
+    blocked_reason: row.blocked_reason,
+    code_created_at: row.created_at,
+    code_updated_at: row.updated_at,
+  };
+}
+
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
 function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
-  return {
-    ...optimistic,
-    ref: saved.ref,
-    ref_number: saved.ref_number,
-    factory_state: saved.factory_state,
-    lane: saved.lane,
-    spec_path: saved.spec_path,
-    spec_sha: saved.spec_sha,
-    spec_markdown: saved.spec_markdown,
-    refinement_pr_url: saved.refinement_pr_url,
-    implementation_pr_url: saved.implementation_pr_url,
-    blocked_reason: saved.blocked_reason,
-    code_created_at: saved.created_at,
-    code_updated_at: saved.updated_at,
-  };
+  return { ...optimistic, ...codeItemToStoryPatch(saved) };
 }
 
 const CodeProjectsContext = React.createContext<Project[] | undefined>(undefined);
@@ -353,6 +374,79 @@ export function CodeProvider({
   React.useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const { showToast } = useToastActions();
+
+  // ── Live swimlanes: subscribe the open board to code_items Realtime. ──
+  // A story's factory_state is written out-of-band by the webhook Worker (and from other
+  // devices), so the seed-once store needs a push channel to reflect those transitions
+  // without a reload. The board read shape is the v_code_stories VIEW, which you can't
+  // subscribe to — so we listen to the base `code_items` table and project each row through
+  // the same `codeItemToStoryPatch` the reconcile uses, dispatched via `patchStory`. That
+  // dispatch is keyed by item_id and a no-op when the story isn't in the seeded set, so a
+  // change for an unknown/removed story is harmlessly ignored. An echo of the user's own
+  // optimistic write carries the persisted values, so re-applying the patch is idempotent
+  // (the card stays put) and the prev===next guard below skips its notification — no
+  // self-write filtering needed. Created once (showToast is stable), torn down on unmount.
+  React.useEffect(() => {
+    const supabase = createClient();
+
+    // Tab-title marker bookkeeping, scoped to this subscription instance. Capture the
+    // pre-existing title once so the restore is exact and doesn't fight a route-level title.
+    let originalTitle: string | null = null;
+    let hiddenUpdates = 0;
+    const restoreTitle = () => {
+      if (!document.hidden && originalTitle !== null) {
+        document.title = originalTitle;
+        originalTitle = null;
+        hiddenUpdates = 0;
+      }
+    };
+
+    // Unique channel topic per mount. The browser client from `@supabase/ssr` is a
+    // singleton, so a remount (in-app navigation back to /code, or React StrictMode's
+    // double-invoke) reuses the same client; a fixed topic would collide with the prior,
+    // still-registered channel and throw "cannot add postgres_changes callbacks … after
+    // subscribe()". A fresh topic each time sidesteps that — the postgres_changes filter,
+    // not the topic, selects the rows.
+    const channel = supabase
+      .channel(`code_items:${crypto.randomUUID()}`)
+      .on<CodeItem>(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'code_items' },
+        (payload) => {
+          const row = payload.new;
+          const previous = stateRef.current.stories.find((s) => s.item_id === row.item_id);
+          dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+          // Notify only for a real, EXTERNAL factory_state change. Compute the previous state
+          // before the dispatch above; a self-write echo already set the new state in the
+          // store, so previous === next and neither toast nor title fires for it.
+          if (previous === undefined || previous.factory_state === row.factory_state) return;
+          const label = FACTORY_STATE_LABELS[row.factory_state];
+          showToast(`${row.ref} moved to ${label}`);
+          // Backgrounded tab: mark the title so a glance at the tab strip shows work landed.
+          if (document.hidden) {
+            originalTitle ??= document.title;
+            hiddenUpdates += 1;
+            document.title =
+              hiddenUpdates === 1
+                ? `● ${row.ref} → ${label}`
+                : `(${String(hiddenUpdates)}) updates · ${row.ref} → ${label}`;
+          }
+        },
+      )
+      .subscribe();
+
+    // Restore the captured title when the tab regains focus / becomes visible.
+    document.addEventListener('visibilitychange', restoreTitle);
+    window.addEventListener('focus', restoreTitle);
+
+    return () => {
+      document.removeEventListener('visibilitychange', restoreTitle);
+      window.removeEventListener('focus', restoreTitle);
+      void supabase.removeChannel(channel);
+    };
+  }, [showToast]);
 
   const actions = React.useMemo<CodeActions>(() => {
     // Shared insert-optimistic-then-reconcile path for both gate entry points (the

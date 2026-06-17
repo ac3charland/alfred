@@ -4,8 +4,10 @@ import * as React from 'react';
 
 /**
  * Toast store — a tiny cross-cutting notification queue (the gate's "Created ALF-42"
- * confirmation). Mounted once in the shared AppShell so any module can fire a toast;
- * split into state + actions contexts like the other stores so actions-only callers
+ * confirmation; the code board's live swimlane moves). Mounted once at the root layout —
+ * above both module layouts — so any provider beneath it can fire a toast, including the
+ * code module's realtime subscription in CodeProvider. The viewport renders in AppShell.
+ * Split into state + actions contexts like the other stores so actions-only callers
  * (`useToastActions`) don't re-render when the queue changes.
  *
  * Deliberately minimal: a transient, auto-dismissing message rendered into an `aria-live`

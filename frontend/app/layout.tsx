@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 
+import { ToastProvider } from '@/lib/stores/toast-store';
+
 import './globals.css';
 
 // Use locally-bundled Geist fonts so the build works in air-gapped environments.
@@ -34,7 +36,12 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased scrollbar-gutter-stable`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">{children}</body>
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        {/* App-global toast queue. Mounted above both module layouts so any provider
+            beneath it — including the code module's realtime subscription in
+            CodeProvider — can fire a toast. The viewport itself lives in AppShell. */}
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }

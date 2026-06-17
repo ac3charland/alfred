@@ -5,7 +5,6 @@ import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
 import { Button } from '@/components/ui/button';
 import { signOut } from '@/lib/auth/actions';
-import { ToastProvider } from '@/lib/stores/toast-store';
 
 /**
  * Shared application shell (Server Component) used by BOTH module layouts — `(tasks)` and
@@ -30,7 +29,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   return (
-    <ToastProvider>
+    <>
       <div className="flex h-full min-h-screen bg-background">
         {/* Desktop sidebar */}
         <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
@@ -81,7 +80,9 @@ export function AppShell({
           <main className="flex-1 overflow-y-auto flex flex-col">{children}</main>
         </div>
       </div>
+      {/* The toast queue's provider is mounted at the root layout; the viewport renders
+          here, inside the shared chrome, so toasts appear over either module. */}
       <ToastViewport />
-    </ToastProvider>
+    </>
   );
 }
