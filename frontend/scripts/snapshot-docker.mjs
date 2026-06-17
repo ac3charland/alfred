@@ -120,20 +120,32 @@ const dockerArgs = [
   containerCmd,
 ];
 
-console.log(
-  `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
-);
-try {
-  execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
-} catch (error) {
-  if (error.code === 'ENOENT') {
-    console.error(
-      '\n✖ Docker is required to run snapshots consistently but `docker` was not found.',
-    );
-    console.error('  Install Docker Desktop and ensure it is running, then retry.');
-    process.exitCode = 127;
-  } else {
-    // Surface the container's own exit code (test-storybook failure, build error, …).
-    process.exitCode = error.status ?? 1;
+// On Linux without a Docker socket (e.g. cloud sandbox / CI without Docker-in-Docker), the
+// wrapper can't launch the container — but running test:storybook:linux directly is equivalent
+// because we're already on the same FreeType + Chromium stack the container provides. Fall back
+// instead of failing so pre-push still validates the snapshots in these environments.
+const dockerSocket = '/var/run/docker.sock';
+if (process.platform === 'linux' && !existsSync(dockerSocket)) {
+  console.log(
+    `▶ Docker socket not found at ${dockerSocket}; running ${innerScript} directly (Linux host)`,
+  );
+  execFileSync('npm', ['run', innerScript, '-w', 'frontend'], { stdio: 'inherit', cwd: repoRoot });
+} else {
+  console.log(
+    `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
+  );
+  try {
+    execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.error(
+        '\n✖ Docker is required to run snapshots consistently but `docker` was not found.',
+      );
+      console.error('  Install Docker Desktop and ensure it is running, then retry.');
+      process.exitCode = 127;
+    } else {
+      // Surface the container's own exit code (test-storybook failure, build error, …).
+      process.exitCode = error.status ?? 1;
+    }
   }
 }
