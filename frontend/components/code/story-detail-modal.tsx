@@ -361,6 +361,93 @@ function ManualControls({ story }: { story: CodeStory }) {
   );
 }
 
+/**
+ * The inline-editable notes section in the detail modal. Clicking shows a textarea; Save
+ * calls `updateStoryNotes`, Cancel/Escape reverts without writing. Empty draft saves `null`.
+ * Mirrors `EpicHeaderActions` in `board.tsx`.
+ */
+function EditableNotes({ story }: { story: CodeStory }) {
+  const { updateStoryNotes } = useCodeActions();
+  const currentNotes = story.notes ?? '';
+  const itemId = story.item_id;
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(currentNotes);
+
+  const open = () => {
+    setDraft(currentNotes);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    const next = draft.trim();
+    setEditing(false);
+    if (next === currentNotes) return;
+    if (itemId === null) return;
+    try {
+      await updateStoryNotes(itemId, next === '' ? null : next);
+    } catch {
+      setDraft(currentNotes);
+    }
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setDraft(currentNotes);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-2">
+        <textarea
+          aria-label="Edit notes"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') cancel();
+          }}
+          rows={3}
+          className="w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+        />
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void save();
+            }}
+            className="text-accent-teal hover:bg-accent-teal/10"
+          >
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={cancel} className="text-muted-foreground">
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={open}
+      className="group/notes flex min-w-0 w-full items-start gap-1.5 rounded-sm text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+    >
+      {currentNotes === '' ? (
+        <span className="text-muted-foreground/70 hover:text-muted-foreground">Add notes…</span>
+      ) : (
+        <span className="whitespace-pre-wrap text-foreground">{currentNotes}</span>
+      )}
+      <Pencil
+        size={13}
+        className="mt-0.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
+      />
+    </button>
+  );
+}
+
 /** The spec body: rendered `spec_markdown` when present, else the repo link / a note. */
 function SpecBody({ story }: { story: CodeStory }) {
   const repoUrl = viewInRepoUrl(story);
@@ -404,7 +491,6 @@ function DetailBody({
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
   const epicName = story.epic_name ?? 'Epic';
-  const notes = story.notes?.trim();
 
   return (
     <>
@@ -441,16 +527,12 @@ function DetailBody({
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
-        {/* Notes — generic on any item. */}
+        {/* Notes — generic on any item, inline-editable via updateStoryNotes. */}
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Notes
           </h3>
-          {notes === undefined || notes === '' ? (
-            <p className="text-sm text-muted-foreground/70">No notes.</p>
-          ) : (
-            <p className="whitespace-pre-wrap text-sm text-foreground">{notes}</p>
-          )}
+          <EditableNotes story={story} />
         </div>
 
         <SpecBody story={story} />

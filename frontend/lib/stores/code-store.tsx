@@ -129,6 +129,12 @@ export interface CodeActions {
    */
   updateStoryTitle: (itemId: string, title: string) => Promise<void>;
   /**
+   * Edit a code story's notes from the detail modal. Notes live on the `items` row — PATCHes
+   * via `lib/api-client.updateItem` and reflects via `patchStory`, rolling back on error.
+   * Pass `null` to clear.
+   */
+  updateStoryNotes: (itemId: string, notes: string | null) => Promise<void>;
+  /**
    * Transition a story to a new factory state, keyed by its `ref`. Optimistically
    * patches the card into its new swimlane, then reconciles with the saved row (rolling the
    * state back on error). Used by manual controls and as the write inside `openClaudeSession`.
@@ -510,6 +516,21 @@ export function CodeProvider({
         try {
           const saved = await api.updateItem(itemId, { title });
           dispatch({ type: 'patchStory', itemId, patch: { title: saved.title } });
+        } catch (error) {
+          dispatch({ type: 'patchStory', itemId, patch: rollback });
+          throw error;
+        }
+      },
+      async updateStoryNotes(itemId, notes) {
+        const previous = stateRef.current.stories.find((s) => s.item_id === itemId);
+        if (previous === undefined) {
+          throw new Error(`Code story ${itemId} not found in the code store`);
+        }
+        const rollback: Partial<CodeStory> = { notes: previous.notes };
+        dispatch({ type: 'patchStory', itemId, patch: { notes } });
+        try {
+          const saved = await api.updateItem(itemId, { notes });
+          dispatch({ type: 'patchStory', itemId, patch: { notes: saved.notes ?? null } });
         } catch (error) {
           dispatch({ type: 'patchStory', itemId, patch: rollback });
           throw error;
