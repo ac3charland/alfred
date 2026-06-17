@@ -282,8 +282,10 @@ describe('TaskRow', () => {
       await screen.findByRole('menu');
       await activateMenuItem(user, /set due date/i);
 
-      // The meta panel opened, but the subtask tree stayed collapsed.
-      expect(screen.getByText('Due date')).toBeInTheDocument();
+      // The meta panel opened (it's in the accessibility tree), but the subtask tree
+      // stayed collapsed. The panel stays mounted for both rows now (it slides), so assert
+      // via the AT-aware role query rather than the always-present "Due date" label text.
+      expect(screen.getByRole('group', { name: /task details/i })).toBeInTheDocument();
       expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
     });
 
@@ -1099,12 +1101,19 @@ describe('TaskRow', () => {
 
       await user.click(screen.getByRole('button', { name: /due date:/i }));
 
-      expect(screen.getByText('Due date')).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: /task details/i })).toBeInTheDocument();
     });
 
-    it('does not show the meta panel initially', () => {
-      renderTasks([BASE_ITEM]);
-      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
+    // The panel is an in-flow disclosure: it stays mounted and slides closed (grid-rows
+    // 1fr→0fr), with aria-hidden + inert removing it from the accessibility tree when closed.
+    // So "closed" is asserted via the AT-aware role query, not the always-mounted label text.
+    it('keeps the meta panel out of the accessibility tree when closed but mounted for the slide', () => {
+      renderTasks([{ ...BASE_ITEM, notes: 'Persistent note' }]);
+      // Out of the AT (collapsed)…
+      expect(screen.queryByRole('group', { name: /task details/i })).not.toBeInTheDocument();
+      // …but its content (the notes shown only in the panel) is still in the DOM, so the
+      // height collapse can animate. On the old conditional-render it wasn't mounted at all.
+      expect(screen.getByText('Persistent note')).toBeInTheDocument();
     });
 
     it('closes the meta panel when the Close button is clicked', async () => {
@@ -1112,11 +1121,59 @@ describe('TaskRow', () => {
       renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
 
       await user.click(screen.getByRole('button', { name: /due date:/i }));
-      expect(screen.getByText('Due date')).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: /task details/i })).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: /^close$/i }));
 
-      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: /task details/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Inline editor fades — the due-date / notes display ⇆ editor swap is an inline editing
+  // affordance, so it FADES (not slides) even though the panel around it slides. See the
+  // motion skill: "inline editing swaps fade".
+  // ---------------------------------------------------------------------------
+
+  describe('inline editor fades (display ⇆ editor swap)', () => {
+    it('fades the due-date editor in when the display swaps to the editor', async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
+
+      // The chip opens the panel directly in edit mode.
+      await user.click(screen.getByRole('button', { name: /due date:/i }));
+
+      // The type="date" input is labelled by the "Due date" FieldLabel; its container fades in.
+      const input = screen.getByLabelText('Due date');
+      expect(input.parentElement).toHaveClass('animate-fade-in', 'motion-reduce:animate-none');
+    });
+
+    it('fades the due-date display back in when editing is cancelled', async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
+
+      await user.click(screen.getByRole('button', { name: /due date:/i }));
+      const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
+      if (!cancelBtn) throw new Error('cancel button not found');
+      await user.click(cancelBtn);
+
+      // Back on the display button (also labelled by the FieldLabel) — it fades in too.
+      expect(screen.getByLabelText('Due date')).toHaveClass(
+        'animate-fade-in',
+        'motion-reduce:animate-none',
+      );
+    });
+
+    it('fades the notes editor in when the display swaps to the editor', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await activateMenuItem(user, /(?:add|edit) notes/i);
+
+      const textarea = await screen.findByRole('textbox', { name: /notes/i });
+      expect(textarea.parentElement).toHaveClass('animate-fade-in', 'motion-reduce:animate-none');
     });
   });
 
@@ -1677,13 +1734,11 @@ describe('TaskRow', () => {
       expect(mockUpdateItem).not.toHaveBeenCalled();
     });
 
-    it('shows existing notes in the view (not editing) button', () => {
+    it('keeps the notes meta panel closed (out of the accessibility tree) until opened', () => {
       renderTasks([{ ...BASE_ITEM, notes: 'My note content' }]);
-      // The meta panel isn't open yet — but notes render in the panel only when isMetaOpen.
-      // The 'Add notes' / 'Edit notes' text in the dropdown tells us the state.
-      // We just need to verify the note content appears once meta opens.
-      // (Covered by the existing notes tests above; this is for 'no notes' case.)
-      expect(screen.queryByText('My note content')).not.toBeInTheDocument();
+      // The panel stays mounted (it slides), but aria-hidden + inert keep it out of the
+      // accessibility tree until it's opened — so assert via the AT-aware role query.
+      expect(screen.queryByRole('group', { name: /task details/i })).not.toBeInTheDocument();
     });
 
     it('shows "Add notes…" placeholder when no notes exist in meta panel', async () => {

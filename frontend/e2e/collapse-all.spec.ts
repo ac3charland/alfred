@@ -89,9 +89,10 @@ test.describe('collapse all', () => {
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Set due date' }).click();
 
-    // The meta panel opens for editing… (`exact` so "Due date" doesn't also match the
-    // "Set due date" menuitem mid-close).
-    await expect(page.getByText('Due date', { exact: true })).toBeVisible();
+    // The meta panel opens for editing. It's an in-flow disclosure that stays mounted and
+    // slides, so every row's panel is in the DOM — assert via the role query, which (unlike
+    // getByText) ignores the aria-hidden collapsed panels and matches only the open one.
+    await expect(page.getByRole('group', { name: 'Task details' })).toBeVisible();
     // …but the subtree stays collapsed (the meta panel is a sibling of the subtree).
     await expect(subtasks).toBeHidden();
   });

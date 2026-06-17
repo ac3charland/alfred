@@ -806,159 +806,177 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
             </div>
           </div>
 
-          {/* Inline meta panel (due date + notes) — opens when requested */}
-          {isMetaOpen && (
-            <div
-              className="rounded-sm border border-border/50 bg-surface/50 px-3 py-3 space-y-3 mr-2"
-              style={{ marginLeft: metaIndentLeft }}
-            >
-              {/* Due date field — `task`-only; notes (below) stay generic. */}
-              {isTask && (
-                <div className="flex flex-col gap-1">
-                  <FieldLabel htmlFor={`due-date-${node.id}`}>Due date</FieldLabel>
-                  {isEditingDueDate ? (
-                    <div className="flex items-center gap-2">
-                      <input
+          {/* Inline meta panel (due date + notes) — an in-flow disclosure, so it slides
+              open/closed with the same grid-rows height pattern as the subtask list below,
+              rather than popping in (see the motion skill). It stays mounted; aria-hidden +
+              inert keep it out of the accessibility tree and tab order while closed, and the
+              overflow-hidden inner div clips it to the 0fr track. */}
+          <div
+            className={cn(
+              'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+              isMetaOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+            )}
+            aria-hidden={!isMetaOpen}
+            inert={!isMetaOpen}
+          >
+            <div className="overflow-hidden">
+              <div
+                role="group"
+                aria-label="Task details"
+                className="rounded-sm border border-border/50 bg-surface/50 px-3 py-3 space-y-3 mr-2"
+                style={{ marginLeft: metaIndentLeft }}
+              >
+                {/* Due date field — `task`-only; notes (below) stay generic. */}
+                {isTask && (
+                  <div className="flex flex-col gap-1">
+                    <FieldLabel htmlFor={`due-date-${node.id}`}>Due date</FieldLabel>
+                    {isEditingDueDate ? (
+                      // Inline editing swap → fade (see the motion skill): the editor fades in
+                      // on the display ⇆ editor swap, even though the panel around it slides.
+                      <div className="flex items-center gap-2 animate-fade-in motion-reduce:animate-none">
+                        <input
+                          id={`due-date-${node.id}`}
+                          type="date"
+                          value={draftDueDate}
+                          onChange={(event_) => {
+                            setDraftDueDate(event_.target.value);
+                          }}
+                          onBlur={() => {
+                            void handleSaveDueDate();
+                          }}
+                          className={cn(
+                            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                            'rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
+                            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                            '[color-scheme:dark]',
+                          )}
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            void handleSaveDueDate();
+                          }}
+                          className="text-accent-teal hover:bg-accent-teal/10"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setIsEditingDueDate(false);
+                            setDraftDueDate(node.due_date ?? '');
+                          }}
+                          className="text-muted-foreground"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
                         id={`due-date-${node.id}`}
-                        type="date"
-                        value={draftDueDate}
+                        type="button"
+                        onClick={() => {
+                          setIsEditingDueDate(true);
+                        }}
+                        className="animate-fade-in motion-reduce:animate-none text-left text-sm text-foreground hover:text-accent-teal transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+                      >
+                        {node.due_date ? (
+                          formatDueDate(node.due_date)
+                        ) : (
+                          <span className="text-muted-foreground">Set a due date…</span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Notes field */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel htmlFor={`notes-${node.id}`}>Notes</FieldLabel>
+                  {isEditingNotes ? (
+                    // Inline editing swap → fade (same treatment as the due-date editor above).
+                    <div className="flex flex-col gap-2 animate-fade-in motion-reduce:animate-none">
+                      <textarea
+                        id={`notes-${node.id}`}
+                        value={draftNotes}
                         onChange={(event_) => {
-                          setDraftDueDate(event_.target.value);
+                          setDraftNotes(event_.target.value);
                         }}
-                        onBlur={() => {
-                          void handleSaveDueDate();
-                        }}
+                        rows={3}
                         className={cn(
                           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                          'rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
+                          'w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground',
+                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                          'placeholder:text-muted-foreground',
                           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                           'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                          '[color-scheme:dark]',
                         )}
+                        placeholder="Add notes…"
                       />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          void handleSaveDueDate();
-                        }}
-                        className="text-accent-teal hover:bg-accent-teal/10"
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsEditingDueDate(false);
-                          setDraftDueDate(node.due_date ?? '');
-                        }}
-                        className="text-muted-foreground"
-                      >
-                        Cancel
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            void handleSaveNotes();
+                          }}
+                          className="text-accent-teal hover:bg-accent-teal/10"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setIsEditingNotes(false);
+                            setDraftNotes(node.notes ?? '');
+                          }}
+                          className="text-muted-foreground"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <button
-                      id={`due-date-${node.id}`}
+                      id={`notes-${node.id}`}
                       type="button"
                       onClick={() => {
-                        setIsEditingDueDate(true);
+                        setIsEditingNotes(true);
                       }}
-                      className="text-left text-sm text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
+                      className="animate-fade-in motion-reduce:animate-none text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
                     >
-                      {node.due_date ? (
-                        formatDueDate(node.due_date)
+                      {node.notes ? (
+                        <span className="whitespace-pre-wrap text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none">
+                          {node.notes}
+                        </span>
                       ) : (
-                        <span className="text-muted-foreground">Set a due date…</span>
+                        <span className="text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none">
+                          Add notes…
+                        </span>
                       )}
                     </button>
                   )}
                 </div>
-              )}
 
-              {/* Notes field */}
-              <div className="flex flex-col gap-1">
-                <FieldLabel htmlFor={`notes-${node.id}`}>Notes</FieldLabel>
-                {isEditingNotes ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      id={`notes-${node.id}`}
-                      value={draftNotes}
-                      onChange={(event_) => {
-                        setDraftNotes(event_.target.value);
-                      }}
-                      rows={3}
-                      className={cn(
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground',
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'placeholder:text-muted-foreground',
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                      )}
-                      placeholder="Add notes…"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          void handleSaveNotes();
-                        }}
-                        className="text-accent-teal hover:bg-accent-teal/10"
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsEditingNotes(false);
-                          setDraftNotes(node.notes ?? '');
-                        }}
-                        className="text-muted-foreground"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    id={`notes-${node.id}`}
-                    type="button"
-                    onClick={() => {
-                      setIsEditingNotes(true);
-                    }}
-                    className="text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
-                  >
-                    {node.notes ? (
-                      <span className="whitespace-pre-wrap text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none">
-                        {node.notes}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none">
-                        Add notes…
-                      </span>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMetaOpen(false);
+                    setIsEditingDueDate(false);
+                    setIsEditingNotes(false);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none focus:outline-none focus-visible:underline"
+                >
+                  Close
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMetaOpen(false);
-                  setIsEditingDueDate(false);
-                  setIsEditingNotes(false);
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none focus:outline-none focus-visible:underline"
-              >
-                Close
-              </button>
             </div>
-          )}
+          </div>
 
           {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr */}
           {(hasChildren || showAddSubtask) && (
