@@ -9,8 +9,9 @@
 
 The DRY audit surfaced two kinds of duplication. The **structural reuse** anti-patterns (hand-rolled
 `<button>`, raw Radix dialogs, inline `supabase.from`) are catchable by deterministic ESLint rules —
-those are speced as the "regression ratchet" in the refactor spec and filed in
-[`docs/lint-suggestions/`](../../lint-suggestions/). But a second class can't be matched by any single
+those are speced as the "Regression ratchet" section of
+[`docs/specs/frontend-dry-refactor/SPEC.md`](../frontend-dry-refactor/SPEC.md), each rule shipped and
+enforced by the phase that fixes its anti-pattern. But a second class can't be matched by any single
 AST rule:
 
 - **Literal copy-paste** spread across files — the `grid-rows-[0fr↔1fr]` height-transition block (4×),

@@ -295,6 +295,8 @@ dialog tests stay green.
       raw dialog scaffold, copied helpers) is gone. The `board.tsx` inline-edit `TODO` is removed.
 - [ ] **No visual change.** A demo doc shows before (main) ≈ after (branch) screenshots of the inbox,
       a folder view, the code board, a code dialog, and the story-detail modal.
+- [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `no-raw-html-button-input` and
+      `no-raw-radix-dialog-dropdown`, promoted to `error` once the call sites are migrated.
 - [ ] `check` is green with **no changes to existing test assertions** beyond import/render-wrapper
       updates.
 
@@ -355,6 +357,8 @@ Extract to `frontend/components/code/story-detail/`:
       sub-components; each parent is a readable composition root.
 - [ ] Completion animation + double-fire guard + navigate-away fallback behavior is **unchanged**
       (covered by a `useAnimatedCompletion` test and the existing task-row completion tests/e2e).
+- [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `max-lines-components` (kept a
+      `warn` — the deliberate exception), tuned to the post-decomposition norm.
 - [ ] No visual or interaction change; demo doc shows the task tree (expand/collapse, inline edit,
       complete-with-cascade), the board, and the story modal behaving identically. `check` green.
 
@@ -425,6 +429,8 @@ Add a short "which rollback strategy to use (full / selective / position-aware)"
       `tempId`/optimistic generators exist with tests; the six stores use the context factory and the
       mutation helper (code-store's per-entity reducer may stay if folding it hurts clarity — note the
       decision).
+- [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `no-inline-supabase-from` and
+      `no-duplicate-helper-names`, promoted to `error` once verified clean.
 - [ ] All existing store/action tests pass **unchanged**; the optimistic + reconcile/rollback behavior
       is provably identical. `data-flow` skill gains the rollback-strategy note. `check` green.
 
@@ -505,6 +511,8 @@ is an intended behavior change:** malformed UUIDs now 400 instead of a silent 20
       undefined-loops, and the ad-hoc 500s are gone.
 - [ ] **Behavior deltas (intended, tested):** unique-violation → 409 / FK → 400 across resources;
       malformed UUID path params → 400. New tests assert each; all other route tests pass unchanged.
+- [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `no-direct-request-json-in-routes`,
+      promoted to `error` once all nine handlers are migrated.
 - [ ] GET handlers read through `lib/data/*`. `check` green; a demo doc shows the new 409/400
       responses via `curl`/`exec` against the dev server.
 
@@ -530,40 +538,135 @@ Tiny, independent; can be folded into Phase 1 (E2) and Phase 4 (E1) or shipped s
 
 ---
 
-## Regression ratchet — lint rules that lock in each phase
+## Regression ratchet — the lint rule each phase enforces
 
-Extracting a primitive removes today's duplication; a **lint rule added with that phase** stops the
-duplication from creeping back. The rule is the ratchet: once a shared replacement exists, the
-hand-rolled form becomes mechanically catchable. Add each rule **in the same PR as the phase that
-creates its replacement** — never before (a rule that forbids something with no sanctioned
-alternative just blocks people) — and **start it as a `warn`** so it never hard-blocks an in-flight
-refactor; promote to `error` once the call sites are clean. These are **deliberate project-rule
-additions** (the legitimate kind the back-pressure rules carve out), wired into `frontend`'s
-`check:fast` via the existing flat config — see the `eslint` and `backpressure` skills. The full
-per-rule proposals (mechanism, scope, exemptions, false-positive notes) are filed in
-[`docs/lint-suggestions/`](../../lint-suggestions/); this table is the phase→rule map.
+Extracting a primitive removes today's duplication; the **lint rule the same phase ships** keeps it
+gone. The rule is the ratchet, and it tightens **as each anti-pattern is fixed**: the phase that
+introduces a shared replacement is also the phase that bans the hand-rolled form. Enforcement model,
+applied **within each phase's own PR**:
 
-| Phase | Rule (lint-suggestion note) | Catches | Mechanism |
-| --- | --- | --- | --- |
-| 1 | `no-raw-html-button-input` | hand-rolled `<button>`/`<input>`/`<textarea>` instead of `Button`/`TextField`/`TextareaField` | `no-restricted-syntax` JSX selectors, scoped to feature dirs (exempt `components/ui` + `components/atoms`) |
-| 1 | `no-raw-radix-dialog-dropdown` | raw Radix `Dialog`/`DropdownMenu` instead of `FormDialog`/`DropdownMenuItem` | `no-restricted-imports` on `radix-ui` outside `components/ui/` |
-| 2 | `max-lines-components` | the next 1100-line component | built-in `max-lines` (warn) on `components/**` |
-| 3 | `no-inline-supabase-from` | `supabase.from(...)` inlined outside `lib/data` / `app/api` (reinforces `data-flow`) | `no-restricted-syntax` member-call selector |
-| 3 | `no-duplicate-helper-names` | by-name copies of `assertNever`/`tempId`/`navLinkClass` | `no-restricted-syntax` on the declaration outside its canonical module |
-| 4 | `no-direct-request-json-in-routes` | `request.json()` in a handler instead of `parseRequestBody` | `no-restricted-syntax` scoped to `app/api/**/route.ts` |
+1. **Add the rule with the phase that creates its replacement — never before.** A rule forbidding
+   something with no sanctioned alternative just blocks people; once the primitive/helper exists, the
+   hand-rolled form is mechanically catchable.
+2. **Start it as `warn` while you migrate the call sites, then promote it to `error` in the same PR
+   once those sites are clean.** The phase lands with the regression *locked out* (an `error`), not
+   deferred to a someday cleanup — that's what "ratchet it and enforce the rule" means. The one
+   exception is `max-lines-components`, which stays a `warn` (a large file is sometimes justified;
+   like skill-lint's `body-length`, it's a tripwire, not a hard limit).
 
-**Flat-config caveat (call out in the implementing PR):** `no-restricted-syntax` options **replace**,
-they don't merge, across overlapping `files` globs — so the several selectors that target
-`components/**` (`no-raw-html-button-input`, `no-inline-supabase-from`, `no-duplicate-helper-names`)
-must be **combined into one `no-restricted-syntax` entry per file-scope**, not split across config
-blocks, or the later block silently wins and drops the earlier selectors.
+These are **deliberate project-rule additions** — the legitimate kind the back-pressure rules carve
+out, *not* a guardrail bypass — and use **core ESLint only** (`no-restricted-syntax`,
+`no-restricted-imports`, `max-lines`; no new dependency), wired into `frontend`'s `check:fast` via the
+existing flat config. Read the `eslint` and `backpressure` skills before wiring them.
 
-**Beyond the named rules:** the *behavioral* duplications (the inline-edit state machine, the
-optimistic capture→reconcile/rollback dance, context-pair scaffolding) and the literal copy-paste
-blocks (the `grid-rows` transition, the dialog scaffold, duplicated helper bodies) can't be caught by
-a single AST rule. A token-level copy-paste detector covers the literal cases generically — speced
-separately in
-[`docs/specs/frontend-dupe-audit/SPEC.md`](../frontend-dupe-audit/SPEC.md) as a non-blocking
+**Flat-config caveat:** `no-restricted-syntax` options **replace**, they don't merge, across
+overlapping `files` globs. The selectors that target `components/**` (`no-raw-html-button-input`,
+`no-inline-supabase-from`, `no-duplicate-helper-names`) must be **combined into one
+`no-restricted-syntax` entry per file-scope**, not split across config blocks, or the later block
+silently wins and drops the earlier selectors.
+
+### Phase 1 — `no-raw-html-button-input`
+
+Feature components hand-roll raw `<button>`/`<input>`/`<textarea>` (duplicated focus-ring / accent /
+dense-input classes) instead of `Button`, `IconButton`/`TextField`, and the new `TextareaField`.
+
+```js
+{ files: ['frontend/components/{tasks,code,shell,auth}/**/*.tsx'],
+  rules: { 'no-restricted-syntax': ['warn',
+    { selector: "JSXOpeningElement[name.name='button']",   message: 'Use <Button> or <IconButton> — not a raw <button>.' },
+    { selector: "JSXOpeningElement[name.name='input']",    message: 'Use <TextField> or <Input> — not a raw <input>.' },
+    { selector: "JSXOpeningElement[name.name='textarea']", message: 'Use <TextareaField> — not a raw <textarea>.' },
+  ] } }
+```
+
+Exempt the primitives themselves (`components/ui/**`, `components/atoms/**` — they render the raw
+elements) and tests/stories/e2e. Promote to `error` once the feature dirs are migrated.
+
+### Phase 1 — `no-raw-radix-dialog-dropdown`
+
+The Radix `Dialog.Root → Portal → Overlay → Content` scaffold and hand-typed `DropdownMenu` item
+classes, once `FormDialog`/`DialogOverlay` and the styled `DropdownMenu*` exports exist.
+
+```js
+{ files: ['frontend/components/**/*.tsx'], ignores: ['frontend/components/ui/**'],
+  rules: { 'no-restricted-imports': ['error', { paths: [{
+    name: 'radix-ui', importNames: ['Dialog', 'DropdownMenu'],
+    message: 'Import the styled wrapper from components/ui (FormDialog/DialogOverlay, DropdownMenu*) — not the raw Radix primitive.',
+  }] }] } }
+```
+
+Can land straight at `error` — `components/ui/**` (the wrapper layer) is the only legitimate importer
+and is exempt. A future need with no wrapper means *add a wrapper*, so strictness is correct.
+
+### Phase 2 — `max-lines-components` (stays `warn`)
+
+A file-length tripwire so the next component sliding toward `task-row`'s 1107 lines is flagged.
+
+```js
+{ files: ['frontend/components/**/*.tsx'],
+  rules: { 'max-lines': ['warn', { max: 400, skipBlankLines: true, skipComments: true }] } }
+```
+
+Tune `max` after the three large components are decomposed, so the ceiling reflects the post-refactor
+norm. Keep it `warn` (the deliberate exception to the promote-to-`error` rule above).
+
+### Phase 3 — `no-inline-supabase-from`
+
+Mechanizes the existing `data-flow` convention (reads → `lib/data/*`; writes → store action → route
+handler), reinforced by moving GET queries into `lib/data/*` in Phase 4.
+
+```js
+{ files: ['frontend/components/**/*.{ts,tsx}', 'frontend/lib/stores/**/*.{ts,tsx}'],
+  rules: { 'no-restricted-syntax': ['warn', {
+    selector: "CallExpression[callee.property.name='from'][callee.object.name='supabase']",
+    message: 'No Supabase here: reads → a lib/data/* reader; writes → a store action → route handler.',
+  }] } }
+```
+
+Exempt the one sanctioned client user, `components/auth/login-form.tsx`. The `[callee.object.name=
+'supabase']` guard keeps it from matching `Array.from` etc.; accept that narrowness (the general catch
+is the copy-paste audit). Promote to `error` once verified clean.
+
+### Phase 3 — `no-duplicate-helper-names`
+
+Exact tripwire for the known duplicated helpers, once each has a canonical home.
+
+```js
+{ files: ['frontend/**/*.{ts,tsx}'],
+  ignores: ['frontend/lib/stores/assert-never.ts', 'frontend/lib/tree.ts', 'frontend/lib/ui/nav-link-class.ts'],
+  rules: { 'no-restricted-syntax': ['warn',
+    { selector: "FunctionDeclaration[id.name='assertNever']", message: 'Import assertNever from lib/stores/assert-never.' },
+    { selector: "FunctionDeclaration[id.name='tempId']",      message: 'Import tempId from lib/tree.' },
+    { selector: "VariableDeclarator[id.name='navLinkClass']", message: 'Import navLinkClass from lib/ui/nav-link-class.' },
+  ] } }
+```
+
+By-name only (a renamed copy slips through — the copy-paste audit is the general catch). Promote to
+`error` once the duplicates are removed.
+
+### Phase 4 — `no-direct-request-json-in-routes`
+
+After `parseRequestBody` exists, a bare `request.json()` in a handler means the parse boilerplate was
+re-inlined.
+
+```js
+{ files: ['frontend/app/api/**/route.ts'],
+  rules: { 'no-restricted-syntax': ['warn', {
+    selector: "CallExpression[callee.property.name='json'][callee.object.name='request']",
+    message: 'Parse + validate via parseRequestBody(request, schema) — not request.json() directly.',
+  }] } }
+```
+
+Scope is `app/api/**/route.ts` only (no collision with the `components/**` selectors). Promote to
+`error` once all nine handlers are migrated.
+
+### Beyond the named rules
+
+The *behavioral* duplications (the inline-edit state machine, the optimistic
+capture→reconcile/rollback dance, context-pair scaffolding) and literal copy-paste blocks (the
+`grid-rows` transition, the dialog scaffold, duplicated helper *bodies*) can't be caught by a single
+AST rule. A token-level copy-paste detector covers the literal cases generically — speced separately
+in [`docs/specs/frontend-dupe-audit/SPEC.md`](../frontend-dupe-audit/SPEC.md) as a non-blocking
 `audit:dupes` script. The behavioral ones stay the province of the `frontend-architecture` skill and
 review.
 
