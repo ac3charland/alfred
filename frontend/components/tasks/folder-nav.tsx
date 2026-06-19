@@ -2,32 +2,28 @@
 
 import { Check, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
-import { DropdownMenu } from 'radix-ui';
 import * as React from 'react';
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
 import { TextField } from '@/components/atoms/text-field';
 import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
 import { ViewLink } from '@/components/tasks/view-link';
+import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
+import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
 
 interface FolderNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
 }
-
-/** Shared styling for a nav link, highlighted when it points at the active route. */
-const navLinkClass = (active: boolean) =>
-  cn(
-    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-    'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors duration-100 motion-reduce:transition-none',
-    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-    active
-      ? 'bg-secondary text-foreground font-medium'
-      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
-  );
 
 /** Shared inline form used by both create and rename. Handles min-w-0 so the save button is never clipped. */
 function FolderNameForm({
@@ -92,11 +88,14 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const folders = useFolders();
   const { addFolder, renameFolder, removeFolder } = useFolderActions();
 
+  // Create stays on plain local state (an empty initial value, its own optimistic add +
+  // re-open-on-failure flow below); only RENAME runs through the shared useInlineEdit save
+  // machine. `editingFolderId` owns which row shows the rename form; useInlineEdit owns the
+  // draft + trim/no-op/rollback. (Per the spec's 1.1: rename via useInlineEdit, create local.)
   const [isCreating, setIsCreating] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState('');
   const [editingFolderId, setEditingFolderId] = React.useState<string | undefined>();
-  // Stryker disable next-line StringLiteral: AT_CEILING — editingName's initial value is always overwritten by setEditingName(folder.name) in the same onClick that sets editingFolderId, before the rename input ever renders; never observable — equivalent.
-  const [editingName, setEditingName] = React.useState('');
+  const editingFolder = folders.find((f) => f.id === editingFolderId);
 
   const isActive = (path: string) => pathname === path;
 
@@ -118,18 +117,24 @@ export function FolderNav({ onClose }: FolderNavProperties) {
     }
   };
 
-  const handleRenameFolder = async (id: string) => {
-    const name = editingName.trim();
-    if (!name) return;
+  // The rename save machine: trims, no-ops on empty/unchanged, exits + closes the form
+  // immediately (optimistic), and rolls the draft back on throw. `editingFolder?.name` seeds
+  // the "current value" so the no-op-on-unchanged + rollback compare against the live name.
+  const renameEdit = useInlineEdit(editingFolder?.name ?? '', async (next) => {
+    const id = editingFolderId;
+    if (id === undefined) return;
+    // Close the rename form the instant the user commits — the optimistic store patch shows
+    // the new name without waiting on the server.
     setEditingFolderId(undefined);
     try {
-      await renameFolder(id, name);
+      await renameFolder(id, next);
     } catch {
-      // Store restored the previous name; re-open the editor so the user can retry.
+      // Store restored the previous name; re-open the editor so the user can retry. Rethrow
+      // so useInlineEdit resets its draft to the (rolled-back) current name.
       setEditingFolderId(id);
-      setEditingName(name);
+      throw new Error('rename failed');
     }
-  };
+  });
 
   const handleDeleteFolder = async (id: string) => {
     const wasActive = pathname === `/folders/${id}`;
@@ -188,10 +193,10 @@ export function FolderNav({ onClose }: FolderNavProperties) {
               <div className="group/folder flex items-center gap-1 pr-1">
                 {editingFolderId === folder.id ? (
                   <FolderNameForm
-                    value={editingName}
-                    onChange={setEditingName}
+                    value={renameEdit.draft}
+                    onChange={renameEdit.setDraft}
                     onSubmit={() => {
-                      void handleRenameFolder(folder.id);
+                      void renameEdit.save();
                     }}
                     onCancel={() => {
                       setEditingFolderId(undefined);
@@ -216,54 +221,34 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
                     {/* Folder actions — on hover */}
                     <div className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
-                      <DropdownMenu.Root>
-                        <DropdownMenu.Trigger asChild>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                           <IconButton size="sm" aria-label={`Options for ${folder.name}`}>
                             <MoreHorizontal size={12} />
                           </IconButton>
-                        </DropdownMenu.Trigger>
-                        <DropdownMenu.Portal>
-                          <DropdownMenu.Content
-                            className={cn(
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'z-50 min-w-32 rounded-xl border border-border bg-surface p-1',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'data-[state=open]:animate-in data-[state=closed]:animate-out',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'motion-reduce:animate-none',
-                            )}
-                            align="end"
-                            sideOffset={4}
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setEditingFolderId(folder.id);
+                              // Seed the draft directly (not via begin(), whose closure would
+                              // read the pre-update editingFolder name).
+                              renameEdit.setDraft(folder.name);
+                            }}
                           >
-                            <DropdownMenu.Item
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                              onSelect={() => {
-                                setEditingFolderId(folder.id);
-                                setEditingName(folder.name);
-                              }}
-                            >
-                              Edit
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                            <DropdownMenu.Item
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-destructive outline-none hover:bg-secondary focus:bg-secondary"
-                              onSelect={() => {
-                                void handleDeleteFolder(folder.id);
-                              }}
-                            >
-                              Delete
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu.Root>
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => {
+                              void handleDeleteFolder(folder.id);
+                            }}
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </>
                 )}

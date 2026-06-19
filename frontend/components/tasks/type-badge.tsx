@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { Badge } from '@/components/atoms/badge';
 import type { ItemType } from '@/lib/types';
 
 /** Human-readable label per classified type. Only types with a label render a badge. */
@@ -23,8 +24,8 @@ export function TypeBadge({ itemType }: TypeBadgeProperties) {
   const label = TYPE_LABELS[itemType];
   if (label === undefined) return null;
   return (
-    <span className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+    <Badge variant="muted" className="font-medium">
       {label}
-    </span>
+    </Badge>
   );
 }

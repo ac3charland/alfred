@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { EmptyState } from '@/components/atoms/empty-state';
 import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
 import { TaskList } from '@/components/tasks/task-list';
 import { useFolders } from '@/lib/stores/folders-store';
@@ -21,12 +22,7 @@ export function FolderView({ folderId }: FolderViewProperties) {
   const folder = useFolders().find((candidate) => candidate.id === folderId);
 
   if (!folder) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <p className="font-serif text-2xl text-muted-foreground/50">Folder not found</p>
-        <p className="mt-2 text-sm text-muted-foreground/40">It may have been deleted.</p>
-      </div>
-    );
+    return <EmptyState title="Folder not found" description="It may have been deleted." />;
   }
 
   return (

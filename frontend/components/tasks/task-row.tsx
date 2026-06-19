@@ -1,19 +1,27 @@
 'use client';
 
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { Check, ChevronRight, ListCheck, MoreHorizontal, Plus } from 'lucide-react';
-import { DropdownMenu } from 'radix-ui';
+import { Check, ChevronRight, ListCheck, Plus } from 'lucide-react';
 import * as React from 'react';
 
-import { FieldLabel } from '@/components/atoms/field-label';
+import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
+import { Badge } from '@/components/atoms/badge';
+import { CheckboxButton } from '@/components/atoms/checkbox-button';
+import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
+import { DueDateChip } from '@/components/atoms/due-date-chip';
 import { IconButton } from '@/components/atoms/icon-button';
+import { TextField } from '@/components/atoms/text-field';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
+import { TaskMetaPanel } from '@/components/tasks/task-row/task-meta-panel';
+import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
-import { Button } from '@/components/ui/button';
-import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
+import { useAnimatedCompletion } from '@/lib/hooks/use-animated-completion';
+import { useIndentation } from '@/lib/hooks/use-indentation';
+import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
+import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
 import {
   sameEditor,
   useActiveEditor,
@@ -41,14 +49,21 @@ interface TaskRowProperties {
 }
 
 /**
- * A single task row, recursively rendering its children.
+ * A single task row, recursively rendering its children — the composition root for the row:
+ * layout + the recursive subtree, with cohesive pieces pulled into their own units. The
+ * item-type flags (`useTaskRowFlags`), the indentation math (`useIndentation`), and the
+ * delicate completion exit (`useAnimatedCompletion`) are hooks; the actions dropdown
+ * (`TaskRowMenu`) and the due-date/notes card (`TaskMetaPanel`) are sub-components. The
+ * subtask + completed-children reveals use the shared `AnimatedHeightCollapse`; the
+ * completion-collapse stays bespoke (its 300ms + `delay-200` timing and the once-only commit
+ * differ from the plain 200ms reveal).
  *
  * Features:
  * - Expand/collapse subtask tree
  * - Checkbox to complete (cascade modal for tasks with children)
- * - Inline due date + notes edit
+ * - Inline title edit + due date + notes edit
  * - "Add subtask" affordance
- * - Move-to-folder dropdown
+ * - Move-to-folder dropdown + classify / gate entries
  * - Delete
  */
 export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowProperties) {
@@ -72,60 +87,67 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const isExpanded = expandedSubtasks.has(node.id);
   const showCompleted = expandedCompleted.has(node.id);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
-  // While true, the row plays its completion exit (checkbox pop → height collapse →
-  // text fade) and holds itself visible until the collapse ends, at which point
-  // `completeTask` runs and the store filters the row out of view. See the `motion` skill.
-  const [isCompleting, setIsCompleting] = React.useState(false);
-  // `hasCompletedRef` keeps the completion mutation firing exactly once (animation end
-  // OR unmount); `isCompletingRef` lets the unmount fallback read the latest state.
-  const hasCompletedRef = React.useRef(false);
-  const isCompletingRef = React.useRef(false);
-  // Only one inline input may be open across all rows, so the title-edit and add-subtask
-  // flags are derived from the shared active-editor store, not held per-row. Opening
-  // either here closes whatever input another row had open (see active-editor-store).
-  const isEditingTitle = sameEditor(activeEditor, { itemId: node.id, kind: 'title' });
-  const showAddSubtask = sameEditor(activeEditor, { itemId: node.id, kind: 'subtask' });
-  const [draftTitle, setDraftTitle] = React.useState(node.title);
-  const titleInputRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    // Stryker disable next-line ConditionalExpression,OptionalChaining: AT_CEILING — equivalent pair. The `?.` makes the `if` guard redundant for the side-effect: `if(true)` focuses on every effect run, but the title input is mounted (and the ref non-null) ONLY while isEditingTitle is true, so on every other run `current` is null and `?.` no-ops — identical to the guarded version. Likewise `current.focus()` (drop `?.`) only runs under the guard when the input is mounted, so `current` is never null there. Neither mutant can change observable focus behavior.
-    if (isEditingTitle) titleInputRef.current?.focus();
-  }, [isEditingTitle]);
-  const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
-  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
-  const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
-  const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
-  const [isMetaOpen, setIsMetaOpen] = React.useState(false);
 
   // A row's completed state is read off the node itself (not the view), so a completed
   // child shown under an active parent renders checked + low-contrast, and clicking it
   // reactivates rather than completes.
   const isCompleted = node.status === 'completed';
 
-  // Completion, due dates, and subtasks are `task`-only — gated here in the UI and
-  // structurally in the DB (the CHECK constraint). An `unclassified` (or `code`) row exposes none of
-  // them; classifying it as `task` is what unlocks them. `notes` stay generic (all types).
-  const isTask = node.item_type === 'task';
-  // The Classify-as submenu is inbox triage, so it's offered ONLY while the row is
-  // still unclassified — `Classify as Code` is a bare item_type flip that's safe precisely
-  // because an unclassified row is already clean (no due_date/parent_id/completed to clear).
-  const isUnclassified = node.item_type === 'unclassified';
-  // A code-classified-but-not-yet-sent row (no code_items sidecar) — it's still in the
-  // inbox, and offers "Send to Code module…" to open the gate.
-  const isCode = node.item_type === 'code';
+  // The whole row is a drag source (the RowPointerSensor ignores presses on its buttons
+  // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
+  // be dragged to re-parent it; an active task can also be filed into a folder. A completed
+  // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
+  const { draggedSubtreeIds } = useTaskDrag();
+  // Item-type flags + drop-target validity (completion/due-date/subtask gating, classify vs
+  // send-to-code, the drop highlight) all derive from the node — see useTaskRowFlags.
+  const { isTask, isUnclassified, isCode, canConvert, isValidDropTarget } = useTaskRowFlags(
+    node,
+    isCompleted,
+    draggedSubtreeIds,
+  );
+
+  // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
+  // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
+  // reduced motion); the collapse wrapper's onTransitionEnd commits.
+  const {
+    isCompleting,
+    begin: beginComplete,
+    onCollapseEnd: handleCompleteCollapseEnd,
+  } = useAnimatedCompletion(() => completeTask(node.id), prefersReducedMotion);
+
+  // Only one inline input may be open across all rows, so the title-edit and add-subtask
+  // flags are derived from the shared active-editor store, not held per-row. Opening
+  // either here closes whatever input another row had open (see active-editor-store).
+  const isEditingTitle = sameEditor(activeEditor, { itemId: node.id, kind: 'title' });
+  const showAddSubtask = sameEditor(activeEditor, { itemId: node.id, kind: 'subtask' });
+  // The title's draft + trim/no-op/rollback save run through the shared useInlineEdit machine;
+  // the EDIT-MODE flag stays in the cross-row active-editor store (so opening one row's title
+  // closes any other's — the single-open-editor invariant). We therefore drive only the draft
+  // and `save()` from the hook and ignore its own isEditing/begin/cancel. selectAllOnEdit is
+  // false to preserve the existing focus-without-select behavior (the focus effect below, keyed
+  // on the store flag, is what focuses the input).
+  const titleEdit = useInlineEdit(node.title, (next) => updateTask(node.id, { title: next }), {
+    selectAllOnEdit: false,
+  });
+  const { draft: draftTitle, setDraft: setDraftTitle, inputRef: titleInputRef } = titleEdit;
+
+  React.useEffect(() => {
+    // Stryker disable next-line ConditionalExpression,OptionalChaining: AT_CEILING — equivalent pair. The `?.` makes the `if` guard redundant for the side-effect: `if(true)` focuses on every effect run, but the title input is mounted (and the ref non-null) ONLY while isEditingTitle is true, so on every other run `current` is null and `?.` no-ops — identical to the guarded version. Likewise `current.focus()` (drop `?.`) only runs under the guard when the input is mounted, so `current` is never null there. Neither mutant can change observable focus behavior.
+    if (isEditingTitle) titleInputRef.current?.focus();
+  }, [isEditingTitle, titleInputRef]);
+
+  const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
+  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
+  const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
+  const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
+  const [isMetaOpen, setIsMetaOpen] = React.useState(false);
 
   // The gate: "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
   // unclassified rows). Both open the SAME dialog, which (since ALF-27) routes through the
   // shell-seeded CodeProvider. On confirm the item leaves task_items server-side, so we drop
   // it from the tasks store and toast the allocated ref.
   const [showGate, setShowGate] = React.useState(false);
-  const canConvert = isTask || isUnclassified;
 
-  // The whole row is a drag source (the RowPointerSensor ignores presses on its buttons
-  // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
-  // be dragged to re-parent it; an active task can also be filed into a folder. A completed
-  // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
   const canDrag = !isCompleted && !isTempId(node.id);
   const {
     setNodeRef: setDragNodeRef,
@@ -142,14 +164,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   // registered makes `over` always reflect the row actually under the pointer; whether the
   // drop is *allowed* is decided in the drag-end handler (see resolveReparent + the
   // reparentTask cycle guard).
-  const { draggedSubtreeIds } = useTaskDrag();
   const { setNodeRef: setDropNodeRef, isOver } = useDroppable({ id: node.id });
-  // Only a valid landing spot lights up: a different, active, reconciled task outside the
-  // dragged item's own subtree (re-parenting onto self/a descendant would make a cycle).
-  // A non-`task` row can never be a parent (subtask trees stay all-`task`), so it's
-  // never a valid drop target.
-  const isValidDropTarget =
-    isTask && !isCompleted && !isTempId(node.id) && !draggedSubtreeIds.has(node.id);
 
   // Merge the draggable + droppable refs onto the one row element (both share node.id —
   // dnd-kit keeps draggables and droppables in separate registries, so this is safe).
@@ -200,52 +215,11 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
         : 'Inbox'
     : null;
 
-  // Indentation driven by depth; avoid template literal number errors by converting to string
-  const indentLeft = `${String(depth * 1.25 + 0.75)}rem`;
-  const metaIndentLeft = `${String(depth * 1.25 + 2.5)}rem`;
+  const { rowLeft: indentLeft, metaLeft: metaIndentLeft } = useIndentation(depth);
 
   // All mutations go through the optimistic tasks store: the change shows instantly
   // and the store reconciles with the server (rolling back — which remounts this row —
   // on failure). No router.refresh(), no local dismiss/pending state.
-
-  // Commit the completion mutation, at most once. On success the row is filtered out of
-  // view and unmounts (already collapsed to 0 height, so no jump); on failure the store
-  // rolls back and a fresh, non-completing row remounts in its place.
-  const runComplete = React.useCallback(() => {
-    if (hasCompletedRef.current) return;
-    hasCompletedRef.current = true;
-    void (async () => {
-      try {
-        await completeTask(node.id);
-      } catch {
-        // The store already restored the row.
-      }
-    })();
-  }, [completeTask, node.id]);
-
-  // Keep the ref in sync so the unmount fallback below sees the latest completing state.
-  React.useEffect(() => {
-    isCompletingRef.current = isCompleting;
-  }, [isCompleting]);
-
-  // Tear-down fallback: if the row is unmounted mid-exit (e.g. the user navigates away
-  // before the collapse animation ends), still commit the completion so it isn't dropped.
-  React.useEffect(
-    () => () => {
-      if (isCompletingRef.current) runComplete();
-    },
-    [runComplete],
-  );
-
-  // Begin completion: play the exit animation, or — when motion is disabled — complete
-  // straight away (there's no collapse animation whose end we could wait on).
-  const beginComplete = () => {
-    if (prefersReducedMotion) {
-      runComplete();
-      return;
-    }
-    setIsCompleting(true);
-  };
 
   const handleToggleComplete = () => {
     if (hasChildren) {
@@ -260,19 +234,6 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
     beginComplete();
   };
 
-  // The collapse transition finishing is what commits the completion. Guard against
-  // child transitions (e.g. the checkbox/title colour fades) bubbling up — only the
-  // wrapper's own `grid-template-rows` transition counts.
-  const handleCompleteCollapseEnd = (event_: React.TransitionEvent<HTMLDivElement>) => {
-    if (
-      event_.target === event_.currentTarget &&
-      event_.propertyName === 'grid-template-rows' &&
-      isCompleting
-    ) {
-      runComplete();
-    }
-  };
-
   const handleToggleUncomplete = async () => {
     try {
       await uncompleteTask(node.id);
@@ -282,22 +243,12 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   };
 
   const handleSaveTitle = async () => {
-    const newValue = draftTitle.trim();
-    if (newValue === node.title || newValue === '') {
-      setDraftTitle(node.title);
-      closeEditor({ itemId: node.id, kind: 'title' });
-      return;
-    }
-    // Exit edit mode immediately so the optimistic title shows the instant the user
-    // submits — without waiting for the server. The store reconciles (or rolls back)
-    // the row underneath, exactly like the due-date and notes edits.
+    // Exit edit mode immediately so the optimistic title shows the instant the user submits —
+    // without waiting for the server. The active-editor store owns the edit-mode flag (closed
+    // here in every case); useInlineEdit.save() then trims, no-ops on empty/unchanged, awaits
+    // updateTask, and rolls the draft back on throw (the store rolls the row back underneath).
     closeEditor({ itemId: node.id, kind: 'title' });
-    try {
-      await updateTask(node.id, { title: newValue });
-    } catch {
-      // The store reverted the title; reset the draft for the next edit.
-      setDraftTitle(node.title);
-    }
+    await titleEdit.save();
   };
 
   const handleSaveDueDate = async () => {
@@ -352,6 +303,24 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
     }
   };
 
+  // Opening the meta panel for a due-date / notes edit. These are sync, fire-and-forget
+  // entry points the row and the menu both use.
+  const handleOpenDueDateEditor = () => {
+    setIsEditingDueDate(true);
+    setIsMetaOpen(true);
+  };
+
+  const handleOpenNotesEditor = () => {
+    setIsEditingNotes(true);
+    setIsMetaOpen(true);
+  };
+
+  const handleCloseMeta = () => {
+    setIsMetaOpen(false);
+    setIsEditingDueDate(false);
+    setIsEditingNotes(false);
+  };
+
   return (
     <li className="group/row list-none">
       {/* The completion exit collapses the row (and its expanded subtree): a transition
@@ -359,7 +328,8 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
           rows below up. `ease-out` (a transition, not a keyframe) makes the collapse start
           briskly, then settle — `delay-200` holds it back until the 200ms checkbox pop has
           finished, so the dismissal doesn't cover the pop. The inner child is clipped so it
-          can shrink past its content. */}
+          can shrink past its content. Kept bespoke (not AnimatedHeightCollapse) for the
+          300ms + delay-200 timing and the commit-on-end contract. */}
       <div
         className={cn(
           // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
@@ -429,8 +399,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                   <Plus size={10} strokeWidth={3} />
                 </div>
               ) : (
-                <button
-                  type="button"
+                <CheckboxButton
                   onClick={() => {
                     if (isCompleting) return;
                     if (isCompleted) {
@@ -444,9 +413,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                   }
                   className={cn(
                     // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                    'h-4 w-4',
                     showAsComplete
                       ? 'bg-accent-teal border-accent-teal'
                       : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
@@ -458,7 +425,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                   {showAsComplete && (
                     <Check size={10} className="text-background" strokeWidth={3} />
                   )}
-                </button>
+                </CheckboxButton>
               ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
                 signals it will become a child here (replaces the checkbox; no animation). */
             ) : (
@@ -476,7 +443,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                   }
                 }}
               >
-                <input
+                <TextField
                   ref={titleInputRef}
                   aria-label="Edit title"
                   type="text"
@@ -491,28 +458,19 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                       closeEditor({ itemId: node.id, kind: 'title' });
                     }
                   }}
-                  className={cn(
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'flex-1 min-w-0 rounded-sm border border-border bg-input px-2 py-0.5 text-sm text-foreground',
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                  )}
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  className="flex-1 min-w-0 py-0.5"
                 />
-                <button
-                  type="button"
+                <CheckboxButton
                   aria-label="Confirm title"
                   onClick={() => {
                     void handleSaveTitle();
                   }}
-                  className={cn(
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'flex h-5 w-5 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal',
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                  )}
+                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
+                  className="h-5 w-5 border-accent-teal bg-accent-teal"
                 >
                   <Check size={10} className="text-background" strokeWidth={3} />
-                </button>
+                </CheckboxButton>
               </div>
             ) : (
               <div
@@ -556,41 +514,24 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
 
             {/* Due date chip — `task`-only. */}
             {isTask && node.due_date && !isEditingDueDate && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditingDueDate(true);
-                  setIsMetaOpen(true);
-                }}
-                aria-label={`Due date: ${node.due_date}`}
-                className={cn(
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors motion-reduce:transition-none',
-                  isDueDateOverdue(node.due_date)
-                    ? 'border-accent-amber/50 text-accent-amber hover:border-accent-amber'
-                    : 'border-accent-blue/50 text-accent-blue hover:border-accent-blue',
-                )}
-              >
-                {formatDueDate(node.due_date)}
-              </button>
+              <DueDateChip dueDate={node.due_date} onClick={handleOpenDueDateEditor} />
             )}
 
             {/* Active children count badge */}
             {activeChildren.length > 0 && !isExpanded && (
-              <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                {activeChildren.length}
-              </span>
+              <Badge variant="secondary">{activeChildren.length}</Badge>
             )}
 
             {/* Completed descendants count badge (all depths) — right of the active one */}
             {completedDescendantCount > 0 && !isExpanded && (
-              <span
+              <Badge
+                variant="muted"
                 aria-label={`${String(completedDescendantCount)} completed`}
-                className="shrink-0 inline-flex items-center gap-1 rounded-full border border-border/70 px-2 py-0.5 text-xs text-muted-foreground/60"
+                className="inline-flex items-center gap-1 text-muted-foreground/60"
               >
                 <Check size={10} strokeWidth={3} className="shrink-0" />
                 {completedDescendantCount}
-              </span>
+              </Badge>
             )}
 
             {/* Row actions — visible on hover */}
@@ -623,451 +564,151 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                 </IconButton>
               )}
 
-              {/* More actions dropdown */}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <IconButton size="md" aria-label="More actions">
-                    <MoreHorizontal size={14} />
-                  </IconButton>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content
-                    className={cn(
-                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                      'z-50 min-w-40 rounded-xl border border-border bg-surface p-1',
-                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                      'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
-                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                      'data-[state=open]:animate-in data-[state=closed]:animate-out',
-                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                      'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                      'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-                      // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                      'motion-reduce:animate-none',
-                    )}
-                    align="end"
-                    sideOffset={4}
-                  >
-                    {/* Classify as ▸ — inbox triage, offered only while the row is
-                        still unclassified. Picking a type flips item_type (the optimistic
-                        classifyItem action). Knowledge is reserved — leave room, don't build
-                        it. "Send to Code module…" / "Convert to Code Story…" route into the Code module. */}
-                    {isUnclassified && (
-                      <DropdownMenu.Sub>
-                        <DropdownMenu.SubTrigger className="flex cursor-pointer select-none items-center justify-between rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary">
-                          Classify as…
-                          <ChevronRight size={12} className="text-muted-foreground" />
-                        </DropdownMenu.SubTrigger>
-                        <DropdownMenu.Portal>
-                          <DropdownMenu.SubContent
-                            className={cn(
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'z-50 min-w-36 rounded-xl border border-border bg-surface p-1',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'motion-reduce:animate-none',
-                            )}
-                            sideOffset={4}
-                          >
-                            <DropdownMenu.Item
-                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                              onSelect={() => {
-                                void handleClassify('task');
-                              }}
-                            >
-                              Task
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                              onSelect={() => {
-                                void handleClassify('code');
-                              }}
-                            >
-                              Code
-                            </DropdownMenu.Item>
-                            {/* Knowledge: reserved — future type, not built. */}
-                          </DropdownMenu.SubContent>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu.Sub>
-                    )}
-
-                    {/* Send to Code module… — a code-classified inbox item enters the gate.
-                        The RPC creates the code_items sidecar; the item then
-                        leaves the Tasks/Inbox views. */}
-                    {isCode && (
-                      <DropdownMenu.Item
-                        className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                        onSelect={() => {
-                          setShowGate(true);
-                        }}
-                      >
-                        Send to Code module…
-                      </DropdownMenu.Item>
-                    )}
-
-                    {/* Convert to Code Story… — the path for an existing task (or an
-                        unclassified item): the gate both flips item_type and creates the
-                        factory row in one step (the enter_code_module RPC clears task-only
-                        fields, so a task with a due date / subtasks converts safely). */}
-                    {canConvert && (
-                      <DropdownMenu.Item
-                        className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                        onSelect={() => {
-                          setShowGate(true);
-                        }}
-                      >
-                        Convert to Code Story…
-                      </DropdownMenu.Item>
-                    )}
-
-                    {/* Set/Edit due date — `task`-only. */}
-                    {isTask && (
-                      <DropdownMenu.Item
-                        className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                        onSelect={() => {
-                          setIsEditingDueDate(true);
-                          setIsMetaOpen(true);
-                        }}
-                      >
-                        {node.due_date ? 'Edit due date' : 'Set due date'}
-                      </DropdownMenu.Item>
-                    )}
-
-                    {/* Edit notes */}
-                    <DropdownMenu.Item
-                      className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                      onSelect={() => {
-                        setIsEditingNotes(true);
-                        setIsMetaOpen(true);
-                      }}
-                    >
-                      {node.notes ? 'Edit notes' : 'Add notes'}
-                    </DropdownMenu.Item>
-
-                    {/* Move to folder */}
-                    {folders.length > 0 && (
-                      <DropdownMenu.Sub>
-                        <DropdownMenu.SubTrigger className="flex cursor-pointer select-none items-center justify-between rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary">
-                          Move to…
-                          <ChevronRight size={12} className="text-muted-foreground" />
-                        </DropdownMenu.SubTrigger>
-                        <DropdownMenu.Portal>
-                          <DropdownMenu.SubContent
-                            className={cn(
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'z-50 min-w-36 rounded-xl border border-border bg-surface p-1',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]',
-                              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                              'motion-reduce:animate-none',
-                            )}
-                            sideOffset={4}
-                          >
-                            <DropdownMenu.Item
-                              className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                              onSelect={() => {
-                                void handleMoveToFolder();
-                              }}
-                            >
-                              Inbox
-                            </DropdownMenu.Item>
-                            {folders.map((folder) => (
-                              <DropdownMenu.Item
-                                key={folder.id}
-                                className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-foreground outline-none hover:bg-secondary focus:bg-secondary"
-                                onSelect={() => {
-                                  void handleMoveToFolder(folder.id);
-                                }}
-                              >
-                                {folder.name}
-                              </DropdownMenu.Item>
-                            ))}
-                          </DropdownMenu.SubContent>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu.Sub>
-                    )}
-
-                    <DropdownMenu.Separator className="my-1 h-px bg-border" />
-
-                    {/* Delete */}
-                    <DropdownMenu.Item
-                      className="flex cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm text-destructive outline-none hover:bg-secondary focus:bg-secondary"
-                      onSelect={() => {
-                        void handleDelete();
-                      }}
-                    >
-                      Delete
-                    </DropdownMenu.Item>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
+              {/* More actions dropdown — all visibility conditionals live inside it. */}
+              <TaskRowMenu
+                isUnclassified={isUnclassified}
+                isCode={isCode}
+                canConvert={canConvert}
+                isTask={isTask}
+                hasDueDate={node.due_date !== null}
+                hasNotes={node.notes !== null}
+                folders={folders}
+                onClassify={(itemType) => {
+                  void handleClassify(itemType);
+                }}
+                onOpenGate={() => {
+                  setShowGate(true);
+                }}
+                onSetDueDate={handleOpenDueDateEditor}
+                onEditNotes={handleOpenNotesEditor}
+                onMoveToFolder={(targetFolderId) => {
+                  void handleMoveToFolder(targetFolderId);
+                }}
+                onDelete={() => {
+                  void handleDelete();
+                }}
+              />
             </div>
           </div>
 
           {/* Inline meta panel (due date + notes) — opens when requested */}
           {isMetaOpen && (
-            <div
-              className="rounded-sm border border-border/50 bg-surface/50 px-3 py-3 space-y-3 mr-2"
-              style={{ marginLeft: metaIndentLeft }}
-            >
-              {/* Due date field — `task`-only; notes (below) stay generic. */}
-              {isTask && (
-                <div className="flex flex-col gap-1">
-                  <FieldLabel htmlFor={`due-date-${node.id}`}>Due date</FieldLabel>
-                  {isEditingDueDate ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        id={`due-date-${node.id}`}
-                        type="date"
-                        value={draftDueDate}
-                        onChange={(event_) => {
-                          setDraftDueDate(event_.target.value);
-                        }}
-                        onBlur={() => {
-                          void handleSaveDueDate();
-                        }}
-                        className={cn(
-                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                          'rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
-                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                          '[color-scheme:dark]',
-                        )}
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          void handleSaveDueDate();
-                        }}
-                        className="text-accent-teal hover:bg-accent-teal/10"
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsEditingDueDate(false);
-                          setDraftDueDate(node.due_date ?? '');
-                        }}
-                        className="text-muted-foreground"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <button
-                      id={`due-date-${node.id}`}
-                      type="button"
-                      onClick={() => {
-                        setIsEditingDueDate(true);
-                      }}
-                      className="text-left text-sm text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
-                    >
-                      {node.due_date ? (
-                        formatDueDate(node.due_date)
-                      ) : (
-                        <span className="text-muted-foreground">Set a due date…</span>
-                      )}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Notes field */}
-              <div className="flex flex-col gap-1">
-                <FieldLabel htmlFor={`notes-${node.id}`}>Notes</FieldLabel>
-                {isEditingNotes ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      id={`notes-${node.id}`}
-                      value={draftNotes}
-                      onChange={(event_) => {
-                        setDraftNotes(event_.target.value);
-                      }}
-                      rows={3}
-                      className={cn(
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground',
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'placeholder:text-muted-foreground',
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                      )}
-                      placeholder="Add notes…"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          void handleSaveNotes();
-                        }}
-                        className="text-accent-teal hover:bg-accent-teal/10"
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsEditingNotes(false);
-                          setDraftNotes(node.notes ?? '');
-                        }}
-                        className="text-muted-foreground"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    id={`notes-${node.id}`}
-                    type="button"
-                    onClick={() => {
-                      setIsEditingNotes(true);
-                    }}
-                    className="text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-sm"
-                  >
-                    {node.notes ? (
-                      <span className="whitespace-pre-wrap text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none">
-                        {node.notes}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none">
-                        Add notes…
-                      </span>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMetaOpen(false);
-                  setIsEditingDueDate(false);
-                  setIsEditingNotes(false);
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none focus:outline-none focus-visible:underline"
-              >
-                Close
-              </button>
-            </div>
+            <TaskMetaPanel
+              node={node}
+              isTask={isTask}
+              metaLeft={metaIndentLeft}
+              isEditingDueDate={isEditingDueDate}
+              draftDueDate={draftDueDate}
+              onDraftDueDateChange={setDraftDueDate}
+              onSaveDueDate={() => {
+                void handleSaveDueDate();
+              }}
+              onBeginEditDueDate={() => {
+                setIsEditingDueDate(true);
+              }}
+              onCancelDueDate={() => {
+                setIsEditingDueDate(false);
+                setDraftDueDate(node.due_date ?? '');
+              }}
+              isEditingNotes={isEditingNotes}
+              draftNotes={draftNotes}
+              onDraftNotesChange={setDraftNotes}
+              onSaveNotes={() => {
+                void handleSaveNotes();
+              }}
+              onBeginEditNotes={() => {
+                setIsEditingNotes(true);
+              }}
+              onCancelNotes={() => {
+                setIsEditingNotes(false);
+                setDraftNotes(node.notes ?? '');
+              }}
+              onClose={handleCloseMeta}
+            />
           )}
 
           {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr */}
           {(hasChildren || showAddSubtask) && (
-            <div
+            <AnimatedHeightCollapse
+              open={isExpanded}
               className={cn(
-                'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
-                isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                'transition-opacity motion-reduce:transition-none',
+                isExpanded ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
               )}
-              aria-hidden={!isExpanded}
-              inert={!isExpanded}
             >
-              <div className="overflow-hidden">
-                <ul
-                  aria-label="Subtasks"
-                  className={cn(
-                    'transition-opacity motion-reduce:transition-none',
-                    isExpanded ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
-                  )}
-                >
-                  {/* Add subtask inline form */}
-                  {showAddSubtask && (
-                    <li
-                      className="list-none py-1"
-                      style={{ paddingLeft: `${String((depth + 1) * 1.25 + 2.5)}rem` }}
-                    >
-                      <CaptureBox
-                        parentId={node.id}
-                        folderId={node.folder_id}
-                        compact
-                        onDismiss={() => {
-                          closeEditor({ itemId: node.id, kind: 'subtask' });
-                        }}
-                      />
-                    </li>
-                  )}
-
-                  {/* Active child rows */}
-                  {activeChildren.map((child) => (
-                    <TaskRow
-                      key={child.id}
-                      node={child}
-                      depth={depth + 1}
-                      isCompletedView={isCompletedView}
+              <ul aria-label="Subtasks">
+                {/* Add subtask inline form */}
+                {showAddSubtask && (
+                  <li
+                    className="list-none py-1"
+                    style={{ paddingLeft: `${String((depth + 1) * 1.25 + 2.5)}rem` }}
+                  >
+                    <CaptureBox
+                      parentId={node.id}
+                      folderId={node.folder_id}
+                      compact
+                      onDismiss={() => {
+                        closeEditor({ itemId: node.id, kind: 'subtask' });
+                      }}
                     />
-                  ))}
+                  </li>
+                )}
 
-                  {/* Completed children — revealed by the toggle with the same grid-rows
-                      animation as the parent's own expand. The toggle sits at the bottom. */}
-                  {completedChildren.length > 0 && (
-                    <li className="list-none">
-                      <div
-                        className={cn(
-                          'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
-                          showCompleted ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
-                        )}
-                        aria-hidden={!showCompleted}
-                        inert={!showCompleted}
-                      >
-                        <div className="overflow-hidden">
-                          <ul
-                            aria-label="Completed subtasks"
-                            className={cn(
-                              'transition-opacity motion-reduce:transition-none',
-                              showCompleted
-                                ? 'opacity-100 duration-200 delay-75'
-                                : 'opacity-0 duration-100',
-                            )}
-                          >
-                            {completedChildren.map((child) => (
-                              <TaskRow
-                                key={child.id}
-                                node={child}
-                                depth={depth + 1}
-                                isCompletedView={isCompletedView}
-                              />
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
+                {/* Active child rows */}
+                {activeChildren.map((child) => (
+                  <TaskRow
+                    key={child.id}
+                    node={child}
+                    depth={depth + 1}
+                    isCompletedView={isCompletedView}
+                  />
+                ))}
 
-                      <div
-                        className="py-1"
-                        style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+                {/* Completed children — revealed by the toggle with the same grid-rows
+                    animation as the parent's own expand. The toggle sits at the bottom. */}
+                {completedChildren.length > 0 && (
+                  <li className="list-none">
+                    <AnimatedHeightCollapse
+                      open={showCompleted}
+                      className={cn(
+                        'transition-opacity motion-reduce:transition-none',
+                        showCompleted
+                          ? 'opacity-100 duration-200 delay-75'
+                          : 'opacity-0 duration-100',
+                      )}
+                    >
+                      <ul aria-label="Completed subtasks">
+                        {completedChildren.map((child) => (
+                          <TaskRow
+                            key={child.id}
+                            node={child}
+                            depth={depth + 1}
+                            isCompletedView={isCompletedView}
+                          />
+                        ))}
+                      </ul>
+                    </AnimatedHeightCollapse>
+
+                    <div
+                      className="py-1"
+                      style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+                    >
+                      <DisclosureToggle
+                        variant="inline"
+                        onClick={() => {
+                          toggleCompleted(node.id);
+                        }}
+                        aria-expanded={showCompleted}
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            toggleCompleted(node.id);
-                          }}
-                          aria-expanded={showCompleted}
-                          className={cn(
-                            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                            'inline-flex items-center rounded-sm text-xs text-muted-foreground/70',
-                            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                            'transition-colors duration-100 hover:text-foreground motion-reduce:transition-none',
-                            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                          )}
-                        >
-                          {showCompleted
-                            ? 'Hide completed'
-                            : `Show completed (${String(completedChildren.length)})`}
-                        </button>
-                      </div>
-                    </li>
-                  )}
-                </ul>
-              </div>
-            </div>
+                        {showCompleted
+                          ? 'Hide completed'
+                          : `Show completed (${String(completedChildren.length)})`}
+                      </DisclosureToggle>
+                    </div>
+                  </li>
+                )}
+              </ul>
+            </AnimatedHeightCollapse>
           )}
         </div>
       </div>
