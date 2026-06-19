@@ -3,6 +3,7 @@
 import { X } from 'lucide-react';
 import * as React from 'react';
 
+import { CloseButton } from '@/components/atoms/close-button';
 import { useToastActions, useToasts } from '@/lib/stores/toast-store';
 import { cn } from '@/lib/utils';
 
@@ -35,16 +36,15 @@ export function ToastViewport() {
           )}
         >
           <span className="min-w-0 break-words">{toast.message}</span>
-          <button
-            type="button"
+          <CloseButton
+            variant="icon"
             aria-label="Dismiss notification"
             onClick={() => {
               dismissToast(toast.id);
             }}
-            className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal motion-reduce:transition-none"
           >
             <X size={14} />
-          </button>
+          </CloseButton>
         </div>
       ))}
     </div>
