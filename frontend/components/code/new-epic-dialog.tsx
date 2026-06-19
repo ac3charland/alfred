@@ -1,13 +1,13 @@
 'use client';
 
-import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
+import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import { FieldLabel } from '@/components/atoms/field-label';
 import { TextField } from '@/components/atoms/text-field';
-import { Button } from '@/components/ui/button';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import type { Epic } from '@/lib/types';
-import { cn } from '@/lib/utils';
 
 interface NewEpicDialogProperties {
   open: boolean;
@@ -31,35 +31,33 @@ function NewEpicForm({
   onCreated,
 }: Omit<NewEpicDialogProperties, 'open'>) {
   const [name, setName] = React.useState('');
-  const [error, setError] = React.useState<string | null>(null);
-  const [isSaving, setIsSaving] = React.useState(false);
   const nameRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     nameRef.current?.focus();
   }, []);
 
-  const canSubmit = name.trim() !== '' && !isSaving;
-
-  const handleSubmit = async () => {
-    setError(null);
-    setIsSaving(true);
-    try {
-      const epic = await onCreateEpic(name.trim());
+  const { error, isPending, submit } = useFormSubmit({
+    onSubmit: () => onCreateEpic(name.trim()),
+    onSuccess: (epic) => {
       onCreated(epic);
       onOpenChange(false);
-    } catch {
-      setError('Could not create the epic. Try again.');
-      setIsSaving(false);
-    }
+    },
+    errorMessage: 'Could not create the epic. Try again.',
+  });
+
+  const canSubmit = name.trim() !== '' && !isPending;
+
+  const handleSubmit = () => {
+    void submit();
   };
 
   return (
     <>
-      <Dialog.Title className="text-base font-semibold text-foreground">New epic</Dialog.Title>
-      <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+      <DialogTitle className="text-base font-semibold text-foreground">New epic</DialogTitle>
+      <DialogDescription className="mt-1 text-sm text-muted-foreground">
         A grouping bucket in <span className="text-foreground">{projectName}</span>.
-      </Dialog.Description>
+      </DialogDescription>
 
       <div className="mt-5 flex flex-col gap-1.5">
         <FieldLabel htmlFor="new-epic-name">Epic name</FieldLabel>
@@ -71,7 +69,7 @@ function NewEpicForm({
             setName(event_.target.value);
           }}
           onKeyDown={(event_) => {
-            if (event_.key === 'Enter' && canSubmit) void handleSubmit();
+            if (event_.key === 'Enter' && canSubmit) handleSubmit();
           }}
           placeholder="Communication Firewall"
           className="px-3 py-2"
@@ -86,19 +84,19 @@ function NewEpicForm({
           onClick={() => {
             onOpenChange(false);
           }}
-          disabled={isSaving}
+          disabled={isPending}
         >
           Cancel
         </Button>
         <Button
           size="sm"
+          variant="accent"
           onClick={() => {
-            if (canSubmit) void handleSubmit();
+            if (canSubmit) handleSubmit();
           }}
           disabled={!canSubmit}
-          className="bg-accent-teal text-background hover:bg-accent-teal/90"
         >
-          {isSaving ? 'Creating…' : 'Create epic'}
+          {isPending ? 'Creating…' : 'Create epic'}
         </Button>
       </div>
     </>
@@ -112,24 +110,17 @@ function NewEpicForm({
  */
 export function NewEpicDialog({ open, onOpenChange, ...rest }: NewEpicDialogProperties) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none" />
-        <Dialog.Content
-          className={cn(
-            'fixed left-1/2 top-1/2 z-[55] -translate-x-1/2 -translate-y-1/2',
-            'w-full max-w-md rounded-2xl border border-border bg-surface p-6',
-            'shadow-[0_0_40px_0_rgba(79,209,224,0.08)]',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none',
-          )}
-          onOpenAutoFocus={(event_) => {
-            event_.preventDefault();
-          }}
-        >
-          <NewEpicForm onOpenChange={onOpenChange} {...rest} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      maxWidth="md"
+      overlayClassName="z-[55]"
+      className="z-[55]"
+      onOpenAutoFocus={(event_) => {
+        event_.preventDefault();
+      }}
+    >
+      <NewEpicForm onOpenChange={onOpenChange} {...rest} />
+    </FormDialog>
   );
 }

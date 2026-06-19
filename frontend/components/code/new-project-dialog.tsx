@@ -1,15 +1,15 @@
 'use client';
 
-import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
+import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import { FieldLabel } from '@/components/atoms/field-label';
 import { TextField } from '@/components/atoms/text-field';
-import { Button } from '@/components/ui/button';
 import type { CreateProjectInput } from '@/lib/api-client';
 import { parseGithubRepo } from '@/lib/code/github';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import type { Project } from '@/lib/types';
-import { cn } from '@/lib/utils';
 
 /** The key rule, mirrored client-side for a live validity check + preview. */
 const KEY_REGEX = /^[A-Z][A-Z0-9]{2}$/;
@@ -43,8 +43,6 @@ function NewProjectForm({
   const [name, setName] = React.useState('');
   const [githubUrl, setGithubUrl] = React.useState('');
   const [key, setKey] = React.useState('');
-  const [error, setError] = React.useState<string | null>(null);
-  const [isSaving, setIsSaving] = React.useState(false);
   const nameRef = React.useRef<HTMLInputElement>(null);
 
   // Focus the first field on mount (Radix preventDefault'd its own autofocus).
@@ -57,31 +55,33 @@ function NewProjectForm({
   const keyDuplicate = keyValid && existingKeySet.has(key);
   const repo = parseGithubRepo(githubUrl);
   const showUrlError = githubUrl.trim() !== '' && repo === null;
-  const canSubmit = name.trim() !== '' && repo !== null && keyValid && !keyDuplicate && !isSaving;
 
-  const handleSubmit = async () => {
-    setError(null);
-    setIsSaving(true);
-    try {
-      const project = await onCreateProject({
+  const { error, isPending, submit } = useFormSubmit({
+    onSubmit: () =>
+      onCreateProject({
         name: name.trim(),
         github_url: githubUrl.trim(),
         key,
-      });
+      }),
+    onSuccess: (project) => {
       onCreated(project);
       onOpenChange(false);
-    } catch {
-      setError('Could not create the project. Check the key is unique and try again.');
-      setIsSaving(false);
-    }
+    },
+    errorMessage: 'Could not create the project. Check the key is unique and try again.',
+  });
+
+  const canSubmit = name.trim() !== '' && repo !== null && keyValid && !keyDuplicate && !isPending;
+
+  const handleSubmit = () => {
+    void submit();
   };
 
   return (
     <>
-      <Dialog.Title className="text-base font-semibold text-foreground">New project</Dialog.Title>
-      <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+      <DialogTitle className="text-base font-semibold text-foreground">New project</DialogTitle>
+      <DialogDescription className="mt-1 text-sm text-muted-foreground">
         A project is a GitHub repo. Its key prefixes every ref in the project.
-      </Dialog.Description>
+      </DialogDescription>
 
       <div className="mt-5 flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
@@ -151,19 +151,19 @@ function NewProjectForm({
           onClick={() => {
             onOpenChange(false);
           }}
-          disabled={isSaving}
+          disabled={isPending}
         >
           Cancel
         </Button>
         <Button
           size="sm"
+          variant="accent"
           onClick={() => {
-            if (canSubmit) void handleSubmit();
+            if (canSubmit) handleSubmit();
           }}
           disabled={!canSubmit}
-          className="bg-accent-teal text-background hover:bg-accent-teal/90"
         >
-          {isSaving ? 'Creating…' : 'Create project'}
+          {isPending ? 'Creating…' : 'Create project'}
         </Button>
       </div>
     </>
@@ -178,25 +178,18 @@ function NewProjectForm({
  */
 export function NewProjectDialog({ open, onOpenChange, ...rest }: NewProjectDialogProperties) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none" />
-        <Dialog.Content
-          className={cn(
-            'fixed left-1/2 top-1/2 z-[55] -translate-x-1/2 -translate-y-1/2',
-            'w-full max-w-md rounded-2xl border border-border bg-surface p-6',
-            'shadow-[0_0_40px_0_rgba(79,209,224,0.08)]',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none',
-          )}
-          onOpenAutoFocus={(event_) => {
-            // Focus the first field, not the close button (which Radix would pick).
-            event_.preventDefault();
-          }}
-        >
-          <NewProjectForm onOpenChange={onOpenChange} {...rest} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      maxWidth="md"
+      overlayClassName="z-[55]"
+      className="z-[55]"
+      onOpenAutoFocus={(event_) => {
+        // Focus the first field, not the close button (which Radix would pick).
+        event_.preventDefault();
+      }}
+    >
+      <NewProjectForm onOpenChange={onOpenChange} {...rest} />
+    </FormDialog>
   );
 }
