@@ -12,6 +12,20 @@ and the E2E half of `check:slow` can't get a browser.
 > CI's `npm run check:slow`); CI's slow job runs on an `ubuntu-24.04-arm` runner so its native
 > render matches the arm64 baselines. That needs Docker + registry access, not the Playwright
 > CDN — so where Docker isn't available, CI is the authoritative snapshot gate.
+>
+> **This cloud sandbox ships the `docker` client but starts no daemon.** Rather than skip the
+> gate, the `test:storybook` wrapper **starts `dockerd` itself** on Linux (it's a real daemon
+> launchable as root, which the cloud session and CI are) and then runs the real snapshot
+> suite — self-healing the daemon the way `setup:chromium` self-heals the browser binary. The
+> renderer can't be reproduced *without* the pinned image (this host's bare-Noble font stack
+> renders text at a different width than the image's — every text-bearing baseline mismatches
+> by whole pixels), so a running daemon + the pinned image is the only sound path; native
+> rendering is never used. Docker stays **required on macOS** — there's no `dockerd` to launch
+> (Docker Desktop owns the VM), so the wrapper hard-fails and asks the dev to start it.
+>
+> **Speed:** the auto-started daemon needs the ~3 GB pinned image. Pre-pull it in the setup
+> script (below) so it's baked into the cached snapshot on disk — then the first auto-started
+> run renders immediately instead of pulling at gate time.
 
 Rather than bundle a serverless Chromium fallback, a **custom cloud environment** has been
 created that allowlists the CDN and installs Chromium once at setup. With it selected, the
@@ -59,11 +73,23 @@ it ever expires:
 ```bash
 npm ci
 npm exec -w frontend -- playwright install --with-deps chromium
+# pre-pull the pinned snapshot image into the cache (see below)
+dockerd >/tmp/dockerd-setup.log 2>&1 &
+for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+docker pull "mcr.microsoft.com/playwright:v<version>-noble" || true
 ```
 
 `--with-deps` uses apt to install Chromium's system libraries (needs root, which setup
 scripts have, and every apt repo reachable — see the network note above). The result is
 snapshotted by environment caching, so later sessions start with Chromium already on disk.
+
+The last three lines **pre-pull the pinned snapshot image**. Environment caching captures
+*files, not running processes*: the `docker pull` lands the ~3 GB image in `/var/lib/docker`,
+which is snapshotted, so later sessions start with it on disk; the `dockerd` started here is
+**not** kept — the `test:storybook` wrapper starts its own daemon at gate time (it just needs
+the image already pulled). `|| true` keeps a transient pull from failing the whole session
+(a non-zero setup script blocks startup). This step is optional — without it the first gate
+run simply pulls the image itself.
 
 ## How the test scripts use it
 
