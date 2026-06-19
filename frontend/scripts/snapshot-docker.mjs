@@ -11,11 +11,12 @@
  * pinned Linux container. `mcr.microsoft.com/playwright:v<version>-noble` bundles exactly the
  * Chromium our Playwright launches plus the Noble font packages, so the renderer is frozen.
  *
- * This wrapper bind-mounts the repo, runs the real `test:storybook:linux[:update]` script
- * inside the image, and shadows every workspace's `node_modules` with a named cache volume
- * so the container's Linux binaries never clobber the host's darwin ones (and stay cached
- * between runs). Baselines under `frontend/__image_snapshots__/` are written back to the host
- * through the bind mount.
+ * This wrapper bind-mounts the repo and runs the real `test:storybook:linux[:update]` script
+ * inside the image. node_modules strategy depends on the host: on Linux the bind-mounted
+ * node_modules are already the right platform+arch, so they're used as-is (no `npm ci`); on
+ * macOS each workspace's node_modules is shadowed by a named cache volume that `npm ci` fills
+ * with Linux binaries, so the container never clobbers the host's darwin ones. Baselines under
+ * `frontend/__image_snapshots__/` are written back to the host through the bind mount.
  *
  * USAGE
  *   node scripts/snapshot-docker.mjs                      # verify against committed baselines
@@ -27,6 +28,14 @@
  * fixes the fonts + Chromium so text width is identical across arches; only sub-pixel AA can
  * differ, which the snapshot threshold absorbs. CI just runs `npm run check:slow`, which calls
  * this wrapper the same way (see .github/workflows/ci.yml).
+ *
+ * NO DOCKER DAEMON? On Linux (a headless cloud sandbox / CI runner) the wrapper STARTS one
+ * itself — `dockerd` is a real daemon we can launch as root — then runs the gate, the way
+ * setup:chromium self-heals the browser binary. On macOS there's no `dockerd` to launch
+ * (Docker Desktop owns the VM), so it hard-fails and asks the dev to start Docker Desktop —
+ * Docker stays required on macOS. It never falls back to native rendering, which diverges
+ * from the baselines by whole pixels. Pre-pulling the image in the cloud setup script keeps
+ * the first auto-started run fast (see docs/cloud-environment.md).
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
@@ -61,10 +70,14 @@ const archKey = platform
 const playwrightVersion = require('playwright/package.json').version;
 const image = `mcr.microsoft.com/playwright:v${playwrightVersion}-noble`;
 
-// --- node_modules shadow volumes (one per workspace + root) ------------------
-// Reading the workspace globs from the root package.json keeps this correct when a workspace
-// is added. Each gets a named volume mounted over its node_modules so `npm ci` inside the
-// container writes Linux binaries into the volume, never onto the host's darwin install.
+// --- node_modules strategy: bind-mount on Linux, shadow + reinstall on macOS -
+// A Linux host's node_modules are already the container's platform AND arch (the image
+// runs native at host arch), so we just bind-mount the repo and use them as-is — no
+// `npm ci`. That's faster and sidesteps an "Exit handler never called" crash in the
+// image's npm 11. On macOS the host install is darwin binaries the Linux container can't
+// load, so each workspace's node_modules is shadowed by a named volume that `npm ci`
+// fills with Linux binaries inside the container (never clobbering the host's darwin ones).
+const linuxHost = process.platform === 'linux';
 const rootPkg = require(path.join(repoRoot, 'package.json'));
 const workspaceDirs = (rootPkg.workspaces ?? []).flatMap((pattern) => {
   if (!pattern.endsWith('/*')) return existsSync(path.join(repoRoot, pattern)) ? [pattern] : [];
@@ -77,19 +90,26 @@ const workspaceDirs = (rootPkg.workspaces ?? []).flatMap((pattern) => {
 const nodeModulesPaths = ['', ...workspaceDirs].map((ws) =>
   ws ? `${ws}/node_modules` : 'node_modules',
 );
-const volumeArgs = nodeModulesPaths.flatMap((rel) => {
-  const volName = `alfred-snap-nm-${archKey}-${rel.replaceAll('/', '-')}`;
-  return ['-v', `${volName}:/work/${rel}`];
-});
+const volumeArgs = linuxHost
+  ? []
+  : nodeModulesPaths.flatMap((rel) => {
+      const volName = `alfred-snap-nm-${archKey}-${rel.replaceAll('/', '-')}`;
+      return ['-v', `${volName}:/work/${rel}`];
+    });
 
 // --- assemble docker run -----------------------------------------------------
 const innerScript = update ? 'test:storybook:linux:update' : 'test:storybook:linux';
-// `npm ci` is guarded by a marker so repeat runs reuse the cached volume; set REINSTALL=1
-// (or change package-lock) to force a clean reinstall.
+// On Linux the bind-mounted node_modules are used as-is (no install step). On macOS, run
+// `npm ci` into the shadow volumes first, guarded by a marker so repeat runs reuse them;
+// set REINSTALL=1 (or change package-lock) to force a clean reinstall.
 const containerCmd = [
   'set -e',
   'cd /work',
-  '[ -z "$REINSTALL" ] && [ -e node_modules/.snapshot-deps ] || { npm ci && touch node_modules/.snapshot-deps; }',
+  ...(linuxHost
+    ? []
+    : [
+        '[ -z "$REINSTALL" ] && [ -e node_modules/.snapshot-deps ] || { npm ci && touch node_modules/.snapshot-deps; }',
+      ]),
   `npm run ${innerScript} -w frontend`,
 ].join(' && ');
 
@@ -120,19 +140,68 @@ const dockerArgs = [
   containerCmd,
 ];
 
-console.log(
-  `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
-);
-try {
-  execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
-} catch (error) {
-  if (error.code === 'ENOENT') {
+// --- daemon: the pinned image is the ONLY reproducible renderer --------------
+// Snapshots match the committed baselines only when rendered inside the pinned image
+// (frozen Chromium + Noble font packages). Rendering natively is NOT a fallback: even on
+// Ubuntu Noble, a bare host lacks the image's exact fonts, so text width shifts and every
+// text-bearing crop mismatches by whole pixels (e.g. a 175px field renders 216px wide). So
+// we always need a Docker daemon. When none is reachable we branch on host:
+//   • Linux (headless cloud sandbox / CI) — `dockerd` is a real daemon we can launch
+//     ourselves, so START it and proceed (it self-heals the gate the way setup:chromium
+//     self-heals the browser binary). Needs root, which the cloud session and CI have.
+//   • macOS — Docker Desktop owns the VM; there's no `dockerd` to launch, so hard-fail and
+//     tell the dev to start Docker Desktop (Docker stays required on macOS).
+function dockerDaemonReachable() {
+  try {
+    execFileSync('docker', ['info'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    // Both a missing `docker` binary (ENOENT) and an unreachable daemon land here.
+    return false;
+  }
+}
+
+// Block the main thread without busy-spinning or adding a dependency.
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Launch dockerd detached (survives this process via setsid) and wait for the socket.
+function startDockerDaemon() {
+  console.log('▶ no Docker daemon reachable — starting dockerd…');
+  execFileSync('bash', ['-c', 'setsid dockerd >/tmp/dockerd.log 2>&1 &'], { stdio: 'ignore' });
+  for (let i = 1; i <= 30; i++) {
+    if (dockerDaemonReachable()) {
+      console.log(`  dockerd ready after ${i}s`);
+      return true;
+    }
+    sleepSync(1000);
+  }
+  return false;
+}
+
+if (!dockerDaemonReachable()) {
+  if (process.platform === 'darwin') {
     console.error(
-      '\n✖ Docker is required to run snapshots consistently but `docker` was not found.',
+      '\n✖ Docker is required to render snapshots consistently on macOS, but the Docker daemon is not reachable.',
     );
-    console.error('  Install Docker Desktop and ensure it is running, then retry.');
+    console.error('  Start Docker Desktop and retry.');
     process.exitCode = 127;
-  } else {
+  } else if (!startDockerDaemon()) {
+    console.error(
+      '\n✖ Could not start a Docker daemon (need `dockerd` + root). See /tmp/dockerd.log.',
+    );
+    process.exitCode = 127;
+  }
+}
+
+if (process.exitCode === undefined && dockerDaemonReachable()) {
+  console.log(
+    `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
+  );
+  try {
+    execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
+  } catch (error) {
     // Surface the container's own exit code (test-storybook failure, build error, …).
     process.exitCode = error.status ?? 1;
   }

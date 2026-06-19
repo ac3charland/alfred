@@ -223,6 +223,8 @@ test.beforeEach(async ({ page }) => {
 
 **Never use `expect(await locator.isVisible()).toBe(true)`.** This evaluates once, synchronously, at that instant. It will fail if the element is still loading. Use `expect(locator).toBeVisible()` — the web-first version that retries.
 
+**Wrap a non-locator read (`page.evaluate(...)`) in `expect.poll`, never a one-shot `await`.** `expect.poll(() => getOpenedUrls(page)).toHaveLength(1)` retries the evaluate; `expect(await getOpenedUrls(page))…` reads once and is racy. This bites when an action's side effect lands *after* an awaited write but the UI moved *optimistically* before it — e.g. `openClaudeSession` does `await transitionState(...); window.open(...)`, so the card reaches its new swimlane (passing your `toBeVisible`) while `window.open` hasn't fired yet. A one-shot read of the captured URLs then sees `[]`, only under load (full suite, slower machine) — green in isolation and on CI, red locally. Poll it.
+
 **Never use `expect` inside an `if` block.** The `no-conditional-expect` rule flags this. If you need to branch on DOM state, use `locator.count()` in a setup step, not inside an assertion branch.
 
 **Always `await` every Playwright action and assertion.** Missing `await` on `page.click()` or `expect(locator).toBeVisible()` runs them fire-and-forget. The TypeScript compiler won't catch this; eslint-plugin-playwright's `await-thenable` rule does.
