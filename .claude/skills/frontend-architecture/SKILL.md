@@ -81,6 +81,28 @@ Where the extracted thing lives:
 - **API plumbing** (request parsing, error mapping, param validation) → `lib/api/`
 - **pure domain logic** (tree ops, launch labels, date utils) → `lib/**` (e.g. `lib/tree.ts`, `lib/code/`)
 
+## `atoms/` holds irreducible primitives — compounds compose, never relocate
+
+`components/atoms/` is **only** for truly *irreducible* primitives (a button, input, chip, toggle, a
+generic clickable shell). A **compound** component (a story card, a dialog, a row) does **not** move
+into `atoms/` to dodge a lint rule — break its one-off elements into irreducible atoms and
+**reassemble the compound in its feature dir** from those atoms. For a clickable wrapper around
+freeform content, extract a **shell** atom that owns *only* the interaction (click / keyboard /
+focus-outline) and renders freeform `children`; the parent supplies the layout + interior (text,
+badges, buttons) and keeps its own chrome (e.g. a `focus-within` ring). Group cohesive logic
+together; don't complect the interaction concern with the content.
+
+A **single-use** atom is fine **if it's a genuine primitive** — "the kind we reuse across an app like
+this" (a due-date chip, a disclosure toggle). Judge by *"is this a primitive,"* not by today's
+call-count. What's **not** fine: a **styleless passthrough** atom that only re-emits a raw element
+with a `className` (e.g. a `BaseButton`) purely to satisfy a `no-raw-element` lint rule — that's a
+fig-leaf, not consolidation.
+
+When several elements are the *same control with trivially-different chrome* (WET noise — e.g. two
+"close" buttons, two disclosure toggles), **consolidate them into one named atom even if it
+normalizes a few pixels** (group by function; add `variant`s for legitimately-distinct
+presentations). Pixel-exact preservation is not a reason to keep two copies of one control.
+
 ## Keep large components decomposed (conservatively)
 
 A component that mixes layout **and** a dropdown menu **and** three inline editors **and** an exit
@@ -102,6 +124,10 @@ or chase a line-count ceiling. Intentional recursion (a task rendering its subta
 - A duplicate input-type `interface` that restates a zod schema.
 - A 500+ line component owning five unrelated concerns.
 - A helper (`navLinkClass`, `launchPhaseFor`) defined identically in two files.
+- A styleless passthrough atom (e.g. a `BaseButton` that only re-emits a raw element + `className`)
+  created just to satisfy a `no-raw-element` lint rule — consolidate into a real named atom instead.
+- Relocating a compound component into `atoms/` to exempt it from a rule, instead of breaking it into
+  atoms and recomposing it in its feature dir.
 
 ## Before you introduce a new shared abstraction
 
