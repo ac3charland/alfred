@@ -1,23 +1,20 @@
 ---
 name: frontend-architecture
 description: >
-  Documents the frontend's DRY and modular-component conventions: reach for the shared primitive
-  layer (components/ui, components/atoms, lib/hooks, the store and route-handler factories) instead
-  of hand-rolling, extract a shared component or hook when a pattern is copied again, and keep large
-  components decomposed. Use when adding or refactoring frontend code to avoid duplication. Trigger on:
-  "DRY this up", "copy-paste", "extract a component/hook", "is there already a component for this",
-  "where should this live", "hand-rolling", "decompose a huge component". Pairs with the data-flow
-  skill (store/optimistic mechanics), react (hooks/components), and shadcn-ui / tailwindcss (styling).
+  Documents the frontend's DRY and modular-component conventions: the shared primitive
+  layer (components/ui, components/atoms, lib/hooks, the store and route-handler factories), 
+  when to extract a shared component or hook, and component size limits. 
+  Use whenever refactoriing, and *especially* when adding, frontend code to avoid duplication. Trigger on:
+  "Create a component to", "Add (UI feature) to the (tasks, code) module", "DRY this up", 
+  "extract a component/hook", "is there already a component for this", "where should this live", 
+  "decompose a huge component". Pairs with the data-flow skill (store/optimistic mechanics), 
+  react (hooks/components), and shadcn-ui / tailwindcss (styling).
 ---
 
 # Frontend architecture — DRY & the shared primitive layer
 
-A five-domain audit found the frontend structurally sound but carrying real copy-paste: the same
-inline-edit interaction reimplemented ~5 times, the same Radix dialog scaffold 3 times, the same
-optimistic-mutation dance ~20 times, the same request-parse boilerplate in 9 route handlers, and a
-1107-line `task-row.tsx`. This skill is the standing guidance so **new** work starts aligned instead
-of adding the next copy. The full catalog of primitives and the phased refactor that introduces the
-missing ones live in [`docs/specs/frontend-dry-refactor/SPEC.md`](../../../docs/specs/frontend-dry-refactor/SPEC.md).
+This skill is the standing guidance so frontendwork starts aligned instead
+of adding copied code, hand-rolled components, or large, un-decomposed components.
 
 ## The one principle
 
@@ -27,7 +24,7 @@ to paste. Duplication isn't just more lines: copies drift out of sync (a fix lan
 others), and concerns pile into one file until it's a 1100-line component no one can hold in their
 head. Reuse keeps behavior and styling defined once.
 
-Some primitives named below are being **introduced** by the refactor spec and may not exist yet. The
+Some primitives named below may not exist yet. The
 principle is the same either way: if the shared layer doesn't have it, **add it to the right layer
 and adopt it everywhere — don't inline a fresh one-off.**
 
