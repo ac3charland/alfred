@@ -1,4 +1,4 @@
-# Frontend duplication audit — a copy-paste detector (`audit:dupes`)
+# Monorepo duplication audit — a copy-paste detector (`audit:dupes`)
 
 > **Status:** Refinement spec. Hand to an implementation session. Small, self-contained tooling change.
 > **Companion to** [`docs/specs/frontend-dry-refactor/SPEC.md`](../frontend-dry-refactor/SPEC.md) (the
@@ -24,8 +24,26 @@ AST rule:
   skill.)
 
 A **token-level copy-paste detector** is pattern-agnostic: it reports any run of duplicated tokens
-above a threshold, so it catches today's copies *and* tomorrow's without anyone enumerating them. This
-spec wires one in.
+above a threshold, so it catches today's copies *and* tomorrow's without anyone enumerating them.
+
+## Scope: the whole monorepo, one central run
+
+The audit that motivated this looked only at `frontend/`, but that's where we *looked* — not a reason
+to limit the *tool*. Duplication is just as worth catching inside `workers/` or the `tools/*` packages,
+the marginal cost of scanning them is ~nil, and a **single repo-wide run can detect clones that span
+packages** (e.g. a helper copied from `frontend` into a worker) that a per-package run would miss by
+construction. So this is a **monorepo-wide** audit.
+
+It's wired as **one central root script**, not a `--workspaces` fan-out, for two reasons: a single pass
+sees cross-package clones, and there's **one `minTokens` threshold to tune** instead of one per package.
+That mirrors `audit:skills`, which sweeps the whole skill library from the root rather than per-package.
+(Tiered `check:*` scripts fan out via `--workspaces --if-present` because each package's gate is
+independent; a duplication audit is the opposite — it wants the global view. See the `backpressure` and
+`npm-workspaces` skills.)
+
+The scanned packages are the TS/JS source: `frontend`, `workers`, and `tools` (the `tools/*` packages).
+`database/` is excluded — it's SQL migrations, which are append-only and where repetition is expected,
+not a refactor target.
 
 ## Key decision: a non-blocking audit, not a gate
 
@@ -39,84 +57,86 @@ periodic signal, not a commit gate. See the `backpressure` and `stryker` skills 
 
 ## Proposed change
 
-### 1. Add `jscpd` as a frontend devDependency
+### 1. Add `jscpd` as a root devDependency
 
 `jscpd` is the de-facto copy-paste detector for JS/TS — configurable thresholds, multiple reporters
-(console + JSON), and a glob/ignore model. Add it to `frontend/package.json` `devDependencies`
-(`npm i -D jscpd -w frontend`). No custom tool package is needed — unlike `skill-lint` / `demo-lint`
-(bespoke linters with no off-the-shelf equivalent), this is a standard tool we only configure.
+(console + JSON), and a glob/ignore model. Add it to the **root** `package.json` `devDependencies`
+(`npm i -D jscpd` at the repo root, since the audit spans every package). No custom tool package is
+needed — unlike `skill-lint` / `demo-lint` (bespoke linters with no off-the-shelf equivalent), this is
+a standard tool we only configure.
 
-### 2. Config: `frontend/.jscpd.json`
+### 2. Config: root `.jscpd.json`
 
 ```json
 {
-  "absolute": true,
   "gitignore": true,
   "reporters": ["console", "json"],
-  "output": "frontend/.jscpd-report",
-  "format": ["tsx", "ts"],
+  "output": ".jscpd-report",
+  "format": ["tsx", "ts", "javascript"],
   "minTokens": 50,
   "threshold": 100,
   "ignore": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**",
     "**/*.test.{ts,tsx}",
     "**/*.stories.tsx",
     "**/e2e/**",
-    "**/lib/database.types.ts",
     "**/*.gen.ts",
-    "**/next-env.d.ts"
+    "**/lib/database.types.ts",
+    "**/next-env.d.ts",
+    "**/worker-configuration.d.ts"
   ]
 }
 ```
 
 - **`minTokens: 50`** is a starting point — tune so the report surfaces the audit's known clones (the
   `grid-rows` block, the dialog scaffold) without drowning in trivial 3-line matches. Record the tuned
-  value in a comment / the skill once calibrated.
+  value in the skill once calibrated.
 - **`threshold: 100`** = report only, never exit non-zero. The audit *informs*; it doesn't fail. (A
   future, separately-decided "gate mode" could lower this — out of scope here.)
-- Tests, stories, e2e, and generated files are excluded — duplicated fixtures and generator output are
-  not refactor targets (consistent with how ESLint/Prettier already ignore generated files).
+- Tests, stories, e2e, build output, and generated files are excluded — duplicated fixtures and
+  generator output are not refactor targets (consistent with how ESLint/Prettier already ignore
+  generated files).
 
 ### 3. The script
 
-Add to `frontend/package.json`:
+Add a single **root** `package.json` script that scans every TS/JS package (mirroring `audit:skills`,
+which is also root-only):
 
 ```json
-"audit:dupes": "jscpd --config .jscpd.json components lib app"
-```
-
-and surface it at the root (mirroring `audit:skills`) so it runs from any cwd:
-
-```json
-"audit:dupes": "npm run audit:dupes -w frontend"
+"audit:dupes": "jscpd --config .jscpd.json frontend workers tools"
 ```
 
 Run **only** through the npm script — never the `jscpd` binary directly (the CLAUDE.md rule: the
 `npm run` indirection is the source of truth for scope + ignores). The `.jscpd-report/` output dir is
-git-ignored.
+git-ignored. No per-package script and no `--workspaces` fan-out (see "Scope" — the audit is
+deliberately one global pass).
 
 ### 4. Interpreting the output
 
 The console reporter prints each clone pair (files + line ranges + token count); the JSON reporter
 writes the full set to `.jscpd-report/jscpd-report.json`. Each clone is a **candidate** for extraction —
-cross-reference the `frontend-architecture` skill's "where it goes" guidance (a shared `components/ui`
-or `components/atoms` piece, a `lib/hooks` hook, a `lib/**` helper). Not every clone must be removed
-(judgement applies — that's why it's an audit, not a gate), but a *growing* count between runs is the
-signal that DRY discipline is slipping.
+cross-reference the `frontend-architecture` skill's "where it goes" guidance (a shared
+`components/atoms` piece, a `lib/hooks` hook, a `lib/**` helper; for a worker, a shared module under its
+own `src/`). A cross-package clone is a flag to hoist the shared code to a spot both can import. Not
+every clone must be removed (judgement applies — that's why it's an audit, not a gate), but a *growing*
+count between runs is the signal that DRY discipline is slipping.
 
 ### 5. Record it in the skill library
 
 Per the compounding-learning rule, add a one-line pointer in the `frontend-architecture` skill's
 "Pointers" section — "run `npm run audit:dupes` to find literal copy-paste the named lint rules don't
-catch" — and note the tuned `minTokens` value once calibrated, so the audit is discoverable from the
-skill an agent already reads before frontend work.
+catch (monorepo-wide)" — and note the tuned `minTokens` value once calibrated, so the audit is
+discoverable from the skill an agent already reads before frontend work.
 
 ## Acceptance criteria
 
-- [ ] `jscpd` is a `frontend` devDependency; `frontend/.jscpd.json` configures format/ignore/threshold;
+- [ ] `jscpd` is a **root** devDependency; root `.jscpd.json` configures format/ignore/threshold;
       `.jscpd-report/` is git-ignored.
-- [ ] `npm run audit:dupes` (root and `-w frontend`) runs the detector over `components`, `lib`, `app`,
-      prints the console report, writes the JSON report, and **exits 0 regardless of findings** (audit,
-      not gate).
+- [ ] `npm run audit:dupes` (from the repo root) runs the detector over `frontend`, `workers`, and
+      `tools`, prints the console report, writes the JSON report, and **exits 0 regardless of findings**
+      (audit, not gate).
 - [ ] `minTokens` is tuned so the run surfaces at least the audit's known clones (the `grid-rows`
       height-transition block and the duplicated Radix dialog scaffold) without flooding on trivial
       matches; the chosen value is recorded.
@@ -131,8 +151,8 @@ skill an agent already reads before frontend work.
   a tuned threshold and an allowlist for sanctioned clones — is a separate, later decision.
 - **No auto-fix.** The detector finds clones; extraction is a human/agent judgement following the
   `frontend-architecture` skill, not a mechanical rewrite.
-- **Workers / database packages.** This audit is frontend-scoped (where the duplication was found);
-  extend to `workers/` only if a similar problem appears there.
+- **`database/` (SQL migrations).** Excluded — append-only migrations repeat by nature and aren't a
+  refactor target. Revisit only if meaningful SQL duplication appears.
 - **Behavioral duplication that isn't textually similar** (the same *pattern* spelled differently) won't
   be caught by a token detector — that remains the province of the `frontend-architecture` skill and
   code review, as noted in the refactor spec's ratchet section.

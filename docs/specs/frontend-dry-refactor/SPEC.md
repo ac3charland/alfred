@@ -684,7 +684,7 @@ The *behavioral* duplications (the inline-edit state machine, the optimistic
 capture→reconcile/rollback dance, context-pair scaffolding) and literal copy-paste blocks (the
 `grid-rows` transition, the dialog scaffold, duplicated helper *bodies*) can't be caught by a single
 AST rule. A token-level copy-paste detector covers the literal cases generically — speced separately
-in [`docs/specs/frontend-dupe-audit/SPEC.md`](../frontend-dupe-audit/SPEC.md) as a non-blocking
+in [`docs/specs/duplication-audit/SPEC.md`](../duplication-audit/SPEC.md) as a non-blocking
 `audit:dupes` script. The behavioral ones stay the province of the `frontend-architecture` skill and
 review.
 
