@@ -68,6 +68,10 @@ home.** Before adding any new primitive:
 - **Update `frontend/components.json`** so the shadcn `ui` alias points at the new home
   (`"ui": "@/components/atoms"`), so a future `npx shadcn add` writes into `atoms/` and doesn't
   recreate `ui/`.
+- **Update the `shadcn-ui` skill** in the same step — its guidance that teaches importing from
+  `@/components/ui/<name>` (and that `npx shadcn add` writes `components/ui/...`) must point at
+  `components/atoms`, so the how-to matches the new single home. Do it here, where the move makes it
+  true — not earlier, while `ui/` still exists.
 - This is a pure move + re-point — **no behavior change**; existing tests/snapshots pass once paths are
   fixed. Every later step in this phase places its new primitive in `components/atoms/`.
 
