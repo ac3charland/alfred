@@ -141,6 +141,24 @@ Reference: `tasks-store.tsx` (`addTask`/`completeTask`/`updateTask`/`moveTask`/`
 and `folders-store.tsx`. Views update because the **selector filters the changed list** —
 completing a task flips its `status`, so it drops out of the active views automatically.
 
+The shared `runOptimisticMutation` helper (`lib/stores/optimistic-mutation.ts`) owns this
+try/await/catch sequencing; an action passes `optimistic` / `apiCall` / `reconcile` /
+`rollback` closures (omit `reconcile` for a delete — its rows are already gone). The
+**capture for rollback** stays the action's own, before the call, and picks the lightest of
+three strategies for *what* it restores:
+
+- **Full-row** (`upsert([prev])`) — the row touches many fields or is created/removed whole:
+  capture the entire prior row(s) and re-apply them. Use for create (`remove` the temp on
+  fail), complete/move/delete a subtree (`upsert` the captured `collectSubtree` rows), and a
+  single multi-field edit (`updateTask`).
+- **Selective-field** (`patch` the captured fields) — only one or two named fields change and
+  the rest of the row may have moved on: capture just those fields and patch them back, so a
+  stale rollback can't clobber an unrelated concurrent edit. Use for `code-store`'s
+  `updateEpic` / `updateStoryTitle` / state transition.
+- **Position-aware** (`insertAt(prev, index)`) — order matters and the op removes a row:
+  capture the row **and its index**, and restore it at that slot, not appended. Use for
+  `folders-store`'s `removeFolder`.
+
 ### Non-negotiable invariants
 
 - **Reconcile/patch is a no-op for ids not in the store** — the race rule: an out-of-order

@@ -21,9 +21,11 @@ description: >
 ## Mental Model
 
 shadcn/ui is **not a component library you install** — it is a CLI that **copies source files into
-your repo**. Running `npx shadcn@latest add dialog` writes `components/ui/dialog.tsx` directly into
-the codebase. You own that file completely: rename it, extend it, delete parts of it. There is no
-upstream package to update with `npm update`; you update by re-running the CLI and merging diffs.
+your repo**. Running `npx shadcn@latest add dialog` writes a file into the codebase. In alfred the
+shadcn `ui` alias points at `components/atoms` (one home for all primitives — there is no
+`components/ui/`; see `components.json`), so the CLI writes `components/atoms/dialog.tsx`. You own
+that file completely: rename it, extend it, delete parts of it. There is no upstream package to
+update with `npm update`; you update by re-running the CLI and merging diffs.
 
 Each copied component is a thin composition of two layers:
 
@@ -75,7 +77,7 @@ class conflicts that are silent and hard to debug.
 
 | When you need to... | Pattern to use | Key things to know |
 |---|---|---|
-| **Add a standard component** (button, card, input, badge) | `npx shadcn@latest add <name>` — then import from `@/components/ui/<name>` | Check `npx shadcn@latest info` first for the resolved alias; never hard-code `@/` |
+| **Add a standard component** (button, card, input, badge) | `npx shadcn@latest add <name>` — then import from `@/components/atoms/<name>` (alfred's `ui` alias resolves there) | Check `npx shadcn@latest info` first for the resolved alias; never hard-code `@/` |
 | **Build a modal / confirmation dialog** (e.g. the cascade-completion confirm) | `Dialog` component (wraps `@radix-ui/react-dialog` or `radix-ui` Dialog primitive) with `open` + `onOpenChange` for controlled state | File **must** have `"use client"`. Always include `<DialogTitle>` — use `className="sr-only"` if visually hidden. Manage `open` state in the parent that triggers the action. |
 | **Controlled open/close from code** (async op closes the dialog) | Pass `open={isOpen}` + `onOpenChange={setIsOpen}` to `<Dialog>` root | In uncontrolled mode, Radix manages state internally. In controlled mode, **you** must call `setIsOpen(false)` — Radix will not close it for you. |
 | **Dropdown menu or context menu** | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuItem` | `DropdownMenuTrigger` needs `asChild` when the trigger is a custom element (e.g. `<Button asChild>`). Requires `"use client"`. |

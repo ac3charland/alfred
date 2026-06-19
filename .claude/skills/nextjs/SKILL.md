@@ -226,6 +226,18 @@ To keep real URLs but make switching instant, drive navigation with the **native
   restricted APIs (no Node.js builtins, no file system). Use it only for early redirects,
   header injection, and A/B routing. Real auth logic belongs in Server Components.
 
+- **A route-handler test that imports a `server-only` module needs `jest.mock('server-only',
+  () => ({}))`.** `import 'server-only'` throws outside an RSC context, so the moment a route
+  handler's GET reads through a `lib/data/*` reader (which is `server-only`), the route test
+  fails to even load with a cryptic `server-only` throw. Add the mock at the top of that
+  route's test (the `lib/data` reader tests already do — see `lib/data/items.test.ts`).
+
+- **A UUID path-param validator (`parseUUID`) requires real-UUID test fixtures.** Once a
+  `[id]` handler validates its segment, a placeholder id like `'item-1'`/`'task-1'` hits the
+  new 400 branch, so every fixture id and matching `eq('id', …)` / `root_id` expectation must
+  be a fixed, deterministic UUID (e.g. `'00000000-0000-4000-8000-000000000001'`). Human-ref
+  segments (`code/[ref]`, e.g. `ALF-42`) are NOT UUIDs — never `parseUUID` those.
+
 ---
 
 ## Version Gotchas (Next.js 16 — alfred's installed version)
