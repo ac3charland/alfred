@@ -12,6 +12,14 @@ and the E2E half of `check:slow` can't get a browser.
 > CI's `npm run check:slow`); CI's slow job runs on an `ubuntu-24.04-arm` runner so its native
 > render matches the arm64 baselines. That needs Docker + registry access, not the Playwright
 > CDN — so where Docker isn't available, CI is the authoritative snapshot gate.
+>
+> **This cloud sandbox has no Docker daemon**, so `npm run test:storybook` here **skips** the
+> snapshot suite with a notice and `check:slow` continues to the E2E half — it does not fail.
+> The renderer can't be reproduced without the pinned image (this host's bare-Noble font stack
+> renders text at a different width than the image's, so native rendering mismatches every
+> text-bearing baseline by whole pixels), so skipping and deferring to CI is the only sound
+> option. Docker stays **required on macOS** — there the wrapper hard-fails if the daemon is
+> down rather than skipping, because Docker Desktop is the supported local renderer.
 
 Rather than bundle a serverless Chromium fallback, a **custom cloud environment** has been
 created that allowlists the CDN and installs Chromium once at setup. With it selected, the

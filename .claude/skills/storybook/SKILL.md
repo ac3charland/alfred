@@ -312,6 +312,15 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
   gate but **without** `--ci` and **with** `-u`).
 - The gate (`check:slow` → `test:storybook`) runs `test-storybook --ci`, which **fails**
   on a missing or mismatched baseline instead of silently writing one.
+- **Rendering is pinned to a Docker image, never native.** `test:storybook` is a wrapper
+  (`scripts/snapshot-docker.mjs`) that renders inside `mcr.microsoft.com/playwright:v<version>-noble`
+  so pixels are identical everywhere. Native rendering — even on Ubuntu Noble — diverges by
+  *whole pixels* (a bare host's font stack differs from the image's, so text width shifts and
+  every text-bearing crop mismatches), so it's never used as a fallback. With no reachable Docker
+  daemon the wrapper **hard-fails on macOS** (start Docker Desktop) but **skips with a notice on
+  any other host** (a headless cloud sandbox / CI runner without a daemon) so `check:slow` isn't
+  blocked where the gate can't run — CI is then the authoritative snapshot gate. Generating or
+  approving baselines therefore needs Docker; you can't rebaseline in a Docker-less sandbox.
 
 **When an intentional change moves a baseline — capture the diff, then approve (don't
 make me do it manually).** A failing visual snapshot is not automatically a bug: if *you*
