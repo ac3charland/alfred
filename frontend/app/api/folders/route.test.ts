@@ -3,6 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 
 import { GET, POST } from './route';
 
+// The GET handler reads through lib/data/folders (a server-only module); neutralise
+// `import 'server-only'` so the route's transitive import doesn't throw under Jest.
+jest.mock('server-only', () => ({}));
+
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));

@@ -3,6 +3,10 @@ import { createClient } from '@/lib/supabase/server';
 
 import { GET, POST } from './route';
 
+// The GET handler reads through lib/data/code (a server-only module); neutralise
+// `import 'server-only'` so the route's transitive import doesn't throw under Jest.
+jest.mock('server-only', () => ({}));
+
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
@@ -174,6 +178,17 @@ describe('POST /api/projects', () => {
 
     const response = await POST(postRequest(VALID_BODY), STUB_CONTEXT);
     expect(response.status).toBe(409);
+  });
+
+  it('returns 400 on a foreign-key violation', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, {
+      data: undefined,
+      error: { message: 'fk violation', code: '23503' },
+    });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(postRequest(VALID_BODY), STUB_CONTEXT);
+    expect(response.status).toBe(400);
   });
 
   it('returns 500 on a non-unique Supabase insert error', async () => {

@@ -1,46 +1,23 @@
 import { resolveIngestClient, withSession } from '@/lib/api/auth';
+import { parseQueryParams, parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createItemSchema, listItemsQuerySchema } from '@/lib/api/schemas';
+import { mapSupabaseError } from '@/lib/api/supabase-errors';
+import { getItems } from '@/lib/data/items';
 
 // ---------------------------------------------------------------------------
 // GET /api/items
 // ---------------------------------------------------------------------------
 
-export const GET = withSession(async (session, request) => {
-  const { supabase } = session;
+export const GET = withSession(async (_session, request) => {
+  const query = parseQueryParams(request, listItemsQuerySchema);
+  if (query instanceof Response) return query;
 
-  const url = new URL(request.url);
-  const rawQuery = {
-    folder: url.searchParams.get('folder') ?? undefined,
-    inbox: url.searchParams.get('inbox') ?? undefined,
-    status: url.searchParams.get('status') ?? undefined,
-  };
-
-  const parsed = listItemsQuerySchema.safeParse(rawQuery);
-  if (!parsed.success) {
-    return jsonError(400, 'Invalid query parameters', parsed.error.issues);
+  const { data, error } = await getItems(query);
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
   }
-
-  const { folder, inbox, status } = parsed.data;
-
-  let query = supabase.from('items').select('*');
-
-  if (inbox === true) {
-    // Inbox: items with no folder assigned — must use .is(), not .eq()
-    query = query.is('folder_id', null);
-  } else if (folder !== undefined) {
-    query = query.eq('folder_id', folder);
-  }
-
-  const resolvedStatus = status ?? 'active';
-  if (resolvedStatus !== 'all') {
-    query = query.eq('status', resolvedStatus);
-  }
-
-  query = query.order('created_at', { ascending: false });
-
-  const { data, error } = await query;
-  if (error) return jsonError(500, error.message);
 
   return jsonOk(data);
 });
@@ -56,19 +33,8 @@ export async function POST(request: Request): Promise<Response> {
 
   const { supabase } = clientResult;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError(400, 'Invalid JSON body');
-  }
-
-  const parsed = createItemSchema.safeParse(body);
-  if (!parsed.success) {
-    return jsonError(400, 'Invalid request body', parsed.error.issues);
-  }
-
-  const input = parsed.data;
+  const input = await parseRequestBody(request, createItemSchema);
+  if (input instanceof Response) return input;
 
   // Resolve title: use `text` as a fallback (Siri raw-capture path)
   // Stryker disable next-line StringLiteral: AT_CEILING — TS-type-safety guard, unreachable at runtime — the schema refine() guarantees title or text is present, so `input.title ?? input.text` is never undefined.
@@ -91,7 +57,10 @@ export async function POST(request: Request): Promise<Response> {
     .select()
     .single();
 
-  if (error) return jsonError(500, error.message);
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
+  }
 
   return jsonOk(data, 201);
 }

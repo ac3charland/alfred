@@ -8,6 +8,10 @@ import { GET, POST } from './route';
 // Mock the Supabase clients
 // ---------------------------------------------------------------------------
 
+// The GET handler reads through lib/data/items (a server-only module); neutralise
+// `import 'server-only'` so the route's transitive import doesn't throw under Jest.
+jest.mock('server-only', () => ({}));
+
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
@@ -28,7 +32,7 @@ const TEST_ITEM = { id: 'item-1', title: 'Buy milk', status: 'active' };
 
 interface MockResult {
   data: unknown;
-  error: { message: string } | undefined;
+  error: { message: string; code?: string } | undefined;
 }
 
 /** Builds a chainable Supabase query mock. Terminal methods resolve with `result`. */
@@ -547,5 +551,50 @@ describe('POST /api/items', () => {
       }),
     );
     expect(response.status).toBe(500);
+  });
+
+  // Behaviour change (Phase 4 D4): the unique/FK Postgres codes are now mapped to
+  // 409/400 in every handler (previously only /api/projects mapped 23505) — see
+  // mapSupabaseError. Proven here on a non-projects resource.
+  it('returns 409 on a unique-constraint violation (23505)', async () => {
+    const chain = makeQueryChain({
+      data: undefined,
+      error: { message: 'duplicate key value', code: '23505' },
+    });
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      makeRequest('http://localhost/api/items', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'New task' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    expect(response.status).toBe(409);
+  });
+
+  it('returns 400 on a foreign-key violation (23503)', async () => {
+    const chain = makeQueryChain({
+      data: undefined,
+      error: { message: 'fk violation', code: '23503' },
+    });
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      makeRequest('http://localhost/api/items', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'New task' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    expect(response.status).toBe(400);
   });
 });

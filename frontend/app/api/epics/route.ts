@@ -1,30 +1,23 @@
 import { withSession } from '@/lib/api/auth';
+import { parseQueryParams, parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createEpicSchema, listEpicsQuerySchema } from '@/lib/api/schemas';
+import { mapSupabaseError } from '@/lib/api/supabase-errors';
+import { getEpicList } from '@/lib/data/code';
 
 // ---------------------------------------------------------------------------
 // GET /api/epics — list epics, optionally filtered to one project (?project=)
 // ---------------------------------------------------------------------------
 
-export const GET = withSession(async (session, request) => {
-  const { supabase } = session;
+export const GET = withSession(async (_session, request) => {
+  const query = parseQueryParams(request, listEpicsQuerySchema);
+  if (query instanceof Response) return query;
 
-  const url = new URL(request.url);
-  const parsed = listEpicsQuerySchema.safeParse({
-    project: url.searchParams.get('project') ?? undefined,
-  });
-  if (!parsed.success) {
-    return jsonError(400, 'Invalid query parameters', parsed.error.issues);
+  const { data, error } = await getEpicList(query);
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
   }
-
-  let query = supabase.from('epics').select('*');
-  if (parsed.data.project !== undefined) {
-    query = query.eq('project_id', parsed.data.project);
-  }
-  query = query.order('created_at', { ascending: true });
-
-  const { data, error } = await query;
-  if (error) return jsonError(500, error.message);
 
   return jsonOk(data);
 });
@@ -39,23 +32,17 @@ export const GET = withSession(async (session, request) => {
 export const POST = withSession(async (session, request) => {
   const { supabase } = session;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError(400, 'Invalid JSON body');
-  }
-
-  const parsed = createEpicSchema.safeParse(body);
-  if (!parsed.success) {
-    return jsonError(400, 'Invalid request body', parsed.error.issues);
-  }
+  const input = await parseRequestBody(request, createEpicSchema);
+  if (input instanceof Response) return input;
 
   const { data, error } = await supabase
-    .rpc('create_epic', { p_project: parsed.data.project_id, p_name: parsed.data.name })
+    .rpc('create_epic', { p_project: input.project_id, p_name: input.name })
     .single();
 
-  if (error) return jsonError(500, error.message);
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
+  }
 
   return jsonOk(data, 201);
 });

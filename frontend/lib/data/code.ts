@@ -1,5 +1,7 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import 'server-only';
 
+import type { ListEpicsQuery } from '@/lib/api/schemas';
 import { createClient } from '@/lib/supabase/server';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
@@ -49,4 +51,49 @@ export async function getCodeStories(): Promise<CodeStory[]> {
     .order('ref_number', { ascending: true })
     .overrideTypes<CodeStory[]>();
   return data ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// API list readers — parallel to the seed readers above, but return the raw
+// Supabase `{ data, error }` so the GET route handlers can map the error to a
+// status (`mapSupabaseError`). The seed readers (getProjects/getEpics/
+// getCodeStories) keep their graceful `[]`-on-null fallback for the layout.
+// ---------------------------------------------------------------------------
+
+/** The GET /api/projects read: all projects, oldest first, with the raw error. */
+export async function getProjectList(): Promise<{
+  data: Project[] | null;
+  error: PostgrestError | null;
+}> {
+  const supabase = await createClient();
+  return supabase.from('projects').select('*').order('created_at', { ascending: true });
+}
+
+/**
+ * The GET /api/epics read: all epics oldest-first, optionally filtered to one project
+ * (`?project=`), with the raw error for the route to map.
+ */
+export async function getEpicList(query: ListEpicsQuery): Promise<{
+  data: Epic[] | null;
+  error: PostgrestError | null;
+}> {
+  const supabase = await createClient();
+  let builder = supabase.from('epics').select('*');
+  if (query.project !== undefined) {
+    builder = builder.eq('project_id', query.project);
+  }
+  return builder.order('created_at', { ascending: true });
+}
+
+/** The GET /api/code read: every code story (the `v_code_stories` view), with the raw error. */
+export async function getCodeStoryList(): Promise<{
+  data: CodeStory[] | null;
+  error: PostgrestError | null;
+}> {
+  const supabase = await createClient();
+  return supabase
+    .from('v_code_stories')
+    .select('*')
+    .order('ref_number', { ascending: true })
+    .overrideTypes<CodeStory[]>();
 }

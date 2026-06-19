@@ -5,6 +5,16 @@
  * browser session). After any mutation, call router.refresh() in the component
  * to pull fresh data from the server.
  */
+// The request-body / query input types are the single source of truth in lib/api/schemas
+// (derived from the Zod schemas via z.infer); re-export them so existing importers of
+// `@/lib/api-client` keep working without re-declaring the shapes here.
+import type {
+  CreateItemInput,
+  CreateProjectInput,
+  ListItemsQuery,
+  UpdateEpicInput,
+  UpdateItemInput,
+} from '@/lib/api/schemas';
 import type {
   CodeFactoryState,
   CodeItem,
@@ -44,12 +54,6 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 // Items
 // ---------------------------------------------------------------------------
 
-export interface ListItemsQuery {
-  folder?: string;
-  inbox?: boolean;
-  status?: 'active' | 'completed' | 'all';
-}
-
 export function listItems(query: ListItemsQuery = {}): Promise<Item[]> {
   const parameters = new URLSearchParams();
   if (query.folder !== undefined) parameters.set('folder', query.folder);
@@ -59,35 +63,11 @@ export function listItems(query: ListItemsQuery = {}): Promise<Item[]> {
   return apiRequest<Item[]>(`/api/items${qs ? `?${qs}` : ''}`);
 }
 
-export interface CreateItemInput {
-  title?: string;
-  text?: string;
-  notes?: string;
-  source_url?: string;
-  raw_capture?: string;
-  item_type?: 'unclassified' | 'task' | 'code' | 'knowledge';
-  due_date?: string;
-  folder_id?: string;
-  parent_id?: string;
-}
-
 export function createItem(input: CreateItemInput): Promise<Item> {
   return apiRequest<Item>('/api/items', {
     method: 'POST',
     body: JSON.stringify(input),
   });
-}
-
-export interface UpdateItemInput {
-  title?: string;
-  // Nullable DB columns accept `null` to CLEAR them (e.g. remove a due date).
-  notes?: string | null;
-  source_url?: string | null;
-  due_date?: string | null;
-  folder_id?: string | null;
-  parent_id?: string | null;
-  item_type?: 'unclassified' | 'task' | 'code' | 'knowledge';
-  status?: 'active' | 'completed';
 }
 
 export function updateItem(id: string, input: UpdateItemInput): Promise<Item> {
@@ -153,14 +133,6 @@ export function listProjects(): Promise<Project[]> {
   return apiRequest<Project[]>('/api/projects');
 }
 
-export interface CreateProjectInput {
-  name: string;
-  /** The repo URL; the server derives repo_owner/repo_name from it. */
-  github_url: string;
-  /** The 3-char ref-prefix key (validated `^[A-Z][A-Z0-9]{2}$`). */
-  key: string;
-}
-
 export function createProject(input: CreateProjectInput): Promise<Project> {
   return apiRequest<Project>('/api/projects', {
     method: 'POST',
@@ -188,12 +160,6 @@ export function createEpic(projectId: string, name: string): Promise<Epic> {
  * the Postgres absent value — which component code can't mint (unicorn/no-null). Returns the
  * updated `epics` row.
  */
-export interface UpdateEpicInput {
-  name?: string;
-  notes?: string | null;
-  archived_at?: string | null;
-}
-
 export function updateEpic(id: string, input: UpdateEpicInput): Promise<Epic> {
   return apiRequest<Epic>(`/api/epics/${id}`, {
     method: 'PATCH',
@@ -245,3 +211,11 @@ export function updateCodeState(
     body: JSON.stringify(body),
   });
 }
+
+export {
+  type CreateItemInput,
+  type CreateProjectInput,
+  type ListItemsQuery,
+  type UpdateEpicInput,
+  type UpdateItemInput,
+} from '@/lib/api/schemas';

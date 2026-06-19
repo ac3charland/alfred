@@ -1,20 +1,20 @@
 import { withSession } from '@/lib/api/auth';
+import { parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createFolderSchema } from '@/lib/api/schemas';
+import { mapSupabaseError } from '@/lib/api/supabase-errors';
+import { getFolderList } from '@/lib/data/folders';
 
 // ---------------------------------------------------------------------------
 // GET /api/folders
 // ---------------------------------------------------------------------------
 
-export const GET = withSession(async (session) => {
-  const { supabase } = session;
-
-  const { data, error } = await supabase
-    .from('folders')
-    .select('*')
-    .order('created_at', { ascending: true });
-
-  if (error) return jsonError(500, error.message);
+export const GET = withSession(async () => {
+  const { data, error } = await getFolderList();
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
+  }
 
   return jsonOk(data);
 });
@@ -26,25 +26,19 @@ export const GET = withSession(async (session) => {
 export const POST = withSession(async (session, request) => {
   const { supabase } = session;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError(400, 'Invalid JSON body');
-  }
-
-  const parsed = createFolderSchema.safeParse(body);
-  if (!parsed.success) {
-    return jsonError(400, 'Invalid request body', parsed.error.issues);
-  }
+  const input = await parseRequestBody(request, createFolderSchema);
+  if (input instanceof Response) return input;
 
   const { data, error } = await supabase
     .from('folders')
-    .insert({ name: parsed.data.name })
+    .insert({ name: input.name })
     .select()
     .single();
 
-  if (error) return jsonError(500, error.message);
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
+  }
 
   return jsonOk(data, 201);
 });
