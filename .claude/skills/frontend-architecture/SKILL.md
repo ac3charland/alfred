@@ -24,15 +24,14 @@ to paste. Duplication isn't just more lines: copies drift out of sync (a fix lan
 others), and concerns pile into one file until it's a 1100-line component no one can hold in their
 head. Reuse keeps behavior and styling defined once.
 
-Some primitives named below may not exist yet. The
-principle is the same either way: if the shared layer doesn't have it, **add it to the right layer
-and adopt it everywhere — don't inline a fresh one-off.**
+If the shared layer doesn't already have what you need, **add it to the right layer and adopt it
+everywhere — don't inline a fresh one-off.**
 
 ## Reach for the shared layer first (don't hand-roll)
 
-**All shared presentational components live in one directory — `components/atoms/`.** There is **no
-`components/ui/`**: the former shadcn `ui/` folder was collapsed into `atoms/`, so a primitive's home
-is never a judgement call between two dirs — it's always `atoms/`.
+**All shared presentational components live in one directory — `components/atoms/`.** There is no
+separate `components/ui/`; a primitive's home is never a judgement call between two dirs — it's always
+`atoms/`.
 
 | You need… | Use | Not |
 | --- | --- | --- |
@@ -95,7 +94,7 @@ epic block, manual controls), with the parent left as the composition root.
 Keep it **conservative**: extract cohesive units, don't fragment every JSX fragment into its own file
 or chase a line-count ceiling. Intentional recursion (a task rendering its subtasks) stays in place.
 
-## Anti-patterns this removes
+## Anti-patterns
 
 - Copy-pasted Tailwind class clusters for menu items, dialogs, badges, or nav links.
 - A hand-rolled Radix `Dialog` scaffold when `FormDialog` / `DialogOverlay` exist.
@@ -112,12 +111,10 @@ First **search** for an existing one (`grep` `components/atoms`, `lib/hooks`,
 `lib/api`, `lib/stores`). If you genuinely need a new shared piece, add it to the right layer **with a
 test**, then **adopt it at every existing call site in the same change** — a half-adopted primitive
 (new component used once, old copies left behind) is worse than none, because now there are *two*
-patterns. Extractions are behavior-preserving: existing tests stay green with no assertion changes
-(see the spec's implementer rules).
+patterns. An extraction preserves behavior — existing tests stay green with no assertion changes.
 
 ## Pointers
 
-- **Catalog + phased roadmap:** [`docs/specs/frontend-dry-refactor/SPEC.md`](../../../docs/specs/frontend-dry-refactor/SPEC.md).
 - **Store & optimistic mechanics** → the `data-flow` skill. **Hooks & component patterns** → `react`.
   **Primitive styling / cva / tokens** → `shadcn-ui` and `tailwindcss`. **Reveal/collapse motion** →
   the `motion` skill.
