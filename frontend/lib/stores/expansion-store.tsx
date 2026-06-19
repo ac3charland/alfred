@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 
+import { createContextPair } from '@/lib/stores/create-context-pair';
+
 /**
  * Expansion store — the single source of truth for which task rows are expanded.
  *
@@ -38,8 +40,10 @@ interface ExpansionActions {
   collapseAll: (ids: Iterable<string>) => void;
 }
 
-const ExpansionStateContext = React.createContext<ExpansionState | undefined>(undefined);
-const ExpansionActionsContext = React.createContext<ExpansionActions | undefined>(undefined);
+const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
+  ExpansionState,
+  ExpansionActions
+>('an ExpansionProvider');
 
 /** A new set with `id` toggled (added if absent, removed if present). */
 function withToggled(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
@@ -91,26 +95,18 @@ export function ExpansionProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <ExpansionActionsContext.Provider value={actions}>
-      <ExpansionStateContext.Provider value={state}>{children}</ExpansionStateContext.Provider>
-    </ExpansionActionsContext.Provider>
+    <ActionsContext.Provider value={actions}>
+      <StateContext.Provider value={state}>{children}</StateContext.Provider>
+    </ActionsContext.Provider>
   );
 }
 
 /** Read which rows are expanded. Throws outside a provider. */
 export function useExpansion(): ExpansionState {
-  const context = React.useContext(ExpansionStateContext);
-  if (context === undefined) {
-    throw new Error('useExpansion must be used within an ExpansionProvider');
-  }
-  return context;
+  return useStateValue('useExpansion');
 }
 
 /** Read the expand/collapse actions. Throws outside a provider. */
 export function useExpansionActions(): ExpansionActions {
-  const context = React.useContext(ExpansionActionsContext);
-  if (context === undefined) {
-    throw new Error('useExpansionActions must be used within an ExpansionProvider');
-  }
-  return context;
+  return useActions('useExpansionActions');
 }

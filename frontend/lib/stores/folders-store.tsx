@@ -3,7 +3,11 @@
 import * as React from 'react';
 
 import { createFolder, deleteFolder, updateFolder } from '@/lib/api-client';
-import { TEMP_ID_PREFIX } from '@/lib/tree';
+import { assertNever } from '@/lib/stores/assert-never';
+import { createContextPair } from '@/lib/stores/create-context-pair';
+import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
+import { insertAt } from '@/lib/stores/reducer-actions';
+import { makeOptimisticFolder } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
 
 /**
@@ -34,10 +38,6 @@ type FolderAction =
   | { type: 'patch'; id: string; patch: Partial<Folder> }
   | { type: 'remove'; id: string };
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled folder action: ${JSON.stringify(value)}`);
-}
-
 /**
  * Pure reducer over the folder list. `replace`/`patch` are no-ops when the id is
  * absent — the race rule: a reconcile for a folder already removed adds nothing back.
@@ -48,8 +48,7 @@ export function foldersReducer(state: Folder[], action: FolderAction): Folder[] 
       return [...state, action.folder];
     }
     case 'insertAt': {
-      const at = Math.max(0, Math.min(action.index, state.length));
-      return [...state.slice(0, at), action.folder, ...state.slice(at)];
+      return insertAt(state, action.folder, action.index);
     }
     case 'replace': {
       return state.map((folder) => (folder.id === action.id ? action.folder : folder));
@@ -63,21 +62,15 @@ export function foldersReducer(state: Folder[], action: FolderAction): Folder[] 
       return state.filter((folder) => folder.id !== action.id);
     }
     default: {
-      return assertNever(action);
+      return assertNever(action, 'folder action');
     }
   }
 }
 
-function makeOptimisticFolder(name: string): Folder {
-  return {
-    id: `${TEMP_ID_PREFIX}${crypto.randomUUID()}`,
-    name,
-    created_at: new Date().toISOString(),
-  };
-}
-
-const FoldersStateContext = React.createContext<Folder[] | undefined>(undefined);
-const FoldersActionsContext = React.createContext<FolderActions | undefined>(undefined);
+const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
+  Folder[],
+  FolderActions
+>('a FoldersProvider');
 
 export function FoldersProvider({
   initialFolders,
@@ -101,37 +94,48 @@ export function FoldersProvider({
     () => ({
       async addFolder(name) {
         const optimistic = makeOptimisticFolder(name);
-        dispatch({ type: 'insert', folder: optimistic });
-        try {
-          const saved = await createFolder(name);
-          dispatch({ type: 'replace', id: optimistic.id, folder: saved });
-        } catch (error) {
-          dispatch({ type: 'remove', id: optimistic.id });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'insert', folder: optimistic });
+          },
+          apiCall: () => createFolder(name),
+          reconcile: (saved) => {
+            dispatch({ type: 'replace', id: optimistic.id, folder: saved });
+          },
+          rollback: () => {
+            dispatch({ type: 'remove', id: optimistic.id });
+          },
+        });
       },
       async renameFolder(id, name) {
         const previous = foldersRef.current.find((folder) => folder.id === id);
-        dispatch({ type: 'patch', id, patch: { name } });
-        try {
-          const saved = await updateFolder(id, name);
-          dispatch({ type: 'replace', id, folder: saved });
-        } catch (error) {
-          if (previous) dispatch({ type: 'patch', id, patch: { name: previous.name } });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', id, patch: { name } });
+          },
+          apiCall: () => updateFolder(id, name),
+          reconcile: (saved) => {
+            dispatch({ type: 'replace', id, folder: saved });
+          },
+          rollback: () => {
+            if (previous) dispatch({ type: 'patch', id, patch: { name: previous.name } });
+          },
+        });
       },
       async removeFolder(id) {
         const current = foldersRef.current;
         const index = current.findIndex((folder) => folder.id === id);
         const previous = current[index];
-        dispatch({ type: 'remove', id });
-        try {
-          await deleteFolder(id);
-        } catch (error) {
-          if (previous) dispatch({ type: 'insertAt', folder: previous, index });
-          throw error;
-        }
+        // No reconcile — the folder is gone on success.
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'remove', id });
+          },
+          apiCall: () => deleteFolder(id),
+          rollback: () => {
+            if (previous) dispatch({ type: 'insertAt', folder: previous, index });
+          },
+        });
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
@@ -139,26 +143,18 @@ export function FoldersProvider({
   );
 
   return (
-    <FoldersActionsContext.Provider value={actions}>
-      <FoldersStateContext.Provider value={folders}>{children}</FoldersStateContext.Provider>
-    </FoldersActionsContext.Provider>
+    <ActionsContext.Provider value={actions}>
+      <StateContext.Provider value={folders}>{children}</StateContext.Provider>
+    </ActionsContext.Provider>
   );
 }
 
 /** Read the current folder list. Throws if used outside a FoldersProvider. */
 export function useFolders(): Folder[] {
-  const context = React.useContext(FoldersStateContext);
-  if (context === undefined) {
-    throw new Error('useFolders must be used within a FoldersProvider');
-  }
-  return context;
+  return useStateValue('useFolders');
 }
 
 /** Read the folder mutation actions. Throws if used outside a FoldersProvider. */
 export function useFolderActions(): FolderActions {
-  const context = React.useContext(FoldersActionsContext);
-  if (context === undefined) {
-    throw new Error('useFolderActions must be used within a FoldersProvider');
-  }
-  return context;
+  return useActions('useFolderActions');
 }

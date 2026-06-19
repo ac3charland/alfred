@@ -4,7 +4,10 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
-import { TEMP_ID_PREFIX } from '@/lib/tree';
+import { assertNever } from '@/lib/stores/assert-never';
+import { createContextPair } from '@/lib/stores/create-context-pair';
+import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
+import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 /**
@@ -165,10 +168,6 @@ type CodeAction =
   | { type: 'patchStory'; itemId: string; patch: Partial<CodeStory> }
   | { type: 'removeStory'; itemId: string };
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled code action: ${JSON.stringify(value)}`);
-}
-
 /**
  * Pure reducer over the three code slices. Each `replace`/`patch`/`remove` is keyed by id
  * and is a no-op when the id is absent — the race rule: a reconcile for a row already
@@ -224,83 +223,9 @@ export function codeReducer(state: CodeState, action: CodeAction): CodeState {
       return { ...state, stories: state.stories.filter((s) => s.item_id !== action.itemId) };
     }
     default: {
-      return assertNever(action);
+      return assertNever(action, 'code action');
     }
   }
-}
-
-function tempId(): string {
-  return `${TEMP_ID_PREFIX}${crypto.randomUUID()}`;
-}
-
-/** Build an optimistic project row (a temp id until the server row reconciles). */
-function makeOptimisticProject(input: CreateProjectInput): Project {
-  return {
-    id: tempId(),
-    name: input.name,
-    key: input.key,
-    // repo_owner/repo_name are derived server-side; show placeholders until reconcile.
-    repo_owner: '',
-    repo_name: '',
-    github_url: input.github_url,
-    ref_seq: 0,
-    created_at: new Date().toISOString(),
-  };
-}
-
-/** Build an optimistic epic row. The real ref/ref_number arrive from `create_epic`. */
-function makeOptimisticEpic(projectId: string, name: string): Epic {
-  return {
-    id: tempId(),
-    project_id: projectId,
-    name,
-    notes: null,
-    ref_number: 0,
-    ref: '',
-    archived_at: null,
-    created_at: new Date().toISOString(),
-  };
-}
-
-/**
- * Build the optimistic flattened `CodeStory` (the board read shape) for an item entering
- * the factory, joining the known project + epic so the card renders immediately. The real
- * ref/ref_number arrive from `enter_code_module`.
- */
-function makeOptimisticStory(
-  item: { id: string; title: string; notes: string | null; source_url: string | null },
-  project: Project,
-  epic: Epic,
-): CodeStory {
-  const now = new Date().toISOString();
-  return {
-    item_id: item.id,
-    project_id: project.id,
-    epic_id: epic.id,
-    ref_number: 0,
-    ref: '',
-    factory_state: 'needs_refinement',
-    lane: 'human',
-    spec_path: null,
-    spec_sha: null,
-    spec_markdown: null,
-    refinement_pr_url: null,
-    implementation_pr_url: null,
-    blocked_reason: null,
-    code_created_at: now,
-    code_updated_at: now,
-    title: item.title,
-    notes: item.notes,
-    source_url: item.source_url,
-    item_created_at: now,
-    project_key: project.key,
-    project_name: project.name,
-    repo_owner: project.repo_owner,
-    repo_name: project.repo_name,
-    epic_name: epic.name,
-    epic_ref: epic.ref,
-    epic_archived_at: epic.archived_at,
-  };
 }
 
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
@@ -322,10 +247,25 @@ function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
   };
 }
 
-const CodeProjectsContext = React.createContext<Project[] | undefined>(undefined);
-const CodeEpicsContext = React.createContext<Epic[] | undefined>(undefined);
-const CodeStoriesContext = React.createContext<CodeStory[] | undefined>(undefined);
-const CodeActionsContext = React.createContext<CodeActions | undefined>(undefined);
+// The board reads the three slices through SEPARATE contexts (a deliberate re-render
+// optimization: a projects-only consumer doesn't re-render when stories change), so each
+// slice gets its own state context via the factory. The factory always pairs a state +
+// actions context; we take the actions half from the projects pair and ignore the unused
+// state halves of the epics/stories pairs.
+const {
+  StateContext: CodeProjectsContext,
+  ActionsContext: CodeActionsContext,
+  useStateValue: useProjectsValue,
+  useActions: useCodeActionsValue,
+} = createContextPair<Project[], CodeActions>('a CodeProvider');
+const { StateContext: CodeEpicsContext, useStateValue: useEpicsValue } = createContextPair<
+  Epic[],
+  never
+>('a CodeProvider');
+const { StateContext: CodeStoriesContext, useStateValue: useStoriesValue } = createContextPair<
+  CodeStory[],
+  never
+>('a CodeProvider');
 
 export function CodeProvider({
   initialProjects,
@@ -369,16 +309,21 @@ export function CodeProvider({
         throw new Error('Project or epic missing from the code store');
       }
       const optimistic = makeOptimisticStory(item, project, epic);
-      dispatch({ type: 'insertStory', story: optimistic });
-      try {
-        const saved = await api.enterCodeModule(item.id, projectId, epicId);
-        const reconciled = reconcileStory(optimistic, saved);
-        dispatch({ type: 'replaceStory', itemId: item.id, story: reconciled });
-        return reconciled;
-      } catch (error) {
-        dispatch({ type: 'removeStory', itemId: item.id });
-        throw error;
-      }
+      let reconciled: CodeStory = optimistic;
+      await runOptimisticMutation({
+        optimistic: () => {
+          dispatch({ type: 'insertStory', story: optimistic });
+        },
+        apiCall: () => api.enterCodeModule(item.id, projectId, epicId),
+        reconcile: (saved) => {
+          reconciled = reconcileStory(optimistic, saved);
+          dispatch({ type: 'replaceStory', itemId: item.id, story: reconciled });
+        },
+        rollback: () => {
+          dispatch({ type: 'removeStory', itemId: item.id });
+        },
+      });
+      return reconciled;
     }
 
     // Shared optimistic state transition, so `openClaudeSession` reuses it without
@@ -406,22 +351,26 @@ export function CodeProvider({
       };
       const optimistic: Partial<CodeStory> = { factory_state: factoryState };
       if (extra.blocked_reason !== undefined) optimistic.blocked_reason = extra.blocked_reason;
-      dispatch({ type: 'patchStory', itemId, patch: optimistic });
-      try {
-        const saved = await api.updateCodeState(ref, factoryState, extra);
-        dispatch({
-          type: 'patchStory',
-          itemId,
-          patch: {
-            factory_state: saved.factory_state,
-            blocked_reason: saved.blocked_reason,
-            code_updated_at: saved.updated_at,
-          },
-        });
-      } catch (error) {
-        dispatch({ type: 'patchStory', itemId, patch: rollback });
-        throw error;
-      }
+      await runOptimisticMutation({
+        optimistic: () => {
+          dispatch({ type: 'patchStory', itemId, patch: optimistic });
+        },
+        apiCall: () => api.updateCodeState(ref, factoryState, extra),
+        reconcile: (saved) => {
+          dispatch({
+            type: 'patchStory',
+            itemId,
+            patch: {
+              factory_state: saved.factory_state,
+              blocked_reason: saved.blocked_reason,
+              code_updated_at: saved.updated_at,
+            },
+          });
+        },
+        rollback: () => {
+          dispatch({ type: 'patchStory', itemId, patch: rollback });
+        },
+      });
     }
 
     return {
@@ -485,18 +434,22 @@ export function CodeProvider({
           rollback.archived_at = previous.archived_at;
           optimistic.archived_at = patch.archived_at;
         }
-        dispatch({ type: 'patchEpic', id: epicId, patch: optimistic });
-        try {
-          const saved = await api.updateEpic(epicId, patch);
-          dispatch({
-            type: 'patchEpic',
-            id: epicId,
-            patch: { name: saved.name, notes: saved.notes, archived_at: saved.archived_at },
-          });
-        } catch (error) {
-          dispatch({ type: 'patchEpic', id: epicId, patch: rollback });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patchEpic', id: epicId, patch: optimistic });
+          },
+          apiCall: () => api.updateEpic(epicId, patch),
+          reconcile: (saved) => {
+            dispatch({
+              type: 'patchEpic',
+              id: epicId,
+              patch: { name: saved.name, notes: saved.notes, archived_at: saved.archived_at },
+            });
+          },
+          rollback: () => {
+            dispatch({ type: 'patchEpic', id: epicId, patch: rollback });
+          },
+        });
       },
       async updateStoryTitle(itemId, title) {
         const previous = stateRef.current.stories.find((s) => s.item_id === itemId);
@@ -504,14 +457,18 @@ export function CodeProvider({
           throw new Error(`Code story ${itemId} not found in the code store`);
         }
         const rollback: Partial<CodeStory> = { title: previous.title };
-        dispatch({ type: 'patchStory', itemId, patch: { title } });
-        try {
-          const saved = await api.updateItem(itemId, { title });
-          dispatch({ type: 'patchStory', itemId, patch: { title: saved.title } });
-        } catch (error) {
-          dispatch({ type: 'patchStory', itemId, patch: rollback });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patchStory', itemId, patch: { title } });
+          },
+          apiCall: () => api.updateItem(itemId, { title }),
+          reconcile: (saved) => {
+            dispatch({ type: 'patchStory', itemId, patch: { title: saved.title } });
+          },
+          rollback: () => {
+            dispatch({ type: 'patchStory', itemId, patch: rollback });
+          },
+        });
       },
       async openClaudeSession(ref, phase) {
         const story = stateRef.current.stories.find((s) => s.ref === ref);
@@ -552,19 +509,11 @@ export function CodeProvider({
 
 /** Read the project list (ProjectNav). Throws outside a CodeProvider. */
 export function useProjects(): Project[] {
-  const context = React.useContext(CodeProjectsContext);
-  if (context === undefined) {
-    throw new Error('useProjects must be used within a CodeProvider');
-  }
-  return context;
+  return useProjectsValue('useProjects');
 }
 
 function useCodeEpics(): Epic[] {
-  const context = React.useContext(CodeEpicsContext);
-  if (context === undefined) {
-    throw new Error('useCodeEpics must be used within a CodeProvider');
-  }
-  return context;
+  return useEpicsValue('useCodeEpics');
 }
 
 /** Read the epic list (the gate's epic picker filters it by project). Throws outside a CodeProvider. */
@@ -573,11 +522,7 @@ export function useEpics(): Epic[] {
 }
 
 function useCodeStories(): CodeStory[] {
-  const context = React.useContext(CodeStoriesContext);
-  if (context === undefined) {
-    throw new Error('useCodeStories must be used within a CodeProvider');
-  }
-  return context;
+  return useStoriesValue('useCodeStories');
 }
 
 /** Group one epic's stories into the 6 happy-path swimlanes + the escape-state bucket. */
@@ -617,9 +562,5 @@ export function useProjectBoard(projectId: string): ProjectBoard {
 
 /** Read the code mutation actions (the gate / ProjectNav `+`). Throws outside a CodeProvider. */
 export function useCodeActions(): CodeActions {
-  const context = React.useContext(CodeActionsContext);
-  if (context === undefined) {
-    throw new Error('useCodeActions must be used within a CodeProvider');
-  }
-  return context;
+  return useCodeActionsValue('useCodeActions');
 }

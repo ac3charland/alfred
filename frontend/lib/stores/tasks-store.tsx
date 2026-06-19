@@ -3,6 +3,9 @@
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { createContextPair } from '@/lib/stores/create-context-pair';
+import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
+import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import type { ItemNode } from '@/lib/tree';
 import { buildTree, collectSubtree, makeOptimisticItem } from '@/lib/tree';
 import type { Item } from '@/lib/types';
@@ -69,57 +72,17 @@ interface TaskActions {
   removeGatedItem: (id: string) => void;
 }
 
-type TaskAction =
-  | { type: 'insert'; item: Item }
-  | { type: 'replace'; id: string; item: Item }
-  | { type: 'patch'; ids: string[]; patch: Partial<Item> }
-  | { type: 'upsert'; items: Item[] }
-  | { type: 'remove'; ids: string[] };
+type TaskAction = SimpleAction<Item>;
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled task action: ${JSON.stringify(value)}`);
-}
-
-/**
- * Pure reducer over the flat item list.
- * - `replace` swaps a single item by id (temp → server); no-op if absent.
- * - `patch` shallow-merges `patch` into every item in `ids` (single edit or cascade); the
- *   race rule falls out for free — ids no longer present are skipped.
- * - `upsert` replaces present items by id and appends any missing ones: it serves both
- *   reconcile-many (server rows) and rollback (re-apply the captured originals).
- * - `remove` drops every item in `ids`.
- */
+/** Pure reducer over the flat item list — the generic five-move store reducer. */
 export function tasksReducer(state: Item[], action: TaskAction): Item[] {
-  switch (action.type) {
-    case 'insert': {
-      return [...state, action.item];
-    }
-    case 'replace': {
-      return state.map((item) => (item.id === action.id ? action.item : item));
-    }
-    case 'patch': {
-      const ids = new Set(action.ids);
-      return state.map((item) => (ids.has(item.id) ? { ...item, ...action.patch } : item));
-    }
-    case 'upsert': {
-      const byId = new Map(action.items.map((item) => [item.id, item] as const));
-      const replaced = state.map((item) => byId.get(item.id) ?? item);
-      const presentIds = new Set(state.map((item) => item.id));
-      const added = action.items.filter((item) => !presentIds.has(item.id));
-      return [...replaced, ...added];
-    }
-    case 'remove': {
-      const ids = new Set(action.ids);
-      return state.filter((item) => !ids.has(item.id));
-    }
-    default: {
-      return assertNever(action);
-    }
-  }
+  return simpleReducer(state, action, 'task action');
 }
 
-const TasksStateContext = React.createContext<Item[] | undefined>(undefined);
-const TasksActionsContext = React.createContext<TaskActions | undefined>(undefined);
+const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
+  Item[],
+  TaskActions
+>('a TasksProvider');
 
 export function TasksProvider({
   initialTasks,
@@ -152,31 +115,39 @@ export function TasksProvider({
           ...(parentId !== undefined && { parent_id: parentId }),
         };
         const optimistic = makeOptimisticItem(createInput);
-        dispatch({ type: 'insert', item: optimistic });
-        try {
-          const saved = await api.createItem(createInput);
-          dispatch({ type: 'replace', id: optimistic.id, item: saved });
-        } catch (error) {
-          dispatch({ type: 'remove', ids: [optimistic.id] });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'insert', item: optimistic });
+          },
+          apiCall: () => api.createItem(createInput),
+          reconcile: (saved) => {
+            dispatch({ type: 'replace', id: optimistic.id, item: saved });
+          },
+          rollback: () => {
+            dispatch({ type: 'remove', ids: [optimistic.id] });
+          },
+        });
       },
       async completeTask(id) {
         const affected = collectSubtree(tasksRef.current, id);
         if (affected.length === 0) return;
         const ids = affected.map((item) => item.id);
-        dispatch({
-          type: 'patch',
-          ids,
-          patch: { status: 'completed', completed_at: new Date().toISOString() },
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({
+              type: 'patch',
+              ids,
+              patch: { status: 'completed', completed_at: new Date().toISOString() },
+            });
+          },
+          apiCall: () => api.completeTask(id),
+          reconcile: (rows) => {
+            dispatch({ type: 'upsert', items: rows });
+          },
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
         });
-        try {
-          const rows = await api.completeTask(id);
-          dispatch({ type: 'upsert', items: rows });
-        } catch (error) {
-          dispatch({ type: 'upsert', items: affected });
-          throw error;
-        }
       },
       async uncompleteTask(id) {
         // Reactivate this task AND its contiguous chain of completed ancestors: a completed
@@ -191,58 +162,74 @@ export function TasksProvider({
         }
         if (affected.length === 0) return;
         const ids = affected.map((item) => item.id);
-        dispatch({ type: 'patch', ids, patch: { status: 'active', completed_at: null } });
-        try {
-          const rows = await Promise.all(
-            ids.map((itemId) => api.updateItem(itemId, { status: 'active' })),
-          );
-          dispatch({ type: 'upsert', items: rows });
-        } catch (error) {
-          dispatch({ type: 'upsert', items: affected });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids, patch: { status: 'active', completed_at: null } });
+          },
+          apiCall: () =>
+            Promise.all(ids.map((itemId) => api.updateItem(itemId, { status: 'active' }))),
+          reconcile: (rows) => {
+            dispatch({ type: 'upsert', items: rows });
+          },
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
+        });
       },
       async updateTask(id, patch) {
         const previous = tasksRef.current.find((item) => item.id === id);
-        dispatch({ type: 'patch', ids: [id], patch });
-        try {
-          const saved = await api.updateItem(id, patch);
-          dispatch({ type: 'upsert', items: [saved] });
-        } catch (error) {
-          if (previous) dispatch({ type: 'upsert', items: [previous] });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids: [id], patch });
+          },
+          apiCall: () => api.updateItem(id, patch),
+          reconcile: (saved) => {
+            dispatch({ type: 'upsert', items: [saved] });
+          },
+          rollback: () => {
+            if (previous) dispatch({ type: 'upsert', items: [previous] });
+          },
+        });
       },
       async classifyItem(id, itemType) {
         const previous = tasksRef.current.find((item) => item.id === id);
-        dispatch({ type: 'patch', ids: [id], patch: { item_type: itemType } });
-        try {
-          const saved = await api.updateItem(id, { item_type: itemType });
-          dispatch({ type: 'upsert', items: [saved] });
-        } catch (error) {
-          if (previous) dispatch({ type: 'upsert', items: [previous] });
-          throw error;
-        }
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids: [id], patch: { item_type: itemType } });
+          },
+          apiCall: () => api.updateItem(id, { item_type: itemType }),
+          reconcile: (saved) => {
+            dispatch({ type: 'upsert', items: [saved] });
+          },
+          rollback: () => {
+            if (previous) dispatch({ type: 'upsert', items: [previous] });
+          },
+        });
       },
       async moveTask(id, folderId) {
         const affected = collectSubtree(tasksRef.current, id);
         // Stryker disable next-line ConditionalExpression: AT_CEILING — empty subtree → ids=[], so Promise.all maps over [] (zero API calls) and the dispatches are no-ops; identical to the early return. (completeTask/deleteTask call the API unconditionally, so their guards stay killable.)
         if (affected.length === 0) return;
         const ids = affected.map((item) => item.id);
-        dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
-        try {
-          const rows = await Promise.all(
-            ids.map((itemId) =>
-              folderId === null
-                ? api.moveToInbox(itemId)
-                : api.updateItem(itemId, { folder_id: folderId }),
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
+          },
+          apiCall: () =>
+            Promise.all(
+              ids.map((itemId) =>
+                folderId === null
+                  ? api.moveToInbox(itemId)
+                  : api.updateItem(itemId, { folder_id: folderId }),
+              ),
             ),
-          );
-          dispatch({ type: 'upsert', items: rows });
-        } catch (error) {
-          dispatch({ type: 'upsert', items: affected });
-          throw error;
-        }
+          reconcile: (rows) => {
+            dispatch({ type: 'upsert', items: rows });
+          },
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
+        });
       },
       async reparentTask(id, newParentId) {
         const current = tasksRef.current;
@@ -260,14 +247,18 @@ export function TasksProvider({
         // Promote to a top-level task: clear parent_id, keep the current folder.
         if (newParentId === null) {
           if (dragged.parent_id === null) return; // already a root — nothing to do
-          dispatch({ type: 'patch', ids: [id], patch: { parent_id: null } });
-          try {
-            const saved = await api.updateItem(id, { parent_id: null });
-            dispatch({ type: 'upsert', items: [saved] });
-          } catch (error) {
-            dispatch({ type: 'upsert', items: [dragged] });
-            throw error;
-          }
+          await runOptimisticMutation({
+            optimistic: () => {
+              dispatch({ type: 'patch', ids: [id], patch: { parent_id: null } });
+            },
+            apiCall: () => api.updateItem(id, { parent_id: null }),
+            reconcile: (saved) => {
+              dispatch({ type: 'upsert', items: [saved] });
+            },
+            rollback: () => {
+              dispatch({ type: 'upsert', items: [dragged] });
+            },
+          });
           return;
         }
 
@@ -280,38 +271,49 @@ export function TasksProvider({
         const folderChanged = dragged.folder_id !== newFolderId;
         const descendantIds = affected.filter((item) => item.id !== id).map((item) => item.id);
 
-        dispatch({
-          type: 'patch',
-          ids: [id],
-          patch: { parent_id: newParentId, folder_id: newFolderId },
-        });
-        if (folderChanged && descendantIds.length > 0) {
-          dispatch({ type: 'patch', ids: descendantIds, patch: { folder_id: newFolderId } });
-        }
-        try {
-          const requests = [api.updateItem(id, { parent_id: newParentId, folder_id: newFolderId })];
-          if (folderChanged) {
-            for (const descId of descendantIds) {
-              requests.push(api.updateItem(descId, { folder_id: newFolderId }));
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({
+              type: 'patch',
+              ids: [id],
+              patch: { parent_id: newParentId, folder_id: newFolderId },
+            });
+            if (folderChanged && descendantIds.length > 0) {
+              dispatch({ type: 'patch', ids: descendantIds, patch: { folder_id: newFolderId } });
             }
-          }
-          const rows = await Promise.all(requests);
-          dispatch({ type: 'upsert', items: rows });
-        } catch (error) {
-          dispatch({ type: 'upsert', items: affected });
-          throw error;
-        }
+          },
+          apiCall: () => {
+            const requests = [
+              api.updateItem(id, { parent_id: newParentId, folder_id: newFolderId }),
+            ];
+            if (folderChanged) {
+              for (const descId of descendantIds) {
+                requests.push(api.updateItem(descId, { folder_id: newFolderId }));
+              }
+            }
+            return Promise.all(requests);
+          },
+          reconcile: (rows) => {
+            dispatch({ type: 'upsert', items: rows });
+          },
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
+        });
       },
       async deleteTask(id) {
         const affected = collectSubtree(tasksRef.current, id);
         if (affected.length === 0) return;
-        dispatch({ type: 'remove', ids: affected.map((item) => item.id) });
-        try {
-          await api.deleteItem(id);
-        } catch (error) {
-          dispatch({ type: 'upsert', items: affected });
-          throw error;
-        }
+        // No reconcile — the rows are gone on success.
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'remove', ids: affected.map((item) => item.id) });
+          },
+          apiCall: () => api.deleteItem(id),
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
+        });
       },
       removeGatedItem(id) {
         // The gate's RPC clears parent_id, so a gated item is always a leaf here — drop
@@ -324,9 +326,9 @@ export function TasksProvider({
   );
 
   return (
-    <TasksActionsContext.Provider value={actions}>
-      <TasksStateContext.Provider value={tasks}>{children}</TasksStateContext.Provider>
-    </TasksActionsContext.Provider>
+    <ActionsContext.Provider value={actions}>
+      <StateContext.Provider value={tasks}>{children}</StateContext.Provider>
+    </ActionsContext.Provider>
   );
 }
 
@@ -338,11 +340,7 @@ export type TaskScope =
 
 /** Read the full (flat) item list. Throws if used outside a TasksProvider. */
 export function useTasks(): Item[] {
-  const context = React.useContext(TasksStateContext);
-  if (context === undefined) {
-    throw new Error('useTasks must be used within a TasksProvider');
-  }
-  return context;
+  return useStateValue('useTasks');
 }
 
 /** Derive the forest for one view by filtering the store, then building the tree. */
@@ -372,9 +370,5 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */
 export function useTaskActions(): TaskActions {
-  const context = React.useContext(TasksActionsContext);
-  if (context === undefined) {
-    throw new Error('useTaskActions must be used within a TasksProvider');
-  }
-  return context;
+  return useActions('useTaskActions');
 }

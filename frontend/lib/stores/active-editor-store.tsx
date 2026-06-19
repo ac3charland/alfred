@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 
+import { createContextPair } from '@/lib/stores/create-context-pair';
+
 /**
  * Active-editor store — the single source of truth for which inline input is open.
  *
@@ -34,8 +36,10 @@ export function sameEditor(a: ActiveEditor | null, b: ActiveEditor): boolean {
 }
 
 // `undefined` is the "no provider" sentinel; `null` is the valid "nothing open" state.
-const ActiveEditorStateContext = React.createContext<ActiveEditor | null | undefined>(undefined);
-const ActiveEditorActionsContext = React.createContext<ActiveEditorActions | undefined>(undefined);
+const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
+  ActiveEditor | null,
+  ActiveEditorActions
+>('an ActiveEditorProvider');
 
 export function ActiveEditorProvider({ children }: { children: React.ReactNode }) {
   const [activeEditor, setActiveEditor] = React.useState<ActiveEditor | null>(null);
@@ -55,28 +59,18 @@ export function ActiveEditorProvider({ children }: { children: React.ReactNode }
   );
 
   return (
-    <ActiveEditorActionsContext.Provider value={actions}>
-      <ActiveEditorStateContext.Provider value={activeEditor}>
-        {children}
-      </ActiveEditorStateContext.Provider>
-    </ActiveEditorActionsContext.Provider>
+    <ActionsContext.Provider value={actions}>
+      <StateContext.Provider value={activeEditor}>{children}</StateContext.Provider>
+    </ActionsContext.Provider>
   );
 }
 
 /** Read the active editor (or null when none is open). Throws outside a provider. */
 export function useActiveEditor(): ActiveEditor | null {
-  const context = React.useContext(ActiveEditorStateContext);
-  if (context === undefined) {
-    throw new Error('useActiveEditor must be used within an ActiveEditorProvider');
-  }
-  return context;
+  return useStateValue('useActiveEditor');
 }
 
 /** Read the open/close actions. Throws outside a provider. */
 export function useActiveEditorActions(): ActiveEditorActions {
-  const context = React.useContext(ActiveEditorActionsContext);
-  if (context === undefined) {
-    throw new Error('useActiveEditorActions must be used within an ActiveEditorProvider');
-  }
-  return context;
+  return useActions('useActiveEditorActions');
 }

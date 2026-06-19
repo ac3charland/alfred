@@ -9,7 +9,12 @@ import {
   getDescendantIds,
   getItemDepth,
   isTempId,
+  makeOptimisticEpic,
+  makeOptimisticFolder,
   makeOptimisticItem,
+  makeOptimisticProject,
+  makeOptimisticStory,
+  tempId,
 } from './tree';
 
 /** Narrow `T | undefined` to `T` without a cast or non-null assertion (both linted out). */
@@ -267,5 +272,101 @@ describe('makeOptimisticItem', () => {
 
   it('generates a unique id each call', () => {
     expect(makeOptimisticItem({ text: 'a' }).id).not.toBe(makeOptimisticItem({ text: 'a' }).id);
+  });
+});
+
+describe('tempId', () => {
+  it('mints a temp-prefixed id recognised by isTempId', () => {
+    expect(isTempId(tempId())).toBe(true);
+  });
+
+  it('generates a unique id each call', () => {
+    expect(tempId()).not.toBe(tempId());
+  });
+});
+
+describe('makeOptimisticFolder', () => {
+  it('builds a folder with the given name and a temp id', () => {
+    const folder = makeOptimisticFolder('Projects');
+    expect(folder.name).toBe('Projects');
+    expect(isTempId(folder.id)).toBe(true);
+    expect(typeof folder.created_at).toBe('string');
+  });
+});
+
+describe('makeOptimisticProject', () => {
+  it('carries name/key/github_url through with placeholder repo fields and a temp id', () => {
+    const project = makeOptimisticProject({
+      name: 'Alfred',
+      key: 'ALF',
+      github_url: 'https://github.com/ac3charland/alfred',
+    });
+    expect(isTempId(project.id)).toBe(true);
+    expect(project.name).toBe('Alfred');
+    expect(project.key).toBe('ALF');
+    expect(project.github_url).toBe('https://github.com/ac3charland/alfred');
+    // repo_owner/repo_name are derived server-side; placeholders until reconcile.
+    expect(project.repo_owner).toBe('');
+    expect(project.repo_name).toBe('');
+    expect(project.ref_seq).toBe(0);
+  });
+});
+
+describe('makeOptimisticEpic', () => {
+  it('builds an epic under the given project with a temp id and empty ref', () => {
+    const epic = makeOptimisticEpic('p-1', 'Onboarding');
+    expect(isTempId(epic.id)).toBe(true);
+    expect(epic.project_id).toBe('p-1');
+    expect(epic.name).toBe('Onboarding');
+    expect(epic.notes).toBeNull();
+    // The real ref/ref_number arrive from create_epic.
+    expect(epic.ref).toBe('');
+    expect(epic.ref_number).toBe(0);
+    expect(epic.archived_at).toBeNull();
+  });
+});
+
+describe('makeOptimisticStory', () => {
+  const PROJECT = {
+    id: 'p-1',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 5,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+  const EPIC = {
+    id: 'e-1',
+    project_id: 'p-1',
+    name: 'Onboarding',
+    notes: null,
+    ref_number: 1,
+    ref: 'ALF-1',
+    archived_at: null,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+
+  it('joins the item with its project + epic into a board-shaped story with a placeholder ref', () => {
+    const story = makeOptimisticStory(
+      { id: 'item-1', title: 'Build the thing', notes: 'a note', source_url: null },
+      PROJECT,
+      EPIC,
+    );
+    expect(story.item_id).toBe('item-1');
+    expect(story.project_id).toBe('p-1');
+    expect(story.epic_id).toBe('e-1');
+    expect(story.title).toBe('Build the thing');
+    expect(story.notes).toBe('a note');
+    expect(story.factory_state).toBe('needs_refinement');
+    expect(story.lane).toBe('human');
+    // The real ref/ref_number arrive from enter_code_module.
+    expect(story.ref).toBe('');
+    expect(story.ref_number).toBe(0);
+    // Joined project/epic fields the card renders immediately.
+    expect(story.project_key).toBe('ALF');
+    expect(story.epic_name).toBe('Onboarding');
+    expect(story.epic_ref).toBe('ALF-1');
   });
 });
