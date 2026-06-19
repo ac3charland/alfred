@@ -36,6 +36,15 @@
  * Docker stays required on macOS. It never falls back to native rendering, which diverges
  * from the baselines by whole pixels. Pre-pulling the image in the cloud setup script keeps
  * the first auto-started run fast (see docs/cloud-environment.md).
+ *
+ * CONTAINER THAT ALREADY MATCHES THE RENDERER? A controlled Linux sandbox/devcontainer can
+ * carry the same Chromium + Noble font packages the pinned image freezes (e.g. the
+ * claude-sandbox devcontainer bakes them via `playwright install --with-deps`). There, nesting
+ * Docker just to re-freeze the renderer is pointless — the environment IS the frozen renderer.
+ * Set `SNAPSHOT_NATIVE=1` and the wrapper renders the suite directly (Linux only), the same way
+ * `test:e2e` runs Playwright natively in Claude Code on the web. It is an EXPLICIT opt-in, never
+ * a silent fallback: the environment promises its fonts match, because a bare host whose fonts
+ * differ still diverges by whole pixels.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
@@ -140,6 +149,35 @@ const dockerArgs = [
   containerCmd,
 ];
 
+// --- native render path: a container that already matches the baselines ------
+// When the environment promises its renderer matches the committed baselines — a Linux
+// sandbox/devcontainer that bakes the same Chromium + Noble font packages the pinned image
+// carries — there's no reason to nest Docker just to re-freeze the renderer; render the suite
+// directly. This is the snapshot analogue of how `test:e2e` runs Playwright natively in Claude
+// Code on the web (see docs/cloud-environment.md). EXPLICIT opt-in (SNAPSHOT_NATIVE=1), never a
+// silent fallback: a bare host whose fonts differ still diverges by whole pixels. Honoured on
+// Linux only — on macOS CoreText renders text at a different width, so Docker stays required.
+let handled = false;
+const nativeRender = !!process.env.SNAPSHOT_NATIVE && process.env.SNAPSHOT_NATIVE !== '0';
+if (nativeRender && process.platform === 'linux') {
+  console.log(`▶ snapshots natively (SNAPSHOT_NATIVE) — ${update ? 'update' : 'verify'}`);
+  handled = true;
+  try {
+    execFileSync('npm', ['run', innerScript, '-w', 'frontend'], {
+      stdio: 'inherit',
+      cwd: repoRoot,
+      env: { ...process.env, CI: '1' },
+    });
+  } catch (error) {
+    // Surface the inner suite's exit code (test-storybook failure, build error, …).
+    process.exitCode = error.status ?? 1;
+  }
+} else if (nativeRender) {
+  console.warn(
+    'SNAPSHOT_NATIVE is set but only honoured on Linux (native render diverges elsewhere) — using Docker.',
+  );
+}
+
 // --- daemon: the pinned image is the ONLY reproducible renderer --------------
 // Snapshots match the committed baselines only when rendered inside the pinned image
 // (frozen Chromium + Noble font packages). Rendering natively is NOT a fallback: even on
@@ -180,7 +218,7 @@ function startDockerDaemon() {
   return false;
 }
 
-if (!dockerDaemonReachable()) {
+if (!handled && !dockerDaemonReachable()) {
   if (process.platform === 'darwin') {
     console.error(
       '\n✖ Docker is required to render snapshots consistently on macOS, but the Docker daemon is not reachable.',
@@ -195,7 +233,7 @@ if (!dockerDaemonReachable()) {
   }
 }
 
-if (process.exitCode === undefined && dockerDaemonReachable()) {
+if (!handled && process.exitCode === undefined && dockerDaemonReachable()) {
   console.log(
     `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
   );
