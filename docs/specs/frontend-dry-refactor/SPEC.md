@@ -50,15 +50,32 @@ of currently-malformed input).
 ## Phase 1 — Shared UI primitives (Workstream A)
 
 Create the reusable primitives and **adopt them at every call site** in the same phase. These unblock
-Phase 2. New shared components live in `frontend/components/ui/` (framework-agnostic primitives) or
-`frontend/components/atoms/` (alfred-specific small pieces) following the existing split; new hooks
-live in `frontend/lib/hooks/`.
+Phase 2. **All shared presentational components live in one directory, `frontend/components/atoms/`
+— there is no `components/ui/`** (see 1.0); new hooks live in `frontend/lib/hooks/`.
 
-> **Existing primitives to reuse (do not reinvent):** `components/ui/button.tsx` (cva `Button`),
-> `components/ui/dropdown-menu.tsx` (already exports a styled `DropdownMenuContent` — which **wraps
-> its own `Portal`** — and `DropdownMenuItem`, `DropdownMenuSeparator`), `components/atoms/text-field.tsx`
-> (`TextField`, teal-ring inline input), `components/atoms/icon-button.tsx`, `components/atoms/spinner.tsx`,
-> `lib/utils.ts` (`cn`).
+### 1.0 Consolidate the primitive layer: delete `components/ui/`, move everything into `components/atoms/` — **do first**
+
+The repo previously split shadcn-style primitives (`components/ui/`) from alfred-specific pieces
+(`components/atoms/`). That split is a judgement call with no payoff, so **collapse it to a single
+home.** Before adding any new primitive:
+
+- **Move** every file out of `frontend/components/ui/` into `frontend/components/atoms/` — today that's
+  `button.tsx` (+ `button.stories.tsx`), `dropdown-menu.tsx`, `input.tsx`, `label.tsx` — and **delete
+  the now-empty `components/ui/` directory.**
+- **Update every import** (`@/components/ui/*` → `@/components/atoms/*`; ~10 files import from
+  `components/ui` today) and any Storybook story paths / image-snapshot baselines that reference the
+  old location.
+- **Update `frontend/components.json`** so the shadcn `ui` alias points at the new home
+  (`"ui": "@/components/atoms"`), so a future `npx shadcn add` writes into `atoms/` and doesn't
+  recreate `ui/`.
+- This is a pure move + re-point — **no behavior change**; existing tests/snapshots pass once paths are
+  fixed. Every later step in this phase places its new primitive in `components/atoms/`.
+
+> **Existing primitives to reuse (do not reinvent) — all in `components/atoms/` after 1.0:**
+> `button.tsx` (cva `Button`), `dropdown-menu.tsx` (already exports a styled `DropdownMenuContent` —
+> which **wraps its own `Portal`** — and `DropdownMenuItem`, `DropdownMenuSeparator`), `input.tsx`
+> (`Input`), `label.tsx`, `text-field.tsx` (`TextField`, teal-ring inline input), `icon-button.tsx`,
+> `spinner.tsx`; plus `lib/utils.ts` (`cn`).
 
 ### 1.1 `EditableTextField` + `useInlineEdit` hook (A1) — **High**
 
@@ -131,7 +148,7 @@ throw→rollback, Enter/Escape) and `editable-text-field.test.tsx` (display→ed
 The `grid` + `grid-template-rows: 0fr↔1fr` height transition is copied 4×:
 `task-row.tsx` (~363–372, ~963–972, ~1012–1019) and `inbox-screen.tsx` (~102–114).
 
-**Create `frontend/components/ui/animated-height-collapse.tsx`:**
+**Create `frontend/components/atoms/animated-height-collapse.tsx`:**
 
 ```tsx
 interface AnimatedHeightCollapseProps {
@@ -160,7 +177,7 @@ animation classes) is copy-pasted in `new-project-dialog.tsx` (~180–202), `new
 (~113–135), `gate-dialog.tsx` (~282–301); the overlay alone is also duplicated in
 `cascade-modal.tsx` (~33) and `shell/shell-mobile-nav.tsx` (~37).
 
-**Create `frontend/components/ui/dialog.tsx`** exporting:
+**Create `frontend/components/atoms/dialog.tsx`** exporting:
 
 - `DialogOverlay` — the shared `fixed inset-0 … bg-black/60 backdrop-blur-sm … animate-in/out …
   motion-reduce:animate-none` overlay. Note the two existing overlays use slightly different
@@ -183,7 +200,7 @@ output).
 `task-row.tsx` (~634–805) and `folder-nav.tsx` (~226–262) hand-roll `DropdownMenu.Content` /
 `DropdownMenu.Item` className strings (the `flex cursor-pointer select-none items-center rounded-sm
 px-3 py-2 … hover:bg-secondary focus:bg-secondary` pattern, 14+ times) **even though
-`components/ui/dropdown-menu.tsx` already exports styled `DropdownMenuContent` and
+`components/atoms/dropdown-menu.tsx` already exports styled `DropdownMenuContent` and
 `DropdownMenuItem`**. Replace the raw `DropdownMenuPrimitive`/inline-class usages with the exported
 components.
 
@@ -216,7 +233,7 @@ variant→class mapping; existing type-badge/state-chip tests stay green.
 `bg-accent-teal text-background hover:bg-accent-teal/90` is appended to `Button` className on ~6 CTAs
 (`capture-box` ×2, `cascade-modal`, the three code dialogs' confirm buttons, story-detail launch).
 Add `accent: 'bg-accent-teal text-background hover:bg-accent-teal/90'` to the `buttonVariants` cva in
-`components/ui/button.tsx` and switch those call sites to `<Button variant="accent">`, dropping the
+`components/atoms/button.tsx` and switch those call sites to `<Button variant="accent">`, dropping the
 inline className (keep any per-site `disabled:opacity-40` only if it differs from the cva base
 `disabled:opacity-50` — prefer the base; if a site truly needs 40, note it). **Tests:** extend
 `button.test.tsx` for the `accent` variant; call-site tests stay green.
@@ -276,7 +293,7 @@ dialog tests stay green.
 
 ### 1.10 Smaller wins (A10) — **Low**
 
-- **`EmptyState`** (`components/ui/empty-state.tsx`): the centered `py-16` "title + subtitle" block in
+- **`EmptyState`** (`components/atoms/empty-state.tsx`): the centered `py-16` "title + subtitle" block in
   `task-list.tsx` (~72–79) and `folder-view.tsx` (~24–29). Props `{ title; description? }`. Adopt at
   both; preserve `font-serif`/muted classes. Add `empty-state.test.tsx`.
 - **`OptionButton`** (`components/atoms/option-button.tsx`): the `OptionRow`/`AddNewRow` selectable
@@ -579,8 +596,8 @@ dense-input classes) instead of `Button`, `IconButton`/`TextField`, and the new 
   ] } }
 ```
 
-Exempt the primitives themselves (`components/ui/**`, `components/atoms/**` — they render the raw
-elements) and tests/stories/e2e. Promote to `error` once the feature dirs are migrated.
+Exempt the primitives themselves (`components/atoms/**` — it renders the raw elements) and
+tests/stories/e2e. Promote to `error` once the feature dirs are migrated.
 
 ### Phase 1 — `no-raw-radix-dialog-dropdown`
 
@@ -588,15 +605,16 @@ The Radix `Dialog.Root → Portal → Overlay → Content` scaffold and hand-typ
 classes, once `FormDialog`/`DialogOverlay` and the styled `DropdownMenu*` exports exist.
 
 ```js
-{ files: ['frontend/components/**/*.tsx'], ignores: ['frontend/components/ui/**'],
+{ files: ['frontend/components/**/*.tsx'], ignores: ['frontend/components/atoms/**'],
   rules: { 'no-restricted-imports': ['error', { paths: [{
     name: 'radix-ui', importNames: ['Dialog', 'DropdownMenu'],
-    message: 'Import the styled wrapper from components/ui (FormDialog/DialogOverlay, DropdownMenu*) — not the raw Radix primitive.',
+    message: 'Import the styled wrapper from components/atoms (FormDialog/DialogOverlay, DropdownMenu*) — not the raw Radix primitive.',
   }] }] } }
 ```
 
-Can land straight at `error` — `components/ui/**` (the wrapper layer) is the only legitimate importer
-and is exempt. A future need with no wrapper means *add a wrapper*, so strictness is correct.
+Can land straight at `error` — `components/atoms/**` (the primitive layer that wraps Radix) is the
+only legitimate importer and is exempt. A future need with no wrapper means *add a wrapper*, so
+strictness is correct.
 
 ### Phase 2 — `max-lines-components` (stays `warn`)
 
@@ -682,7 +700,7 @@ review.
 4. **Phase 5** — fold E2 into Phase 1/2 (story components) and E1 into Phase 4, or ship as a small
    standalone PR.
 
-Suggested PR set: `feat(ui): shared primitives`, `refactor(tasks): decompose task-row` (+ board +
+Suggested PR set: `feat(atoms): shared primitives`, `refactor(tasks): decompose task-row` (+ board +
 story-detail, possibly split), `refactor(stores): context + optimistic factories`,
 `refactor(api): request-parsing + error helpers`, `refactor(types): unify api input types`. Use
 Conventional-Commit one-liners (scope required, lowercase, no body) per `commitlint`.
@@ -697,9 +715,10 @@ Conventional-Commit one-liners (scope required, lowercase, no body) per `commitl
   a generic selector helper would add complexity without removing any.
 - **`api-client` error string format** and the **`withSession` wrapper** — already the right
   abstraction; don't churn them.
-- **`ui/Input` vs `atoms/TextField`** — they serve different intents (full-width default-ring form
-  field vs dense teal-ring inline edit); keep both. Optionally add a one-line doc comment clarifying
-  when to use which; do **not** merge them.
+- **`Input` vs `TextField`** (both in `components/atoms/` after 1.0) — they serve different intents
+  (full-width default-ring form field vs dense teal-ring inline edit); keep both as separate
+  components. Optionally add a one-line doc comment clarifying when to use which; do **not** merge
+  them. (Consolidating the *directory* — 1.0 — is not the same as merging these two components.)
 - **z-index unification across dialogs** — the `z-50`/`z-[55]` differences are intentional stacking;
   `DialogOverlay` exposes `className` so both adopt the shared styles without changing their z-index.
 
