@@ -530,6 +530,45 @@ Tiny, independent; can be folded into Phase 1 (E2) and Phase 4 (E1) or shipped s
 
 ---
 
+## Regression ratchet — lint rules that lock in each phase
+
+Extracting a primitive removes today's duplication; a **lint rule added with that phase** stops the
+duplication from creeping back. The rule is the ratchet: once a shared replacement exists, the
+hand-rolled form becomes mechanically catchable. Add each rule **in the same PR as the phase that
+creates its replacement** — never before (a rule that forbids something with no sanctioned
+alternative just blocks people) — and **start it as a `warn`** so it never hard-blocks an in-flight
+refactor; promote to `error` once the call sites are clean. These are **deliberate project-rule
+additions** (the legitimate kind the back-pressure rules carve out), wired into `frontend`'s
+`check:fast` via the existing flat config — see the `eslint` and `backpressure` skills. The full
+per-rule proposals (mechanism, scope, exemptions, false-positive notes) are filed in
+[`docs/lint-suggestions/`](../../lint-suggestions/); this table is the phase→rule map.
+
+| Phase | Rule (lint-suggestion note) | Catches | Mechanism |
+| --- | --- | --- | --- |
+| 1 | `no-raw-html-button-input` | hand-rolled `<button>`/`<input>`/`<textarea>` instead of `Button`/`TextField`/`TextareaField` | `no-restricted-syntax` JSX selectors, scoped to feature dirs (exempt `components/ui` + `components/atoms`) |
+| 1 | `no-raw-radix-dialog-dropdown` | raw Radix `Dialog`/`DropdownMenu` instead of `FormDialog`/`DropdownMenuItem` | `no-restricted-imports` on `radix-ui` outside `components/ui/` |
+| 2 | `max-lines-components` | the next 1100-line component | built-in `max-lines` (warn) on `components/**` |
+| 3 | `no-inline-supabase-from` | `supabase.from(...)` inlined outside `lib/data` / `app/api` (reinforces `data-flow`) | `no-restricted-syntax` member-call selector |
+| 3 | `no-duplicate-helper-names` | by-name copies of `assertNever`/`tempId`/`navLinkClass` | `no-restricted-syntax` on the declaration outside its canonical module |
+| 4 | `no-direct-request-json-in-routes` | `request.json()` in a handler instead of `parseRequestBody` | `no-restricted-syntax` scoped to `app/api/**/route.ts` |
+
+**Flat-config caveat (call out in the implementing PR):** `no-restricted-syntax` options **replace**,
+they don't merge, across overlapping `files` globs — so the several selectors that target
+`components/**` (`no-raw-html-button-input`, `no-inline-supabase-from`, `no-duplicate-helper-names`)
+must be **combined into one `no-restricted-syntax` entry per file-scope**, not split across config
+blocks, or the later block silently wins and drops the earlier selectors.
+
+**Beyond the named rules:** the *behavioral* duplications (the inline-edit state machine, the
+optimistic capture→reconcile/rollback dance, context-pair scaffolding) and the literal copy-paste
+blocks (the `grid-rows` transition, the dialog scaffold, duplicated helper bodies) can't be caught by
+a single AST rule. A token-level copy-paste detector covers the literal cases generically — speced
+separately in
+[`docs/specs/frontend-dupe-audit/SPEC.md`](../frontend-dupe-audit/SPEC.md) as a non-blocking
+`audit:dupes` script. The behavioral ones stay the province of the `frontend-architecture` skill and
+review.
+
+---
+
 ## Sequencing & dependencies
 
 1. **Phase 1** (UI primitives) — do first; unblocks Phase 2. Each sub-item (1.1–1.10) is an
