@@ -2,7 +2,7 @@
 name: frontend-architecture
 description: >
   Documents the frontend's DRY and modular-component conventions: the shared primitive
-  layer (components/ui, components/atoms, lib/hooks, the store and route-handler factories), 
+  layer (components/atoms, lib/hooks, the store and route-handler factories), 
   when to extract a shared component or hook, and component size limits. 
   Use whenever refactoriing, and *especially* when adding, frontend code to avoid duplication. Trigger on:
   "Create a component to", "Add (UI feature) to the (tasks, code) module", "DRY this up", 
@@ -30,12 +30,16 @@ and adopt it everywhere — don't inline a fresh one-off.**
 
 ## Reach for the shared layer first (don't hand-roll)
 
+**All shared presentational components live in one directory — `components/atoms/`.** There is **no
+`components/ui/`**: the former shadcn `ui/` folder was collapsed into `atoms/`, so a primitive's home
+is never a judgement call between two dirs — it's always `atoms/`.
+
 | You need… | Use | Not |
 | --- | --- | --- |
-| a button | `Button` (`components/ui/button`) + a cva `variant` | a one-off `className` color override — add a variant instead |
-| a dropdown menu item / content | `DropdownMenuItem` / `DropdownMenuContent` (`components/ui/dropdown-menu`, already portal-wrapped) | re-typing the `flex … rounded-sm … hover:bg-secondary` item class |
+| a button | `Button` (`components/atoms/button`) + a cva `variant` | a one-off `className` color override — add a variant instead |
+| a dropdown menu item / content | `DropdownMenuItem` / `DropdownMenuContent` (`components/atoms/dropdown-menu`, already portal-wrapped) | re-typing the `flex … rounded-sm … hover:bg-secondary` item class |
 | a dense inline single-line input | `TextField` (`components/atoms/text-field`) | a raw `<input>` with the teal-ring boilerplate |
-| a full-width form field | `Input` (`components/ui/input`) | (distinct from `TextField` — keep both) |
+| a full-width form field | `Input` (`components/atoms/input`) | (distinct from `TextField` — keep both) |
 | a click-to-edit field | `EditableTextField` / `useInlineEdit` | reimplementing draft + Enter/Escape + blur + rollback per field |
 | a modal | `FormDialog` / `DialogOverlay` | pasting `Dialog.Root → Portal → Overlay → Content` again |
 | a pill / status chip | `Badge` variants | a bespoke `rounded-full px-2 …` span |
@@ -72,8 +76,9 @@ early invents an abstraction before you know its shape; extracting too late lets
 
 Where the extracted thing lives:
 
-- **framework-agnostic primitive** (button, dialog, collapse, empty-state) → `components/ui/`
-- **alfred-specific small piece** (badge, text-field, editable-text-field, option-button) → `components/atoms/`
+- **any shared presentational component** (button, input, dialog, dropdown, badge, text-field,
+  editable-text-field, collapse, empty-state, option-button) → **`components/atoms/`** — the single
+  home; there is no `components/ui/`
 - **reusable behavior / hook** (`useInlineEdit`, `useFormSubmit`, row-flag derivations) → `lib/hooks/`
 - **store plumbing** (context-pair, optimistic-mutation, reducer actions) → `lib/stores/`
 - **API plumbing** (request parsing, error mapping, param validation) → `lib/api/`
@@ -103,7 +108,7 @@ or chase a line-count ceiling. Intentional recursion (a task rendering its subta
 
 ## Before you introduce a new shared abstraction
 
-First **search** for an existing one (`grep` `components/ui`, `components/atoms`, `lib/hooks`,
+First **search** for an existing one (`grep` `components/atoms`, `lib/hooks`,
 `lib/api`, `lib/stores`). If you genuinely need a new shared piece, add it to the right layer **with a
 test**, then **adopt it at every existing call site in the same change** — a half-adopted primitive
 (new component used once, old copies left behind) is worse than none, because now there are *two*
