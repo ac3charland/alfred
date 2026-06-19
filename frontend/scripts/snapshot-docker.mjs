@@ -27,6 +27,12 @@
  * fixes the fonts + Chromium so text width is identical across arches; only sub-pixel AA can
  * differ, which the snapshot threshold absorbs. CI just runs `npm run check:slow`, which calls
  * this wrapper the same way (see .github/workflows/ci.yml).
+ *
+ * NO DOCKER DAEMON? Docker is required on macOS (the only supported local renderer) — this
+ * hard-fails there so the dev starts Docker Desktop. On any other host (a headless cloud
+ * sandbox / CI runner without a daemon) the gate can't run at all, so it SKIPS with a notice
+ * instead of failing; CI remains the authoritative snapshot gate (see docs/cloud-environment.md).
+ * It never falls back to native rendering — that diverges from the baselines by whole pixels.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
@@ -120,20 +126,56 @@ const dockerArgs = [
   containerCmd,
 ];
 
-console.log(
-  `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
-);
-try {
-  execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
-} catch (error) {
-  if (error.code === 'ENOENT') {
+// --- guard: the pinned image is the ONLY reproducible renderer ---------------
+// Snapshots match the committed baselines only when rendered inside the pinned image
+// (frozen Chromium + Noble font packages). Rendering natively is NOT a fallback: even on
+// Ubuntu Noble, a bare host lacks the image's exact fonts, so text width shifts and every
+// text-bearing crop mismatches by whole pixels (e.g. a 175px field renders 216px wide). So
+// when no Docker daemon is reachable we never silently render natively — we branch on host:
+//   • macOS — Docker Desktop is the only supported *local* path, so hard-fail and tell the
+//     dev to start it (Docker is required on macOS).
+//   • elsewhere — a headless cloud/CI host without a daemon can't run the gate at all, so
+//     skip it with a notice. CI runs this same wrapper *with* Docker on every PR and is the
+//     authoritative snapshot gate where Docker is unavailable (see docs/cloud-environment.md).
+function dockerDaemonReachable() {
+  try {
+    execFileSync('docker', ['info'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    // Both a missing `docker` binary (ENOENT) and an unreachable daemon land here.
+    return false;
+  }
+}
+
+if (dockerDaemonReachable()) {
+  console.log(
+    `▶ snapshots in ${image} (${platform || `host/${archKey}`}) — ${update ? 'update' : 'verify'}`,
+  );
+  try {
+    execFileSync('docker', dockerArgs, { stdio: 'inherit', cwd: repoRoot });
+  } catch (error) {
+    // Surface the container's own exit code (test-storybook failure, build error, …). A
+    // missing binary / dead daemon was already handled by the reachability guard above.
+    process.exitCode = error.status ?? 1;
+  }
+} else {
+  if (process.platform === 'darwin') {
     console.error(
-      '\n✖ Docker is required to run snapshots consistently but `docker` was not found.',
+      '\n✖ Docker is required to render snapshots consistently on macOS, but the Docker daemon is not reachable.',
     );
-    console.error('  Install Docker Desktop and ensure it is running, then retry.');
+    console.error('  Start Docker Desktop and retry.');
     process.exitCode = 127;
   } else {
-    // Surface the container's own exit code (test-storybook failure, build error, …).
-    process.exitCode = error.status ?? 1;
+    console.log('⊘ Skipping Storybook image snapshots: no reachable Docker daemon on this host.');
+    console.log(
+      '  They render in a pinned Docker image for pixel-identical output, and native rendering',
+    );
+    console.log(
+      '  diverges from the committed baselines (different font stack → text-width shift).',
+    );
+    console.log(
+      '  CI runs this same wrapper with Docker on every PR and is the authoritative gate.',
+    );
+    // exitCode stays 0 — a daemon-less host can't run the gate, so don't block check:slow.
   }
 }
