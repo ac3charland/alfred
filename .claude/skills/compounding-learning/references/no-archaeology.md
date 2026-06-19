@@ -22,6 +22,7 @@ record of what an agent just did. Two failure modes live here, and they share a 
 - Narrating the problem-history instead of the guidance (CLAUDE.md)
 - "Modeled on another tool" provenance (demo-lint)
 - Stale workaround for a since-removed constraint (supabase)
+- Authoring a skill as a companion to the refactor that spawned it (frontend-architecture)
 - The constructive counterpart: replace-and-shrink (playwright)
 
 ## Supersession note instead of a deletion — storybook (`a55ea86`)
@@ -146,6 +147,34 @@ AFTER: *(bullet removed)*
 
 **Lesson:** gotchas are contingent on live config/infra. When the underlying decision
 changes, the gotcha goes with it — sweep it out the same change.
+
+## Authoring a skill as a companion to the refactor that spawned it — frontend-architecture
+
+A new house-style skill, written alongside the refactor PR that motivated it, narrated that PR — the
+audit that produced it, the spec that would *introduce* its primitives, that they *may not exist yet*.
+A skill is standing current truth; the PR that birthed it is invisible to a future reader.
+
+BEFORE:
+```
+A five-domain audit found the frontend ... carrying real copy-paste ... The full catalog of primitives
+and the phased refactor that introduces the missing ones live in [the spec].
+...
+Some primitives named below are being **introduced** by the refactor spec and may not exist yet.
+```
+AFTER:
+```
+This skill is the standing guidance so frontend work starts aligned instead of adding copied code,
+hand-rolled components, or large, un-decomposed components.
+...
+If the shared layer doesn't already have what you need, add it to the right layer and adopt it
+everywhere — don't inline a fresh one-off.
+```
+
+**Lesson:** state the convention as if it had always been the rule. Don't anchor a skill to the PR,
+audit, or "phased roadmap" that created it, and don't hedge that the primitives it names are still
+being rolled out. The same edit also cut a migration line — "the former shadcn `ui/` folder was
+collapsed into `atoms/`" became "there is no separate `components/ui/`": describe the current home,
+not the move that produced it.
 
 ## The constructive counterpart: replace-and-shrink — playwright (`a652f2e`)
 
