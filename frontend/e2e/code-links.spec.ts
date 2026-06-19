@@ -96,8 +96,10 @@ test('a needs_refinement story launches a refinement session and advances to In 
   await expect(inRefinement.getByRole('button', { name: /claude code/i })).toBeHidden();
 
   // The prefilled claude.ai/code tab was opened with the repo + an encoded prompt.
+  // `window.open` fires AFTER the awaited state write resolves, while the card moves
+  // optimistically — so poll the one-shot capture rather than reading it once (racy).
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
   const opened = await getOpenedUrls(page);
-  expect(opened).toHaveLength(1);
   const url = opened[0] ?? '';
   expect(url).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
   const prompt = new URL(url).searchParams.get('q') ?? '';
@@ -148,8 +150,10 @@ test('a ready_for_dev story launches an implementation session and advances to I
   await expect(inDevelopment.getByText('ALF-5')).toBeVisible();
   await expect(readyForDev.getByText('ALF-5')).toBeHidden();
 
+  // `window.open` fires only after the awaited state write resolves (the card moves
+  // optimistically before then), so poll the capture rather than reading it once (racy).
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
   const opened = await getOpenedUrls(page);
-  expect(opened).toHaveLength(1);
   const prompt = new URL(opened[0] ?? '').searchParams.get('q') ?? '';
   expect(prompt).toContain('ALF-5: Implement the allow-list parser');
   expect(prompt).toContain('phase: implementation');
