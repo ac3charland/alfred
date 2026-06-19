@@ -172,9 +172,11 @@ everywhere — don't inline a fresh one-off.
 
 **Lesson:** state the convention as if it had always been the rule. Don't anchor a skill to the PR,
 audit, or "phased roadmap" that created it, and don't hedge that the primitives it names are still
-being rolled out. The same edit also cut a migration line — "the former shadcn `ui/` folder was
-collapsed into `atoms/`" became "there is no separate `components/ui/`": describe the current home,
-not the move that produced it.
+being rolled out. **And don't call out what doesn't exist** — the first fix traded a migration line
+("the former shadcn `ui/` folder was collapsed into `atoms/`") for its present-tense residue ("there
+is no `components/ui/`"), but *that's still noise*: a folder the reader will never see doesn't belong
+in the skill at all, even to deny it. State only the positive current home — "shared presentational
+components live in `components/atoms/`" — and stop.
 
 ## The constructive counterpart: replace-and-shrink — playwright (`a652f2e`)
 

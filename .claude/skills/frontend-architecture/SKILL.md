@@ -29,9 +29,8 @@ everywhere — don't inline a fresh one-off.**
 
 ## Reach for the shared layer first (don't hand-roll)
 
-**All shared presentational components live in one directory — `components/atoms/`.** There is no
-separate `components/ui/`; a primitive's home is never a judgement call between two dirs — it's always
-`atoms/`.
+**All shared presentational components live in one directory — `components/atoms/`.** A primitive's
+home is never a judgement call — it's always `atoms/`.
 
 | You need… | Use | Not |
 | --- | --- | --- |
@@ -76,8 +75,7 @@ early invents an abstraction before you know its shape; extracting too late lets
 Where the extracted thing lives:
 
 - **any shared presentational component** (button, input, dialog, dropdown, badge, text-field,
-  editable-text-field, collapse, empty-state, option-button) → **`components/atoms/`** — the single
-  home; there is no `components/ui/`
+  editable-text-field, collapse, empty-state, option-button) → **`components/atoms/`**
 - **reusable behavior / hook** (`useInlineEdit`, `useFormSubmit`, row-flag derivations) → `lib/hooks/`
 - **store plumbing** (context-pair, optimistic-mutation, reducer actions) → `lib/stores/`
 - **API plumbing** (request parsing, error mapping, param validation) → `lib/api/`
