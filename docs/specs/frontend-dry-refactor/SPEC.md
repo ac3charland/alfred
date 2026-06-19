@@ -25,20 +25,20 @@ of currently-malformed input).
    assertion changes** beyond import-path/render-wrapper updates. If a refactor forces a test
    rewrite, you've changed behavior — stop and reconsider. The two exceptions are D4 and D6, which
    add new tests for new rejections.
-2. **Every change touches a test (CLAUDE.md TDD rule).** A new shared component/hook/helper gets its
+2. **New components get a new test (CLAUDE.md TDD rule).** A new shared component/hook/helper gets its
    **own** unit/RTL test; adopting it at a call site is covered by that call site's existing tests
-   (which must stay green). "If you could make this change and nothing broke, that's a testing
-   failure."
+   (which must stay green). Note that all other tests must stay green while being unchanged; besides the
+   noted exceptions, this is a refactor and not introducing any behavioral changes.
 3. **Guardrails stay intact.** No `eslint-disable`, `@ts-expect-error`, `.skip`, config-weakening,
    or `--no-verify` (except the sanctioned `batch-commits` script). Fix the code, not the gate. If a
    rule genuinely misfits, file a `docs/lint-suggestions/` note and make the code pass as-is.
-4. **One phase = one PR.** Phases are ordered by dependency. Within a phase, make **one commit per
+4. **One phase at a time.** Phases are ordered by dependency. Within a phase, make **one commit per
    extraction** (group by concern) using the `batch-commits` skill so the gate runs once.
 5. **Demo doc per phase.** Each phase that changes a component's structure gets a
    `docs/demos/frontend-dry-refactor/<phase>.md` proving the UI is unchanged (screenshot the before
-   from `main`, the after from the branch — they should match) and that `check` is green. Pure
-   internal helper extraction (Phase 3/4 plumbing with no UI delta) can use an `exec` block showing
-   the new tests passing instead of a screenshot.
+   from `main`, the after from the branch — they should match). Pure
+   internal helper extraction (Phase 3/4 plumbing with no UI delta) don't need explicit demos; the
+   before/after images are enough proof.
 6. **Conservative decomposition (per the scoping decision).** Pull out cohesive hooks/sub-components;
    do **not** over-fragment into dozens of one-off files. Target readability, not a line-count
    contest.
@@ -318,6 +318,7 @@ dialog tests stay green.
       a folder view, the code board, a code dialog, and the story-detail modal.
 - [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `no-raw-html-button-input` and
       `no-raw-radix-dialog-dropdown`, promoted to `error` once the call sites are migrated.
+      (See [## Regression ratchet — the lint rule each phase enforces](#regression-ratchet-the-lint-rule-each-phase-enforces))
 - [ ] `check` is green with **no changes to existing test assertions** beyond import/render-wrapper
       updates.
 
@@ -380,6 +381,7 @@ Extract to `frontend/components/code/story-detail/`:
       (covered by a `useAnimatedCompletion` test and the existing task-row completion tests/e2e).
 - [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `max-lines-components` (kept a
       `warn` — the deliberate exception), tuned to the post-decomposition norm.
+      (See [## Regression ratchet — the lint rule each phase enforces](#regression-ratchet-the-lint-rule-each-phase-enforces))
 - [ ] No visual or interaction change; demo doc shows the task tree (expand/collapse, inline edit,
       complete-with-cascade), the board, and the story modal behaving identically. `check` green.
 
@@ -452,6 +454,7 @@ Add a short "which rollback strategy to use (full / selective / position-aware)"
       decision).
 - [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `no-inline-supabase-from` and
       `no-duplicate-helper-names`, promoted to `error` once verified clean.
+      (See [## Regression ratchet — the lint rule each phase enforces](#regression-ratchet-the-lint-rule-each-phase-enforces))
 - [ ] All existing store/action tests pass **unchanged**; the optimistic + reconcile/rollback behavior
       is provably identical. `data-flow` skill gains the rollback-strategy note. `check` green.
 
@@ -534,6 +537,7 @@ is an intended behavior change:** malformed UUIDs now 400 instead of a silent 20
       malformed UUID path params → 400. New tests assert each; all other route tests pass unchanged.
 - [ ] **Ratchet enforced (see Regression ratchet):** this PR adds `no-direct-request-json-in-routes`,
       promoted to `error` once all nine handlers are migrated.
+      (See [## Regression ratchet — the lint rule each phase enforces](#regression-ratchet-the-lint-rule-each-phase-enforces))
 - [ ] GET handlers read through `lib/data/*`. `check` green; a demo doc shows the new 409/400
       responses via `curl`/`exec` against the dev server.
 
