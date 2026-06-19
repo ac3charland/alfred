@@ -10,7 +10,7 @@ export type TextFieldProperties = React.InputHTMLAttributes<HTMLInputElement>;
  * create/rename forms. It bakes in the long focus-ring + border boilerplate; callers pass
  * sizing (`px-*`/`py-*`/`flex-1`) and behaviour props via the usual input attributes.
  *
- * (Distinct from `ui/Input`, the full-width form field with the default ring used on the
+ * (Distinct from `Input`, the full-width form field with the default ring used on the
  * login screen.)
  */
 const TextField = React.forwardRef<HTMLInputElement, TextFieldProperties>(
