@@ -50,7 +50,9 @@ test('capturing a thought adds it to the inbox', async ({ page, seed }) => {
 test('completing a leaf task moves it to the Completed view', async ({ page, seed }) => {
   // Completion is task-only, so this fixture must be classified as a task to show
   // the checkbox; `makeItem`'s default `unclassified` would render no checkbox.
-  await seed({ items: [makeItem('Take out the trash', { id: 'leaf-1', item_type: 'task' })] });
+  // Real UUID id: completing PATCHes the row by id, which the route validates as a UUID
+  // (a readable id would 400 → roll back).
+  await seed({ items: [makeItem('Take out the trash', { item_type: 'task' })] });
 
   await page.goto('/?view=inbox');
   const tasks = page.getByRole('list', { name: 'Tasks' });

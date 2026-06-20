@@ -56,12 +56,14 @@ test.describe('subtasks', () => {
     page,
     seed,
   }) => {
+    // Real UUID ids: unchecking the child PATCHes it by id, which the route validates
+    // as a UUID (a readable id would 400 → roll back).
+    const parent = makeTask('Plan the launch');
     await seed({
       items: [
-        makeTask('Plan the launch', { id: 'p1' }),
+        parent,
         makeTask('Draft the brief', {
-          id: 'c1',
-          parent_id: 'p1',
+          parent_id: parent.id,
           status: 'completed',
           completed_at: '2025-01-02T00:00:00Z',
         }),
@@ -97,11 +99,11 @@ test.describe('cascade completion', () => {
     page,
     seed,
   }) => {
+    // Real UUID ids: the cascade PATCHes both rows by id, which the route validates as
+    // UUIDs (a readable id would 400 → roll back).
+    const parent = makeTask('Ship feature');
     await seed({
-      items: [
-        makeTask('Ship feature', { id: 'p1' }),
-        makeTask('Write code', { id: 'c1', parent_id: 'p1' }),
-      ],
+      items: [parent, makeTask('Write code', { parent_id: parent.id })],
     });
     await page.goto('/?view=inbox');
 
@@ -144,7 +146,9 @@ test.describe('completion', () => {
     page,
     seed,
   }) => {
-    await seed({ items: [makeTask('Buy milk', { id: 'l1' })] });
+    // Real UUID id: completing the leaf PATCHes it by id, which the route validates as a
+    // UUID (a readable id would 400 → roll back).
+    await seed({ items: [makeTask('Buy milk')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'Mark "Buy milk" complete' }).click();
@@ -159,9 +163,12 @@ test.describe('completion', () => {
   });
 });
 
+// These tests omit the seed `id`, so `makeTask` mints a real UUID: each inline edit
+// PATCHes the row by id, which the route validates as a UUID (a readable id would 400 →
+// roll back, reverting the optimistic update).
 test.describe('inline editing', () => {
   test('edits a task title via double-click', async ({ page, seed }) => {
-    await seed({ items: [makeTask('Original title', { id: 't1' })] });
+    await seed({ items: [makeTask('Original title')] });
     await page.goto('/?view=inbox');
 
     await page.getByText('Original title').dblclick();
@@ -178,7 +185,7 @@ test.describe('inline editing', () => {
     page,
     seed,
   }) => {
-    await seed({ items: [makeTask('Original title', { id: 't1' })] });
+    await seed({ items: [makeTask('Original title')] });
     await page.goto('/?view=inbox');
 
     await page.getByText('Original title').dblclick();
@@ -206,7 +213,7 @@ test.describe('inline editing', () => {
   });
 
   test('sets a due date from the actions menu', async ({ page, seed }) => {
-    await seed({ items: [makeTask('Schedule review', { id: 't1' })] });
+    await seed({ items: [makeTask('Schedule review')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
@@ -222,7 +229,7 @@ test.describe('inline editing', () => {
   });
 
   test('adds notes from the actions menu', async ({ page, seed }) => {
-    await seed({ items: [makeTask('Research options', { id: 't1' })] });
+    await seed({ items: [makeTask('Research options')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
@@ -268,7 +275,7 @@ test.describe('move and delete', () => {
   });
 
   test('deletes a task', async ({ page, seed }) => {
-    await seed({ items: [makeTask('Delete me', { id: 't1' })] });
+    await seed({ items: [makeTask('Delete me')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();

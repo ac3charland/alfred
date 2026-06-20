@@ -37,8 +37,10 @@ test('shows completed tasks with their context labels', async ({ page, seed }) =
 });
 
 test('reactivating a completed task returns it to the inbox', async ({ page, seed }) => {
+  // Real UUID id: reactivating PATCHes the row by id, which the route validates as a
+  // UUID (a readable id would 400 → roll back).
   await seed({
-    items: [makeItem('Reopen me', { id: 'd1', status: 'completed', item_type: 'task' })],
+    items: [makeItem('Reopen me', { status: 'completed', item_type: 'task' })],
   });
 
   await page.goto('/completed');

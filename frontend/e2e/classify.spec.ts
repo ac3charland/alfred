@@ -33,7 +33,9 @@ test.describe('inbox classification', () => {
     page,
     seed,
   }) => {
-    await seed({ items: [makeItem('Ship the webhook', { id: 'u1' })] });
+    // Real UUID id: classifying PATCHes the row by id, which the route validates as a
+    // UUID (a readable id would 400 → roll back).
+    await seed({ items: [makeItem('Ship the webhook')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
@@ -59,7 +61,9 @@ test.describe('inbox classification', () => {
     page,
     seed,
   }) => {
-    await seed({ items: [makeItem('Plan the sprint', { id: 'u1' })] });
+    // Real UUID id: classifying PATCHes the row by id, which the route validates as a
+    // UUID (a readable id would 400 → roll back).
+    await seed({ items: [makeItem('Plan the sprint')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();

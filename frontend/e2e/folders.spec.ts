@@ -35,7 +35,9 @@ test('navigates to a folder and shows its scoped tasks', async ({ page, seed }) 
 });
 
 test('renames a folder', async ({ page, seed }) => {
-  await seed({ folders: [makeFolder('Old name', { id: 'f1' })] });
+  // Real UUID id: renaming PATCHes the folder by id, which the route validates as a UUID
+  // (a readable id would 400 → roll back).
+  await seed({ folders: [makeFolder('Old name')] });
   await page.goto('/');
 
   await page.getByRole('link', { name: 'Old name' }).hover();
@@ -51,9 +53,12 @@ test('renames a folder', async ({ page, seed }) => {
 });
 
 test('deleting a folder returns its tasks to the Inbox', async ({ page, seed }) => {
+  // Real UUID id: deleting DELETEs the folder by id, which the route validates as a UUID
+  // (a readable id would 400 → roll back). The item references it via folder_id.
+  const folder = makeFolder('Temporary');
   await seed({
-    folders: [makeFolder('Temporary', { id: 'f1' })],
-    items: [makeItem('Homeless task', { id: 't1', folder_id: 'f1' })],
+    folders: [folder],
+    items: [makeItem('Homeless task', { folder_id: folder.id })],
   });
   await page.goto('/');
 
