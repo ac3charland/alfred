@@ -211,7 +211,9 @@ describe('createProjectSchema', () => {
     const result = createProjectSchema.safeParse({ ...base, key: 'ab' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((i) => i.message.includes('exactly 3 characters'))).toBe(true);
+      expect(result.error.issues.some((i) => i.message.includes('exactly 3 characters'))).toBe(
+        true,
+      );
     }
   });
 });

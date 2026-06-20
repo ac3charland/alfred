@@ -72,4 +72,15 @@ describe('createContextPair', () => {
     );
     spy.mockRestore();
   });
+
+  it('falls back to the generic prefix for the state hook too (not just actions)', () => {
+    // The state hook has its own `hookName = 'This hook'` default; assert the full prefix so
+    // emptying that default is caught (the displayName-only check above would miss it).
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { useStateValue } = makePair();
+    expect(() => renderHook(() => useStateValue())).toThrow(
+      'This hook must be used within an ExampleProvider',
+    );
+    spy.mockRestore();
+  });
 });
