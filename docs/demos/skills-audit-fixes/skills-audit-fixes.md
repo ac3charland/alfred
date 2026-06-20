@@ -38,13 +38,13 @@ for(const s of skills){
 
 ```output
  650  anthropic-api
- 673  batch-commits
+ 519  batch-commits
  678  cloudflare-workers
  699  data-flow
  681  debug-animations
  698  dnd-kit
  685  lib-skill-forge
- 681  motion
+ 563  motion
  681  showboat
  699  storybook
  687  stryker
