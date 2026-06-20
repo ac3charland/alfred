@@ -51,4 +51,8 @@ describe('DueDateChip', () => {
 
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it('exposes a stable displayName for devtools', () => {
+    expect(DueDateChip.displayName).toBe('DueDateChip');
+  });
 });

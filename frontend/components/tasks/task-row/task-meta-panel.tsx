@@ -9,6 +9,8 @@ import { Textarea } from '@/components/atoms/textarea';
 import { formatDueDate } from '@/lib/date-utils';
 import type { ItemNode } from '@/lib/tree';
 
+import { dateInputClass } from './task-meta-panel.styles';
+
 interface TaskMetaPanelProperties {
   node: ItemNode;
   /** True for a `task` row — only tasks render the due-date field (notes stay generic). */
@@ -79,8 +81,7 @@ export function TaskMetaPanel({
                   onDraftDueDateChange(event_.target.value);
                 }}
                 onBlur={onSaveDueDate}
-                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                className="[color-scheme:dark]"
+                className={dateInputClass}
               />
               <Button
                 size="sm"

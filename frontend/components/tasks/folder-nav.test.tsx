@@ -69,6 +69,12 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /personal/i })).toBeInTheDocument();
   });
 
+  it('lets the folder link flex-fill the row so the truncating name has room', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /work/i })).toHaveClass('flex-1', 'min-w-0');
+  });
+
   it('does NOT render an Inbox link (removed; reach the inbox via the wordmark)', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 

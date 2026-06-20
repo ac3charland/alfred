@@ -222,6 +222,15 @@ maintainer "supported mutators" page.)
   empty-array `Promise.all`/dispatch that no-ops) — those get a documented
   `// Stryker disable next-line <Mutator>: AT_CEILING — <why>`. The test: *could any
   assertion on state, a mock call, or rendered output ever differ?* If yes, kill it.
+- **A cosmetic `className` `StringLiteral` mutant is a coverage gap, not a ceiling — kill
+  it, don't suppress it.** A Tailwind class string survives only because no test asserts it
+  (the mutator just empties it → `''`). Extract the class cluster into a co-located
+  `*.styles.ts` module (the `lib/ui/nav-link-class.ts` pattern) and lock it with a
+  `toContain` test; for a primitive whose className is its identity, assert it on rendered
+  output with `toHaveClass`. Prefer the style module when the class is **state-conditional**
+  (drop-target, edit-mode, `isOver`): a `toContain` test kills the mutant without
+  reproducing that state in jsdom. A bare module-level `const` string mutant IS killed this
+  way — Stryker runs its load-time initializer (static coverage) against the module's test.
 - **The generated report is a generated artifact.** `<pkg>/reports/mutation/` is
   gitignored *and* prettier-ignored, and `.stryker-tmp/` is eslint-ignored. Never
   hand-edit or format them. (Adding those ignores when a package first gets

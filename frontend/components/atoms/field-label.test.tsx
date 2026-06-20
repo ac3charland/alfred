@@ -33,4 +33,8 @@ describe('FieldLabel', () => {
 
     expect(screen.getByText('Inbox')).toHaveClass('text-muted-foreground/70');
   });
+
+  it('exposes a stable displayName for devtools', () => {
+    expect(FieldLabel.displayName).toBe('FieldLabel');
+  });
 });

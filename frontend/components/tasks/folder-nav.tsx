@@ -210,7 +210,6 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                       href={`/folders/${folder.id}`}
                       className={cn(
                         navLinkClass(isActive(`/folders/${folder.id}`)),
-                        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                         'flex-1 min-w-0',
                       )}
                       {...closeProperty}

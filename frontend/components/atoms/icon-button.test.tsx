@@ -118,4 +118,23 @@ describe('IconButton', () => {
 
     expect(screen.getByRole('button', { name: 'Menu' })).toHaveClass('h-5', 'w-5');
   });
+
+  it('applies the shared base focus-ring, transition, and disabled classes', () => {
+    render(<IconButton aria-label="Menu" />);
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toHaveClass(
+      'focus-visible:ring-2',
+      'focus-visible:ring-offset-1',
+      'focus-visible:ring-offset-background',
+      'transition-colors',
+      'duration-100',
+      'motion-reduce:transition-none',
+      'disabled:opacity-40',
+      'disabled:pointer-events-none',
+    );
+  });
+
+  it('exposes a stable displayName for devtools', () => {
+    expect(IconButton.displayName).toBe('IconButton');
+  });
 });

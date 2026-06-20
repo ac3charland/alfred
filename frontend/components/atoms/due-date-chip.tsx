@@ -25,7 +25,6 @@ const DueDateChip = React.forwardRef<HTMLButtonElement, DueDateChipProperties>(
         type={type ?? 'button'}
         aria-label={ariaLabel ?? `Due date: ${dueDate}`}
         className={cn(
-          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
           'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors motion-reduce:transition-none',
           isDueDateOverdue(dueDate)
             ? 'border-accent-amber/50 text-accent-amber hover:border-accent-amber'

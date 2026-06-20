@@ -26,7 +26,6 @@ const FieldLabel = React.forwardRef<HTMLLabelElement, FieldLabelProperties>(
     );
   },
 );
-// Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect.
 FieldLabel.displayName = 'FieldLabel';
 
 export { FieldLabel };
