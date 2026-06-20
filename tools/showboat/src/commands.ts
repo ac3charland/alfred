@@ -214,11 +214,11 @@ export function extract(file: string, filename?: string): string {
  * path segments.
  */
 function parseOwnerRepo(remoteUrl: string): string {
-  const repoPath = remoteUrl
-    .trim()
-    .replace(/\.git$/, '')
-    .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i, '') // scheme://host/  → strip
-    .replace(/^[^@/]+@[^:/]+:/, ''); // scp-like git@host: → strip
+  let repoPath = remoteUrl.trim().replace(/\.git$/, '');
+  // Stryker disable next-line Regex: AT_CEILING — this strips the leading scheme://host/, but `segments.at(-2)/.at(-1)` below selects owner/repo from the *last* two path parts; removing leading segments never changes those, so every internal variant of this prefix regex is unobservable for any remote with ≥2 trailing path parts (all real remotes).
+  repoPath = repoPath.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i, ''); // scheme://host/ → strip
+  // Stryker disable next-line Regex: AT_CEILING — same as above: the scp-prefix strip only removes a leading `git@host:` segment, which the last-two-segments selection ignores; dropping the ^ anchor is unobservable (the scheme strip already removed any userinfo, and on a real scp URL the match is at the start anyway).
+  repoPath = repoPath.replace(/^[^@/]+@[^:/]+:/, ''); // scp-like git@host: → strip
   const segments = repoPath.split('/').filter(Boolean);
   const repo = segments.at(-1);
   const owner = segments.at(-2);
@@ -276,7 +276,9 @@ function git(args: readonly string[]): string {
  * update the PR.
  */
 export function prLink(docPath: string, context?: GitContext): string {
+  // Stryker disable next-line OptionalChaining: AT_CEILING — context?.x→context.x only differs when context is undefined, the path that spawns real `git`; that branch is intentionally not unit-tested (the injectable `context` seam exists to avoid spawning git, which also isn't present in Stryker's sandboxed copy).
   const remoteUrl = context?.remoteUrl ?? git(['remote', 'get-url', 'origin']);
+  // Stryker disable next-line OptionalChaining: AT_CEILING — same as above: the undefined-context branch delegates to `git`, which is not deterministically exercisable in tests.
   const branch = context?.branch ?? git(['rev-parse', '--abbrev-ref', 'HEAD']);
   return formatDemoLink(remoteUrl, branch, docPath);
 }

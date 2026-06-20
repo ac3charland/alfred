@@ -373,6 +373,19 @@ describe('video', () => {
     expect(entriesOf(file)[1]).toMatchObject({ kind: 'image', path: 'demo-video-2.gif' });
   });
 
+  it('numbers the gif by image entries only, ignoring notes', async () => {
+    const { file, directory } = tempDoc();
+    init(file, 'D');
+    note(file, 'a note'); // a non-image entry must NOT bump the gif number
+    const webm = path.join(directory, 'clip.webm');
+    writeFileSync(webm, 'x');
+
+    await video(file, webm, '', fakeConvert([]));
+
+    // The note is entry 0; the gif is entry 1 but must still be numbered "1" (zero prior images).
+    expect(entriesOf(file)[1]).toMatchObject({ kind: 'image', path: 'demo-video-1.gif' });
+  });
+
   it('preserves the webm and writes nothing when conversion fails', async () => {
     const { file, directory } = tempDoc();
     init(file, 'D');
@@ -527,6 +540,42 @@ describe('formatDemoLink', () => {
 
   it('throws when owner/repo cannot be parsed from the remote', () => {
     expect(() => formatDemoLink('not-a-url', 'main', 'd.md')).toThrow(/owner\/repo/);
+  });
+
+  it('trims surrounding whitespace off the remote before parsing', () => {
+    // Without .trim(), trailing whitespace defeats the `\.git$` strip and leaks into the repo name.
+    expect(formatDemoLink('  git@github.com:o/r.git  ', 'main', 'docs/demos/x.md')).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+    );
+  });
+
+  it('only strips a .git suffix at the very end of the remote (anchored)', () => {
+    // The `$` anchor on `\.git$` matters: an unanchored `\.git` would chew a ".git" out of the
+    // org name and leave the real ".git" suffix on the repo.
+    expect(formatDemoLink('git@github.com:my.git-org/repo.git', 'main', 'docs/demos/x.md')).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/my.git-org/repo/blob/main/docs/demos/x.md)',
+    );
+  });
+
+  it('drops empty path segments from a remote with a trailing slash', () => {
+    // Without filter(Boolean), a trailing slash makes the last segment '' → repo is empty → throw.
+    expect(formatDemoLink('git@github.com:o/r/', 'main', 'docs/demos/x.md')).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+    );
+  });
+
+  it('trims surrounding whitespace off the doc path', () => {
+    expect(formatDemoLink('https://github.com/o/r', 'main', '  docs/demos/x.md  ')).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+    );
+  });
+
+  it('strips a run of leading slashes (with or without a leading dot) from the doc path', () => {
+    // `^\.?\/+` must strip ALL leading slashes and tolerate a missing dot — a single-slash or
+    // dot-required variant leaves a stray leading slash in the path.
+    expect(formatDemoLink('https://github.com/o/r', 'main', '//docs/demos/x.md')).toBe(
+      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+    );
   });
 });
 

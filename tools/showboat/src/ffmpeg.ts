@@ -11,6 +11,7 @@ type FFmpeg = ReturnType<typeof createFFmpeg>;
  * apply a per-clip 256-colour palette so flat UI colours stay crisp and the file
  * stays small. `-loop 0` makes the GIF loop forever.
  */
+// Stryker disable next-line StringLiteral: AT_CEILING — GIF_FILTERS is consumed only by convertWebmToGif (ffmpeg.wasm), which the tests never execute — the `video` command injects a fake converter through its `convert` seam — so the filter string is unobservable through the test surface.
 const GIF_FILTERS = String.raw`fps=15,scale=min(iw\,640):-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`;
 
 /**

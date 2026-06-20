@@ -213,7 +213,9 @@ function mergeTokens(tokens: readonly Token[]): Entry[] {
 function extractFrontMatter(lines: readonly string[]): { frontMatter?: string; start: number } {
   if ((lines[0] ?? '') !== '---') return { start: 0 };
   let end = 1;
+  // Stryker disable next-line EqualityOperator: AT_CEILING — <→<= only adds one boundary iteration reading lines[length]=undefined→'' (≠'---'), after which the loop exits and the `end >= lines.length` guard returns {start:0} identically; unobservable.
   while (end < lines.length && (lines[end] ?? '') !== '---') end += 1;
+  // Stryker disable next-line EqualityOperator,ConditionalExpression,ObjectLiteral: AT_CEILING — this return is reached only when no closing '---' was found (end===lines.length), i.e. the doc opens with '---' but never closes it. Every variant (>= → >, → false, → {}) only changes behaviour on that path, where parseDocument then fails the title parse on the leading '---' and throws regardless — so the observable result (a thrown "missing # Title") is identical.
   if (end >= lines.length) return { start: 0 }; // no closing fence → not front matter
   return { frontMatter: lines.slice(1, end).join('\n'), start: end + 1 };
 }

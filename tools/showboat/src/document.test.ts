@@ -207,6 +207,23 @@ describe('parseDocument / round-trip', () => {
     expect(doc.frontMatter).toBeUndefined();
   });
 
+  it('does not treat a later --- in the body as front matter when the first line is the title', () => {
+    // The first-line `=== '---'` guard must hold: a doc that opens with the title but contains a
+    // '---' rule later must keep its title (not have the body swallowed as front matter).
+    const md = ['# Title', '', '*now*', '', 'some note', '---', 'more'].join('\n');
+    const doc = parseDocument(md);
+    expect(doc.frontMatter).toBeUndefined();
+    expect(doc.title).toBe('Title');
+  });
+
+  it('preserves newlines inside a multi-line front matter block', () => {
+    // The slice(...).join('\n') must keep line breaks; a join('') would flatten the YAML.
+    const md = ['---', 'branch: feat/x', 'extra: y', '---', '', '# Multi', '', '*now*', ''].join(
+      '\n',
+    );
+    expect(parseDocument(md).frontMatter).toBe('branch: feat/x\nextra: y');
+  });
+
   it('throws on an output block with no preceding code block', () => {
     const broken = ['# Broken', '', '*now*', '', '```output', 'orphan', '```', ''].join('\n');
     expect(() => parseDocument(broken)).toThrow(/no preceding code block/);
