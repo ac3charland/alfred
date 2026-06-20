@@ -30,6 +30,7 @@ export interface AlfredFrontmatter {
  * `alfred-ticket:\s*(.+)` on an empty value line would greedily swallow the newline and capture the
  * NEXT line's text as the ticket. Pinning to spaces/tabs keeps each field on its own line.
  */
+// Stryker disable next-line Regex: AT_CEILING — \s+→\s match the same inputs (both need ≥1 whitespace); the only difference is how much leading whitespace lands in the captured block, which is invisible to the unanchored field regexes below.
 const BLOCK_RE = /```alfred\s+([\s\S]*?)```/;
 const TICKET_RE = /alfred-ticket:[ \t]*(.*)/;
 const PHASE_RE = /phase:[ \t]*(refinement|implementation)/;
@@ -42,7 +43,9 @@ const SPEC_PATH_RE = /spec-path:[ \t]*(\S+)/;
  * transition layer decides what to do without one; CI is what rejects that case on the PR side.
  */
 export function parseFrontmatter(body?: string): AlfredFrontmatter | undefined {
+  // Stryker disable next-line StringLiteral: AT_CEILING — the ?? fallback only matters when body is undefined, and any non-alfred string (incl. "") yields no block → undefined; the literal value is unobservable.
   const block = BLOCK_RE.exec(body ?? '')?.[1];
+  // Stryker disable next-line ConditionalExpression: AT_CEILING — removing this early return is equivalent: with block undefined, TICKET_RE.exec(undefined) coerces to exec("undefined") → no match → the ticketRaw===undefined guard below returns undefined identically.
   if (block === undefined) return undefined;
 
   const ticketRaw = TICKET_RE.exec(block)?.[1];

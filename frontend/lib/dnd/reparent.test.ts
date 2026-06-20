@@ -5,6 +5,12 @@ describe('resolveReparent', () => {
     expect(resolveReparent('t1', null, null, new Set(['t1']))).toBeNull();
   });
 
+  it('no-ops on a null drop even when the task currently has a parent', () => {
+    // A non-null currentParentId here makes the `overId === null` guard the *only* thing
+    // returning null — without it, the function would emit a re-parent to a null parent.
+    expect(resolveReparent('t1', null, 'p1', new Set(['t1']))).toBeNull();
+  });
+
   it('nests an inbox root under another task', () => {
     expect(resolveReparent('t1', 'p1', null, new Set(['t1']))).toEqual({
       itemId: 't1',

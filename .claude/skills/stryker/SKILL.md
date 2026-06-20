@@ -184,6 +184,20 @@ maintainer "supported mutators" page.)
   (and `check:fast`) will reformat the generated HTML report in place — editing a
   generated artifact, which CLAUDE.md forbids. Add those four entries to the
   package `.prettierignore` (ESLint already ignores `.stryker-tmp/**` per package).
+- **Never run `check:fast` / `check:slow` / `npm run test` *while* a `mutation` pass is
+  in flight, and you CANNOT fix that with jest config.** Jest's `testMatch` scans the
+  whole tree (default ignore is only `node_modules`), so a check that runs concurrently
+  with a mutation run discovers the `*.test.*` copies Stryker wrote under
+  `.stryker-tmp/sandbox-*` and re-runs them — they fail (providers/testids resolve
+  against the mutated sandbox, not your tree) and red the gate for a reason unrelated to
+  your code. The tempting fix — `testPathIgnorePatterns: ['/.stryker-tmp/']` — **breaks
+  Stryker outright**: Stryker runs jest *inside* `.stryker-tmp/sandbox-*` with rootDir set
+  there, so the pattern matches the sandbox's own tests and the dry run aborts with "No
+  tests were executed." The test file's absolute path is identical whether jest runs from
+  your tree or from inside the sandbox, so no `testPathIgnorePatterns` entry can tell them
+  apart. The only fix is operational: **sequence the steps** — let a mutation run finish
+  (it removes `.stryker-tmp` on a clean exit; `rm -rf <pkg>/.stryker-tmp` if you killed
+  it) before you commit/push or run any check.
 - **Jest multi-`projects` config is unsupported by the runner.** Our packages use
   single-project Jest configs — keep it that way for any package you mutate.
 - **A survived mutant is a finding, not a failure to silence.** Fix it by adding

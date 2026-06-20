@@ -45,6 +45,8 @@ describe('fetchSpec', () => {
     const headers = init.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer pat-123');
     expect(headers['User-Agent']).toBe('alfred-software-factory');
+    expect(headers['Accept']).toBe('application/vnd.github+json');
+    expect(headers['X-GitHub-Api-Version']).toBe('2022-11-28');
   });
 
   it('returns undefined when the file is missing (non-2xx)', async () => {

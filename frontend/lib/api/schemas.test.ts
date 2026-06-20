@@ -1,7 +1,10 @@
 import {
   createFolderSchema,
   createItemSchema,
+  createProjectSchema,
   listItemsQuerySchema,
+  updateCodeSchema,
+  updateEpicSchema,
   updateFolderSchema,
   updateItemSchema,
 } from './schemas';
@@ -184,5 +187,69 @@ describe('listItemsQuerySchema', () => {
 
   it('rejects empty string status', () => {
     expect(listItemsQuerySchema.safeParse({ status: '' }).success).toBe(false);
+  });
+});
+
+describe('createProjectSchema', () => {
+  const base = { name: 'Alfred', github_url: 'https://github.com/o/r' };
+
+  it('accepts a 3-char key: uppercase letter then two upper-alnum', () => {
+    expect(createProjectSchema.safeParse({ ...base, key: 'AL1' }).success).toBe(true);
+  });
+
+  it('rejects a key not anchored at the start (must begin with the uppercase letter)', () => {
+    // Without the ^ anchor, "1ABC" would match "ABC" mid-string and wrongly pass.
+    expect(createProjectSchema.safeParse({ ...base, key: '1ABC' }).success).toBe(false);
+  });
+
+  it('rejects a key longer than 3 chars (must be anchored at the end)', () => {
+    // Without the $ anchor, "ABCD" would match the "ABC" prefix and wrongly pass.
+    expect(createProjectSchema.safeParse({ ...base, key: 'ABCD' }).success).toBe(false);
+  });
+
+  it('surfaces the explicit key-format message on a bad key', () => {
+    const result = createProjectSchema.safeParse({ ...base, key: 'ab' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.message.includes('exactly 3 characters'))).toBe(
+        true,
+      );
+    }
+  });
+});
+
+describe('updateEpicSchema', () => {
+  it('accepts archived_at as an ISO datetime with a non-UTC offset (offset must be allowed)', () => {
+    // offset:true is required — offset:false (or {}) would reject the +05:30 timestamp.
+    expect(updateEpicSchema.safeParse({ archived_at: '2026-06-20T00:00:00+05:30' }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects an empty patch body (the refine requires at least one field)', () => {
+    const result = updateEpicSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.message.includes('At least one of'))).toBe(true);
+    }
+  });
+});
+
+describe('updateCodeSchema factory_state enum', () => {
+  it.each([
+    'needs_refinement',
+    'in_refinement',
+    'ready_for_dev',
+    'in_development',
+    'ready_for_review',
+    'done',
+    'blocked',
+    'abandoned',
+  ])('accepts the factory state %s', (state) => {
+    expect(updateCodeSchema.safeParse({ factory_state: state }).success).toBe(true);
+  });
+
+  it('rejects an empty-string factory state', () => {
+    expect(updateCodeSchema.safeParse({ factory_state: '' }).success).toBe(false);
   });
 });

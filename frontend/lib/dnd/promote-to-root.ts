@@ -10,7 +10,9 @@
  */
 
 /** Droppable ids for the list's top and bottom promote-to-root zones. */
+// Stryker disable next-line StringLiteral: AT_CEILING — opaque sentinel id used only by reference (isPromoteZone compares overId against it); its exact spelling is arbitrary, so mutating the literal is unobservable.
 export const LIST_TOP_DROP_ID = '__list-top__';
+// Stryker disable next-line StringLiteral: AT_CEILING — opaque sentinel id used only by reference (isPromoteZone compares overId against it); its exact spelling is arbitrary, so mutating the literal is unobservable.
 export const LIST_BOTTOM_DROP_ID = '__list-bottom__';
 
 /** True when `overId` is one of the two promote-to-root zones. */

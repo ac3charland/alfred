@@ -44,4 +44,11 @@ describe('verifySignature', () => {
   it('rejects a header without the sha256= prefix', async () => {
     await expect(verifySignature(SECRET, BODY, GOLDEN.replace('sha256=', ''))).resolves.toBe(false);
   });
+
+  it('rejects a header longer than the expected signature (trailing junk)', async () => {
+    // A correct prefix with extra trailing bytes. The constant-time compare must reject on the
+    // length mismatch FIRST — without that guard, the loop over the shorter `expected` would see
+    // every byte match and wrongly accept.
+    await expect(verifySignature(SECRET, BODY, `${GOLDEN}deadbeef`)).resolves.toBe(false);
+  });
 });
