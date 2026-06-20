@@ -159,6 +159,15 @@ You cannot pass `{ field: undefined }` where `{ field?: string }` is expected �
 the same as "not present". When building partial update objects via spread: use
 `{ ...(val !== undefined && { field: val }) }` to conditionally include a key.
 
+**Deriving an exact-optional type from a zod schema needs an `ExactOptional` wrapper.**
+`z.infer` types a schema's `.optional()` field as `field?: T | undefined` (explicit `undefined`).
+Under `exactOptionalPropertyTypes` that is **not** assignable to an exact-optional target like
+`Partial<DbRow>` (`field?: T`, no `undefined`) — so `Pick<z.infer<typeof updateSchema>, …>` fed to a
+`Partial<Item>` errors (TS2375). Restore the exact-optional shape with
+`type ExactOptional<T> = { [K in keyof T]?: Exclude<T[K], undefined> }` and wrap the inferred input
+(`type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>`). Keeps the single source of
+truth (still schema-derived) without the `| undefined` mismatch.
+
 **DB nullable columns are `T | null`, not `T | undefined` and not `T?`.**
 Supabase returns `null` for empty columns, never `undefined`. Model every nullable column as
 `field: string | null` (present but null), not `field?: string` (may not exist).

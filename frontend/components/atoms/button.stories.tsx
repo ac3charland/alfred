@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button } from './button';
 
 const meta = {
-  title: 'UI/Button',
+  title: 'Atoms/Button',
   component: Button,
   tags: ['autodocs'],
   args: {

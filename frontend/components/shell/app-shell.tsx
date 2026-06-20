@@ -1,11 +1,11 @@
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
 import { ShellNav } from '@/components/shell/shell-nav';
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
-import { Button } from '@/components/ui/button';
 import { signOut } from '@/lib/auth/actions';
 import { ToastProvider } from '@/lib/stores/toast-store';
 

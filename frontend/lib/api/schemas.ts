@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+/**
+ * Make every optional property *exact-optional*: the key stays optional, but its value
+ * type drops the implicit `undefined` that `z.infer` adds for `.optional()` fields.
+ *
+ * `z.infer` types an optional field as `field?: T | undefined`; under
+ * `exactOptionalPropertyTypes` that explicit `undefined` is NOT assignable to an
+ * exact-optional `field?: T` target (e.g. a `Partial<Item>`/DB `Update`, or a `Pick<>` of
+ * one of these inferred input types — see `tasks-store`'s `TaskFieldPatch`). Wrapping the
+ * inferred type in `ExactOptional` restores the exact-optional shape the hand-written
+ * interfaces had, keeping these the single source of truth without re-introducing the
+ * `| undefined` mismatch.
+ */
+type ExactOptional<T> = { [K in keyof T]?: Exclude<T[K], undefined> };
+
 // ---------------------------------------------------------------------------
 // Shared field definitions
 // ---------------------------------------------------------------------------
@@ -46,7 +60,7 @@ export const createItemSchema = z
     path: ['title'],
   });
 
-export type CreateItemInput = z.infer<typeof createItemSchema>;
+export type CreateItemInput = ExactOptional<z.infer<typeof createItemSchema>>;
 
 /**
  * Body for PATCH /api/items/[id] — all fields optional.
@@ -62,7 +76,7 @@ export const updateItemSchema = z.object({
   status: itemStatus.optional(),
 });
 
-export type UpdateItemInput = z.infer<typeof updateItemSchema>;
+export type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>;
 
 // ---------------------------------------------------------------------------
 // Folders

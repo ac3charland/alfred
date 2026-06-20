@@ -237,6 +237,188 @@ export default defineConfig([
     },
   },
 
+  // ── Regression ratchet (frontend-dry-refactor) ───────────────────────────
+  // Deliberate project-rule additions: each phase that extracted a shared
+  // primitive/helper also bans its hand-rolled form here, so the duplication
+  // stays gone. Core ESLint only (no new dependency). See
+  // docs/specs/frontend-dry-refactor/SPEC.md → "Regression ratchet".
+  //
+  // FLAT-CONFIG CAVEAT: `no-restricted-syntax` options REPLACE, they don't
+  // merge, across overlapping `files` globs — the last matching block wins
+  // outright. Three selector groups overlap on component files:
+  //   • dup-helpers   → **/*.{ts,tsx}                     (broadest)
+  //   • supabase.from → components/** + lib/stores/**     (subset)
+  //   • raw-html      → components/{tasks,code,shell,auth}/**/*.tsx (sub-subset)
+  // They are layered broad→narrow, and each narrower block REPEATS every
+  // selector that also applies to its files, so the one block that wins for a
+  // given file still carries all applicable selectors. Each block likewise
+  // repeats the exemptions for the selectors it carries.
+
+  // Layer 1 — no-duplicate-helper-names (Phase 3): by-name tripwire for the
+  // three helpers that now have canonical homes. Applies to every TS/TSX file;
+  // the canonical declarations are the only exemptions.
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['lib/stores/assert-never.ts', 'lib/tree.ts', 'lib/ui/nav-link-class.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "FunctionDeclaration[id.name='assertNever']",
+          message: 'Import assertNever from lib/stores/assert-never.',
+        },
+        {
+          selector: "FunctionDeclaration[id.name='tempId']",
+          message: 'Import tempId from lib/tree.',
+        },
+        {
+          selector: "VariableDeclarator[id.name='navLinkClass']",
+          message: 'Import navLinkClass from lib/ui/nav-link-class.',
+        },
+      ],
+    },
+  },
+
+  // Layer 2 — no-inline-supabase-from (Phase 3), components + stores scope.
+  // Repeats the dup-helper selectors (it shadows Layer 1 for these files) and
+  // adds the Supabase guard. Exempts the one sanctioned client user
+  // (login-form) and the canonical assert-never home (the only dup-helper home
+  // that falls under these globs — without re-ignoring it, the repeated
+  // assertNever selector would fire on its canonical declaration).
+  {
+    files: ['components/**/*.{ts,tsx}', 'lib/stores/**/*.{ts,tsx}'],
+    ignores: ['components/auth/login-form.tsx', 'lib/stores/assert-never.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "FunctionDeclaration[id.name='assertNever']",
+          message: 'Import assertNever from lib/stores/assert-never.',
+        },
+        {
+          selector: "FunctionDeclaration[id.name='tempId']",
+          message: 'Import tempId from lib/tree.',
+        },
+        {
+          selector: "VariableDeclarator[id.name='navLinkClass']",
+          message: 'Import navLinkClass from lib/ui/nav-link-class.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='from'][callee.object.name='supabase']",
+          message:
+            'No Supabase here: reads → a lib/data/* reader; writes → a store action → route handler.',
+        },
+      ],
+    },
+  },
+
+  // Layer 3 — no-raw-html-button-input (Phase 1), feature-component scope.
+  // Repeats the dup-helper + supabase.from selectors (shadows Layers 1–2 for
+  // these files) and adds the raw-element bans. Exempts the primitive layer
+  // (atoms renders the raw elements), tests/stories/e2e, and login-form (the
+  // sanctioned supabase user, also under components/auth).
+  {
+    files: ['components/{tasks,code,shell,auth}/**/*.tsx'],
+    ignores: [
+      'components/atoms/**',
+      'components/auth/login-form.tsx',
+      '**/*.test.{ts,tsx}',
+      '**/*.stories.{ts,tsx}',
+      '**/*.story.{ts,tsx}',
+      'e2e/**',
+      'tests/**',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "FunctionDeclaration[id.name='assertNever']",
+          message: 'Import assertNever from lib/stores/assert-never.',
+        },
+        {
+          selector: "FunctionDeclaration[id.name='tempId']",
+          message: 'Import tempId from lib/tree.',
+        },
+        {
+          selector: "VariableDeclarator[id.name='navLinkClass']",
+          message: 'Import navLinkClass from lib/ui/nav-link-class.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='from'][callee.object.name='supabase']",
+          message:
+            'No Supabase here: reads → a lib/data/* reader; writes → a store action → route handler.',
+        },
+        {
+          selector: "JSXOpeningElement[name.name='button']",
+          message: 'Use <Button> or <IconButton> — not a raw <button>.',
+        },
+        {
+          selector: "JSXOpeningElement[name.name='input']",
+          message: 'Use <TextField> or <Input> — not a raw <input>.',
+        },
+        {
+          selector: "JSXOpeningElement[name.name='textarea']",
+          message: 'Use <TextareaField> — not a raw <textarea>.',
+        },
+      ],
+    },
+  },
+
+  // no-direct-request-json-in-routes (Phase 4). Separate `no-restricted-syntax`
+  // block — its `app/api/**/route.ts` scope does NOT overlap the component/lib
+  // globs above, so no selectors are dropped.
+  {
+    files: ['app/api/**/route.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='json'][callee.object.name='request']",
+          message:
+            'Parse + validate via parseRequestBody(request, schema) — not request.json() directly.',
+        },
+      ],
+    },
+  },
+
+  // no-raw-radix-dialog-dropdown (Phase 1). `no-restricted-imports` (distinct
+  // rule key, no merge collision with the selectors above). Only atoms — the
+  // layer that wraps Radix — may import the raw primitives.
+  {
+    files: ['components/**/*.tsx'],
+    ignores: ['components/atoms/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'radix-ui',
+              importNames: ['Dialog', 'DropdownMenu'],
+              message:
+                'Import the styled wrapper from components/atoms (FormDialog/DialogOverlay, DropdownMenu*) — not the raw Radix primitive.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // max-lines-components (Phase 2). File-length tripwire for the next component
+  // sliding toward task-row's old size. Stays `warn` (the deliberate exception
+  // to promote-to-error): a large file is sometimes justified. `max: 800` sits
+  // just above the largest post-decomposition component (task-row.tsx, 730
+  // counted lines) so it flags FUTURE growth, not any current file.
+  {
+    files: ['components/**/*.tsx'],
+    // Target real components only — test/story files are legitimately long and
+    // are not the growth this tripwire guards against.
+    ignores: ['**/*.test.tsx', '**/*.test.ts', '**/*.stories.tsx'],
+    rules: {
+      'max-lines': ['warn', { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+
   // ── Prettier must be last ─────────────────────────────────────────────────
   eslintConfigPrettier,
 ]);

@@ -4,10 +4,11 @@
  * Items are stored flat (a single `Item[]` in the tasks store). The API and the store
  * both work with that flat list; these helpers derive the per-view forest for rendering
  * (`buildTree`), walk a subtree (`getDescendantIds` / `collectSubtree`), and mint
- * optimistic placeholders (`makeOptimisticItem`).
+ * optimistic placeholders (`makeOptimisticItem` and the per-entity optimistic-row builders
+ * for folders / projects / epics / code stories).
  */
-import type { CreateItemInput } from '@/lib/api-client';
-import type { Item } from '@/lib/types';
+import type { CreateItemInput, CreateProjectInput } from '@/lib/api-client';
+import type { CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
 
 export type ItemNode = Item & {
   children: ItemNode[];
@@ -183,5 +184,89 @@ export function makeOptimisticItem(input: CreateItemInput): Item {
     status: 'active',
     completed_at: null,
     created_at: new Date().toISOString(),
+  };
+}
+
+/** Mint a fresh client-side temp id (see isTempId) for an optimistic row. */
+export function tempId(): string {
+  return `${TEMP_ID_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** Build an optimistic folder row (a temp id until the server row reconciles). */
+export function makeOptimisticFolder(name: string): Folder {
+  return {
+    id: tempId(),
+    name,
+    created_at: new Date().toISOString(),
+  };
+}
+
+/** Build an optimistic project row (a temp id until the server row reconciles). */
+export function makeOptimisticProject(input: CreateProjectInput): Project {
+  return {
+    id: tempId(),
+    name: input.name,
+    key: input.key,
+    // repo_owner/repo_name are derived server-side; show placeholders until reconcile.
+    repo_owner: '',
+    repo_name: '',
+    github_url: input.github_url,
+    ref_seq: 0,
+    created_at: new Date().toISOString(),
+  };
+}
+
+/** Build an optimistic epic row. The real ref/ref_number arrive from `create_epic`. */
+export function makeOptimisticEpic(projectId: string, name: string): Epic {
+  return {
+    id: tempId(),
+    project_id: projectId,
+    name,
+    notes: null,
+    ref_number: 0,
+    ref: '',
+    archived_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Build the optimistic flattened `CodeStory` (the board read shape) for an item entering
+ * the factory, joining the known project + epic so the card renders immediately. The real
+ * ref/ref_number arrive from `enter_code_module`.
+ */
+export function makeOptimisticStory(
+  item: { id: string; title: string; notes: string | null; source_url: string | null },
+  project: Project,
+  epic: Epic,
+): CodeStory {
+  const now = new Date().toISOString();
+  return {
+    item_id: item.id,
+    project_id: project.id,
+    epic_id: epic.id,
+    ref_number: 0,
+    ref: '',
+    factory_state: 'needs_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    code_created_at: now,
+    code_updated_at: now,
+    title: item.title,
+    notes: item.notes,
+    source_url: item.source_url,
+    item_created_at: now,
+    project_key: project.key,
+    project_name: project.name,
+    repo_owner: project.repo_owner,
+    repo_name: project.repo_name,
+    epic_name: epic.name,
+    epic_ref: epic.ref,
+    epic_archived_at: epic.archived_at,
   };
 }

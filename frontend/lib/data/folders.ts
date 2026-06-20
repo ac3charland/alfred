@@ -1,3 +1,4 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import 'server-only';
 
 import { createClient } from '@/lib/supabase/server';
@@ -20,4 +21,18 @@ export async function getFolders(): Promise<Folder[]> {
     .select('*')
     .order('created_at', { ascending: true });
   return data ?? [];
+}
+
+/**
+ * The GET /api/folders read: all folders, oldest first, returning the raw Supabase
+ * `{ data, error }` so the route can map the error to a status. Parallel to `getFolders`
+ * (the layout's graceful `[]`-fallback seed reader) — the API path needs the error, the
+ * seed path swallows it, so they stay separate readers.
+ */
+export async function getFolderList(): Promise<{
+  data: Folder[] | null;
+  error: PostgrestError | null;
+}> {
+  const supabase = await createClient();
+  return supabase.from('folders').select('*').order('created_at', { ascending: true });
 }

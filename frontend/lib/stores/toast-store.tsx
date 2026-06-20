@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 
+import { createContextPair } from '@/lib/stores/create-context-pair';
+
 /**
  * Toast store — a tiny cross-cutting notification queue (the gate's "Created ALF-42"
  * confirmation). Mounted once in the shared AppShell so any module can fire a toast;
@@ -27,8 +29,10 @@ interface ToastActions {
 
 const DISMISS_MS = 4000;
 
-const ToastStateContext = React.createContext<Toast[] | undefined>(undefined);
-const ToastActionsContext = React.createContext<ToastActions | undefined>(undefined);
+const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
+  Toast[],
+  ToastActions
+>('a ToastProvider');
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
@@ -52,26 +56,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <ToastActionsContext.Provider value={actions}>
-      <ToastStateContext.Provider value={toasts}>{children}</ToastStateContext.Provider>
-    </ToastActionsContext.Provider>
+    <ActionsContext.Provider value={actions}>
+      <StateContext.Provider value={toasts}>{children}</StateContext.Provider>
+    </ActionsContext.Provider>
   );
 }
 
 /** Read the current toast queue (the viewport). Throws outside a ToastProvider. */
 export function useToasts(): Toast[] {
-  const context = React.useContext(ToastStateContext);
-  if (context === undefined) {
-    throw new Error('useToasts must be used within a ToastProvider');
-  }
-  return context;
+  return useStateValue('useToasts');
 }
 
 /** Read the toast actions (`showToast` / `dismissToast`). Throws outside a ToastProvider. */
 export function useToastActions(): ToastActions {
-  const context = React.useContext(ToastActionsContext);
-  if (context === undefined) {
-    throw new Error('useToastActions must be used within a ToastProvider');
-  }
-  return context;
+  return useActions('useToastActions');
 }

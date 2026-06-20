@@ -105,6 +105,10 @@ The root tiers may also compose a **monorepo-wide** check (one whose scope is th
 
 **A workspace-scoped `npm install <pkg> -w <ws>` only reconciles that workspace's subtree.** On a fresh or partially-installed clone it can leave *root-only* devDeps uninstalled — e.g. `@trivago/prettier-plugin-sort-imports`, which Prettier loads — so a later `npm run format`/`lint` dies with a cryptic `Cannot find package '…' imported from …/noop.js`. Run `npm ci` from the root once (before or after the add) to populate the full shared tree.
 
+**In the sandbox devcontainer, `npm ci` is unreliable on the overlay filesystem — `npm install` (looped) is the fix.** `npm ci` wipes `node_modules` and re-extracts everything, and the overlay FS fails those bulk `rmdir`/`mkdir`/tar-extract ops mid-run (`ENOTEMPTY` / `ENOTDIR` / `ENOENT` / `TAR_ENTRY_ERROR`), leaving an empty `node_modules/.bin` and missing `jest`/`tsc`. Recover with: clear the half-written trees via `find <dir> -mindepth 1 -delete` for each `node_modules` (plain `rm -rf` itself hits the overlay `rmdir` bug), then run `CI=1 npm install` (the `CI=1` skips the root `prepare` script, which shells out to `husky` and dies with `127` mid-install) **in a loop until `node_modules/.bin/jest` exists and the exit code is 0** — it converges in 1–3 passes as each pass fills the gaps the FS dropped. `npm install` rewrites lockfile `"dev"` metadata, so `git checkout -- package-lock.json` afterward (see the npm-version drift note below).
+
+**Never run two installs against the shared tree at once.** Multiple agents' `Agent isolation: 'worktree'` is *not* reliable in this devcontainer — they share one bind-mounted working tree and its single root `node_modules`. Concurrent `npm ci`/`npm install` from different agents race on the same files and corrupt the tree (this is how the overlay-FS failure above is usually triggered). Serialize: one install at a time across the whole swarm.
+
 ---
 
 ## Version Gotchas

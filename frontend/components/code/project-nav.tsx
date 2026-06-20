@@ -9,22 +9,13 @@ import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
 import { useCodeActions, useProjects } from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
+import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
 
 interface ProjectNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
 }
-
-/** Shared styling for a nav link, highlighted when it points at the active route. */
-const navLinkClass = (active: boolean) =>
-  cn(
-    'flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm transition-colors duration-100 motion-reduce:transition-none',
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-    active
-      ? 'bg-secondary text-foreground font-medium'
-      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
-  );
 
 /**
  * Code-module sidebar navigation: the project list. Mirrors FolderNav's folder list

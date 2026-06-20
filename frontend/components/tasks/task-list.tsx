@@ -2,6 +2,7 @@
 
 import { useDroppable } from '@dnd-kit/core';
 
+import { EmptyState } from '@/components/atoms/empty-state';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskRow } from '@/components/tasks/task-row';
 import { LIST_BOTTOM_DROP_ID, LIST_TOP_DROP_ID } from '@/lib/dnd/promote-to-root';
@@ -70,12 +71,7 @@ export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListPrope
   const isCompletedView = scope.type === 'completed';
 
   if (nodes.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <p className="font-serif text-2xl text-muted-foreground/50">{emptyMessage}</p>
-        <p className="mt-2 text-sm text-muted-foreground/40">Capture something above.</p>
-      </div>
-    );
+    return <EmptyState title={emptyMessage} description="Capture something above." />;
   }
 
   return (

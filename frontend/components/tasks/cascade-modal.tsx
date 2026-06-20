@@ -1,9 +1,16 @@
 'use client';
 
-import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/atoms/button';
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from '@/components/atoms/dialog';
 import { cn } from '@/lib/utils';
 
 interface CascadeModalProperties {
@@ -28,10 +35,10 @@ export function CascadeModal({
   isPending,
 }: CascadeModalProperties) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none" />
-        <Dialog.Content
+    <DialogRoot open={open} onOpenChange={onOpenChange}>
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogContent
           className={cn(
             // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
@@ -49,14 +56,14 @@ export function CascadeModal({
             'motion-reduce:animate-none',
           )}
         >
-          <Dialog.Title className="text-base font-semibold text-foreground">
+          <DialogTitle className="text-base font-semibold text-foreground">
             Complete with subtasks?
-          </Dialog.Title>
-          <Dialog.Description className="mt-3 text-sm text-muted-foreground">
+          </DialogTitle>
+          <DialogDescription className="mt-3 text-sm text-muted-foreground">
             <span className="font-medium text-foreground">&ldquo;{taskTitle}&rdquo;</span> has{' '}
             {subtaskCount} subtask{subtaskCount === 1 ? '' : 's'} that will also be marked complete.
             This cannot be undone from this view.
-          </Dialog.Description>
+          </DialogDescription>
 
           <div className="mt-6 flex justify-end gap-3">
             <Button
@@ -69,18 +76,12 @@ export function CascadeModal({
             >
               Cancel
             </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onConfirm}
-              disabled={isPending}
-              className="bg-accent-teal text-background hover:bg-accent-teal/90"
-            >
+            <Button variant="accent" size="sm" onClick={onConfirm} disabled={isPending}>
               {isPending ? 'Completing…' : 'Complete all'}
             </Button>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   );
 }

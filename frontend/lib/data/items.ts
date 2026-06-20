@@ -1,5 +1,7 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import 'server-only';
 
+import type { ListItemsQuery } from '@/lib/api/schemas';
 import { createClient } from '@/lib/supabase/server';
 import type { Item } from '@/lib/types';
 
@@ -36,4 +38,39 @@ export async function getAllItems(): Promise<Item[]> {
     // always yields) so the tasks store keeps its `Item[]` contract.
     .overrideTypes<Item[]>();
   return data ?? [];
+}
+
+/**
+ * Scoped read over the raw `items` table for the keyed GET /api/items endpoint.
+ *
+ * Distinct from `getAllItems` (which reads the `task_items` view to drop factory stories):
+ * this is the list endpoint, so it reads `items` directly and applies the caller's scope.
+ * It returns the raw Supabase `{ data, error }` so the route can map the error to a status
+ * (`mapSupabaseError`) — the read layer reports, it doesn't decide HTTP codes.
+ *
+ *   - `inbox: true`              → items with no folder (`.is('folder_id', null)`)
+ *   - else `folder` provided     → items in that folder (`.eq`)
+ *   - `status` (default 'active')→ filter unless 'all'
+ *   - always ordered newest-first
+ */
+export async function getItems(
+  query: ListItemsQuery,
+): Promise<{ data: Item[] | null; error: PostgrestError | null }> {
+  const supabase = await createClient();
+
+  let builder = supabase.from('items').select('*');
+
+  if (query.inbox === true) {
+    // Inbox: items with no folder assigned — must use .is(), not .eq()
+    builder = builder.is('folder_id', null);
+  } else if (query.folder !== undefined) {
+    builder = builder.eq('folder_id', query.folder);
+  }
+
+  const resolvedStatus = query.status ?? 'active';
+  if (resolvedStatus !== 'all') {
+    builder = builder.eq('status', resolvedStatus);
+  }
+
+  return builder.order('created_at', { ascending: false });
 }

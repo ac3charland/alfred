@@ -2,10 +2,11 @@
 
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { Spinner } from '@/components/atoms/spinner';
 import { TextField } from '@/components/atoms/text-field';
+import { Textarea } from '@/components/atoms/textarea';
 import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
-import { Button } from '@/components/ui/button';
 import { useTaskActions } from '@/lib/stores/tasks-store';
 import { cn } from '@/lib/utils';
 
@@ -180,7 +181,8 @@ export function CaptureBox({
             What&rsquo;s on your mind?
           </p>
         )}
-        <textarea
+        <Textarea
+          unstyled
           ref={textareaReference}
           value={value}
           onChange={(event_) => {
@@ -191,13 +193,9 @@ export function CaptureBox({
           aria-label="Capture box"
           className={cn(
             // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'w-full resize-none rounded-2xl bg-transparent px-4 pt-4 pb-12',
+            'rounded-2xl bg-transparent px-4 pt-4 pb-12',
             // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'text-base text-foreground',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'focus:outline-none',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'placeholder:text-muted-foreground',
+            'text-base',
           )}
         />
         <div className="absolute bottom-3 right-3 flex items-center gap-2">
@@ -212,9 +210,10 @@ export function CaptureBox({
           <Button
             type="submit"
             size="sm"
+            variant="accent"
             aria-label="Capture"
             disabled={!value.trim()}
-            className="bg-accent-teal text-background hover:bg-accent-teal/90 disabled:opacity-40"
+            className="disabled:opacity-40"
           >
             {isSaving ? <Spinner label="Saving" /> : 'Capture'}
           </Button>

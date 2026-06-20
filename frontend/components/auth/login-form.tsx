@@ -3,9 +3,9 @@
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/components/atoms/button';
+import { Input } from '@/components/atoms/input';
+import { Label } from '@/components/atoms/label';
 import { createClient } from '@/lib/supabase/client';
 
 /**

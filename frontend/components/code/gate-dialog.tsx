@@ -1,13 +1,15 @@
 'use client';
 
 import { Check, Plus } from 'lucide-react';
-import { Dialog } from 'radix-ui';
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
+import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import { FieldLabel } from '@/components/atoms/field-label';
+import { OptionButton } from '@/components/atoms/option-button';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
-import { Button } from '@/components/ui/button';
+import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -47,19 +49,7 @@ function OptionRow({
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      onClick={onSelect}
-      className={cn(
-        'flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors duration-100 motion-reduce:transition-none',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal',
-        selected
-          ? 'bg-accent-teal/15 text-foreground'
-          : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
-      )}
-    >
+    <OptionButton role="option" aria-selected={selected} selected={selected} onClick={onSelect}>
       <span className="flex min-w-0 items-center gap-2">
         <Check
           size={14}
@@ -70,21 +60,21 @@ function OptionRow({
       {hint !== undefined && (
         <span className="shrink-0 font-mono text-xs text-muted-foreground/70">{hint}</span>
       )}
-    </button>
+    </OptionButton>
   );
 }
 
-/** A "+ New …" affordance at the foot of a selector list. */
+/**
+ * A "+ New …" affordance at the foot of a selector list — an action row rather than a
+ * selectable option, so it uses `OptionButton`'s `action` kind (left-aligned, all-teal accent
+ * with a teal hover wash, no selected state) with a leading `Plus`.
+ */
 function AddNewRow({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-accent-teal transition-colors duration-100 hover:bg-accent-teal/10 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
-    >
+    <OptionButton kind="action" onClick={onClick}>
       <Plus size={14} className="shrink-0" />
       {label}
-    </button>
+    </OptionButton>
   );
 }
 
@@ -103,13 +93,27 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
   const { createProject, createEpic, convertTaskToCode } = useCodeActions();
   const [projectId, setProjectId] = React.useState<string | null>(null);
   const [epicId, setEpicId] = React.useState<string | null>(null);
-  const [confirmError, setConfirmError] = React.useState<string | null>(null);
-  const [isConfirming, setIsConfirming] = React.useState(false);
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
 
   const selectedProject = projects.find((p) => p.id === projectId) ?? null;
   const epicsForProject = epics.filter((e) => e.project_id === projectId);
+
+  const {
+    error: confirmError,
+    isPending: isConfirming,
+    submit: handleConfirm,
+  } = useFormSubmit({
+    // Route through the store so the optimistic card lands on the board with no refetch.
+    // The button is disabled until both ids are set, so the assertions hold when it runs.
+    onSubmit: () => convertTaskToCode(item, projectId ?? '', epicId ?? ''),
+    onSuccess: (story) => {
+      onComplete(story);
+      onOpenChange(false);
+    },
+    errorMessage: 'Could not send to the Code module. Try again.',
+  });
+
   const canConfirm = projectId !== null && epicId !== null && !isConfirming;
 
   // Picking a (different) project clears the epic selection. The epic list is derived from
@@ -130,30 +134,15 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
     setEpicId(epic.id);
   };
 
-  const handleConfirm = async () => {
-    if (projectId === null || epicId === null) return;
-    setConfirmError(null);
-    setIsConfirming(true);
-    try {
-      // Route through the store so the optimistic card lands on the board with no refetch.
-      const story = await convertTaskToCode(item, projectId, epicId);
-      onComplete(story);
-      onOpenChange(false);
-    } catch {
-      setConfirmError('Could not send to the Code module. Try again.');
-      setIsConfirming(false);
-    }
-  };
-
   return (
     <>
-      <Dialog.Title className="text-base font-semibold text-foreground">
+      <DialogTitle className="text-base font-semibold text-foreground">
         Send to Code module
-      </Dialog.Title>
-      <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+      </DialogTitle>
+      <DialogDescription className="mt-1 text-sm text-muted-foreground">
         Assign <span className="font-medium text-foreground">&ldquo;{item.title}&rdquo;</span> to a
         project and epic. It will leave your tasks and enter the factory at Needs Refinement.
-      </Dialog.Description>
+      </DialogDescription>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         {/* Project selector */}
@@ -236,11 +225,11 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
         </Button>
         <Button
           size="sm"
+          variant="accent"
           onClick={() => {
             void handleConfirm();
           }}
           disabled={!canConfirm}
-          className="bg-accent-teal text-background hover:bg-accent-teal/90"
         >
           {isConfirming ? 'Sending…' : 'Send to Code module'}
         </Button>
@@ -281,21 +270,13 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
  */
 export function GateDialog({ open, onOpenChange, item, onComplete }: GateDialogProperties) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none" />
-        <Dialog.Content
-          className={cn(
-            'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
-            'flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-border bg-surface p-6',
-            'shadow-[0_0_40px_0_rgba(79,209,224,0.08)]',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none',
-          )}
-        >
-          <GateForm item={item} onOpenChange={onOpenChange} onComplete={onComplete} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      maxWidth="lg"
+      className="flex max-h-[85vh] flex-col"
+    >
+      <GateForm item={item} onOpenChange={onOpenChange} onComplete={onComplete} />
+    </FormDialog>
   );
 }

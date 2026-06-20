@@ -78,6 +78,22 @@ describe('PATCH /api/epics/[id]', () => {
     expect(response.status).toBe(400);
   });
 
+  it('returns 400 when the id is not a valid UUID', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request('http://localhost/api/epics/not-a-uuid', {
+        method: 'PATCH',
+        body: JSON.stringify({ notes: 'hi' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'not-a-uuid' }) },
+    );
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for an empty body (no fields to update)', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);

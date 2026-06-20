@@ -14,6 +14,9 @@ const mockCreateClient = jest.mocked(createClient);
 
 const TEST_USER = { id: 'user-123' };
 const TEST_ITEM = { id: 'item-1', title: 'Updated', status: 'active' };
+// A fixed, deterministic UUID — the [id] segment is now UUID-validated (parseUUID),
+// so the fixture id must be a real UUID (a placeholder like 'item-1' would 400).
+const TEST_ID = '00000000-0000-4000-8000-000000000001';
 
 interface MockResult {
   data: unknown;
@@ -47,7 +50,7 @@ function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
   return firstCall[0];
 }
 
-const routeContext = { params: Promise.resolve({ id: 'item-1' }) };
+const routeContext = { params: Promise.resolve({ id: TEST_ID }) };
 
 // ---------------------------------------------------------------------------
 // PATCH /api/items/[id]
@@ -59,7 +62,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Updated' }),
         headers: { 'Content-Type': 'application/json' },
@@ -69,12 +72,28 @@ describe('PATCH /api/items/[id]', () => {
     expect(response.status).toBe(401);
   });
 
+  it('returns 400 when the id is not a valid UUID', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request('http://localhost/api/items/not-a-uuid', {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Updated' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'not-a-uuid' }) },
+    );
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for invalid body (bad status value)', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'archived' }),
         headers: { 'Content-Type': 'application/json' },
@@ -91,7 +110,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: 'not-valid-json',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +127,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Updated' }),
         headers: { 'Content-Type': 'application/json' },
@@ -125,7 +144,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'New title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -144,7 +163,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'completed' }),
         headers: { 'Content-Type': 'application/json' },
@@ -163,7 +182,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ notes: 'new notes' }),
         headers: { 'Content-Type': 'application/json' },
@@ -180,7 +199,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -198,7 +217,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ source_url: 'https://example.com' }),
         headers: { 'Content-Type': 'application/json' },
@@ -215,7 +234,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -233,7 +252,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ due_date: '2026-12-31' }),
         headers: { 'Content-Type': 'application/json' },
@@ -250,7 +269,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -269,7 +288,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ folder_id: folderId }),
         headers: { 'Content-Type': 'application/json' },
@@ -286,7 +305,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -305,7 +324,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ parent_id: parentId }),
         headers: { 'Content-Type': 'application/json' },
@@ -322,7 +341,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -340,7 +359,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ item_type: 'task' }),
         headers: { 'Content-Type': 'application/json' },
@@ -357,7 +376,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -375,7 +394,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: 'completed' }),
         headers: { 'Content-Type': 'application/json' },
@@ -392,7 +411,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Only title' }),
         headers: { 'Content-Type': 'application/json' },
@@ -410,7 +429,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Updated' }),
         headers: { 'Content-Type': 'application/json' },
@@ -420,7 +439,7 @@ describe('PATCH /api/items/[id]', () => {
 
     const chain = mockSupabase._chain;
     expect(mockSupabase.from).toHaveBeenCalledWith('items');
-    expect(chain.eq).toHaveBeenCalledWith('id', 'item-1');
+    expect(chain.eq).toHaveBeenCalledWith('id', TEST_ID);
   });
 
   it('returns 500 on Supabase error', async () => {
@@ -431,7 +450,7 @@ describe('PATCH /api/items/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/items/item-1', {
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ title: 'Updated' }),
         headers: { 'Content-Type': 'application/json' },
@@ -451,8 +470,29 @@ describe('DELETE /api/items/[id]', () => {
     const mockSupabase = makeMockSupabase(undefined, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await DELETE(new Request('http://localhost/api/items/item-1'), routeContext);
+    const response = await DELETE(
+      new Request(`http://localhost/api/items/${TEST_ID}`),
+      routeContext,
+    );
     expect(response.status).toBe(401);
+  });
+
+  it('returns 400 when the id is not a valid UUID', async () => {
+    const chain = {
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({ data: undefined, error: undefined }),
+    };
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await DELETE(new Request('http://localhost/api/items/not-a-uuid'), {
+      params: Promise.resolve({ id: 'not-a-uuid' }),
+    });
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
   });
 
   it('returns { success: true } on successful deletion', async () => {
@@ -467,7 +507,10 @@ describe('DELETE /api/items/[id]', () => {
     };
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await DELETE(new Request('http://localhost/api/items/item-1'), routeContext);
+    const response = await DELETE(
+      new Request(`http://localhost/api/items/${TEST_ID}`),
+      routeContext,
+    );
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
     expect(body).toStrictEqual({ success: true });
@@ -484,10 +527,10 @@ describe('DELETE /api/items/[id]', () => {
     };
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    await DELETE(new Request('http://localhost/api/items/item-1'), routeContext);
+    await DELETE(new Request(`http://localhost/api/items/${TEST_ID}`), routeContext);
 
     expect(mockSupabase.from).toHaveBeenCalledWith('items');
-    expect(chain.eq).toHaveBeenCalledWith('id', 'item-1');
+    expect(chain.eq).toHaveBeenCalledWith('id', TEST_ID);
   });
 
   it('returns 500 on Supabase error', async () => {
@@ -501,7 +544,10 @@ describe('DELETE /api/items/[id]', () => {
     };
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    const response = await DELETE(new Request('http://localhost/api/items/item-1'), routeContext);
+    const response = await DELETE(
+      new Request(`http://localhost/api/items/${TEST_ID}`),
+      routeContext,
+    );
     expect(response.status).toBe(500);
   });
 });

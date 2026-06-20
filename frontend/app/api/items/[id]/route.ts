@@ -1,6 +1,10 @@
 import { withSession } from '@/lib/api/auth';
+import { parseUUID } from '@/lib/api/params';
+import { parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { updateItemSchema } from '@/lib/api/schemas';
+import { mapSupabaseError } from '@/lib/api/supabase-errors';
+import { toUpdatePayload } from '@/lib/api/updates';
 import type { ItemUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -9,34 +13,27 @@ import type { ItemUpdate } from '@/lib/types';
 
 export const PATCH = withSession(
   async (session, request, context: { params: Promise<{ id: string }> }) => {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUUID(rawId);
+    if (id instanceof Response) return id;
     const { supabase } = session;
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return jsonError(400, 'Invalid JSON body');
-    }
+    const input = await parseRequestBody(request, updateItemSchema);
+    if (input instanceof Response) return input;
 
-    const parsed = updateItemSchema.safeParse(body);
-    if (!parsed.success) {
-      return jsonError(400, 'Invalid request body', parsed.error.issues);
-    }
-
-    // PATCH semantics: only set the fields the caller actually provided. Building
-    // the payload from defined-only fields also satisfies exactOptionalPropertyTypes
-    // (zod `.optional()` yields `T | undefined`, which isn't assignable to `T?`).
-    const d = parsed.data;
-    const updates: ItemUpdate = {};
-    if (d.title !== undefined) updates.title = d.title;
-    if (d.notes !== undefined) updates.notes = d.notes;
-    if (d.source_url !== undefined) updates.source_url = d.source_url;
-    if (d.due_date !== undefined) updates.due_date = d.due_date;
-    if (d.folder_id !== undefined) updates.folder_id = d.folder_id;
-    if (d.parent_id !== undefined) updates.parent_id = d.parent_id;
-    if (d.item_type !== undefined) updates.item_type = d.item_type;
-    if (d.status !== undefined) updates.status = d.status;
+    // PATCH semantics: only set the fields the caller actually provided (a present `null`
+    // clears a nullable column). Building from defined-only fields also satisfies
+    // exactOptionalPropertyTypes (zod `.optional()` yields `T | undefined`).
+    const updates = toUpdatePayload<ItemUpdate>(input, [
+      'title',
+      'notes',
+      'source_url',
+      'due_date',
+      'folder_id',
+      'parent_id',
+      'item_type',
+      'status',
+    ]);
 
     const { data, error } = await supabase
       .from('items')
@@ -45,7 +42,10 @@ export const PATCH = withSession(
       .select()
       .single();
 
-    if (error) return jsonError(500, error.message);
+    if (error) {
+      const { status, message } = mapSupabaseError(error);
+      return jsonError(status, message);
+    }
 
     return jsonOk(data);
   },
@@ -57,11 +57,16 @@ export const PATCH = withSession(
 
 export const DELETE = withSession(
   async (session, _request, context: { params: Promise<{ id: string }> }) => {
-    const { id } = await context.params;
+    const { id: rawId } = await context.params;
+    const id = parseUUID(rawId);
+    if (id instanceof Response) return id;
     const { supabase } = session;
 
     const { error } = await supabase.from('items').delete().eq('id', id);
-    if (error) return jsonError(500, error.message);
+    if (error) {
+      const { status, message } = mapSupabaseError(error);
+      return jsonError(status, message);
+    }
 
     return jsonOk({ success: true });
   },

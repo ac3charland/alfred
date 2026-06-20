@@ -13,7 +13,10 @@ jest.mock('@/lib/supabase/admin', () => ({
 const mockCreateClient = jest.mocked(createClient);
 
 const TEST_USER = { id: 'user-123' };
-const TEST_FOLDER = { id: 'folder-1', name: 'Renamed', created_at: '2026-01-01T00:00:00Z' };
+// A fixed, deterministic UUID — the [id] segment is now UUID-validated (parseUUID),
+// so the fixture id must be a real UUID (a placeholder like 'folder-1' would 400).
+const TEST_ID = '00000000-0000-4000-8000-000000000001';
+const TEST_FOLDER = { id: TEST_ID, name: 'Renamed', created_at: '2026-01-01T00:00:00Z' };
 
 interface MockResult {
   data: unknown;
@@ -39,7 +42,7 @@ function makeMockSupabase(user: { id: string } | undefined, result: MockResult) 
   };
 }
 
-const routeContext = { params: Promise.resolve({ id: 'folder-1' }) };
+const routeContext = { params: Promise.resolve({ id: TEST_ID }) };
 
 // ---------------------------------------------------------------------------
 // PATCH /api/folders/[id]
@@ -51,7 +54,7 @@ describe('PATCH /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/folders/folder-1', {
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: 'Renamed' }),
         headers: { 'Content-Type': 'application/json' },
@@ -61,12 +64,28 @@ describe('PATCH /api/folders/[id]', () => {
     expect(response.status).toBe(401);
   });
 
+  it('returns 400 when the id is not a valid UUID', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request('http://localhost/api/folders/not-a-uuid', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Renamed' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'not-a-uuid' }) },
+    );
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when name is missing', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/folders/folder-1', {
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
@@ -83,7 +102,7 @@ describe('PATCH /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/folders/folder-1', {
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
         method: 'PATCH',
         body: 'not-valid-json',
         headers: { 'Content-Type': 'application/json' },
@@ -100,7 +119,7 @@ describe('PATCH /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/folders/folder-1', {
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: 'Renamed' }),
         headers: { 'Content-Type': 'application/json' },
@@ -117,7 +136,7 @@ describe('PATCH /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(
-      new Request('http://localhost/api/folders/folder-1', {
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: 'Renamed' }),
         headers: { 'Content-Type': 'application/json' },
@@ -128,7 +147,7 @@ describe('PATCH /api/folders/[id]', () => {
     const chain = mockSupabase._chain;
     expect(mockSupabase.from).toHaveBeenCalledWith('folders');
     expect(chain.update).toHaveBeenCalledWith({ name: 'Renamed' });
-    expect(chain.eq).toHaveBeenCalledWith('id', 'folder-1');
+    expect(chain.eq).toHaveBeenCalledWith('id', TEST_ID);
   });
 
   it('returns 500 when Supabase returns an error on update', async () => {
@@ -139,7 +158,7 @@ describe('PATCH /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await PATCH(
-      new Request('http://localhost/api/folders/folder-1', {
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: 'Renamed' }),
         headers: { 'Content-Type': 'application/json' },
@@ -160,10 +179,28 @@ describe('DELETE /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await DELETE(
-      new Request('http://localhost/api/folders/folder-1'),
+      new Request(`http://localhost/api/folders/${TEST_ID}`),
       routeContext,
     );
     expect(response.status).toBe(401);
+  });
+
+  it('returns 400 when the id is not a valid UUID', async () => {
+    const chain = {
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockResolvedValue({ data: undefined, error: undefined }),
+    };
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await DELETE(new Request('http://localhost/api/folders/not-a-uuid'), {
+      params: Promise.resolve({ id: 'not-a-uuid' }),
+    });
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
   });
 
   it('returns { success: true } on successful delete', async () => {
@@ -178,7 +215,7 @@ describe('DELETE /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await DELETE(
-      new Request('http://localhost/api/folders/folder-1'),
+      new Request(`http://localhost/api/folders/${TEST_ID}`),
       routeContext,
     );
     expect(response.status).toBe(200);
@@ -197,10 +234,10 @@ describe('DELETE /api/folders/[id]', () => {
     };
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
-    await DELETE(new Request('http://localhost/api/folders/folder-1'), routeContext);
+    await DELETE(new Request(`http://localhost/api/folders/${TEST_ID}`), routeContext);
 
     expect(mockSupabase.from).toHaveBeenCalledWith('folders');
-    expect(chain.eq).toHaveBeenCalledWith('id', 'folder-1');
+    expect(chain.eq).toHaveBeenCalledWith('id', TEST_ID);
   });
 
   it('returns 500 on Supabase error', async () => {
@@ -215,7 +252,7 @@ describe('DELETE /api/folders/[id]', () => {
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     const response = await DELETE(
-      new Request('http://localhost/api/folders/folder-1'),
+      new Request(`http://localhost/api/folders/${TEST_ID}`),
       routeContext,
     );
     expect(response.status).toBe(500);

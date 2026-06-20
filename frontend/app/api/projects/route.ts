@@ -1,22 +1,22 @@
 import { withSession } from '@/lib/api/auth';
+import { parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { createProjectSchema } from '@/lib/api/schemas';
+import { mapSupabaseError } from '@/lib/api/supabase-errors';
 import { parseGithubRepo } from '@/lib/code/github';
+import { getProjectList } from '@/lib/data/code';
 import type { ProjectInsert } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // GET /api/projects — list all projects (oldest first, the ProjectNav order)
 // ---------------------------------------------------------------------------
 
-export const GET = withSession(async (session) => {
-  const { supabase } = session;
-
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .order('created_at', { ascending: true });
-
-  if (error) return jsonError(500, error.message);
+export const GET = withSession(async () => {
+  const { data, error } = await getProjectList();
+  if (error) {
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
+  }
 
   return jsonOk(data);
 });
@@ -26,25 +26,16 @@ export const GET = withSession(async (session) => {
 //
 // The body carries a GitHub URL + a 3-char key; the route derives repo_owner/repo_name
 // from the URL (storing the URL too) and inserts. Key uniqueness is enforced by the DB
-// `unique` constraint, which surfaces here as a 409.
+// `unique` constraint, which surfaces here as a 409 (via mapSupabaseError).
 // ---------------------------------------------------------------------------
 
 export const POST = withSession(async (session, request) => {
   const { supabase } = session;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError(400, 'Invalid JSON body');
-  }
+  const input = await parseRequestBody(request, createProjectSchema);
+  if (input instanceof Response) return input;
 
-  const parsed = createProjectSchema.safeParse(body);
-  if (!parsed.success) {
-    return jsonError(400, 'Invalid request body', parsed.error.issues);
-  }
-
-  const { name, github_url, key } = parsed.data;
+  const { name, github_url, key } = input;
 
   const repo = parseGithubRepo(github_url);
   if (repo === null) {
@@ -62,9 +53,8 @@ export const POST = withSession(async (session, request) => {
   const { data, error } = await supabase.from('projects').insert(insert).select().single();
 
   if (error) {
-    // A duplicate key (or repo_owner/repo_name pair) trips a unique constraint → 409.
-    if (error.code === '23505') return jsonError(409, error.message);
-    return jsonError(500, error.message);
+    const { status, message } = mapSupabaseError(error);
+    return jsonError(status, message);
   }
 
   return jsonOk(data, 201);
