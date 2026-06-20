@@ -18,11 +18,8 @@ import { cn } from '@/lib/utils';
 const iconButtonVariants = cva(
   cn(
     'inline-flex items-center justify-center rounded',
-    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect.
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect.
     'transition-colors duration-100 motion-reduce:transition-none',
-    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect.
     'disabled:opacity-40 disabled:pointer-events-none',
   ),
   {
@@ -66,7 +63,6 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProperties>(
     );
   },
 );
-// Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect.
 IconButton.displayName = 'IconButton';
 
 export { IconButton, iconButtonVariants };

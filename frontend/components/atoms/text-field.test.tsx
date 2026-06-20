@@ -81,4 +81,18 @@ describe('TextField', () => {
     expect(screen.queryByRole('textbox', { name: 'Due date' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Due date')).toHaveAttribute('type', 'date');
   });
+
+  it('applies the placeholder + disabled-state styling', () => {
+    render(<TextField aria-label="Title" />);
+
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveClass(
+      'placeholder:text-muted-foreground',
+      'disabled:cursor-not-allowed',
+      'disabled:opacity-50',
+    );
+  });
+
+  it('exposes a stable displayName for devtools', () => {
+    expect(TextField.displayName).toBe('TextField');
+  });
 });
