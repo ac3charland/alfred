@@ -6,7 +6,7 @@ draft might have, then check your draft against the matching pair. The *rules* a
 *reasoning* live in [`description-triggering.md`](description-triggering.md); this file is the
 worked examples, so don't restate the theory here — add a pair.
 
-grep for a smell: `grep -iE 'inlines|repo name|enumerates|buried' description-examples.md`
+grep for a smell: `grep -iE 'inlines|repo name|enumerates|buried|rationale' description-examples.md`
 
 ## Inlines the skill's content (especially at the front)
 
@@ -26,8 +26,44 @@ runs it") already names the subject, and the body holds the answer:
 > Documents how the deterministic checks (the back-pressure gates) are wired — where a new
 > check belongs and which tier runs it. Use when adding or moving a check, linter, or gate…
 
+The trap compounds when you *also* cut the trigger keywords to make room for the inlined
+content — the worst of both: less triggering, more body leak. Fix it by doing the opposite.
+
+❌ **Before** (`motion`) — the front is the rule content (the exact tokens, the mount→fade
+mechanism, the matchMedia gotcha), and the keyword list was thinned to fit it:
+> Documents the frontend's motion conventions: the reusable animation design tokens (the
+> `--animate-*` theme tokens in globals.css, e.g. `animate-fade-in` / `animate-fade-out`), the
+> pattern for revealing/collapsing content with a fade (mount → fade-in, fade-out → unmount),
+> how to add a new motion token, and the jsdom `matchMedia` gotcha… — "fade in/out",
+> "transition", "animate", "reveal", "collapse", "reduced motion".
+
+✅ **After** — name the subject in a phrase, then spend the budget on the *keywords* a user types:
+> Documents the frontend's motion conventions — animation tokens, fade/slide reveals,
+> expand/collapse, and prefers-reduced-motion handling. Use whenever… — "fade in/out",
+> "animate-fade-in", "matchMedia", "useSyncExternalStore for media query", "add a motion token"…
+
+`matchMedia` and `--animate-*` belong in the description — but as **trigger words a user types**,
+not as a "the jsdom matchMedia gotcha" rule summary. Same token, opposite role.
+
 The tell: if a sentence would answer "*how does the skill say to do it?*", it's body content.
 Subject-naming answers "*what is this about?*" instead.
+
+## States the rationale (the WHY) instead of what + when
+
+A description routes the agent: it needs *what the skill does* and *when to read it*, not *why
+the skill exists*. Motivating prose explains a decision the agent doesn't have to make to decide
+whether to open the skill, so it's body material burning the triggering budget.
+
+❌ **Before** (`batch-commits`) — the middle sentence justifies the skill:
+> Use when a finished, green change needs several logical commits without re-running the
+> pre-commit gate on each. **The pre-commit hook runs `npm run check:fast` per commit, so N
+> commits the normal way run that check N times.** This skill's bundled script … runs the gate
+> once, then creates all the commits…
+
+✅ **After** — drop the justification; keep what it does and when:
+> Use when a finished, green change needs to be committed as several logical commits without
+> re-running the pre-commit gate on each. This skill's bundled script … runs the gate once, then
+> creates all the commits…
 
 ## Enumerates every rule/item the skill contains
 

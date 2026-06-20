@@ -1,13 +1,10 @@
 ---
 name: batch-commits
 description: >
-  Use when a finished, green change needs several logical commits without
-  re-running the pre-commit gate on each. The
-  pre-commit hook runs `npm run check:fast` per commit, so N commits the normal way
-  run that check N times. This skill's bundled
+  Use when a finished, green change needs to be committed as several logical
+  commits without re-running the pre-commit gate on each. This skill's bundled
   script (`node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>`)
-  runs the gate ONCE up front, validates every message with
-  commitlint, then creates all commits with --no-verify — the only sanctioned
+  runs the gate once, then creates all the commits — the only sanctioned
   use of --no-verify in the repo. Trigger on:
   "multiple commits", "split into commits", "group commits by concern", "batch commit",
   or any wrap-up where you'd run `git commit` more than once for one finished change.
