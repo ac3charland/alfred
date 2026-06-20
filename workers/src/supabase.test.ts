@@ -24,6 +24,7 @@ describe('patchCodeItem', () => {
     expect(headers['apikey']).toBe('service-role-key');
     expect(headers['Authorization']).toBe('Bearer service-role-key');
     expect(headers['Prefer']).toBe('return=representation');
+    expect(headers['Content-Type']).toBe('application/json');
   });
 
   it('returns 0 when no row matched the ref (a ticket we do not track)', async () => {

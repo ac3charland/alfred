@@ -59,4 +59,29 @@ describe('parseFrontmatter', () => {
       parseFrontmatter(block(['alfred-ticket:   ', 'phase: refinement'].join('\n'))),
     ).toBeUndefined();
   });
+
+  it('parses alfred-ticket with no space after the colon', () => {
+    // The `[ \t]*` quantifier must allow ZERO spaces; a `[ \t]` (exactly one) or `[^ \t]*`
+    // mutant fails to capture "ALF-42" here and the whole block parses as undefined.
+    const result = parseFrontmatter(
+      block(['alfred-ticket:ALF-42', 'phase: implementation'].join('\n')),
+    );
+    expect(result?.tickets).toEqual(['ALF-42']);
+  });
+
+  it('parses phase with no space after the colon', () => {
+    const result = parseFrontmatter(
+      block(['alfred-ticket: ALF-42', 'phase:implementation'].join('\n')),
+    );
+    expect(result?.phase).toBe('implementation');
+  });
+
+  it('parses spec-path with no space after the colon', () => {
+    const result = parseFrontmatter(
+      block(
+        ['alfred-ticket: ALF-42', 'phase: refinement', 'spec-path:docs/specs/ALF-42.md'].join('\n'),
+      ),
+    );
+    expect(result?.specPath).toBe('docs/specs/ALF-42.md');
+  });
 });

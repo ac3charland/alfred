@@ -42,6 +42,7 @@ interface PullRequestPayload {
 const json = (status: number, data: Record<string, unknown>): Response =>
   Response.json(data, {
     status,
+    // Stryker disable next-line ObjectLiteral: AT_CEILING — Response.json already defaults Content-Type to application/json when the header is absent, so emptying this object yields the identical response. (The empty-string mutant on the value IS observable and stays covered.)
     headers: { 'Content-Type': 'application/json' },
   });
 

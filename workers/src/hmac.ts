@@ -22,6 +22,7 @@ function toHex(buffer: ArrayBuffer): string {
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let mismatch = 0;
+  // Stryker disable next-line EqualityOperator: AT_CEILING — <→<= only adds one iteration at i=a.length where both a.codePointAt and b.codePointAt are undefined→0 (the lengths are already known equal), XOR 0; unobservable.
   for (let i = 0; i < a.length; i++) {
     mismatch |= (a.codePointAt(i) ?? 0) ^ (b.codePointAt(i) ?? 0);
   }
@@ -39,12 +40,14 @@ export async function verifySignature(
   rawBody: string,
   signatureHeader?: string,
 ): Promise<boolean> {
+  // Stryker disable next-line StringLiteral: AT_CEILING — 'sha256='→'' makes the prefix check always pass, but `expected` always starts with 'sha256=', so any header lacking the prefix still fails the constant-time compare below; the result is identical either way.
   if (!signatureHeader?.startsWith('sha256=')) return false;
 
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
+    // Stryker disable next-line BooleanLiteral: AT_CEILING — this is importKey's `extractable` flag; false→true changes only whether the key could be exported, never the signature it produces, so verification behaviour is unchanged.
     false,
     ['sign'],
   );

@@ -31,7 +31,12 @@ describe('planTransition', () => {
 
     it('closed & merged without a spec_path still advances and snapshots', () => {
       const plan = planTransition(event({ action: 'closed', merged: true, specPath: undefined }));
-      expect(plan).toEqual({ updates: { factory_state: 'ready_for_dev' }, snapshotSpec: true });
+      // toStrictEqual (not toEqual) so a `spec_path: undefined` key — what the `if(specPath !==
+      // undefined)` guard would wrongly add if it always ran — is caught as a difference.
+      expect(plan).toStrictEqual({
+        updates: { factory_state: 'ready_for_dev' },
+        snapshotSpec: true,
+      });
     });
 
     it('closed & unmerged → reverts to needs_refinement', () => {
