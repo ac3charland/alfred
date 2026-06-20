@@ -26,6 +26,13 @@ describe('RowKeyboardSensor activator', () => {
     expect(result).toBe(true);
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(onActivation).toHaveBeenCalledTimes(1);
+    // The activation must carry the native event, not an empty payload.
+    expect(onActivation).toHaveBeenCalledWith({ event: event.nativeEvent });
+  });
+
+  it('does not throw when no onActivation handler is supplied (optional chaining)', () => {
+    const { event } = makeKeyEvent('Space', document.createElement('div'));
+    expect(handler(event, {})).toBe(true);
   });
 
   it('lifts on Enter as well (matching dnd-kit defaults)', () => {

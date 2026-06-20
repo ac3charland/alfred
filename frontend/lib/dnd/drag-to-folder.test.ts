@@ -5,6 +5,12 @@ describe('resolveFolderDrop', () => {
     expect(resolveFolderDrop('t1', null, null)).toBeNull();
   });
 
+  it('no-ops on a null drop even when the task currently lives in a folder', () => {
+    // A non-null currentFolderId makes the `overId === null` guard the only thing returning
+    // null — without it the function would emit a spurious move to the Inbox.
+    expect(resolveFolderDrop('t1', null, 'f1')).toBeNull();
+  });
+
   it('files an inbox task into a folder', () => {
     expect(resolveFolderDrop('t1', 'f1', null)).toEqual({ itemId: 't1', folderId: 'f1' });
   });

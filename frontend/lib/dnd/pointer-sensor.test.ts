@@ -1,4 +1,58 @@
-import { isInteractiveTarget } from './pointer-sensor';
+import type { PointerEvent } from 'react';
+
+import { RowPointerSensor, isInteractiveTarget } from './pointer-sensor';
+
+/** Build a minimal React-style pointerdown event for the activator handler. */
+function makePointerEvent(
+  overrides: { isPrimary?: boolean; button?: number; target?: EventTarget | null } = {},
+) {
+  const nativeEvent = {
+    isPrimary: overrides.isPrimary ?? true,
+    button: overrides.button ?? 0,
+    target: overrides.target ?? document.createElement('div'),
+  };
+  return { nativeEvent } as unknown as PointerEvent;
+}
+
+describe('RowPointerSensor activator', () => {
+  // Reaching activators[0].handler is itself the assertion that the activators array and its
+  // entry exist (an empty array or empty object here throws at setup).
+  const activator = RowPointerSensor.activators[0];
+  if (activator === undefined) {
+    throw new Error('RowPointerSensor must define a pointerdown activator');
+  }
+  const { handler } = activator;
+
+  it('starts a drag (returns true, fires onActivation with the native event) on a primary press', () => {
+    const onActivation = jest.fn();
+    const event = makePointerEvent();
+
+    const result = handler(event, { onActivation });
+
+    expect(result).toBe(true);
+    expect(onActivation).toHaveBeenCalledWith({ event: event.nativeEvent });
+  });
+
+  it('does not throw when no onActivation handler is supplied (optional chaining)', () => {
+    const event = makePointerEvent();
+    expect(handler(event, {})).toBe(true);
+  });
+
+  it('does NOT start a drag from an interactive control', () => {
+    const onActivation = jest.fn();
+    const event = makePointerEvent({ target: document.createElement('button') });
+
+    expect(handler(event, { onActivation })).toBe(false);
+    expect(onActivation).not.toHaveBeenCalled();
+  });
+
+  it('ignores a non-primary pointer or a secondary button', () => {
+    const onActivation = jest.fn();
+    expect(handler(makePointerEvent({ isPrimary: false }), { onActivation })).toBe(false);
+    expect(handler(makePointerEvent({ button: 2 }), { onActivation })).toBe(false);
+    expect(onActivation).not.toHaveBeenCalled();
+  });
+});
 
 describe('isInteractiveTarget', () => {
   it('returns false for a null target', () => {

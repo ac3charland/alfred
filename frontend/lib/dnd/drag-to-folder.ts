@@ -11,6 +11,7 @@
  * (a null `folder_id`) can't use `null` as its id — it uses this sentinel, which
  * {@link resolveFolderDrop} maps back to `null`.
  */
+// Stryker disable next-line StringLiteral: AT_CEILING — an opaque sentinel id used only by reference (compared against itself in resolveFolderDrop and handed to dnd-kit as a droppable id); its exact spelling is arbitrary as long as it can't collide with a real folder id, so mutating the literal is unobservable.
 export const INBOX_DROP_ID = '__inbox__';
 
 export interface FolderMove {
