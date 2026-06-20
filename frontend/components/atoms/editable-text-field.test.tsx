@@ -19,7 +19,7 @@ describe('EditableTextField', () => {
 
   it('saves an edited value via the confirm button', async () => {
     const user = userEvent.setup();
-    const onSave = jest.fn(() => Promise.resolve());
+    const onSave = jest.fn().mockResolvedValue(undefined);
     render(
       <EditableTextField value="Old" onSave={onSave} label="Edit title">
         <span>Old</span>
@@ -37,7 +37,7 @@ describe('EditableTextField', () => {
 
   it('saves on Enter', async () => {
     const user = userEvent.setup();
-    const onSave = jest.fn(() => Promise.resolve());
+    const onSave = jest.fn().mockResolvedValue(undefined);
     render(
       <EditableTextField value="Old" onSave={onSave} label="Edit title">
         <span>Old</span>

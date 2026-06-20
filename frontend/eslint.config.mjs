@@ -180,6 +180,12 @@ export default defineConfig([
       // harness patterns — `@typescript-eslint/no-empty-function` adds noise
       // without safety benefit in test files.
       '@typescript-eslint/no-empty-function': 'off',
+      // `mockResolvedValue(undefined)` for a `Promise<void>` mock is not a
+      // useless undefined — jest requires exactly one argument and `undefined`
+      // is the only valid resolved value for void. `checkArguments: false`
+      // stops the auto-fix from stripping it (which would then break tsc with
+      // TS2554: Expected 1 arguments, but got 0).
+      'unicorn/no-useless-undefined': ['error', { checkArguments: false }],
     },
   },
 

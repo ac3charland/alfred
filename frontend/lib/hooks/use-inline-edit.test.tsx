@@ -27,7 +27,7 @@ describe('useInlineEdit', () => {
   });
 
   it('saves a trimmed, changed value via onSave and exits edit mode', async () => {
-    const onSave = jest.fn(() => Promise.resolve());
+    const onSave = jest.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useInlineEdit('hello', onSave));
 
     act(() => {
@@ -91,7 +91,7 @@ describe('useInlineEdit', () => {
   });
 
   it('saves on Enter and cancels on Escape via inputProps.onKeyDown', async () => {
-    const onSave = jest.fn(() => Promise.resolve());
+    const onSave = jest.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useInlineEdit('hello', onSave));
 
     act(() => {
