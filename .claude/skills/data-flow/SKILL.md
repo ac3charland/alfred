@@ -4,15 +4,12 @@ description: >
   Documents the frontend's data-flow and client-state architecture: database → API →
   context store → components on read, components → store action → API → database on write,
   the optimistic-store pattern with reconcile/rollback, the "fetch-all then filter
-  client-side" choice, AND when transient UI state belongs in a small cross-row coordination
-  store (ExpansionProvider / ActiveEditorProvider) rather than a row's own useState. Use
-  whenever you read, fetch, store, or mutate app data, or decide where state lives — "fetch
-  data", "state management", "prop vs context", "cross-component change", "coordination
-  store", "lift state into a store", "collapse/expand all", "which row is open", "optimistic
-  update", "reconcile", "rollback", "router.refresh", "useTasks / useFolders / a store",
-  "client-side filter", "lib/data", or refactoring a hard-refresh mutation. Pairs with the
-  supabase skill (client/queries), the nextjs skill (Server vs Client boundary), and the
-  react skill (context + hooks).
+  client-side" choice, and when transient UI state belongs in a cross-row coordination
+  store (ExpansionProvider / ActiveEditorProvider) vs a row's own useState. Use
+  whenever you read, fetch, store, or mutate app data, or decide where state lives —
+  "state management", "prop vs context", "coordination store", "optimistic
+  update", "reconcile", "rollback", "router.refresh", "useTasks / useFolders".
+  Pairs with the supabase, nextjs, and react skills.
 ---
 
 # Data Flow & State Management (alfred frontend)

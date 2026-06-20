@@ -7,9 +7,8 @@ description: >
   new motion token, and the jsdom `matchMedia` gotcha when testing motion-aware components. Use
   whenever you add, reuse, or reason about fade/slide reveals, expand/collapse, hover lift,
   entrance/exit transitions, or prefers-reduced-motion handling — "fade in/out", "transition",
-  "animate", "reveal", "collapse", "slide in", "reduced motion", "useSyncExternalStore for media
-  query", or "add a motion token". Pairs with the tailwindcss skill (token mechanics) and the
-  react / react-testing-library skills (component + test mechanics).
+  "animate", "reveal", "collapse", "reduced motion". Pairs with the
+  tailwindcss and react / react-testing-library skills.
 ---
 
 # Motion Skill — alfred project

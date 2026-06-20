@@ -3,16 +3,14 @@ name: debug-animations
 description: >
   A non-invasive way to debug what an element does DURING a transition by sampling
   a value (computed style, bounding rect, attribute) every animation frame from the
-  live page via Playwright — no `console.log` or instrumentation added to app code.
-  Use it to catch and measure transient, sub-perceptual glitches that final-state
-  assertions, jsdom, and a single screenshot all miss: a one-frame flash/flicker on
+  live page via Playwright — no instrumentation in app code.
+  Use it to catch transient, sub-perceptual glitches that final-state
+  assertions, jsdom, and a single screenshot miss: a one-frame flash/flicker on
   enter/exit, layout shift or jank, an animation restart, wrong easing, a fill-mode
-  revert, focus-ring or scroll-anchor jumps. Trigger whenever you need to see "the
-  frames in between" — "it looks janky but the final state is correct", "flash",
-  "flicker", "stutter", "blink", "sample opacity/transform over time", "measure the
-  animation", "why does it jump", "layout shift", "getComputedStyle over time", or
-  turning such a measurement into a regression test. Pairs with the playwright skill
-  (the harness that runs it) and the motion skill (the animations it measures).
+  revert. Trigger on "looks janky but the final state is correct", "flash",
+  "flicker", "stutter", "sample opacity/transform over time",
+  "getComputedStyle over time". Pairs with the playwright skill
+  (the harness) and the motion skill.
 ---
 
 # debug-animations — sample the page frame by frame

@@ -2,9 +2,9 @@
 name: cloudflare-workers
 description: >
   Covers Cloudflare Workers development (TypeScript, Wrangler) for the workers/ package:
-  the ES-module fetch-handler shape, typed Env bindings, secrets and env vars, wrangler.toml/wrangler.jsonc
+  the ES-module fetch-handler shape, typed Env bindings, secrets and env vars, wrangler.toml
   config, local dev (wrangler dev) and deploy (wrangler deploy), ctx.waitUntil, fetch to external services
-  (Supabase REST, Anthropic API), Node.js compat for SDKs, and TypeScript typing via wrangler types.
+  (Supabase REST, Anthropic API), Node.js compat for SDKs, and typing via wrangler types.
   Use when creating or modifying a Worker entrypoint, adding or reading a binding/secret, configuring
   wrangler.toml, running or deploying a Worker, calling Supabase or an LLM from a Worker, or validating
   an API key inside a Worker. Do NOT use for Next.js API routes (frontend/ package — use the nextjs skill).
