@@ -5,6 +5,8 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+import { dropZoneActiveClass, dropZoneBaseClass } from './folder-drop-zone.styles';
+
 interface FolderDropZoneProperties {
   /** The droppable id: a folder id, or INBOX_DROP_ID for the Inbox target. */
   id: string;
@@ -23,11 +25,7 @@ export function FolderDropZone({ id, children }: FolderDropZoneProperties) {
     <div
       ref={setNodeRef}
       data-drop-over={isOver ? 'true' : undefined}
-      className={cn(
-        // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic highlight, no behavioral effect
-        'rounded-sm transition-colors duration-100 motion-reduce:transition-none',
-        isOver && 'bg-accent-teal/15 ring-1 ring-accent-teal/50',
-      )}
+      className={cn(dropZoneBaseClass, isOver && dropZoneActiveClass)}
     >
       {children}
     </div>

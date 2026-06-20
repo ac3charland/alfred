@@ -10,19 +10,12 @@ import { ViewLink } from '@/components/tasks/view-link';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
+import { revealStaticClass, spacerBaseClass, toggleLinkClass } from './inbox-screen.styles';
+
 interface InboxScreenProperties {
   /** Whether the inbox list is revealed. Driven by the `?view=inbox` search param. */
   open: boolean;
 }
-
-const toggleLinkClass = cn(
-  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground',
-  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-  'transition-colors duration-150 hover:text-foreground motion-reduce:transition-none',
-  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-);
 
 /**
  * The landing + inbox screen, unified into a single route.
@@ -68,11 +61,7 @@ export function InboxScreen({ open }: InboxScreenProperties) {
 
   // Spacer class: flex-grow 1 (closed) collapses to 0 (open), centering the capture
   // box vertically on the landing screen. Two equal spacers share the available space.
-  const spacerClass = cn(
-    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-    'transition-[flex-grow] duration-300 ease-out motion-reduce:transition-none',
-    open ? 'grow-0' : 'grow',
-  );
+  const spacerClass = cn(spacerBaseClass, open ? 'grow-0' : 'grow');
 
   return (
     <div className="flex flex-col flex-1">
@@ -103,11 +92,8 @@ export function InboxScreen({ open }: InboxScreenProperties) {
         <div
           data-testid="inbox-reveal"
           className={cn(
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'grid',
+            revealStaticClass,
             open ? (hasBeenClosed ? 'animate-expand-y' : undefined) : 'animate-collapse-y',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'motion-reduce:animate-none',
           )}
           onAnimationEnd={handleAnimationEnd}
           aria-hidden={!open}

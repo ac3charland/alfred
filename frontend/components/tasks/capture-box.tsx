@@ -8,7 +8,8 @@ import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
 import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
 import { useTaskActions } from '@/lib/stores/tasks-store';
-import { cn } from '@/lib/utils';
+
+import { captureSurfaceClass, captureTextareaClass } from './capture-box.styles';
 
 interface CaptureBoxProperties {
   /** The folder to scope the capture to. Undefined means Inbox (no folder). */
@@ -162,16 +163,7 @@ export function CaptureBox({
       }}
       className="relative"
     >
-      <div
-        className={cn(
-          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-          'rounded-2xl border border-border bg-surface',
-          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-          'transition-[box-shadow,border-color] duration-200 ease-out motion-reduce:transition-none',
-          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-          'focus-within:border-accent-teal focus-within:shadow-[0_0_24px_0_rgba(79,209,224,0.12)]',
-        )}
-      >
+      <div className={captureSurfaceClass}>
         {/* Serif prompt — only visible when empty */}
         {!value && (
           <p
@@ -191,12 +183,7 @@ export function CaptureBox({
           onKeyDown={handleKeyDown}
           rows={3}
           aria-label="Capture box"
-          className={cn(
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'rounded-2xl bg-transparent px-4 pt-4 pb-12',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'text-base',
-          )}
+          className={captureTextareaClass}
         />
         <div className="absolute bottom-3 right-3 flex items-center gap-2">
           {errorMessage && (

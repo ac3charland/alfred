@@ -41,6 +41,21 @@ import {
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
+import {
+  checkboxIncompleteClass,
+  checkboxSizeClass,
+  chevronButtonClass,
+  chevronIconClass,
+  collapseClass,
+  confirmTitleClass,
+  dropPlusClass,
+  rowBaseClass,
+  rowDropTargetClass,
+  rowHoverClass,
+  titleInputClass,
+  titleTextClass,
+} from './task-row.styles';
+
 interface TaskRowProperties {
   node: ItemNode;
   depth?: number;
@@ -331,11 +346,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
           can shrink past its content. Kept bespoke (not AnimatedHeightCollapse) for the
           300ms + delay-200 timing and the commit-on-end contract. */}
       <div
-        className={cn(
-          // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-          'grid transition-[grid-template-rows] duration-300 ease-out delay-200 motion-reduce:transition-none',
-          isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
-        )}
+        className={cn(collapseClass, isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]')}
         data-testid="task-collapse"
         onTransitionEnd={handleCompleteCollapseEnd}
       >
@@ -347,16 +358,9 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
             {...(dragListeners ?? {})}
             data-drop-over={isDropTarget ? 'true' : undefined}
             className={cn(
-              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-              'flex items-center gap-2 rounded-sm py-2 pr-2',
-              // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-              'transition-colors duration-100 motion-reduce:transition-none',
+              rowBaseClass,
               // A valid drop target lights up (teal); otherwise the usual hover wash.
-              isDropTarget
-                ? // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'bg-accent-teal/15 ring-1 ring-accent-teal/50'
-                : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'hover:bg-secondary/30',
+              isDropTarget ? rowDropTargetClass : rowHoverClass,
               // Dim the in-place row while its DragOverlay clone is being dragged.
               isDragging && 'opacity-40',
             )}
@@ -370,32 +374,16 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               }}
               aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
               aria-expanded={isExpanded}
-              className={
-                // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                cn('shrink-0', !hasChildren && 'invisible pointer-events-none')
-              }
+              className={cn(chevronButtonClass, !hasChildren && 'invisible pointer-events-none')}
             >
-              <ChevronRight
-                size={14}
-                className={cn(
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  'transition-transform duration-150 motion-reduce:transition-none',
-                  isExpanded && 'rotate-90',
-                )}
-              />
+              <ChevronRight size={14} className={cn(chevronIconClass, isExpanded && 'rotate-90')} />
             </IconButton>
 
             {/* Completion is `task`-only: an unclassified/code row shows no checkbox,
                 just a spacer so its title stays aligned with task rows. */}
             {isTask ? (
               isDropTarget ? (
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal text-background',
-                  )}
-                >
+                <div aria-hidden="true" className={dropPlusClass}>
                   <Plus size={10} strokeWidth={3} />
                 </div>
               ) : (
@@ -412,12 +400,8 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                     isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`
                   }
                   className={cn(
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                    'h-4 w-4',
-                    showAsComplete
-                      ? 'bg-accent-teal border-accent-teal'
-                      : // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                        'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none',
+                    checkboxSizeClass,
+                    showAsComplete ? 'bg-accent-teal border-accent-teal' : checkboxIncompleteClass,
                     // The snappy press: a quick scale overshoot the instant completion begins.
                     isCompleting && 'animate-check-pop motion-reduce:animate-none',
                   )}
@@ -458,16 +442,14 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                       closeEditor({ itemId: node.id, kind: 'title' });
                     }
                   }}
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  className="flex-1 min-w-0 py-0.5"
+                  className={titleInputClass}
                 />
                 <CheckboxButton
                   aria-label="Confirm title"
                   onClick={() => {
                     void handleSaveTitle();
                   }}
-                  // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-                  className="h-5 w-5 border-accent-teal bg-accent-teal"
+                  className={confirmTitleClass}
                 >
                   <Check size={10} className="text-background" strokeWidth={3} />
                 </CheckboxButton>
@@ -485,9 +467,8 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               >
                 <span
                   className={cn(
-                    // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
                     // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
-                    'text-sm truncate transition-colors duration-300 delay-200 motion-reduce:transition-none',
+                    titleTextClass,
                     // Fade to low-contrast as the row completes; a completed row reads
                     // low-contrast; an active row full-contrast.
                     isCompleting

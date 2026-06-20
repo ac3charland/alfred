@@ -11,7 +11,8 @@ import {
   DialogRoot,
   DialogTitle,
 } from '@/components/atoms/dialog';
-import { cn } from '@/lib/utils';
+
+import { cascadeContentClass } from './cascade-modal.styles';
 
 interface CascadeModalProperties {
   open: boolean;
@@ -38,24 +39,7 @@ export function CascadeModal({
     <DialogRoot open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
         <DialogOverlay />
-        <DialogContent
-          className={cn(
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'w-full max-w-md rounded-2xl border border-border bg-surface p-6',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'shadow-[0_0_40px_0_rgba(79,209,224,0.08)]',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-            // Stryker disable next-line StringLiteral: AT_CEILING — cosmetic styling, no behavioral effect
-            'motion-reduce:animate-none',
-          )}
-        >
+        <DialogContent className={cascadeContentClass}>
           <DialogTitle className="text-base font-semibold text-foreground">
             Complete with subtasks?
           </DialogTitle>
