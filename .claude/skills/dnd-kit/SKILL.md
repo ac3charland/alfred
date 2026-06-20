@@ -2,16 +2,14 @@
 name: dnd-kit
 description: >
   Covers dnd-kit drag-and-drop in the frontend: the stable @dnd-kit/core + @dnd-kit/sortable
-  line (DndContext, useSortable, SortableContext, useDroppable, sensors, collision detection,
-  DragOverlay) and how it wires into the existing optimistic task/folder stores. Use when adding
-  or debugging any drag interaction — reorder tasks in a list, drag a task into a sidebar folder,
-  re-nest a subtask, add a drag handle, keyboard-accessible DnD, or persist a manual order — or on
-  any import from @dnd-kit/*. Trigger on: "drag and drop", "drag-and-drop", "reorder", "sortable",
-  "dnd-kit", "useSortable", "DndContext", "DragOverlay", "drag to folder", "drag handle",
-  "arrayMove", or "sortable tree". Pairs with the data-flow skill (optimistic moveTask/reorder
-  actions), the motion skill (reduced-motion), the react skill (hooks), and the
-  playwright/storybook skills (testing drags). Note: the newer @dnd-kit/react rewrite is a
-  separate, pre-1.0 package the frontend does NOT use.
+  line (DndContext, useSortable, SortableContext, useDroppable, DragOverlay, sensors) and how
+  it wires into the optimistic task/folder stores. Use when adding
+  or debugging any drag interaction — reorder tasks, drag a task into a folder,
+  re-nest a subtask, keyboard-accessible DnD — or on
+  any import from @dnd-kit/*. Trigger on: "drag and drop", "reorder", "sortable",
+  "useSortable", "DndContext", "DragOverlay", "drag to folder", "arrayMove", "sortable tree".
+  Pairs with the data-flow, motion, react, and playwright/storybook skills. The newer
+  @dnd-kit/react rewrite is separate; the frontend does NOT use it.
 ---
 
 # dnd-kit Skill — alfred project

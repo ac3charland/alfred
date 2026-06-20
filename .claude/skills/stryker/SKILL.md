@@ -5,10 +5,10 @@ description: >
   testing measures (test-assertion quality, not line coverage), the per-package
   stryker.config.json setup wired to Jest + ts-jest, the `npm run mutation` script,
   coverageAnalysis choices, mutant states + the mutation-score formula, interpreting
-  survived mutants, the npm-workspaces sandbox/node_modules gotcha, the ts-jest
-  disableTypeChecks interaction, and why mutation testing is a standalone audit (NOT
+  survived mutants, the npm-workspaces sandbox/node_modules gotcha, and why mutation
+  testing is a standalone audit (NOT
   wired into check:fast / check:slow). Use when running, configuring, or reasoning about
-  mutation testing — "stryker", "stryker run", "npm run mutation", "mutation score",
+  mutation testing — "stryker", "npm run mutation", "mutation score",
   "survived mutant", "killed mutant", "@stryker-mutator", "stryker.config.json", or
   "why did this mutant survive".
 ---

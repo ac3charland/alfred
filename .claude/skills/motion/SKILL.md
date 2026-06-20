@@ -1,15 +1,13 @@
 ---
 name: motion
 description: >
-  Documents the frontend's motion conventions: the reusable animation design tokens (the `--animate-*`
-  theme tokens in globals.css, e.g. `animate-fade-in` / `animate-fade-out`), the pattern for
-  revealing/collapsing content with a fade (mount → fade-in, fade-out → unmount), how to add a
-  new motion token, and the jsdom `matchMedia` gotcha when testing motion-aware components. Use
-  whenever you add, reuse, or reason about fade/slide reveals, expand/collapse, hover lift,
-  entrance/exit transitions, or prefers-reduced-motion handling — "fade in/out", "transition",
-  "animate", "reveal", "collapse", "slide in", "reduced motion", "useSyncExternalStore for media
-  query", or "add a motion token". Pairs with the tailwindcss skill (token mechanics) and the
-  react / react-testing-library skills (component + test mechanics).
+  Documents the frontend's motion conventions — animation tokens, fade/slide reveals,
+  expand/collapse, and prefers-reduced-motion handling. Use whenever you add, reuse, or
+  reason about an entrance/exit transition, reveal, or hover lift — "fade in/out",
+  "animate-fade-in", "animate-fade-out", "transition", "animate", "reveal", "collapse",
+  "slide in", "reduced motion", "matchMedia", "useSyncExternalStore for media query",
+  "add a motion token", or "--animate-* token". Pairs with the tailwindcss skill (token
+  mechanics) and the react / react-testing-library skills.
 ---
 
 # Motion Skill — alfred project
