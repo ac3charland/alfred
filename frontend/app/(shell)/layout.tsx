@@ -48,8 +48,6 @@ export default async function ShellLayout({ children }: { children: React.ReactN
         <TaskDndProvider>
           <ActiveEditorProvider>
             <ExpansionProvider>
-              {/* ToastProvider wraps CodeProvider so the Code store's realtime swimlane-move
-                  handler can fire a toast (ToastViewport still renders inside AppShell). */}
               <ToastProvider>
                 <CodeProvider
                   initialProjects={projects}
