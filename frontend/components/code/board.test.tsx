@@ -1,10 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
-import type { CodeStory, Epic, Project } from '@/lib/types';
+import { ToastProvider } from '@/lib/stores/toast-store';
+import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import { Board } from './board';
 
@@ -19,6 +20,48 @@ jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 // The epic-header archive/notes controls go through the store's updateEpic → api-client.
 jest.mock('@/lib/api-client');
 const mockUpdateEpic = jest.mocked(api.updateEpic);
+
+// Capture the realtime UPDATE handler the CodeProvider subscribes, so a test can emit a
+// simulated `code_items` change and assert the card moves swimlanes with no user interaction.
+let mockRealtimeHandler: ((payload: { new: CodeItem }) => void) | undefined;
+jest.mock('@/lib/supabase/client', () => ({
+  createClient: () => {
+    const channel = {
+      on: (_event: string, _filter: unknown, handler: (payload: { new: CodeItem }) => void) => {
+        mockRealtimeHandler = handler;
+        return channel;
+      },
+      subscribe: () => channel,
+    };
+    return { channel: () => channel, removeChannel: () => Promise.resolve('ok') };
+  },
+}));
+
+beforeEach(() => {
+  mockRealtimeHandler = undefined;
+});
+
+/** A saved `code_items` sidecar row (the realtime UPDATE payload shape). */
+function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
+  return {
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 1,
+    ref: 'ALF-i1',
+    factory_state: 'needs_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
 
 const PROJECT: Project = {
   id: 'p1',
@@ -84,13 +127,15 @@ function renderBoard(seed: {
   projectId?: string;
 }) {
   return render(
-    <CodeProvider
-      initialProjects={seed.projects ?? [PROJECT]}
-      initialEpics={seed.epics ?? []}
-      initialStories={seed.stories ?? []}
-    >
-      <Board projectId={seed.projectId ?? 'p1'} />
-    </CodeProvider>,
+    <ToastProvider>
+      <CodeProvider
+        initialProjects={seed.projects ?? [PROJECT]}
+        initialEpics={seed.epics ?? []}
+        initialStories={seed.stories ?? []}
+      >
+        <Board projectId={seed.projectId ?? 'p1'} />
+      </CodeProvider>
+    </ToastProvider>,
   );
 }
 
@@ -404,6 +449,33 @@ describe('Board', () => {
       });
       expect(screen.getByText('Keep This')).toBeInTheDocument();
       expect(mockUpdateEpic).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('realtime swimlane updates', () => {
+    it('moves a card to its new swimlane on an external code_items UPDATE, no refresh', () => {
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-7', factory_state: 'in_refinement' })],
+      });
+
+      // Seeded in the In Refinement lane.
+      const before = screen.getByRole('region', { name: 'In Refinement' });
+      expect(within(before).getByText('ALF-7')).toBeInTheDocument();
+
+      // A second writer (the webhook Worker) advances the story; the realtime UPDATE arrives.
+      act(() => {
+        mockRealtimeHandler?.({
+          new: makeSidecar({ item_id: 'i1', ref: 'ALF-7', factory_state: 'ready_for_dev' }),
+        });
+      });
+
+      // The card has moved to Ready for Dev with no user interaction or navigation.
+      const after = screen.getByRole('region', { name: 'Ready for Dev' });
+      expect(within(after).getByText('ALF-7')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('region', { name: 'In Refinement' })).queryByText('ALF-7'),
+      ).not.toBeInTheDocument();
     });
   });
 });

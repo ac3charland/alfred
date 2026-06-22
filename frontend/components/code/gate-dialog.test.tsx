@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeItem, Epic, Project } from '@/lib/types';
 
 import { GateDialog, type GateItem } from './gate-dialog';
@@ -65,18 +66,20 @@ function renderGate(
   const onComplete = overrides.onComplete ?? jest.fn();
   const onOpenChange = overrides.onOpenChange ?? jest.fn();
   render(
-    <CodeProvider
-      initialProjects={seed.projects ?? [PROJECT]}
-      initialEpics={seed.epics ?? [EPIC]}
-      initialStories={[]}
-    >
-      <GateDialog
-        open
-        onOpenChange={onOpenChange}
-        item={overrides.item ?? ITEM}
-        onComplete={onComplete}
-      />
-    </CodeProvider>,
+    <ToastProvider>
+      <CodeProvider
+        initialProjects={seed.projects ?? [PROJECT]}
+        initialEpics={seed.epics ?? [EPIC]}
+        initialStories={[]}
+      >
+        <GateDialog
+          open
+          onOpenChange={onOpenChange}
+          item={overrides.item ?? ITEM}
+          onComplete={onComplete}
+        />
+      </CodeProvider>
+    </ToastProvider>,
   );
   return { onComplete, onOpenChange };
 }

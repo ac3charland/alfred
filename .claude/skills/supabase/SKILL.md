@@ -109,6 +109,7 @@ Server Components cannot write cookies, which means they cannot refresh expired 
 | Sign out | `supabase.auth.signOut()` | Clears local session and broadcasts `SIGNED_OUT` to `onAuthStateChange` listeners. |
 | Create an RLS policy (SQL migration) | `ALTER TABLE items ENABLE ROW LEVEL SECURITY; CREATE POLICY "owner access" ON items FOR ALL TO authenticated USING ((select auth.uid()) = user_id);` | Wrap `auth.uid()` in a `SELECT` subexpression — Postgres caches the result per statement (significant perf win). See `references/rls-policies.md` for full policy patterns. |
 | Generate TypeScript types from schema | `npx supabase gen types typescript --project-id "$PROJECT_REF" --schema public > src/database.types.ts` then `createClient<Database>(url, key)` | Run after every migration. Use `Tables<'items'>`, `Enums<'item_type'>` helpers from the generated file rather than accessing the nested `Database['public']['Tables']['items']['Row']` type directly. |
+| Push live row changes to an open browser (code module only) | `supabase.channel('code_items').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'code_items' }, handler).subscribe()`; tear down with `removeChannel(channel)` | The **only** realtime use in alfred — the webhook Worker is a second, non-browser writer of `factory_state`. **Subscribe to the base `code_items` table, not the `v_code_stories` view** (you can't subscribe to a view). Add the table to the `supabase_realtime` publication in a migration (`0003`); the existing `using (true)` policy governs the stream. Re-applying an echo of your own optimistic write is idempotent — no self-write filter. |
 
 ---
 
@@ -203,7 +204,7 @@ The `@supabase/ssr` cookie API changed from the single-method `get/set/remove` s
 
 ## What Was Deliberately Left Out
 
-- **Realtime subscriptions** (`supabase.channel()`, `.on('postgres_changes', ...)`): alfred is a personal app with one user on one device at a time; realtime adds complexity with no benefit. If concurrent-device sync is ever needed, add it then.
+- **Realtime beyond the code module.** Only `code_items` is subscribed (see the realtime row in the Plain-English table above — the Worker is its second, non-browser writer). Tasks/folders and `epics`/`projects` stay seed-once, and live cross-device INSERT/DELETE sync is not built.
 
 - **Supabase Storage** (file uploads, buckets): not used in alfred's schema. Don't reach for `supabase.storage` unless a future feature explicitly requires it.
 

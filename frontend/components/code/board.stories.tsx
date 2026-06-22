@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
 
 import { CodeProvider } from '@/lib/stores/code-store';
-import type { CodeStory, Epic, Project } from '@/lib/types';
+import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import { Board } from './board';
 
@@ -112,6 +112,81 @@ type Story = StoryObj<typeof meta>;
 
 /** A seeded project board: two epics, each expanded into its six happy-path swimlanes. */
 export const Seeded: Story = {};
+
+// ── Realtime swimlane move (ALF-41) ─────────────────────────────────────────────
+// One epic with a single story sitting in "In Refinement". The Worker (a non-browser
+// writer) advances it to "Ready for Dev"; the open board reflects that live with no reload.
+const REALTIME_EPIC: Epic[] = EPICS.slice(0, 1);
+const REALTIME_STORY: CodeStory[] = [
+  story('i9', 'e1', 'ALF-41', 'Realtime swimlane updates', 'in_refinement'),
+];
+
+/** The out-of-band `code_items` UPDATE the Worker writes (the "second writer"). */
+const MOVED_SIDECAR: CodeItem = {
+  item_id: 'i9',
+  project_id: 'p1',
+  epic_id: 'e1',
+  ref_number: 41,
+  ref: 'ALF-41',
+  factory_state: 'ready_for_dev',
+  lane: 'human',
+  spec_path: null,
+  spec_sha: null,
+  spec_markdown: null,
+  refinement_pr_url: null,
+  implementation_pr_url: null,
+  blocked_reason: null,
+  created_at: '2025-01-01T00:00:00Z',
+  updated_at: '2026-06-22T00:00:00Z',
+};
+
+/**
+ * Fire the simulated Worker write once mounted. Deferred a tick so it lands AFTER the
+ * CodeProvider's subscription effect has registered its handler (the Storybook supabase
+ * mock routes `emitCodeItemsUpdate` to it).
+ */
+function EmitWorkerMove() {
+  React.useEffect(() => {
+    const id = setTimeout(() => {
+      (globalThis as { emitCodeItemsUpdate?: (row: CodeItem) => void }).emitCodeItemsUpdate?.(
+        MOVED_SIDECAR,
+      );
+    }, 50);
+    return () => {
+      clearTimeout(id);
+    };
+  }, []);
+  return null;
+}
+
+function realtimeDecorator(emit: boolean) {
+  return function Decorator(StoryComponent: React.ComponentType) {
+    return (
+      <CodeProvider
+        initialProjects={[PROJECT]}
+        initialEpics={REALTIME_EPIC}
+        initialStories={REALTIME_STORY}
+      >
+        <div data-testid="board-frame" className="w-[1100px] bg-background">
+          <StoryComponent />
+        </div>
+        {emit ? <EmitWorkerMove /> : null}
+      </CodeProvider>
+    );
+  };
+}
+
+/** Before: ALF-41 sits in the "In Refinement" swimlane. */
+export const RealtimeMoveBefore: Story = {
+  parameters: { visualTest: null },
+  decorators: [realtimeDecorator(false)],
+};
+
+/** After: an out-of-band `code_items` UPDATE moved ALF-41 to "Ready for Dev" — no reload. */
+export const RealtimeMoveAfter: Story = {
+  parameters: { visualTest: null },
+  decorators: [realtimeDecorator(true)],
+};
 
 /** Board with one archived epic — the "Show archived" toggle reveals it. */
 export const WithArchivedEpic: Story = {
