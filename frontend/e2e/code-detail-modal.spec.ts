@@ -127,6 +127,64 @@ test('a manual Advance moves the story to the next swimlane', async ({ page, see
   await expect(needsRefinement.getByText('ALF-3')).toBeHidden();
 });
 
+test('moves a story to a different epic via the breadcrumb dropdown', async ({ page, seed }) => {
+  const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
+  const epicOne = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const epicTwo = makeEpic('Capture Pipeline', {
+    id: EPIC_TWO_ID,
+    project_id: PROJECT_ID,
+    ref_number: 2,
+    ref: 'ALF-2',
+  });
+  const item = makeItem('Draft the inbound filter spec', {
+    id: STORY_ITEM_ID,
+    item_type: 'code',
+  });
+  const story = makeCodeStory({
+    item_id: STORY_ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 5,
+    ref: 'ALF-5',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epicOne, epicTwo], items: [item], codeItems: [story] });
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  // The card starts under epic one's block.
+  const epicOneSection = page.locator('section', {
+    has: page.getByRole('button', { name: /communication firewall/i }),
+  });
+  await expect(epicOneSection.getByText('ALF-5')).toBeVisible();
+
+  // Open the modal and move the story to epic two from the Project › Epic breadcrumb.
+  await page.getByRole('button', { name: /open ALF-5/i }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: /change epic/i }).click();
+  await page.getByRole('menuitem', { name: /capture pipeline/i }).click();
+
+  // The breadcrumb updates live to the new epic — no manual refresh.
+  await expect(dialog.getByRole('button', { name: /change epic/i })).toContainText(
+    'Capture Pipeline',
+  );
+
+  // Close the modal; the card now lives under epic two's block, not epic one's.
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+
+  const epicTwoSection = page.locator('section', {
+    has: page.getByRole('button', { name: /capture pipeline/i }),
+  });
+  await expect(epicTwoSection.getByText('ALF-5')).toBeVisible();
+  await expect(epicOneSection.getByText('ALF-5')).toBeHidden();
+});
+
 test('archiving an epic from its header removes it from the active board', async ({
   page,
   seed,
