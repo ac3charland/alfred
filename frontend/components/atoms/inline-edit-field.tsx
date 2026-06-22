@@ -24,6 +24,12 @@ interface InlineEditFieldProperties {
   requireValue?: boolean;
   /** Select the existing text when the field is focused on mount (default false). */
   selectAllOnFocus?: boolean;
+  /**
+   * Render the wrapping `<form>` with `display: contents` (no box of its own) so the input +
+   * confirm flow directly into the parent's layout columns. Used by the task row, whose title
+   * lives in a grid template and needs the editor to occupy the same column as the static title.
+   */
+  dissolveIntoGrid?: boolean;
   /** Classes for the wrapping `<form>`. */
   className?: string;
   /** Classes for the `<input>`. */
@@ -51,6 +57,7 @@ export function InlineEditField({
   placeholder,
   requireValue = true,
   selectAllOnFocus = false,
+  dissolveIntoGrid = false,
   className,
   inputClassName,
   confirmClassName,
@@ -89,7 +96,7 @@ export function InlineEditField({
         if (requireValue && isEmpty) return;
         onSubmit();
       }}
-      className={cn('flex min-w-0 items-center gap-2', className)}
+      className={cn(dissolveIntoGrid ? 'contents' : 'flex min-w-0 items-center gap-2', className)}
     >
       <TextField
         ref={inputRef}

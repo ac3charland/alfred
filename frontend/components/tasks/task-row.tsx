@@ -413,8 +413,6 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
 
             {/* Title */}
             {isEditingTitle ? (
-              // `contents` dissolves the editor's form into the row grid so the input + confirm
-              // sit in the title column exactly as the static title does.
               <InlineEditField
                 value={draftTitle}
                 onChange={setDraftTitle}
@@ -428,7 +426,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                 confirmLabel="Confirm title"
                 inputLabel="Edit title"
                 requireValue={false}
-                className="contents"
+                dissolveIntoGrid
                 inputClassName={titleInputClass}
                 confirmClassName={confirmTitleClass}
               />
