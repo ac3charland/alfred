@@ -23,6 +23,7 @@ record of what an agent just did. Two failure modes live here, and they share a 
 - "Modeled on another tool" provenance (demo-lint)
 - Stale workaround for a since-removed constraint (supabase)
 - Authoring a skill as a companion to the refactor that spawned it (frontend-architecture)
+- Annotating a "left out / not done" entry as now-done (data-flow, supabase)
 - The constructive counterpart: replace-and-shrink (playwright)
 
 ## Supersession note instead of a deletion — storybook (`a55ea86`)
@@ -177,6 +178,29 @@ being rolled out. **And don't call out what doesn't exist** — the first fix tr
 is no `components/ui/`"), but *that's still noise*: a folder the reader will never see doesn't belong
 in the skill at all, even to deny it. State only the positive current home — "shared presentational
 components live in `components/atoms/`" — and stop.
+
+## Annotating a "left out / not done" entry as now-done — data-flow, supabase
+
+A skill listed realtime under "What's Deliberately Left Out." A later change *built* realtime for
+one module, and the agent edited the left-out bullet to say so — leaving a "we don't do X" heading
+whose entry then explains X is done.
+
+BEFORE (under `## What's Deliberately Left Out`):
+```
+- **Realtime / multi-device sync.** Used **only** by the code module: `CodeProvider` subscribes to
+  `code_items` Realtime ... idempotent ... Tasks/folders remain seed-once.
+```
+AFTER: the mechanics move into the **body** as current truth (a "Realtime: the code module's one
+push path" section / a pattern-table row), and the list keeps only the still-un-done scope:
+```
+- **Realtime beyond the code module.** Only `code_items` is subscribed; Tasks/Folders stay
+  seed-once, and live cross-device INSERT/DELETE sync is not built.
+```
+
+**Lesson:** when something graduates from "left out / not done" to "implemented," **relocate** it to
+the body as current truth and trim the left-out entry to the remaining un-done scope. A "not done"
+list that describes a done thing is the same self-contradiction as a supersession note — a list of
+absences must contain only absences.
 
 ## The constructive counterpart: replace-and-shrink — playwright (`a652f2e`)
 

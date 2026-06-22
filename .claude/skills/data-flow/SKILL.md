@@ -67,6 +67,18 @@ the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated se
 or a normalized cache) only when the dataset grows large enough that filtering everything in
 memory hurts.
 
+## Realtime: the code module's one push path
+
+Seed-once works because the **only** writer is the user in their own browser — except in the
+**code module**. A story's `factory_state` (its swimlane) is also written *out of band* by the
+webhook Worker when a PR transitions, so `CodeProvider` subscribes to Supabase Realtime on the
+base `code_items` table and applies each UPDATE through `codeItemToStoryPatch` → the reducer's
+`patchStory`, moving the card to its new lane with no reload. **Subscribe to the base table, not
+the `v_code_stories` view** — you can't subscribe to a view. `patchStory` is keyed by `item_id`
+and a no-op when absent, so a change for an unknown/removed row is ignored; and an echo of the
+user's own optimistic write re-applies identical values, so it's **idempotent** — no self-write
+filtering. Tasks/Folders have a single browser writer and stay pure seed-once.
+
 ## Transient UI state: local until a cross-row command needs it
 
 Per-row UI state stays in the row's own `useState` — an input draft, the meta panel, the
@@ -167,9 +179,9 @@ three strategies for *what* it restores:
   (`react-hooks/refs` forbids `ref.current = x` during render).
 - **Seed once at the layout; no key, no prop-sync effect.** The provider is the session
   source of truth (single-user; a hard reload re-seeds). A prop-sync effect or a remount `key`
-  would wipe optimistic state on navigation. (The code store also patches itself from
-  `code_items` Realtime for out-of-band Worker writes, but it still seeds once — see
-  "What's Deliberately Left Out".)
+  would wipe optimistic state on navigation. (The code store additionally patches itself from
+  `code_items` Realtime for out-of-band Worker writes, but it still seeds once — see "Realtime:
+  the code module's one push path".)
 - **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
   folderId])`), and take a small, serializable scope (`TaskViews` builds it from the URL).
 
@@ -220,12 +232,9 @@ three strategies for *what* it restores:
 
 ## What's Deliberately Left Out
 
-- **Realtime / multi-device sync.** Used **only** by the code module: `CodeProvider` subscribes to
-  `code_items` Realtime so a `factory_state` change written out-of-band by the webhook Worker (or
-  another device) moves the card to its new swimlane live, via `codeItemToStoryPatch` →
-  `patchStory`. Subscribe to the base table, not the `v_code_stories` view; an echo of the user's
-  own optimistic write re-applies identical values, so it's idempotent and needs no self-write
-  filter. Tasks/folders remain seed-once (single browser writer); a hard reload re-seeds them.
+- **Realtime beyond the code module.** Only `code_items` is subscribed (the Worker is its second,
+  non-browser writer — see "Realtime: the code module's one push path"). Tasks/Folders stay
+  seed-once, and live cross-device INSERT/DELETE or `epics`/`projects` sync are not built.
 - **A third-party state library (Zustand/Jotai/Redux/react-query) and a normalized cache.**
   Context + `useReducer` + flat arrays + `buildTree` cover the need with zero deps at this
   scale. `useSyncExternalStore` is the integration seam if an external store is ever adopted.
