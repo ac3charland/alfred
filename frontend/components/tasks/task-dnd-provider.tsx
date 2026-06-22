@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  type CollisionDetection,
   DndContext,
   type DragEndEvent,
   DragOverlay,
@@ -45,6 +46,31 @@ const TaskDragContext = React.createContext<TaskDragState>({
 export function useTaskDrag(): TaskDragState {
   return React.useContext(TaskDragContext);
 }
+
+/**
+ * `pointerWithin` variant that excludes droppables whose DOM nodes live inside an `inert`
+ * container (i.e. a closed AnimatedHeightCollapse). Without this filter, collapsed subtask
+ * rows have non-zero getBoundingClientRect() values that overlap visible rows — their phantom
+ * bounding boxes win the distance sort inside `pointerWithin` when the pointer lands near a
+ * row boundary, causing the drag to highlight the wrong (invisible) target.
+ *
+ * Filtering at collision-detection time (rather than via the `measuring` prop) is reliable
+ * because it reads the live DOM on every pointer move — no caching or async re-measurement
+ * windows can let a stale rect slip through.
+ */
+const pointerWithinVisible: CollisionDetection = (args) => {
+  const visibleContainers = args.droppableContainers.filter((container) => {
+    const node = container.node.current;
+    if (!node) return true;
+    let ancestor: Element | null = node.parentElement;
+    while (ancestor) {
+      if (ancestor.hasAttribute('inert')) return false;
+      ancestor = ancestor.parentElement;
+    }
+    return true;
+  });
+  return pointerWithin({ ...args, droppableContainers: visibleContainers });
+};
 
 /**
  * Drag-and-drop context for the Tasks module. Two kinds of drop happen here, both inside
@@ -159,7 +185,7 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
     >
       <DndContext
         sensors={sensors}
-        collisionDetection={pointerWithin}
+        collisionDetection={pointerWithinVisible}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={() => {
