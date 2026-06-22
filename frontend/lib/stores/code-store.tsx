@@ -141,6 +141,15 @@ export interface CodeActions {
     extra?: api.UpdateCodeStateExtra,
   ) => Promise<void>;
   /**
+   * Move a code story to a different epic in the same project, keyed by its `ref`. The board
+   * re-homes the card the instant `epic_id` changes (`buildEpicBoard` filters on it).
+   * Optimistically patches `epic_id` + the denormalised `epic_name`/`epic_ref`/
+   * `epic_archived_at` (the board read carries these but the saved sidecar does not, so they
+   * come from the target epic already in the store), then reconciles with the saved row,
+   * rolling all four fields back on error.
+   */
+  moveStoryToEpic: (ref: string, epicId: string) => Promise<void>;
+  /**
    * The human launch: show-spinner → AWAIT the state write → open the prefilled
    * Claude Code tab. Awaiting before `window.open` eliminates the "looks launched but didn't
    * persist" edge — the tab only opens once the transition is durable. The URL is derived
@@ -413,6 +422,58 @@ export function CodeProvider({
       },
       updateCodeState(ref, factoryState, extra = {}) {
         return transitionState(ref, factoryState, extra);
+      },
+      async moveStoryToEpic(ref, epicId) {
+        const story = stateRef.current.stories.find((s) => s.ref === ref);
+        if (story === undefined) {
+          throw new Error(`Code story ${ref} not found in the code store`);
+        }
+        // `v_code_stories` is a view (all-nullable row type); a seeded story always has a real
+        // item_id (the inner-join guarantee), but narrow it for the dispatch key.
+        const itemId = story.item_id;
+        if (itemId === null) {
+          throw new Error(`Code story ${ref} has no item_id`);
+        }
+        const target = stateRef.current.epics.find((e) => e.id === epicId);
+        if (target === undefined) {
+          throw new Error(`Epic ${epicId} not found in the code store`);
+        }
+        // The board read carries denormalised epic fields the saved sidecar does NOT return,
+        // so source them from the target epic in the store and capture the prior values for
+        // rollback.
+        const rollback: Partial<CodeStory> = {
+          epic_id: story.epic_id,
+          epic_name: story.epic_name,
+          epic_ref: story.epic_ref,
+          epic_archived_at: story.epic_archived_at,
+        };
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({
+              type: 'patchStory',
+              itemId,
+              patch: {
+                epic_id: target.id,
+                epic_name: target.name,
+                epic_ref: target.ref,
+                epic_archived_at: target.archived_at,
+              },
+            });
+          },
+          apiCall: () => api.moveCodeEpic(ref, epicId),
+          reconcile: (saved) => {
+            // The saved sidecar confirms only epic_id (+ the timestamp); the denormalised
+            // name/ref/archived_at were already applied from the store's epic.
+            dispatch({
+              type: 'patchStory',
+              itemId,
+              patch: { epic_id: saved.epic_id, code_updated_at: saved.updated_at },
+            });
+          },
+          rollback: () => {
+            dispatch({ type: 'patchStory', itemId, patch: rollback });
+          },
+        });
       },
       async updateEpic(epicId, patch) {
         const previous = stateRef.current.epics.find((e) => e.id === epicId);

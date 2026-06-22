@@ -1,9 +1,15 @@
 'use client';
 
-import { Pencil } from 'lucide-react';
+import { ChevronDown, Pencil } from 'lucide-react';
 
 import { Badge } from '@/components/atoms/badge';
 import { DialogClose, DialogTitle, FormDialog } from '@/components/atoms/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/atoms/dropdown-menu';
 import { EditableTextField } from '@/components/atoms/editable-text-field';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
@@ -11,7 +17,7 @@ import { PrimaryAction } from '@/components/code/story-detail/primary-action';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
 import { stateLabel } from '@/components/code/story-detail/state-helpers';
 import type { LaunchPhase } from '@/lib/code/launch';
-import { useCodeActions, useProjects } from '@/lib/stores/code-store';
+import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeFactoryState, CodeStory, Project } from '@/lib/types';
 
 /** The factory-state chip, tinted per happy-path / blocked / abandoned. */
@@ -58,6 +64,73 @@ function EditableTitle({ story }: { story: CodeStory }) {
   );
 }
 
+/**
+ * The **Epic** half of the `Project › Epic` breadcrumb, turned into a move-the-story
+ * dropdown. Lists the project's other, non-archived epics (current excluded, archived
+ * excluded, other projects' excluded), oldest-first (board order); selecting one calls the
+ * store's optimistic `moveStoryToEpic`, which re-homes the card and updates this breadcrumb
+ * live. A single-epic project has no candidates, so the epic renders as plain text.
+ */
+function EpicBreadcrumb({ story }: { story: CodeStory }) {
+  const { moveStoryToEpic } = useCodeActions();
+  const epics = useEpics();
+  const epicName = story.epic_name ?? 'Epic';
+
+  // The store's epics slice is seeded in board order (oldest-first), and filter preserves it.
+  const candidates = epics.filter(
+    (epic) =>
+      epic.project_id === story.project_id &&
+      epic.id !== story.epic_id &&
+      epic.archived_at === null,
+  );
+
+  // Guard a null ref exactly as the title/manual controls do (the view row type is
+  // all-nullable). The store rolls back on rejection and the modal re-reads the live row, so
+  // there's nothing extra to undo here.
+  const move = async (epicId: string) => {
+    if (story.ref === null || story.item_id === null) return;
+    try {
+      await moveStoryToEpic(story.ref, epicId);
+    } catch {
+      // The store rolled the move back.
+    }
+  };
+
+  // No other active epic to move to → no dead dropdown; render the epic as plain text
+  // (a span so it inherits the breadcrumb's muted style, exactly as the old static text did).
+  if (candidates.length === 0) {
+    return <span>{epicName}</span>;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Change epic"
+        className="group/epic inline-flex items-center gap-0.5 rounded-sm text-foreground hover:text-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+      >
+        {epicName}
+        <ChevronDown
+          size={12}
+          className="shrink-0 text-muted-foreground transition-colors group-hover/epic:text-accent-teal motion-reduce:transition-none"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {candidates.map((epic) => (
+          <DropdownMenuItem
+            key={epic.id}
+            onSelect={() => {
+              void move(epic.id);
+            }}
+          >
+            <span className="text-foreground">{epic.name}</span>
+            <span className="font-mono text-xs text-muted-foreground">{epic.ref}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** The modal body — split out so it MOUNTS FRESH each open (Radix only renders while open). */
 function DetailBody({
   story,
@@ -69,7 +142,6 @@ function DetailBody({
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
-  const epicName = story.epic_name ?? 'Epic';
   const notes = story.notes?.trim();
 
   return (
@@ -82,7 +154,7 @@ function DetailBody({
           </div>
           <EditableTitle story={story} />
           <p className="text-xs text-muted-foreground">
-            {projectName} <span aria-hidden="true">›</span> {epicName}
+            {projectName} <span aria-hidden="true">›</span> <EpicBreadcrumb story={story} />
           </p>
         </div>
         <DialogClose
@@ -148,8 +220,9 @@ export interface StoryDetailModalProperties {
  * (react-markdown + remark-gfm) with a "View in repo" link, PR links, the phase-appropriate
  * "Open Claude Code" launch button, and the manual fallback controls.
  *
- * Must be mounted under a `CodeProvider` — it reads `useCodeActions` for the title edit and
- * the manual transitions. The board owns the open story + the `onOpenSession` handler. The
+ * Must be mounted under a `CodeProvider` — it reads `useCodeActions` for the title edit, the
+ * move-to-epic dropdown, and the manual transitions, and `useEpics` for the dropdown's
+ * candidates. The board owns the open story + the `onOpenSession` handler. The
  * header chip, primary action, spec body, and manual controls are their own sub-components
  * under `code/story-detail/`; this file is the composition root.
  */

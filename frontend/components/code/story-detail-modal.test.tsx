@@ -24,6 +24,7 @@ jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 jest.mock('@/lib/api-client');
 const mockUpdateItem = jest.mocked(api.updateItem);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
+const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
 
 const PROJECT: Project = {
   id: 'p1',
@@ -46,6 +47,11 @@ const EPIC: Epic = {
   archived_at: null,
   created_at: '2025-01-01T00:00:00Z',
 };
+
+/** Build an epic row, defaulting to an active epic in project p1. */
+function makeEpic(id: string, overrides: Partial<Epic> = {}): Epic {
+  return { ...EPIC, id, name: `Epic ${id}`, ref: `ALF-${id}`, ...overrides };
+}
 
 function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
   return {
@@ -119,6 +125,16 @@ function renderModal(
   // Portaled content lives on document.body — query the dialog from there (RTL skill).
   const dialog = within(screen.getByRole('dialog'));
   return { ...utils, dialog, onOpenSession };
+}
+
+/** Render the modal with a custom set of seeded epics (for the move-to-epic dropdown). */
+function renderModalWithEpics(story: CodeStory, epics: Epic[]) {
+  render(
+    <CodeProvider initialProjects={[PROJECT]} initialEpics={epics} initialStories={[story]}>
+      <ModalHarness itemId={story.item_id ?? ''} onOpenSession={jest.fn(() => Promise.resolve())} />
+    </CodeProvider>,
+  );
+  return within(screen.getByRole('dialog'));
 }
 
 describe('StoryDetailModal', () => {
@@ -278,6 +294,62 @@ describe('StoryDetailModal', () => {
         expect(dialog.queryByRole('button', { name: implementButton })).not.toBeInTheDocument();
       },
     );
+  });
+
+  describe('the epic move dropdown', () => {
+    const ROUTING = makeEpic('e2', { name: 'Routing', ref: 'ALF-2' });
+    const ARCHIVED = makeEpic('e3', {
+      name: 'Archived Epic',
+      ref: 'ALF-3',
+      archived_at: '2026-02-01T00:00:00Z',
+    });
+    const OTHER_PROJECT = makeEpic('e4', {
+      name: 'Other Project Epic',
+      ref: 'RLP-1',
+      project_id: 'p2',
+    });
+
+    it('lists the other active same-project epics (not the current/archived/other-project ones)', async () => {
+      const user = userEvent.setup();
+      const dialog = renderModalWithEpics(makeStory(), [EPIC, ROUTING, ARCHIVED, OTHER_PROJECT]);
+
+      await user.click(dialog.getByRole('button', { name: /change epic/i }));
+      await screen.findByRole('menu');
+
+      // The one valid candidate is offered…
+      expect(screen.getByRole('menuitem', { name: /Routing/i })).toBeInTheDocument();
+      // …and the archived, other-project, and current epics are not.
+      expect(screen.queryByRole('menuitem', { name: /Archived Epic/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: /Other Project Epic/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: /Communication Firewall/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('moves the story to the chosen epic (PATCHes epic_id by ref)', async () => {
+      mockMoveCodeEpic.mockResolvedValue({
+        epic_id: 'e2',
+        updated_at: '2026-02-02T00:00:00Z',
+      } as never);
+      const user = userEvent.setup();
+      const dialog = renderModalWithEpics(makeStory(), [EPIC, ROUTING]);
+
+      await user.click(dialog.getByRole('button', { name: /change epic/i }));
+      await screen.findByRole('menu');
+      // Radix portals set pointer-events:none on the body, so select via the keyboard.
+      await user.keyboard('[ArrowDown][Enter]');
+
+      expect(mockMoveCodeEpic).toHaveBeenCalledWith('ALF-42', 'e2');
+    });
+
+    it('renders the epic as plain text (no dropdown) when the project has no other active epic', () => {
+      const dialog = renderModalWithEpics(makeStory(), [EPIC]);
+
+      expect(dialog.getByText('Communication Firewall')).toBeInTheDocument();
+      expect(dialog.queryByRole('button', { name: /change epic/i })).not.toBeInTheDocument();
+    });
   });
 
   describe('manual controls (fallback)', () => {

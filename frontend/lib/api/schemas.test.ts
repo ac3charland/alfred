@@ -253,3 +253,33 @@ describe('updateCodeSchema factory_state enum', () => {
     expect(updateCodeSchema.safeParse({ factory_state: '' }).success).toBe(false);
   });
 });
+
+describe('updateCodeSchema optional fields + epic move', () => {
+  const epicId = '123e4567-e89b-42d3-a456-426614174000';
+
+  it('accepts a factory_state-only body', () => {
+    expect(updateCodeSchema.safeParse({ factory_state: 'in_refinement' }).success).toBe(true);
+  });
+
+  it('accepts an epic_id-only body (factory_state is now optional)', () => {
+    expect(updateCodeSchema.safeParse({ epic_id: epicId }).success).toBe(true);
+  });
+
+  it('accepts both factory_state and epic_id together', () => {
+    expect(updateCodeSchema.safeParse({ factory_state: 'done', epic_id: epicId }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects a non-uuid epic_id', () => {
+    expect(updateCodeSchema.safeParse({ epic_id: 'not-a-uuid' }).success).toBe(false);
+  });
+
+  it('rejects an empty patch body (the refine requires factory_state or epic_id)', () => {
+    expect(updateCodeSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects a blocked_reason-only body (a companion never travels alone)', () => {
+    expect(updateCodeSchema.safeParse({ blocked_reason: 'why' }).success).toBe(false);
+  });
+});
