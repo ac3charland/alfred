@@ -1,10 +1,9 @@
 'use client';
 
-import { Check } from 'lucide-react';
-import * as React from 'react';
+import type { ReactNode } from 'react';
 
+import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
-import { cn } from '@/lib/utils';
 
 interface EditableTextFieldProperties {
   value: string;
@@ -19,15 +18,14 @@ interface EditableTextFieldProperties {
   /** Select all text when entering edit mode (default true). */
   selectAllOnEdit?: boolean;
   /** Display-mode content; defaults to the current value. */
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 /**
- * A click-to-edit text field: a display button that swaps to an inline input on click, with
- * the shared save semantics (Enter / confirm saves, Escape / blur cancels, rollback on throw)
- * from `useInlineEdit`. The `children` slot keeps each call site's own display layout (a title
- * element, a pencil affordance, etc.). The confirm control is the teal-filled check box used
- * across the title editors.
+ * A click-to-edit text field: a display button that swaps to the shared `InlineEditField` on
+ * click, wired to the `useInlineEdit` save semantics (Enter / confirm saves, Escape / outside
+ * click cancels, no-op on empty/unchanged, rollback on throw). The `children` slot keeps each
+ * call site's own display layout (a title element, a pencil affordance, etc.).
  */
 export function EditableTextField({
   value,
@@ -37,41 +35,28 @@ export function EditableTextField({
   selectAllOnEdit,
   children,
 }: EditableTextFieldProperties) {
-  const { isEditing, begin, cancel, save, inputRef, inputProps } = useInlineEdit(value, onSave, {
-    selectAllOnEdit: selectAllOnEdit ?? true,
-  });
+  const { isEditing, begin, cancel, save, draft, setDraft } = useInlineEdit(value, onSave);
   const confirmLabel = `Confirm ${label.replace(/^Edit /, '')}`;
+
+  // exactOptionalPropertyTypes: only forward inputClassName when defined.
+  const inputClassProperty = inputClassName === undefined ? {} : { inputClassName };
 
   if (isEditing) {
     return (
-      <div
-        className="flex flex-1 items-center gap-2"
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) cancel();
+      <InlineEditField
+        value={draft}
+        onChange={setDraft}
+        onSubmit={() => {
+          void save();
         }}
-      >
-        <input
-          ref={inputRef}
-          aria-label={label}
-          type="text"
-          {...inputProps}
-          className={cn(
-            'flex-1 rounded-sm border border-border bg-input px-2 py-1 text-sm text-foreground',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal',
-            inputClassName,
-          )}
-        />
-        <button
-          type="button"
-          aria-label={confirmLabel}
-          onClick={() => {
-            void save();
-          }}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
-        >
-          <Check size={12} className="text-background" strokeWidth={3} />
-        </button>
-      </div>
+        onCancel={cancel}
+        confirmLabel={confirmLabel}
+        inputLabel={label}
+        requireValue={false}
+        selectAllOnFocus={selectAllOnEdit ?? true}
+        className="flex-1"
+        {...inputClassProperty}
+      />
     );
   }
 
