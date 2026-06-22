@@ -212,6 +212,18 @@ export function updateCodeState(
   });
 }
 
+/**
+ * Move a code story to a different epic in the same project. PATCHes the sidecar's
+ * `epic_id` by ref and returns the updated `code_items` row. A named, intent-revealing
+ * helper (like `moveToInbox`) rather than overloading `updateCodeState`.
+ */
+export function moveCodeEpic(ref: string, epicId: string): Promise<CodeItem> {
+  return apiRequest<CodeItem>(`/api/code/${encodeURIComponent(ref)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ epic_id: epicId }),
+  });
+}
+
 export {
   type CreateItemInput,
   type CreateProjectInput,
