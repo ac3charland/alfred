@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { ToastProvider } from '@/lib/stores/toast-store';
 import type { Project } from '@/lib/types';
 
 import { ProjectNav } from './project-nav';
@@ -50,9 +51,11 @@ const PROJECTS: Project[] = [
 function renderNav(projects: Project[], properties: Partial<{ onClose: () => void }> = {}) {
   const onCloseProperty = properties.onClose ? { onClose: properties.onClose } : {};
   return render(
-    <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
-      <ProjectNav {...onCloseProperty} />
-    </CodeProvider>,
+    <ToastProvider>
+      <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
+        <ProjectNav {...onCloseProperty} />
+      </CodeProvider>
+    </ToastProvider>,
   );
 }
 

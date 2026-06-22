@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { CodeProvider, useProjectBoard } from '@/lib/stores/code-store';
+import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import { StoryDetailModal } from './story-detail-modal';
@@ -112,9 +113,11 @@ function renderModal(
 ) {
   const onOpenSession = options.onOpenSession ?? jest.fn(() => Promise.resolve());
   const utils = render(
-    <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[story]}>
-      <ModalHarness itemId={story.item_id ?? ''} onOpenSession={onOpenSession} />
-    </CodeProvider>,
+    <ToastProvider>
+      <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[story]}>
+        <ModalHarness itemId={story.item_id ?? ''} onOpenSession={onOpenSession} />
+      </CodeProvider>
+    </ToastProvider>,
   );
   // Portaled content lives on document.body — query the dialog from there (RTL skill).
   const dialog = within(screen.getByRole('dialog'));
@@ -124,14 +127,16 @@ function renderModal(
 describe('StoryDetailModal', () => {
   it('renders nothing visible when closed', () => {
     render(
-      <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[]}>
-        <StoryDetailModal
-          story={null}
-          open={false}
-          onOpenChange={jest.fn()}
-          onOpenSession={jest.fn()}
-        />
-      </CodeProvider>,
+      <ToastProvider>
+        <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[]}>
+          <StoryDetailModal
+            story={null}
+            open={false}
+            onOpenChange={jest.fn()}
+            onOpenSession={jest.fn()}
+          />
+        </CodeProvider>
+      </ToastProvider>,
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
