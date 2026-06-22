@@ -43,8 +43,30 @@ function FolderNameForm({
   className?: string;
   submitLabel: string;
 }) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  // Focus the input on mount without the autoFocus prop (jsx-a11y/no-autofocus)
+  React.useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Dismiss when the user clicks outside this form
+  React.useEffect(() => {
+    const handlePointerDown = (event_: PointerEvent) => {
+      if (formRef.current && !formRef.current.contains(event_.target as Node)) {
+        onCancel();
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [onCancel]);
+
   return (
     <form
+      ref={formRef}
       onSubmit={(event_) => {
         event_.preventDefault();
         onSubmit();
@@ -52,6 +74,7 @@ function FolderNameForm({
       className={cn('flex min-w-0 items-center gap-1', className)}
     >
       <TextField
+        ref={inputRef}
         value={value}
         onChange={(event_) => {
           onChange(event_.target.value);
@@ -60,7 +83,6 @@ function FolderNameForm({
           if (event_.key === 'Escape') onCancel();
         }}
         placeholder={placeholder}
-        // autoFocus intentionally omitted — jsx-a11y/no-autofocus
         className="flex-1 min-w-0"
       />
       <IconButton type="submit" tone="affirm" disabled={!value.trim()} aria-label={submitLabel}>
