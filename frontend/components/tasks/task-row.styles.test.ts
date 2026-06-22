@@ -23,7 +23,7 @@ describe('task-row styles', () => {
 
   it('row base is a flex layout with a colour transition', () => {
     expect(rowBaseClass).toContain('flex');
-    expect(rowBaseClass).toContain('items-center');
+    expect(rowBaseClass).toContain('items-start');
     expect(rowBaseClass).toContain('rounded-sm');
     expect(rowBaseClass).toContain('transition-colors');
   });
@@ -63,9 +63,10 @@ describe('task-row styles', () => {
     expect(confirmTitleClass).toContain('bg-accent-teal');
   });
 
-  it('title text truncates and fades with a delayed colour transition', () => {
-    expect(titleTextClass).toContain('truncate');
+  it('title text wraps (break-words) and fades with a delayed colour transition', () => {
+    expect(titleTextClass).toContain('break-words');
     expect(titleTextClass).toContain('transition-colors');
     expect(titleTextClass).toContain('delay-200');
+    expect(titleTextClass).not.toContain('truncate');
   });
 });
