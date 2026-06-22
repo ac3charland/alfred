@@ -184,14 +184,22 @@ const codeFactoryState = z.enum([
 ]);
 
 /**
- * Body for PATCH /api/code/[ref] — a state transition. `factory_state` is required;
- * `blocked_reason` is the optional companion the Block control sets (nullable so it clears on
- * any non-blocked hop). Drives both the link-click write and the manual controls.
+ * Body for PATCH /api/code/[ref] — a sidecar edit. Every field is optional, but the
+ * `.refine` rejects an empty body so a PATCH must change something. `factory_state` drives
+ * the state transition (the link-click write + the manual controls); `blocked_reason` is its
+ * companion (nullable so it clears on any non-blocked hop); `epic_id` moves the story to a
+ * different epic (the route guards same-project). `blocked_reason` is a companion only — it
+ * never travels alone, so it doesn't satisfy the "something to update" check.
  */
-export const updateCodeSchema = z.object({
-  factory_state: codeFactoryState,
-  blocked_reason: z.string().nullable().optional(),
-});
+export const updateCodeSchema = z
+  .object({
+    factory_state: codeFactoryState.optional(),
+    blocked_reason: z.string().nullable().optional(),
+    epic_id: uuid.optional(),
+  })
+  .refine((data) => data.factory_state !== undefined || data.epic_id !== undefined, {
+    message: 'At least one of "factory_state" or "epic_id" is required',
+  });
 
 export type UpdateCodeInput = z.infer<typeof updateCodeSchema>;
 

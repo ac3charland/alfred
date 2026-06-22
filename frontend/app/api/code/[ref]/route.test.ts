@@ -38,6 +38,32 @@ function makeMockSupabase(user: { id: string } | undefined, result: MockResult) 
   };
 }
 
+/**
+ * A mock whose `from(table)` hands out a fresh chain per call, drawing results from a
+ * per-table queue (FIFO). Needed for the epic-move path, which reads `code_items` and
+ * `epics` for the cross-project guard before the `code_items` update — three `.from()` calls.
+ */
+function makeMockSupabaseByTable(
+  user: { id: string } | undefined,
+  queues: Record<string, MockResult[]>,
+) {
+  const chainsByTable: Record<string, ReturnType<typeof makeQueryChain>[]> = {};
+  const from = jest.fn((table: string) => {
+    const queue = queues[table] ?? [];
+    const result = queue.shift() ?? { data: undefined, error: undefined };
+    const chain = makeQueryChain(result);
+    (chainsByTable[table] ??= []).push(chain);
+    return chain;
+  });
+  return {
+    auth: { getUser: jest.fn().mockResolvedValue({ data: { user } }) },
+    from,
+    _chains: chainsByTable,
+  };
+}
+
+const EPIC_ID = '123e4567-e89b-42d3-a456-426614174000';
+
 /** Extract the first-call first-arg from a mock as a plain object. */
 function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
   const calls = mockFn.mock.calls as [Record<string, unknown>][];
@@ -151,6 +177,60 @@ describe('PATCH /api/code/[ref]', () => {
 
     const payload = firstCallArg(mockSupabase._chain.update);
     expect(payload).toStrictEqual({ factory_state: 'ready_for_dev', blocked_reason: null });
+  });
+
+  it('returns 400 for an empty patch body (nothing to update)', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(patchRequest({}), routeContext);
+    expect(response.status).toBe(400);
+  });
+
+  describe('moving a story to a different epic', () => {
+    it('updates the sidecar epic_id and returns the row when the epic is same-project', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [
+          { data: { project_id: 'p1' }, error: undefined },
+          { data: { ...TEST_STORY, epic_id: EPIC_ID }, error: undefined },
+        ],
+        epics: [{ data: { project_id: 'p1' }, error: undefined }],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      const response = await PATCH(patchRequest({ epic_id: EPIC_ID }), routeContext);
+      expect(response.status).toBe(200);
+
+      // The second code_items chain is the update; it carries only epic_id.
+      const updateChain = mockSupabase._chains['code_items']?.[1];
+      expect(updateChain?.update).toHaveBeenCalledWith({ epic_id: EPIC_ID });
+      expect(updateChain?.eq).toHaveBeenCalledWith('ref', 'ALF-42');
+    });
+
+    it('rejects (400) a target epic in a different project and never updates', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [{ data: { project_id: 'p1' }, error: undefined }],
+        epics: [{ data: { project_id: 'p2' }, error: undefined }],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      const response = await PATCH(patchRequest({ epic_id: EPIC_ID }), routeContext);
+      expect(response.status).toBe(400);
+      // Only the guard select ran on code_items — no update chain was created.
+      expect(mockSupabase._chains['code_items']).toHaveLength(1);
+    });
+
+    it('rejects (400) an unknown target epic', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [{ data: { project_id: 'p1' }, error: undefined }],
+        epics: [{ data: undefined, error: undefined }],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      const response = await PATCH(patchRequest({ epic_id: EPIC_ID }), routeContext);
+      expect(response.status).toBe(400);
+      expect(mockSupabase._chains['code_items']).toHaveLength(1);
+    });
   });
 
   it('returns 500 on Supabase error', async () => {
