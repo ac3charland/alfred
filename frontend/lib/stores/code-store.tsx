@@ -1,5 +1,6 @@
 'use client';
 
+import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
@@ -7,6 +8,8 @@ import { buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
+import { useToastActions } from '@/lib/stores/toast-store';
+import { createClient } from '@/lib/supabase/client';
 import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -52,6 +55,18 @@ export const STATE_LABELS: Record<HappyPathState, string> = {
 export function isEscapeState(state: CodeFactoryState | null): boolean {
   return state === 'blocked' || state === 'abandoned';
 }
+
+/**
+ * Display label for ANY factory state — the six happy-path lanes plus the off-board escape
+ * states (Blocked / Abandoned, which have no lane). The realtime swimlane-move notification
+ * needs a label for whatever state a transition lands in, so it can't use the lane-only
+ * `STATE_LABELS`.
+ */
+export const FACTORY_STATE_LABELS: Record<CodeFactoryState, string> = {
+  ...STATE_LABELS,
+  blocked: 'Blocked',
+  abandoned: 'Abandoned',
+};
 
 /** One swimlane: a happy-path state and the stories currently in it (ref order). */
 export interface BoardLane {
@@ -228,23 +243,32 @@ export function codeReducer(state: CodeState, action: CodeAction): CodeState {
   }
 }
 
+/**
+ * The sidecar fields a `code_items` row contributes to its flattened `CodeStory`. The single
+ * source of truth for the sidecar→story projection: both `reconcileStory` (the optimistic
+ * write path) and the realtime subscription (out-of-band Worker writes) patch a story through
+ * this one mapping. Pure and exported so it's unit-testable on its own.
+ */
+export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
+  return {
+    ref: row.ref,
+    ref_number: row.ref_number,
+    factory_state: row.factory_state,
+    lane: row.lane,
+    spec_path: row.spec_path,
+    spec_sha: row.spec_sha,
+    spec_markdown: row.spec_markdown,
+    refinement_pr_url: row.refinement_pr_url,
+    implementation_pr_url: row.implementation_pr_url,
+    blocked_reason: row.blocked_reason,
+    code_created_at: row.created_at,
+    code_updated_at: row.updated_at,
+  };
+}
+
 /** Reconcile the optimistic story with the server sidecar (real ref/ref_number/state). */
 function reconcileStory(optimistic: CodeStory, saved: CodeItem): CodeStory {
-  return {
-    ...optimistic,
-    ref: saved.ref,
-    ref_number: saved.ref_number,
-    factory_state: saved.factory_state,
-    lane: saved.lane,
-    spec_path: saved.spec_path,
-    spec_sha: saved.spec_sha,
-    spec_markdown: saved.spec_markdown,
-    refinement_pr_url: saved.refinement_pr_url,
-    implementation_pr_url: saved.implementation_pr_url,
-    blocked_reason: saved.blocked_reason,
-    code_created_at: saved.created_at,
-    code_updated_at: saved.updated_at,
-  };
+  return { ...optimistic, ...codeItemToStoryPatch(saved) };
 }
 
 // The board reads the three slices through SEPARATE contexts (a deliberate re-render
@@ -291,6 +315,77 @@ export function CodeProvider({
   React.useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const { showToast } = useToastActions();
+
+  // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
+  // factory_state out of band, never touching this tab's store — so subscribe to the base
+  // `code_items` table (you can't subscribe to the `v_code_stories` view the board reads)
+  // and feed each UPDATE through the SAME sidecar→story projection the reconcile uses.
+  // `patchStory` is keyed by `item_id` and a no-op when absent (the race rule), so a change
+  // for a story this tab doesn't hold — or one already removed — is harmlessly ignored, and
+  // an echo of the user's own optimistic write re-applies identical values (idempotent).
+  React.useEffect(() => {
+    const supabase = createClient();
+
+    // Tab-title marker state for transitions that land while the tab is backgrounded.
+    // Capture the original title once so the restore is exact and doesn't fight a route title.
+    let savedTitle: string | null = null;
+    let hiddenUpdates = 0;
+    const restoreTitle = () => {
+      if (savedTitle !== null) {
+        document.title = savedTitle;
+        savedTitle = null;
+        hiddenUpdates = 0;
+      }
+    };
+    const handleVisible = () => {
+      if (!document.hidden) restoreTitle();
+    };
+
+    const handleUpdate = (payload: RealtimePostgresUpdatePayload<CodeItem>) => {
+      const row = payload.new;
+      // Compute the prior state BEFORE dispatching: a real external move is one whose stored
+      // state differs from the incoming row. A self-write echo already set the new state
+      // optimistically, so `previous === next` and nothing fires — the same idempotent-echo
+      // reasoning that keeps the board stable (no flicker, no double notification).
+      const previous = stateRef.current.stories.find((story) => story.item_id === row.item_id);
+      const changedState = previous !== undefined && previous.factory_state !== row.factory_state;
+      dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+      if (!changedState) return;
+
+      const label = FACTORY_STATE_LABELS[row.factory_state];
+      showToast(`${row.ref} moved to ${label}`);
+      // A glanceable marker for moves that arrive while the user is on another tab.
+      if (document.hidden) {
+        savedTitle ??= document.title;
+        hiddenUpdates += 1;
+        document.title =
+          hiddenUpdates === 1
+            ? `● ${row.ref} → ${label}`
+            : `(${String(hiddenUpdates)}) updates · ${row.ref} → ${label}`;
+      }
+    };
+
+    const channel = supabase
+      .channel('code_items')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'code_items' },
+        handleUpdate,
+      )
+      .subscribe();
+
+    document.addEventListener('visibilitychange', handleVisible);
+    window.addEventListener('focus', handleVisible);
+
+    return () => {
+      void supabase.removeChannel(channel);
+      document.removeEventListener('visibilitychange', handleVisible);
+      window.removeEventListener('focus', handleVisible);
+      restoreTitle();
+    };
+  }, [showToast]);
 
   const actions = React.useMemo<CodeActions>(() => {
     // Shared insert-optimistic-then-reconcile path for both gate entry points (the

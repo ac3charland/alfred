@@ -11,6 +11,7 @@ import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
+import { ToastProvider } from '@/lib/stores/toast-store';
 
 /**
  * Shared shell layout (Server Component) — the single parent of BOTH modules' route groups
@@ -47,13 +48,17 @@ export default async function ShellLayout({ children }: { children: React.ReactN
         <TaskDndProvider>
           <ActiveEditorProvider>
             <ExpansionProvider>
-              <CodeProvider
-                initialProjects={projects}
-                initialEpics={epics}
-                initialStories={stories}
-              >
-                <AppShell>{children}</AppShell>
-              </CodeProvider>
+              {/* ToastProvider wraps CodeProvider so the Code store's realtime swimlane-move
+                  handler can fire a toast (ToastViewport still renders inside AppShell). */}
+              <ToastProvider>
+                <CodeProvider
+                  initialProjects={projects}
+                  initialEpics={epics}
+                  initialStories={stories}
+                >
+                  <AppShell>{children}</AppShell>
+                </CodeProvider>
+              </ToastProvider>
             </ExpansionProvider>
           </ActiveEditorProvider>
         </TaskDndProvider>

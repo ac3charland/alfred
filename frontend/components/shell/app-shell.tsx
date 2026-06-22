@@ -7,13 +7,15 @@ import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
 import { signOut } from '@/lib/auth/actions';
-import { ToastProvider } from '@/lib/stores/toast-store';
 
 /**
  * Shared application shell (Server Component) mounted once by the `(shell)` layout that
  * seeds every module's providers. It owns the chrome that's identical across modules: the
  * `alfred` wordmark (links to `/` capture, unchanged), the Tasks ⇄ Code switcher, the
  * sign-out form, and the desktop sidebar / mobile header frame.
+ *
+ * `ToastProvider` is mounted by the `(shell)` layout (it must wrap `CodeProvider`), so this
+ * shell only renders the `ToastViewport` — both live under that provider.
  *
  * The module-specific nav is no longer a prop: with one shared layout it must follow the URL
  * client-side, so the sidebar mounts `ShellNav` (FolderNav vs ProjectNav) and the header
@@ -24,7 +26,7 @@ import { ToastProvider } from '@/lib/stores/toast-store';
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <ToastProvider>
+    <>
       <div className="flex h-full min-h-screen bg-background">
         {/* Desktop sidebar */}
         <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
@@ -78,6 +80,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       <ToastViewport />
-    </ToastProvider>
+    </>
   );
 }
