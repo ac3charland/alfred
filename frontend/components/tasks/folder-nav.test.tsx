@@ -327,6 +327,51 @@ describe('FolderNav', () => {
     expect(screen.getByPlaceholderText(/folder name/i)).toHaveValue('');
   });
 
+  it('focuses the create-folder input immediately on open', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await user.click(screen.getByRole('button', { name: /create folder/i }));
+
+    expect(screen.getByPlaceholderText(/folder name/i)).toHaveFocus();
+  });
+
+  it('dismisses the create form when clicking outside it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await user.click(screen.getByRole('button', { name: /create folder/i }));
+    expect(screen.getByPlaceholderText(/folder name/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: /completed/i }));
+
+    expect(screen.queryByPlaceholderText(/folder name/i)).not.toBeInTheDocument();
+    expect(mockCreateFolder).not.toHaveBeenCalled();
+  });
+
+  it('clears the name when dismissing the create form by clicking outside (reopening shows empty input)', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await user.click(screen.getByRole('button', { name: /create folder/i }));
+    await user.type(screen.getByPlaceholderText(/folder name/i), 'Draft');
+
+    await user.click(screen.getByRole('link', { name: /completed/i }));
+
+    await user.click(screen.getByRole('button', { name: /create folder/i }));
+    expect(screen.getByPlaceholderText(/folder name/i)).toHaveValue('');
+  });
+
+  it('does not dismiss the create form when clicking inside it on the input', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await user.click(screen.getByRole('button', { name: /create folder/i }));
+    await user.click(screen.getByPlaceholderText(/folder name/i));
+
+    expect(screen.getByPlaceholderText(/folder name/i)).toBeInTheDocument();
+  });
+
   it('calls onClose when a nav link is clicked and onClose is provided', async () => {
     const onClose = jest.fn();
     const user = userEvent.setup();
@@ -561,6 +606,43 @@ describe('FolderNav', () => {
     // Rename form hidden, folder link reappears
     expect(screen.queryByRole('button', { name: /save rename/i })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /work/i })).toBeInTheDocument();
+  });
+
+  it('focuses the rename input immediately on open', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
+
+    expect(screen.getByRole('textbox')).toHaveFocus();
+  });
+
+  it('dismisses the rename form when clicking outside it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
+    expect(screen.getByRole('button', { name: /save rename/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: /completed/i }));
+
+    expect(screen.queryByRole('button', { name: /save rename/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /work/i })).toBeInTheDocument();
+    expect(mockUpdateFolder).not.toHaveBeenCalled();
+  });
+
+  it('does not dismiss the rename form when clicking inside it on the input', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    await openFolderMenu(user, 'Work');
+    await selectEdit(user);
+
+    await user.click(screen.getByRole('textbox'));
+
+    expect(screen.getByRole('button', { name: /save rename/i })).toBeInTheDocument();
   });
 
   it('options button label includes folder name for accessibility', () => {

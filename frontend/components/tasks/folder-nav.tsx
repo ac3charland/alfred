@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
-import { TextField } from '@/components/atoms/text-field';
+import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
 import { ViewLink } from '@/components/tasks/view-link';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
@@ -23,51 +23,6 @@ import { cn } from '@/lib/utils';
 interface FolderNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
   onClose?: () => void;
-}
-
-/** Shared inline form used by both create and rename. Handles min-w-0 so the save button is never clipped. */
-function FolderNameForm({
-  value,
-  onChange,
-  onSubmit,
-  onCancel,
-  placeholder,
-  className,
-  submitLabel,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
-  placeholder?: string;
-  className?: string;
-  submitLabel: string;
-}) {
-  return (
-    <form
-      onSubmit={(event_) => {
-        event_.preventDefault();
-        onSubmit();
-      }}
-      className={cn('flex min-w-0 items-center gap-1', className)}
-    >
-      <TextField
-        value={value}
-        onChange={(event_) => {
-          onChange(event_.target.value);
-        }}
-        onKeyDown={(event_) => {
-          if (event_.key === 'Escape') onCancel();
-        }}
-        placeholder={placeholder}
-        // autoFocus intentionally omitted — jsx-a11y/no-autofocus
-        className="flex-1 min-w-0"
-      />
-      <IconButton type="submit" tone="affirm" disabled={!value.trim()} aria-label={submitLabel}>
-        <Check size={13} />
-      </IconButton>
-    </form>
-  );
 }
 
 /**
@@ -170,7 +125,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
         {/* New folder form */}
         {isCreating && (
-          <FolderNameForm
+          <InlineEditField
             value={newFolderName}
             onChange={setNewFolderName}
             onSubmit={() => {
@@ -181,7 +136,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
               setNewFolderName('');
             }}
             placeholder="Folder name…"
-            submitLabel="Save folder"
+            confirmLabel="Save folder"
             className="px-2 py-1"
           />
         )}
@@ -192,7 +147,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
             <FolderDropZone key={folder.id} id={folder.id}>
               <div className="group/folder flex items-center gap-1 pr-1">
                 {editingFolderId === folder.id ? (
-                  <FolderNameForm
+                  <InlineEditField
                     value={renameEdit.draft}
                     onChange={renameEdit.setDraft}
                     onSubmit={() => {
@@ -201,7 +156,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                     onCancel={() => {
                       setEditingFolderId(undefined);
                     }}
-                    submitLabel="Save rename"
+                    confirmLabel="Save rename"
                     className="flex-1 px-3"
                   />
                 ) : (

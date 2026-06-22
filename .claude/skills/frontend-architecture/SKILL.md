@@ -38,7 +38,8 @@ home is never a judgement call — it's always `atoms/`.
 | a dropdown menu item / content | `DropdownMenuItem` / `DropdownMenuContent` (`components/atoms/dropdown-menu`, already portal-wrapped) | re-typing the `flex … rounded-sm … hover:bg-secondary` item class |
 | a dense inline single-line input | `TextField` (`components/atoms/text-field`) | a raw `<input>` with the teal-ring boilerplate |
 | a full-width form field | `Input` (`components/atoms/input`) | (distinct from `TextField` — keep both) |
-| a click-to-edit field | `EditableTextField` / `useInlineEdit` | reimplementing draft + Enter/Escape + blur + rollback per field |
+| an inline name editor (input + ✓, Enter/Escape/outside-click) | `InlineEditField` (`components/atoms/inline-edit-field`) | a per-site `<form>` + autofocus effect + outside-click effect |
+| a click-to-edit field (display ↔ edit, with draft/rollback) | `EditableTextField` / `useInlineEdit` (both wrap `InlineEditField`) | reimplementing draft + Enter/Escape + rollback per field |
 | a modal | `FormDialog` / `DialogOverlay` | pasting `Dialog.Root → Portal → Overlay → Content` again |
 | a pill / status chip | `Badge` variants | a bespoke `rounded-full px-2 …` span |
 | an expand/collapse reveal | `AnimatedHeightCollapse` (+ the `motion` skill) | copying the `grid-rows-[0fr↔1fr]` transition block |
@@ -47,6 +48,11 @@ home is never a judgement call — it's always `atoms/`.
 
 When the difference between two usages is only a color or size, prefer **adding a cva variant** to
 the existing component over forking a new one.
+
+**Inline editors dismiss on an outside `pointerdown`, never on blur** — `InlineEditField` already
+does this, so reuse it rather than re-deriving the dismiss. Blur false-cancels an editor opened from
+a Radix dropdown (Radix restores focus to the trigger on close, firing a spurious blur); pointerdown
+fires before focus moves, so it's safe there and lets Tab-out keep the editor open.
 
 ## Stores and route handlers have a shared spine too
 

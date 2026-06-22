@@ -3,7 +3,6 @@
 import {
   Archive,
   ArchiveRestore,
-  Check,
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
@@ -12,7 +11,6 @@ import {
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
-import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import {
   DropdownMenu,
@@ -21,8 +19,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
+import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
-import { TextField } from '@/components/atoms/text-field';
 import { TextareaField } from '@/components/atoms/textarea-field';
 import { StoryCard } from '@/components/code/story-card';
 import { Swimlane } from '@/components/code/swimlane';
@@ -130,38 +128,24 @@ export function EpicBlock({
     }
   };
 
-  // Inline title editing: when active, the header toggle becomes a div with an input.
-  // The shared save state machine (trim → exit → no-op empty/unchanged → rollback on throw)
-  // and the select-all-on-edit live in useInlineEdit; the document-mousedown cancel below
-  // is board-specific (see the comment on its effect) so it stays here.
+  // Inline title editing: when active, the header toggle becomes a row with the shared inline
+  // editor. The save state machine (trim → exit → no-op empty/unchanged → rollback on throw)
+  // lives in useInlineEdit; focus, Enter/Escape, and outside-click dismiss live in the shared
+  // InlineEditField atom (its pointerdown dismiss survives Radix restoring focus to the trigger
+  // when this editor is opened from the dropdown menu).
   const saveTitle = React.useCallback(
     (next: string) => updateEpic(epic.id, { name: next }),
     [epic.id, updateEpic],
   );
   const titleEdit = useInlineEdit(epic.name, saveTitle);
-  const { isEditing: editingTitle, inputRef: titleInputRef, cancel: cancelTitle } = titleEdit;
-
-  // Cancel title edit when the user clicks outside the input (mousedown so it fires before
-  // focus moves). Using mousedown instead of blur avoids false cancels from programmatic
-  // focus restoration (e.g. Radix restoring focus to the dropdown trigger after close).
-  React.useEffect(() => {
-    if (!editingTitle) return;
-    const handleMouseDown = (e: MouseEvent) => {
-      if (titleInputRef.current && !titleInputRef.current.contains(e.target as Node)) {
-        cancelTitle();
-      }
-    };
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-    };
-  }, [editingTitle, titleInputRef, cancelTitle]);
+  const editingTitle = titleEdit.isEditing;
 
   return (
     <section aria-labelledby={headingId} className="rounded-xl border border-border bg-surface/50">
       <h3 id={headingId} className="m-0 flex items-stretch">
         {editingTitle ? (
-          /* When editing title: non-interactive row with the input in place of the name. */
+          /* When editing title: the disclosure chrome stays, with the shared inline editor in
+             place of the name. */
           <div className="flex flex-1 items-center gap-2 px-4 py-3">
             {collapsed ? (
               <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
@@ -171,22 +155,21 @@ export function EpicBlock({
             {epic.archived_at === null ? null : (
               <Archive size={14} className="shrink-0 text-muted-foreground" />
             )}
-            <TextField
-              ref={titleInputRef}
-              aria-label="Edit epic title"
-              type="text"
-              {...titleEdit.inputProps}
-              className="flex-1 py-0.5 font-medium focus-visible:ring-offset-0"
-            />
-            <CheckboxButton
-              aria-label="Confirm title"
-              onClick={() => {
+            <InlineEditField
+              value={titleEdit.draft}
+              onChange={titleEdit.setDraft}
+              onSubmit={() => {
                 void titleEdit.save();
               }}
-              className="h-6 w-6 border-accent-teal bg-accent-teal focus-visible:ring-offset-0"
-            >
-              <Check size={12} className="text-background" strokeWidth={3} />
-            </CheckboxButton>
+              onCancel={titleEdit.cancel}
+              confirmLabel="Confirm title"
+              inputLabel="Edit epic title"
+              requireValue={false}
+              selectAllOnFocus
+              className="flex-1"
+              inputClassName="py-0.5 font-medium focus-visible:ring-offset-0"
+              confirmClassName="focus-visible:ring-offset-0"
+            />
             <span className="shrink-0 font-mono text-xs text-muted-foreground">{epic.ref}</span>
           </div>
         ) : (

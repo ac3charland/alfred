@@ -450,6 +450,47 @@ describe('Board', () => {
       expect(screen.getByText('Keep This')).toBeInTheDocument();
       expect(mockUpdateEpic).not.toHaveBeenCalled();
     });
+
+    it('cancels the title edit when clicking outside the editor', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Keep This' })] });
+
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /edit title/i }));
+
+      const input = await screen.findByRole('textbox', { name: /edit epic title/i });
+      await user.type(input, ' changed');
+
+      // A pointerdown outside the editor dismisses it (survives Radix focus restoration, which
+      // a blur-based dismiss would trip over when opening from the dropdown menu).
+      await user.click(document.body);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('textbox', { name: /edit epic title/i })).not.toBeInTheDocument();
+      });
+      expect(screen.getByText('Keep This')).toBeInTheDocument();
+      expect(mockUpdateEpic).not.toHaveBeenCalled();
+    });
+
+    it('saves the title when the confirm check is clicked', async () => {
+      mockUpdateEpic.mockResolvedValue(makeEpic('e1', { name: 'New Name' }));
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Old Name' })] });
+
+      await user.click(screen.getByRole('button', { name: /epic actions/i }));
+      await user.click(screen.getByRole('menuitem', { name: /edit title/i }));
+
+      const input = await screen.findByRole('textbox', { name: /edit epic title/i });
+      await user.clear(input);
+      await user.type(input, 'New Name');
+      // The confirm check sits inside the editor's form, so clicking it commits (it does not
+      // register as an outside click).
+      await user.click(screen.getByRole('button', { name: /confirm title/i }));
+
+      await waitFor(() => {
+        expect(mockUpdateEpic).toHaveBeenCalledWith('e1', { name: 'New Name' });
+      });
+    });
   });
 
   describe('realtime swimlane updates', () => {
