@@ -21,6 +21,7 @@ const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockUpdateEpic = jest.mocked(api.updateEpic);
 const mockUpdateItem = jest.mocked(api.updateItem);
+const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
 
 const PROJECT_A: Project = {
   id: 'p1',
@@ -130,12 +131,16 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
   };
 }
 
-/** The factory_state of item `i1` wherever it sits on the board (lane or escape bucket). */
-function findStoryState(board: ReturnType<typeof useProjectBoard>): string | undefined {
-  const story = board.activeEpics
+/** The live story row for item `i1` wherever it sits on the board (lane or escape bucket). */
+function findStory(board: ReturnType<typeof useProjectBoard>): CodeStory | undefined {
+  return board.activeEpics
     .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.escapeStories])
     .find((s) => s.item_id === 'i1');
-  return story?.factory_state ?? undefined;
+}
+
+/** The factory_state of item `i1` wherever it sits on the board (lane or escape bucket). */
+function findStoryState(board: ReturnType<typeof useProjectBoard>): string | undefined {
+  return findStory(board)?.factory_state ?? undefined;
 }
 
 function makeWrapper(seed: { projects?: Project[]; epics?: Epic[]; stories?: CodeStory[] }) {
@@ -561,6 +566,111 @@ describe('code-store', () => {
         expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'blocked', {
           blocked_reason: 'checks failing',
         });
+      });
+    });
+
+    describe('moveStoryToEpic', () => {
+      const e1 = makeEpic('e1', 'p1', { name: 'Epic One', ref: 'ALF-1' });
+      const e2 = makeEpic('e2', 'p1', { name: 'Epic Two', ref: 'ALF-2' });
+
+      it('optimistically re-homes the card and patches the denormalised epic fields', async () => {
+        mockMoveCodeEpic.mockImplementation(() => new Promise(() => {}));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          epic_name: 'Epic One',
+          epic_ref: 'ALF-1',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [e1, e2], stories: [story] }),
+        });
+
+        act(() => {
+          void result.current.actions.moveStoryToEpic('ALF-42', 'e2');
+        });
+
+        await waitFor(() => {
+          const moved = findStory(result.current.board);
+          expect(moved?.epic_id).toBe('e2');
+        });
+        const moved = findStory(result.current.board);
+        expect(moved?.epic_name).toBe('Epic Two');
+        expect(moved?.epic_ref).toBe('ALF-2');
+        // It now groups under e2's block and no longer under e1's.
+        const e2Board = result.current.board.activeEpics.find((b) => b.epic.id === 'e2');
+        expect(e2Board?.lanes.flatMap((l) => l.stories).map((s) => s.item_id)).toContain('i1');
+        const e1Board = result.current.board.activeEpics.find((b) => b.epic.id === 'e1');
+        expect(e1Board?.lanes.flatMap((l) => l.stories).map((s) => s.item_id)).not.toContain('i1');
+      });
+
+      it('reconciles epic_id + the timestamp with the saved sidecar on success', async () => {
+        mockMoveCodeEpic.mockResolvedValue(
+          makeSavedSidecar({ epic_id: 'e2', updated_at: '2025-04-04T00:00:00Z' }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [e1, e2], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.moveStoryToEpic('ALF-42', 'e2');
+        });
+
+        expect(mockMoveCodeEpic).toHaveBeenCalledWith('ALF-42', 'e2');
+        const moved = findStory(result.current.board);
+        expect(moved?.epic_id).toBe('e2');
+        expect(moved?.code_updated_at).toBe('2025-04-04T00:00:00Z');
+      });
+
+      it('rolls all four epic fields back to the original epic on failure', async () => {
+        mockMoveCodeEpic.mockRejectedValue(new Error('move failed'));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          epic_name: 'Epic One',
+          epic_ref: 'ALF-1',
+          epic_archived_at: null,
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [e1, e2], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.actions.moveStoryToEpic('ALF-42', 'e2')).rejects.toThrow(
+            'move failed',
+          );
+        });
+
+        const reverted = findStory(result.current.board);
+        expect(reverted?.epic_id).toBe('e1');
+        expect(reverted?.epic_name).toBe('Epic One');
+        expect(reverted?.epic_ref).toBe('ALF-1');
+        expect(reverted?.epic_archived_at).toBeNull();
+      });
+
+      it('throws (and does not call the api) when the ref is unknown', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [e1, e2], stories: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStoryToEpic('ALF-999', 'e2')).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockMoveCodeEpic).not.toHaveBeenCalled();
+      });
+
+      it('throws (and does not call the api) when the target epic is unknown', async () => {
+        const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42' });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [e1], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStoryToEpic('ALF-42', 'e2')).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockMoveCodeEpic).not.toHaveBeenCalled();
       });
     });
 
