@@ -10,7 +10,7 @@ import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { DueDateChip } from '@/components/atoms/due-date-chip';
 import { IconButton } from '@/components/atoms/icon-button';
-import { TextField } from '@/components/atoms/text-field';
+import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
@@ -138,18 +138,13 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   // The title's draft + trim/no-op/rollback save run through the shared useInlineEdit machine;
   // the EDIT-MODE flag stays in the cross-row active-editor store (so opening one row's title
   // closes any other's — the single-open-editor invariant). We therefore drive only the draft
-  // and `save()` from the hook and ignore its own isEditing/begin/cancel. selectAllOnEdit is
-  // false to preserve the existing focus-without-select behavior (the focus effect below, keyed
-  // on the store flag, is what focuses the input).
+  // and `save()` from the hook and ignore its own isEditing/begin/cancel. The shared
+  // InlineEditField (rendered while isEditingTitle is true) owns focus + Enter/Escape/outside
+  // dismiss; selectAllOnEdit:false keeps the focus-without-select behavior (no selectAllOnFocus).
   const titleEdit = useInlineEdit(node.title, (next) => updateTask(node.id, { title: next }), {
     selectAllOnEdit: false,
   });
-  const { draft: draftTitle, setDraft: setDraftTitle, inputRef: titleInputRef } = titleEdit;
-
-  React.useEffect(() => {
-    // Stryker disable next-line ConditionalExpression,OptionalChaining: AT_CEILING — equivalent pair. The `?.` makes the `if` guard redundant for the side-effect: `if(true)` focuses on every effect run, but the title input is mounted (and the ref non-null) ONLY while isEditingTitle is true, so on every other run `current` is null and `?.` no-ops — identical to the guarded version. Likewise `current.focus()` (drop `?.`) only runs under the guard when the input is mounted, so `current` is never null there. Neither mutant can change observable focus behavior.
-    if (isEditingTitle) titleInputRef.current?.focus();
-  }, [isEditingTitle, titleInputRef]);
+  const { draft: draftTitle, setDraft: setDraftTitle } = titleEdit;
 
   const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
   const [isEditingNotes, setIsEditingNotes] = React.useState(false);
@@ -418,42 +413,25 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
 
             {/* Title */}
             {isEditingTitle ? (
-              <div
-                className="contents"
-                onBlur={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget)) {
-                    setDraftTitle(node.title);
-                    closeEditor({ itemId: node.id, kind: 'title' });
-                  }
+              // `contents` dissolves the editor's form into the row grid so the input + confirm
+              // sit in the title column exactly as the static title does.
+              <InlineEditField
+                value={draftTitle}
+                onChange={setDraftTitle}
+                onSubmit={() => {
+                  void handleSaveTitle();
                 }}
-              >
-                <TextField
-                  ref={titleInputRef}
-                  aria-label="Edit title"
-                  type="text"
-                  value={draftTitle}
-                  onChange={(event_) => {
-                    setDraftTitle(event_.target.value);
-                  }}
-                  onKeyDown={(event_) => {
-                    if (event_.key === 'Enter') void handleSaveTitle();
-                    if (event_.key === 'Escape') {
-                      setDraftTitle(node.title);
-                      closeEditor({ itemId: node.id, kind: 'title' });
-                    }
-                  }}
-                  className={titleInputClass}
-                />
-                <CheckboxButton
-                  aria-label="Confirm title"
-                  onClick={() => {
-                    void handleSaveTitle();
-                  }}
-                  className={confirmTitleClass}
-                >
-                  <Check size={10} className="text-background" strokeWidth={3} />
-                </CheckboxButton>
-              </div>
+                onCancel={() => {
+                  setDraftTitle(node.title);
+                  closeEditor({ itemId: node.id, kind: 'title' });
+                }}
+                confirmLabel="Confirm title"
+                inputLabel="Edit title"
+                requireValue={false}
+                className="contents"
+                inputClassName={titleInputClass}
+                confirmClassName={confirmTitleClass}
+              />
             ) : (
               <div
                 // select-none: the whole row is a drag surface, so the title text is no
