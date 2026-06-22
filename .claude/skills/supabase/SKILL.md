@@ -203,7 +203,7 @@ The `@supabase/ssr` cookie API changed from the single-method `get/set/remove` s
 
 ## What Was Deliberately Left Out
 
-- **Realtime subscriptions** (`supabase.channel()`, `.on('postgres_changes', ...)`): alfred is a personal app with one user on one device at a time; realtime adds complexity with no benefit. If concurrent-device sync is ever needed, add it then.
+- **Realtime subscriptions** (`supabase.channel().on('postgres_changes', …)`): used **only** by the code module's swimlane board (`code-store.tsx`), because the webhook Worker is a second, non-browser writer of `code_items.factory_state` — the open tab needs a push channel to reflect PR-driven transitions without a reload. A migration adds the table to the `supabase_realtime` publication (`0003`); the existing `using (true)` policy governs the stream (no new policy, no `database.types.ts` change). **Subscribe to the base `code_items` table, not the `v_code_stories` view** — you can't subscribe to a view — and map the row payload through `codeItemToStoryPatch` + the reducer's `patchStory`. Re-applying an **echo of the user's own optimistic write is idempotent** (same persisted values), so no self-write filtering is needed. Tasks/folders stay seed-once (a single browser writer); don't generalize Realtime across the app.
 
 - **Supabase Storage** (file uploads, buckets): not used in alfred's schema. Don't reach for `supabase.storage` unless a future feature explicitly requires it.
 

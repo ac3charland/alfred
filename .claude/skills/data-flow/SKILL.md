@@ -166,8 +166,10 @@ three strategies for *what* it restores:
 - **Read latest state for rollback via a `useEffect`-synced ref**, never a render-body write
   (`react-hooks/refs` forbids `ref.current = x` during render).
 - **Seed once at the layout; no key, no prop-sync effect.** The provider is the session
-  source of truth (single-user, no realtime; a hard reload re-seeds). A prop-sync effect or
-  a remount `key` would wipe optimistic state on navigation.
+  source of truth (single-user; a hard reload re-seeds). A prop-sync effect or a remount `key`
+  would wipe optimistic state on navigation. (The code store also patches itself from
+  `code_items` Realtime for out-of-band Worker writes, but it still seeds once — see
+  "What's Deliberately Left Out".)
 - **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
   folderId])`), and take a small, serializable scope (`TaskViews` builds it from the URL).
 
@@ -218,8 +220,12 @@ three strategies for *what* it restores:
 
 ## What's Deliberately Left Out
 
-- **Realtime / multi-device sync.** Single-user; a hard reload re-seeds. Add Supabase realtime
-  only if live multi-device sync becomes a goal.
+- **Realtime / multi-device sync.** Used **only** by the code module: `CodeProvider` subscribes to
+  `code_items` Realtime so a `factory_state` change written out-of-band by the webhook Worker (or
+  another device) moves the card to its new swimlane live, via `codeItemToStoryPatch` →
+  `patchStory`. Subscribe to the base table, not the `v_code_stories` view; an echo of the user's
+  own optimistic write re-applies identical values, so it's idempotent and needs no self-write
+  filter. Tasks/folders remain seed-once (single browser writer); a hard reload re-seeds them.
 - **A third-party state library (Zustand/Jotai/Redux/react-query) and a normalized cache.**
   Context + `useReducer` + flat arrays + `buildTree` cover the need with zero deps at this
   scale. `useSyncExternalStore` is the integration seam if an external store is ever adopted.
