@@ -62,6 +62,12 @@ alter publication supabase_realtime add table code_items;
   migration file and the frontend code; **applying `0003` is a local, credentialed step** recorded
   in the closeout checklist (see Out of scope).
 
+> **✅ Applied 2026-06-22 (local, credentialed).** `0003_realtime_code_items.sql` was run against
+> the live Supabase project (PostgreSQL 17.6) over the session pooler. `code_items` is now a member
+> of the `supabase_realtime` publication (verified: not a member before, member after). No
+> `database.types.ts` change, as predicted. The frontend subscription/notification work and its
+> tests (§2–§6) are **not** part of this slice and remain to be implemented.
+
 ### 2. A pure mapper: `code_items` change → store patch
 
 The board read shape is `CodeStory` (the flattened `v_code_stories` **view**); you cannot subscribe
@@ -187,8 +193,8 @@ CLAUDE.md compounding-learning rule), update both:
 
 ## Acceptance criteria
 
-- [ ] Migration `0003_realtime_code_items.sql` adds `code_items` to the `supabase_realtime`
-      publication; no `database.types.ts` regeneration is needed.
+- [x] Migration `0003_realtime_code_items.sql` adds `code_items` to the `supabase_realtime`
+      publication; no `database.types.ts` regeneration is needed. **(Applied 2026-06-22.)**
 - [ ] A `factory_state` change to a `code_items` row written **outside the open tab** (the Worker,
       another device, or a direct API PATCH) moves the corresponding card to its new swimlane on an
       already-open board **without a manual refresh or navigation**.
@@ -232,6 +238,8 @@ CLAUDE.md compounding-learning rule), update both:
 - **Credentialed closeout (local/high-touch).** Applying `0003` (`supabase db push`) and verifying
   end-to-end against the live project + Worker cannot be done in a web/CI sandbox (no `.env.local`);
   leave them as an explicit checklist for a local session, per code-module-spec §4 / §16.1 Phase C.
+  **Migration apply is now done (2026-06-22, see §1);** end-to-end verification against the Worker
+  still depends on the frontend subscription landing.
 - **Open question (flag, don't block):** confirm the project's Realtime quota/settings are enabled
   in the Supabase dashboard (Realtime is on by default for new projects, but the publication must
   include the table — handled by `0003`).
