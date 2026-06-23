@@ -10,15 +10,6 @@ Each folder link in the sidebar now shows an amber badge with the count of activ
 
 The implementation adds: (1) isDueTodayOrOverdue helper in date-utils.ts; (2) useDueCountsByFolder selector in tasks-store.tsx; (3) DueCountBadge presentational component; (4) badge rendered in FolderNav. All counts derive from the shared store — updates are optimistic.
 
-```bash
-npm run test -w frontend -- --testPathPatterns='date-utils|tasks-store|folder-nav' --no-coverage 2>&1 | grep -E 'Tests:|Test Suites:|passed'
-```
-
-```output
-Test Suites: 3 passed, 3 total
-Tests:       189 passed, 189 total
-```
-
 ![](folder-due-badges-image-1.png)
 
 Work has 3 past-due tasks (badge shows 3), Personal has 1 past-due task (badge shows 1), Side projects has no qualifying tasks (no badge). The amber chip matches the per-row due styling and is shrink-0 so long folder names truncate first.
