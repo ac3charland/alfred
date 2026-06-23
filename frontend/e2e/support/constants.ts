@@ -65,6 +65,9 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     completed_at: overrides.completed_at ?? null,
     folder_id: overrides.folder_id ?? null,
     parent_id: overrides.parent_id ?? null,
+    occurrence_index: overrides.occurrence_index ?? null,
+    recurrence: overrides.recurrence ?? null,
+    recurrence_series_id: overrides.recurrence_series_id ?? null,
   };
 }
 
