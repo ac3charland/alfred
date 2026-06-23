@@ -153,10 +153,16 @@ generated file — never hand-edit; see CLAUDE.md "Generated files"). After rege
 `CodeItem` gain `priority` with no `lib/types.ts` change (those are aliases over the generated
 types).
 
-> **☐ Phase A not yet applied.** When the credentialed apply happens, replace this line with a
-> dated **✅ Applied** note recording: migration run against the live project, `priority` present
-> on `code_items` + `v_code_stories`, the backfill/seq values, and that `database.types.ts` was
-> regenerated — mirroring ALF-41 §1's applied block.
+> **✅ Phase A applied 2026-06-23.** Migration `0005_story_priority.sql` run against the live
+> Supabase project (`pobfpuohktigmnkcqwga`) via the session pooler. Results: `code_priority_seq`
+> created; `priority bigint not null default nextval('code_priority_seq')` added to `code_items`;
+> 41 existing rows backfilled 1–41 (by `ref_number` order); sequence advanced to 42 so new inserts
+> append at the bottom; `code_items_priority_key` unique index created; `swap_code_priority(text,
+> text)` RPC created (security invoker, grants to anon/authenticated/service_role); `v_code_stories`
+> recreated with `c.priority` appended as the final column. `frontend/lib/database.types.ts`
+> regenerated with `npx supabase@2.95.0 gen types typescript --db-url` (Docker-backed, token-free);
+> `priority` present as `number` on `code_items` Row and as `number | null` on `v_code_stories` Row
+> (view columns are always nullable in generated types).
 
 ### Phase B — Frontend
 
@@ -344,7 +350,7 @@ skill: "CSS animations + transitions cover alfred's restrained motion"). Use a s
 
 ## Acceptance criteria
 
-- [ ] **Phase A (supervised):** migration `0005_story_priority.sql` adds a global `priority`
+- [x] **Phase A (supervised):** migration `0005_story_priority.sql` adds a global `priority`
       (`code_priority_seq` default) to `code_items`, backfills existing rows, adds the
       `unique(priority)` index, the `swap_code_priority` RPC, and appends `priority` to
       `v_code_stories`; `frontend/lib/database.types.ts` is **regenerated** (not hand-edited). The
