@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronDown, Pencil } from 'lucide-react';
+import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
 import { DialogClose, DialogTitle, FormDialog } from '@/components/atoms/dialog';
@@ -11,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { EditableTextField } from '@/components/atoms/editable-text-field';
+import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
+import { TextareaField } from '@/components/atoms/textarea-field';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
 import { PrimaryAction } from '@/components/code/story-detail/primary-action';
@@ -131,6 +134,69 @@ function EpicBreadcrumb({ story }: { story: CodeStory }) {
   );
 }
 
+/**
+ * The inline notes editor for the story detail modal, mirroring `EpicHeaderActions` in
+ * `board/epic-block.tsx`: a click-to-edit affordance with a pencil icon on hover, a
+ * `TextareaField` in edit mode, and optimistic save via `updateStoryNotes`.
+ */
+function EditableNotes({ story }: { story: CodeStory }) {
+  const { updateStoryNotes } = useCodeActions();
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(story.notes ?? '');
+
+  const saveNotes = async () => {
+    const next = draft.trim();
+    setEditing(false);
+    if (next === (story.notes ?? '')) return;
+    // Guard on a null item_id exactly as EditableTitle does.
+    if (story.item_id === null) return;
+    try {
+      await updateStoryNotes(story.item_id, next === '' ? null : next);
+    } catch {
+      setDraft(story.notes ?? '');
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDraft(story.notes ?? '');
+  };
+
+  if (editing) {
+    return (
+      <TextareaField
+        aria-label="Edit notes"
+        value={draft}
+        onChange={setDraft}
+        onSave={saveNotes}
+        onCancel={cancelEdit}
+        onEscape={cancelEdit}
+        placeholder="Story notes…"
+      />
+    );
+  }
+
+  return (
+    <InlineEditTrigger
+      onClick={() => {
+        setDraft(story.notes ?? '');
+        setEditing(true);
+      }}
+      className="group/notes flex min-w-0 flex-1 flex-col items-start gap-1 text-sm"
+    >
+      {story.notes === null || story.notes.trim() === '' ? (
+        <span className="text-muted-foreground/70 hover:text-foreground">Add notes…</span>
+      ) : (
+        <span className="whitespace-pre-wrap text-foreground">{story.notes}</span>
+      )}
+      <Pencil
+        size={12}
+        className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
+      />
+    </InlineEditTrigger>
+  );
+}
+
 /** The modal body — split out so it MOUNTS FRESH each open (Radix only renders while open). */
 function DetailBody({
   story,
@@ -142,7 +208,6 @@ function DetailBody({
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
-  const notes = story.notes?.trim();
 
   return (
     <>
@@ -179,16 +244,12 @@ function DetailBody({
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
-        {/* Notes — generic on any item. */}
+        {/* Notes — generic on any item, inline-editable via updateStoryNotes. */}
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Notes
           </h3>
-          {notes === undefined || notes === '' ? (
-            <p className="text-sm text-muted-foreground/70">No notes.</p>
-          ) : (
-            <p className="whitespace-pre-wrap text-sm text-foreground">{notes}</p>
-          )}
+          <EditableNotes story={story} />
         </div>
 
         <SpecBody story={story} />

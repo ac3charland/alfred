@@ -109,3 +109,10 @@ type Story = StoryObj<typeof meta>;
 export const ReadyForDev: Story = {
   args: { story: STORY },
 };
+
+/**
+ * A story with no notes: the "Add notes…" affordance is shown in the Notes section.
+ */
+export const NoNotes: Story = {
+  args: { story: { ...STORY, notes: null } },
+};

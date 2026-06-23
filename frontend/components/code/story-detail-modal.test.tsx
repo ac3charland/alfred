@@ -362,6 +362,107 @@ describe('StoryDetailModal', () => {
     });
   });
 
+  describe('notes editor', () => {
+    it('shows "Add notes…" affordance when story has no notes', () => {
+      const { dialog } = renderModal(makeStory({ notes: null }));
+
+      expect(dialog.getByText('Add notes…')).toBeInTheDocument();
+      expect(dialog.queryByRole('textbox', { name: /edit notes/i })).not.toBeInTheDocument();
+    });
+
+    it('shows existing notes as text when present', () => {
+      const { dialog } = renderModal(makeStory({ notes: 'Needs auth header' }));
+
+      expect(dialog.getByText('Needs auth header')).toBeInTheDocument();
+      expect(dialog.queryByRole('textbox', { name: /edit notes/i })).not.toBeInTheDocument();
+    });
+
+    it('clicking the affordance enters edit mode with the textarea', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: null }));
+
+      await user.click(dialog.getByText('Add notes…'));
+
+      expect(dialog.getByRole('textbox', { name: /edit notes/i })).toBeInTheDocument();
+    });
+
+    it('Save calls updateStoryNotes with the trimmed value', async () => {
+      mockUpdateItem.mockResolvedValue({ notes: 'Check the logs' } as never);
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: null }));
+
+      await user.click(dialog.getByText('Add notes…'));
+      await user.type(dialog.getByRole('textbox', { name: /edit notes/i }), '  Check the logs  ');
+      await user.click(dialog.getByRole('button', { name: /save/i }));
+
+      expect(mockUpdateItem).toHaveBeenCalledWith('i1', { notes: 'Check the logs' });
+    });
+
+    it('Save with empty text sends null (clearing notes)', async () => {
+      mockUpdateItem.mockResolvedValue({ notes: null } as never);
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: 'Remove me' }));
+
+      await user.click(dialog.getByText('Remove me'));
+      const textarea = dialog.getByRole('textbox', { name: /edit notes/i });
+      await user.clear(textarea);
+      await user.click(dialog.getByRole('button', { name: /save/i }));
+
+      expect(mockUpdateItem).toHaveBeenCalledWith('i1', { notes: null });
+    });
+
+    it('Save is a no-op when the value is unchanged', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: 'Original' }));
+
+      await user.click(dialog.getByText('Original'));
+      await user.click(dialog.getByRole('button', { name: /save/i }));
+
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+
+    it('Cancel exits edit mode without saving and restores the displayed notes', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: 'Keep me' }));
+
+      await user.click(dialog.getByText('Keep me'));
+      const textarea = dialog.getByRole('textbox', { name: /edit notes/i });
+      await user.clear(textarea);
+      await user.type(textarea, 'changed');
+      await user.click(dialog.getByRole('button', { name: /cancel/i }));
+
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+      expect(dialog.getByText('Keep me')).toBeInTheDocument();
+    });
+
+    it('Escape exits edit mode without saving', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: 'Keep me' }));
+
+      await user.click(dialog.getByText('Keep me'));
+      await user.keyboard('{Escape}');
+
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+      expect(dialog.getByText('Keep me')).toBeInTheDocument();
+    });
+
+    it('a rejected save rolls back the displayed notes', async () => {
+      mockUpdateItem.mockRejectedValue(new Error('Network error'));
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: 'Original' }));
+
+      await user.click(dialog.getByText('Original'));
+      const textarea = dialog.getByRole('textbox', { name: /edit notes/i });
+      await user.clear(textarea);
+      await user.type(textarea, 'Changed');
+      await user.click(dialog.getByRole('button', { name: /save/i }));
+
+      await waitFor(() => {
+        expect(dialog.getByText('Original')).toBeInTheDocument();
+      });
+    });
+  });
+
   describe('manual controls (fallback)', () => {
     beforeEach(() => {
       mockUpdateCodeState.mockResolvedValue({
