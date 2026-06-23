@@ -15,6 +15,10 @@ describe('Badge', () => {
     expect(badgeVariants({ variant: 'secondary' })).toContain('bg-secondary');
     expect(badgeVariants({ variant: 'accent' })).toContain('bg-accent-teal/15');
     expect(badgeVariants({ variant: 'accent' })).toContain('text-accent-teal');
+    expect(badgeVariants({ variant: 'info' })).toContain('border-accent-blue/50');
+    expect(badgeVariants({ variant: 'info' })).toContain('text-accent-blue');
+    expect(badgeVariants({ variant: 'warning' })).toContain('border-accent-amber/50');
+    expect(badgeVariants({ variant: 'warning' })).toContain('text-accent-amber');
     expect(badgeVariants({ variant: 'alert' })).toContain('bg-amber-500/15');
     expect(badgeVariants({ variant: 'alert' })).toContain('text-amber-400');
     expect(badgeVariants({ variant: 'destructive' })).toContain('bg-destructive/15');
