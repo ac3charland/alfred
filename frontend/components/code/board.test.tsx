@@ -17,6 +17,13 @@ jest.mock('react-markdown', () => ({
 }));
 jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 
+// The board reads a `?story=<ref>` deep-link via useSearchParams; drive it from a test variable.
+let mockStoryParam: string | null = null;
+jest.mock('next/navigation', () => ({
+  useSearchParams: () =>
+    new URLSearchParams(mockStoryParam === null ? '' : `story=${mockStoryParam}`),
+}));
+
 // The epic-header archive/notes controls go through the store's updateEpic → api-client.
 jest.mock('@/lib/api-client');
 const mockUpdateEpic = jest.mocked(api.updateEpic);
@@ -40,6 +47,7 @@ jest.mock('@/lib/supabase/client', () => ({
 
 beforeEach(() => {
   mockRealtimeHandler = undefined;
+  mockStoryParam = null;
 });
 
 /** A saved `code_items` sidecar row (the realtime UPDATE payload shape). */
@@ -287,6 +295,46 @@ describe('Board', () => {
       const dialog = within(screen.getByRole('dialog'));
       expect(dialog.getByText('ALF-7')).toBeInTheDocument();
       expect(dialog.getByText('Open me')).toBeInTheDocument();
+    });
+
+    it('opens the modal for a story named by the ?story= deep-link param', () => {
+      mockStoryParam = 'ALF-7';
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-7', title: 'Deep linked' })],
+      });
+
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByText('ALF-7')).toBeInTheDocument();
+      expect(dialog.getByText('Deep linked')).toBeInTheDocument();
+    });
+
+    it('ignores a ?story= ref that is not in this project', () => {
+      mockStoryParam = 'ALF-999';
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-7' })],
+      });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('clears the ?story= param when the deep-linked modal is closed', async () => {
+      const user = userEvent.setup();
+      mockStoryParam = 'ALF-7';
+      const replaceState = jest.spyOn(globalThis.history, 'replaceState');
+      renderBoard({
+        projectId: 'p1',
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-7', title: 'Deep linked' })],
+      });
+
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /close/i }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      expect(replaceState).toHaveBeenCalledWith(null, '', '/code/p1');
+      replaceState.mockRestore();
     });
   });
 
