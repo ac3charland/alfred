@@ -60,6 +60,7 @@ function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     blocked_reason: null,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
+    priority: 0,
     ...overrides,
   };
 }
@@ -117,6 +118,7 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
     epic_name: `Epic ${epicId}`,
     epic_ref: `ALF-${epicId}`,
     epic_archived_at: null,
+    priority: null,
     ...overrides,
   };
 }

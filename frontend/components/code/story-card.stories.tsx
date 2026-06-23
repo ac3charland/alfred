@@ -32,6 +32,7 @@ const BASE_STORY: CodeStory = {
   epic_name: 'Communication Firewall',
   epic_ref: 'ALF-1',
   epic_archived_at: null,
+  priority: null,
 };
 
 const meta = {
