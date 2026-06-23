@@ -37,9 +37,17 @@ item, so it can't be reused), a new API entry shape, a new optimistic store acti
 
 ### 1. Database: a `create_code_story` RPC (new migration)
 
+> **✅ Applied 2026-06-22.** `database/migrations/0004_create_code_story.sql` exists and the
+> `create_code_story` RPC has been applied to the live Supabase project — verified `SECURITY INVOKER`,
+> returns `code_items`, `EXECUTE` granted to `anon` / `authenticated` / `service_role`. No
+> `database.types.ts` regeneration was needed. The rest of ALF-22 (API shape, store action, board UI,
+> tests, demo) is still unbuilt.
+
 `enter_code_module` updates an existing item; creating a story from scratch must **insert** the
-item first. Add `database/migrations/0003_create_code_story.sql` with a sibling RPC that mirrors
-`enter_code_module`'s ref-allocation and return shape:
+item first. Add `database/migrations/0004_create_code_story.sql` with a sibling RPC that mirrors
+`enter_code_module`'s ref-allocation and return shape (the original `0003` slot is now taken by
+`0003_realtime_code_items.sql`, so this migration lands at `0004` — it depends only on `0002`, so
+ordering after the realtime migration is fine):
 
 ```sql
 -- Create a brand-new code story from the project view: insert the item AND its
@@ -72,8 +80,8 @@ grant execute on function create_code_story(uuid, uuid, text, text)
 - Returns the `code_items` row (same return type as `enter_code_module`), so the API and store reuse
   the existing reconcile path unchanged.
 - **Sandbox limitation (code-module-spec §4):** `supabase db push` needs live credentials a CI/web
-  sandbox lacks. A sandbox session writes the migration file; **applying `0003` is a local,
-  credentialed step** (see Out of scope). No `database.types.ts` regeneration is required — the RPC
+  sandbox lacks. A sandbox session writes the migration file; **applying `0004` was a local,
+  credentialed step, now done** (see the status note above). No `database.types.ts` regeneration is required — the RPC
   returns the existing `code_items` row type, and `supabase gen types` would only add the function
   signature, which the client does not depend on.
 
@@ -204,7 +212,7 @@ immediately, then reconciles with the real ref (mirroring the gate's behavior on
       with the server row (real `item_id` + `ref`); a failed create rolls the optimistic card back.
 - [ ] Cancel / Escape / overlay-click closes the modal without creating; a server error shows an
       inline message and keeps the modal open.
-- [ ] Creation goes through a new `create_code_story` RPC (migration `0003`), a new discriminated
+- [ ] Creation goes through a new `create_code_story` RPC (migration `0004`), a new discriminated
       shape on `POST /api/code` → `api.createCodeStory`, and a new optimistic `createStory` store
       action. `enter_code_module` and the existing gate flow are unchanged.
 - [ ] Tests cover the API branch (new + gate), the store optimistic/rollback path, and the dialog
@@ -213,9 +221,9 @@ immediately, then reconciles with the real ref (mirroring the gate's behavior on
 
 ## Out of scope / open questions
 
-- **Applying migration `0003` (local/credentialed).** `supabase db push` and end-to-end verification
-  against the live project can't run in a web/CI sandbox; leave them as an explicit local closeout
-  step (code-module-spec §4 / §16.1 Phase C). The sandbox writes the migration + all frontend code.
+- **Applying migration `0004` (local/credentialed) — ✅ done 2026-06-22.** Applied directly with
+  `psql` over the session pooler against the live project and verified. End-to-end verification through
+  the app still waits on the unbuilt frontend (API shape, store action, board UI).
 - **Editing the new story's project/epic in the dialog.** The `+` is epic-scoped, so the project and
   epic are fixed by where it was clicked — the dialog does **not** offer project/epic selectors (that's
   the gate's job for *moving* an inbox item). Moving a story between epics is a separate concern, not
