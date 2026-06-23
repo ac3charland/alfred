@@ -432,6 +432,37 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      create_code_story: {
+        Args: {
+          p_epic: string
+          p_notes?: string
+          p_project: string
+          p_title: string
+        }
+        Returns: {
+          blocked_reason: string | null
+          created_at: string
+          epic_id: string
+          factory_state: Database["public"]["Enums"]["code_factory_state"]
+          implementation_pr_url: string | null
+          item_id: string
+          lane: Database["public"]["Enums"]["code_lane"]
+          project_id: string
+          ref: string
+          ref_number: number
+          refinement_pr_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "code_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_epic: {
         Args: { p_name: string; p_project: string }
         Returns: {
