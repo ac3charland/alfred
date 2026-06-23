@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { renderWithProviders } from '@/lib/test-utils';
-import type { Folder } from '@/lib/types';
+import type { Folder, Item } from '@/lib/types';
 
 import { FolderNav } from './folder-nav';
 
@@ -34,6 +34,34 @@ const FOLDERS: Folder[] = [
   { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
   { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
 ];
+
+/** Returns today's YYYY-MM-DD string in local time. */
+function todayYMD(): string {
+  const d = new Date();
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Returns a YYYY-MM-DD string for N days offset from today. */
+function daysFromToday(offset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const BASE_ITEM: Item = {
+  id: 'item-1',
+  title: 'Task',
+  notes: null,
+  source_url: null,
+  item_type: 'task',
+  created_at: '2025-01-01T10:00:00Z',
+  raw_capture: null,
+  due_date: null,
+  status: 'active',
+  completed_at: null,
+  folder_id: 'f1',
+  parent_id: null,
+};
 
 // Opens the options dropdown for the named folder and waits for the menu to appear.
 // Radix DropdownMenu portals set pointer-events:none on the body, so subsequent item
@@ -835,6 +863,74 @@ describe('FolderNav', () => {
       await waitFor(() => {
         expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
       });
+    });
+  });
+
+  describe('due-count badge', () => {
+    it('shows a badge with the count when a folder has active tasks due today or earlier', () => {
+      const tasks: Item[] = [
+        { ...BASE_ITEM, id: 't1', folder_id: 'f1', status: 'active', due_date: todayYMD() },
+        { ...BASE_ITEM, id: 't2', folder_id: 'f1', status: 'active', due_date: daysFromToday(-3) },
+      ];
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks });
+
+      expect(screen.getByLabelText(/2 due today or overdue/i)).toBeInTheDocument();
+    });
+
+    it('shows no badge when a folder has no due-today-or-earlier active tasks', () => {
+      const tasks: Item[] = [
+        { ...BASE_ITEM, id: 't1', folder_id: 'f1', status: 'active', due_date: daysFromToday(1) },
+      ];
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks });
+
+      // No badge for Work folder
+      expect(screen.queryByLabelText(/due today or overdue/i)).not.toBeInTheDocument();
+    });
+
+    it('does not show a badge (or "0") when there are no qualifying tasks', () => {
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks: [] });
+
+      expect(screen.queryByLabelText(/due today or overdue/i)).not.toBeInTheDocument();
+    });
+
+    it('excludes completed tasks from the badge count', () => {
+      const tasks: Item[] = [
+        { ...BASE_ITEM, id: 't1', folder_id: 'f1', status: 'completed', due_date: todayYMD() },
+      ];
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks });
+
+      expect(screen.queryByLabelText(/due today or overdue/i)).not.toBeInTheDocument();
+    });
+
+    it('badge aria-label names the count and meaning', () => {
+      const tasks: Item[] = [
+        { ...BASE_ITEM, id: 't1', folder_id: 'f1', status: 'active', due_date: todayYMD() },
+      ];
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks });
+
+      expect(screen.getByLabelText('1 due today or overdue')).toBeInTheDocument();
+    });
+
+    it('shows badges for multiple folders independently', () => {
+      const tasks: Item[] = [
+        { ...BASE_ITEM, id: 't1', folder_id: 'f1', status: 'active', due_date: todayYMD() },
+        { ...BASE_ITEM, id: 't2', folder_id: 'f2', status: 'active', due_date: daysFromToday(-1) },
+        { ...BASE_ITEM, id: 't3', folder_id: 'f2', status: 'active', due_date: todayYMD() },
+      ];
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks });
+
+      // f1 (Work) has 1, f2 (Personal) has 2
+      const badges = screen.getAllByLabelText(/due today or overdue/i);
+      expect(badges).toHaveLength(2);
+    });
+
+    it('does not include inbox tasks (folder_id null) in any folder badge', () => {
+      const tasks: Item[] = [
+        { ...BASE_ITEM, id: 't1', folder_id: null, status: 'active', due_date: todayYMD() },
+      ];
+      renderWithProviders(<FolderNav />, { folders: FOLDERS, tasks });
+
+      expect(screen.queryByLabelText(/due today or overdue/i)).not.toBeInTheDocument();
     });
   });
 });

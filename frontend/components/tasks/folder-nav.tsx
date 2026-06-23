@@ -13,10 +13,12 @@ import {
 } from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
+import { DueCountBadge } from '@/components/tasks/due-count-badge';
 import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
 import { ViewLink } from '@/components/tasks/view-link';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
+import { useDueCountsByFolder } from '@/lib/stores/tasks-store';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +44,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const router = useRouter();
   const folders = useFolders();
   const { addFolder, renameFolder, removeFolder } = useFolderActions();
+  const dueCountsByFolder = useDueCountsByFolder();
 
   // Create stays on plain local state (an empty initial value, its own optimistic add +
   // re-open-on-failure flow below); only RENAME runs through the shared useInlineEdit save
@@ -171,6 +174,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                     >
                       <FolderOpen size={14} className="shrink-0" />
                       <span className="truncate">{folder.name}</span>
+                      <DueCountBadge count={dueCountsByFolder[folder.id] ?? 0} />
                     </ViewLink>
 
                     {/* Folder actions — on hover */}
