@@ -14,7 +14,7 @@ export const collapseClass =
 
 /** Main row layout + colour transition. */
 export const rowBaseClass = cn(
-  'flex items-center gap-2 rounded-sm py-2 pr-2',
+  'flex items-start gap-2 rounded-sm py-2 pr-2',
   'transition-colors duration-100 motion-reduce:transition-none',
 );
 /** Valid drop-target highlight (teal wash + ring). */
@@ -40,6 +40,6 @@ export const checkboxIncompleteClass =
 export const titleInputClass = 'flex-1 min-w-0 py-0.5';
 export const confirmTitleClass = 'h-5 w-5 border-accent-teal bg-accent-teal';
 
-/** The title text: truncates, fades to low-contrast as the row completes. */
+/** The title text: wraps (break-words for unbroken strings), fades to low-contrast as the row completes. */
 export const titleTextClass =
-  'text-sm truncate transition-colors duration-300 delay-200 motion-reduce:transition-none';
+  'text-sm break-words transition-colors duration-300 delay-200 motion-reduce:transition-none';

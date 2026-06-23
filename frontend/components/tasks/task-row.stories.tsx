@@ -212,6 +212,39 @@ export const CompletedInFolder: Story = {
   },
 };
 
+// A long title that wraps to multiple lines, proving the controls remain visible.
+// This story also serves as the primary visual-snapshot evidence for ALF-31.
+export const LongTitle: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      item_type: 'task',
+      due_date: '2099-12-31',
+      title:
+        'Coordinate the cross-functional review of the Q3 product roadmap and make sure all stakeholders have signed off on the final deliverable list before the all-hands',
+    },
+  },
+  parameters: {
+    visualTest: { target: '#storybook-root' },
+  },
+};
+
+// A long unbroken string (no spaces) — exercises the break-words rule so the column
+// wraps even when there are no natural word-break points.
+export const LongTitleUnbroken: Story = {
+  args: {
+    node: {
+      ...BASE_NODE,
+      item_type: 'task',
+      title:
+        'https://www.example.com/really-long-path/to/some/deeply/nested/resource?query=value&other=value2&more=value3',
+    },
+  },
+  parameters: {
+    visualTest: { target: '#storybook-root' },
+  },
+};
+
 // A → B → C → D → E → F: the active ancestor chain (filtered out of the completed view),
 // seeded into the store so the completed leaf "G" can render its full breadcrumb.
 const ANCESTOR_CHAIN: ItemNode[] = ['A', 'B', 'C', 'D', 'E', 'F'].map((title, index) => ({
