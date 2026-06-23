@@ -13,10 +13,12 @@ import {
 } from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
+import { DueCountBadge } from '@/components/tasks/due-count-badge';
 import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
 import { ViewLink } from '@/components/tasks/view-link';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
+import { useDueCountsByFolder } from '@/lib/stores/tasks-store';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +43,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const pathname = usePathname();
   const router = useRouter();
   const folders = useFolders();
+  const dueCountsByFolder = useDueCountsByFolder();
   const { addFolder, renameFolder, removeFolder } = useFolderActions();
 
   // Create stays on plain local state (an empty initial value, its own optimistic add +
@@ -170,7 +173,10 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                       {...closeProperty}
                     >
                       <FolderOpen size={14} className="shrink-0" />
-                      <span className="truncate">{folder.name}</span>
+                      <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                      {/* Due-today / past-due count — right-aligned at the trailing edge so a
+                          long name truncates before it (badge is shrink-0); hidden at zero. */}
+                      <DueCountBadge count={dueCountsByFolder[folder.id] ?? 0} />
                     </ViewLink>
 
                     {/* Folder actions — on hover */}

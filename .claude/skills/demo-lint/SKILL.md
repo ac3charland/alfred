@@ -72,6 +72,10 @@ as touching code, so the exception is never granted on a guess.
   satisfies the rule even without front matter. New demos should rely on front matter.
 - **The branch claim must be real content.** An empty `mkdir` satisfies nothing (and git
   wouldn't commit an empty dir) — put a demo doc with the right front matter in the folder.
+- **An uncommitted new demo is invisible to the gate.** The changed-only diff is
+  `merge-base(HEAD, trunk)..HEAD`, so a demo doc you haven't committed yet isn't in the changed
+  set and the content rules (`no-test-in-demo`, …) report a false `0 errors`. Lint **after
+  committing** the demo (or with `--all`); otherwise the rules first bite at pre-push.
 - **Only `README.md` is allowed at the root.** That allow-list lives in
   `ALLOWED_ROOT_FILES` in `src/demos.ts`; everything else at the root is a finding.
 - **It's wired into `check:slow`, not `check:fast`.** The package's `check:slow` script is
