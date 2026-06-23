@@ -4,21 +4,25 @@ branch: claude/clever-cerf-nqxcep
 
 # ALF-32 — Skip to Development (bypass refinement)
 
-*2026-06-23T17:35:06.585Z*
+*2026-06-23T17:58:49.037Z*
 
 For a small, well-understood task the refinement phase is pure overhead. ALF-32 adds a **second launch button** beside *Refine in Claude Code*, offered only from `needs_refinement`: **Skip to Development**. It opens one Claude Code session whose prompt is a *blend* of the refinement and implementation prompts — ground in the repo, **ask clarifying questions if scope is unclear**, then once the plan is settled **implement directly** — and opens **one** implementation PR (`phase: implementation`). No spec file, no separate refinement PR.
 
-## The two launch chips on the card
+## The user journey on the live board
 
-A `needs_refinement` story card now shows two chips: the teal primary **Refine in Claude Code** and the muted, subordinate **Skip to Development** (the visual subordination keeps refinement the obvious call to action). This is the committed Storybook visual snapshot.
+The reviewer's flow, end to end. ALF-32 starts in **Needs Refinement** — the card now offers two chips, the teal primary **Refine in Claude Code** and the muted, subordinate **Skip to Development**:
 
 ![](bypass-refinement-image-1.png)
 
-## The detail-modal header
-
-Opening the story shows the same two actions in the modal header — the solid-accent **Refine in Claude Code** and the subordinate outline **Skip to Development**. (A `needs_refinement` story has no spec yet, so the spec body reads "No spec yet".)
+Clicking **Skip to Development** awaits the durable state write, then the card **jumps straight to In Development** — skipping both *In Refinement* **and** *Ready for Dev* (each stays at 0), and Needs Refinement drops to 0. (Only after that write does `window.open` fire the prefilled tab; it's stubbed here so the capture never navigates to claude.ai.)
 
 ![](bypass-refinement-image-2.png)
+
+## The detail-modal header
+
+The same two actions appear in the story-detail modal header — the solid-accent **Refine in Claude Code** and the subordinate outline **Skip to Development**. (A `needs_refinement` story has no spec yet, so the spec body reads "No spec yet".) The card chip and the modal button are the same committed Storybook visual snapshots that gate the visual subordination.
+
+![](bypass-refinement-image-3.png)
 
 ## The blended bypass prompt
 
