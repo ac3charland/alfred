@@ -38,44 +38,52 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 }
 
 describe('LaunchButton', () => {
-  it('renders the refine label in needs_refinement', () => {
-    render(<LaunchButton story={makeStory({ factory_state: 'needs_refinement' })} />);
+  it('renders the label for the given phase', () => {
+    render(<LaunchButton story={makeStory()} phase="refinement" />);
 
     expect(screen.getByRole('button', { name: /refine in claude code/i })).toBeInTheDocument();
   });
 
-  it('renders the implement label in ready_for_dev', () => {
-    render(<LaunchButton story={makeStory({ factory_state: 'ready_for_dev' })} />);
+  it('renders the implement label for the implementation phase', () => {
+    render(
+      <LaunchButton story={makeStory({ factory_state: 'ready_for_dev' })} phase="implementation" />,
+    );
 
     expect(screen.getByRole('button', { name: /implement in claude code/i })).toBeInTheDocument();
   });
 
-  it('renders nothing in a non-launchable state', () => {
-    const { container } = render(<LaunchButton story={makeStory({ factory_state: 'blocked' })} />);
+  it('renders the skip-to-development label for the bypass phase', () => {
+    render(<LaunchButton story={makeStory()} phase="bypass" />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: /skip to development/i })).toBeInTheDocument();
   });
 
-  it('calls onOpenSession with the story and derived phase when clicked', async () => {
+  it('calls onOpenSession with the story and the given phase when clicked', async () => {
     const onOpenSession = jest.fn();
     const story = makeStory({ factory_state: 'ready_for_dev' });
     const user = userEvent.setup();
-    render(<LaunchButton story={story} onOpenSession={onOpenSession} />);
+    render(<LaunchButton story={story} phase="implementation" onOpenSession={onOpenSession} />);
 
     await user.click(screen.getByRole('button', { name: /implement in claude code/i }));
 
     expect(onOpenSession).toHaveBeenCalledWith(story, 'implementation');
   });
 
+  it('passes the bypass phase through when the skip button is clicked', async () => {
+    const onOpenSession = jest.fn();
+    const story = makeStory({ factory_state: 'needs_refinement' });
+    const user = userEvent.setup();
+    render(<LaunchButton story={story} phase="bypass" onOpenSession={onOpenSession} />);
+
+    await user.click(screen.getByRole('button', { name: /skip to development/i }));
+
+    expect(onOpenSession).toHaveBeenCalledWith(story, 'bypass');
+  });
+
   it('re-enables after a failed launch settles', async () => {
     const onOpenSession = jest.fn().mockRejectedValue(new Error('nope'));
     const user = userEvent.setup();
-    render(
-      <LaunchButton
-        story={makeStory({ factory_state: 'needs_refinement' })}
-        onOpenSession={onOpenSession}
-      />,
-    );
+    render(<LaunchButton story={makeStory()} phase="refinement" onOpenSession={onOpenSession} />);
 
     await user.click(screen.getByRole('button', { name: /refine in claude code/i }));
 
@@ -84,8 +92,8 @@ describe('LaunchButton', () => {
     });
   });
 
-  it('chip variant renders the bordered teal chip chrome', () => {
-    render(<LaunchButton story={makeStory()} variant="chip" />);
+  it('chip variant renders the bordered teal chip chrome for a primary phase', () => {
+    render(<LaunchButton story={makeStory()} phase="refinement" variant="chip" />);
 
     expect(screen.getByRole('button', { name: /refine in claude code/i })).toHaveClass(
       'rounded-md',
@@ -94,12 +102,30 @@ describe('LaunchButton', () => {
     );
   });
 
-  it('solid variant renders the accent Button chrome', () => {
-    render(<LaunchButton story={makeStory()} variant="solid" />);
+  it('chip variant renders a muted, subordinate chip for the bypass phase', () => {
+    render(<LaunchButton story={makeStory()} phase="bypass" variant="chip" />);
+
+    const button = screen.getByRole('button', { name: /skip to development/i });
+    // Subordinate treatment: neutral border + muted text, NOT the teal accent.
+    expect(button).toHaveClass('border-border', 'text-muted-foreground');
+    expect(button).not.toHaveClass('border-accent-teal/40', 'bg-accent-teal/10');
+  });
+
+  it('solid variant renders the accent Button chrome for a primary phase', () => {
+    render(<LaunchButton story={makeStory()} phase="refinement" variant="solid" />);
 
     expect(screen.getByRole('button', { name: /refine in claude code/i })).toHaveClass(
       'bg-accent-teal',
       'text-background',
     );
+  });
+
+  it('solid variant renders the subordinate outline Button chrome for the bypass phase', () => {
+    render(<LaunchButton story={makeStory()} phase="bypass" variant="solid" />);
+
+    const button = screen.getByRole('button', { name: /skip to development/i });
+    // The outline variant, not the solid accent.
+    expect(button).toHaveClass('border', 'border-border', 'bg-transparent');
+    expect(button).not.toHaveClass('bg-accent-teal');
   });
 });

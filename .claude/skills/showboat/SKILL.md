@@ -39,11 +39,19 @@ A demo must show the **new behavior actually happening**. Pick the evidence that
   change) → a GIF, not a screenshot.** Motion is what a still can't convey; a
   static image of the end state proves nothing. Record with Playwright video and
   convert with `npm run demo -- video`. See the recording recipe below.
-- **Anything visual — a screen, a component, a layout/styling/copy tweak, or a
-  UI interaction state change (element stays open, content appears, box closes)
+- **Anything visual — a screen, a component, a layout/styling/copy tweak
   → the primary evidence is a screenshot of the rendered UI.** The reviewer should
   *see* the change. Drive to the exact state the change affects (the right view,
   the right data) and shoot it. See the screenshot recipe below.
+- **An interaction or state transition (a click that moves a card between columns,
+  advances a state machine, reveals/dismisses something) → the live `before → action →
+  after` journey, one screenshot per step**, driven through the running app (the
+  Playwright mock harness below). This is the case the reviewer asks "but can you show
+  the *journey*?" about. A still of the component in a single state — above all a
+  Storybook snapshot — proves it *renders*, not that the transition *happens*; the
+  behavior **is** the user performing the action and the app responding, so capture
+  exactly that. (A Storybook still of each end state is fine as *secondary* evidence,
+  never the whole demo.)
 - **Only a change with no visual surface — an API route, a data-layer function, a
   migration, a CLI/tooling change → uses CLI/`exec` output** as its evidence: the
   request + response, the query result, the command's output.
@@ -161,7 +169,12 @@ screenshots never make verification flaky. There are two ways to put the rendere
 UI in front of it — reach for **Storybook first**; it's the one that always works
 here.
 
-### Storybook — preferred (no auth, no data seeding, always reproducible)
+### Storybook — preferred for a component *in a state* (no auth, no data seeding, always reproducible)
+
+"Preferred" means for shooting a component **in a given state**; a feature whose essence
+is a **transition** (a card moving columns, a state machine advancing) needs the live
+`before → action → after` journey instead — drive the app via *The live authenticated app*
+below, because an isolated still can't show the transition.
 
 Components render in isolation, **outside the Supabase auth gate**, with per-story
 store seeds (`parameters.store.{folders,tasks}` — see `.storybook/preview.ts`). If

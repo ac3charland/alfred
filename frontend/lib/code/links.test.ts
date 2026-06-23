@@ -1,6 +1,6 @@
 import type { CodeStory, Project } from '@/lib/types';
 
-import { buildImplementationUrl, buildRefinementUrl } from './links';
+import { buildBypassUrl, buildImplementationUrl, buildRefinementUrl } from './links';
 
 /**
  * A project row, mirroring what the code store seeds. `repo_owner`/`repo_name` are what the
@@ -243,5 +243,72 @@ describe('buildImplementationUrl', () => {
     // The implementation analog of the clarification gate: don't guess past a stale/ambiguous spec.
     expect(prompt).toMatch(/ask me here/i);
     expect(prompt).toMatch(/verbatim|reproduced exactly/i);
+  });
+});
+
+describe('buildBypassUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const url = buildBypassUrl(makeProject(), makeStory());
+    const { base, repo } = parse(url);
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('leads the prompt with the ref and title (scannable tab)', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt.split('\n', 1)[0]).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
+  });
+
+  it('carries the clarification gate: ground in the repo and ask before building when scope is unclear', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+    expect(prompt).toMatch(/ask me here/i);
+  });
+
+  it('instructs implementing directly once the plan is settled', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/implement/i);
+    expect(prompt).toMatch(/settled/i);
+  });
+
+  it('does NOT tell the agent to read a committed spec (there is none)', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    // No "read the spec / implement the merged spec at <path>" instruction, unlike the
+    // implementation prompt. The skip-refinement flow produces no spec file at all.
+    expect(prompt).not.toMatch(/read the (committed |merged )?spec/i);
+    expect(prompt).not.toMatch(/merged spec/i);
+    expect(prompt).toMatch(/no committed spec to read/i);
+  });
+
+  it('embeds the alfred frontmatter block with the implementation phase (so the Worker advances it)', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-42');
+    expect(prompt).toContain('phase: implementation');
+  });
+
+  it('tells Claude to open one PR carrying the block', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/open.*(pull request|pr)/i);
+    expect(prompt).toMatch(/verbatim|reproduced exactly/i);
+  });
+
+  it('flags truncated notes so partial context is not mistaken for the whole', () => {
+    const prompt =
+      parse(buildBypassUrl(makeProject(), makeStory({ notes: 'Z'.repeat(2000) }))).prompt ?? '';
+    expect(prompt).toMatch(/truncated/i);
+  });
+
+  it('does NOT inline a long notes body (length cap)', () => {
+    const longNotes = 'X'.repeat(20_000);
+    const url = buildBypassUrl(makeProject(), makeStory({ notes: longNotes }));
+    expect(url.length).toBeLessThan(14_000);
+    expect(parse(url).prompt ?? '').not.toContain(longNotes);
+  });
+
+  it('url-encodes the prompt', () => {
+    const rawQuery = buildBypassUrl(makeProject(), makeStory()).split('?', 2)[1] ?? '';
+    expect(rawQuery).not.toMatch(/[ \n`]/);
   });
 });

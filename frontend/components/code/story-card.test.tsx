@@ -112,6 +112,35 @@ describe('StoryCard', () => {
       expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
     });
 
+    it('shows both Refine and the subordinate Skip to Development in needs_refinement, in that order', () => {
+      render(<StoryCard story={makeStory({ factory_state: 'needs_refinement' })} />);
+
+      const launches = screen.getAllByRole('button', { name: /claude code|skip to development/i });
+      expect(launches.map((button) => button.textContent)).toEqual([
+        'Refine in Claude Code',
+        'Skip to Development',
+      ]);
+    });
+
+    it('offers no Skip to Development outside needs_refinement', () => {
+      render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+
+      expect(
+        screen.queryByRole('button', { name: /skip to development/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onOpenSession with the bypass phase when Skip to Development is clicked', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const story = makeStory({ factory_state: 'needs_refinement' });
+      const user = userEvent.setup();
+      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+
+      await user.click(screen.getByRole('button', { name: /skip to development/i }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(story, 'bypass');
+    });
+
     it('shows an Implementation button when the story is ready for dev', () => {
       render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
 
