@@ -7,6 +7,7 @@ import {
   ChevronRight,
   MoreHorizontal,
   Pencil,
+  Plus,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -22,6 +23,7 @@ import {
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextareaField } from '@/components/atoms/textarea-field';
+import { NewStoryDialog } from '@/components/code/new-story-dialog';
 import { StoryCard } from '@/components/code/story-card';
 import { Swimlane } from '@/components/code/swimlane';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
@@ -111,11 +113,14 @@ export function EpicBlock({
   onOpenSession,
 }: EpicBlockProperties) {
   const { epic, lanes, escapeStories } = board;
-  const { updateEpic } = useCodeActions();
+  const { updateEpic, createStory } = useCodeActions();
   const headingId = `epic-${epic.id}-heading`;
   const regionId = `epic-${epic.id}-lanes`;
   const archived = epic.archived_at !== null;
   const [pending, setPending] = React.useState(false);
+  // Ephemeral session UI (like the board's collapse Set): whether this epic's "new story"
+  // modal is open.
+  const [newStoryOpen, setNewStoryOpen] = React.useState(false);
 
   const toggleArchive = async () => {
     setPending(true);
@@ -193,6 +198,22 @@ export function EpicBlock({
           </DisclosureToggle>
         )}
 
+        {/* The "+" (new story) trigger sits immediately to the left of the 3-dot menu; both
+            hide while the title is being renamed. */}
+        {editingTitle ? null : (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={`New story in ${epic.name}`}
+            className="h-7 w-7 shrink-0 self-center text-muted-foreground"
+            onClick={() => {
+              setNewStoryOpen(true);
+            }}
+          >
+            <Plus size={15} />
+          </Button>
+        )}
+
         {/* 3-dot actions menu in the title corner: Edit title + Archive/Unarchive. */}
         {editingTitle ? null : (
           <DropdownMenu>
@@ -267,6 +288,16 @@ export function EpicBlock({
           ) : null}
         </div>
       )}
+
+      {/* The new-story modal, scoped to this epic. Its optimistic insert drops the card into
+          the Needs Refinement lane immediately, then reconciles with the allocated ref. */}
+      <NewStoryDialog
+        open={newStoryOpen}
+        onOpenChange={setNewStoryOpen}
+        epicName={epic.name}
+        epicRef={epic.ref}
+        onCreateStory={(title, notes) => createStory(epic.id, title, notes)}
+      />
     </section>
   );
 }
