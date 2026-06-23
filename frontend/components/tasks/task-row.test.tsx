@@ -34,6 +34,9 @@ const BASE_ITEM: Item = {
   completed_at: null,
   folder_id: null,
   parent_id: null,
+  occurrence_index: null,
+  recurrence: null,
+  recurrence_series_id: null,
 };
 
 const CHILD_ITEM: Item = {
@@ -3327,6 +3330,7 @@ describe('TaskRow — classification & type-gating', () => {
         blocked_reason: null,
         created_at: '2025-01-02T00:00:00Z',
         updated_at: '2025-01-02T00:00:00Z',
+        priority: 0,
       });
 
       const user = userEvent.setup();

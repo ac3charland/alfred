@@ -195,6 +195,9 @@ export function makeOptimisticItem(input: CreateItemInput): Item {
     status: 'active',
     completed_at: null,
     created_at: new Date().toISOString(),
+    occurrence_index: null,
+    recurrence: null,
+    recurrence_series_id: null,
   };
 }
 
@@ -279,5 +282,6 @@ export function makeOptimisticStory(
     epic_name: epic.name,
     epic_ref: epic.ref,
     epic_archived_at: epic.archived_at,
+    priority: null,
   };
 }
