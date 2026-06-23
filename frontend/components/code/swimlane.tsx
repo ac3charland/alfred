@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { Badge } from '@/components/atoms/badge';
 import { StoryCard } from '@/components/code/story-card';
 import type { BoardLane } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
@@ -38,9 +39,9 @@ export function Swimlane({ lane, onOpenStory, onOpenSession }: SwimlanePropertie
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {lane.label}
         </h4>
-        <span className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+        <Badge variant="secondary" className="px-1.5 font-medium">
           {lane.stories.length}
-        </span>
+        </Badge>
       </header>
       <div className="flex flex-col gap-2 px-2 pb-2">
         {lane.stories.length === 0 ? (

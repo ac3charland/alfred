@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge } from '@/components/atoms/badge';
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { LaunchButton } from '@/components/atoms/launch-button';
 import { type LaunchPhase, launchPhaseFor } from '@/lib/code/launch';
@@ -58,14 +59,12 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
         <span className="flex items-center gap-2">
           <span className="font-mono text-xs font-medium text-accent-teal">{story.ref}</span>
           {escape ? (
-            <span
-              className={cn(
-                'ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide',
-                blocked ? 'bg-amber-500/15 text-amber-400' : 'bg-destructive/15 text-destructive',
-              )}
+            <Badge
+              variant={blocked ? 'alert' : 'destructive'}
+              className="ml-auto px-1.5 text-[0.625rem] font-semibold uppercase tracking-wide"
             >
               {blocked ? 'Blocked' : 'Abandoned'}
-            </span>
+            </Badge>
           ) : null}
         </span>
         <span className="mt-1 line-clamp-2 block text-sm text-foreground">{story.title}</span>

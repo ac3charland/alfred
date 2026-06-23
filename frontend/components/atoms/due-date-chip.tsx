@@ -1,5 +1,6 @@
 import * as React from 'react';
 
+import { badgeVariants } from '@/components/atoms/badge';
 import { formatDueDate, isDueDateOverdue } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 
@@ -20,15 +21,15 @@ export interface DueDateChipProperties extends Omit<
  */
 const DueDateChip = React.forwardRef<HTMLButtonElement, DueDateChipProperties>(
   ({ dueDate, className, type, 'aria-label': ariaLabel, ...properties }, reference) => {
+    const overdue = isDueDateOverdue(dueDate);
     return (
       <button
         type={type ?? 'button'}
         aria-label={ariaLabel ?? `Due date: ${dueDate}`}
         className={cn(
-          'shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors motion-reduce:transition-none',
-          isDueDateOverdue(dueDate)
-            ? 'border-accent-amber/50 text-accent-amber hover:border-accent-amber'
-            : 'border-accent-blue/50 text-accent-blue hover:border-accent-blue',
+          badgeVariants({ variant: overdue ? 'warning' : 'info' }),
+          'font-medium transition-colors motion-reduce:transition-none',
+          overdue ? 'hover:border-accent-amber' : 'hover:border-accent-blue',
           className,
         )}
         ref={reference}
