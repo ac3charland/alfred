@@ -43,23 +43,34 @@ export function buildTree(items: Item[]): ItemNode[] {
     }
   }
 
-  return sortForest(roots);
+  // Roots are newest-first (the capture-first inbox); subtasks read chronologically.
+  return sortForest(roots, false);
 }
 
-/** Sort a copy of nodes by created_at descending, then recursively sort children. */
-function sortForest(nodes: ItemNode[]): ItemNode[] {
+/**
+ * Sort a copy of `nodes` by created_at, then recursively sort their children.
+ *
+ * Roots sort **descending** (newest first — the capture-first list shows the latest
+ * thing you captured at the top). Subtasks sort **ascending** (chronological, oldest
+ * first) at every depth, so a decomposed task reads top-to-bottom in the order its
+ * steps were added (ALF-43) — hence children always recurse with `ascending = true`.
+ */
+function sortForest(nodes: ItemNode[], ascending: boolean): ItemNode[] {
   // unicorn/no-array-sort forbids mutating .sort(); toSorted() requires ES2023 but
-  // tsconfig targets ES2022 — so we use an explicit insertion-sort loop.
+  // tsconfig targets ES2022 — so we use an explicit insertion-sort loop. The strict
+  // comparison keeps the sort stable: equal timestamps never displace an earlier sibling.
   const sorted: ItemNode[] = [];
   for (const node of nodes) {
-    const insertAt = sorted.findIndex((existing) => existing.created_at < node.created_at);
+    const insertAt = sorted.findIndex((existing) =>
+      ascending ? existing.created_at > node.created_at : existing.created_at < node.created_at,
+    );
     if (insertAt === -1) {
       sorted.push(node);
     } else {
       sorted.splice(insertAt, 0, node);
     }
   }
-  return sorted.map((node): ItemNode => ({ ...node, children: sortForest(node.children) }));
+  return sorted.map((node): ItemNode => ({ ...node, children: sortForest(node.children, true) }));
 }
 
 /**

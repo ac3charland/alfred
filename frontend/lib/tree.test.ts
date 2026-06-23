@@ -60,13 +60,16 @@ function flatItems(): Item[] {
 describe('buildTree', () => {
   it('nests children under parents by parent_id', () => {
     const forest = buildTree(flatItems());
+    // Roots are newest-first: item-1 (01-05) before item-2 (01-01).
     expect(forest.map((n) => n.id)).toStrictEqual(['item-1', 'item-2']);
     const root = forest[0];
-    expect(root?.children.map((c) => c.id)).toStrictEqual(['c-1', 'c-2']);
-    expect(root?.children[0]?.children.map((g) => g.id)).toStrictEqual(['g-1']);
+    // Subtasks render oldest-first (chronological): c-2 (01-02) before c-1 (01-03).
+    expect(root?.children.map((c) => c.id)).toStrictEqual(['c-2', 'c-1']);
+    const childWithGrandchild = root?.children.find((c) => c.id === 'c-1');
+    expect(childWithGrandchild?.children.map((g) => g.id)).toStrictEqual(['g-1']);
   });
 
-  it('sorts siblings by created_at descending', () => {
+  it('sorts root siblings by created_at descending (newest first)', () => {
     const forest = buildTree([
       item({ id: 'old', created_at: '2025-01-01T00:00:00Z' }),
       item({ id: 'new', created_at: '2025-06-01T00:00:00Z' }),
@@ -74,11 +77,22 @@ describe('buildTree', () => {
     expect(forest.map((n) => n.id)).toStrictEqual(['new', 'old']);
   });
 
-  it('keeps stable order when two items share the same created_at', () => {
+  it('sorts subtask siblings by created_at ascending (chronological)', () => {
+    // A single parent with two subtasks captured out of order — the children sort
+    // oldest-first regardless of input order (ALF-43).
+    const forest = buildTree([
+      item({ id: 'parent', created_at: '2025-01-10T00:00:00Z' }),
+      item({ id: 'newer-child', parent_id: 'parent', created_at: '2025-06-01T00:00:00Z' }),
+      item({ id: 'older-child', parent_id: 'parent', created_at: '2025-01-01T00:00:00Z' }),
+    ]);
+    expect(forest[0]?.children.map((c) => c.id)).toStrictEqual(['older-child', 'newer-child']);
+  });
+
+  it('keeps stable order when two root items share the same created_at', () => {
     // Both share the same timestamp — neither should displace the other.
-    // With `<` (correct), equal timestamps do NOT trigger an insertion, so the
-    // second item appended stays last. With `<=` (mutant), the second equal item
-    // would be inserted before the first, changing order.
+    // With `<` (correct, descending roots), equal timestamps do NOT trigger an
+    // insertion, so the second item appended stays last. With `<=` (mutant), the
+    // second equal item would be inserted before the first, changing order.
     const forest = buildTree([
       item({ id: 'first', created_at: '2025-03-01T00:00:00Z' }),
       item({ id: 'second', created_at: '2025-03-01T00:00:00Z' }),
@@ -86,6 +100,17 @@ describe('buildTree', () => {
     // 'first' was inserted before 'second'; they share the same timestamp so no
     // reordering should occur — 'first' remains before 'second'.
     expect(forest.map((n) => n.id)).toStrictEqual(['first', 'second']);
+  });
+
+  it('keeps stable order when two subtasks share the same created_at', () => {
+    // The ascending child path uses a `>` (strict) comparison, so equal-timestamp
+    // siblings keep insertion order; a `>=` mutant would swap them.
+    const forest = buildTree([
+      item({ id: 'parent', created_at: '2025-01-10T00:00:00Z' }),
+      item({ id: 'child-a', parent_id: 'parent', created_at: '2025-03-01T00:00:00Z' }),
+      item({ id: 'child-b', parent_id: 'parent', created_at: '2025-03-01T00:00:00Z' }),
+    ]);
+    expect(forest[0]?.children.map((c) => c.id)).toStrictEqual(['child-a', 'child-b']);
   });
 
   it('treats an item whose parent is absent as a root (filtered-view fallback)', () => {
