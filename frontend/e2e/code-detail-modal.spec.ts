@@ -159,7 +159,7 @@ test('moves a story to a different epic via the breadcrumb dropdown', async ({ p
 
   // The card starts under epic one's block.
   const epicOneSection = page.locator('section', {
-    has: page.getByRole('button', { name: /communication firewall/i }),
+    has: page.getByRole('button', { name: /^communication firewall/i }),
   });
   await expect(epicOneSection.getByText('ALF-5')).toBeVisible();
 
@@ -179,7 +179,7 @@ test('moves a story to a different epic via the breadcrumb dropdown', async ({ p
   await expect(dialog).toBeHidden();
 
   const epicTwoSection = page.locator('section', {
-    has: page.getByRole('button', { name: /capture pipeline/i }),
+    has: page.getByRole('button', { name: /^capture pipeline/i }),
   });
   await expect(epicTwoSection.getByText('ALF-5')).toBeVisible();
   await expect(epicOneSection.getByText('ALF-5')).toBeHidden();
@@ -207,9 +207,9 @@ test('archiving an epic from its header removes it from the active board', async
   await page.goto(`/code/${PROJECT_ID}`);
 
   // Both epics are on the active board.
-  const firewallHeader = page.getByRole('button', { name: /communication firewall/i });
+  const firewallHeader = page.getByRole('button', { name: /^communication firewall/i });
   await expect(firewallHeader).toBeVisible();
-  await expect(page.getByRole('button', { name: /capture pipeline/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^capture pipeline/i })).toBeVisible();
 
   // Archive the first epic from its actions menu. Scope to its section so the right menu is hit.
   const firewallSection = page.locator('section', { has: firewallHeader });
@@ -217,9 +217,9 @@ test('archiving an epic from its header removes it from the active board', async
   await page.getByRole('menuitem', { name: /^archive$/i }).click();
 
   // It leaves the active board.
-  await expect(page.getByRole('button', { name: /communication firewall/i })).toBeHidden();
+  await expect(page.getByRole('button', { name: /^communication firewall/i })).toBeHidden();
 
   // Show archived reveals it again.
   await page.getByRole('button', { name: /show archived/i }).click();
-  await expect(page.getByRole('button', { name: /communication firewall/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^communication firewall/i })).toBeVisible();
 });

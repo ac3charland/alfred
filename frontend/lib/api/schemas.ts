@@ -152,16 +152,39 @@ export const updateEpicSchema = z
 export type UpdateEpicInput = z.infer<typeof updateEpicSchema>;
 
 /**
- * Body for POST /api/code — the gate. Calls `enter_code_module(item, project, epic)`,
- * which flips the item to `code`, clears its task-only fields, and creates the sidecar
- * at `needs_refinement` with a server-allocated ref.
+ * The **gate** shape for POST /api/code: admit a pre-existing item to the factory via
+ * `enter_code_module(item, project, epic)`, which flips the item to `code`, clears its
+ * task-only fields, and creates the sidecar at `needs_refinement` with a server-allocated ref.
  */
-export const createCodeSchema = z.object({
+export const gateCodeSchema = z.object({
   item_id: uuid,
   project_id: uuid,
   epic_id: uuid,
 });
 
+/**
+ * The **new-story** shape for POST /api/code: mint a brand-new story from the project view
+ * via `create_code_story(project, epic, title, notes)`, which inserts a fresh item AND its
+ * `code_items` sidecar in one step (no inbox row to admit). `title` is trimmed and required;
+ * `notes` is optional (the lib/ layer maps empty → null). No `item_id` distinguishes it from
+ * the gate shape.
+ */
+export const newCodeStorySchema = z.object({
+  title: z.string().trim().min(1),
+  notes: z.string().nullable().optional(),
+  project_id: uuid,
+  epic_id: uuid,
+});
+
+/**
+ * Body for POST /api/code — a union of the two creation shapes. The gate flips an existing
+ * item; the new-story shape inserts a fresh one. Both produce a `code_items` sidecar at
+ * `needs_refinement` and return that row, so they share one route (branch on `item_id`).
+ */
+export const createCodeSchema = z.union([gateCodeSchema, newCodeStorySchema]);
+
+export type GateCodeInput = z.infer<typeof gateCodeSchema>;
+export type NewCodeStoryInput = ExactOptional<z.infer<typeof newCodeStorySchema>>;
 export type CreateCodeInput = z.infer<typeof createCodeSchema>;
 
 /** Validated shape for GET /api/epics query string — optional `?project=` filter. */

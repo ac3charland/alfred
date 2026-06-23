@@ -174,3 +174,71 @@ describe('POST /api/code (the gate)', () => {
     expect(response.status).toBe(500);
   });
 });
+
+describe('POST /api/code (new story)', () => {
+  const NEW_BODY = { title: 'Wire the webhook', project_id: PROJECT_ID, epic_id: EPIC_ID };
+
+  it('calls create_code_story with the project, epic, and title and returns 201', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(postRequest(NEW_BODY), STUB_CONTEXT);
+
+    expect(response.status).toBe(201);
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: 'Wire the webhook',
+    });
+    const body: unknown = await response.json();
+    expect(body).toStrictEqual(TEST_SIDECAR);
+  });
+
+  it('forwards notes when provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest({ ...NEW_BODY, notes: 'Some detail' }), STUB_CONTEXT);
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: 'Wire the webhook',
+      p_notes: 'Some detail',
+    });
+  });
+
+  it('omits p_notes when notes is null (the RPC defaults it to NULL)', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest({ ...NEW_BODY, notes: null }), STUB_CONTEXT);
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: 'Wire the webhook',
+    });
+  });
+
+  it('returns 400 when title (and item_id) are missing', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(
+      postRequest({ project_id: PROJECT_ID, epic_id: EPIC_ID }),
+      STUB_CONTEXT,
+    );
+    expect(response.status).toBe(400);
+    expect(mockSupabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when the title is empty (or whitespace only)', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await POST(postRequest({ ...NEW_BODY, title: ' '.repeat(3) }), STUB_CONTEXT);
+    expect(response.status).toBe(400);
+    expect(mockSupabase.rpc).not.toHaveBeenCalled();
+  });
+});

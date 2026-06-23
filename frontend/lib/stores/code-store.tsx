@@ -10,7 +10,7 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
-import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory } from '@/lib/tree';
+import { makeOptimisticEpic, makeOptimisticProject, makeOptimisticStory, tempId } from '@/lib/tree';
 import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 /**
@@ -128,6 +128,14 @@ export interface CodeActions {
     projectId: string,
     epicId: string,
   ) => Promise<CodeStory>;
+  /**
+   * Create a brand-new story directly into an epic from the board's `+` (no inbox item).
+   * Mints a temporary item id for the optimistic card (the real `item_id` is server-allocated,
+   * unlike the gate where the item already exists), then reconciles by swapping the temp row
+   * for the saved one — replacing `item_id` (temp → server uuid) along with the allocated ref.
+   * The target project is derived from the epic, so the caller passes only the epic.
+   */
+  createStory: (epicId: string, title: string, notes: string | null) => Promise<CodeStory>;
   /**
    * Edit an epic's header fields: `name` (inline rename), `notes` and `archived_at`
    * (set to archive, `null` to un-archive — archiving drops the epic off the active board).
@@ -520,6 +528,42 @@ export function CodeProvider({
       },
       convertTaskToCode(item, projectId, epicId) {
         return admitToFactory(item, projectId, epicId);
+      },
+      async createStory(epicId, title, notes) {
+        const { projects, epics } = stateRef.current;
+        const epic = epics.find((e) => e.id === epicId);
+        if (epic === undefined) {
+          throw new Error(`Epic ${epicId} not found in the code store`);
+        }
+        const project = projects.find((p) => p.id === epic.project_id);
+        if (project === undefined) {
+          throw new Error(`Project ${epic.project_id} not found in the code store`);
+        }
+        // The item is server-allocated, so the optimistic card carries a TEMP item id that
+        // the reconcile swaps for the real uuid (unlike the gate, where the item exists).
+        const tempItemId = tempId();
+        const optimistic = makeOptimisticStory(
+          { id: tempItemId, title, notes, source_url: null },
+          project,
+          epic,
+        );
+        let reconciled: CodeStory = optimistic;
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'insertStory', story: optimistic });
+          },
+          apiCall: () => api.createCodeStory(epic.project_id, epicId, title, notes),
+          reconcile: (saved) => {
+            // Reconcile the sidecar fields AND replace the temp item_id with the server uuid
+            // (the temp-id row is keyed out via `replaceStory`'s itemId).
+            reconciled = { ...reconcileStory(optimistic, saved), item_id: saved.item_id };
+            dispatch({ type: 'replaceStory', itemId: tempItemId, story: reconciled });
+          },
+          rollback: () => {
+            dispatch({ type: 'removeStory', itemId: tempItemId });
+          },
+        });
+        return reconciled;
       },
       updateCodeState(ref, factoryState, extra = {}) {
         return transitionState(ref, factoryState, extra);

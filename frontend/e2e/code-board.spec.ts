@@ -79,8 +79,10 @@ test('renders seeded stories grouped into the right swimlanes under collapsible 
   });
   await page.goto('/code/p1');
 
-  // The epic header shows its name + ref and is collapsible.
-  const epicHeader = page.getByRole('button', { name: /communication firewall/i });
+  // The epic header shows its name + ref and is collapsible. Anchor the name so it matches
+  // the header toggle ("Communication Firewall …"), not the "New story in Communication
+  // Firewall" + button that also lives in the header.
+  const epicHeader = page.getByRole('button', { name: /^communication firewall/i });
   await expect(epicHeader).toBeVisible();
   await expect(epicHeader).toHaveAttribute('aria-expanded', 'true');
 
