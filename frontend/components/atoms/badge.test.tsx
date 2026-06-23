@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { Badge, badgeVariants } from './badge';
 
@@ -19,6 +20,48 @@ describe('Badge', () => {
     expect(badgeVariants({ variant: 'alert' })).toContain('text-amber-400');
     expect(badgeVariants({ variant: 'destructive' })).toContain('bg-destructive/15');
     expect(badgeVariants({ variant: 'destructive' })).toContain('text-destructive');
+    expect(badgeVariants({ variant: 'due' })).toContain('border-accent-blue/50');
+    expect(badgeVariants({ variant: 'due' })).toContain('text-accent-blue');
+    expect(badgeVariants({ variant: 'overdue' })).toContain('border-accent-amber/50');
+    expect(badgeVariants({ variant: 'overdue' })).toContain('text-accent-amber');
+  });
+
+  it('adds the hover/transition treatment only for an interactive bordered chip', () => {
+    // Non-interactive (default): no hover darkening, so a static folder/overdue chip
+    // doesn't react to the pointer.
+    expect(badgeVariants({ variant: 'overdue' })).not.toContain('hover:border-accent-amber');
+    expect(badgeVariants({ variant: 'overdue', interactive: true })).toContain('transition-colors');
+    expect(badgeVariants({ variant: 'overdue', interactive: true })).toContain(
+      'hover:border-accent-amber',
+    );
+    expect(badgeVariants({ variant: 'due', interactive: true })).toContain(
+      'hover:border-accent-blue',
+    );
+  });
+
+  it('renders a clickable type="button" with the pill classes when asButton is set', () => {
+    render(
+      <Badge asButton variant="due" interactive>
+        Today
+      </Badge>,
+    );
+    const chip = screen.getByRole('button', { name: 'Today' });
+    expect(chip).toHaveAttribute('type', 'button');
+    expect(chip).toHaveClass('rounded-full', 'border', 'text-accent-blue', 'transition-colors');
+  });
+
+  it('forwards onClick when rendered as a button', async () => {
+    const onClick = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <Badge asButton onClick={onClick}>
+        Go
+      </Badge>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Go' }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('applies the muted variant by default', () => {

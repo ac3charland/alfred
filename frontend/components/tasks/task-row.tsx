@@ -8,12 +8,12 @@ import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-colla
 import { Badge } from '@/components/atoms/badge';
 import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
-import { DueDateChip } from '@/components/atoms/due-date-chip';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
+import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskMetaPanel } from '@/components/tasks/task-row/task-meta-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
