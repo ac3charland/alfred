@@ -1,4 +1,4 @@
-import { MONTHS, formatDueDate, isDueDateOverdue } from './date-utils';
+import { MONTHS, formatDueDate, isDueDateOverdue, isDueTodayOrOverdue } from './date-utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -155,5 +155,35 @@ describe('isDueDateOverdue', () => {
   // Timezone regression: YYYY-MM-DD strings must be treated as local midnight.
   it("returns false for today's local date as a YYYY-MM-DD string (not overdue)", () => {
     expect(isDueDateOverdue(todayLocalYMD())).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isDueTodayOrOverdue
+// ---------------------------------------------------------------------------
+
+describe('isDueTodayOrOverdue', () => {
+  it("returns true for today's local date as a YYYY-MM-DD string (boundary: today IS counted)", () => {
+    // due_date is stored as a clean YYYY-MM-DD string, which parseDueDate maps to local
+    // midnight — exactly the comparison baseline, so `<=` includes today.
+    expect(isDueTodayOrOverdue(todayLocalYMD())).toBe(true);
+  });
+
+  it('returns true for a past date', () => {
+    expect(isDueTodayOrOverdue(dueForDayOffset(-1))).toBe(true);
+    expect(isDueTodayOrOverdue(dueForDayOffset(-10))).toBe(true);
+  });
+
+  it('returns false for tomorrow and the future', () => {
+    expect(isDueTodayOrOverdue(dueForDayOffset(1))).toBe(false);
+    expect(isDueTodayOrOverdue(dueForDayOffset(10))).toBe(false);
+  });
+
+  it('uses <= (not <): a datetime equal to today midnight local IS counted', () => {
+    // Mirror of the isDueDateOverdue strict-less-than test, but inverted: today midnight
+    // local fed back in is EXACTLY the baseline. With `<=` this is true; with `<` it would
+    // be false. This test kills the EqualityOperator mutant on the boundary.
+    const todayMidnightLocal = new Date(new Date().toDateString());
+    expect(isDueTodayOrOverdue(todayMidnightLocal.toISOString())).toBe(true);
   });
 });

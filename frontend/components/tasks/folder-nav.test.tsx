@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { renderWithProviders } from '@/lib/test-utils';
-import type { Folder } from '@/lib/types';
+import type { Folder, Item } from '@/lib/types';
 
 import { FolderNav } from './folder-nav';
 
@@ -34,6 +34,30 @@ const FOLDERS: Folder[] = [
   { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
   { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
 ];
+
+/** A local YYYY-MM-DD due-date string offset from today (0 = today, -1 = yesterday). */
+const dueYMD = (offsetDays: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Minimal active task item for seeding the store in due-count tests. */
+const taskItem = (overrides: Partial<Item>): Item => ({
+  id: 'i1',
+  title: 'Task',
+  notes: null,
+  source_url: null,
+  item_type: 'task',
+  created_at: '2025-01-01T00:00:00Z',
+  raw_capture: null,
+  due_date: null,
+  status: 'active',
+  completed_at: null,
+  folder_id: null,
+  parent_id: null,
+  ...overrides,
+});
 
 // Opens the options dropdown for the named folder and waits for the menu to appear.
 // Radix DropdownMenu portals set pointer-events:none on the body, so subsequent item
@@ -835,6 +859,57 @@ describe('FolderNav', () => {
       await waitFor(() => {
         expect(mockCreateFolder).toHaveBeenCalledWith('Projects');
       });
+    });
+  });
+
+  describe('due-today / past-due count badge', () => {
+    it('shows a folder badge with the count of active today-or-overdue tasks', () => {
+      renderWithProviders(<FolderNav />, {
+        folders: FOLDERS,
+        tasks: [
+          taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(-1) }), // past
+          taskItem({ id: 'b', folder_id: 'f1', due_date: dueYMD(0) }), // today
+        ],
+      });
+
+      expect(screen.getByLabelText('2 due today or overdue')).toHaveTextContent('2');
+    });
+
+    it('renders no badge for a folder with nothing due (no "0" chip)', () => {
+      renderWithProviders(<FolderNav />, {
+        folders: FOLDERS,
+        tasks: [taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(0) })],
+      });
+
+      // f1 has its badge; f2 (nothing due) shows none.
+      expect(screen.getByLabelText('1 due today or overdue')).toBeInTheDocument();
+      expect(screen.queryByText('0')).not.toBeInTheDocument();
+    });
+
+    it('keeps the badge shrink-0 and the name truncating so a long name never clips it', () => {
+      renderWithProviders(<FolderNav />, {
+        folders: FOLDERS,
+        tasks: [taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(0) })],
+      });
+
+      expect(screen.getByLabelText('1 due today or overdue')).toHaveClass('shrink-0');
+      // The folder name flex-fills and truncates, so it yields room before the badge.
+      const link = screen.getByRole('link', { name: /work/i });
+      const name = link.querySelector('.truncate');
+      expect(name).toHaveClass('truncate', 'min-w-0', 'flex-1');
+    });
+
+    it('does not count completed, future-due, or inbox items toward a folder badge', () => {
+      renderWithProviders(<FolderNav />, {
+        folders: FOLDERS,
+        tasks: [
+          taskItem({ id: 'done', folder_id: 'f1', due_date: dueYMD(-1), status: 'completed' }),
+          taskItem({ id: 'future', folder_id: 'f1', due_date: dueYMD(5) }),
+          taskItem({ id: 'inbox', folder_id: null, due_date: dueYMD(-1) }),
+        ],
+      });
+
+      expect(screen.queryByLabelText(/due today or overdue/i)).not.toBeInTheDocument();
     });
   });
 });

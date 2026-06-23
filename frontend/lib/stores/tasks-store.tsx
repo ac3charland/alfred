@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { isDueTodayOrOverdue } from '@/lib/date-utils';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
@@ -366,6 +367,33 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
     // Completed items only surface in an active view as descendants of an active task.
     return forest.filter((node) => node.status === 'active');
   }, [items, scopeType, folderId]);
+}
+
+/**
+ * Per-folder count of active task items due today or earlier (today + past-due), keyed by
+ * `folder_id`. Returns a map so a folder list can look up each folder's count in its existing
+ * `folders.map(...)` without N hook calls. Derived from the shared store via `useMemo`, so it
+ * updates optimistically with every capture, completion, due-date edit, and drag-to-folder.
+ *
+ * An item counts when ALL hold: it lives in a folder (`folder_id !== null`, so inbox items
+ * never count), it's active (completed excluded), and it has a `due_date` that is today or
+ * earlier. Filtering on `due_date !== null` already restricts to tasks (the DB
+ * `items_task_only_fields` constraint lets only `item_type = 'task'` rows carry a due date), and
+ * subtasks share their ancestor's `folder_id`, so this flat count includes nested subtasks.
+ */
+export function useDueCountsByFolder(): Record<string, number> {
+  const items = useTasks();
+  return React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      if (item.folder_id === null) continue;
+      if (item.status !== 'active') continue;
+      if (item.due_date === null) continue;
+      if (!isDueTodayOrOverdue(item.due_date)) continue;
+      counts[item.folder_id] = (counts[item.folder_id] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */

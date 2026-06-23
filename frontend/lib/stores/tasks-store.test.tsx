@@ -8,6 +8,7 @@ import {
   type TaskScope,
   TasksProvider,
   tasksReducer,
+  useDueCountsByFolder,
   useScopedTasks,
   useTaskActions,
   useTasks,
@@ -1023,5 +1024,82 @@ describe('context wiring', () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(useTaskActions)).toThrow(/must be used within a TasksProvider/);
     spy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useDueCountsByFolder (per-folder due-today/past-due selector)
+// ---------------------------------------------------------------------------
+
+/** A local YYYY-MM-DD due-date string offset from today (0 = today, -1 = yesterday, 1 = tomorrow). */
+function dueYMD(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+describe('useDueCountsByFolder', () => {
+  it('buckets active today-or-earlier tasks by folder_id', () => {
+    const items = [
+      item({ id: 'a', folder_id: 'f1', due_date: dueYMD(0) }), // today
+      item({ id: 'b', folder_id: 'f1', due_date: dueYMD(-2) }), // past
+      item({ id: 'c', folder_id: 'f2', due_date: dueYMD(-1) }), // past, other folder
+    ];
+    const { result } = renderHook(useDueCountsByFolder, { wrapper: makeWrapper(items) });
+
+    expect(result.current).toEqual({ f1: 2, f2: 1 });
+  });
+
+  it('counts a task due exactly today (boundary: today is included)', () => {
+    const { result } = renderHook(useDueCountsByFolder, {
+      wrapper: makeWrapper([item({ id: 'a', folder_id: 'f1', due_date: dueYMD(0) })]),
+    });
+
+    expect(result.current['f1']).toBe(1);
+  });
+
+  it('counts nested subtasks toward their folder (flat folder_id match)', () => {
+    // A subtask shares its ancestor's folder bucket; the flat count includes it.
+    const items = [
+      item({ id: 'parent', folder_id: 'f1', due_date: dueYMD(-1) }),
+      item({ id: 'child', folder_id: 'f1', parent_id: 'parent', due_date: dueYMD(0) }),
+    ];
+    const { result } = renderHook(useDueCountsByFolder, { wrapper: makeWrapper(items) });
+
+    expect(result.current['f1']).toBe(2);
+  });
+
+  it('excludes completed, future-due, due-date-less, and inbox items', () => {
+    const items = [
+      item({ id: 'done', folder_id: 'f1', due_date: dueYMD(-1), status: 'completed' }),
+      item({ id: 'future', folder_id: 'f1', due_date: dueYMD(1) }),
+      item({ id: 'noDue', folder_id: 'f1', due_date: null }),
+      item({ id: 'inbox', folder_id: null, due_date: dueYMD(-1) }),
+    ];
+    const { result } = renderHook(useDueCountsByFolder, { wrapper: makeWrapper(items) });
+
+    // None of these qualify, so f1 has no entry and the inbox never appears.
+    expect(result.current['f1']).toBeUndefined();
+    expect(result.current).toEqual({});
+  });
+
+  it('updates as the store changes (optimistic) — completing a due task drops its count', async () => {
+    const items = [
+      item({ id: 'a', folder_id: 'f1', due_date: dueYMD(-1) }),
+      item({ id: 'b', folder_id: 'f1', due_date: dueYMD(0) }),
+    ];
+    mockCompleteTask.mockResolvedValue([{ ...item({ id: 'a' }), status: 'completed' }]);
+    const { result } = renderHook(
+      () => ({ counts: useDueCountsByFolder(), actions: useTaskActions() }),
+      { wrapper: makeWrapper(items) },
+    );
+
+    expect(result.current.counts['f1']).toBe(2);
+
+    await act(async () => {
+      await result.current.actions.completeTask('a');
+    });
+
+    expect(result.current.counts['f1']).toBe(1);
   });
 });
