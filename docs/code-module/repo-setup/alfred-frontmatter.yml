@@ -7,9 +7,9 @@
 #
 # Contract:
 #   ```alfred
-#   alfred-ticket: ALF-42            # one ref, or a comma-separated list
-#   phase: refinement                # refinement | implementation
-#   spec-path: docs/specs/ALF-42.md  # refinement PRs only
+#   alfred-ticket: ALF-42              # one ref, or a comma-separated list
+#   phase: refinement                  # refinement | implementation
+#   spec-path: docs/specs/ALF-42.html  # refinement PRs only (a self-contained HTML plan)
 #   ```
 
 name: alfred-frontmatter
