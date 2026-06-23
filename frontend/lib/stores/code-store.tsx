@@ -6,6 +6,7 @@ import * as React from 'react';
 import * as api from '@/lib/api-client';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import { buildBypassUrl, buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
+import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -186,6 +187,14 @@ export interface CodeActions {
    * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
   openClaudeSession: (ref: string, phase: LaunchPhase) => Promise<void>;
+  /**
+   * Reorder two stories in the global Backlog by **swapping their `priority`** (the chevron
+   * move). The Backlog owns the filter/sort, so it resolves which visible neighbour to swap
+   * with and hands both refs; this action just swaps the pair. Optimistic: patch each story
+   * with the other's priority (capturing the prior pair for rollback); reconcile from the two
+   * returned `code_items` rows via `codeItemToStoryPatch`; roll the priorities back on error.
+   */
+  reorderStory: (ref: string, neighbourRef: string) => Promise<void>;
 }
 
 interface CodeState {
@@ -287,6 +296,7 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
     blocked_reason: row.blocked_reason,
     code_created_at: row.created_at,
     code_updated_at: row.updated_at,
+    priority: row.priority,
   };
 }
 
@@ -717,6 +727,46 @@ export function CodeProvider({
         await transitionState(ref, LAUNCH_TARGET_STATE[phase], {});
         window.open(url, '_blank');
       },
+      async reorderStory(ref, neighbourRef) {
+        const { stories } = stateRef.current;
+        const a = stories.find((s) => s.ref === ref);
+        const b = stories.find((s) => s.ref === neighbourRef);
+        if (a === undefined || b === undefined) {
+          throw new Error(`Code story ${ref} or ${neighbourRef} not found in the code store`);
+        }
+        // `v_code_stories` is a view (all-nullable row type); a seeded story always has a real
+        // item_id (the inner-join guarantee), but narrow it for the dispatch keys.
+        const aItemId = a.item_id;
+        const bItemId = b.item_id;
+        if (aItemId === null || bItemId === null) {
+          throw new Error(`Code story ${ref} or ${neighbourRef} has no item_id`);
+        }
+        // Capture the prior priorities so a failed swap restores exactly them.
+        const aPriority = a.priority;
+        const bPriority = b.priority;
+        await runOptimisticMutation({
+          optimistic: () => {
+            // Swap: each story takes the other's priority (the same exchange the RPC does).
+            dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: bPriority } });
+            dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: aPriority } });
+          },
+          apiCall: () => api.reorderCode(ref, neighbourRef),
+          reconcile: (rows) => {
+            // Apply each returned sidecar through the one projection (carries the real priority).
+            for (const row of rows) {
+              dispatch({
+                type: 'patchStory',
+                itemId: row.item_id,
+                patch: codeItemToStoryPatch(row),
+              });
+            }
+          },
+          rollback: () => {
+            dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: aPriority } });
+            dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: bPriority } });
+          },
+        });
+      },
     };
   }, []);
 
@@ -751,15 +801,62 @@ function useCodeStories(): CodeStory[] {
   return useStoriesValue('useCodeStories');
 }
 
-/** Group one epic's stories into the 6 happy-path swimlanes + the escape-state bucket. */
+/**
+ * Compare two stories by global Backlog `priority` ascending (lowest number = highest priority,
+ * sorts first). `priority` is non-null on the base table but nominally nullable on the view row,
+ * so a missing value sorts last. Used to order every lane, the escape bucket, and the Backlog.
+ */
+function byPriorityAsc(a: CodeStory, b: CodeStory): number {
+  return (a.priority ?? Number.POSITIVE_INFINITY) - (b.priority ?? Number.POSITIVE_INFINITY);
+}
+
+/** The outstanding factory states the Backlog shows by default — everything but done/abandoned. */
+function isBacklogOutstanding(state: CodeFactoryState | null): boolean {
+  return state !== 'done' && state !== 'abandoned';
+}
+
+/** Every story under an epic, across all lanes and the escape bucket (for the epic-rank key). */
+function epicStories(board: BoardEpic): CodeStory[] {
+  return [...board.lanes.flatMap((lane) => lane.stories), ...board.escapeStories];
+}
+
+/**
+ * An epic's Backlog rank: the best (lowest) priority across ALL its stories, so the epic holding
+ * the highest-ranked story leads. An epic with no stories has no rank and sorts LAST.
+ */
+function epicRank(board: BoardEpic): number {
+  const priorities = epicStories(board).map((story) => story.priority ?? Number.POSITIVE_INFINITY);
+  return priorities.length > 0 ? Math.min(...priorities) : Number.POSITIVE_INFINITY;
+}
+
+/** Order epics by their best story's priority, with `created_at` ascending as a stable tie-break. */
+function byEpicRank(a: BoardEpic, b: BoardEpic): number {
+  const rankA = epicRank(a);
+  const rankB = epicRank(b);
+  // Compare equality first: two no-story epics are both +Infinity, and Infinity - Infinity is
+  // NaN (a broken comparator), so fall straight to the tie-break when the ranks match.
+  if (rankA !== rankB) return rankA - rankB;
+  return a.epic.created_at.localeCompare(b.epic.created_at);
+}
+
+/**
+ * Group one epic's stories into the 6 happy-path swimlanes + the escape-state bucket. Every lane
+ * (and the escape bucket) is sorted by global `priority` so the board reflects the Backlog rank.
+ */
 function buildEpicBoard(epic: Epic, stories: CodeStory[]): BoardEpic {
   const forEpic = stories.filter((story) => story.epic_id === epic.id);
   const lanes = HAPPY_PATH_STATES.map<BoardLane>((state) => ({
     state,
     label: STATE_LABELS[state],
-    stories: forEpic.filter((story) => story.factory_state === state),
+    stories: stableSorted(
+      forEpic.filter((story) => story.factory_state === state),
+      byPriorityAsc,
+    ),
   }));
-  const escapeStories = forEpic.filter((story) => isEscapeState(story.factory_state));
+  const escapeStories = stableSorted(
+    forEpic.filter((story) => isEscapeState(story.factory_state)),
+    byPriorityAsc,
+  );
   return { epic, lanes, escapeStories };
 }
 
@@ -776,14 +873,38 @@ export function useProjectBoard(projectId: string): ProjectBoard {
   return React.useMemo<ProjectBoard>(() => {
     const project = projects.find((candidate) => candidate.id === projectId);
     const projectEpics = epics.filter((epic) => epic.project_id === projectId);
-    const activeEpics = projectEpics
-      .filter((epic) => epic.archived_at === null)
-      .map((epic) => buildEpicBoard(epic, stories));
-    const archivedEpics = projectEpics
-      .filter((epic) => epic.archived_at !== null)
-      .map((epic) => buildEpicBoard(epic, stories));
+    // Epics order by their best story's global priority (no-story epics last) so the board falls
+    // in line beneath the Backlog's one ranking; within each epic the lanes are priority-sorted.
+    const activeEpics = stableSorted(
+      projectEpics
+        .filter((epic) => epic.archived_at === null)
+        .map((epic) => buildEpicBoard(epic, stories)),
+      byEpicRank,
+    );
+    const archivedEpics = stableSorted(
+      projectEpics
+        .filter((epic) => epic.archived_at !== null)
+        .map((epic) => buildEpicBoard(epic, stories)),
+      byEpicRank,
+    );
     return { project, activeEpics, archivedEpics };
   }, [projects, epics, stories, projectId]);
+}
+
+/**
+ * The flat, ranked, cross-project Backlog list (ALF-35): every story sorted by global `priority`
+ * ascending, filtered to outstanding states (everything except `done`/`abandoned`) unless
+ * `showCompleted` reveals them. Memoized on the stories slice + the flag, like `useProjectBoard`.
+ */
+export function useBacklog({ showCompleted }: { showCompleted: boolean }): CodeStory[] {
+  const stories = useCodeStories();
+
+  return React.useMemo<CodeStory[]>(() => {
+    const visible = showCompleted
+      ? stories
+      : stories.filter((story) => isBacklogOutstanding(story.factory_state));
+    return stableSorted(visible, byPriorityAsc);
+  }, [stories, showCompleted]);
 }
 
 /** Read the code mutation actions (the gate / ProjectNav `+`). Throws outside a CodeProvider. */

@@ -9,6 +9,7 @@ import {
   HAPPY_PATH_STATES,
   codeItemToStoryPatch,
   isEscapeState,
+  useBacklog,
   useCodeActions,
   useProjectBoard,
   useProjects,
@@ -24,6 +25,7 @@ const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockUpdateEpic = jest.mocked(api.updateEpic);
 const mockUpdateItem = jest.mocked(api.updateItem);
 const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
+const mockReorderCode = jest.mocked(api.reorderCode);
 
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so tests can drive a
 // simulated `code_items` change through it without a live Realtime channel. (Overrides the
@@ -207,6 +209,15 @@ function useStore(projectId: string) {
   return { actions: useCodeActions(), board: useProjectBoard(projectId) };
 }
 
+/** Map each story's priority by item_id from a backlog list (for the reorder assertions). */
+function prioritiesById(backlog: CodeStory[]): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const story of backlog) {
+    if (story.item_id !== null) out[story.item_id] = story.priority;
+  }
+  return out;
+}
+
 describe('code-store', () => {
   describe('HAPPY_PATH_STATES', () => {
     it('lists the six happy-path states in board order and excludes the escape states', () => {
@@ -330,6 +341,88 @@ describe('code-store', () => {
       });
       expect(result.current.activeEpics.map((board) => board.epic.id)).toEqual(['e1']);
       expect(result.current.archivedEpics.map((board) => board.epic.id)).toEqual(['e2']);
+    });
+
+    it('sorts each lane and the escape bucket by priority ascending', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { factory_state: 'in_development', priority: 30 }),
+        makeStory('i2', 'e1', 'p1', { factory_state: 'in_development', priority: 10 }),
+        makeStory('i3', 'e1', 'p1', { factory_state: 'in_development', priority: 20 }),
+        makeStory('i4', 'e1', 'p1', { factory_state: 'blocked', priority: 25 }),
+        makeStory('i5', 'e1', 'p1', { factory_state: 'abandoned', priority: 5 }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')], stories }),
+      });
+      const [board] = result.current.activeEpics;
+      const lane = board?.lanes.find((l) => l.state === 'in_development');
+      expect(lane?.stories.map((s) => s.item_id)).toEqual(['i2', 'i3', 'i1']);
+      // The escape bucket is priority-sorted too (i5 priority 5 before i4 priority 25).
+      expect(board?.escapeStories.map((s) => s.item_id)).toEqual(['i5', 'i4']);
+    });
+
+    it('orders epics by their best (lowest-priority) story, no-story epics last', () => {
+      const epics = [
+        makeEpic('e1', 'p1', { created_at: '2025-01-01T00:00:00Z' }),
+        makeEpic('e2', 'p1', { created_at: '2025-01-02T00:00:00Z' }),
+        makeEpic('e3', 'p1', { created_at: '2025-01-03T00:00:00Z' }),
+      ];
+      const stories = [
+        // e2 holds the highest-ranked story (priority 2) → e2 should lead, then e1 (priority 7).
+        makeStory('i1', 'e1', 'p1', { priority: 7 }),
+        makeStory('i2', 'e2', 'p1', { priority: 2 }),
+        // e3 has no stories → sorts last.
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }),
+      });
+      expect(result.current.activeEpics.map((b) => b.epic.id)).toEqual(['e2', 'e1', 'e3']);
+    });
+
+    it('tie-breaks no-story epics by created_at ascending', () => {
+      const epics = [
+        makeEpic('e2', 'p1', { created_at: '2025-02-02T00:00:00Z' }),
+        makeEpic('e1', 'p1', { created_at: '2025-01-01T00:00:00Z' }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics }),
+      });
+      expect(result.current.activeEpics.map((b) => b.epic.id)).toEqual(['e1', 'e2']);
+    });
+  });
+
+  describe('useBacklog', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+
+    it('returns the global cross-project list sorted by priority ascending', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 30 }),
+        makeStory('i2', 'eX', 'p2', { priority: 10 }),
+        makeStory('i3', 'e1', 'p1', { priority: 20 }),
+      ];
+      const { result } = renderHook(() => useBacklog({ showCompleted: false }), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      expect(result.current.map((s) => s.item_id)).toEqual(['i2', 'i3', 'i1']);
+    });
+
+    it('hides done/abandoned by default and reveals them when showCompleted is true', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 10, factory_state: 'in_development' }),
+        makeStory('i2', 'e1', 'p1', { priority: 20, factory_state: 'done' }),
+        makeStory('i3', 'e1', 'p1', { priority: 30, factory_state: 'abandoned' }),
+      ];
+      const seed = { projects: [PROJECT_A], epics, stories };
+
+      const hidden = renderHook(() => useBacklog({ showCompleted: false }), {
+        wrapper: makeWrapper(seed),
+      });
+      expect(hidden.result.current.map((s) => s.item_id)).toEqual(['i1']);
+
+      const shown = renderHook(() => useBacklog({ showCompleted: true }), {
+        wrapper: makeWrapper(seed),
+      });
+      expect(shown.result.current.map((s) => s.item_id)).toEqual(['i1', 'i2', 'i3']);
     });
   });
 
@@ -835,6 +928,63 @@ describe('code-store', () => {
       });
     });
 
+    describe('reorderStory (Backlog priority swap)', () => {
+      const epic = makeEpic('e1', 'p1');
+      const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+      const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+
+      it('optimistically swaps the pair then reconciles from the returned rows', async () => {
+        // The RPC returns both rows with their swapped priorities.
+        mockReorderCode.mockResolvedValue([
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+          makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+        ]);
+        const { result } = renderHook(
+          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
+        );
+
+        await act(async () => {
+          await result.current.actions.reorderStory('ALF-1', 'ALF-2');
+        });
+
+        expect(mockReorderCode).toHaveBeenCalledWith('ALF-1', 'ALF-2');
+        // ALF-2 now outranks ALF-1, so the backlog order flips.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1']);
+      });
+
+      it('rolls the priorities back on API failure', async () => {
+        mockReorderCode.mockRejectedValue(new Error('swap failed'));
+        const { result } = renderHook(
+          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
+        );
+
+        await act(async () => {
+          await expect(result.current.actions.reorderStory('ALF-1', 'ALF-2')).rejects.toThrow(
+            'swap failed',
+          );
+        });
+
+        // Restored to the original ranking.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2 });
+      });
+
+      it('throws (and does not call the api) when a ref is unknown', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.reorderStory('ALF-1', 'ALF-404')).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockReorderCode).not.toHaveBeenCalled();
+      });
+    });
+
     describe('updateEpic (name + notes + archive)', () => {
       it('optimistically patches epic name, then reconciles with the saved row', async () => {
         mockUpdateEpic.mockResolvedValue(makeSavedEpic({ name: 'Renamed Epic' }));
@@ -1128,6 +1278,7 @@ describe('code-store', () => {
         blocked_reason: 'checks failing',
         created_at: '2025-01-01T00:00:00Z',
         updated_at: '2025-02-02T00:00:00Z',
+        priority: 9,
       });
 
       expect(codeItemToStoryPatch(row)).toEqual({
@@ -1143,6 +1294,7 @@ describe('code-store', () => {
         blocked_reason: 'checks failing',
         code_created_at: '2025-01-01T00:00:00Z',
         code_updated_at: '2025-02-02T00:00:00Z',
+        priority: 9,
       });
     });
   });
