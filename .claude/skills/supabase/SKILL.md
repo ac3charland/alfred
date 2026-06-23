@@ -110,6 +110,7 @@ Server Components cannot write cookies, which means they cannot refresh expired 
 | Create an RLS policy (SQL migration) | `ALTER TABLE items ENABLE ROW LEVEL SECURITY; CREATE POLICY "owner access" ON items FOR ALL TO authenticated USING ((select auth.uid()) = user_id);` | Wrap `auth.uid()` in a `SELECT` subexpression — Postgres caches the result per statement (significant perf win). See `references/rls-policies.md` for full policy patterns. |
 | Generate TypeScript types from schema | `npx supabase gen types typescript --project-id "$PROJECT_REF" --schema public > src/database.types.ts` then `createClient<Database>(url, key)` | Run after every migration. Use `Tables<'items'>`, `Enums<'item_type'>` helpers from the generated file rather than accessing the nested `Database['public']['Tables']['items']['Row']` type directly. |
 | Push live row changes to an open browser (code module only) | `supabase.channel('code_items').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'code_items' }, handler).subscribe()`; tear down with `removeChannel(channel)` | The **only** realtime use in alfred — the webhook Worker is a second, non-browser writer of `factory_state`. **Subscribe to the base `code_items` table, not the `v_code_stories` view** (you can't subscribe to a view). Add the table to the `supabase_realtime` publication in a migration (`0003`); the existing `using (true)` policy governs the stream. Re-applying an echo of your own optimistic write is idempotent — no self-write filter. |
+| Reorder rows by a single global rank without a transient duplicate (the Backlog, ALF-35) | A `bigint priority` column defaulted from a **global** `create sequence code_priority_seq` under a `unique(priority)` index; swap two rows in **one** statement: `update code_items set priority = case ref when p_a then b_pri when p_b then a_pri else priority end where ref in (p_a, p_b)` (wrap in a `security invoker` RPC, `swap_code_priority`). | One atomic UPDATE never lets the unique index see a duplicate mid-swap — two PATCHes would. A *global* order needs **one** sequence, **not** the per-project `next_code_ref` (which would collide across projects). New rows append at the bottom via the column default (`nextval`), so the insert RPCs need no edit. `security invoker` keeps RLS applying, matching the 0002/0004 RPCs. |
 
 ---
 
@@ -159,6 +160,8 @@ useEffect(() => {
 - **The `cookies()` import from `next/headers` is async in Next.js 15+.** Always `await cookies()` before passing to `createServerClient`. Forgetting the await causes a runtime error.
 
 - **RLS `UPDATE` policies need both `USING` (which rows can be seen) and `WITH CHECK` (what the updated row must satisfy).** A policy with only `USING` allows reading the row but may silently fail writes that would move a row out of the policy's scope.
+
+- **`create or replace view` can only APPEND columns — never reorder, retype, rename, or drop them.** To add a column to an existing view (e.g. `priority` on `v_code_stories`), put the new column at the **end** of the select list; anything else errors with `cannot change name/type of view column`. Drop-and-recreate only when you must restructure.
 
 ### Security traps
 

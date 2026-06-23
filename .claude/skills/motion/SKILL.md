@@ -109,6 +109,7 @@ Content is conditionally rendered ({open && <X/>})?
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
 | **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
+| **Animate a list whose rows _reorder_** (a DOM sibling reorder, e.g. a priority re-rank) | The FLIP `useFlipList` hook (below) | CSS can't transition a sibling reorder on its own. FLIP measures before/after rects and glides each row. Gate on reduced motion (rows snap). |
 
 ---
 
@@ -268,6 +269,36 @@ await expect(page.getByRole('list', { name: 'Subtasks' })).not.toBeVisible();
 ```
 
 ---
+
+## The FLIP list-reorder pattern (animate a sibling reorder)
+
+When a list **re-sorts** — rows swap places (e.g. the Backlog's `priority` swap, ALF-35) — the
+DOM siblings reorder, which CSS can't transition on its own (and there's no Framer Motion in the
+stack). Use **FLIP** (First → Last → Invert → Play): the shared hook
+`frontend/lib/hooks/use-flip-list.ts` (`useFlipList`).
+
+```tsx
+const items = useBacklog(...);                       // the (re)sorted list
+const register = useFlipList(items.map((i) => i.id)); // keys in CURRENT render order
+// each row: <li ref={register(item.id)}> … </li>    // forwardRef the root to the registrar
+```
+
+In a `useLayoutEffect` it reads each tracked row's previous and new `getBoundingClientRect`
+(First/Last), sets a no-transition `translateY(Δ)` so the row looks un-moved (Invert), then on the
+next `requestAnimationFrame` clears the offset under `transform 200ms ease-out` (Play) so the rows
+glide. Key things:
+
+- **Reduced motion:** the hook gates the whole effect on `usePrefersReducedMotion()` — when reduced
+  it skips the transform entirely (rows snap), so there's no transition to strand.
+- **Keys are the identity:** pass them in current render order; only rows present before *and* after
+  animate (entering/leaving rows are left alone). Forward the registrar ref to the row's root.
+- **`react-hooks/immutability` (React Compiler):** an object passed as `useRef`'s initial argument
+  is frozen, so the hook would be flagged for mutating tracked nodes' `.style`. Create the Maps
+  **lazily** (`const m = (ref.current ??= new Map<…>())`) instead of `useRef(new Map())`, and type
+  each `new Map<K, V>()` so the nodes don't widen to `any`.
+- **jsdom has no layout:** `getBoundingClientRect` is all-zero, so the transform never fires under
+  Jest — assert the row *order*, not the transform. To actually measure the glide, sample
+  `transform` over frames in Playwright (the `debug-animations` skill).
 
 ## Common Pitfalls
 
