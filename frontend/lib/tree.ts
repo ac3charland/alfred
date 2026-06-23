@@ -8,6 +8,7 @@
  * for folders / projects / epics / code stories).
  */
 import type { CreateItemInput, CreateProjectInput } from '@/lib/api-client';
+import { stableSorted } from '@/lib/sort';
 import type { CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
 
 export type ItemNode = Item & {
@@ -56,20 +57,14 @@ export function buildTree(items: Item[]): ItemNode[] {
  * steps were added (ALF-43) — hence children always recurse with `ascending = true`.
  */
 function sortForest(nodes: ItemNode[], ascending: boolean): ItemNode[] {
-  // unicorn/no-array-sort forbids mutating .sort(); toSorted() requires ES2023 but
-  // tsconfig targets ES2022 — so we use an explicit insertion-sort loop. The strict
-  // comparison keeps the sort stable: equal timestamps never displace an earlier sibling.
-  const sorted: ItemNode[] = [];
-  for (const node of nodes) {
-    const insertAt = sorted.findIndex((existing) =>
-      ascending ? existing.created_at > node.created_at : existing.created_at < node.created_at,
-    );
-    if (insertAt === -1) {
-      sorted.push(node);
-    } else {
-      sorted.splice(insertAt, 0, node);
-    }
-  }
+  // Stable sort by created_at (see lib/sort `stableSorted`): unicorn/no-array-sort forbids the
+  // mutating .sort() and toSorted() needs ES2023 while tsconfig targets ES2022. Equal timestamps
+  // never displace an earlier sibling. ISO timestamps compare lexicographically, so a raw string
+  // compare gives the chronological order — negated for the descending (newest-first) roots.
+  const sorted = stableSorted(nodes, (a, b) => {
+    const order = a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+    return ascending ? order : -order;
+  });
   return sorted.map((node): ItemNode => ({ ...node, children: sortForest(node.children, true) }));
 }
 
