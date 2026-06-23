@@ -137,8 +137,9 @@ Re-parenting a subtask is the same idea against `parent_id` (a `reparentTask` ac
 following the optimistic recipe).
 
 **Reorder is NOT free — there is no order column yet.** `items` has `created_at` but no
-`position`/`sort_order`, and `buildTree`'s `sortForest` orders the forest by **`created_at`
-descending**. A manual drag-reorder therefore has nothing to persist to and nothing to sort by.
+`position`/`sort_order`, and `buildTree`'s `sortForest` orders by **`created_at`**: **roots
+descending** (newest first) and **subtasks ascending** (chronological — oldest first, at every
+depth). A manual drag-reorder therefore has nothing to persist to and nothing to sort by.
 To support it you must, as one deliberate task: (1) add an ordering column to `items`
 (migration in `database/`) — prefer a **fractional rank** (e.g. a `numeric`/string key set to
 the midpoint between neighbours) so one move is **one** row UPDATE, not a renumber of the list;
