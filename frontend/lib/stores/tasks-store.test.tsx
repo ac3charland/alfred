@@ -8,6 +8,7 @@ import {
   type TaskScope,
   TasksProvider,
   tasksReducer,
+  useDueCountsByFolder,
   useScopedTasks,
   useTaskActions,
   useTasks,
@@ -993,6 +994,98 @@ describe('useScopedTasks', () => {
       wrapper: makeWrapper(nested),
     });
     expect(result.current).toStrictEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useDueCountsByFolder
+// ---------------------------------------------------------------------------
+
+/** Returns a YYYY-MM-DD string offset by days from today (negative = past). */
+function daysFromToday(offset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+describe('useDueCountsByFolder', () => {
+  const today = daysFromToday(0);
+  const yesterday = daysFromToday(-1);
+  const tomorrow = daysFromToday(1);
+
+  it('counts active tasks in a folder due today or earlier', () => {
+    const tasks = [
+      item({ id: 'a', folder_id: 'f1', status: 'active', due_date: today }),
+      item({ id: 'b', folder_id: 'f1', status: 'active', due_date: yesterday }),
+    ];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBe(2);
+  });
+
+  it('excludes completed tasks even if due today or earlier', () => {
+    const tasks = [item({ id: 'a', folder_id: 'f1', status: 'completed', due_date: today })];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBeUndefined();
+  });
+
+  it('excludes tasks due in the future', () => {
+    const tasks = [item({ id: 'a', folder_id: 'f1', status: 'active', due_date: tomorrow })];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBeUndefined();
+  });
+
+  it('excludes tasks with no due_date', () => {
+    const tasks = [item({ id: 'a', folder_id: 'f1', status: 'active', due_date: null })];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBeUndefined();
+  });
+
+  it('excludes inbox items (folder_id === null) from all folder counts', () => {
+    const tasks = [item({ id: 'a', folder_id: null, status: 'active', due_date: today })];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    // No folder should have a count
+    expect(Object.keys(result.current)).toHaveLength(0);
+  });
+
+  it('buckets counts correctly across multiple folders', () => {
+    const tasks = [
+      item({ id: 'a', folder_id: 'f1', status: 'active', due_date: today }),
+      item({ id: 'b', folder_id: 'f2', status: 'active', due_date: yesterday }),
+      item({ id: 'c', folder_id: 'f2', status: 'active', due_date: today }),
+    ];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBe(1);
+    expect(result.current['f2']).toBe(2);
+  });
+
+  it('counts subtasks (same folder_id as parent) toward their folder', () => {
+    const tasks = [
+      item({ id: 'parent', folder_id: 'f1', status: 'active', due_date: null }),
+      item({
+        id: 'child',
+        folder_id: 'f1',
+        parent_id: 'parent',
+        status: 'active',
+        due_date: today,
+      }),
+    ];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBe(1);
+  });
+
+  it('today-due tasks are included (boundary: today counts)', () => {
+    const tasks = [item({ id: 'a', folder_id: 'f1', status: 'active', due_date: today })];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current['f1']).toBe(1);
+  });
+
+  it('returns an empty object when no items qualify', () => {
+    const tasks = [
+      item({ id: 'a', folder_id: 'f1', status: 'active', due_date: tomorrow }),
+      item({ id: 'b', folder_id: null, status: 'active', due_date: today }),
+    ];
+    const { result } = renderHook(() => useDueCountsByFolder(), { wrapper: makeWrapper(tasks) });
+    expect(result.current).toStrictEqual({});
   });
 });
 

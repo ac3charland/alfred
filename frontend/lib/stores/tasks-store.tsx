@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { isDueTodayOrOverdue } from '@/lib/date-utils';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
@@ -371,4 +372,27 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */
 export function useTaskActions(): TaskActions {
   return useActions('useTaskActions');
+}
+
+/**
+ * Returns a map of folder_id → count of active items in that folder whose
+ * due_date is today or earlier. Folders with no qualifying items are absent
+ * from the map (never 0). Inbox items (folder_id === null) never contribute.
+ */
+export function useDueCountsByFolder(): Record<string, number> {
+  const items = useTasks();
+  return React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      if (
+        item.folder_id !== null &&
+        item.status === 'active' &&
+        item.due_date !== null &&
+        isDueTodayOrOverdue(item.due_date)
+      ) {
+        counts[item.folder_id] = (counts[item.folder_id] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [items]);
 }
