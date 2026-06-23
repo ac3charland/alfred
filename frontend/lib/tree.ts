@@ -279,5 +279,6 @@ export function makeOptimisticStory(
     epic_name: epic.name,
     epic_ref: epic.ref,
     epic_archived_at: epic.archived_at,
+    priority: 0,
   };
 }

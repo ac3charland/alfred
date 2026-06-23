@@ -136,6 +136,7 @@ function makeStory(
     epic_name: `Epic ${epicId}`,
     epic_ref: 'ALF-1',
     epic_archived_at: null,
+    priority: 1,
     ...overrides,
   };
 }
@@ -158,6 +159,7 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     blocked_reason: null,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-02-02T00:00:00Z',
+    priority: 1,
     ...overrides,
   };
 }
@@ -441,6 +443,7 @@ describe('code-store', () => {
         blocked_reason: null,
         created_at: '2025-01-04T00:00:00Z',
         updated_at: '2025-01-04T00:00:00Z',
+        priority: 1,
       };
 
       it('inserts an optimistic card immediately and reconciles the allocated ref', async () => {
@@ -549,6 +552,7 @@ describe('code-store', () => {
         blocked_reason: null,
         created_at: '2025-01-05T00:00:00Z',
         updated_at: '2025-01-05T00:00:00Z',
+        priority: 1,
       };
 
       it('inserts an optimistic card at needs_refinement, then reconciles the real item_id + ref', async () => {

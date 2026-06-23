@@ -35,6 +35,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     epic_name: 'Epic',
     epic_ref: 'ALF-0',
     epic_archived_at: null,
+    priority: 1,
     ...overrides,
   };
 }

@@ -43,6 +43,7 @@ export type Database = {
           implementation_pr_url: string | null
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
+          priority: number
           project_id: string
           ref: string
           ref_number: number
@@ -60,6 +61,7 @@ export type Database = {
           implementation_pr_url?: string | null
           item_id: string
           lane?: Database["public"]["Enums"]["code_lane"]
+          priority?: number
           project_id: string
           ref: string
           ref_number: number
@@ -77,6 +79,7 @@ export type Database = {
           implementation_pr_url?: string | null
           item_id?: string
           lane?: Database["public"]["Enums"]["code_lane"]
+          priority?: number
           project_id?: string
           ref?: string
           ref_number?: number
@@ -362,6 +365,7 @@ export type Database = {
           item_id: string | null
           lane: Database["public"]["Enums"]["code_lane"] | null
           notes: string | null
+          priority: number | null
           project_id: string | null
           project_key: string | null
           project_name: string | null
@@ -447,6 +451,7 @@ export type Database = {
           implementation_pr_url: string | null
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
+          priority: number
           project_id: string
           ref: string
           ref_number: number
@@ -492,6 +497,7 @@ export type Database = {
           implementation_pr_url: string | null
           item_id: string
           lane: Database["public"]["Enums"]["code_lane"]
+          priority: number
           project_id: string
           ref: string
           ref_number: number
@@ -527,6 +533,33 @@ export type Database = {
         }[]
       }
       next_code_ref: { Args: { p_project: string }; Returns: number }
+      swap_code_priority: {
+        Args: { p_a: string; p_b: string }
+        Returns: {
+          blocked_reason: string | null
+          created_at: string
+          epic_id: string
+          factory_state: Database["public"]["Enums"]["code_factory_state"]
+          implementation_pr_url: string | null
+          item_id: string
+          lane: Database["public"]["Enums"]["code_lane"]
+          priority: number
+          project_id: string
+          ref: string
+          ref_number: number
+          refinement_pr_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "code_items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       code_factory_state:
