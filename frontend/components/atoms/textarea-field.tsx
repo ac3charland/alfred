@@ -9,6 +9,8 @@ interface TextareaFieldProperties {
   onChange: (value: string) => void;
   onSave: () => void | Promise<void>;
   onCancel: () => void;
+  /** Called when Escape is pressed in the textarea (same semantics as Cancel). */
+  onEscape?: () => void;
   /** Optional caption label shown above the textarea (the `warning` block-reason flow). */
   label?: string;
   placeholder?: string;
@@ -40,6 +42,7 @@ export function TextareaField({
   onChange,
   onSave,
   onCancel,
+  onEscape,
   label,
   placeholder,
   rows = 2,
@@ -59,6 +62,9 @@ export function TextareaField({
       value={value}
       onChange={(event_) => {
         onChange(event_.target.value);
+      }}
+      onKeyDown={(event_) => {
+        if (event_.key === 'Escape') onEscape?.();
       }}
       rows={rows}
       placeholder={placeholder}
