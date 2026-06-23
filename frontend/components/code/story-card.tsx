@@ -2,7 +2,7 @@
 
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { LaunchButton } from '@/components/atoms/launch-button';
-import { type LaunchPhase, launchPhaseFor } from '@/lib/code/launch';
+import { type LaunchPhase, launchPhasesFor } from '@/lib/code/launch';
 import { isEscapeState } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -24,9 +24,10 @@ export interface StoryCardProperties {
 }
 
 /**
- * A single story on the board: a compact card showing its **ref** and **title**, plus
- * the **phase-appropriate "Open Claude Code" action** when one applies — *Refine* in
- * `needs_refinement`, *Implement* in `ready_for_dev`, hidden in every other state.
+ * A single story on the board: a compact card showing its **ref** and **title**, plus the
+ * **phase-appropriate "Open Claude Code" actions** when any apply — *Refine* + the subordinate
+ * *Skip to Development* in `needs_refinement`, *Implement* in `ready_for_dev`, hidden in every
+ * other state (one `LaunchButton` per phase `launchPhasesFor` returns).
  *
  * The card body is an activatable control (opens the detail modal). A `blocked`/
  * `abandoned` story gets a distinct treatment (amber/red edge + a state tag) so it reads as
@@ -35,7 +36,7 @@ export interface StoryCardProperties {
 export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties) {
   const escape = isEscapeState(story.factory_state);
   const blocked = story.factory_state === 'blocked';
-  const canLaunch = launchPhaseFor(story.factory_state) !== undefined;
+  const phases = launchPhasesFor(story.factory_state);
 
   return (
     <div
@@ -70,9 +71,17 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
         </span>
         <span className="mt-1 line-clamp-2 block text-sm text-foreground">{story.title}</span>
       </ClickableCard>
-      {canLaunch ? (
-        <div className="px-3 pb-2">
-          <LaunchButton story={story} onOpenSession={onOpenSession} variant="chip" />
+      {phases.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+          {phases.map((phase) => (
+            <LaunchButton
+              key={phase}
+              story={story}
+              phase={phase}
+              onOpenSession={onOpenSession}
+              variant="chip"
+            />
+          ))}
         </div>
       ) : null}
     </div>

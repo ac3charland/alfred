@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import type { LaunchPhase } from '@/lib/code/launch';
 import { CodeProvider, useProjectBoard } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -95,7 +96,7 @@ function ModalHarness({
   onOpenSession,
 }: {
   itemId: string;
-  onOpenSession: (s: CodeStory, p: 'refinement' | 'implementation') => void | Promise<void>;
+  onOpenSession: (s: CodeStory, p: LaunchPhase) => void | Promise<void>;
 }) {
   const board = useProjectBoard('p1');
   const live = board.activeEpics
@@ -114,7 +115,7 @@ function ModalHarness({
 function renderModal(
   story: CodeStory,
   options: {
-    onOpenSession?: (s: CodeStory, p: 'refinement' | 'implementation') => void | Promise<void>;
+    onOpenSession?: (s: CodeStory, p: LaunchPhase) => void | Promise<void>;
   } = {},
 ) {
   const onOpenSession = options.onOpenSession ?? jest.fn(() => Promise.resolve());

@@ -161,3 +161,37 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
   ].join('\n');
   return buildUrl(project, prompt);
 }
+
+/**
+ * Build the BYPASS link prompt (the "Skip to Development" launch from `needs_refinement`): a
+ * BLEND of the refinement and implementation prompts for a small, well-understood task that
+ * doesn't warrant a separate spec PR. There is NO committed spec, so — unlike
+ * `buildImplementationUrl` — the prompt must NOT tell the agent to read a spec file. Instead it
+ * carries the refinement prompt's clarification gate (ask before building when scope is unclear),
+ * then once the plan is settled it implements directly, and opens ONE PR carrying the
+ * `phase: implementation` block (so the Worker advances the ticket through the normal
+ * implementation transitions — no refinement PR, no spec file). Ref + title lead the prompt so
+ * the new tab is scannable.
+ */
+export function buildBypassUrl(project: Project, story: CodeStory): string {
+  const ref = refOf(story);
+  // Mirror buildImplementationUrl's fallback so frontmatterBlock's spec-path line is a usable
+  // conventional path; it's harmless/ignored on an implementation PR (see frontmatterBlock).
+  const specPath = story.spec_path ?? specPathFor(story);
+  const prompt = [
+    `${ref}: ${titleOf(story)}`,
+    '',
+    `You are implementing the ticket ${ref}. This is a SKIP-REFINEMENT session: there is NO committed spec to read — settle the plan here, then build it directly in this one session.`,
+    '',
+    `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your work on the code that already exists.`,
+    `2. If the title and context below don't pin down the scope, ASK ME HERE before building rather than guessing — you don't need to guess, I'm in this tab. Once the plan is settled, go ahead.`,
+    `3. Implement the change directly, following the repo's own conventions (tests/TDD included).`,
+    `4. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
+    '',
+    frontmatterBlock(story, 'implementation', specPath),
+    '',
+    `5. Before opening the PR, confirm your changes satisfy the agreed plan and the block above is reproduced exactly.`,
+    notesContext(story),
+  ].join('\n');
+  return buildUrl(project, prompt);
+}

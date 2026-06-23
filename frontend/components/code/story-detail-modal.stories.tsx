@@ -116,3 +116,23 @@ export const ReadyForDev: Story = {
 export const NoNotes: Story = {
   args: { story: { ...STORY, notes: null } },
 };
+
+/**
+ * A `needs_refinement` story: the header shows BOTH launch buttons — the primary solid-accent
+ * **Refine in Claude Code** and the subordinate outline **Skip to Development** (the bypass
+ * flow). No spec has been written yet, so the spec body and PR links are absent.
+ */
+export const NeedsRefinement: Story = {
+  args: {
+    story: {
+      ...STORY,
+      factory_state: 'needs_refinement',
+      ref: 'ALF-50',
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+      title: 'Tweak the digest send time to 7am',
+    },
+  },
+};

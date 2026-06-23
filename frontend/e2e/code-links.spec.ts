@@ -107,6 +107,68 @@ test('a needs_refinement story launches a refinement session and advances to In 
   expect(prompt).toContain('phase: refinement');
 });
 
+test('a needs_refinement story can SKIP refinement: bypass launches development and advances straight to In Development', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Tweak the digest send time', { id: ITEM_ID, item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 4,
+    ref: 'ALF-4',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+
+  await stubWindowOpen(page);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  // The card sits in Needs Refinement and shows BOTH the Refine and the Skip launch buttons.
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  await expect(needsRefinement.getByText('ALF-4')).toBeVisible();
+  await expect(
+    needsRefinement.getByRole('button', { name: /refine in claude code/i }),
+  ).toBeVisible();
+  const skip = needsRefinement.getByRole('button', { name: /skip to development/i });
+  await expect(skip).toBeVisible();
+
+  await skip.click();
+
+  // The await-write skips In Refinement AND Ready for Dev — the card lands straight in
+  // In Development.
+  const inDevelopment = page.getByRole('region', { name: 'In Development' });
+  await expect(inDevelopment.getByText('ALF-4')).toBeVisible();
+  await expect(needsRefinement.getByText('ALF-4')).toBeHidden();
+
+  // The prefilled tab opened with a blended skip-refinement prompt carrying phase: implementation.
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const opened = await getOpenedUrls(page);
+  const url = opened[0] ?? '';
+  expect(url).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
+  const prompt = new URL(url).searchParams.get('q') ?? '';
+  expect(prompt).toContain('ALF-4: Tweak the digest send time');
+  expect(prompt).toContain('phase: implementation');
+  // It must NOT instruct reading a committed spec (the skip flow produces none).
+  expect(prompt).toContain('SKIP-REFINEMENT');
+  expect(prompt).not.toMatch(/merged spec/i);
+});
+
 test('a ready_for_dev story launches an implementation session and advances to In Development', async ({
   page,
   seed,

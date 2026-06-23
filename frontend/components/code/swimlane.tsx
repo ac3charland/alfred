@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { StoryCard } from '@/components/code/story-card';
+import type { LaunchPhase } from '@/lib/code/launch';
 import type { BoardLane } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
@@ -12,10 +13,7 @@ export interface SwimlaneProperties {
   /** Forwarded to each card's `onOpen` (the detail-modal seam). */
   onOpenStory?: (story: CodeStory) => void;
   /** Forwarded to each card's `onOpenSession` (the human-launch action). */
-  onOpenSession?: (
-    story: CodeStory,
-    phase: 'refinement' | 'implementation',
-  ) => void | Promise<void>;
+  onOpenSession?: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }
 
 /**

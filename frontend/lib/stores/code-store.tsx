@@ -4,7 +4,8 @@ import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
+import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
+import { buildBypassUrl, buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -176,7 +177,7 @@ export interface CodeActions {
    * persist" edge — the tab only opens once the transition is durable. The URL is derived
    * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
-  openClaudeSession: (ref: string, phase: 'refinement' | 'implementation') => Promise<void>;
+  openClaudeSession: (ref: string, phase: LaunchPhase) => Promise<void>;
 }
 
 interface CodeState {
@@ -663,13 +664,13 @@ export function CodeProvider({
         // Build the prefill URL up front (pure, from stored data) so a write failure leaves
         // nothing half-done. Await the transition BEFORE opening — the tab only appears once
         // the move is durable.
-        const url =
-          phase === 'refinement'
-            ? buildRefinementUrl(project, story)
-            : buildImplementationUrl(project, story);
-        const nextState: CodeFactoryState =
-          phase === 'refinement' ? 'in_refinement' : 'in_development';
-        await transitionState(ref, nextState, {});
+        const buildUrlForPhase: Record<LaunchPhase, () => string> = {
+          refinement: () => buildRefinementUrl(project, story),
+          implementation: () => buildImplementationUrl(project, story),
+          bypass: () => buildBypassUrl(project, story),
+        };
+        const url = buildUrlForPhase[phase]();
+        await transitionState(ref, LAUNCH_TARGET_STATE[phase], {});
         window.open(url, '_blank');
       },
     };

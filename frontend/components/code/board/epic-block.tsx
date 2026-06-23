@@ -24,16 +24,14 @@ import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextareaField } from '@/components/atoms/textarea-field';
 import { StoryCard } from '@/components/code/story-card';
 import { Swimlane } from '@/components/code/swimlane';
+import type { LaunchPhase } from '@/lib/code/launch';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import type { BoardEpic } from '@/lib/stores/code-store';
 import { useCodeActions } from '@/lib/stores/code-store';
 import type { CodeStory, Epic } from '@/lib/types';
 
 /** The phase-appropriate launch handler the board threads to every card. */
-export type OpenSessionHandler = (
-  story: CodeStory,
-  phase: 'refinement' | 'implementation',
-) => void | Promise<void>;
+export type OpenSessionHandler = (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 
 /**
  * The epic header's notes-editing area. Notes go through the store's optimistic

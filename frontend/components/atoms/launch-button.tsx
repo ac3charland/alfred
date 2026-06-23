@@ -4,37 +4,50 @@ import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
 import { Spinner } from '@/components/atoms/spinner';
-import { LAUNCH_LABELS, type LaunchPhase, launchPhaseFor } from '@/lib/code/launch';
+import { LAUNCH_LABELS, type LaunchPhase } from '@/lib/code/launch';
 import type { CodeStory } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 export interface LaunchButtonProperties {
-  /** The story to launch. Its `factory_state` decides the phase (refine / implement). */
+  /** The story to launch. */
   story: CodeStory;
   /**
-   * Opens a prefilled Claude Code session for the story's phase. Awaited so the in-flight
+   * The launch phase this button starts. Passed explicitly by the caller (the card/modal map
+   * over `launchPhasesFor`) so one story can render more than one launch button — this atom owns
+   * the launch contract and the `LAUNCH_LABELS` lookup, not the phase derivation.
+   */
+  phase: LaunchPhase;
+  /**
+   * Opens a prefilled Claude Code session for the given phase. Awaited so the in-flight
    * spinner reflects the real state write; on success the story usually leaves the launch-
    * eligible state and the button unmounts, so the flag is only cleared on failure.
    */
   onOpenSession?: ((story: CodeStory, phase: LaunchPhase) => void | Promise<void>) | undefined;
   /**
-   * `chip` — the compact teal-bordered chip on a story card.
-   * `solid` — the prominent solid-accent button in the story-detail modal header.
+   * `chip` — the compact bordered chip on a story card.
+   * `solid` — the prominent button in the story-detail modal header.
    */
   variant?: 'chip' | 'solid';
 }
 
 /**
  * The "Open Claude Code" launch action, shared by the story card (`chip`) and the detail
- * modal (`solid`). Owns the launch contract once — the phase derivation and the
- * await-spinner in-flight state — so both presentations stay in sync; only the chrome
- * differs by `variant`. Renders nothing when the story's state offers no launch.
+ * modal (`solid`). Owns the launch contract once — the await-spinner in-flight state — so both
+ * presentations stay in sync; only the chrome differs by `variant`.
+ *
+ * The `bypass` ("Skip to Development") phase gets a deliberately SUBORDINATE treatment so the
+ * primary "Refine in Claude Code" stays the obvious call to action: a muted/neutral chip rather
+ * than the teal accent, and an `outline` button rather than the solid accent.
  */
-export function LaunchButton({ story, onOpenSession, variant = 'chip' }: LaunchButtonProperties) {
-  const phase = launchPhaseFor(story.factory_state);
+export function LaunchButton({
+  story,
+  phase,
+  onOpenSession,
+  variant = 'chip',
+}: LaunchButtonProperties) {
   const [launching, setLaunching] = React.useState(false);
-  if (phase === undefined) return null;
   const labels = LAUNCH_LABELS[phase];
+  const isSecondary = phase === 'bypass';
 
   const handleLaunch = async () => {
     if (onOpenSession === undefined) return;
@@ -52,7 +65,7 @@ export function LaunchButton({ story, onOpenSession, variant = 'chip' }: LaunchB
     return (
       <Button
         size="sm"
-        variant="accent"
+        variant={isSecondary ? 'outline' : 'accent'}
         onClick={() => {
           void handleLaunch();
         }}
@@ -72,10 +85,13 @@ export function LaunchButton({ story, onOpenSession, variant = 'chip' }: LaunchB
       }}
       disabled={launching}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border border-accent-teal/40 bg-accent-teal/10 px-2 py-1 text-xs font-medium text-accent-teal',
-        'transition-colors duration-100 hover:bg-accent-teal/20 motion-reduce:transition-none',
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium',
+        'transition-colors duration-100 motion-reduce:transition-none',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue',
         'disabled:cursor-not-allowed disabled:opacity-70',
+        isSecondary
+          ? 'border-border bg-transparent text-muted-foreground hover:bg-secondary hover:text-secondary-foreground'
+          : 'border-accent-teal/40 bg-accent-teal/10 text-accent-teal hover:bg-accent-teal/20',
       )}
     >
       {launching ? <Spinner size={12} label={labels.busy} /> : null}
