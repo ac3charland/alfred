@@ -277,8 +277,8 @@ export interface StoryDetailModalProperties {
 /**
  * The Jira-style story detail modal: a Radix Dialog (modelled on `cascade-modal` /
  * `gate-dialog`, sized up) opened from a board card. Shows the ref + inline-editable title,
- * the Project › Epic breadcrumb, the factory-state chip, notes, the rendered spec markdown
- * (react-markdown + remark-gfm) with a "View in repo" link, PR links, the phase-appropriate
+ * the Project › Epic breadcrumb, the factory-state chip, notes, the rendered spec (an HTML
+ * plan in an isolated frame, or legacy markdown) with a "View in repo" link, PR links, the phase-appropriate
  * "Open Claude Code" launch button, and the manual fallback controls.
  *
  * Must be mounted under a `CodeProvider` — it reads `useCodeActions` for the title edit, the
