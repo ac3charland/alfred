@@ -3,32 +3,34 @@
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
+import { Backlog } from '@/components/code/backlog';
 import { Board } from '@/components/code/board';
-import { CodeLanding } from '@/components/code/code-landing';
 
 const CODE_PREFIX = '/code/';
+const BACKLOG_SEGMENT = 'backlog';
 
 /**
  * Client-side view router for the Code module — the board's counterpart to `TaskViews`.
  *
- * Both code pages (the landing `/code` and a board `/code/[project-id]`) render this one
- * component, which derives the active view purely from the URL: a `/code/<id>` path shows
- * that project's Board, the bare `/code` shows the landing. Because it's the SAME mounted
- * component on both routes and reads from the layout-seeded CodeProvider, selecting a
- * project via `ViewLink` (a History push, no RSC round-trip) just re-derives the board —
- * the same instant client switch the tasks views get. A hard load of either path renders
- * the matching view server-side too.
+ * Every code page renders this one component, which derives the active view purely from the
+ * URL: a `/code/<projectId>` path shows that project's Board; the bare `/code` and the explicit
+ * `/code/backlog` both show the cross-project Backlog (the default Code view, ALF-35). Because
+ * it's the SAME mounted component on every code route and reads from the layout-seeded
+ * CodeProvider, selecting a project or the Backlog via `ViewLink` (a History push, no RSC
+ * round-trip) just re-derives the view. A hard load of any path renders the match server-side.
  */
 export function CodeView() {
   const pathname = usePathname();
 
   if (pathname.startsWith(CODE_PREFIX)) {
-    const projectId = pathname.slice(CODE_PREFIX.length);
-    // Guard the empty tail (`/code/`) so a trailing slash falls back to the landing.
-    if (projectId.length > 0) {
-      return <Board projectId={projectId} />;
+    const segment = pathname.slice(CODE_PREFIX.length);
+    // Guard the literal `backlog` segment so it is NOT treated as a project id — it isn't a
+    // UUID, so <Board> would render "This project could not be found". An empty tail
+    // (trailing slash) likewise falls through to the Backlog.
+    if (segment.length > 0 && segment !== BACKLOG_SEGMENT) {
+      return <Board projectId={segment} />;
     }
   }
 
-  return <CodeLanding />;
+  return <Backlog />;
 }

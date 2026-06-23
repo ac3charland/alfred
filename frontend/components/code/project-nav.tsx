@@ -1,6 +1,6 @@
 'use client';
 
-import { GitBranch, Plus } from 'lucide-react';
+import { GitBranch, ListOrdered, Plus } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
@@ -43,8 +43,21 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
     onClose?.();
   };
 
+  // The Backlog is the default Code view (bare `/code` renders it too), so highlight the link
+  // for both `/code` and `/code/backlog`.
+  const backlogActive = pathname === '/code' || pathname === '/code/backlog';
+
   return (
     <nav aria-label="Projects" className="flex flex-col gap-1 py-2">
+      <ViewLink
+        href="/code/backlog"
+        className={cn(navLinkClass(backlogActive), 'min-w-0')}
+        {...closeProperty}
+      >
+        <ListOrdered size={14} className="shrink-0" />
+        <span className="truncate">Backlog</span>
+      </ViewLink>
+
       <div className="flex items-center justify-between px-3 py-1">
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           Projects
