@@ -3327,6 +3327,7 @@ describe('TaskRow — classification & type-gating', () => {
         blocked_reason: null,
         created_at: '2025-01-02T00:00:00Z',
         updated_at: '2025-01-02T00:00:00Z',
+        priority: 1,
       });
 
       const user = userEvent.setup();

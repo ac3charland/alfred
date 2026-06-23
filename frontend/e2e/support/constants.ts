@@ -118,5 +118,6 @@ export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
     blocked_reason: overrides.blocked_reason ?? null,
     created_at: overrides.created_at ?? nextCreatedAt(),
     updated_at: overrides.updated_at ?? nextCreatedAt(),
+    priority: overrides.priority ?? 1,
   };
 }

@@ -48,6 +48,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     epic_name: 'Communication Firewall',
     epic_ref: 'ALF-1',
     epic_archived_at: null,
+    priority: 1,
     ...overrides,
   };
 }
