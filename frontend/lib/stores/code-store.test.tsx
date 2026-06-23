@@ -19,6 +19,7 @@ jest.mock('@/lib/api-client');
 const mockCreateProject = jest.mocked(api.createProject);
 const mockCreateEpic = jest.mocked(api.createEpic);
 const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
+const mockCreateCodeStory = jest.mocked(api.createCodeStory);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockUpdateEpic = jest.mocked(api.updateEpic);
 const mockUpdateItem = jest.mocked(api.updateItem);
@@ -526,6 +527,120 @@ describe('code-store', () => {
           );
           expect(lane?.stories.map((s) => s.title)).toEqual(['Pending']);
         });
+      });
+    });
+
+    describe('createStory (new story from the board)', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      const savedSidecar: CodeItem = {
+        item_id: 'server-item',
+        project_id: 'p1',
+        epic_id: 'e1',
+        ref_number: 12,
+        ref: 'ALF-12',
+        factory_state: 'needs_refinement',
+        lane: 'human',
+        spec_path: null,
+        spec_sha: null,
+        spec_markdown: null,
+        refinement_pr_url: null,
+        implementation_pr_url: null,
+        blocked_reason: null,
+        created_at: '2025-01-05T00:00:00Z',
+        updated_at: '2025-01-05T00:00:00Z',
+      };
+
+      it('inserts an optimistic card at needs_refinement, then reconciles the real item_id + ref', async () => {
+        mockCreateCodeStory.mockResolvedValue(savedSidecar);
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        let returned: CodeStory | undefined;
+        await act(async () => {
+          returned = await result.current.actions.createStory('e1', 'Brand new story', null);
+        });
+
+        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'Brand new story', null);
+        expect(returned?.ref).toBe('ALF-12');
+        expect(returned?.item_id).toBe('server-item');
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        expect(lane?.stories.map((s) => s.ref)).toEqual(['ALF-12']);
+        expect(lane?.stories[0]?.title).toBe('Brand new story');
+        expect(lane?.stories[0]?.item_id).toBe('server-item');
+      });
+
+      it('shows the optimistic card (keyed by a temp item id) before the server resolves', async () => {
+        mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        act(() => {
+          void result.current.actions.createStory('e1', 'Pending story', 'with notes');
+        });
+
+        await waitFor(() => {
+          const lane = result.current.board.activeEpics[0]?.lanes.find(
+            (l) => l.state === 'needs_refinement',
+          );
+          expect(lane?.stories.map((s) => s.title)).toEqual(['Pending story']);
+        });
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        // The optimistic card carries a temp item id until the server row reconciles.
+        expect(lane?.stories[0]?.item_id).toMatch(/^temp-/);
+        expect(lane?.stories[0]?.notes).toBe('with notes');
+      });
+
+      it('rolls the optimistic card back out on failure', async () => {
+        mockCreateCodeStory.mockRejectedValue(new Error('create failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.actions.createStory('e1', 'Doomed', null)).rejects.toThrow(
+            'create failed',
+          );
+        });
+
+        const lane = result.current.board.activeEpics[0]?.lanes.find(
+          (l) => l.state === 'needs_refinement',
+        );
+        expect(lane?.stories).toEqual([]);
+      });
+
+      it('throws (and does not call the api) when the epic is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.createStory('missing', 'No epic', null)).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockCreateCodeStory).not.toHaveBeenCalled();
+      });
+
+      it('throws when the epic project is missing from the store', async () => {
+        // An epic whose project isn't seeded — the optimistic card can't be built.
+        const orphan = makeEpic('e9', 'ghost-project');
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [orphan] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.createStory('e9', 'Orphan', null)).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockCreateCodeStory).not.toHaveBeenCalled();
       });
     });
 

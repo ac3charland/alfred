@@ -187,6 +187,31 @@ export function enterCodeModule(
   });
 }
 
+/**
+ * Create a brand-new code story from the project view (no inbox item required). Calls
+ * `create_code_story`, which inserts a fresh `items` row AND its `code_items` sidecar at
+ * `needs_refinement` with a server-allocated ref, returning the sidecar row.
+ *
+ * Lives in `lib/` (the null-aware boundary): an empty notes field is sent as `null` — the
+ * Postgres absent value — which component code can't mint (unicorn/no-null).
+ */
+export function createCodeStory(
+  projectId: string,
+  epicId: string,
+  title: string,
+  notes: string | null,
+): Promise<CodeItem> {
+  return apiRequest<CodeItem>('/api/code', {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      notes: notes === '' ? null : notes,
+      project_id: projectId,
+      epic_id: epicId,
+    }),
+  });
+}
+
 /** Optional extra fields a state transition may carry (e.g. Block sets `blocked_reason`). */
 export interface UpdateCodeStateExtra {
   blocked_reason?: string | null;
