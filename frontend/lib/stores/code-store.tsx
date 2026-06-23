@@ -379,7 +379,7 @@ export function CodeProvider({
       if (!changedState) return;
 
       const label = FACTORY_STATE_LABELS[row.factory_state];
-      showToast(`${row.ref} moved to ${label}`);
+      showToast(`${row.ref} moved to ${label}`, 'emphasis');
       // A glanceable marker for moves that arrive while the user is on another tab.
       if (document.hidden) {
         savedTitle ??= document.title;
