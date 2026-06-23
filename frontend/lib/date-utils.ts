@@ -54,3 +54,11 @@ export function formatDueDate(iso: string): string {
 export function isDueDateOverdue(iso: string): boolean {
   return parseDueDate(iso) < new Date(new Date().toDateString());
 }
+
+/**
+ * Returns true when the ISO due-date string represents today (local) or any
+ * earlier date. Unlike isDueDateOverdue, today itself counts.
+ */
+export function isDueTodayOrOverdue(iso: string): boolean {
+  return parseDueDate(iso) <= new Date(new Date().toDateString());
+}

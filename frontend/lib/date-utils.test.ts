@@ -1,4 +1,4 @@
-import { MONTHS, formatDueDate, isDueDateOverdue } from './date-utils';
+import { MONTHS, formatDueDate, isDueDateOverdue, isDueTodayOrOverdue } from './date-utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -155,5 +155,47 @@ describe('isDueDateOverdue', () => {
   // Timezone regression: YYYY-MM-DD strings must be treated as local midnight.
   it("returns false for today's local date as a YYYY-MM-DD string (not overdue)", () => {
     expect(isDueDateOverdue(todayLocalYMD())).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isDueTodayOrOverdue
+// ---------------------------------------------------------------------------
+
+describe('isDueTodayOrOverdue', () => {
+  // Due dates in the app are stored as YYYY-MM-DD strings (local calendar day).
+  // Use todayLocalYMD() for the "today" boundary; dueForDayOffset is a datetime
+  // helper better suited to isDueDateOverdue's ±1 tests.
+  it('returns true for today as a YYYY-MM-DD string (today IS included)', () => {
+    expect(isDueTodayOrOverdue(todayLocalYMD())).toBe(true);
+  });
+
+  it('returns true for yesterday', () => {
+    expect(isDueTodayOrOverdue(dueForDayOffset(-1))).toBe(true);
+  });
+
+  it('returns true for a date in the past', () => {
+    expect(isDueTodayOrOverdue(dueForDayOffset(-10))).toBe(true);
+  });
+
+  it('returns false for tomorrow', () => {
+    expect(isDueTodayOrOverdue(dueForDayOffset(1))).toBe(false);
+  });
+
+  it('returns false for a date in the future', () => {
+    expect(isDueTodayOrOverdue(dueForDayOffset(10))).toBe(false);
+  });
+
+  it('uses <= (not <): a datetime equal to today midnight local IS included', () => {
+    // new Date(new Date().toDateString()) = today midnight LOCAL time (as a UTC moment).
+    // Passing its ISO string back: parseDueDate returns exactly this value. With `<=`
+    // this is true (today is included). This test kills the EqualityOperator mutant.
+    const todayMidnightLocal = new Date(new Date().toDateString());
+    const isoEquivalent = todayMidnightLocal.toISOString();
+    expect(isDueTodayOrOverdue(isoEquivalent)).toBe(true);
+  });
+
+  it("returns true for today's local date as a YYYY-MM-DD string", () => {
+    expect(isDueTodayOrOverdue(todayLocalYMD())).toBe(true);
   });
 });
