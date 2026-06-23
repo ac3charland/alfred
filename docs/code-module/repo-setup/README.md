@@ -21,7 +21,7 @@ ticket-state transitions; there is no Anthropic session API, so **the PR is the 
 ```alfred
 alfred-ticket: ALF-42
 phase: refinement
-spec-path: docs/specs/ALF-42.md
+spec-path: docs/specs/ALF-42.html
 ```
 ````
 
@@ -29,10 +29,10 @@ spec-path: docs/specs/ALF-42.md
 |---|---|---|
 | `alfred-ticket` | The story ref(s) this PR advances. | One ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR closing several stories. Always parsed as a list. |
 | `phase` | Which lifecycle phase the PR belongs to. | `refinement` \| `implementation`. |
-| `spec-path` | Where the spec markdown lives in the repo. | **Refinement PRs only** — declares the path so alfred renders from the *recorded* path, never an inferred one. |
+| `spec-path` | Where the spec (a self-contained HTML plan) lives in the repo. | **Refinement PRs only** — declares the path so alfred renders from the *recorded* path, never an inferred one. |
 
 - A **refinement** PR writes the spec artifact and opens with `phase: refinement` +
-  `spec-path: docs/specs/<REF>.md`. Merging it moves the story `in_refinement → ready_for_dev` and the
+  `spec-path: docs/specs/<REF>.html`. Merging it moves the story `in_refinement → ready_for_dev` and the
   Worker snapshots the spec.
 - An **implementation** PR implements the merged spec and opens with `phase: implementation`.
   Opening it moves the story `in_development → ready_for_review`; merging it moves it to `done`.

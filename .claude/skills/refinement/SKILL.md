@@ -25,11 +25,17 @@ once the scope is clear do you write the spec below.
 
 ## What to produce
 
-1. **A spec markdown file at `docs/specs/<REF>.md`** (e.g. `docs/specs/ALF-42.md`, using the
-   story's ref). Write it so it is implementation-ready, scoped to this one story:
-   - **Title:** `# <REF> — <story title>` as the first line, so the browser tab is scannable.
+1. **A spec authored as a self-contained HTML plan at `docs/specs/<REF>.html`** (e.g.
+   `docs/specs/ALF-42.html`, using the story's ref). Write it as a rich, scannable document a human will actually open and review, not a wall of prose:
+   - **One self-contained file:** inline all CSS in a `<style>` block; no build step, no external
+     dependencies, no JS required — it opens directly in a browser. Make it easy to read and
+     digest, and mobile-friendly.
+   - **Title:** `<title>` and a top `<h1>` of `<REF> — <story title>`, so the browser tab is scannable.
    - **Context / problem:** what we're solving and why, drawn from the story title + notes + user feedback.
-   - **Proposed change:** the concrete behavior to build.
+   - **Proposed change:** the concrete behavior to build. Use the format that conveys it best —
+     tables for option/field matrices, an inline **SVG** diagram for any data flow or state machine,
+     annotated snippets of the key code a reviewer would want to see, and a small mockup where a UI
+     is involved.
    - **Acceptance criteria:** a checklist a reviewer (and the implementation session) can verify.
    - **Out of scope / open questions:** anything deliberately deferred. Resolve the questions you
      *can* answer with the human up front (see above) and list only the genuinely-open ones here
@@ -42,7 +48,7 @@ once the scope is clear do you write the spec below.
    ```alfred
    alfred-ticket: <REF>
    phase: refinement
-   spec-path: docs/specs/<REF>.md
+   spec-path: docs/specs/<REF>.html
    ```
    ````
 

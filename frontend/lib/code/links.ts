@@ -40,9 +40,14 @@ function titleOf(story: CodeStory): string {
   return story.title ?? '';
 }
 
-/** The conventional spec location for a story (`docs/specs/<REF>.md`). */
+/**
+ * The conventional spec location for a story (`docs/specs/<REF>.html`). The spec is authored as
+ * a self-contained HTML plan (see `buildRefinementUrl`), so the path carries the `.html`
+ * extension; the Worker's `spec-path` and the `alfred-frontmatter` check are both
+ * extension-agnostic, so the file type is ours to choose here.
+ */
 function specPathFor(story: CodeStory): string {
-  return `docs/specs/${refOf(story)}.md`;
+  return `docs/specs/${refOf(story)}.html`;
 }
 
 /**
@@ -99,14 +104,21 @@ function buildUrl(project: Project, prompt: string): string {
 }
 
 /**
- * Build the REFINEMENT link prompt (active in `needs_refinement`): write a spec markdown
- * artifact only — NO implementation — following the refinement skill, save it to
- * `docs/specs/<REF>.md`, and open a PR carrying the machine-readable ticket block with
- * `phase: refinement`. Ref + title lead the prompt so the new browser tab is scannable.
+ * Build the REFINEMENT link prompt (active in `needs_refinement`): write a spec artifact only —
+ * NO implementation — following the refinement skill, save it to `docs/specs/<REF>.html`, and
+ * open a PR carrying the machine-readable ticket block with `phase: refinement`. Ref + title
+ * lead the prompt so the new browser tab is scannable.
  *
- * The body carries the agentic guardrails directly (not just in the skill, which may be absent
- * for the target repo): ground in the repo first, a clarification gate so a thin ticket gets
- * questions instead of invented scope, a self-contained section skeleton for the no-skill
+ * The spec is authored as a **self-contained HTML plan**, not markdown — the prompt tells the
+ * agent to "do what the HTML-effectiveness guidance shows": a rich, scannable document a human
+ * will actually open and review, with real structure, an SVG diagram for data/flow, annotated
+ * code snippets, and a mockup where a UI is involved. (Why the agent's OUTPUT is HTML while this
+ * prompt stays plain text: HTML pays off for the long, human-read artifact, not a one-screen
+ * instruction.)
+ *
+ * The body also carries the agentic guardrails directly (not just in the skill, which may be
+ * absent for the target repo): ground in the repo first, a clarification gate so a thin ticket
+ * gets questions instead of invented scope, a self-contained section skeleton for the no-skill
  * fallback, and a verbatim-block self-check. These are what stop a smaller model from
  * one-shotting a confidently-wrong spec.
  */
@@ -118,9 +130,11 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     '',
     `You are refining the ticket ${ref}. Produce a SPEC ONLY — describe the concrete change in enough detail that a later session can build it, but do NOT implement anything yet (no app or source changes).`,
     '',
+    `Author the spec as a single, self-contained HTML plan — NOT a markdown file. Do what Claude Code's "unreasonable effectiveness of HTML" guidance shows: a rich, easy-to-read document a human will actually open and review. Use real structure (headings, sections, tables), an SVG diagram for any data flow or state machine, annotated snippets of the key code a reviewer would want to see, and a small mockup where a UI is involved. Inline all CSS so it opens directly in a browser with no build step or dependencies, and make it easy to read and digest.`,
+    '',
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base the spec on the code that already exists.`,
     `2. If the title and context don't pin down the scope and acceptance criteria, ASK ME HERE before writing the spec — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
-    `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session). If it's absent, cover these sections: Title, Context/problem, Proposed change, Acceptance criteria, Out of scope / open questions. Save it to \`${specPath}\`.`,
+    `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session). If it's absent, cover these sections in the HTML: Title, Context/problem, Proposed change, Acceptance criteria, Out of scope / open questions. Save it to \`${specPath}\`.`,
     `4. Open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
     frontmatterBlock(story, 'refinement', specPath),
@@ -148,7 +162,7 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
   const prompt = [
     `${ref}: ${titleOf(story)}`,
     '',
-    `You are implementing the ticket ${ref}. Implement the merged spec committed at \`${specPath}\` in this repo — read it first, then build it.`,
+    `You are implementing the ticket ${ref}. Implement the merged spec committed at \`${specPath}\` in this repo — it's a self-contained HTML plan, so open it in a browser (or read the source) first, then build it.`,
     '',
     `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab.`,
     '',

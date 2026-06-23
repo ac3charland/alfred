@@ -221,6 +221,27 @@ describe('StoryDetailModal', () => {
       expect(md).toHaveTextContent('item one');
     });
 
+    it('renders an HTML-document spec in a sandboxed iframe (not via react-markdown)', () => {
+      const html =
+        '<!doctype html><html><head><title>ALF-42</title></head><body><h1>The plan</h1></body></html>';
+      const { dialog } = renderModal(
+        makeStory({
+          factory_state: 'ready_for_dev',
+          spec_markdown: html,
+          spec_path: 'docs/specs/ALF-42.html',
+          spec_sha: 'abc123',
+        }),
+      );
+
+      const frame = dialog.getByTestId('spec-html');
+      // The whole snapshot is handed to the frame's srcDoc so its own CSS/SVG renders in isolation.
+      expect(frame).toHaveAttribute('srcdoc', html);
+      // Sandboxed with no allow-scripts, so any <script> in the committed spec stays inert.
+      expect(frame).toHaveAttribute('sandbox', '');
+      // It is NOT routed through the markdown renderer.
+      expect(dialog.queryByTestId('markdown')).not.toBeInTheDocument();
+    });
+
     it('builds the View-in-repo link from owner/name + sha + path', () => {
       const { dialog } = renderModal(
         makeStory({
