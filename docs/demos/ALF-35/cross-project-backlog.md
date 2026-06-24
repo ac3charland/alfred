@@ -57,7 +57,7 @@ declare a_pri bigint; b_pri bigint;
 begin
 ```
 
-## 2. The reorder swaps priority while respecting the unique index. 0005's one-statement CASE swap actually **409'd** in production — a non-deferrable unique index checks uniqueness *per row*, so rewriting row A to B's priority while B still holds it momentarily duplicates. Migration 0006 fixes it: park one row at a negative sentinel, then assign, so every per-row step is unique. Below, two stories are seeded into the in-memory backend the e2e suite uses (priorities 1 and 2) — which now models that same immediate unique constraint — then `POST /rest/v1/rpc/swap_code_priority` (the RPC the `/api/code/reorder` route calls) exchanges their priority and the Backlog order flips. The store's `reorderStory` wraps it optimistically (rollback on failure).
+## 2. The reorder swaps priority while respecting the unique index. 0005's one-statement CASE swap actually **409'd** in production — a non-deferrable unique index checks uniqueness *per row*, so rewriting row A to B's priority while B still holds it momentarily duplicates. Migration 0007 fixes it: park one row at a negative sentinel, then assign, so every per-row step is unique. Below, two stories are seeded into the in-memory backend the e2e suite uses (priorities 1 and 2) — which now models that same immediate unique constraint — then `POST /rest/v1/rpc/swap_code_priority` (the RPC the `/api/code/reorder` route calls) exchanges their priority and the Backlog order flips. The store's `reorderStory` wraps it optimistically (rollback on failure).
 
 ```bash
 cd frontend
