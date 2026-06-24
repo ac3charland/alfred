@@ -301,6 +301,19 @@ We have a custom `alfred` cloud environment in Claude Code on the web that addre
 
 See [`docs/cloud-environment.md`](../../../docs/cloud-environment.md) for additional details on the setup if you need to troubleshoot beyond simply switching environments.
 
+**When the host IS reachable but the download still fails — or the pre-baked browser is a
+revision behind the lockfile's Playwright** (base image ships e.g. `chromium-1194` but the pinned
+Playwright wants `1223`, so `setup:chromium` re-triggers a download that then fails) — provision it
+by hand with `curl`. Through the agent proxy, Playwright's own downloader mishandles the
+`cdn.playwright.dev` → `storage.googleapis.com` **307 redirect** and stalls at ~90% ("server closed
+connection") on every retry, but `curl -L` (which follows redirects) fetches the same zip in
+seconds. Get the exact install dirs + zip URLs from `npx playwright install --dry-run chromium`,
+then for **both** the full `chromium-<rev>` and `chromium_headless_shell-<rev>`:
+`curl -L --cacert "$NODE_EXTRA_CA_CERTS" -o b.zip <url>` → `unzip b.zip -d <install-dir>` (the zip's
+top folder — `chrome-linux64/` / `chrome-headless-shell-linux64/` — already matches
+`executablePath()`, no rename) → `touch <install-dir>/INSTALLATION_COMPLETE` so Playwright treats it
+as installed and skips the re-download.
+
 **General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
 `launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
 `page.evaluate: Browser closed`.
