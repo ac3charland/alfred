@@ -28,12 +28,15 @@ interface TaskRowMenuProperties {
   hasDueDate: boolean;
   /** Whether the row currently carries notes (toggles the Add/Edit label). */
   hasNotes: boolean;
+  /** Whether the row currently carries a priority (toggles the Set/Edit label). */
+  hasPriority: boolean;
   /** The folders the row can be moved into (the "Move to…" submenu; hidden when empty). */
   folders: readonly Folder[];
   onClassify: (itemType: 'task' | 'code') => void;
   onOpenGate: () => void;
   onSetDueDate: () => void;
   onEditNotes: () => void;
+  onSetPriority: () => void;
   onMoveToFolder: (targetFolderId?: string) => void;
   onDelete: () => void;
 }
@@ -51,11 +54,13 @@ export function TaskRowMenu({
   isTask,
   hasDueDate,
   hasNotes,
+  hasPriority,
   folders,
   onClassify,
   onOpenGate,
   onSetDueDate,
   onEditNotes,
+  onSetPriority,
   onMoveToFolder,
   onDelete,
 }: TaskRowMenuProperties) {
@@ -114,6 +119,13 @@ export function TaskRowMenu({
         {isTask && (
           <DropdownMenuItem onSelect={onSetDueDate}>
             {hasDueDate ? 'Edit due date' : 'Set due date'}
+          </DropdownMenuItem>
+        )}
+
+        {/* Set/Edit priority — `task`-only (opens the meta panel's Priority control). */}
+        {isTask && (
+          <DropdownMenuItem onSelect={onSetPriority}>
+            {hasPriority ? 'Edit priority' : 'Set priority'}
           </DropdownMenuItem>
         )}
 

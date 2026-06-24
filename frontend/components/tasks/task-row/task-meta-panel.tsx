@@ -6,8 +6,10 @@ import { FieldLabel } from '@/components/atoms/field-label';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
+import { PrioritySelect } from '@/components/tasks/priority-select';
 import { RepeatField } from '@/components/tasks/recurrence/repeat-field';
 import { formatDueDate } from '@/lib/date-utils';
+import type { TaskPriority } from '@/lib/priority';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import type { ItemNode } from '@/lib/tree';
 
@@ -27,6 +29,11 @@ interface TaskMetaPanelProperties {
   recurrence: RecurrenceRule | null;
   /** Persist a recurrence rule (or null to clear); `anchorDate` becomes the due date if unset. */
   onChangeRecurrence: (rule: RecurrenceRule | null, anchorDate: string) => void;
+
+  // Priority (task-only) — the discrete level, or null when unprioritised.
+  priority: TaskPriority | null;
+  /** Persist a priority level, or null to clear. */
+  onSavePriority: (next: TaskPriority | null) => void;
 
   // Due date
   isEditingDueDate: boolean;
@@ -61,6 +68,8 @@ export function TaskMetaPanel({
   showRepeat,
   recurrence,
   onChangeRecurrence,
+  priority,
+  onSavePriority,
   isEditingDueDate,
   draftDueDate,
   onDraftDueDateChange,
@@ -137,6 +146,14 @@ export function TaskMetaPanel({
           dueDate={node.due_date}
           onChange={onChangeRecurrence}
         />
+      )}
+
+      {/* Priority — `task`-only (a level set on a subtask rolls up to rank its parent). */}
+      {isTask && (
+        <div className="flex flex-col gap-1">
+          <FieldLabel htmlFor={`priority-${node.id}`}>Priority</FieldLabel>
+          <PrioritySelect id={`priority-${node.id}`} value={priority} onChange={onSavePriority} />
+        </div>
       )}
 
       {/* Notes field */}

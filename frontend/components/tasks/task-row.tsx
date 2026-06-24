@@ -10,6 +10,7 @@ import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
+import { PriorityChip } from '@/components/atoms/priority-chip';
 import { RecurrenceChip } from '@/components/atoms/recurrence-chip';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
@@ -357,6 +358,19 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
     setIsMetaOpen(true);
   };
 
+  // The priority chip / control lives in the meta panel (same affordance as the repeat chip).
+  const handleOpenPriorityEditor = () => {
+    setIsMetaOpen(true);
+  };
+
+  const handleSavePriority = async (next: ItemNode['priority']) => {
+    try {
+      await updateTask(node.id, { priority: next });
+    } catch {
+      // The store already rolled the row back.
+    }
+  };
+
   const handleCloseMeta = () => {
     setIsMetaOpen(false);
     setIsEditingDueDate(false);
@@ -511,6 +525,11 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               <RecurrenceChip rule={recurrenceRule} onClick={handleOpenRepeatEditor} />
             )}
 
+            {/* Priority chip — top-level tasks with a level set; opens the Priority control. */}
+            {isTopLevelTask && node.priority !== null && (
+              <PriorityChip priority={node.priority} onClick={handleOpenPriorityEditor} />
+            )}
+
             {/* Active children count badge */}
             {activeChildren.length > 0 && !isExpanded && (
               <Badge variant="secondary">{activeChildren.length}</Badge>
@@ -566,6 +585,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                 isTask={isTask}
                 hasDueDate={node.due_date !== null}
                 hasNotes={node.notes !== null}
+                hasPriority={node.priority !== null}
                 folders={folders}
                 onClassify={(itemType) => {
                   void handleClassify(itemType);
@@ -575,6 +595,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
                 }}
                 onSetDueDate={handleOpenDueDateEditor}
                 onEditNotes={handleOpenNotesEditor}
+                onSetPriority={handleOpenPriorityEditor}
                 onMoveToFolder={(targetFolderId) => {
                   void handleMoveToFolder(targetFolderId);
                 }}
@@ -595,6 +616,10 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               recurrence={recurrenceRule}
               onChangeRecurrence={(rule, anchorDate) => {
                 void handleSaveRecurrence(rule, anchorDate);
+              }}
+              priority={node.priority}
+              onSavePriority={(next) => {
+                void handleSavePriority(next);
               }}
               isEditingDueDate={isEditingDueDate}
               draftDueDate={draftDueDate}
