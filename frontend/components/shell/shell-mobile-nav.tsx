@@ -14,6 +14,7 @@ import {
 } from '@/components/atoms/dialog';
 import { IconButton } from '@/components/atoms/icon-button';
 import { ProjectNav } from '@/components/code/project-nav';
+import { SearchBox } from '@/components/shell/search-box';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { FolderNav } from '@/components/tasks/folder-nav';
 import { isCodePath } from '@/lib/modules';
@@ -54,6 +55,8 @@ export function ShellMobileNav() {
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
             <span className="font-serif text-xl text-foreground">alfred</span>
             <ViewSwitcher onNavigate={close} />
+            {/* The header bar is tight on mobile, so the search field is surfaced here. */}
+            <SearchBox placement="mobile" className="w-full" onNavigate={close} />
           </div>
           <div className="overflow-y-auto px-2">
             {isCodePath(pathname) ? <ProjectNav onClose={close} /> : <FolderNav onClose={close} />}

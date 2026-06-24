@@ -20,6 +20,7 @@ import { TaskMetaPanel } from '@/components/tasks/task-row/task-meta-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
 import { useAnimatedCompletion } from '@/lib/hooks/use-animated-completion';
+import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
@@ -187,14 +188,21 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   // reparentTask cycle guard).
   const { setNodeRef: setDropNodeRef, isOver } = useDroppable({ id: node.id });
 
-  // Merge the draggable + droppable refs onto the one row element (both share node.id —
-  // dnd-kit keeps draggables and droppables in separate registries, so this is safe).
+  // A global-search task selection scrolls this row in and rings it briefly (static under
+  // reduced motion). The ref is merged onto the row element below.
+  const { ref: highlightRef, highlighted: isSearchHighlighted } =
+    useFocusItemHighlight<HTMLDivElement>(node.id);
+
+  // Merge the draggable + droppable + search-highlight refs onto the one row element (the dnd
+  // refs share node.id — dnd-kit keeps draggables and droppables in separate registries, so
+  // this is safe).
   const setRowRef = React.useCallback(
-    (element: HTMLElement | null) => {
+    (element: HTMLDivElement | null) => {
       setDragNodeRef(element);
       setDropNodeRef(element);
+      highlightRef.current = element;
     },
-    [setDragNodeRef, setDropNodeRef],
+    [setDragNodeRef, setDropNodeRef, highlightRef],
   );
 
   // A valid drop target lights up and swaps its checkbox for a "+" while a task hovers it.
@@ -390,6 +398,9 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               isDropTarget ? rowDropTargetClass : rowHoverClass,
               // Dim the in-place row while its DragOverlay clone is being dragged.
               isDragging && 'opacity-40',
+              // A search-selected row rings briefly, then the ring fades out.
+              'transition-shadow duration-700 motion-reduce:transition-none',
+              isSearchHighlighted && 'ring-2 ring-inset ring-accent-teal',
             )}
             style={{ paddingLeft: indentLeft }}
           >

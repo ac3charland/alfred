@@ -10,6 +10,7 @@ import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
+import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 
@@ -54,7 +55,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                   initialEpics={epics}
                   initialStories={stories}
                 >
-                  <AppShell>{children}</AppShell>
+                  <SearchProvider>
+                    <AppShell>{children}</AppShell>
+                  </SearchProvider>
                 </CodeProvider>
               </ToastProvider>
             </ExpansionProvider>
