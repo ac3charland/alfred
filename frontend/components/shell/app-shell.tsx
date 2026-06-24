@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { SearchBox } from '@/components/shell/search-box';
 import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
 import { ShellNav } from '@/components/shell/shell-nav';
 import { ToastViewport } from '@/components/shell/toast-viewport';
@@ -59,8 +60,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </AlfredLink>
             </div>
 
-            {/* Desktop: spacer (wordmark + switcher live in the sidebar) */}
-            <div className="hidden md:block" />
+            {/* Desktop: the global search field (wordmark + switcher live in the sidebar) */}
+            <div className="hidden flex-1 justify-center px-4 md:flex">
+              <SearchBox placement="desktop" className="w-full max-w-md" />
+            </div>
 
             {/* Sign out */}
             <form action={signOut}>
