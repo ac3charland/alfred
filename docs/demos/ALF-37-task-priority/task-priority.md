@@ -38,3 +38,21 @@ Subtree rollup — active High subtask lifts its Low parent above a Medium task:
   Plain medium task          [medium] due no due date  (Inbox)
   Low parent (completed child) [low   ] due no due date  (Inbox)
 ```
+
+## Ordering within a folder
+
+The same ranking now orders each **folder** too (the Inbox stays capture-first). A folder ranks **every level** — top-level rows and their subtasks — by priority → due date → created_at, using each node's **own** priority (no subtree rollup, since subtasks are their own visible rows here). This calls the real `sortNodesByPriority` (`folder-order-demo.ts`, beside this doc):
+
+```bash
+node_modules/.bin/esbuild docs/demos/ALF-37-task-priority/folder-order-demo.ts --bundle --platform=node --tsconfig=frontend/tsconfig.json 2>/dev/null | node
+```
+
+```output
+Folder "Work" — ranked by priority at every level (own key, no rollup):
+  Reply to the client    [high  ]
+  Plan the sprint        [medium]
+    └ Book the room      [high  ]
+    └ Write the agenda   [low   ]
+  Tidy the desk          [low   ]
+  Someday idea           [—     ]
+```
