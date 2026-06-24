@@ -1,4 +1,4 @@
-import { makeItem } from './support/constants';
+import { makeFolder, makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -59,4 +59,25 @@ test('ranks tasks High → Medium → Low → unprioritised', async ({ page, see
   await expect(rows.nth(1)).toContainText('Medium thing');
   await expect(rows.nth(2)).toContainText('Low thing');
   await expect(rows.nth(3)).toContainText('Unprioritised thing');
+});
+
+test('orders tasks within a folder by priority', async ({ page, seed }) => {
+  await seed({
+    folders: [makeFolder('Work', { id: 'work' })],
+    items: [
+      task('Low chore', { folder_id: 'work', priority: 'low' }),
+      task('Unprioritised chore', { folder_id: 'work' }),
+      task('High chore', { folder_id: 'work', priority: 'high' }),
+      task('Medium chore', { folder_id: 'work', priority: 'medium' }),
+    ],
+  });
+
+  await page.goto('/folders/work');
+
+  const rows = page.getByRole('list', { name: 'Tasks' }).getByRole('listitem');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText('High chore');
+  await expect(rows.nth(1)).toContainText('Medium chore');
+  await expect(rows.nth(2)).toContainText('Low chore');
+  await expect(rows.nth(3)).toContainText('Unprioritised chore');
 });

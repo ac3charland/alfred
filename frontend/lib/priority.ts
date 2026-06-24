@@ -107,3 +107,20 @@ export function rankByPriority(items: readonly Item[], showCompleted: boolean): 
       Date.parse(a.created_at) - Date.parse(b.created_at),
   );
 }
+
+/**
+ * Recursively rank an assembled item tree by priority → due date → `created_at` at **every**
+ * level (ALF-37), returning a new forest with each sibling group sorted and children sorted in
+ * turn. Unlike {@link rankByPriority} this ranks each node by its **own** key (no subtree
+ * rollup) — the Folder view shows subtasks as their own rows, so each row sorts among its
+ * siblings on its own priority/urgency. Used by the Folder view; the Inbox keeps capture order.
+ */
+export function sortNodesByPriority<T extends Item & { children: T[] }>(nodes: readonly T[]): T[] {
+  const sorted = stableSorted(
+    nodes,
+    (a, b) =>
+      compareKey(ownKey(a), ownKey(b)) ||
+      (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0),
+  );
+  return sorted.map((node) => ({ ...node, children: sortNodesByPriority(node.children) }));
+}

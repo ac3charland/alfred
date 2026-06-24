@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { isDueTodayOrOverdue } from '@/lib/date-utils';
-import { rankByPriority } from '@/lib/priority';
+import { rankByPriority, sortNodesByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -453,7 +453,10 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
     if (scopeType === 'completed') return forest;
     // A completed ROOT belongs to the Completed view, not here — drop it (and its subtree).
     // Completed items only surface in an active view as descendants of an active task.
-    return forest.filter((node) => node.status === 'active');
+    const activeRoots = forest.filter((node) => node.status === 'active');
+    // A folder ranks every level by priority → due date → created_at (ALF-37); the Inbox
+    // keeps buildTree's capture-first (newest) order.
+    return scopeType === 'folder' ? sortNodesByPriority(activeRoots) : activeRoots;
   }, [items, scopeType, folderId]);
 }
 
