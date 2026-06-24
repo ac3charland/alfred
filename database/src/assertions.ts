@@ -130,6 +130,44 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const moveResult = await attempt(
+    'move_code_priority jumps a story past both extremes (0009)',
+    async () => {
+      const x = await createStory(client, 'story X');
+      const y = await createStory(client, 'story Y');
+      const z = await createStory(client, 'story Z');
+      const minBefore = Math.min(Number(x.priority), Number(y.priority), Number(z.priority));
+      // Jump the lowest-ranked (z) to the top → strictly below every other live priority.
+      await asRole(client, 'authenticated', () =>
+        client.query(`select move_code_priority($1, $2)`, [z.ref, true]),
+      );
+      const top = await client.query<{ priority: string }>(
+        `select priority from code_items where ref = $1`,
+        [z.ref],
+      );
+      const zTop = Number(top.rows[0]?.priority);
+      if (!(zTop < minBefore))
+        throw new Error(`to-top priority ${String(zTop)} not below min ${String(minBefore)}`);
+      // Now jump it to the bottom → strictly above every other live priority.
+      const maxOthers = await client.query<{ max: string }>(
+        `select max(priority) as max from code_items where ref <> $1`,
+        [z.ref],
+      );
+      const maxBefore = Number(maxOthers.rows[0]?.max);
+      await asRole(client, 'authenticated', () =>
+        client.query(`select move_code_priority($1, $2)`, [z.ref, false]),
+      );
+      const bottom = await client.query<{ priority: string }>(
+        `select priority from code_items where ref = $1`,
+        [z.ref],
+      );
+      const zBottom = Number(bottom.rows[0]?.priority);
+      if (!(zBottom > maxBefore))
+        throw new Error(`to-bottom priority ${String(zBottom)} not above max ${String(maxBefore)}`);
+      return `${z.ref}: top=${String(zTop)} → bottom=${String(zBottom)}`;
+    },
+  );
+
   const anonInsertResult = await attempt('anon cannot insert (RLS write denial)', async () => {
     let denied = false;
     try {
@@ -159,5 +197,12 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
-  return [createStoryResult, enterModuleResult, swapResult, anonInsertResult, anonReadResult];
+  return [
+    createStoryResult,
+    enterModuleResult,
+    swapResult,
+    moveResult,
+    anonInsertResult,
+    anonReadResult,
+  ];
 }
