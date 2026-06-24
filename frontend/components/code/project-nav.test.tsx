@@ -140,7 +140,7 @@ describe('ProjectNav', () => {
     expect(screen.getByText('RLP')).toBeInTheDocument();
   });
 
-  it('tints each project icon with its assigned colour, in palette order (ALF-50)', () => {
+  it('tints each project icon and key pill with its assigned colour, in palette order (ALF-50)', () => {
     renderNav(PROJECTS);
 
     expect(screen.getByRole('link', { name: /alfred/i }).querySelector('svg')).toHaveClass(
@@ -149,6 +149,9 @@ describe('ProjectNav', () => {
     expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
       'text-accent-amber',
     );
+    // The key chip echoes the Backlog badge's tinted-pill treatment in the same project colour.
+    expect(screen.getByText('ALF')).toHaveClass('bg-accent-blue/15', 'text-accent-blue');
+    expect(screen.getByText('RLP')).toHaveClass('bg-accent-amber/15', 'text-accent-amber');
   });
 
   it('orders projects by their best outstanding story priority (ALF-49)', () => {

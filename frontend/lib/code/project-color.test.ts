@@ -26,7 +26,8 @@ describe('projectColorAt', () => {
     expect(projectColorAt(0)).toBe('blue');
     expect(projectColorAt(1)).toBe('amber');
     expect(projectColorAt(2)).toBe('green');
-    expect(projectColorAt(3)).toBe('teal');
+    expect(projectColorAt(3)).toBe('red');
+    expect(projectColorAt(4)).toBe('teal');
   });
 
   it('cycles back to the start once the palette is exhausted', () => {
@@ -57,6 +58,7 @@ describe('projectColorFor', () => {
 describe('class helpers', () => {
   it('emits a tinted background and text class per colour', () => {
     expect(projectBadgeClasses('blue')).toBe('bg-accent-blue/15 text-accent-blue');
+    expect(projectBadgeClasses('red')).toBe('bg-accent-red/15 text-accent-red');
     expect(projectBadgeClasses('teal')).toBe('bg-accent-teal/15 text-accent-teal');
   });
 

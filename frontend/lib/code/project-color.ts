@@ -12,7 +12,7 @@ import type { Project } from '@/lib/types';
  */
 
 /** The glowing accent palette in assignment order — project #1 is blue, #2 amber, and so on. */
-export const PROJECT_COLORS = ['blue', 'amber', 'green', 'teal'] as const;
+export const PROJECT_COLORS = ['blue', 'amber', 'green', 'red', 'teal'] as const;
 
 export type ProjectColor = (typeof PROJECT_COLORS)[number];
 
@@ -38,6 +38,7 @@ const PROJECT_BADGE_CLASS: Record<ProjectColor, string> = {
   blue: 'bg-accent-blue/15 text-accent-blue',
   amber: 'bg-accent-amber/15 text-accent-amber',
   green: 'bg-accent-green/15 text-accent-green',
+  red: 'bg-accent-red/15 text-accent-red',
   teal: 'bg-accent-teal/15 text-accent-teal',
 };
 
@@ -45,6 +46,7 @@ const PROJECT_TEXT_CLASS: Record<ProjectColor, string> = {
   blue: 'text-accent-blue',
   amber: 'text-accent-amber',
   green: 'text-accent-green',
+  red: 'text-accent-red',
   teal: 'text-accent-teal',
 };
 
