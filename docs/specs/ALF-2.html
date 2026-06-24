@@ -145,7 +145,7 @@
       <header class="doc">
         <p class="eyebrow">Alfred · Refinement spec</p>
         <h1>ALF-2 — Add search to top bar, trigger with Cmd&nbsp;+&nbsp;P</h1>
-        <p class="sub">A global command-palette search, opened with <code>⌘P</code> / <code>Ctrl&nbsp;P</code>, that finds across both <b>tasks</b> and <b>code stories</b> and jumps to the result.</p>
+        <p class="sub">A search field in the top bar, focused with <code>⌘P</code> / <code>Ctrl&nbsp;P</code>, that finds across both <b>tasks</b> and <b>code stories</b> and jumps to the result.</p>
         <div class="meta-pills">
           <span class="pill"><b>Ticket</b> ALF-2</span>
           <span class="pill"><b>Phase</b> refinement</span>
@@ -221,8 +221,8 @@
           </tbody>
         </table>
         <p>
-          Both collections live under the same <code>(shell)</code> provider tree, so a palette mounted in
-          <code>AppShell</code> can read both with no extra plumbing. <code>useTasks()</code> already
+          Both collections live under the same <code>(shell)</code> provider tree, so the search box mounted in
+          <code>AppShell</code>'s header can read both with no extra plumbing. <code>useTasks()</code> already
           returns the full set (active <b>and</b> completed — the per-view filters split them), so a single
           read covers everything searchable.
         </p>
@@ -230,7 +230,7 @@
           <b>One small store change.</b> <code>useCodeStories()</code> exists in
           <code>lib/stores/code-store.tsx</code> but is not exported (the board consumes it via
           <code>useProjectBoard</code>). This spec exports it (or a thin <code>useSearchableStories()</code>
-          wrapper) so the palette can read the flat story list.
+          wrapper) so the search box can read the flat story list.
         </div>
       </section>
 
@@ -238,18 +238,26 @@
         <h2><span class="num">3</span> Proposed change</h2>
         <p>Five focused additions, all client-side, all within the existing shell:</p>
         <ol>
-          <li><b>Global shortcut.</b> A window <code>keydown</code> listener for <code>(meta||ctrl)+p</code> that <code>preventDefault()</code>s (overriding the browser's Print binding) and toggles the palette open.</li>
-          <li><b>Search store.</b> A tiny <code>SearchProvider</code> (built with the repo's <code>create-context-pair</code> helper) holding just <code>{ open, query }</code> with <code>open()</code> / <code>close()</code> / <code>setQuery()</code> actions.</li>
-          <li><b>Search palette.</b> A Radix <code>Dialog</code> (<code>components/shell/search-palette.tsx</code>) rendered once in <code>AppShell</code>. It reads <code>useTasks()</code> + <code>useCodeStories()</code>, filters by query, and renders grouped, keyboard-navigable results.</li>
-          <li><b>Trigger affordance in the top bar.</b> A small "Search… <kbd>⌘P</kbd>" button in the header (and inside the mobile hamburger) so the feature is discoverable, not just a hidden shortcut.</li>
+          <li><b>A real search field in the top bar.</b> The header carries an actual text <code>&lt;input&gt;</code> ("Search… <kbd>⌘P</kbd>") — <b>this is where the user types</b>, not a button that launches a separate modal. Typing in it drives the query directly.</li>
+          <li><b>Global shortcut.</b> A window <code>keydown</code> listener for <code>(meta||ctrl)+p</code> that <code>preventDefault()</code>s (overriding the browser's Print binding) and <b>focuses the top-bar field</b> (and opens its results dropdown). Pressing it again, or <code>Esc</code>, closes the dropdown.</li>
+          <li><b>Search store.</b> A tiny <code>SearchProvider</code> (built with the repo's <code>create-context-pair</code> helper) holding just <code>{ query, open }</code> with <code>setQuery()</code> / <code>open()</code> / <code>close()</code> actions, where <code>open</code> means "the results dropdown is showing" (it opens on focus/typing).</li>
+          <li><b>Results dropdown anchored to the field.</b> A panel (<code>components/shell/search-results-popover.tsx</code>) anchored directly <b>beneath the top-bar input</b> — not a centered overlay. It reads <code>useTasks()</code> + <code>useCodeStories()</code>, filters by query, and renders grouped, keyboard-navigable results. The field + dropdown together form one combobox.</li>
           <li><b>Result navigation.</b> Selecting a result routes to it: a task → its containing view (inbox / folder / completed) with the row scrolled-to and briefly highlighted; a story → <code>/code/[projectId]?story=&lt;ref&gt;</code>, with the board reading the <code>story</code> param to open its detail modal.</li>
         </ol>
         <p>
-          No backend, schema, or API change. The palette reuses existing atoms (<code>Dialog</code>,
-          <code>Badge</code>, <code>Input</code>), the existing client-nav primitive
-          (<code>history.pushState</code> via the <code>ViewLink</code> convention), and the existing
-          custom-event pattern (<code>ALFRED_CAPTURE_FOCUS_EVENT</code>) for cross-component focus.
+          No backend, schema, or API change. The field + dropdown reuse existing atoms (<code>Input</code>,
+          <code>Badge</code>) and an anchored popover (Radix <code>Popover</code> primitive, already available via
+          <code>radix-ui</code>) — <b>not</b> a centered <code>Dialog</code>, since the input lives inline in the
+          chrome. It uses the existing client-nav primitive (<code>history.pushState</code> via the
+          <code>ViewLink</code> convention) and the existing custom-event pattern
+          (<code>ALFRED_CAPTURE_FOCUS_EVENT</code>) for cross-component focus.
         </p>
+        <div class="note teal">
+          <b>The input is the top-bar field itself.</b> Earlier drafts showed a centered command-palette with
+          its own input; that was corrected in review — the user types directly in the header search box, and
+          matches drop down below it (a search-box-with-suggestions, like a browser address bar), keeping the
+          field visible and in place while results render.
+        </div>
         <div class="note">
           <b>Why <code>⌘P</code> specifically.</b> The ticket asks for it. <code>⌘P</code> is the browser's
           native Print shortcut, so the handler <b>must</b> call <code>preventDefault()</code> to claim it.
@@ -260,7 +268,7 @@
 
       <section id="flow">
         <h2><span class="num">4</span> Data flow</h2>
-        <p>The palette is a pure read over data already in memory; the only writes are URL navigation and a transient focus event.</p>
+        <p>The search is a pure read over data already in memory; the only writes are URL navigation and a transient focus event.</p>
         <figure>
           <div class="svg-frame">
             <svg viewBox="0 0 860 360" width="100%" role="img" aria-label="Data flow from keypress to navigation">
@@ -279,17 +287,17 @@
               </defs>
 
               <rect class="box" x="20" y="24" width="180" height="58" rx="10" />
-              <text class="lbl" x="36" y="48">⌘P / Ctrl P keydown</text>
-              <text class="sub" x="36" y="66">window listener · preventDefault</text>
+              <text class="lbl" x="36" y="46">Top-bar input</text>
+              <text class="sub" x="36" y="64">type · or ⌘P focuses it</text>
 
               <rect class="box boxt" x="20" y="150" width="180" height="64" rx="10" />
               <text class="lbl" x="36" y="176">SearchProvider</text>
-              <text class="sub" x="36" y="194">{ open, query }</text>
-              <text class="sub" x="36" y="208">open/close/setQuery</text>
+              <text class="sub" x="36" y="194">{ query, open }</text>
+              <text class="sub" x="36" y="208">setQuery/open/close</text>
 
               <rect class="box" x="330" y="140" width="200" height="84" rx="10" />
-              <text class="lbl" x="348" y="166">SearchPalette</text>
-              <text class="sub" x="348" y="184">Radix Dialog</text>
+              <text class="lbl" x="348" y="166">Results popover</text>
+              <text class="sub" x="348" y="184">anchored under field</text>
               <text class="sub" x="348" y="200">filter + rank (client)</text>
               <text class="sub" x="348" y="216">grouped results</text>
 
@@ -312,7 +320,7 @@
 
               <!-- edges -->
               <path class="edge" d="M110,82 L110,150" marker-end="url(#arrow)" />
-              <text class="edgel" x="118" y="120">toggle open</text>
+              <text class="edgel" x="118" y="120">query / open</text>
 
               <path class="edge" d="M200,182 L330,182" marker-end="url(#arrow)" />
               <text class="edgel" x="222" y="174">reads state</text>
@@ -328,70 +336,66 @@
               <text class="edgel" x="556" y="286">navigate</text>
             </svg>
           </div>
-          <figcaption>Keypress → store toggles open → palette reads both seeded stores, filters in JS → selection drives a client-side navigation and a focus event. No network round-trip.</figcaption>
+          <figcaption>Typing in the top-bar field (or ⌘P to focus it) updates the query → the anchored results popover reads both seeded stores and filters in JS → selection drives a client-side navigation and a focus event. No network round-trip.</figcaption>
         </figure>
       </section>
 
       <section id="mockup">
         <h2><span class="num">5</span> UI mockup</h2>
-        <p>The palette is a centered overlay in the app's dark theme (tokens: <code>bg-surface</code>, <code>border-border</code>, <code>text-accent-teal</code>). Results are grouped <b>Tasks</b> / <b>Stories</b>, each row badged by type; the active row carries an accent ring.</p>
+        <p>The user types in the <b>top-bar search field itself</b>; matches drop down in a popover <b>anchored beneath that field</b> (a search-box-with-suggestions, like a browser address bar) — there is no centered modal and no dimmed backdrop. App tokens apply (<code>bg-surface</code>, <code>border-border</code>, <code>text-accent-teal</code>). Results are grouped <b>Tasks</b> / <b>Stories</b>, each row badged by type; the active row carries an accent ring.</p>
         <figure>
           <div class="svg-frame">
-            <svg viewBox="0 0 760 430" width="100%" role="img" aria-label="Search palette mockup">
-              <!-- app backdrop -->
-              <rect x="0" y="0" width="760" height="430" rx="10" fill="#0a0e17" />
-              <rect x="0" y="0" width="760" height="44" fill="#0f1626" />
-              <text x="20" y="28" font="600 14px sans-serif" fill="#e8edf5" style="font:600 14px sans-serif">alfred</text>
-              <!-- header search trigger -->
-              <rect x="300" y="11" width="220" height="24" rx="6" fill="#0a0e17" stroke="#1e2a3f" />
-              <text x="314" y="27" style="font:12px sans-serif" fill="#8a96a8">Search…</text>
-              <rect x="470" y="15" width="42" height="16" rx="4" fill="#1e2a3f" />
-              <text x="478" y="27" style="font:11px monospace" fill="#cdd8e4">⌘P</text>
+            <svg viewBox="0 0 760 400" width="100%" role="img" aria-label="Top-bar search with anchored results dropdown">
+              <!-- app backdrop (no dimming — the app stays interactive) -->
+              <rect x="0" y="0" width="760" height="400" rx="10" fill="#0a0e17" />
+              <!-- header -->
+              <rect x="0" y="0" width="760" height="46" fill="#0f1626" />
+              <text x="20" y="29" style="font:600 14px sans-serif" fill="#e8edf5">alfred</text>
 
-              <!-- dim overlay -->
-              <rect x="0" y="44" width="760" height="386" fill="#000000" fill-opacity="0.55" />
+              <!-- the ACTUAL search input, in the top bar (focused → teal ring) -->
+              <rect x="280" y="10" width="270" height="26" rx="6" fill="#0a0e17" stroke="#4fd1e0" stroke-width="1.4" />
+              <circle cx="297" cy="23" r="6" fill="none" stroke="#8a96a8" stroke-width="1.5" />
+              <line x1="301" y1="27" x2="306" y2="32" stroke="#8a96a8" stroke-width="1.5" />
+              <text x="314" y="28" style="font:13px sans-serif" fill="#e8edf5">firewall</text>
+              <rect x="314" y="16" width="2" height="15" fill="#4fd1e0" />
+              <rect x="505" y="14" width="38" height="18" rx="4" fill="#1e2a3f" />
+              <text x="512" y="27" style="font:11px monospace" fill="#cdd8e4">⌘P</text>
 
-              <!-- palette -->
-              <rect x="150" y="74" width="460" height="300" rx="14" fill="#0f1626" stroke="#2a3a54" />
-              <!-- input row -->
-              <rect x="150" y="74" width="460" height="50" rx="14" fill="#0f1626" />
-              <circle cx="182" cy="99" r="7" fill="none" stroke="#8a96a8" stroke-width="1.6" />
-              <line x1="187" y1="104" x2="193" y2="110" stroke="#8a96a8" stroke-width="1.6" />
-              <text x="206" y="104" style="font:14px sans-serif" fill="#e8edf5">firewall</text>
-              <rect x="206" y="92" width="2" height="16" fill="#4fd1e0" />
-              <line x1="150" y1="124" x2="610" y2="124" stroke="#1e2a3f" />
+              <!-- results popover, anchored directly under the field -->
+              <path d="M300,46 l8,-8 l8,8 z" fill="#0f1626" stroke="#2a3a54" />
+              <rect x="250" y="48" width="380" height="300" rx="12" fill="#0f1626" stroke="#2a3a54" />
 
               <!-- group: Tasks -->
-              <text x="170" y="146" style="font:700 10px sans-serif; letter-spacing:1.4px" fill="#8a96a8">TASKS</text>
+              <text x="270" y="76" style="font:700 10px sans-serif; letter-spacing:1.4px" fill="#8a96a8">TASKS</text>
               <!-- active row -->
-              <rect x="160" y="152" width="440" height="38" rx="8" fill="#10202b" stroke="#4fd1e0" />
-              <text x="178" y="170" style="font:13px sans-serif" fill="#e8edf5">Build the communication firewall triage UI</text>
-              <text x="178" y="184" style="font:11px sans-serif" fill="#8a96a8">Folder · Software</text>
-              <rect x="540" y="161" width="46" height="18" rx="9" fill="none" stroke="#4fd1e0" />
-              <text x="551" y="174" style="font:10px sans-serif" fill="#4fd1e0">Task</text>
+              <rect x="262" y="84" width="356" height="40" rx="8" fill="#10202b" stroke="#4fd1e0" />
+              <text x="278" y="103" style="font:13px sans-serif" fill="#e8edf5">Build the communication firewall triage UI</text>
+              <text x="278" y="118" style="font:11px sans-serif" fill="#8a96a8">Folder · Software</text>
+              <rect x="556" y="95" width="46" height="18" rx="9" fill="none" stroke="#4fd1e0" />
+              <text x="567" y="108" style="font:10px sans-serif" fill="#4fd1e0">Task</text>
               <!-- row 2 -->
-              <text x="178" y="212" style="font:13px sans-serif" fill="#c6d2e0">Reply to firewall vendor email</text>
-              <text x="178" y="226" style="font:11px sans-serif" fill="#8a96a8">Inbox</text>
-              <rect x="540" y="203" width="46" height="18" rx="9" fill="none" stroke="#4fd1e0" />
-              <text x="551" y="216" style="font:10px sans-serif" fill="#4fd1e0">Task</text>
+              <text x="278" y="148" style="font:13px sans-serif" fill="#c6d2e0">Reply to firewall vendor email</text>
+              <text x="278" y="163" style="font:11px sans-serif" fill="#8a96a8">Inbox</text>
+              <rect x="556" y="140" width="46" height="18" rx="9" fill="none" stroke="#4fd1e0" />
+              <text x="567" y="153" style="font:10px sans-serif" fill="#4fd1e0">Task</text>
 
               <!-- group: Stories -->
-              <text x="170" y="256" style="font:700 10px sans-serif; letter-spacing:1.4px" fill="#8a96a8">STORIES</text>
-              <text x="178" y="282" style="font:13px sans-serif" fill="#c6d2e0">Communication Firewall — message triage</text>
-              <text x="178" y="296" style="font:11px monospace" fill="#f0b429">ALF-31</text>
-              <text x="240" y="296" style="font:11px sans-serif" fill="#8a96a8">· Alfred › Firewall · Ready for Dev</text>
-              <rect x="540" y="273" width="46" height="18" rx="9" fill="none" stroke="#f0b429" />
-              <text x="550" y="286" style="font:10px sans-serif" fill="#f0b429">Code</text>
+              <text x="270" y="196" style="font:700 10px sans-serif; letter-spacing:1.4px" fill="#8a96a8">STORIES</text>
+              <text x="278" y="222" style="font:13px sans-serif" fill="#c6d2e0">Communication Firewall — message triage</text>
+              <text x="278" y="237" style="font:11px monospace" fill="#f0b429">ALF-31</text>
+              <text x="338" y="237" style="font:11px sans-serif" fill="#8a96a8">· Alfred › Firewall · Ready for Dev</text>
+              <rect x="556" y="213" width="46" height="18" rx="9" fill="none" stroke="#f0b429" />
+              <text x="566" y="226" style="font:10px sans-serif" fill="#f0b429">Code</text>
 
               <!-- footer hints -->
-              <line x1="150" y1="330" x2="610" y2="330" stroke="#1e2a3f" />
-              <text x="170" y="352" style="font:11px sans-serif" fill="#8a96a8">↑↓ navigate</text>
-              <text x="280" y="352" style="font:11px sans-serif" fill="#8a96a8">↵ open</text>
-              <text x="360" y="352" style="font:11px sans-serif" fill="#8a96a8">esc close</text>
-              <text x="470" y="352" style="font:11px sans-serif" fill="#8a96a8">3 results</text>
+              <line x1="250" y1="316" x2="630" y2="316" stroke="#1e2a3f" />
+              <text x="270" y="337" style="font:11px sans-serif" fill="#8a96a8">↑↓ navigate</text>
+              <text x="380" y="337" style="font:11px sans-serif" fill="#8a96a8">↵ open</text>
+              <text x="460" y="337" style="font:11px sans-serif" fill="#8a96a8">esc close</text>
+              <text x="560" y="337" style="font:11px sans-serif" fill="#8a96a8">3 results</text>
             </svg>
           </div>
-          <figcaption>Centered palette over a dimmed app. Grouped results, type badge per row, active row ringed in <code>--accent-teal</code>, secondary line shows where the result lives. Code stories show their <code>ref</code> and factory state.</figcaption>
+          <figcaption>The input lives in the top bar (focused, teal ring); results drop down in a popover anchored to it — no centered modal, no dimmed app. Grouped results, type badge per row, active row ringed in <code>--accent-teal</code>; the secondary line shows where the result lives. Code stories show their <code>ref</code> and factory state.</figcaption>
         </figure>
         <div class="legend">
           <span><span class="swatch" style="background:#4fd1e0"></span> accent-teal · Tasks</span>
@@ -411,14 +415,15 @@
               </defs>
               <g style="font-family:sans-serif">
                 <rect x="20" y="80" width="120" height="44" rx="22" fill="#ffffff" stroke="#cdd8e4" stroke-width="1.5" />
-                <text x="80" y="107" text-anchor="middle" style="font:600 13px sans-serif" fill="#16202e">Closed</text>
+                <text x="80" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#16202e">Field idle</text>
+                <text x="80" y="115" text-anchor="middle" style="font:10px sans-serif" fill="#6b7a8d">empty, no dropdown</text>
 
                 <rect x="220" y="80" width="150" height="44" rx="10" fill="#e3f7fa" stroke="#0e8f9e" stroke-width="1.5" />
-                <text x="295" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#0a5a64">Open · empty</text>
-                <text x="295" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#0a5a64">hint shown</text>
+                <text x="295" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#0a5a64">Focused · empty</text>
+                <text x="295" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#0a5a64">hint in dropdown</text>
 
                 <rect x="450" y="80" width="150" height="44" rx="10" fill="#e3f7fa" stroke="#0e8f9e" stroke-width="1.5" />
-                <text x="525" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#0a5a64">Open · results</text>
+                <text x="525" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#0a5a64">Dropdown · results</text>
                 <text x="525" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#0a5a64">↑↓ to highlight</text>
 
                 <rect x="680" y="80" width="120" height="44" rx="10" fill="#fff" stroke="#cdd8e4" stroke-width="1.5" />
@@ -426,7 +431,7 @@
                 <text x="740" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#6b7a8d">→ Closed</text>
 
                 <line x1="140" y1="102" x2="218" y2="102" stroke="#46566b" stroke-width="1.4" marker-end="url(#a2)" />
-                <text x="178" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">⌘P</text>
+                <text x="178" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">⌘P / click field</text>
 
                 <line x1="370" y1="102" x2="448" y2="102" stroke="#46566b" stroke-width="1.4" marker-end="url(#a2)" />
                 <text x="409" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">type</text>
@@ -435,13 +440,13 @@
                 <text x="639" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">↵ select</text>
 
                 <path d="M525,124 C525,170 80,180 80,126" fill="none" stroke="#a83246" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#a2)" />
-                <text x="300" y="176" text-anchor="middle" style="font:10px sans-serif" fill="#a83246">esc / ⌘P / click backdrop → Closed (query cleared)</text>
+                <text x="300" y="176" text-anchor="middle" style="font:10px sans-serif" fill="#a83246">esc / ⌘P / click outside → dropdown closes (query cleared)</text>
 
                 <path d="M740,124 C740,150 700,150 690,128" fill="none" stroke="#46566b" stroke-width="1.2" marker-end="url(#a2)" />
               </g>
             </svg>
           </div>
-          <figcaption>Closing always clears the query, so each open starts fresh. <code>⌘P</code> toggles (also closes when open).</figcaption>
+          <figcaption>The field stays in the top bar throughout; only the results dropdown opens/closes. Dismissing clears the query, so each focus starts fresh. <code>⌘P</code> focuses the field (and re-presses close the dropdown).</figcaption>
         </figure>
       </section>
 
@@ -485,7 +490,7 @@
         </table>
         <p>
           A subtask (<code>parent_id</code> set) resolves to its top-level ancestor's view. After
-          <code>history.pushState</code> to that view, the palette closes and dispatches a focus event so the
+          <code>history.pushState</code> to that view, the dropdown closes and dispatches a focus event so the
           target list scrolls the row into view and applies a brief highlight — reusing the existing
           custom-event convention (<code>ALFRED_CAPTURE_FOCUS_EVENT</code> in
           <code>components/tasks/alfred-link.tsx</code>):
@@ -495,7 +500,7 @@
 
 <span class="c">// on task selection:</span>
 globalThis.history.<span class="f">pushState</span>(<span class="k">null</span>, <span class="s">''</span>, href);        <span class="c">// client-side view switch (ViewLink convention)</span>
-close();                                          <span class="c">// clear + close palette</span>
+close();                                          <span class="c">// clear query + close dropdown</span>
 globalThis.<span class="f">dispatchEvent</span>(<span class="k">new</span> CustomEvent(ALFRED_FOCUS_ITEM_EVENT, { detail: { id } }));</pre>
         <p>The task list (or row) listens for the event, and when the id is for a row it owns, calls <code>scrollIntoView</code> and toggles a transient ring class (respecting <code>prefers-reduced-motion</code> — no pulse, just a static ring that fades).</p>
 
@@ -527,15 +532,15 @@ close();
         <table>
           <thead><tr><th>File</th><th>Change</th></tr></thead>
           <tbody>
-            <tr><td><code>lib/stores/search-store.tsx</code></td><td><b>new</b> — <code>SearchProvider</code> + <code>useSearch()</code> / <code>useSearchActions()</code> via <code>create-context-pair</code>; state <code>{ open, query }</code>.</td></tr>
-            <tr><td><code>components/shell/search-palette.tsx</code></td><td><b>new</b> — the Radix <code>Dialog</code> palette; reads both stores, renders grouped results, handles ↑↓/↵, performs navigation.</td></tr>
+            <tr><td><code>lib/stores/search-store.tsx</code></td><td><b>new</b> — <code>SearchProvider</code> + <code>useSearch()</code> / <code>useSearchActions()</code> via <code>create-context-pair</code>; state <code>{ query, open }</code> (<code>open</code> = dropdown visible).</td></tr>
+            <tr><td><code>components/shell/search-box.tsx</code></td><td><b>new</b> — the top-bar search <code>&lt;input&gt;</code> (the combobox trigger). Owns the field, opens the dropdown on focus/typing, handles ↑↓/↵/Esc, performs navigation. Rendered in the header.</td></tr>
+            <tr><td><code>components/shell/search-results-popover.tsx</code></td><td><b>new</b> — the results panel anchored beneath the field (Radix <code>Popover</code>, non-modal so the field keeps focus); reads both stores, renders the grouped <code>listbox</code>.</td></tr>
             <tr><td><code>components/shell/search-results.ts</code></td><td><b>new</b> — the pure <code>buildResults()</code> filter/rank/cap and <code>SearchResult</code> type.</td></tr>
-            <tr><td><code>components/shell/use-global-search-shortcut.ts</code></td><td><b>new</b> — window <code>keydown</code> effect for <code>(meta||ctrl)+p</code> → toggle; <code>preventDefault()</code>.</td></tr>
-            <tr><td><code>components/shell/search-trigger.tsx</code></td><td><b>new</b> — the header "Search… ⌘P" button (and a variant inside the mobile hamburger).</td></tr>
+            <tr><td><code>components/shell/use-global-search-shortcut.ts</code></td><td><b>new</b> — window <code>keydown</code> effect for <code>(meta||ctrl)+p</code> → focus the field; <code>preventDefault()</code>.</td></tr>
             <tr><td><code>lib/stores/code-store.tsx</code></td><td><b>edit</b> — export <code>useCodeStories()</code> (or add <code>useSearchableStories()</code>).</td></tr>
             <tr><td><code>app/(shell)/layout.tsx</code></td><td><b>edit</b> — mount <code>SearchProvider</code> inside the provider tree.</td></tr>
-            <tr><td><code>components/shell/app-shell.tsx</code></td><td><b>edit</b> — render <code>&lt;SearchTrigger/&gt;</code> in the header and <code>&lt;SearchPalette/&gt;</code> once.</td></tr>
-            <tr><td><code>components/shell/shell-mobile-nav.tsx</code></td><td><b>edit</b> — add the search trigger to the hamburger drawer.</td></tr>
+            <tr><td><code>components/shell/app-shell.tsx</code></td><td><b>edit</b> — render <code>&lt;SearchBox/&gt;</code> in the header (it owns its anchored popover).</td></tr>
+            <tr><td><code>components/shell/shell-mobile-nav.tsx</code></td><td><b>edit</b> — surface the search field on mobile (in/near the hamburger), since the header bar there is tight.</td></tr>
             <tr><td><code>components/code/board.tsx</code></td><td><b>edit</b> — open the detail modal from <code>?story=&lt;ref&gt;</code>; clear the param on close.</td></tr>
             <tr><td><code>components/tasks/alfred-link.tsx</code> (or a new module)</td><td><b>edit</b> — export <code>ALFRED_FOCUS_ITEM_EVENT</code>; task list/row listens and scrolls+highlights.</td></tr>
           </tbody>
@@ -543,19 +548,20 @@ close();
 
         <h3>The global shortcut (annotated)</h3>
         <pre><span class="c">// components/shell/use-global-search-shortcut.ts</span>
-<span class="k">export function</span> <span class="f">useGlobalSearchShortcut</span>() {
-  <span class="k">const</span> { toggle } = <span class="f">useSearchActions</span>();
+<span class="c">// SearchBox passes a callback that focuses (and selects) its input ref; ⌘P just focuses</span>
+<span class="c">// the top-bar field — focusing it opens the dropdown, so there's no separate "toggle".</span>
+<span class="k">export function</span> <span class="f">useGlobalSearchShortcut</span>(focusSearch: () =&gt; <span class="k">void</span>) {
   <span class="f">React.useEffect</span>(() =&gt; {
     <span class="k">const</span> <span class="f">onKey</span> = (e: KeyboardEvent) =&gt; {
       <span class="c">// ⌘P (mac) / Ctrl P (win/linux). e.key is 'p' regardless of layout casing here.</span>
       <span class="k">if</span> ((e.metaKey || e.ctrlKey) &amp;&amp; !e.shiftKey &amp;&amp; !e.altKey &amp;&amp; e.key.<span class="f">toLowerCase</span>() === <span class="s">'p'</span>) {
         e.<span class="f">preventDefault</span>();   <span class="c">// claim it from the browser Print dialog</span>
-        <span class="f">toggle</span>();
+        <span class="f">focusSearch</span>();       <span class="c">// focus the top-bar input (which opens the results dropdown)</span>
       }
     };
     globalThis.<span class="f">addEventListener</span>(<span class="s">'keydown'</span>, onKey);
     <span class="k">return</span> () =&gt; globalThis.<span class="f">removeEventListener</span>(<span class="s">'keydown'</span>, onKey);
-  }, [toggle]);
+  }, [focusSearch]);
 }</pre>
         <div class="note">
           <b>Implementation flags (resolve at build time, don't block the spec):</b> confirm <code>e.key</code>
@@ -571,20 +577,20 @@ close();
         <table>
           <thead><tr><th>Key</th><th>Behavior</th></tr></thead>
           <tbody>
-            <tr><td><code>⌘P</code> / <code>Ctrl P</code></td><td>Toggle palette (open when closed, close when open).</td></tr>
-            <tr><td><code>Esc</code></td><td>Close (Radix Dialog default); query cleared.</td></tr>
+            <tr><td><code>⌘P</code> / <code>Ctrl P</code></td><td>Focus the top-bar field (opens the dropdown); re-press closes the dropdown.</td></tr>
+            <tr><td><code>Esc</code></td><td>Close the dropdown and clear the query; focus stays on / returns to the field.</td></tr>
             <tr><td><code>↑</code> / <code>↓</code></td><td>Move the active result across both groups; wraps or stops at ends (pick one — stop-at-ends is simplest).</td></tr>
             <tr><td><code>Enter</code></td><td>Select the active result and navigate.</td></tr>
             <tr><td><i>type</i></td><td>Updates query; active result resets to the first match.</td></tr>
           </tbody>
         </table>
         <ul>
-          <li>On open, focus moves to the input automatically (Radix <code>Dialog</code> focus management).</li>
-          <li>Input is a <code>combobox</code> with <code>aria-expanded</code>; the results are a <code>listbox</code>; the active row is tracked via <code>aria-activedescendant</code> so screen readers announce it without moving DOM focus off the input.</li>
+          <li>Focus lives on the top-bar <code>&lt;input&gt;</code> the whole time (it's a real field, not a launched modal); the dropdown is non-modal so it never steals focus from the input.</li>
+          <li>The input is a <code>combobox</code> (<code>aria-expanded</code>, <code>aria-controls</code> → the listbox); the dropdown is a <code>listbox</code>; the active row is tracked via <code>aria-activedescendant</code> so screen readers announce it without moving DOM focus off the input.</li>
           <li>Each result has <code>role="option"</code> and an accessible label including its kind ("Task" / "Code story") and where it lives.</li>
           <li>Visible focus rings on all interactive elements (the repo's <code>focus-visible:ring-accent-*</code> tokens). Honor <code>prefers-reduced-motion</code>: the row-highlight on navigate is a static fade, no pulse.</li>
           <li>Dark-theme tokens only (<code>bg-surface</code>, <code>border-border</code>, <code>text-foreground</code>, <code>text-accent-teal</code>); contrast meets the §5.4 quality floor.</li>
-          <li>Mobile: the header trigger is also reachable inside the hamburger; the palette is full-width with comfortable tap targets.</li>
+          <li>Mobile: the header bar is tight, so the field is surfaced in/near the hamburger; the dropdown is full-width with comfortable tap targets.</li>
         </ul>
       </section>
 
@@ -594,27 +600,27 @@ close();
         <ul>
           <li><b>Unit (jest):</b> <code>buildResults()</code> — substring match on title/notes; story ref match (<code>ALF-31</code>); ranking order (title-prefix &gt; title-substring &gt; notes; ref-exact first); the 8-per-group cap and <code>truncated</code> counts; empty-query → no results.</li>
           <li><b>Unit (jest):</b> task-destination derivation (completed → <code>/completed</code>; folder → <code>/folders/[id]</code>; else inbox; subtask → ancestor view).</li>
-          <li><b>RTL:</b> <code>SearchPalette</code> — opens on <code>⌘P</code> and the keydown is <code>preventDefault</code>ed; typing filters; ↑↓ moves the active option (assert <code>aria-activedescendant</code>); Enter triggers navigation (mock <code>pushState</code> / the focus event); Esc closes and clears.</li>
+          <li><b>RTL:</b> <code>SearchBox</code> — <code>⌘P</code> focuses the top-bar field and the keydown is <code>preventDefault</code>ed; typing opens the dropdown and filters; ↑↓ moves the active option (assert <code>aria-activedescendant</code>); Enter triggers navigation (mock <code>pushState</code> / the focus event); Esc closes the dropdown and clears.</li>
           <li><b>RTL:</b> <code>board.tsx</code> opens the detail modal when <code>?story=&lt;ref&gt;</code> is present and clears it on close.</li>
-          <li><b>Storybook + visual snapshot:</b> the palette with mixed results (the <code>storybook</code> skill — capture diff, then approve the baseline).</li>
-          <li><b>Playwright (e2e):</b> press <code>⌘P</code> → type → select a task → land on its view with the row highlighted; press <code>⌘P</code> → type a story title → select → Code board opens with the story modal.</li>
-          <li><b>Demo doc:</b> <code>docs/demos/alf-2-global-search/</code> — open the palette, screenshot results, show a task jump and a story jump; <code>npm run demo -- verify</code> before wrap-up.</li>
+          <li><b>Storybook + visual snapshot:</b> the top-bar field with its open results dropdown showing mixed results (the <code>storybook</code> skill — capture diff, then approve the baseline).</li>
+          <li><b>Playwright (e2e):</b> press <code>⌘P</code> → the top-bar field is focused → type → select a task → land on its view with the row highlighted; <code>⌘P</code> → type a story title → select → Code board opens with the story modal.</li>
+          <li><b>Demo doc:</b> <code>docs/demos/alf-2-global-search/</code> — focus the top-bar field, screenshot the dropdown results, show a task jump and a story jump; <code>npm run demo -- verify</code> before wrap-up.</li>
         </ul>
       </section>
 
       <section id="ac">
         <h2><span class="num">12</span> Acceptance criteria</h2>
         <ul class="ac">
-          <li><span class="box"></span> Pressing <code>⌘P</code> (macOS) or <code>Ctrl P</code> (Windows/Linux) from anywhere in the app opens the search palette; the browser's Print dialog does <b>not</b> appear.</li>
-          <li><span class="box"></span> Pressing the shortcut again, <code>Esc</code>, or clicking the backdrop closes the palette and clears the query.</li>
-          <li><span class="box"></span> A discoverable "Search… ⌘P" trigger is visible in the top bar (and reachable on mobile via the hamburger); clicking it opens the palette.</li>
-          <li><span class="box"></span> Typing filters in real time across <b>both</b> tasks and code stories, results grouped under <b>Tasks</b> and <b>Stories</b>, each row badged by type.</li>
+          <li><span class="box"></span> A real "Search… ⌘P" <b>input field is visible in the top bar</b> (and surfaced on mobile via the hamburger); the user types directly into it (not into a separate launched modal).</li>
+          <li><span class="box"></span> Pressing <code>⌘P</code> (macOS) or <code>Ctrl P</code> (Windows/Linux) from anywhere focuses that top-bar field and opens its results dropdown; the browser's Print dialog does <b>not</b> appear.</li>
+          <li><span class="box"></span> Pressing the shortcut again, <code>Esc</code>, or clicking outside closes the dropdown and clears the query; the field stays in place in the top bar.</li>
+          <li><span class="box"></span> Typing in the field filters in real time across <b>both</b> tasks and code stories, with matches shown in a dropdown <b>anchored beneath the field</b>, grouped under <b>Tasks</b> and <b>Stories</b>, each row badged by type.</li>
           <li><span class="box"></span> Tasks match on title and notes; stories match on title, notes, and ref (e.g. <code>ALF-31</code> finds that story).</li>
           <li><span class="box"></span> Each group caps at 8 results with a visible "+N more" indicator when truncated (no silent cap).</li>
           <li><span class="box"></span> <code>↑</code>/<code>↓</code> move the highlighted result; <code>Enter</code> opens it; the active option is exposed via <code>aria-activedescendant</code>.</li>
           <li><span class="box"></span> Selecting a <b>task</b> navigates to its containing view (inbox / folder / completed) and scrolls the row into view with a brief, reduced-motion-aware highlight.</li>
           <li><span class="box"></span> Selecting a <b>story</b> navigates to <code>/code/[projectId]?story=&lt;ref&gt;</code> and opens that story's detail modal; closing it clears the <code>story</code> param.</li>
-          <li><span class="box"></span> No new API/route/schema; the palette reads only the already-seeded stores. Search works offline-of-network (data already in memory).</li>
+          <li><span class="box"></span> No new API/route/schema; the search reads only the already-seeded stores. It works offline-of-network (data already in memory).</li>
           <li><span class="box"></span> Unit + RTL + Storybook snapshot + Playwright coverage per §11; root <code>npm run check</code> is green.</li>
         </ul>
       </section>
@@ -634,7 +640,7 @@ close();
         <div class="note teal">
           <ul style="margin:0">
             <li><b>Result action — navigate + open/highlight.</b> A task routes to its containing view with the row scrolled-to and highlighted (via a <code>?task=&lt;id&gt;</code> param the views read, or the focus event in §8); a story routes to its board <b>and opens the detail modal</b> via <code>?story=&lt;ref&gt;</code>. (Not "navigate to view only".)</li>
-            <li><b>UI — reuse the repo's Radix Dialog atoms</b> (<code>components/atoms/dialog.tsx</code> + <code>TextField</code> + a keyboard-navigable list). <b>No <code>cmdk</code> dependency.</b></li>
+            <li><b>UI — reuse the repo's owned primitives, no <code>cmdk</code>.</b> The "reuse Radix atoms, don't add cmdk" decision holds, but the right primitive is an <b>anchored combobox</b> (top-bar <code>Input</code> + a non-modal Radix <code>Popover</code> listbox), <b>not</b> a centered <code>Dialog</code> — because the input is the top-bar field (see §3/§5), not a launched modal.</li>
             <li><b>Scope — active <u>and</u> completed/done.</b> Search includes completed tasks and code stories in every factory state (incl. <code>done</code> / <code>abandoned</code>), so anything is findable. Completed/terminal items are visually de-emphasized but present.</li>
           </ul>
         </div>
