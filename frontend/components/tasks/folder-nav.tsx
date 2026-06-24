@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, FolderOpen, ListOrdered, MoreHorizontal, Plus } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
@@ -218,8 +218,16 @@ export function FolderNav({ onClose }: FolderNavProperties) {
         </div>
       </div>
 
-      {/* Completed */}
-      <div className="mt-4 border-t border-border/50 pt-2">
+      {/* Cross-cutting views — By Priority + Completed */}
+      <div className="mt-4 flex flex-col gap-0.5 border-t border-border/50 pt-2">
+        <ViewLink
+          href="/priority"
+          className={navLinkClass(isActive('/priority'))}
+          {...closeProperty}
+        >
+          <ListOrdered size={15} className="shrink-0" />
+          <span>Priority</span>
+        </ViewLink>
         <ViewLink
           href="/completed"
           className={navLinkClass(isActive('/completed'))}
