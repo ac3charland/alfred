@@ -4,55 +4,24 @@ branch: claude/blissful-galileo-9q1y5c
 
 # View all tasks by priority (ALF-37)
 
-*2026-06-24T16:58:35.547Z*
+*2026-06-24T21:34:16.767Z*
 
-ALF-37 adds a discrete **priority level** (High / Medium / Low) to tasks — settable from the task editor menu and shown as a colour-coded badge on each row — plus a new **By Priority** view at `/priority` that lists every top-level task across Inbox and all folders, ranked by priority with the due date as the within-level tiebreaker. It mirrors the Code module's cross-cutting Backlog, but ordered by a real priority field instead of a manual rank.
+ALF-37 adds a discrete **priority level** (High / Medium / Low) to tasks — set from the task editor and shown as a colour-coded badge on each row — plus a new **By Priority** view at `/priority` that lists every top-level task across Inbox and all folders, ranked by priority (due date breaks ties within a level). The same ranking also orders tasks **inside each folder** (the Inbox stays capture-first).
 
-## The ranking, demonstrated
+## Setting a priority — the editor control and the row badge
 
-The order is the heart of the ticket. This runnable script (`priority-demo.ts`, beside this doc) calls the **real** ranking function the view uses — `rankByPriority` from `frontend/lib/priority.ts` — and prints its output. It's bundled with esbuild (which resolves the `@/` alias from the frontend tsconfig) and run with node, so the captured output is the production logic's own. It covers: level order (High → Medium → Low → unprioritised); the due-date tiebreak within a level (earliest / most overdue first, no-due last); and the **subtree rollup** — a Low-priority parent hiding a High, overdue *active* subtask floats above a plain Medium task, while a *completed* High subtask leaves the parent Low.
+A **Priority** dropdown sits in the task editor beside Due date, Repeat and Notes. Once set, the level shows as a clickable badge on the row (here, ⬆ High); clicking it reopens the control.
 
-```bash
-node_modules/.bin/esbuild docs/demos/ALF-37-task-priority/priority-demo.ts --bundle --platform=node --tsconfig=frontend/tsconfig.json 2>/dev/null | node
-```
+![](task-priority-image-1.png)
 
-```output
-Level set & rank (lower = higher in the list):
-  High     rank 0
-  Medium   rank 1
-  Low      rank 2
-  (none)   rank 3
+## The By Priority view (`/priority`)
 
-Ranked by level, due date breaks ties within a level:
-  Reply to landlord          [high  ] due 2026-06-10   (Home)
-  Ship the priority migration [high  ] due 2026-06-25   (Inbox)
-  Draft Q3 planning doc      [medium] due no due date  (Work)
-  Tidy bookmarks             [low   ] due no due date  (Inbox)
-  Someday: learn the cello   [—     ] due no due date  (Inbox)
+A flat list of every top-level task across Inbox and all folders, ordered **High → Medium → Low → unprioritised**; within a level the earlier due date comes first (note both High tasks — *Reply to landlord* (Jun 10) ranks above *Ship the priority migration* (Tomorrow)). Each row shows where it lives (Home / Work / Inbox), and a **Show completed** toggle reveals completed tasks. A top-level task is ranked by the best priority/urgency across its active subtree, so a Low parent hiding a High, overdue subtask floats up.
 
-Subtree rollup — active High subtask lifts its Low parent above a Medium task:
-  Low parent (active urgent child) [low   ] due no due date  (Inbox)
-  Plain medium task          [medium] due no due date  (Inbox)
-
-…but a COMPLETED High subtask does not lift the parent — it stays Low, below Medium:
-  Plain medium task          [medium] due no due date  (Inbox)
-  Low parent (completed child) [low   ] due no due date  (Inbox)
-```
+![](task-priority-image-2.png)
 
 ## Ordering within a folder
 
-The same ranking now orders each **folder** too (the Inbox stays capture-first). A folder ranks **every level** — top-level rows and their subtasks — by priority → due date → created_at, using each node's **own** priority (no subtree rollup, since subtasks are their own visible rows here). This calls the real `sortNodesByPriority` (`folder-order-demo.ts`, beside this doc):
+Each folder now ranks its tasks by the same priority → due → created_at order, at every level (top-level rows and their subtasks). The Work folder below lists High → Medium → Low → unprioritised. The Inbox is unchanged (it stays capture-first, newest captured on top).
 
-```bash
-node_modules/.bin/esbuild docs/demos/ALF-37-task-priority/folder-order-demo.ts --bundle --platform=node --tsconfig=frontend/tsconfig.json 2>/dev/null | node
-```
-
-```output
-Folder "Work" — ranked by priority at every level (own key, no rollup):
-  Reply to the client    [high  ]
-  Plan the sprint        [medium]
-    └ Book the room      [high  ]
-    └ Write the agenda   [low   ]
-  Tidy the desk          [low   ]
-  Someday idea           [—     ]
-```
+![](task-priority-image-3.png)
