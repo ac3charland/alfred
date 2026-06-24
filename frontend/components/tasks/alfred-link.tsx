@@ -6,6 +6,13 @@ import { ViewLink } from '@/components/tasks/view-link';
 
 export const ALFRED_CAPTURE_FOCUS_EVENT = 'alfred-capture-focus';
 
+/**
+ * Dispatched (with `{ detail: { id } }`) when a global-search result for a task is selected,
+ * after the client-side view switch. The task list/row that owns the matching id scrolls it
+ * into view and applies a brief highlight — see `useFocusItemHighlight`.
+ */
+export const ALFRED_FOCUS_ITEM_EVENT = 'alfred-focus-item';
+
 type AlfredLinkProperties = Omit<React.ComponentPropsWithoutRef<'a'>, 'href'>;
 
 /**

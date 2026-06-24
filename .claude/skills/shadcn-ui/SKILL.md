@@ -153,6 +153,16 @@ Use this when:
   Drawer). Radix renders them into a portal and manages stacking context. Adding `z-index` breaks
   the stacking order.
 
+- **An anchored combobox (a field with a results dropdown, like the top-bar search) is a bare
+  `Popover`, not `Command`/`cmdk`.** alfred owns its primitives and doesn't add cmdk. Wrap the real
+  `<input>` in `Popover.Anchor asChild`, drive `Popover.Root` `open` yourself, and set `modal={false}`
+  so the page stays interactive. Three handlers keep focus on the input (the ARIA combobox pattern):
+  `Popover.Content` `onOpenAutoFocus`/`onCloseAutoFocus` both `preventDefault()` (the listbox never
+  takes focus), and `onInteractOutside` `preventDefault()`s when the event target is inside the input
+  (an anchor pointer-down isn't "outside") and closes otherwise. Keyboard nav (↑↓/Enter/Esc) lives on
+  the input's `onKeyDown` with `aria-activedescendant` pointing at the active `role="option"` — DOM
+  focus stays on the field throughout.
+
 - **Never** use `space-x-*` or `space-y-*` Tailwind utilities. Use `flex gap-*` instead. The
   `space-*` utilities use a lobotomized-owl selector (`* + *`) that breaks with conditional rendering
   and React fragment children.

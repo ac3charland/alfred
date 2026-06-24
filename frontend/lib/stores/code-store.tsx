@@ -834,7 +834,11 @@ export function useEpics(): Epic[] {
   return useCodeEpics();
 }
 
-function useCodeStories(): CodeStory[] {
+/**
+ * The flat list of every code story, in store order. Exported for the global search box, which
+ * reads it (alongside `useTasks`) to filter across both modules. Throws outside a CodeProvider.
+ */
+export function useCodeStories(): CodeStory[] {
   return useStoriesValue('useCodeStories');
 }
 
