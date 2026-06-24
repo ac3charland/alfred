@@ -2,7 +2,7 @@
 name: migration-lint
 description: >
   Covers migration-lint, the static linter over database/migrations/*.sql that runs in the
-  global check:fast (pre-commit) — its sequence-grant rule. Use when running or interpreting
+  global check:fast (pre-commit). Use when running or interpreting
   migration-lint, fixing a sequence-grant finding, adding or changing a rule, or wiring it into
   the build. Trigger on: "migration-lint", "lint the migrations", "sequence-grant", "permission
   denied for sequence", "missing grant on sequence", "add a migration-lint rule", or editing
