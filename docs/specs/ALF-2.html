@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-2 — Add search to top bar, trigger with Cmd + P</title>
+    <style>
+      :root {
+        --ink: #16202e;
+        --ink-soft: #46566b;
+        --ink-faint: #6b7a8d;
+        --line: #dbe3ec;
+        --line-soft: #eef2f7;
+        --paper: #ffffff;
+        --wash: #f6f9fc;
+        --teal: #0e8f9e;
+        --teal-bg: #e3f7fa;
+        --amber: #9a6a00;
+        --amber-bg: #fcf2dc;
+        --green: #197a52;
+        --green-bg: #e2f5ec;
+        --rose: #a83246;
+        --rose-bg: #fbe7ea;
+        --radius: 12px;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--wash);
+        color: var(--ink);
+        font-family: var(--sans);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 40px 22px 96px; }
+      header.doc {
+        border-left: 4px solid var(--teal);
+        padding: 4px 0 4px 18px;
+        margin-bottom: 14px;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--teal);
+        margin: 0 0 6px;
+      }
+      h1 { font-size: 30px; line-height: 1.2; margin: 0 0 10px; letter-spacing: -0.01em; }
+      .sub { color: var(--ink-soft); font-size: 15px; margin: 0; }
+      .meta-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+      .pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        border: 1px solid var(--line); background: var(--paper);
+        border-radius: 999px; padding: 4px 12px; font-size: 13px; color: var(--ink-soft);
+      }
+      .pill b { color: var(--ink); font-weight: 600; }
+      section {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 26px 28px;
+        margin: 22px 0;
+        box-shadow: 0 1px 2px rgba(20, 40, 70, 0.04);
+      }
+      h2 {
+        font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em;
+        display: flex; align-items: baseline; gap: 10px;
+      }
+      h2 .num {
+        font-family: var(--mono); font-size: 13px; color: var(--teal);
+        background: var(--teal-bg); border-radius: 6px; padding: 2px 8px; font-weight: 700;
+      }
+      h3 { font-size: 16px; margin: 22px 0 6px; }
+      p { margin: 10px 0; }
+      ul, ol { margin: 10px 0; padding-left: 22px; }
+      li { margin: 6px 0; }
+      code {
+        font-family: var(--mono); font-size: 0.86em;
+        background: var(--line-soft); border-radius: 5px; padding: 1px 6px; color: #294;
+        color: var(--ink);
+      }
+      a { color: var(--teal); }
+      .lead { font-size: 16px; color: var(--ink-soft); }
+      table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { background: var(--wash); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+      tr:last-child td { border-bottom: none; }
+      td code { font-size: 0.82em; }
+      pre {
+        margin: 12px 0; padding: 16px 18px; background: #0f1626; color: #dce6f2;
+        border-radius: 10px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+      }
+      pre .c { color: #7d8aa3; font-style: italic; }
+      pre .k { color: #7cc7ff; }
+      pre .s { color: #9fe6b8; }
+      pre .f { color: #f0c674; }
+      .note {
+        border-left: 3px solid var(--amber); background: var(--amber-bg);
+        padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 14.5px; color: #5c4304;
+      }
+      .note.teal { border-color: var(--teal); background: var(--teal-bg); color: #0a5a64; }
+      .note b { color: inherit; }
+      .ac { list-style: none; padding-left: 0; }
+      .ac li { display: flex; gap: 10px; align-items: flex-start; margin: 9px 0; }
+      .ac .box {
+        flex: 0 0 auto; width: 18px; height: 18px; border: 2px solid var(--teal);
+        border-radius: 5px; margin-top: 3px;
+      }
+      .tag {
+        display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+        border-radius: 5px; padding: 1px 7px; vertical-align: middle;
+      }
+      .tag.task { color: var(--teal); background: var(--teal-bg); }
+      .tag.code { color: var(--amber); background: var(--amber-bg); }
+      .tag.done { color: var(--green); background: var(--green-bg); }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .card-soft { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: var(--wash); }
+      .card-soft h4 { margin: 0 0 6px; font-size: 14px; }
+      .card-soft p { margin: 4px 0; font-size: 13.5px; color: var(--ink-soft); }
+      figure { margin: 18px 0; }
+      figcaption { font-size: 13px; color: var(--ink-faint); text-align: center; margin-top: 8px; }
+      .svg-frame { border: 1px solid var(--line); border-radius: 10px; background: var(--wash); padding: 14px; overflow-x: auto; }
+      .filelist code { display: inline-block; }
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; justify-content: center; }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; }
+      .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+      .toc { columns: 2; column-gap: 28px; font-size: 14px; }
+      .toc a { text-decoration: none; }
+      .footnote { font-size: 13px; color: var(--ink-faint); }
+      @media (max-width: 640px) {
+        .grid2 { grid-template-columns: 1fr; }
+        .toc { columns: 1; }
+        h1 { font-size: 24px; }
+        section { padding: 20px 18px; }
+        .wrap { padding: 28px 14px 64px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="doc">
+        <p class="eyebrow">Alfred · Refinement spec</p>
+        <h1>ALF-2 — Add search to top bar, trigger with Cmd&nbsp;+&nbsp;P</h1>
+        <p class="sub">A global command-palette search, opened with <code>⌘P</code> / <code>Ctrl&nbsp;P</code>, that finds across both <b>tasks</b> and <b>code stories</b> and jumps to the result.</p>
+        <div class="meta-pills">
+          <span class="pill"><b>Ticket</b> ALF-2</span>
+          <span class="pill"><b>Phase</b> refinement</span>
+          <span class="pill"><b>Module</b> shell (cross-module)</span>
+          <span class="pill"><b>Status</b> spec only — no implementation</span>
+        </div>
+      </header>
+
+      <section>
+        <h2>On this page</h2>
+        <nav class="toc">
+          <a href="#context">1. Context &amp; problem</a><br />
+          <a href="#vocab">2. What "tasks" and "stories" are here</a><br />
+          <a href="#change">3. Proposed change</a><br />
+          <a href="#flow">4. Data flow (diagram)</a><br />
+          <a href="#mockup">5. UI mockup</a><br />
+          <a href="#statemachine">6. Palette state machine</a><br />
+          <a href="#matching">7. Matching &amp; result model</a><br />
+          <a href="#nav">8. Selecting a result (navigation)</a><br />
+          <a href="#files">9. Files &amp; key code</a><br />
+          <a href="#a11y">10. Keyboard &amp; accessibility</a><br />
+          <a href="#tests">11. Testing &amp; demo</a><br />
+          <a href="#ac">12. Acceptance criteria</a><br />
+          <a href="#oos">13. Out of scope / open questions</a><br />
+        </nav>
+      </section>
+
+      <section id="context">
+        <h2><span class="num">1</span> Context &amp; problem</h2>
+        <p class="lead">
+          Alfred has grown two modules — <b>Tasks</b> (the inbox / folders / completed views) and
+          <b>Code</b> (the Software Factory board of stories) — switched between with the header's
+          Tasks&nbsp;⇄&nbsp;Code segmented control. There is today <b>no way to jump straight to a known
+          item</b>. To reach a task you scan its folder; to reach a story you switch to Code, pick the
+          project, expand the epic, and find the card. At a few hundred items that friction adds up and
+          works against the system's "capture first, low cognitive load" principle.
+        </p>
+        <p>
+          ALF-2 adds a single <b>global search</b> in the top bar, summoned with <code>⌘P</code> (macOS) /
+          <code>Ctrl&nbsp;P</code> (Windows/Linux), that searches across <b>both</b> tasks and stories at once
+          and navigates to whatever you pick. It is the keyboard-first "go to anything" affordance the
+          two-module shell now needs.
+        </p>
+        <div class="note teal">
+          <b>Grounding.</b> Both modules' data is already eagerly fetched and seeded into client stores
+          once, at <code>app/(shell)/layout.tsx</code> (<code>getAllItems()</code> +
+          <code>getCodeStories()</code>). Search therefore needs <b>no new API or query</b> — it reads the
+          stores that are already in memory and filters client-side, exactly the house "fetch-all then
+          filter client-side" pattern (see the <code>data-flow</code> skill).
+        </div>
+      </section>
+
+      <section id="vocab">
+        <h2><span class="num">2</span> What "tasks" and "stories" are here</h2>
+        <p>The ticket says "searches through both tasks and stories." In this codebase those are two distinct shapes:</p>
+        <table>
+          <thead>
+            <tr><th>Concept</th><th>What it is</th><th>Store hook</th><th>Searchable fields</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag task">TASK</span></td>
+              <td>An <code>items</code> row that is <b>not</b> in the factory (<code>item_type</code> = <code>task</code> / <code>unclassified</code> / a <code>code</code> item not yet sent). Includes subtasks and completed items. Type <code>Item</code> in <code>lib/types.ts</code>.</td>
+              <td><code>useTasks()</code> → <code>Item[]</code></td>
+              <td><code>title</code>, <code>notes</code></td>
+            </tr>
+            <tr>
+              <td><span class="tag code">STORY</span></td>
+              <td>A <b>code story</b> — an <code>items</code> row with <code>item_type='code'</code> plus a <code>code_items</code> sidecar, surfaced through the <code>v_code_stories</code> view. Type <code>CodeStory</code>. Carries a human ref like <code>ALF-42</code>.</td>
+              <td><code>useCodeStories()</code> → <code>CodeStory[]</code> <span class="footnote">(currently module-private)</span></td>
+              <td><code>title</code>, <code>notes</code>, <code>ref</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Both collections live under the same <code>(shell)</code> provider tree, so a palette mounted in
+          <code>AppShell</code> can read both with no extra plumbing. <code>useTasks()</code> already
+          returns the full set (active <b>and</b> completed — the per-view filters split them), so a single
+          read covers everything searchable.
+        </p>
+        <div class="note">
+          <b>One small store change.</b> <code>useCodeStories()</code> exists in
+          <code>lib/stores/code-store.tsx</code> but is not exported (the board consumes it via
+          <code>useProjectBoard</code>). This spec exports it (or a thin <code>useSearchableStories()</code>
+          wrapper) so the palette can read the flat story list.
+        </div>
+      </section>
+
+      <section id="change">
+        <h2><span class="num">3</span> Proposed change</h2>
+        <p>Five focused additions, all client-side, all within the existing shell:</p>
+        <ol>
+          <li><b>Global shortcut.</b> A window <code>keydown</code> listener for <code>(meta||ctrl)+p</code> that <code>preventDefault()</code>s (overriding the browser's Print binding) and toggles the palette open.</li>
+          <li><b>Search store.</b> A tiny <code>SearchProvider</code> (built with the repo's <code>create-context-pair</code> helper) holding just <code>{ open, query }</code> with <code>open()</code> / <code>close()</code> / <code>setQuery()</code> actions.</li>
+          <li><b>Search palette.</b> A Radix <code>Dialog</code> (<code>components/shell/search-palette.tsx</code>) rendered once in <code>AppShell</code>. It reads <code>useTasks()</code> + <code>useCodeStories()</code>, filters by query, and renders grouped, keyboard-navigable results.</li>
+          <li><b>Trigger affordance in the top bar.</b> A small "Search… <kbd>⌘P</kbd>" button in the header (and inside the mobile hamburger) so the feature is discoverable, not just a hidden shortcut.</li>
+          <li><b>Result navigation.</b> Selecting a result routes to it: a task → its containing view (inbox / folder / completed) with the row scrolled-to and briefly highlighted; a story → <code>/code/[projectId]?story=&lt;ref&gt;</code>, with the board reading the <code>story</code> param to open its detail modal.</li>
+        </ol>
+        <p>
+          No backend, schema, or API change. The palette reuses existing atoms (<code>Dialog</code>,
+          <code>Badge</code>, <code>Input</code>), the existing client-nav primitive
+          (<code>history.pushState</code> via the <code>ViewLink</code> convention), and the existing
+          custom-event pattern (<code>ALFRED_CAPTURE_FOCUS_EVENT</code>) for cross-component focus.
+        </p>
+        <div class="note">
+          <b>Why <code>⌘P</code> specifically.</b> The ticket asks for it. <code>⌘P</code> is the browser's
+          native Print shortcut, so the handler <b>must</b> call <code>preventDefault()</code> to claim it.
+          This is a deliberate, documented override; <code>⌘K</code> is the more conventional palette key and
+          is raised as an open question in §13 — but the default per the ticket is <code>⌘P</code>.
+        </div>
+      </section>
+
+      <section id="flow">
+        <h2><span class="num">4</span> Data flow</h2>
+        <p>The palette is a pure read over data already in memory; the only writes are URL navigation and a transient focus event.</p>
+        <figure>
+          <div class="svg-frame">
+            <svg viewBox="0 0 860 360" width="100%" role="img" aria-label="Data flow from keypress to navigation">
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L8,3 L0,6 Z" fill="#46566b" />
+                </marker>
+                <style>
+                  .box { fill: #ffffff; stroke: #cdd8e4; stroke-width: 1.5; rx: 10; }
+                  .boxt { fill: #0e8f9e; fill-opacity: 0.08; stroke: #0e8f9e; }
+                  .lbl { font: 600 13px var(--sans, sans-serif); fill: #16202e; }
+                  .sub { font: 12px var(--sans, sans-serif); fill: #6b7a8d; }
+                  .edge { stroke: #46566b; stroke-width: 1.4; fill: none; }
+                  .edgel { font: 11px var(--sans, sans-serif); fill: #46566b; }
+                </style>
+              </defs>
+
+              <rect class="box" x="20" y="24" width="180" height="58" rx="10" />
+              <text class="lbl" x="36" y="48">⌘P / Ctrl P keydown</text>
+              <text class="sub" x="36" y="66">window listener · preventDefault</text>
+
+              <rect class="box boxt" x="20" y="150" width="180" height="64" rx="10" />
+              <text class="lbl" x="36" y="176">SearchProvider</text>
+              <text class="sub" x="36" y="194">{ open, query }</text>
+              <text class="sub" x="36" y="208">open/close/setQuery</text>
+
+              <rect class="box" x="330" y="140" width="200" height="84" rx="10" />
+              <text class="lbl" x="348" y="166">SearchPalette</text>
+              <text class="sub" x="348" y="184">Radix Dialog</text>
+              <text class="sub" x="348" y="200">filter + rank (client)</text>
+              <text class="sub" x="348" y="216">grouped results</text>
+
+              <rect class="box" x="650" y="24" width="190" height="54" rx="10" />
+              <text class="lbl" x="666" y="46">useTasks() → Item[]</text>
+              <text class="sub" x="666" y="64">tasks-store (seeded)</text>
+
+              <rect class="box" x="650" y="96" width="190" height="54" rx="10" />
+              <text class="lbl" x="666" y="118">useCodeStories()</text>
+              <text class="sub" x="666" y="136">code-store (seeded)</text>
+
+              <rect class="box" x="650" y="186" width="190" height="64" rx="10" />
+              <text class="lbl" x="666" y="210">Selection</text>
+              <text class="sub" x="666" y="228">pushState (view / ?story=)</text>
+              <text class="sub" x="666" y="242">+ focus event</text>
+
+              <rect class="box" x="330" y="280" width="200" height="60" rx="10" />
+              <text class="lbl" x="348" y="306">Target opens</text>
+              <text class="sub" x="348" y="324">row highlight · story modal</text>
+
+              <!-- edges -->
+              <path class="edge" d="M110,82 L110,150" marker-end="url(#arrow)" />
+              <text class="edgel" x="118" y="120">toggle open</text>
+
+              <path class="edge" d="M200,182 L330,182" marker-end="url(#arrow)" />
+              <text class="edgel" x="222" y="174">reads state</text>
+
+              <path class="edge" d="M530,168 L650,55" marker-end="url(#arrow)" />
+              <path class="edge" d="M530,180 L650,120" marker-end="url(#arrow)" />
+              <text class="edgel" x="540" y="118">read &amp; filter</text>
+
+              <path class="edge" d="M530,210 L650,214" marker-end="url(#arrow)" />
+              <text class="edgel" x="540" y="204">on Enter</text>
+
+              <path class="edge" d="M700,250 C700,300 600,310 530,310" marker-end="url(#arrow)" />
+              <text class="edgel" x="556" y="286">navigate</text>
+            </svg>
+          </div>
+          <figcaption>Keypress → store toggles open → palette reads both seeded stores, filters in JS → selection drives a client-side navigation and a focus event. No network round-trip.</figcaption>
+        </figure>
+      </section>
+
+      <section id="mockup">
+        <h2><span class="num">5</span> UI mockup</h2>
+        <p>The palette is a centered overlay in the app's dark theme (tokens: <code>bg-surface</code>, <code>border-border</code>, <code>text-accent-teal</code>). Results are grouped <b>Tasks</b> / <b>Stories</b>, each row badged by type; the active row carries an accent ring.</p>
+        <figure>
+          <div class="svg-frame">
+            <svg viewBox="0 0 760 430" width="100%" role="img" aria-label="Search palette mockup">
+              <!-- app backdrop -->
+              <rect x="0" y="0" width="760" height="430" rx="10" fill="#0a0e17" />
+              <rect x="0" y="0" width="760" height="44" fill="#0f1626" />
+              <text x="20" y="28" font="600 14px sans-serif" fill="#e8edf5" style="font:600 14px sans-serif">alfred</text>
+              <!-- header search trigger -->
+              <rect x="300" y="11" width="220" height="24" rx="6" fill="#0a0e17" stroke="#1e2a3f" />
+              <text x="314" y="27" style="font:12px sans-serif" fill="#8a96a8">Search…</text>
+              <rect x="470" y="15" width="42" height="16" rx="4" fill="#1e2a3f" />
+              <text x="478" y="27" style="font:11px monospace" fill="#cdd8e4">⌘P</text>
+
+              <!-- dim overlay -->
+              <rect x="0" y="44" width="760" height="386" fill="#000000" fill-opacity="0.55" />
+
+              <!-- palette -->
+              <rect x="150" y="74" width="460" height="300" rx="14" fill="#0f1626" stroke="#2a3a54" />
+              <!-- input row -->
+              <rect x="150" y="74" width="460" height="50" rx="14" fill="#0f1626" />
+              <circle cx="182" cy="99" r="7" fill="none" stroke="#8a96a8" stroke-width="1.6" />
+              <line x1="187" y1="104" x2="193" y2="110" stroke="#8a96a8" stroke-width="1.6" />
+              <text x="206" y="104" style="font:14px sans-serif" fill="#e8edf5">firewall</text>
+              <rect x="206" y="92" width="2" height="16" fill="#4fd1e0" />
+              <line x1="150" y1="124" x2="610" y2="124" stroke="#1e2a3f" />
+
+              <!-- group: Tasks -->
+              <text x="170" y="146" style="font:700 10px sans-serif; letter-spacing:1.4px" fill="#8a96a8">TASKS</text>
+              <!-- active row -->
+              <rect x="160" y="152" width="440" height="38" rx="8" fill="#10202b" stroke="#4fd1e0" />
+              <text x="178" y="170" style="font:13px sans-serif" fill="#e8edf5">Build the communication firewall triage UI</text>
+              <text x="178" y="184" style="font:11px sans-serif" fill="#8a96a8">Folder · Software</text>
+              <rect x="540" y="161" width="46" height="18" rx="9" fill="none" stroke="#4fd1e0" />
+              <text x="551" y="174" style="font:10px sans-serif" fill="#4fd1e0">Task</text>
+              <!-- row 2 -->
+              <text x="178" y="212" style="font:13px sans-serif" fill="#c6d2e0">Reply to firewall vendor email</text>
+              <text x="178" y="226" style="font:11px sans-serif" fill="#8a96a8">Inbox</text>
+              <rect x="540" y="203" width="46" height="18" rx="9" fill="none" stroke="#4fd1e0" />
+              <text x="551" y="216" style="font:10px sans-serif" fill="#4fd1e0">Task</text>
+
+              <!-- group: Stories -->
+              <text x="170" y="256" style="font:700 10px sans-serif; letter-spacing:1.4px" fill="#8a96a8">STORIES</text>
+              <text x="178" y="282" style="font:13px sans-serif" fill="#c6d2e0">Communication Firewall — message triage</text>
+              <text x="178" y="296" style="font:11px monospace" fill="#f0b429">ALF-31</text>
+              <text x="240" y="296" style="font:11px sans-serif" fill="#8a96a8">· Alfred › Firewall · Ready for Dev</text>
+              <rect x="540" y="273" width="46" height="18" rx="9" fill="none" stroke="#f0b429" />
+              <text x="550" y="286" style="font:10px sans-serif" fill="#f0b429">Code</text>
+
+              <!-- footer hints -->
+              <line x1="150" y1="330" x2="610" y2="330" stroke="#1e2a3f" />
+              <text x="170" y="352" style="font:11px sans-serif" fill="#8a96a8">↑↓ navigate</text>
+              <text x="280" y="352" style="font:11px sans-serif" fill="#8a96a8">↵ open</text>
+              <text x="360" y="352" style="font:11px sans-serif" fill="#8a96a8">esc close</text>
+              <text x="470" y="352" style="font:11px sans-serif" fill="#8a96a8">3 results</text>
+            </svg>
+          </div>
+          <figcaption>Centered palette over a dimmed app. Grouped results, type badge per row, active row ringed in <code>--accent-teal</code>, secondary line shows where the result lives. Code stories show their <code>ref</code> and factory state.</figcaption>
+        </figure>
+        <div class="legend">
+          <span><span class="swatch" style="background:#4fd1e0"></span> accent-teal · Tasks</span>
+          <span><span class="swatch" style="background:#f0b429"></span> accent-amber · Code/stories</span>
+          <span><span class="swatch" style="background:#0f1626"></span> surface</span>
+          <span><span class="swatch" style="background:#1e2a3f"></span> border</span>
+        </div>
+      </section>
+
+      <section id="statemachine">
+        <h2><span class="num">6</span> Palette state machine</h2>
+        <figure>
+          <div class="svg-frame">
+            <svg viewBox="0 0 820 200" width="100%" role="img" aria-label="Palette state machine">
+              <defs>
+                <marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#46566b" /></marker>
+              </defs>
+              <g style="font-family:sans-serif">
+                <rect x="20" y="80" width="120" height="44" rx="22" fill="#ffffff" stroke="#cdd8e4" stroke-width="1.5" />
+                <text x="80" y="107" text-anchor="middle" style="font:600 13px sans-serif" fill="#16202e">Closed</text>
+
+                <rect x="220" y="80" width="150" height="44" rx="10" fill="#e3f7fa" stroke="#0e8f9e" stroke-width="1.5" />
+                <text x="295" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#0a5a64">Open · empty</text>
+                <text x="295" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#0a5a64">hint shown</text>
+
+                <rect x="450" y="80" width="150" height="44" rx="10" fill="#e3f7fa" stroke="#0e8f9e" stroke-width="1.5" />
+                <text x="525" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#0a5a64">Open · results</text>
+                <text x="525" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#0a5a64">↑↓ to highlight</text>
+
+                <rect x="680" y="80" width="120" height="44" rx="10" fill="#fff" stroke="#cdd8e4" stroke-width="1.5" />
+                <text x="740" y="100" text-anchor="middle" style="font:600 13px sans-serif" fill="#16202e">Navigated</text>
+                <text x="740" y="116" text-anchor="middle" style="font:10px sans-serif" fill="#6b7a8d">→ Closed</text>
+
+                <line x1="140" y1="102" x2="218" y2="102" stroke="#46566b" stroke-width="1.4" marker-end="url(#a2)" />
+                <text x="178" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">⌘P</text>
+
+                <line x1="370" y1="102" x2="448" y2="102" stroke="#46566b" stroke-width="1.4" marker-end="url(#a2)" />
+                <text x="409" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">type</text>
+
+                <line x1="600" y1="102" x2="678" y2="102" stroke="#46566b" stroke-width="1.4" marker-end="url(#a2)" />
+                <text x="639" y="94" text-anchor="middle" style="font:10px sans-serif" fill="#46566b">↵ select</text>
+
+                <path d="M525,124 C525,170 80,180 80,126" fill="none" stroke="#a83246" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#a2)" />
+                <text x="300" y="176" text-anchor="middle" style="font:10px sans-serif" fill="#a83246">esc / ⌘P / click backdrop → Closed (query cleared)</text>
+
+                <path d="M740,124 C740,150 700,150 690,128" fill="none" stroke="#46566b" stroke-width="1.2" marker-end="url(#a2)" />
+              </g>
+            </svg>
+          </div>
+          <figcaption>Closing always clears the query, so each open starts fresh. <code>⌘P</code> toggles (also closes when open).</figcaption>
+        </figure>
+      </section>
+
+      <section id="matching">
+        <h2><span class="num">7</span> Matching &amp; result model</h2>
+        <p>Matching is simple, instant, client-side substring matching — no server FTS, no fuzzy library (those are §13 out-of-scope). A normalized (trimmed, lowercased) query is tested against each candidate's fields.</p>
+        <ul>
+          <li><b>Tasks</b> match on <code>title</code> and <code>notes</code>.</li>
+          <li><b>Stories</b> match on <code>title</code>, <code>notes</code>, and <code>ref</code> (so typing <code>ALF-31</code> finds it directly).</li>
+          <li><b>Ranking</b> within each group: title <i>prefix</i> match, then title <i>substring</i>, then notes-only — then by recency (<code>created_at</code> desc, the store's existing order). Ref-exact stories sort to the very top of Stories.</li>
+          <li><b>Caps:</b> show up to <b>8 per group</b>; if more match, show a muted "+N more — keep typing" line. Capping is surfaced, never silent.</li>
+          <li><b>Empty query:</b> no results list; show a one-line hint ("Search tasks and stories by title, notes, or ref"). <i>(Optionally seed with a few most-recent items — deferred, see §13.)</i></li>
+        </ul>
+        <p>A unified result type keeps rendering and keyboard nav uniform across the two sources:</p>
+        <pre><span class="c">// components/shell/search-results.ts</span>
+<span class="k">export type</span> SearchResult =
+  | { kind: <span class="s">'task'</span>; id: <span class="k">string</span>; title: <span class="k">string</span>; subtitle: <span class="k">string</span>; href: <span class="k">string</span>; item: Item }
+  | { kind: <span class="s">'story'</span>; id: <span class="k">string</span>; title: <span class="k">string</span>; ref: <span class="k">string</span>; subtitle: <span class="k">string</span>; href: <span class="k">string</span>; story: CodeStory };
+
+<span class="c">// Pure, unit-testable: store snapshots in → ranked, capped results out.</span>
+<span class="k">export function</span> <span class="f">buildResults</span>(query: <span class="k">string</span>, tasks: Item[], stories: CodeStory[]): {
+  tasks: SearchResult[]; stories: SearchResult[]; truncated: { tasks: <span class="k">number</span>; stories: <span class="k">number</span> };
+} { <span class="c">/* normalize, filter, rank, cap */</span> }</pre>
+        <div class="note teal">
+          Keeping <code>buildResults</code> a <b>pure function</b> (no React, no DOM) is the testing seam: the
+          ranking/cap/ref-match rules get exhaustive unit tests, and the component just renders its output.
+        </div>
+      </section>
+
+      <section id="nav">
+        <h2><span class="num">8</span> Selecting a result (navigation)</h2>
+        <h3>Tasks → containing view + highlight</h3>
+        <p>A task's destination view is derived from its own fields, reusing the existing routes:</p>
+        <table>
+          <thead><tr><th>Condition</th><th>Destination</th></tr></thead>
+          <tbody>
+            <tr><td><code>status === 'completed'</code></td><td><code>/completed</code></td></tr>
+            <tr><td><code>folder_id</code> set</td><td><code>/folders/[folder_id]</code></td></tr>
+            <tr><td>otherwise (Inbox)</td><td><code>/?view=inbox</code></td></tr>
+          </tbody>
+        </table>
+        <p>
+          A subtask (<code>parent_id</code> set) resolves to its top-level ancestor's view. After
+          <code>history.pushState</code> to that view, the palette closes and dispatches a focus event so the
+          target list scrolls the row into view and applies a brief highlight — reusing the existing
+          custom-event convention (<code>ALFRED_CAPTURE_FOCUS_EVENT</code> in
+          <code>components/tasks/alfred-link.tsx</code>):
+        </p>
+        <pre><span class="c">// new sibling of ALFRED_CAPTURE_FOCUS_EVENT</span>
+<span class="k">export const</span> ALFRED_FOCUS_ITEM_EVENT = <span class="s">'alfred-focus-item'</span>;
+
+<span class="c">// on task selection:</span>
+globalThis.history.<span class="f">pushState</span>(<span class="k">null</span>, <span class="s">''</span>, href);        <span class="c">// client-side view switch (ViewLink convention)</span>
+close();                                          <span class="c">// clear + close palette</span>
+globalThis.<span class="f">dispatchEvent</span>(<span class="k">new</span> CustomEvent(ALFRED_FOCUS_ITEM_EVENT, { detail: { id } }));</pre>
+        <p>The task list (or row) listens for the event, and when the id is for a row it owns, calls <code>scrollIntoView</code> and toggles a transient ring class (respecting <code>prefers-reduced-motion</code> — no pulse, just a static ring that fades).</p>
+
+        <h3>Stories → board with the detail modal open</h3>
+        <p>
+          The story detail modal is opened today by local board state (<code>setOpenStoryId</code> in
+          <code>components/code/board.tsx</code>). To open it from a different route, this spec makes the
+          board <b>URL-driven</b>: it reads a <code>?story=&lt;ref&gt;</code> search param and opens the matching
+          story; closing the modal clears the param. This matches the codebase's "every view derives from the
+          URL" philosophy (the shared <code>ModuleRouter</code>).
+        </p>
+        <pre><span class="c">// search → story selection</span>
+<span class="k">const</span> href = <span class="s">`/code/</span>${story.project_id}<span class="s">?story=</span>${<span class="f">encodeURIComponent</span>(story.ref)}<span class="s">`</span>;
+globalThis.history.<span class="f">pushState</span>(<span class="k">null</span>, <span class="s">''</span>, href);
+close();
+
+<span class="c">// components/code/board.tsx — open from the URL</span>
+<span class="k">const</span> storyRef = <span class="f">useSearchParams</span>().<span class="f">get</span>(<span class="s">'story'</span>);
+<span class="k">const</span> openStory = storyRef ? stories.<span class="f">find</span>((s) =&gt; s.ref === storyRef) : <span class="k">null</span>;</pre>
+        <div class="note">
+          If the selected story belongs to a different project than the one currently shown, the
+          <code>pushState</code> to <code>/code/[projectId]</code> already routes the board to the right project
+          before it reads <code>?story=</code>, so the correct project's board renders with the modal open.
+        </div>
+      </section>
+
+      <section id="files">
+        <h2><span class="num">9</span> Files &amp; key code</h2>
+        <table>
+          <thead><tr><th>File</th><th>Change</th></tr></thead>
+          <tbody>
+            <tr><td><code>lib/stores/search-store.tsx</code></td><td><b>new</b> — <code>SearchProvider</code> + <code>useSearch()</code> / <code>useSearchActions()</code> via <code>create-context-pair</code>; state <code>{ open, query }</code>.</td></tr>
+            <tr><td><code>components/shell/search-palette.tsx</code></td><td><b>new</b> — the Radix <code>Dialog</code> palette; reads both stores, renders grouped results, handles ↑↓/↵, performs navigation.</td></tr>
+            <tr><td><code>components/shell/search-results.ts</code></td><td><b>new</b> — the pure <code>buildResults()</code> filter/rank/cap and <code>SearchResult</code> type.</td></tr>
+            <tr><td><code>components/shell/use-global-search-shortcut.ts</code></td><td><b>new</b> — window <code>keydown</code> effect for <code>(meta||ctrl)+p</code> → toggle; <code>preventDefault()</code>.</td></tr>
+            <tr><td><code>components/shell/search-trigger.tsx</code></td><td><b>new</b> — the header "Search… ⌘P" button (and a variant inside the mobile hamburger).</td></tr>
+            <tr><td><code>lib/stores/code-store.tsx</code></td><td><b>edit</b> — export <code>useCodeStories()</code> (or add <code>useSearchableStories()</code>).</td></tr>
+            <tr><td><code>app/(shell)/layout.tsx</code></td><td><b>edit</b> — mount <code>SearchProvider</code> inside the provider tree.</td></tr>
+            <tr><td><code>components/shell/app-shell.tsx</code></td><td><b>edit</b> — render <code>&lt;SearchTrigger/&gt;</code> in the header and <code>&lt;SearchPalette/&gt;</code> once.</td></tr>
+            <tr><td><code>components/shell/shell-mobile-nav.tsx</code></td><td><b>edit</b> — add the search trigger to the hamburger drawer.</td></tr>
+            <tr><td><code>components/code/board.tsx</code></td><td><b>edit</b> — open the detail modal from <code>?story=&lt;ref&gt;</code>; clear the param on close.</td></tr>
+            <tr><td><code>components/tasks/alfred-link.tsx</code> (or a new module)</td><td><b>edit</b> — export <code>ALFRED_FOCUS_ITEM_EVENT</code>; task list/row listens and scrolls+highlights.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>The global shortcut (annotated)</h3>
+        <pre><span class="c">// components/shell/use-global-search-shortcut.ts</span>
+<span class="k">export function</span> <span class="f">useGlobalSearchShortcut</span>() {
+  <span class="k">const</span> { toggle } = <span class="f">useSearchActions</span>();
+  <span class="f">React.useEffect</span>(() =&gt; {
+    <span class="k">const</span> <span class="f">onKey</span> = (e: KeyboardEvent) =&gt; {
+      <span class="c">// ⌘P (mac) / Ctrl P (win/linux). e.key is 'p' regardless of layout casing here.</span>
+      <span class="k">if</span> ((e.metaKey || e.ctrlKey) &amp;&amp; !e.shiftKey &amp;&amp; !e.altKey &amp;&amp; e.key.<span class="f">toLowerCase</span>() === <span class="s">'p'</span>) {
+        e.<span class="f">preventDefault</span>();   <span class="c">// claim it from the browser Print dialog</span>
+        <span class="f">toggle</span>();
+      }
+    };
+    globalThis.<span class="f">addEventListener</span>(<span class="s">'keydown'</span>, onKey);
+    <span class="k">return</span> () =&gt; globalThis.<span class="f">removeEventListener</span>(<span class="s">'keydown'</span>, onKey);
+  }, [toggle]);
+}</pre>
+        <div class="note">
+          <b>Implementation flags (resolve at build time, don't block the spec):</b> confirm <code>e.key</code>
+          handling across keyboard layouts; ensure the listener is attached once (in <code>AppShell</code>, a
+          client component) and torn down; and verify the <code>preventDefault()</code> reliably suppresses
+          Print in the target browsers. The <code>react</code> skill's "is this effect needed" guidance
+          applies — a single window listener in the shell is the right home.
+        </div>
+      </section>
+
+      <section id="a11y">
+        <h2><span class="num">10</span> Keyboard &amp; accessibility</h2>
+        <table>
+          <thead><tr><th>Key</th><th>Behavior</th></tr></thead>
+          <tbody>
+            <tr><td><code>⌘P</code> / <code>Ctrl P</code></td><td>Toggle palette (open when closed, close when open).</td></tr>
+            <tr><td><code>Esc</code></td><td>Close (Radix Dialog default); query cleared.</td></tr>
+            <tr><td><code>↑</code> / <code>↓</code></td><td>Move the active result across both groups; wraps or stops at ends (pick one — stop-at-ends is simplest).</td></tr>
+            <tr><td><code>Enter</code></td><td>Select the active result and navigate.</td></tr>
+            <tr><td><i>type</i></td><td>Updates query; active result resets to the first match.</td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li>On open, focus moves to the input automatically (Radix <code>Dialog</code> focus management).</li>
+          <li>Input is a <code>combobox</code> with <code>aria-expanded</code>; the results are a <code>listbox</code>; the active row is tracked via <code>aria-activedescendant</code> so screen readers announce it without moving DOM focus off the input.</li>
+          <li>Each result has <code>role="option"</code> and an accessible label including its kind ("Task" / "Code story") and where it lives.</li>
+          <li>Visible focus rings on all interactive elements (the repo's <code>focus-visible:ring-accent-*</code> tokens). Honor <code>prefers-reduced-motion</code>: the row-highlight on navigate is a static fade, no pulse.</li>
+          <li>Dark-theme tokens only (<code>bg-surface</code>, <code>border-border</code>, <code>text-foreground</code>, <code>text-accent-teal</code>); contrast meets the §5.4 quality floor.</li>
+          <li>Mobile: the header trigger is also reachable inside the hamburger; the palette is full-width with comfortable tap targets.</li>
+        </ul>
+      </section>
+
+      <section id="tests">
+        <h2><span class="num">11</span> Testing &amp; demo</h2>
+        <p>Per <code>CLAUDE.md</code>, every behavioral change touches at least one test, and a user-facing change gets a demo doc once <code>check</code> is green.</p>
+        <ul>
+          <li><b>Unit (jest):</b> <code>buildResults()</code> — substring match on title/notes; story ref match (<code>ALF-31</code>); ranking order (title-prefix &gt; title-substring &gt; notes; ref-exact first); the 8-per-group cap and <code>truncated</code> counts; empty-query → no results.</li>
+          <li><b>Unit (jest):</b> task-destination derivation (completed → <code>/completed</code>; folder → <code>/folders/[id]</code>; else inbox; subtask → ancestor view).</li>
+          <li><b>RTL:</b> <code>SearchPalette</code> — opens on <code>⌘P</code> and the keydown is <code>preventDefault</code>ed; typing filters; ↑↓ moves the active option (assert <code>aria-activedescendant</code>); Enter triggers navigation (mock <code>pushState</code> / the focus event); Esc closes and clears.</li>
+          <li><b>RTL:</b> <code>board.tsx</code> opens the detail modal when <code>?story=&lt;ref&gt;</code> is present and clears it on close.</li>
+          <li><b>Storybook + visual snapshot:</b> the palette with mixed results (the <code>storybook</code> skill — capture diff, then approve the baseline).</li>
+          <li><b>Playwright (e2e):</b> press <code>⌘P</code> → type → select a task → land on its view with the row highlighted; press <code>⌘P</code> → type a story title → select → Code board opens with the story modal.</li>
+          <li><b>Demo doc:</b> <code>docs/demos/alf-2-global-search/</code> — open the palette, screenshot results, show a task jump and a story jump; <code>npm run demo -- verify</code> before wrap-up.</li>
+        </ul>
+      </section>
+
+      <section id="ac">
+        <h2><span class="num">12</span> Acceptance criteria</h2>
+        <ul class="ac">
+          <li><span class="box"></span> Pressing <code>⌘P</code> (macOS) or <code>Ctrl P</code> (Windows/Linux) from anywhere in the app opens the search palette; the browser's Print dialog does <b>not</b> appear.</li>
+          <li><span class="box"></span> Pressing the shortcut again, <code>Esc</code>, or clicking the backdrop closes the palette and clears the query.</li>
+          <li><span class="box"></span> A discoverable "Search… ⌘P" trigger is visible in the top bar (and reachable on mobile via the hamburger); clicking it opens the palette.</li>
+          <li><span class="box"></span> Typing filters in real time across <b>both</b> tasks and code stories, results grouped under <b>Tasks</b> and <b>Stories</b>, each row badged by type.</li>
+          <li><span class="box"></span> Tasks match on title and notes; stories match on title, notes, and ref (e.g. <code>ALF-31</code> finds that story).</li>
+          <li><span class="box"></span> Each group caps at 8 results with a visible "+N more" indicator when truncated (no silent cap).</li>
+          <li><span class="box"></span> <code>↑</code>/<code>↓</code> move the highlighted result; <code>Enter</code> opens it; the active option is exposed via <code>aria-activedescendant</code>.</li>
+          <li><span class="box"></span> Selecting a <b>task</b> navigates to its containing view (inbox / folder / completed) and scrolls the row into view with a brief, reduced-motion-aware highlight.</li>
+          <li><span class="box"></span> Selecting a <b>story</b> navigates to <code>/code/[projectId]?story=&lt;ref&gt;</code> and opens that story's detail modal; closing it clears the <code>story</code> param.</li>
+          <li><span class="box"></span> No new API/route/schema; the palette reads only the already-seeded stores. Search works offline-of-network (data already in memory).</li>
+          <li><span class="box"></span> Unit + RTL + Storybook snapshot + Playwright coverage per §11; root <code>npm run check</code> is green.</li>
+        </ul>
+      </section>
+
+      <section id="oos">
+        <h2><span class="num">13</span> Out of scope / open questions</h2>
+        <h3>Out of scope (deliberately deferred)</h3>
+        <div class="grid2">
+          <div class="card-soft"><h4>Server-side search</h4><p>No Postgres full-text / trigram / <code>tsvector</code> index. Client substring match over the in-memory stores is enough at hundreds of items; revisit if volume grows.</p></div>
+          <div class="card-soft"><h4>Fuzzy / typo tolerance</h4><p>No fuzzy ranking library (Fuse.js et al.). Exact case-insensitive substring + the simple rank in §7.</p></div>
+          <div class="card-soft"><h4>Folders / projects / epics</h4><p>The ticket scopes search to <b>tasks and stories</b>. Searching folder/project/epic <i>names</i> is not built here (see open question).</p></div>
+          <div class="card-soft"><h4>Knowledge items</h4><p><code>item_type='knowledge'</code> is reserved with no UI; nothing to search yet.</p></div>
+          <div class="card-soft"><h4>Recent / history</h4><p>No persisted recent searches or "recently opened" seeding of the empty state. Possible follow-up.</p></div>
+          <div class="card-soft"><h4>Match highlighting</h4><p>Bolding the matched substring inside each result is a nice-to-have, not required for acceptance.</p></div>
+        </div>
+        <h3 style="margin-top:20px">Open questions (flag at implementation; defaults chosen)</h3>
+        <ul>
+          <li><b>Shortcut key.</b> Default is <code>⌘P</code> per the ticket, with a <code>preventDefault()</code> override of Print. Should we <i>also</i> bind <code>⌘K</code> (the conventional palette key) as an alias, or switch entirely? <i>Default: <code>⌘P</code> only.</i></li>
+          <li><b>Completed tasks.</b> <code>useTasks()</code> already holds completed items. Include them in results (badged/dimmed) or exclude by default? <i>Default: include, visually de-emphasized.</i></li>
+          <li><b>Search scope vs. active module.</b> Always search both modules (proposed), or scope to the active module with a toggle? <i>Default: always both.</i></li>
+          <li><b>Folder/project names.</b> Add folders/projects/epics as a third result group later? Out of scope now; noted for a follow-up ticket.</li>
+          <li><b>Empty-state seeding.</b> Show a few most-recent items before typing, or just a hint? <i>Default: hint only.</i></li>
+        </ul>
+      </section>
+
+      <p class="footnote" style="text-align:center; margin-top:30px">
+        ALF-2 · refinement spec · <code>docs/specs/ALF-2.html</code> · spec only — implementation follows in a separate session after merge.
+      </p>
+    </div>
+  </body>
+</html>
