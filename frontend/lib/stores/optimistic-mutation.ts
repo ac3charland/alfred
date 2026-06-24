@@ -13,15 +13,18 @@
  * 3. on success, `reconcile(result)` — swap client values for the server-canonical row(s).
  *    Optional: a delete drops its rows on the optimistic step, so there is nothing to
  *    reconcile (omit it).
- * 4. on failure, `rollback()` then re-throw, so the caller can react (keep an editor open,
- *    surface an error). A throw from `reconcile` is NOT rolled back — the write already
- *    succeeded, so its failure is the caller's to surface.
+ * 4. on failure, `rollback()`, then the optional `onError(error)` hook (the seam each store
+ *    uses to surface a human-readable error toast — ALF-33), then re-throw so the caller can
+ *    still react (keep an editor open, reset a draft). A throw from `reconcile` is NOT rolled
+ *    back — the write already succeeded, so its failure is the caller's to surface, and
+ *    `onError` does NOT fire for it (it's scoped to API-call failures only).
  */
 export async function runOptimisticMutation<R>(opts: {
   optimistic: () => void;
   apiCall: () => Promise<R>;
   reconcile?: (result: R) => void;
   rollback: () => void;
+  onError?: (error: unknown) => void;
 }): Promise<R> {
   opts.optimistic();
   let result: R;
@@ -29,6 +32,7 @@ export async function runOptimisticMutation<R>(opts: {
     result = await opts.apiCall();
   } catch (error) {
     opts.rollback();
+    opts.onError?.(error);
     throw error;
   }
   opts.reconcile?.(result);

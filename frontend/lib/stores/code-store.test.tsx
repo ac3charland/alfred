@@ -1261,6 +1261,187 @@ describe('code-store', () => {
         expect(openSpy).not.toHaveBeenCalled();
       });
     });
+
+    // ALF-33 — every write action surfaces a human-readable toast (never the raw error) when
+    // its API call rejects, in addition to rolling the optimistic change back and re-throwing.
+    describe('error toasts', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      it('createProject toasts "Couldn\'t create project"', async () => {
+        mockCreateProject.mockRejectedValue(new Error('boom'));
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.createProject({ name: 'X', github_url: 'https://x', key: 'X' }),
+          ).rejects.toThrow('boom');
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't create project");
+      });
+
+      it('createEpic toasts "Couldn\'t create epic"', async () => {
+        mockCreateEpic.mockRejectedValue(new Error('nope'));
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.createEpic('p1', 'Doomed')).rejects.toThrow('nope');
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't create epic");
+      });
+
+      it('convertTaskToCode toasts "Couldn\'t send to Code module"', async () => {
+        mockEnterCodeModule.mockRejectedValue(new Error('gate failed'));
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.convertTaskToCode(
+              { id: 'task-1', title: 'X', notes: null, source_url: null },
+              'p1',
+              'e1',
+            ),
+          ).rejects.toThrow('gate failed');
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't send to Code module");
+      });
+
+      it('createStory toasts "Couldn\'t create story"', async () => {
+        mockCreateCodeStory.mockRejectedValue(new Error('create failed'));
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.createStory('e1', 'New', null)).rejects.toThrow(
+            'create failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't create story");
+      });
+
+      it('updateCodeState toasts "Couldn\'t update story"', async () => {
+        mockUpdateCodeState.mockRejectedValue(new Error('patch failed'));
+        const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42' });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateCodeState('ALF-42', 'in_development')).rejects.toThrow(
+            'patch failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't update story");
+      });
+
+      it('moveStoryToEpic toasts "Couldn\'t move story"', async () => {
+        mockMoveCodeEpic.mockRejectedValue(new Error('move failed'));
+        const e2 = makeEpic('e2', 'p1', { ref: 'ALF-2' });
+        const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42' });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic, e2], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStoryToEpic('ALF-42', 'e2')).rejects.toThrow(
+            'move failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+      });
+
+      it('updateEpic toasts "Couldn\'t save epic"', async () => {
+        mockUpdateEpic.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateEpic('e1', { name: 'New' })).rejects.toThrow(
+            'patch failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save epic");
+      });
+
+      it('updateStoryTitle toasts "Couldn\'t save title"', async () => {
+        mockUpdateItem.mockRejectedValue(new Error('rename failed'));
+        const story = makeStory('i1', 'e1', 'p1', { title: 'Old' });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateStoryTitle('i1', 'New')).rejects.toThrow(
+            'rename failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save title");
+      });
+
+      it('updateStoryNotes toasts "Couldn\'t save notes"', async () => {
+        mockUpdateItem.mockRejectedValue(new Error('notes failed'));
+        const story = makeStory('i1', 'e1', 'p1', { notes: 'Old' });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.updateStoryNotes('i1', 'New')).rejects.toThrow(
+            'notes failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save notes");
+      });
+
+      it('openClaudeSession toasts "Couldn\'t start session" when the state write fails', async () => {
+        mockUpdateCodeState.mockRejectedValue(new Error('write failed'));
+        const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42' });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.openClaudeSession('ALF-42', 'refinement')).rejects.toThrow(
+            'write failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't start session");
+      });
+
+      it('reorderStory toasts "Couldn\'t reorder story"', async () => {
+        mockReorderCode.mockRejectedValue(new Error('swap failed'));
+        const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+        const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.reorderStory('ALF-1', 'ALF-2')).rejects.toThrow(
+            'swap failed',
+          );
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't reorder story");
+      });
+    });
   });
 
   describe('codeItemToStoryPatch', () => {

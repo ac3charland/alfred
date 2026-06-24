@@ -21,6 +21,15 @@ const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 
+// Capture showToast so the error-toast tests can assert the message a failed write surfaces
+// (ALF-33). Mocking useToastActions short-circuits the context, so the provider needs no
+// ToastProvider wrapper — consistent with code-store.test.tsx.
+const mockShowToast = jest.fn();
+jest.mock('@/lib/stores/toast-store', () => ({
+  ...jest.requireActual<typeof import('@/lib/stores/toast-store')>('@/lib/stores/toast-store'),
+  useToastActions: () => ({ showToast: mockShowToast, dismissToast: jest.fn() }),
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures (flat items)
 // ---------------------------------------------------------------------------
@@ -1226,5 +1235,153 @@ describe('useDueCountsByFolder', () => {
     });
 
     expect(result.current.counts['f1']).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error toasts (ALF-33) — a failed write surfaces a human-readable toast, still
+// rolls the optimistic change back, and still re-throws to the caller.
+// ---------------------------------------------------------------------------
+
+describe('error toasts', () => {
+  const NETWORK = new Error('API PATCH /api/items/x failed: 500 internal');
+
+  it('addTask toasts "Couldn\'t add task" and re-throws on failure', async () => {
+    mockCreateItem.mockRejectedValue(NETWORK);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+    let caught: unknown;
+
+    await act(async () => {
+      try {
+        await result.current.actions.addTask({ text: 'Buy milk' });
+      } catch (error) {
+        caught = error;
+      }
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't add task");
+    // Still rolls back (no leftover optimistic row) and re-throws the original error.
+    expect(result.current.tasks).toStrictEqual([]);
+    expect(caught).toBe(NETWORK);
+  });
+
+  it('completeTask toasts "Couldn\'t complete task" on failure', async () => {
+    mockCompleteTask.mockRejectedValue(NETWORK);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([item({ id: 'a' })]) });
+
+    await act(async () => {
+      await result.current.actions.completeTask('a').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't complete task");
+    expect(result.current.tasks[0]?.status).toBe('active');
+  });
+
+  it('uncompleteTask toasts "Couldn\'t reopen task" on failure', async () => {
+    mockUpdateItem.mockRejectedValue(NETWORK);
+    const completed = item({ id: 'a', status: 'completed', completed_at: '2025-01-02T00:00:00Z' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([completed]) });
+
+    await act(async () => {
+      await result.current.actions.uncompleteTask('a').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't reopen task");
+    expect(result.current.tasks[0]?.status).toBe('completed');
+  });
+
+  it('updateTask toasts "Couldn\'t save changes" on failure', async () => {
+    mockUpdateItem.mockRejectedValue(NETWORK);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'a', title: 'Old' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.updateTask('a', { title: 'New' }).catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't save changes");
+    // The optimistic title reverts.
+    expect(result.current.tasks[0]?.title).toBe('Old');
+  });
+
+  it('classifyItem toasts "Couldn\'t update item" on failure', async () => {
+    mockUpdateItem.mockRejectedValue(NETWORK);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'a', item_type: 'unclassified' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('a', 'task').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't update item");
+    expect(result.current.tasks[0]?.item_type).toBe('unclassified');
+  });
+
+  it('moveTask toasts "Couldn\'t move task" on failure', async () => {
+    mockUpdateItem.mockRejectedValue(NETWORK);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'a', folder_id: null })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.moveTask('a', 'folder-1').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't move task");
+    expect(result.current.tasks[0]?.folder_id).toBeNull();
+  });
+
+  it('reparentTask toasts "Couldn\'t move task" when nesting fails', async () => {
+    mockUpdateItem.mockRejectedValue(NETWORK);
+    const dragged = item({ id: 'd1', folder_id: null });
+    const target = item({ id: 'p1', folder_id: 'folder-9' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged, target]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'p1').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't move task");
+    expect(result.current.tasks.find((t) => t.id === 'd1')?.parent_id).toBeNull();
+  });
+
+  it('reparentTask toasts "Couldn\'t move task" when promoting to top-level fails', async () => {
+    mockUpdateItem.mockRejectedValue(NETWORK);
+    const parent = item({ id: 'p1' });
+    const child = item({ id: 'd1', parent_id: 'p1' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', null).catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't move task");
+    expect(result.current.tasks.find((t) => t.id === 'd1')?.parent_id).toBe('p1');
+  });
+
+  it('deleteTask toasts "Couldn\'t delete task" on failure', async () => {
+    mockDeleteItem.mockRejectedValue(NETWORK);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([item({ id: 'a' })]) });
+
+    await act(async () => {
+      await result.current.actions.deleteTask('a').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't delete task");
+    // The optimistically-removed row is restored.
+    expect(result.current.tasks.map((t) => t.id)).toStrictEqual(['a']);
+  });
+
+  it('removeGatedItem fires NO toast (it makes no API call)', () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([item({ id: 'a' })]) });
+
+    act(() => {
+      result.current.actions.removeGatedItem('a');
+    });
+
+    expect(mockShowToast).not.toHaveBeenCalled();
+    expect(result.current.tasks).toStrictEqual([]);
   });
 });

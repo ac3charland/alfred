@@ -73,6 +73,62 @@ describe('runOptimisticMutation', () => {
     expect(rollback).toHaveBeenCalledWith();
   });
 
+  it('calls onError after rollback and before re-throw when the API rejects', async () => {
+    const order: string[] = [];
+    const apiError = new Error('network');
+    expect.assertions(2);
+
+    try {
+      await runOptimisticMutation({
+        optimistic: () => order.push('optimistic'),
+        apiCall: () => Promise.reject(apiError),
+        rollback: () => order.push('rollback'),
+        onError: (error) => order.push(`onError:${(error as Error).message}`),
+      });
+    } catch (error) {
+      order.push('caught');
+      expect(error).toBe(apiError);
+    }
+
+    // onError fires after the rollback dispatch and before the caller sees the re-throw, and
+    // receives the original error.
+    expect(order).toStrictEqual(['optimistic', 'rollback', 'onError:network', 'caught']);
+  });
+
+  it('does not call onError when the API succeeds', async () => {
+    const onError = jest.fn();
+    await runOptimisticMutation({
+      optimistic: () => {},
+      apiCall: () => Promise.resolve('ok'),
+      reconcile: () => {},
+      rollback: () => {},
+      onError,
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('does not call onError when reconcile throws (the write already succeeded)', async () => {
+    const onError = jest.fn();
+    expect.assertions(2);
+
+    try {
+      await runOptimisticMutation({
+        optimistic: () => {},
+        apiCall: () => Promise.resolve('ok'),
+        reconcile: () => {
+          throw new Error('reconcile boom');
+        },
+        rollback: () => {},
+        onError,
+      });
+    } catch (error) {
+      expect((error as Error).message).toBe('reconcile boom');
+    }
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('does not roll back when reconcile itself throws (the API succeeded)', async () => {
     const rollback = jest.fn();
     expect.assertions(2);

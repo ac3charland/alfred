@@ -8,6 +8,7 @@ import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
+import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
 import { buildTree, collectSubtree, makeOptimisticItem, tempId } from '@/lib/tree';
 import type { Item } from '@/lib/types';
@@ -131,6 +132,17 @@ export function TasksProvider({
     tasksRef.current = tasks;
   }, [tasks]);
 
+  // A failed write rolls its optimistic change back silently; surface that to the user as a
+  // toast (ALF-33). The action closures are memoized stable (`[]` below), so capture the
+  // toast action through a ref synced by an effect — the same pattern as `tasksRef` above —
+  // instead of adding it to the dep array. ToastProvider is mounted ABOVE this store (in the
+  // shell layout), so `useToastActions()` resolves here.
+  const { showToast } = useToastActions();
+  const showToastRef = React.useRef(showToast);
+  React.useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
+
   const actions = React.useMemo<TaskActions>(
     () => ({
       async addTask(input) {
@@ -154,6 +166,9 @@ export function TasksProvider({
           },
           rollback: () => {
             dispatch({ type: 'remove', ids: [optimistic.id] });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't add task");
           },
         });
       },
@@ -193,6 +208,9 @@ export function TasksProvider({
             dispatch({ type: 'upsert', items: affected });
             if (spawn !== null) dispatch({ type: 'remove', ids: [spawn.id] });
           },
+          onError: () => {
+            showToastRef.current("Couldn't complete task");
+          },
         });
       },
       async uncompleteTask(id) {
@@ -220,6 +238,9 @@ export function TasksProvider({
           rollback: () => {
             dispatch({ type: 'upsert', items: affected });
           },
+          onError: () => {
+            showToastRef.current("Couldn't reopen task");
+          },
         });
       },
       async updateTask(id, patch) {
@@ -235,6 +256,9 @@ export function TasksProvider({
           rollback: () => {
             if (previous) dispatch({ type: 'upsert', items: [previous] });
           },
+          onError: () => {
+            showToastRef.current("Couldn't save changes");
+          },
         });
       },
       async classifyItem(id, itemType) {
@@ -249,6 +273,9 @@ export function TasksProvider({
           },
           rollback: () => {
             if (previous) dispatch({ type: 'upsert', items: [previous] });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't update item");
           },
         });
       },
@@ -274,6 +301,9 @@ export function TasksProvider({
           },
           rollback: () => {
             dispatch({ type: 'upsert', items: affected });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't move task");
           },
         });
       },
@@ -303,6 +333,9 @@ export function TasksProvider({
             },
             rollback: () => {
               dispatch({ type: 'upsert', items: [dragged] });
+            },
+            onError: () => {
+              showToastRef.current("Couldn't move task");
             },
           });
           return;
@@ -345,6 +378,9 @@ export function TasksProvider({
           rollback: () => {
             dispatch({ type: 'upsert', items: affected });
           },
+          onError: () => {
+            showToastRef.current("Couldn't move task");
+          },
         });
       },
       async deleteTask(id) {
@@ -358,6 +394,9 @@ export function TasksProvider({
           apiCall: () => api.deleteItem(id),
           rollback: () => {
             dispatch({ type: 'upsert', items: affected });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't delete task");
           },
         });
       },

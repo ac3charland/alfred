@@ -7,6 +7,7 @@ import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { insertAt } from '@/lib/stores/reducer-actions';
+import { useToastActions } from '@/lib/stores/toast-store';
 import { makeOptimisticFolder } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
 
@@ -90,6 +91,15 @@ export function FoldersProvider({
     foldersRef.current = folders;
   }, [folders]);
 
+  // Surface a failed write as a toast (ALF-33). Captured through a ref synced by an effect so
+  // the stable (`[]`) action closures can fire it without it being a dep — mirrors `foldersRef`.
+  // ToastProvider is mounted above this store in the shell layout, so the hook resolves here.
+  const { showToast } = useToastActions();
+  const showToastRef = React.useRef(showToast);
+  React.useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
+
   const actions = React.useMemo<FolderActions>(
     () => ({
       async addFolder(name) {
@@ -104,6 +114,9 @@ export function FoldersProvider({
           },
           rollback: () => {
             dispatch({ type: 'remove', id: optimistic.id });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't create folder");
           },
         });
       },
@@ -120,6 +133,9 @@ export function FoldersProvider({
           rollback: () => {
             if (previous) dispatch({ type: 'patch', id, patch: { name: previous.name } });
           },
+          onError: () => {
+            showToastRef.current("Couldn't rename folder");
+          },
         });
       },
       async removeFolder(id) {
@@ -134,6 +150,9 @@ export function FoldersProvider({
           apiCall: () => deleteFolder(id),
           rollback: () => {
             if (previous) dispatch({ type: 'insertAt', folder: previous, index });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't delete folder");
           },
         });
       },

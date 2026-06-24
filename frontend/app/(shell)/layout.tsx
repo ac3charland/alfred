@@ -43,12 +43,15 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   ]);
 
   return (
-    <FoldersProvider initialFolders={folders}>
-      <TasksProvider initialTasks={items}>
-        <TaskDndProvider>
-          <ActiveEditorProvider>
-            <ExpansionProvider>
-              <ToastProvider>
+    // ToastProvider is the OUTERMOST provider so all three optimistic stores
+    // (Folders / Tasks / Code) sit inside it and can fire an error toast from their
+    // rollback path via useToastActions (ALF-33). AppShell renders the ToastViewport.
+    <ToastProvider>
+      <FoldersProvider initialFolders={folders}>
+        <TasksProvider initialTasks={items}>
+          <TaskDndProvider>
+            <ActiveEditorProvider>
+              <ExpansionProvider>
                 <CodeProvider
                   initialProjects={projects}
                   initialEpics={epics}
@@ -56,11 +59,11 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                 >
                   <AppShell>{children}</AppShell>
                 </CodeProvider>
-              </ToastProvider>
-            </ExpansionProvider>
-          </ActiveEditorProvider>
-        </TaskDndProvider>
-      </TasksProvider>
-    </FoldersProvider>
+              </ExpansionProvider>
+            </ActiveEditorProvider>
+          </TaskDndProvider>
+        </TasksProvider>
+      </FoldersProvider>
+    </ToastProvider>
   );
 }

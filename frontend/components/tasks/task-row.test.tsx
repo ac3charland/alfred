@@ -785,6 +785,26 @@ describe('TaskRow', () => {
       expect(screen.queryByRole('textbox', { name: /edit title/i })).not.toBeInTheDocument();
     });
 
+    it('shows an error toast and reverts the title when the save fails (ALF-33)', async () => {
+      // The full path: a failed write rolls the optimistic title back (store) AND surfaces a
+      // human-readable toast in the aria-live viewport (store → ToastProvider → screen).
+      mockUpdateItem.mockRejectedValue(new Error('API PATCH /api/items/item-1 failed: 500 boom'));
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.dblClick(screen.getByText('Write tests'));
+      const input = screen.getByRole('textbox', { name: /edit title/i });
+      await user.clear(input);
+      await user.type(input, 'Broken title');
+      await user.keyboard('[Enter]');
+
+      // The toast appears with the friendly copy — never the raw HTTP error.
+      expect(await screen.findByText("Couldn't save changes")).toBeInTheDocument();
+      expect(screen.queryByText(/500/)).not.toBeInTheDocument();
+      // The optimistic title reverts to the original.
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+    });
+
     it('exits edit mode after a successful save', async () => {
       mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, title: 'New title' });
       const user = userEvent.setup();

@@ -351,6 +351,14 @@ export function CodeProvider({
   }, [state]);
 
   const { showToast } = useToastActions();
+  // The stable (`[]`) action closures surface a failed write as a toast (ALF-33). They can't
+  // close over `showToast` directly (it would need to be a memo dep), so read it through a ref
+  // synced by an effect — the same pattern as `stateRef`. The realtime effect below keeps using
+  // `showToast` directly (it already depends on it).
+  const showToastRef = React.useRef(showToast);
+  React.useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   // Live swimlane updates. The webhook Worker (and any other device/tab) writes a story's
   // factory_state out of band, never touching this tab's store — so subscribe to the base
@@ -451,6 +459,9 @@ export function CodeProvider({
         rollback: () => {
           dispatch({ type: 'removeStory', itemId: item.id });
         },
+        onError: () => {
+          showToastRef.current("Couldn't send to Code module");
+        },
       });
       return reconciled;
     }
@@ -461,6 +472,9 @@ export function CodeProvider({
       ref: string,
       factoryState: CodeFactoryState,
       extra: api.UpdateCodeStateExtra,
+      // The caller's error-toast copy (ALF-33): the manual `updateCodeState` and the launch
+      // (`openClaudeSession`) share this transition but read differently when they fail.
+      errorMessage: string,
     ): Promise<void> {
       const previous = stateRef.current.stories.find((s) => s.ref === ref);
       if (previous === undefined) {
@@ -499,6 +513,9 @@ export function CodeProvider({
         rollback: () => {
           dispatch({ type: 'patchStory', itemId, patch: rollback });
         },
+        onError: () => {
+          showToastRef.current(errorMessage);
+        },
       });
     }
 
@@ -512,6 +529,7 @@ export function CodeProvider({
           return saved;
         } catch (error) {
           dispatch({ type: 'removeProject', id: optimistic.id });
+          showToastRef.current("Couldn't create project");
           throw error;
         }
       },
@@ -524,6 +542,7 @@ export function CodeProvider({
           return saved;
         } catch (error) {
           dispatch({ type: 'removeEpic', id: optimistic.id });
+          showToastRef.current("Couldn't create epic");
           throw error;
         }
       },
@@ -573,11 +592,14 @@ export function CodeProvider({
           rollback: () => {
             dispatch({ type: 'removeStory', itemId: tempItemId });
           },
+          onError: () => {
+            showToastRef.current("Couldn't create story");
+          },
         });
         return reconciled;
       },
       updateCodeState(ref, factoryState, extra = {}) {
-        return transitionState(ref, factoryState, extra);
+        return transitionState(ref, factoryState, extra, "Couldn't update story");
       },
       async moveStoryToEpic(ref, epicId) {
         const story = stateRef.current.stories.find((s) => s.ref === ref);
@@ -629,6 +651,9 @@ export function CodeProvider({
           rollback: () => {
             dispatch({ type: 'patchStory', itemId, patch: rollback });
           },
+          onError: () => {
+            showToastRef.current("Couldn't move story");
+          },
         });
       },
       async updateEpic(epicId, patch) {
@@ -666,6 +691,9 @@ export function CodeProvider({
           rollback: () => {
             dispatch({ type: 'patchEpic', id: epicId, patch: rollback });
           },
+          onError: () => {
+            showToastRef.current("Couldn't save epic");
+          },
         });
       },
       async updateStoryTitle(itemId, title) {
@@ -685,6 +713,9 @@ export function CodeProvider({
           rollback: () => {
             dispatch({ type: 'patchStory', itemId, patch: rollback });
           },
+          onError: () => {
+            showToastRef.current("Couldn't save title");
+          },
         });
       },
       async updateStoryNotes(itemId, notes) {
@@ -703,6 +734,9 @@ export function CodeProvider({
           },
           rollback: () => {
             dispatch({ type: 'patchStory', itemId, patch: rollback });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save notes");
           },
         });
       },
@@ -724,7 +758,7 @@ export function CodeProvider({
           bypass: () => buildBypassUrl(project, story),
         };
         const url = buildUrlForPhase[phase]();
-        await transitionState(ref, LAUNCH_TARGET_STATE[phase], {});
+        await transitionState(ref, LAUNCH_TARGET_STATE[phase], {}, "Couldn't start session");
         window.open(url, '_blank');
       },
       async reorderStory(ref, neighbourRef) {
@@ -764,6 +798,9 @@ export function CodeProvider({
           rollback: () => {
             dispatch({ type: 'patchStory', itemId: aItemId, patch: { priority: aPriority } });
             dispatch({ type: 'patchStory', itemId: bItemId, patch: { priority: bPriority } });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't reorder story");
           },
         });
       },
