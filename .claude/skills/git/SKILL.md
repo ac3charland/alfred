@@ -85,3 +85,15 @@ filter-branch commands:
 git filter-branch -f --env-filter '...' origin/main..HEAD  # ✓
 git rebase --onto origin/main ...                           # ✓
 git rebase main ...                                         # ✗ stale-main trap
+```
+
+## CI tests the merge with main, not your branch tip
+
+The `check-fast` CI job checks out `refs/pull/<n>/merge` — your branch **merged into
+the current `origin/main`** — so it sees files that exist on `main` but never on your
+branch. A green local `check:fast` can therefore still fail CI: tighten a shared type
+(e.g. make an `items` column **required** on `Item`) and a fixture added to `main` by a
+PR that merged after you branched fails `tsc` on the merge, in a file you never touched.
+Before pushing a change that narrows a widely-used type, **`git fetch origin main && git
+merge origin/main`** (or rebase onto it) and re-run `check:fast` so the merge's fallout
+surfaces locally instead of in CI.
