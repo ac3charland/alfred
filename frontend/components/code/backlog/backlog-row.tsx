@@ -7,11 +7,14 @@ import { Badge } from '@/components/atoms/badge';
 import { IconButton } from '@/components/atoms/icon-button';
 import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
+import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
 import type { CodeStory } from '@/lib/types';
 
 export interface BacklogRowProperties {
   /** The ranked story to render. */
   story: CodeStory;
+  /** The story's project colour (ALF-50), resolved by the Backlog from the project order. */
+  projectColor: ProjectColor;
   /** The visible neighbour above (the Up swap target), or null at the top — Up is disabled. */
   prevRef: string | null;
   /** The visible neighbour below (the Down swap target), or null at the bottom — Down disabled. */
@@ -34,7 +37,7 @@ export interface BacklogRowProperties {
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
-  { story, prevRef, nextRef, onReorder, onMove },
+  { story, projectColor, prevRef, nextRef, onReorder, onMove },
   ref,
 ) {
   const storyRef = story.ref;
@@ -52,7 +55,9 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
       >
         <span className="font-mono text-xs font-medium text-accent-teal">{storyRef}</span>
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">{story.title}</span>
-        <Badge variant="accent">{story.project_name ?? story.project_key}</Badge>
+        <Badge variant="plain" className={projectBadgeClasses(projectColor)}>
+          {story.project_name ?? story.project_key}
+        </Badge>
         <Badge variant="secondary">
           <span>{story.epic_name}</span>
           <span className="ml-1 font-mono text-muted-foreground/70">{story.epic_ref}</span>

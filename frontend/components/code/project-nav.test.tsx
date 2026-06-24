@@ -80,6 +80,17 @@ describe('ProjectNav', () => {
     expect(screen.getByText('RLP')).toBeInTheDocument();
   });
 
+  it('tints each project icon with its assigned colour, in palette order (ALF-50)', () => {
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /alfred/i }).querySelector('svg')).toHaveClass(
+      'text-accent-blue',
+    );
+    expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
+      'text-accent-amber',
+    );
+  });
+
   it('points each project link at /code/<id>', () => {
     renderNav(PROJECTS);
 

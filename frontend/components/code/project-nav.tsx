@@ -7,6 +7,7 @@ import * as React from 'react';
 import { IconButton } from '@/components/atoms/icon-button';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
+import { projectColorFor, projectTextClasses } from '@/lib/code/project-color';
 import { useCodeActions, useProjects } from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
@@ -88,7 +89,13 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
                 className={cn(navLinkClass(pathname === href), 'min-w-0')}
                 {...closeProperty}
               >
-                <GitBranch size={14} className="shrink-0" />
+                <GitBranch
+                  size={14}
+                  className={cn(
+                    'shrink-0',
+                    projectTextClasses(projectColorFor(projects, project.id)),
+                  )}
+                />
                 <span className="truncate">{project.name}</span>
                 <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground/70">
                   {project.key}
