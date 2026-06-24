@@ -67,8 +67,16 @@ they can see*. If you catch yourself piping or `grep`-ing test output to make it
 "presentable", stop — that effort is the symptom. Screenshot the UI instead (for a
 visual change) or capture a real request/response (for a non-visual one).
 
-**Don't show "in principle" behavior with a raw `node -e` snippet** — that proves
-the math is right, not that the app uses it correctly. A fix to a component's
+**Don't show "in principle" behavior with a raw `node -e` snippet — or with an
+esbuild-bundled script that imports the production functions and prints their output.**
+Both prove the math is right, not that the app uses it correctly; calling the *real*
+code is **not** enough — a sort/format/ranking function's output in a terminal is still
+nothing the reviewer can see. A change with a visual surface (a component's rendering, a
+new view, the order rows appear in on screen) is demonstrated by **screenshotting that
+surface**, never by printing the function's result. The bundle-and-print "engine demo"
+is reserved for a genuinely **headless** subsystem whose only surface *is* the function —
+a pure date/recurrence engine with no screen; the moment the feature has a screen,
+screenshot the screen. A fix to a component's
 rendering (a date label, a formatted value, a colour, etc.) has a visual surface:
 the component. Screenshot the component showing the corrected output. When the bug
 only manifests under a specific environment condition (a timezone, a locale, a
