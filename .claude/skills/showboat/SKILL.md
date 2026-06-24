@@ -38,7 +38,11 @@ A demo must show the **new behavior actually happening**. Pick the evidence that
 - **An animation (fade, slide, expand, collapse, any CSS transition or keyframe
   change) → a GIF, not a screenshot.** Motion is what a still can't convey; a
   static image of the end state proves nothing. Record with Playwright video and
-  convert with `npm run demo -- video`. See the recording recipe below.
+  convert with `npm run demo -- video`. See the recording recipe below. A
+  frame-by-frame timeline (e.g. `debug-animations` opacity/transform output) measures
+  the *curve* but is **not** a substitute for the GIF — it's a supplement. **If
+  anything animates, the doc MUST embed a GIF of the motion**, even when the change
+  also has non-motion surfaces (glow, size, a state) that you screenshot.
 - **Anything visual — a screen, a component, a layout/styling/copy tweak
   → the primary evidence is a screenshot of the rendered UI.** The reviewer should
   *see* the change. Drive to the exact state the change affects (the right view,

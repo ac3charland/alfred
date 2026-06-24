@@ -215,6 +215,25 @@ order: play the exit first, commit the mutation last.** Used by `components/task
 - Test the **reduced-motion** branch by overriding `matchMedia` to `matches: true` (see the jsdom
   gotcha below); there completion is synchronous, no `transitionend` needed.
 
+### The store-modeled exit (a queue that animates its own removals)
+
+When the data is a **store-owned queue** (the toast queue), keep the animate-then-commit logic
+in the **store**, not each item. `dismissToast` doesn't filter the toast out — it flips a
+`leaving` flag (the toast stays queued) and schedules the real removal after an `EXIT_MS`
+constant matched to the exit duration. The auto-expire timer calls the same path, so both the
+close button and auto-dismiss animate out; re-flagging an already-`leaving` toast is idempotent.
+The viewport then needs no `isCompleting`/`transitionend` plumbing — it just renders the
+`tw-animate-css` enter classes for a `visible` toast and the exit classes (+ `fill-mode-forwards`,
+see the pitfall above) for a `leaving` one. Removal is timer-driven, **not** `animationend`-driven,
+so reduced motion (`motion-reduce:animate-none`) simply holds the toast for `EXIT_MS` then drops
+it — no stranded toast, no `animationend`-that-never-fires branch. Used by `toast-store.tsx` +
+`toast-viewport.tsx`.
+
+A **sound cue counts as motion**: gate it on `prefers-reduced-motion` too (silent when reduced).
+Fire it from the **imperative store action** (the single `showToast` call), not a mount effect —
+an effect double-fires under StrictMode, playing the chime twice. Read `matchMedia` directly
+there (always-defined client-side, per the pitfall above).
+
 ---
 
 ## The grid-rows expand/collapse pattern (height: 0 → auto without JS measurement)
@@ -292,6 +311,17 @@ await expect(page.getByRole('list', { name: 'Subtasks' })).not.toBeVisible();
   "just add `forwards`" attempt fails). Demo: `docs/demos/inbox-fade-stutter.md`. To *catch or
   measure* this class of one-frame glitch, sample the element frame by frame — see the
   `debug-animations` skill.
+
+- **`tw-animate-css`'s `animate-out` reverts unless you add `fill-mode-forwards`.** Its
+  `--animate-out` shorthand ends with `var(--tw-animation-fill-mode, none)`, so a compound
+  `animate-out fade-out-0 slide-out-to-bottom-2` snaps back to full opacity the frame after it
+  finishes. Unlike the project's `--animate-fade-out` token (whose shorthand *hardcodes*
+  `forwards`, so a separate fill-mode utility is overridden), here the standalone
+  `fill-mode-forwards` utility **is** the intended companion — it sets the var the shorthand
+  reads, so it holds. Needed **even when removal is timer-driven** (a store `leaving` phase +
+  delayed unmount — the store-modeled exit below): if the exit animation and the removal timer
+  are the same length, the
+  revert frame can still paint in the gap before the unmount commits. Used by `toast-viewport.tsx`.
 
 - **`onAnimationEnd` bubbles from descendants.** Guard with
   `event.target === event.currentTarget` so a child's animation doesn't trigger parent logic.

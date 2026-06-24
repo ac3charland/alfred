@@ -169,6 +169,11 @@
 @utility glow-amber {
   box-shadow: 0 0 16px 2px rgba(240, 180, 41, 0.15);
 }
+/* A brighter, wider teal glow for the emphasis toast — distinct from the ambient 0.15-alpha
+   glows above so their uses elsewhere stay unaffected. */
+@utility glow-emphasis {
+  box-shadow: 0 0 24px 4px rgba(79, 209, 224, 0.4);
+}
 
 /* ── Base body styles ────────────────────────────────────────────────────── */
 body {

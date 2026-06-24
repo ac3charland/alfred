@@ -1237,7 +1237,7 @@ describe('code-store', () => {
           makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
         );
 
-        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Ready for Dev');
+        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Ready for Dev', 'emphasis');
       });
 
       it('uses the escape-state label for a transition into Blocked', () => {
@@ -1251,7 +1251,7 @@ describe('code-store', () => {
 
         emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'blocked' }));
 
-        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Blocked');
+        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Blocked', 'emphasis');
       });
 
       describe('tab-title marker (backgrounded tab)', () => {
