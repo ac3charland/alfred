@@ -15,7 +15,7 @@
   "scripts": {
     "prepare": "node -e \"if (!process.env.CI) require('child_process').execSync('husky', {stdio: 'inherit'})\"",
     "check": "npm run check:fast && npm run check:slow",
-    "check:fast": "npm run lint:skills -w tools/skill-lint && npm run check:fast --workspaces --if-present",
+    "check:fast": "npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
     "check:slow": "npm run lint:demos -w tools/demo-lint && npm run check:slow --workspaces --if-present",
     "audit:skills": "npm run lint:skills:audit -w tools/skill-lint",
     "audit:demos": "npm run lint:demos:audit -w tools/demo-lint",

@@ -1,0 +1,19 @@
+-- Alfred — Grant USAGE on code_priority_seq so code-story inserts can allocate a priority.
+--
+-- BUG: creating a code story — the "New story" modal (create_code_story) or sending an
+-- existing item into the factory (enter_code_module) — 500'd with
+--   permission denied for sequence code_priority_seq
+--
+-- WHY: 0005 added `code_items.priority bigint not null default nextval('code_priority_seq')`
+-- but never GRANTed the new sequence to the API roles. Both insert RPCs are `security invoker`,
+-- so the column default's `nextval('code_priority_seq')` runs as the *calling* role
+-- (`authenticated`). nextval needs USAGE (or UPDATE) on the sequence; without it every
+-- code_items insert is rejected. The per-project ref counter never hit this because
+-- next_code_ref() bumps a plain `projects.ref_seq` COLUMN, not a Postgres sequence.
+--
+-- (Raw `psql -f` apply doesn't get Supabase's auto-grants, so every migration must grant
+-- explicitly — see 0001/0002 and the supabase skill. 0005 was the one that forgot.)
+--
+-- FIX: grant USAGE on the sequence to the same three roles every other object gets. nextval
+-- needs only USAGE, and GRANTs are idempotent — safe to re-run on the live DB.
+grant usage on sequence code_priority_seq to anon, authenticated, service_role;

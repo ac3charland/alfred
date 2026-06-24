@@ -24,6 +24,8 @@ A check's **scope** — the files it's responsible for — decides where it's wi
 - **Workspace-scoped** (the common case): a check over *one package's own code* — its
   `typecheck`, `lint`, `format`, `test`. It goes in **that workspace's** `check:fast` /
   `check:slow`; the root fan-out (`npm run <tier> --workspaces --if-present`) runs it there.
+  A workspace `check:slow` may stand up an external service — the `database` package's
+  `check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster).
 
 - **Monorepo-wide:** a check whose scope is the *whole repo* — `skill-lint` over all of
   `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes **explicitly in the root**
@@ -31,7 +33,7 @@ A check's **scope** — the files it's responsible for — decides where it's wi
 
   ```jsonc
   // root package.json
-  "check:fast": "npm run lint:skills -w tools/skill-lint && npm run check:fast --workspaces --if-present",
+  "check:fast": "npm run lint:skills -w tools/skill-lint && npm run lint:migrations -w tools/migration-lint && npm run check:fast --workspaces --if-present",
   "check:slow": "npm run lint:demos  -w tools/demo-lint  && npm run check:slow --workspaces --if-present",
   ```
 
@@ -105,5 +107,6 @@ deterministically; revert it after.
 
 - **`npm-workspaces`** — the `--workspaces --if-present` fan-out and `-w` targeting these compose with.
 - **`commitlint`** — the husky `pre-commit` / `pre-push` hooks that invoke the root tiers.
-- **`demo-lint`** / **`skill-lint`** — the two repo-wide linters used as the examples here.
+- **`demo-lint`** / **`skill-lint`** / **`migration-lint`** — the repo-wide linters used as the examples here.
+- **`supabase`** — the `database` integration suite (a workspace `check:slow`) that exercises real-Postgres semantics.
 - **`showboat`** — produces the demo docs `demo-lint` gates on.

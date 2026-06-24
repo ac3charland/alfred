@@ -48,6 +48,25 @@ not as a "the jsdom matchMedia gotcha" rule summary. Same token, opposite role.
 The tell: if a sentence would answer "*how does the skill say to do it?*", it's body content.
 Subject-naming answers "*what is this about?*" instead.
 
+❌ **Before** (`migration-lint`) — the second sentence is the rule's *mechanism* (what it checks
+and the error it prevents), pure body content; its keywords were already in the trigger list, so
+it buys nothing but leak:
+> Covers migration-lint, the static linter over database/migrations/\*.sql that runs in the
+> global check:fast (pre-commit). **Its sequence-grant rule fails the build when a created
+> sequence has no USAGE grant to anon/authenticated/service_role — the latent "permission denied
+> for sequence" 500.** Use when running or interpreting migration-lint…
+
+✅ **After** — name the rule as a subject and stop; `sequence-grant` and `permission denied for
+sequence` stay only in the trigger list, as words a user types:
+> Covers migration-lint, the static linter over database/migrations/\*.sql that runs in the
+> global check:fast (pre-commit). Use when running or interpreting
+> migration-lint… Trigger on: …, "sequence-grant", "permission denied for sequence", …
+
+This pair shipped **after** the `backpressure` pair above was already in this library — proof
+that reading the rule isn't the safeguard. The safeguard is the **re-read-and-cut pass on your
+own draft**: after writing, ask each sentence "*what is this about?*" vs "*how does it work?*"
+and delete every *how*. That pass is the step that actually catches it.
+
 ## States the rationale (the WHY) instead of what + when
 
 A description routes the agent: it needs *what the skill does* and *when to read it*, not *why
