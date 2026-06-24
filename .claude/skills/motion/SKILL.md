@@ -292,6 +292,18 @@ glide. Key things:
   it skips the transform entirely (rows snap), so there's no transition to strand.
 - **Keys are the identity:** pass them in current render order; only rows present before *and* after
   animate (entering/leaving rows are left alone). Forward the registrar ref to the row's root.
+- **Only animate a genuine reorder — a same-order re-render must be a no-op.** An optimistic store
+  swap is followed by a **server reconcile** that re-renders with the *same* order (the reconcile
+  re-applies the confirmed values). If the layout effect re-measures/re-inverts on that render it
+  **interrupts the in-flight transition** — the row freezes at its old slot, then jumps ¾ of the way
+  in one frame, then eases the rest (classic mid-flight jank). Track the previous key order and
+  **bail out when it's unchanged**; only run the FLIP when the order actually changed.
+- **Measure "Last" cleanly and store THOSE rects.** Read each new slot *after* clearing any leftover
+  `transform`/`transition`, and save that clean measurement as the next baseline. Snapshotting
+  *after* applying the invert records the inverted (old) positions, so alternating swaps compute
+  Δ=0 and snap. (This pairs with the bail-out above; both were found via the `debug-animations`
+  probe and pinned by `e2e/code-backlog-reorder-flip.spec.ts`, which asserts no frame covers >40%
+  of the journey.)
 - **`react-hooks/immutability` (React Compiler):** an object passed as `useRef`'s initial argument
   is frozen, so the hook would be flagged for mutating tracked nodes' `.style`. Create the Maps
   **lazily** (`const m = (ref.current ??= new Map<…>())`) instead of `useRef(new Map())`, and type
