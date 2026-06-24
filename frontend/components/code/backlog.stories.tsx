@@ -103,6 +103,74 @@ const STORIES: CodeStory[] = [
   story('i6', 0, 'ALF-7', 'Add the ranked triage UI', 'ready_for_review', 6),
 ];
 
+// Five projects — one per palette colour — to show the full round-robin (blue, amber, green, red,
+// teal) on the Backlog badges. `[name, key, repo, state, title]`, in creation order.
+const PALETTE_SEED: [string, string, string, CodeStory['factory_state'], string][] = [
+  ['Alfred', 'ALF', 'alfred', 'needs_refinement', 'Draft the inbound-filter spec'],
+  ['Relay', 'RLP', 'relay', 'in_refinement', 'Extract novel newsletter insights'],
+  ['Beacon', 'BCN', 'beacon', 'ready_for_dev', 'Wire the alerting webhook'],
+  ['Corral', 'COR', 'corral', 'in_development', 'Build the weekly roundup view'],
+  ['Drift', 'DRF', 'drift', 'ready_for_review', 'Tune the ranking model'],
+];
+
+const PALETTE = PALETTE_SEED.map(([name, key, repo, factoryState, title], index) => {
+  const createdAt = `2025-02-0${String(index + 1)}T00:00:00Z`;
+  const project: Project = {
+    id: `pp${String(index + 1)}`,
+    name,
+    key,
+    repo_owner: 'ac3charland',
+    repo_name: repo,
+    github_url: null,
+    ref_seq: 0,
+    created_at: createdAt,
+  };
+  const epic: Epic = {
+    id: `pe${String(index + 1)}`,
+    project_id: project.id,
+    name: `${name} epic`,
+    notes: null,
+    ref_number: 1,
+    ref: `${key}-1`,
+    archived_at: null,
+    created_at: createdAt,
+  };
+  const codeStory: CodeStory = {
+    item_id: `ps${String(index + 1)}`,
+    project_id: project.id,
+    epic_id: epic.id,
+    ref_number: index + 2,
+    ref: `${key}-${String(index + 2)}`,
+    factory_state: factoryState,
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    code_created_at: createdAt,
+    code_updated_at: createdAt,
+    title,
+    notes: null,
+    source_url: null,
+    item_created_at: createdAt,
+    project_key: key,
+    project_name: name,
+    repo_owner: 'ac3charland',
+    repo_name: repo,
+    epic_name: epic.name,
+    epic_ref: epic.ref,
+    epic_archived_at: null,
+    priority: index + 1,
+  };
+  return { project, epic, codeStory };
+});
+
+const PALETTE_PROJECTS = PALETTE.map((row) => row.project);
+const PALETTE_EPICS = PALETTE.map((row) => row.epic);
+const PALETTE_STORIES = PALETTE.map((row) => row.codeStory);
+
 const meta = {
   title: 'Code/Backlog',
   component: Backlog,
@@ -131,3 +199,22 @@ type Story = StoryObj<typeof meta>;
  * first row's Up and the last row's Down are disabled (the ends of the order).
  */
 export const Seeded: Story = {};
+
+/**
+ * One project per palette colour, so the full round-robin shows at once: the badges read
+ * **blue · amber · green · red · teal** down the list (project creation order). A nested
+ * `CodeProvider` re-seeds this story with the five-project dataset.
+ */
+export const AllProjectColours: Story = {
+  decorators: [
+    (Story) => (
+      <CodeProvider
+        initialProjects={PALETTE_PROJECTS}
+        initialEpics={PALETTE_EPICS}
+        initialStories={PALETTE_STORIES}
+      >
+        <Story />
+      </CodeProvider>
+    ),
+  ],
+};
