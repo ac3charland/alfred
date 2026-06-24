@@ -24,6 +24,7 @@ const task = (overrides: Partial<Item>): Item => ({
   folder_id: null,
   parent_id: null,
   occurrence_index: null,
+  priority: null,
   recurrence: null,
   recurrence_series_id: null,
   ...overrides,
