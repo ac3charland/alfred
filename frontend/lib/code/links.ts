@@ -51,6 +51,19 @@ function specPathFor(story: CodeStory): string {
 }
 
 /**
+ * Where a spec moves once its story is implemented: `docs/specs/archive/<basename>`. The
+ * implementation PR git-moves the spec out of the active `docs/specs/` directory into the
+ * archive, retiring the now-consumed scaffolding so the active directory only ever holds specs
+ * still awaiting implementation. The `alfred-frontmatter` check enforces the move (it fails an
+ * implementation PR whose `spec-path` still resolves to a file in the active directory). Derived
+ * from the spec path's basename so it works whatever extension the spec used (`.html`/`.md`).
+ */
+function archivePathFor(specPath: string): string {
+  const basename = specPath.slice(specPath.lastIndexOf('/') + 1);
+  return `docs/specs/archive/${basename}`;
+}
+
+/**
  * The machine-readable PR ↔ ticket block every phase's PR must carry. Kept dead simple
  * so the Worker can regex it: a fenced ```alfred block with `alfred-ticket` + `phase`, plus
  * `spec-path` on refinement PRs only.
@@ -148,8 +161,8 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
 /**
  * Build the IMPLEMENTATION link prompt (active in `ready_for_dev`, after the spec PR merged):
  * implement the merged spec at the story's recorded `spec_path` (falling back to the
- * conventional path), and open a PR carrying the machine-readable ticket block with
- * `phase: implementation`.
+ * conventional path), archive that now-consumed spec, and open a PR carrying the
+ * machine-readable ticket block with `phase: implementation`.
  * References the committed spec file — does NOT inline the spec body. Carries the same
  * shared guardrails as refinement (ground in the repo, ask when the spec is ambiguous/stale,
  * verbatim-block self-check) so the implementation path isn't the thinner instruction set.
@@ -159,6 +172,7 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
   // Prefer the path the refinement PR declared; fall back to the conventional location so a
   // not-yet-recorded path still yields a usable link.
   const specPath = story.spec_path ?? specPathFor(story);
+  const archivePath = archivePathFor(specPath);
   const prompt = [
     `${ref}: ${titleOf(story)}`,
     '',
@@ -166,11 +180,16 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     '',
     `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab.`,
     '',
+    // The spec is scaffolding: once it's built, retire it from the active specs directory so
+    // only specs still awaiting implementation remain there. The alfred-frontmatter check fails
+    // the PR if the spec is left un-archived, so the move is part of the implementation PR.
+    `When the change is built, ARCHIVE the spec in this same PR: git-move \`${specPath}\` to \`${archivePath}\` (keep the block's spec-path below pointing at the original path). A CI check fails the PR if \`${specPath}\` is still sitting un-archived in the active specs directory.`,
+    '',
     `When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
     frontmatterBlock(story, 'implementation', specPath),
     '',
-    `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria and the block above is reproduced exactly.`,
+    `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec is archived at \`${archivePath}\`, and the block above is reproduced exactly.`,
     notesContext(story),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -186,6 +205,10 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
  * `phase: implementation` block (so the Worker advances the ticket through the normal
  * implementation transitions — no refinement PR, no spec file). Ref + title lead the prompt so
  * the new tab is scannable.
+ *
+ * There is NO spec to archive (unlike `buildImplementationUrl`), so the prompt carries no
+ * archive step — and the `alfred-frontmatter` check passes because no file exists at the block's
+ * `spec-path` to be left un-archived.
  */
 export function buildBypassUrl(project: Project, story: CodeStory): string {
   const ref = refOf(story);

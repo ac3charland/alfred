@@ -226,6 +226,33 @@ describe('buildImplementationUrl', () => {
     expect(prompt).toContain('phase: implementation');
   });
 
+  it('instructs archiving the consumed spec to docs/specs/archive/<REF>', () => {
+    const prompt =
+      parse(
+        buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/ALF-42.html' })),
+      ).prompt ?? '';
+    // The spec is scaffolding — the implementation PR git-moves it out of the active dir.
+    expect(prompt).toMatch(/archive/i);
+    expect(prompt).toContain('docs/specs/archive/ALF-42.html');
+  });
+
+  it('keeps the block spec-path on the ORIGINAL active path, not the archive path', () => {
+    // The CI check derives the archive location from the recorded spec-path, so the block must
+    // still name the active path even though the file has been moved.
+    const prompt =
+      parse(
+        buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/ALF-42.html' })),
+      ).prompt ?? '';
+    expect(prompt).toContain('spec-path: docs/specs/ALF-42.html');
+  });
+
+  it('derives the archive path from the spec basename for a non-default ref/extension', () => {
+    const prompt =
+      parse(buildImplementationUrl(makeProject(), makeStory({ spec_path: 'docs/specs/RLP-7.md' })))
+        .prompt ?? '';
+    expect(prompt).toContain('docs/specs/archive/RLP-7.md');
+  });
+
   it('does NOT inline the spec markdown body (references the committed file)', () => {
     const longSpec = 'Y'.repeat(20_000);
     const url = buildImplementationUrl(
@@ -296,6 +323,11 @@ describe('buildBypassUrl', () => {
     expect(prompt).toContain('```alfred');
     expect(prompt).toContain('alfred-ticket: ALF-42');
     expect(prompt).toContain('phase: implementation');
+  });
+
+  it('does NOT instruct archiving a spec (skip-refinement produces none to archive)', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).not.toMatch(/archive/i);
   });
 
   it('tells Claude to open one PR carrying the block', () => {

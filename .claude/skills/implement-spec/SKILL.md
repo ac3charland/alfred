@@ -29,6 +29,16 @@ doc (`README §3`, a CLAUDE.md heading), or an external doc (`PostgreSQL docs §
 the reader can open it with only the repo in hand. Only the spec you're implementing fails
 that test, because it isn't part of the delivered code.
 
+## Archive the spec on the implementation PR
+
+A spec is consumed once you build it, so the implementation PR **retires it from the active specs
+directory**: git-move `docs/specs/<REF>.html` to `docs/specs/archive/<REF>.html` in the same PR.
+Keep the PR's `alfred` block `spec-path` pointing at the **original** active path — the
+`alfred-frontmatter` check derives the archive location from it and **fails the PR if the spec is
+left un-archived**. This keeps `docs/specs/` holding only specs still awaiting work, while git
+history and the detail modal's sha-pinned "view in repo" link stay intact. A **skip-refinement**
+task has no committed spec, so there is nothing to archive.
+
 ## A few more practices when building from a spec
 
 False confidence creeps in here — smaller models especially plough ahead rather than pause:
