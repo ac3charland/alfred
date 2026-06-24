@@ -71,7 +71,10 @@ test('reorders a story up with the chevron and persists the new order', async ({
   const rows = page.getByRole('listitem');
   await expect(rows.nth(0)).toContainText('ALF-3');
 
-  // Move ALF-4 up: it swaps priority with ALF-3 and leads the list.
+  // Move ALF-4 up: it swaps priority with ALF-3 and leads the list. The swap exchanges two
+  // ADJACENT priorities (2 ↔ 1) through the `swap_code_priority` RPC under a unique(priority)
+  // index — the exact case that 409'd before 0006. A failed swap would roll the optimistic move
+  // back, leaving ALF-3 on top; asserting the new order proves the swap actually committed.
   await page.getByRole('button', { name: 'Move ALF-4 up' }).click();
   await expect(rows.nth(0)).toContainText('ALF-4');
   await expect(rows.nth(1)).toContainText('ALF-3');
@@ -79,6 +82,12 @@ test('reorders a story up with the chevron and persists the new order', async ({
   // The swap persisted: a reload (re-seeded read) keeps the new order.
   await page.reload();
   await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-4');
+
+  // Reorder again (ALF-4 back down) to exercise a second swap on the already-swapped rows —
+  // repeated reorders must keep succeeding, never accumulating a constraint violation.
+  await page.getByRole('button', { name: 'Move ALF-4 down' }).click();
+  await expect(rows.nth(0)).toContainText('ALF-3');
+  await expect(rows.nth(1)).toContainText('ALF-4');
 });
 
 test('opens a story modal on its project board from a Backlog row', async ({ page, seed }) => {
