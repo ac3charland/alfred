@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-37 — View all tasks by priority</title>
+    <style>
+      :root {
+        --bg: #0a0e17;
+        --surface: #0f1626;
+        --surface-2: #121b2e;
+        --border: #1e2a3f;
+        --text: #e8edf5;
+        --muted: #8a96a8;
+        --teal: #4fd1e0;
+        --green: #34d399;
+        --blue: #60a5fa;
+        --amber: #f0b429;
+        --red: #f87171;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 700px at 70% -10%, #11203a 0%, var(--bg) 55%) fixed;
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      .wrap { max-width: 1000px; margin: 0 auto; padding: 40px 22px 96px; }
+      header.hero {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(79, 209, 224, 0.06), rgba(15, 22, 38, 0.4));
+        border-radius: 20px;
+        padding: 28px 30px;
+        box-shadow: 0 0 60px rgba(79, 209, 224, 0.07);
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        color: var(--teal);
+        font-weight: 600;
+      }
+      h1 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 600;
+        font-size: 34px;
+        line-height: 1.2;
+        margin: 8px 0 6px;
+      }
+      h2 {
+        font-family: Georgia, serif;
+        font-size: 24px;
+        margin: 48px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+        scroll-margin-top: 16px;
+      }
+      h3 { font-size: 18px; margin: 28px 0 8px; color: var(--text); }
+      h4 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 20px 0 6px; }
+      p { color: #d4dcea; }
+      a { color: var(--teal); }
+      .lede { font-size: 17px; color: #cdd6e6; }
+      code {
+        font-family: var(--mono);
+        font-size: 0.86em;
+        background: #0c1422;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1px 5px;
+        color: #cfe9ee;
+      }
+      pre {
+        background: #0b1220;
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--teal);
+        border-radius: 10px;
+        padding: 16px 18px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+        color: #cdd9e8;
+      }
+      pre.sql { border-left-color: var(--amber); }
+      pre.diff { border-left-color: var(--green); }
+      pre .c { color: #5d6b82; font-style: italic; }
+      pre .add { color: var(--green); }
+      pre .kw { color: var(--blue); }
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .meta-grid .cell {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 12px;
+        padding: 10px 14px;
+      }
+      .meta-grid .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+      .meta-grid .v { font-family: var(--mono); font-size: 13px; color: var(--text); margin-top: 3px; }
+      section.card {
+        border: 1px solid var(--border);
+        background: rgba(15, 22, 38, 0.55);
+        border-radius: 16px;
+        padding: 4px 26px 22px;
+        margin-top: 22px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 14px 0;
+        font-size: 14px;
+      }
+      th, td {
+        text-align: left;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { color: var(--teal); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+      td code { white-space: nowrap; }
+      tbody tr:hover { background: rgba(79, 209, 224, 0.04); }
+      .pill {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 1px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid var(--border);
+      }
+      .pill.high { color: var(--red); border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.1); }
+      .pill.med { color: var(--amber); border-color: rgba(240, 180, 41, 0.4); background: rgba(240, 180, 41, 0.1); }
+      .pill.low { color: var(--muted); border-color: var(--border); background: rgba(138, 150, 168, 0.08); }
+      .pill.none { color: var(--muted); border-color: var(--border); }
+      ul.ac { list-style: none; padding-left: 0; }
+      ul.ac li { padding: 6px 0 6px 30px; position: relative; border-bottom: 1px dashed var(--border); }
+      ul.ac li::before {
+        content: "☐";
+        position: absolute;
+        left: 4px;
+        top: 6px;
+        color: var(--teal);
+        font-size: 16px;
+      }
+      .note {
+        border: 1px solid rgba(240, 180, 41, 0.4);
+        background: rgba(240, 180, 41, 0.07);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin: 16px 0;
+      }
+      .note .tag { color: var(--amber); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+      .info {
+        border: 1px solid rgba(79, 209, 224, 0.35);
+        background: rgba(79, 209, 224, 0.06);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin: 16px 0;
+      }
+      .toc {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 22px;
+      }
+      .toc a {
+        font-size: 13px;
+        text-decoration: none;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 12px;
+        color: #cdd6e6;
+        background: var(--surface);
+      }
+      .toc a:hover { border-color: var(--teal); color: var(--teal); }
+      figure { margin: 18px 0; }
+      figcaption { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; }
+      .svgframe {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: #0b1220;
+        padding: 10px;
+        overflow-x: auto;
+      }
+      .legend { font-size: 12px; color: var(--muted); }
+      small.file { font-family: var(--mono); color: var(--green); font-size: 12px; }
+      .scope-out li { color: var(--muted); }
+      hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <div class="eyebrow">Refinement spec · Tasks module</div>
+        <h1>ALF-37 — View all tasks by priority</h1>
+        <p class="lede">
+          Add a discrete <strong>priority level</strong> (High / Medium / Low) to tasks, settable from
+          the existing task editor and shown as a badge on each row, and a new
+          <strong>“By&nbsp;Priority”</strong> view that lists every top-level task ranked by priority
+          with the due date as a tiebreaker. Spiritually analogous to the Code module’s
+          cross-project <em>Backlog</em>, but ordered by a real priority field rather than manual swap.
+        </p>
+        <div class="meta-grid">
+          <div class="cell"><div class="k">Ticket</div><div class="v">ALF-37</div></div>
+          <div class="cell"><div class="k">Phase</div><div class="v">refinement → implementation</div></div>
+          <div class="cell"><div class="k">Module</div><div class="v">Tasks (frontend)</div></div>
+          <div class="cell"><div class="k">DB migration</div><div class="v">required (supervised)</div></div>
+        </div>
+        <div class="toc">
+          <a href="#context">Context</a>
+          <a href="#change">Proposed change</a>
+          <a href="#model">Data model</a>
+          <a href="#sort">Sort semantics</a>
+          <a href="#flow">Data flow</a>
+          <a href="#ui">UI</a>
+          <a href="#code">Code deltas</a>
+          <a href="#files">Files touched</a>
+          <a href="#phases">Phases</a>
+          <a href="#testing">Testing</a>
+          <a href="#ac">Acceptance</a>
+          <a href="#open">Out of scope</a>
+        </div>
+      </header>
+
+      <!-- ───────────────────────── CONTEXT ───────────────────────── -->
+      <h2 id="context">1 · Context &amp; problem</h2>
+      <section class="card">
+        <p>
+          Today the Tasks module has three read views — <strong>Inbox</strong> (<code>/</code>),
+          <strong>Folder</strong> (<code>/folders/[id]</code>) and <strong>Completed</strong>
+          (<code>/completed</code>) — all routed client-side by
+          <small class="file">components/tasks/task-views.tsx</small>. Tasks are ordered structurally
+          (parent → child tree) and otherwise by <code>created_at</code>. There is
+          <strong>no notion of priority</strong> on a task: the <code>items</code> table
+          (<small class="file">database/migrations/0001_initial_schema.sql</small>) carries
+          <code>due_date</code>, <code>status</code>, <code>folder_id</code>, <code>parent_id</code> and
+          (since ALF-45) recurrence fields — but nothing that says “this matters more than that.”
+        </p>
+        <p>
+          The owner wants to triage across the whole system: see <em>every</em> task in one place,
+          ordered by how important it is, regardless of which folder it lives in. The Code module
+          already proves the “one flat, cross-cutting, ranked list” pattern with its
+          <strong>Backlog</strong> (<small class="file">components/code/backlog.tsx</small>,
+          <code>useBacklog()</code> → <code>stableSorted(…, byPriorityAsc)</code>). ALF-37 brings that
+          idea to tasks — but, per refinement, the ranking is a <strong>discrete priority level with
+          due-date as the tiebreaker</strong>, set from the task editor, not a manually-swapped global
+          rank.
+        </p>
+        <div class="info">
+          <strong>Decisions locked during refinement</strong>
+          <ul>
+            <li><strong>Priority = discrete levels</strong> (High / Medium / Low), not a manual swap rank.</li>
+            <li><strong>Due date is the tiebreaker</strong> within a level (earliest first).</li>
+            <li>The list shows <strong>top-level tasks only</strong> (parentless); subtasks are not ranked as standalone rows — but a parent is ranked by the <strong>best (most important / urgent) priority across itself and its active subtasks</strong> (§4), so a Low parent hiding a High, overdue subtask floats up.</li>
+            <li>Priority is <strong>set via a dropdown in the existing task editor menu</strong> (beside due date / notes), and <strong>shown as a badge</strong> on the row — no reorder UI.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ───────────────────────── PROPOSED CHANGE ───────────────────────── -->
+      <h2 id="change">2 · Proposed change (overview)</h2>
+      <section class="card">
+        <ol>
+          <li>
+            <strong>Schema:</strong> a new Postgres enum <code>task_priority</code> = <code>('high','medium','low')</code>
+            and a nullable <code>items.priority</code> column (<code>null</code> = no priority). It rides
+            through the <code>task_items</code> view automatically (the view is <code>select i.*</code>).
+          </li>
+          <li>
+            <strong>Editor:</strong> a <em>Priority</em> dropdown added to <code>TaskMetaPanel</code>
+            (<small class="file">components/tasks/task-row/task-meta-panel.tsx</small>), alongside Due date,
+            Repeat and Notes. Selecting a level (or “No priority”) calls the existing
+            <code>updateTask(id, { priority })</code> optimistic action.
+          </li>
+          <li>
+            <strong>Badge:</strong> a new <code>PriorityChip</code> atom rendered on the task row
+            (<small class="file">components/tasks/task-row.tsx</small>), mirroring <code>DueDateChip</code> /
+            <code>RecurrenceChip</code>. Shown for top-level tasks that have a priority set.
+          </li>
+          <li>
+            <strong>View:</strong> a new <strong>By&nbsp;Priority</strong> view at <code>/priority</code> — a flat
+            list of all top-level active tasks across Inbox and every folder, ranked by the best
+            priority / urgency in each task's subtree (§4), with a <em>Show&nbsp;completed</em> toggle
+            (matching the Backlog). Derived entirely
+            client-side from the already-seeded store via a new <code>useTasksByPriority()</code> hook (no
+            new DB view, no extra fetch).
+          </li>
+          <li>
+            <strong>Nav:</strong> a “Priority” link in the Tasks sidebar
+            (<small class="file">components/tasks/folder-nav.tsx</small>), routed by a new branch in
+            <code>TaskViews</code> and a thin <code>/priority</code> page.
+          </li>
+          <li>
+            <strong>API &amp; validation:</strong> <code>updateItemSchema</code> accepts an optional nullable
+            <code>priority</code>; the <code>PATCH /api/items/[id]</code> handler adds <code>'priority'</code>
+            to its allowed-update list.
+          </li>
+        </ol>
+      </section>
+
+      <!-- ───────────────────────── DATA MODEL ───────────────────────── -->
+      <h2 id="model">3 · Data model &amp; migration</h2>
+      <section class="card">
+        <p>
+          One new migration — the next in sequence is
+          <small class="file">database/migrations/0008_task_priority.sql</small> (latest on disk is
+          <code>0007_fix_swap_priority.sql</code>). It follows the ALF-45 recurrence migration’s shape:
+          enum + nullable column on <code>items</code>, plus an index for the sort path. We also extend the
+          existing <code>items_task_only_fields</code> check so priority stays a task-only field.
+        </p>
+        <pre class="sql"><span class="c">-- 0008_task_priority.sql — ALF-37: discrete task priority</span>
+
+<span class="c">-- ── Priority enum (declaration order IS the rank: high &lt; medium &lt; low) ──</span>
+<span class="kw">create type</span> task_priority <span class="kw">as enum</span> ('high', 'medium', 'low');
+
+<span class="c">-- ── Add a nullable priority column to items (null = no priority set) ──</span>
+<span class="kw">alter table</span> items
+  <span class="kw">add column</span> priority task_priority;
+
+<span class="kw">comment on column</span> items.priority <span class="kw">is</span>
+  'Discrete task priority (ALF-37). null = unprioritised. Task-only field; '
+  'sorted high→medium→low with due_date as the tiebreaker in the By-Priority view.';
+
+<span class="c">-- Index the sort/filter path.</span>
+<span class="kw">create index</span> items_priority_idx <span class="kw">on</span> items (priority);
+
+<span class="c">-- ── Keep priority task-only, consistent with items_task_only_fields ──</span>
+<span class="kw">alter table</span> items <span class="kw">drop constraint</span> items_task_only_fields;
+<span class="kw">alter table</span> items <span class="kw">add constraint</span> items_task_only_fields <span class="kw">check</span> (
+  item_type = 'task'
+  <span class="kw">or</span> (due_date <span class="kw">is null and</span> parent_id <span class="kw">is null</span>
+      <span class="kw">and</span> status = 'active' <span class="kw">and</span> completed_at <span class="kw">is null</span>
+      <span class="kw">and</span> priority <span class="kw">is null</span>)   <span class="add">-- ← added</span>
+);</pre>
+        <div class="info">
+          <strong>Why no numeric rank / sequence?</strong> Unlike the Code Backlog (a unique
+          <code>bigint priority</code> from a sequence, reordered by <code>swap_code_priority()</code>), ALF-37
+          ranks by a <em>discrete enum</em>. Many tasks share a level; the due date breaks ties. So there is
+          no per-task unique rank, no swap RPC, and no reorder route — far less machinery than the Backlog.
+        </div>
+        <h4>Reads — nothing else to change</h4>
+        <p>
+          The Tasks/Inbox read path is the <code>task_items</code> view, defined as
+          <code>select i.* from items i where not exists (… code_items …)</code>
+          (<small class="file">database/migrations/0002_software_factory.sql</small>). Because it is
+          <code>i.*</code>, the new column flows through with no view edit. Subtasks load via the same flat
+          <code>getAllItems()</code> fetch and are assembled client-side by <code>buildTree</code>, so priority
+          is already present everywhere the store needs it. <code>get_subtree()</code> /
+          <code>complete_and_spawn()</code> select explicit column lists and still compile unchanged — see
+          <a href="#open">Open questions</a> for the one recurrence interaction worth a decision.
+        </p>
+        <h4>Regenerate types (part of the supervised step)</h4>
+        <p>
+          After the migration applies, regenerate
+          <small class="file">frontend/lib/database.types.ts</small> with
+          <code>supabase gen types</code> (see the <code>supabase</code> skill). It is a generated file —
+          commit the raw output verbatim, never hand-edit. The regenerated
+          <code>items</code> Row gains:
+        </p>
+        <pre><span class="add">priority: Database["public"]["Enums"]["task_priority"] | null</span>
+<span class="c">// and a new Enums entry:  task_priority: "high" | "medium" | "low"</span></pre>
+        <p>
+          <code>Item</code> / <code>ItemNode</code> (<small class="file">lib/types.ts</small>,
+          <small class="file">lib/tree.ts</small>) derive from that Row, so
+          <code>node.priority</code> becomes available to the row and editor with no manual type work.
+        </p>
+      </section>
+
+      <!-- ───────────────────────── SORT SEMANTICS ───────────────────────── -->
+      <h2 id="sort">4 · Sort semantics</h2>
+      <section class="card">
+        <p>
+          Each <strong>top-level task is ranked by its “effective” key</strong> — the best (most important,
+          then most urgent) of the task itself <em>and its active subtasks</em>. A task's own fields can
+          understate how much it needs attention: a Low-priority parent might hide a High-priority, overdue
+          subtask. Rolling the subtree up surfaces that.
+        </p>
+        <div class="info">
+          <strong>Worked example.</strong> Parent <em>A</em> = Low, no due date, but has subtask <em>a1</em> =
+          High &amp; overdue. Parent <em>B</em> = Medium, no urgent subtasks. <em>A</em>'s effective key rolls
+          up to <strong>High / overdue</strong> (inherited from <em>a1</em>), so <em>A</em> ranks
+          <strong>above</strong> <em>B</em> — even though A's own level is Low.
+        </div>
+        <h4>How the effective key is built &amp; compared</h4>
+        <table>
+          <thead><tr><th>Step</th><th>Rule</th></tr></thead>
+          <tbody>
+            <tr><td>Per node</td><td>key = <code>{ rank: priorityRank(priority), due: due_date ?? +∞ }</code> — rank High=0, Medium=1, Low=2, none=3.</td></tr>
+            <tr><td>Roll up</td><td>A top-level task's <strong>effective key = best</strong> of its own key and every <strong>active</strong> descendant's key (recursively). Completed subtasks don't count — their urgency is moot.</td></tr>
+            <tr><td>Compare 1</td><td><strong>rank</strong> ascending — High → Medium → Low → unprioritised (<code>null</code> last).</td></tr>
+            <tr><td>Compare 2</td><td><strong>due</strong> ascending — earliest / most overdue first; no due date sorts after dated within the same rank.</td></tr>
+            <tr><td>Compare 3</td><td><code>created_at</code> ascending — stable final tiebreaker.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          “Best” is lexicographic: a higher priority level always wins; due date only decides <em>within</em>
+          the same level. The level constants and key helpers live in a new
+          <small class="file">frontend/lib/priority.ts</small>:
+        </p>
+        <pre><span class="c">// lib/priority.ts</span>
+<span class="kw">export type</span> TaskPriority = 'high' | 'medium' | 'low';
+
+<span class="c">// Lower rank = higher in the list. Unset (null) ranks last.</span>
+<span class="kw">const</span> RANK: Record&lt;TaskPriority, number&gt; = { high: 0, medium: 1, low: 2 };
+<span class="kw">export function</span> priorityRank(p: TaskPriority | null): number {
+  <span class="kw">return</span> p === null ? 3 : RANK[p];
+}
+
+<span class="c">// A task's importance/urgency, compared lexicographically: level first, then due (earlier = more urgent).</span>
+<span class="kw">export type</span> PriorityKey = { rank: number; due: number };
+<span class="kw">export function</span> ownKey(i: Item): PriorityKey {
+  <span class="kw">return</span> { rank: priorityRank(i.priority), due: i.due_date ? Date.parse(i.due_date) : Infinity };
+}
+<span class="kw">export function</span> bestKey(a: PriorityKey, b: PriorityKey): PriorityKey {
+  <span class="kw">if</span> (a.rank !== b.rank) <span class="kw">return</span> a.rank &lt; b.rank ? a : b;   <span class="c">// higher level wins</span>
+  <span class="kw">return</span> a.due &lt;= b.due ? a : b;                           <span class="c">// then earlier due wins</span>
+}
+<span class="kw">export function</span> compareKey(a: PriorityKey, b: PriorityKey): number {
+  <span class="kw">return</span> a.rank - b.rank || a.due - b.due;
+}</pre>
+        <p>
+          The view hook indexes children, rolls each top-level task's key up over its active subtree, then
+          reuses the project's stable sorter (<small class="file">lib/sort.ts</small> →
+          <code>stableSorted</code>, exactly as <code>useBacklog</code> does):
+        </p>
+        <pre><span class="c">// lib/stores/tasks-store.tsx — new derived hook</span>
+<span class="kw">export function</span> useTasksByPriority({ showCompleted }: { showCompleted: boolean }): Item[] {
+  <span class="kw">const</span> items = useTasks();                      <span class="c">// flat seeded list</span>
+  <span class="kw">return</span> React.useMemo(() =&gt; {
+    <span class="c">// Index children so a task's key can roll up over its subtree.</span>
+    <span class="kw">const</span> childrenOf = <span class="kw">new</span> Map&lt;string, Item[]&gt;();
+    <span class="kw">for</span> (<span class="kw">const</span> i <span class="kw">of</span> items) {
+      <span class="kw">if</span> (i.parent_id === null) <span class="kw">continue</span>;
+      <span class="kw">const</span> list = childrenOf.get(i.parent_id) ?? [];
+      list.push(i);
+      childrenOf.set(i.parent_id, list);
+    }
+    <span class="c">// Effective key = the BEST of the task itself + its ACTIVE descendants.</span>
+    <span class="kw">const</span> effectiveKey = (node: Item): PriorityKey =&gt; {
+      <span class="kw">let</span> key = ownKey(node);
+      <span class="kw">for</span> (<span class="kw">const</span> child <span class="kw">of</span> childrenOf.get(node.id) ?? []) {
+        <span class="kw">if</span> (child.status === 'active') key = bestKey(key, effectiveKey(child));
+      }
+      <span class="kw">return</span> key;
+    };
+    <span class="kw">const</span> top = items.filter((i) =&gt; i.parent_id === null);
+    <span class="kw">const</span> visible = showCompleted ? top : top.filter((i) =&gt; i.status === 'active');
+    <span class="kw">return</span> stableSorted(visible, (a, b) =&gt;
+      compareKey(effectiveKey(a), effectiveKey(b)) || Date.parse(a.created_at) - Date.parse(b.created_at),
+    );
+  }, [items, showCompleted]);
+}</pre>
+        <div class="note">
+          <span class="tag">Note</span>
+          <p style="margin:6px 0 0">
+            The rollup walks each top-level task's subtree client-side. With a few hundred tasks
+            (SPEC scale) this is trivially cheap and memoised; no DB-side aggregation is needed. The badge
+            on a row still shows the task's <em>own</em> priority — the subtree rollup affects
+            <strong>ordering only</strong>, not what the chip displays.
+          </p>
+        </div>
+      </section>
+
+      <!-- ───────────────────────── DATA FLOW DIAGRAM ───────────────────────── -->
+      <h2 id="flow">5 · Data flow</h2>
+      <section class="card">
+        <p>
+          Read (seed → derive → render) on the left; write (set priority → optimistic → reconcile) on the
+          right. The dashed box is the new <code>useTasksByPriority</code> derivation; everything else is
+          existing plumbing this feature plugs into.
+        </p>
+        <figure>
+          <div class="svgframe">
+            <svg viewBox="0 0 960 470" width="960" height="470" role="img"
+                 aria-label="Data flow for the By-Priority view and the priority write path"
+                 font-family="Inter, system-ui, sans-serif">
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L8,3 L0,6 Z" fill="#4fd1e0" />
+                </marker>
+                <marker id="arrowg" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L8,3 L0,6 Z" fill="#34d399" />
+                </marker>
+              </defs>
+              <style>
+                .b { fill: #0f1626; stroke: #1e2a3f; rx: 10; }
+                .lbl { fill: #e8edf5; font-size: 13px; font-weight: 600; }
+                .sub { fill: #8a96a8; font-size: 11px; }
+                .edge { stroke: #4fd1e0; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+                .edgeg { stroke: #34d399; stroke-width: 1.6; fill: none; marker-end: url(#arrowg); }
+                .col { fill: #4fd1e0; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+                .colg { fill: #34d399; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
+              </style>
+
+              <text x="40" y="28" class="col">READ PATH</text>
+              <text x="600" y="28" class="colg">WRITE PATH</text>
+
+              <!-- READ column -->
+              <rect class="b" x="40" y="44" width="360" height="56" />
+              <text x="58" y="70" class="lbl">Supabase · task_items view</text>
+              <text x="58" y="88" class="sub">select i.* (priority included automatically)</text>
+
+              <rect class="b" x="40" y="132" width="360" height="56" />
+              <text x="58" y="158" class="lbl">(shell)/layout.tsx → getAllItems()</text>
+              <text x="58" y="176" class="sub">seeds TasksProvider once, server-side</text>
+
+              <rect class="b" x="40" y="220" width="360" height="56" />
+              <text x="58" y="246" class="lbl">TasksProvider (flat item store)</text>
+              <text x="58" y="264" class="sub">useTasks() · optimistic reducer</text>
+
+              <rect x="40" y="308" width="360" height="60" rx="10" fill="#0b1f24" stroke="#4fd1e0" stroke-dasharray="5 4" />
+              <text x="58" y="334" class="lbl">useTasksByPriority({ showCompleted })  ★ new</text>
+              <text x="58" y="352" class="sub">filter top-level → roll up subtree-best key → stableSorted</text>
+
+              <rect class="b" x="40" y="400" width="360" height="50" />
+              <text x="58" y="430" class="lbl">PriorityView ★ → PriorityRow ★ list</text>
+
+              <path class="edge" d="M220,100 L220,132" />
+              <path class="edge" d="M220,188 L220,220" />
+              <path class="edge" d="M220,276 L220,308" />
+              <path class="edge" d="M220,368 L220,400" />
+
+              <!-- WRITE column -->
+              <rect class="b" x="580" y="44" width="340" height="56" />
+              <text x="598" y="70" class="lbl">TaskMetaPanel · Priority dropdown ★</text>
+              <text x="598" y="88" class="sub">onSavePriority(level | null)</text>
+
+              <rect class="b" x="580" y="132" width="340" height="56" />
+              <text x="598" y="158" class="lbl">updateTask(id, { priority })</text>
+              <text x="598" y="176" class="sub">optimistic patch → store updates instantly</text>
+
+              <rect class="b" x="580" y="220" width="340" height="56" />
+              <text x="598" y="246" class="lbl">PATCH /api/items/[id]</text>
+              <text x="598" y="264" class="sub">updateItemSchema validates priority</text>
+
+              <rect class="b" x="580" y="308" width="340" height="56" />
+              <text x="598" y="334" class="lbl">Supabase items.update({ priority })</text>
+              <text x="598" y="352" class="sub">returns reconciled row</text>
+
+              <rect class="b" x="580" y="400" width="340" height="50" />
+              <text x="598" y="430" class="lbl">reconcile (or rollback on error)</text>
+
+              <path class="edgeg" d="M750,100 L750,132" />
+              <path class="edgeg" d="M750,188 L750,220" />
+              <path class="edgeg" d="M750,276 L750,308" />
+              <path class="edgeg" d="M750,364 L750,400" />
+              <!-- write feeds store -->
+              <path class="edgeg" d="M580,425 C 470,425 330,300 402,250" />
+              <text x="430" y="300" class="sub" transform="rotate(-32 430 300)">updates store</text>
+            </svg>
+          </div>
+          <figcaption>Reads derive client-side from the seeded store; writes go optimistic-first through the existing item PATCH seam.</figcaption>
+        </figure>
+      </section>
+
+      <!-- ───────────────────────── UI ───────────────────────── -->
+      <h2 id="ui">6 · UI</h2>
+      <section class="card">
+        <h3>6.1 · The By-Priority view</h3>
+        <p>
+          Same scaffold as the Backlog: a header (icon badge + serif title + one-line subtitle) with a
+          <em>Show&nbsp;completed</em> <code>ToggleButton</code>, then a flat <code>&lt;ul&gt;</code> of rows
+          grouped visually by level. Each row is a compact task line: title, the folder it lives in (or
+          “Inbox”), a due-date chip when present, and the priority badge. Rows reuse the inline editor
+          affordance so the owner can re-prioritise in place.
+        </p>
+        <figure>
+          <div class="svgframe">
+            <svg viewBox="0 0 900 430" width="900" height="430" role="img"
+                 aria-label="Mockup of the By-Priority view" font-family="Inter, system-ui, sans-serif">
+              <rect x="0" y="0" width="900" height="430" fill="#0a0e17" rx="12" />
+              <!-- header -->
+              <circle cx="46" cy="48" r="18" fill="#0f1626" stroke="#1e2a3f" />
+              <path d="M40 48 h12 M46 42 v12" stroke="#4fd1e0" stroke-width="2" />
+              <text x="78" y="44" fill="#e8edf5" font-size="22" font-family="Georgia, serif">By Priority</text>
+              <text x="78" y="64" fill="#8a96a8" font-size="12">Every task across Inbox and your folders, ranked by priority.</text>
+              <rect x="700" y="32" width="160" height="30" rx="15" fill="#0f1626" stroke="#1e2a3f" />
+              <text x="722" y="51" fill="#8a96a8" font-size="12">☐ Show completed</text>
+
+              <!-- group: HIGH -->
+              <text x="30" y="104" fill="#f87171" font-size="11" letter-spacing="2" font-weight="700">HIGH</text>
+              <g>
+                <rect x="30" y="114" width="840" height="46" rx="9" fill="#0f1626" stroke="#1e2a3f" />
+                <text x="48" y="142" fill="#e8edf5" font-size="14">Ship the priority migration</text>
+                <rect x="560" y="126" width="70" height="22" rx="11" fill="rgba(96,165,250,0.06)" stroke="rgba(96,165,250,0.5)" />
+                <text x="572" y="141" fill="#60a5fa" font-size="11">Due Jun 25</text>
+                <rect x="648" y="126" width="64" height="22" rx="11" fill="rgba(248,113,113,0.1)" stroke="rgba(248,113,113,0.4)" />
+                <text x="664" y="141" fill="#f87171" font-size="11">⬆ High</text>
+                <text x="760" y="142" fill="#8a96a8" font-size="11">Inbox</text>
+              </g>
+              <g>
+                <rect x="30" y="166" width="840" height="46" rx="9" fill="#0f1626" stroke="#1e2a3f" />
+                <text x="48" y="194" fill="#e8edf5" font-size="14">Reply to landlord</text>
+                <rect x="560" y="178" width="78" height="22" rx="11" fill="rgba(240,180,41,0.06)" stroke="rgba(240,180,41,0.5)" />
+                <text x="572" y="193" fill="#f0b429" font-size="11">Overdue</text>
+                <rect x="648" y="178" width="64" height="22" rx="11" fill="rgba(248,113,113,0.1)" stroke="rgba(248,113,113,0.4)" />
+                <text x="664" y="193" fill="#f87171" font-size="11">⬆ High</text>
+                <text x="760" y="194" fill="#8a96a8" font-size="11">Home</text>
+              </g>
+
+              <!-- group: MEDIUM -->
+              <text x="30" y="244" fill="#f0b429" font-size="11" letter-spacing="2" font-weight="700">MEDIUM</text>
+              <g>
+                <rect x="30" y="254" width="840" height="46" rx="9" fill="#0f1626" stroke="#1e2a3f" />
+                <text x="48" y="282" fill="#e8edf5" font-size="14">Draft Q3 planning doc</text>
+                <rect x="648" y="266" width="84" height="22" rx="11" fill="rgba(240,180,41,0.1)" stroke="rgba(240,180,41,0.4)" />
+                <text x="664" y="281" fill="#f0b429" font-size="11">— Medium</text>
+                <text x="760" y="282" fill="#8a96a8" font-size="11">Work</text>
+              </g>
+
+              <!-- group: LOW -->
+              <text x="30" y="332" fill="#8a96a8" font-size="11" letter-spacing="2" font-weight="700">LOW</text>
+              <g>
+                <rect x="30" y="342" width="840" height="46" rx="9" fill="#0f1626" stroke="#1e2a3f" />
+                <text x="48" y="370" fill="#e8edf5" font-size="14">Tidy bookmarks</text>
+                <rect x="648" y="354" width="64" height="22" rx="11" fill="rgba(138,150,168,0.08)" stroke="#1e2a3f" />
+                <text x="664" y="369" fill="#8a96a8" font-size="11">⬇ Low</text>
+                <text x="760" y="370" fill="#8a96a8" font-size="11">Inbox</text>
+              </g>
+              <text x="30" y="414" fill="#5d6b82" font-size="11">…unprioritised tasks follow below (badge omitted / “No priority”).</text>
+            </svg>
+          </div>
+          <figcaption>Tasks group under their level; due date breaks ties (overdue floats up). Group headings are optional visual sugar — the order comes from the sort, not the grouping.</figcaption>
+        </figure>
+
+        <h3>6.2 · The priority badge — <code>PriorityChip</code></h3>
+        <p>
+          A new atom at <small class="file">components/atoms/priority-chip.tsx</small>, modelled on
+          <code>RecurrenceChip</code> / <code>DueDateChip</code>: a clickable <code>Badge</code>
+          (<small class="file">components/atoms/badge.tsx</small>) with a lucide icon and a level-mapped
+          variant. The badge variants already exist — no badge changes needed:
+        </p>
+        <table>
+          <thead><tr><th>Level</th><th>Badge</th><th>Variant</th><th>Icon (lucide)</th></tr></thead>
+          <tbody>
+            <tr><td>High</td><td><span class="pill high">⬆ High</span></td><td><code>destructive</code></td><td><code>ChevronsUp</code></td></tr>
+            <tr><td>Medium</td><td><span class="pill med">— Medium</span></td><td><code>alert</code></td><td><code>Equal</code></td></tr>
+            <tr><td>Low</td><td><span class="pill low">⬇ Low</span></td><td><code>muted</code></td><td><code>ChevronsDown</code></td></tr>
+            <tr><td>(none)</td><td><span class="pill none">no badge</span></td><td>—</td><td>— (chip not rendered)</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Clicking the chip opens the editor’s priority control (same affordance as the due-date chip
+          opening the date editor). On the row it renders for <strong>top-level tasks with a priority set</strong>,
+          beside the due-date and recurrence chips in
+          <small class="file">components/tasks/task-row.tsx</small>.
+        </p>
+
+        <h3>6.3 · The editor control — Priority dropdown</h3>
+        <p>
+          Added to <code>TaskMetaPanel</code>
+          (<small class="file">components/tasks/task-row/task-meta-panel.tsx</small>) as a fourth field,
+          beside Due date / Repeat / Notes. A simple select of the four options
+          (<em>No priority</em>, High, Medium, Low) backed by the existing
+          <code>updateTask</code> path — no draft/save dance needed since picking a value is a single
+          atomic choice (unlike the free-text due-date/notes fields). Use the shadcn
+          <code>Select</code> / <code>DropdownMenu</code> primitive already in the repo for consistency.
+        </p>
+        <pre><span class="c">// task-meta-panel.tsx — new field (sketch)</span>
+&lt;div className="flex flex-col gap-1"&gt;
+  &lt;FieldLabel htmlFor={`priority-${node.id}`}&gt;Priority&lt;/FieldLabel&gt;
+  &lt;PrioritySelect
+    id={`priority-${node.id}`}
+    value={node.priority}                 <span class="c">// TaskPriority | null</span>
+    onChange={(next) =&gt; onSavePriority(next)}   <span class="c">// → updateTask(id, { priority: next })</span>
+  /&gt;
+&lt;/div&gt;</pre>
+        <p>
+          The constants for labels / icons / variants live once in
+          <small class="file">lib/priority.ts</small> (<code>PRIORITY_OPTIONS</code>), consumed by both
+          <code>PrioritySelect</code> and <code>PriorityChip</code> so the two never drift — the same
+          single-source pattern as <code>lib/recurrence/presets.ts</code>.
+        </p>
+      </section>
+
+      <!-- ───────────────────────── CODE DELTAS ───────────────────────── -->
+      <h2 id="code">7 · Key code deltas (annotated)</h2>
+      <section class="card">
+        <h4>Validation — lib/api/schemas.ts</h4>
+        <pre class="diff"><span class="c">// new shared field</span>
+<span class="add">const taskPriority = z.enum(['high', 'medium', 'low']).nullable();</span>
+
+export const updateItemSchema = z.object({
+  title: z.string().min(1).optional(),
+  notes: z.string().nullable().optional(),
+  due_date: dueDate.optional(),
+  folder_id: nullableUuid.optional(),
+  parent_id: nullableUuid.optional(),
+  item_type: itemType.optional(),
+  status: itemStatus.optional(),
+  recurrence: recurrenceSchema.nullable().optional(),
+<span class="add">  priority: taskPriority.optional(),</span>
+});</pre>
+
+        <h4>Route — app/api/items/[id]/route.ts</h4>
+        <pre class="diff">const updates = toUpdatePayload&lt;ItemUpdate&gt;(input, [
+  'title', 'notes', 'source_url', 'due_date',
+  'folder_id', 'parent_id', 'item_type', 'status', 'recurrence',
+<span class="add">  'priority',</span>
+]);</pre>
+
+        <h4>Store — lib/stores/tasks-store.tsx</h4>
+        <pre class="diff">type TaskFieldPatch = Pick&lt;
+  api.UpdateItemInput,
+  'title' | 'due_date' | 'notes' | 'recurrence'<span class="add"> | 'priority'</span>
+&gt;;
+<span class="c">// updateTask(id, patch) already optimistic-patches → PATCH → reconcile/rollback;</span>
+<span class="c">// it now carries priority for free. Plus the new useTasksByPriority() hook (§4).</span></pre>
+
+        <h4>Router — components/tasks/task-views.tsx</h4>
+        <pre class="diff">export function TaskViews() {
+  const pathname = usePathname();
+  const searchParameters = useSearchParams();
+
+<span class="add">  if (pathname === '/priority') {
+    return &lt;PriorityView /&gt;;
+  }</span>
+  if (pathname === '/completed') {
+    return &lt;CompletedView /&gt;;
+  }
+  if (pathname.startsWith(FOLDER_PREFIX)) {
+    return &lt;FolderView folderId={pathname.slice(FOLDER_PREFIX.length)} /&gt;;
+  }
+  return &lt;InboxScreen open={searchParameters.get('view') === 'inbox'} /&gt;;
+}</pre>
+        <p>
+          Plus a thin route page <small class="file">app/(shell)/(tasks)/priority/page.tsx</small> that
+          renders <code>&lt;ModuleRouter /&gt;</code> (exactly like
+          <small class="file">…/completed/page.tsx</small>), so <code>/priority</code> deep-links and
+          hard-loads server-side.
+        </p>
+
+        <h4>Nav — components/tasks/folder-nav.tsx</h4>
+        <pre class="diff"><span class="c">// near the top of the Tasks nav, mirroring the Completed link</span>
+<span class="add">&lt;ViewLink href="/priority" className={navLinkClass(isActive('/priority'))} {...closeProperty}&gt;
+  &lt;ListOrdered size={15} className="shrink-0" /&gt;
+  &lt;span&gt;Priority&lt;/span&gt;
+&lt;/ViewLink&gt;</span></pre>
+      </section>
+
+      <!-- ───────────────────────── FILES ───────────────────────── -->
+      <h2 id="files">8 · Files touched</h2>
+      <section class="card">
+        <table>
+          <thead><tr><th>File</th><th>Change</th><th>New?</th></tr></thead>
+          <tbody>
+            <tr><td><code>database/migrations/0008_task_priority.sql</code></td><td>enum + column + index + constraint</td><td>★</td></tr>
+            <tr><td><code>frontend/lib/database.types.ts</code></td><td>regenerated (priority + enum)</td><td>gen</td></tr>
+            <tr><td><code>frontend/lib/priority.ts</code></td><td><code>TaskPriority</code>, <code>PRIORITY_OPTIONS</code>, <code>priorityRank</code>, <code>ownKey</code>/<code>bestKey</code>/<code>compareKey</code></td><td>★</td></tr>
+            <tr><td><code>frontend/lib/api/schemas.ts</code></td><td><code>taskPriority</code> + <code>updateItemSchema</code></td><td>—</td></tr>
+            <tr><td><code>frontend/app/api/items/[id]/route.ts</code></td><td>allow <code>priority</code> in PATCH</td><td>—</td></tr>
+            <tr><td><code>frontend/lib/stores/tasks-store.tsx</code></td><td><code>TaskFieldPatch</code> + <code>useTasksByPriority</code> (subtree rollup)</td><td>—</td></tr>
+            <tr><td><code>frontend/components/atoms/priority-chip.tsx</code></td><td>badge atom (+ story + test)</td><td>★</td></tr>
+            <tr><td><code>frontend/components/tasks/priority-select.tsx</code></td><td>editor dropdown</td><td>★</td></tr>
+            <tr><td><code>frontend/components/tasks/task-row/task-meta-panel.tsx</code></td><td>Priority field</td><td>—</td></tr>
+            <tr><td><code>frontend/components/tasks/task-row.tsx</code></td><td>render <code>PriorityChip</code> + open-editor handler</td><td>—</td></tr>
+            <tr><td><code>frontend/components/tasks/priority-view.tsx</code></td><td>the new view (+ row, + story)</td><td>★</td></tr>
+            <tr><td><code>frontend/components/tasks/task-views.tsx</code></td><td><code>/priority</code> branch</td><td>—</td></tr>
+            <tr><td><code>frontend/app/(shell)/(tasks)/priority/page.tsx</code></td><td>thin route page</td><td>★</td></tr>
+            <tr><td><code>frontend/components/tasks/folder-nav.tsx</code></td><td>“Priority” nav link</td><td>—</td></tr>
+            <tr><td><code>docs/demos/alf-37-task-priority.md</code></td><td>demo doc (showboat)</td><td>★</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ───────────────────────── PHASES ───────────────────────── -->
+      <h2 id="phases">9 · Implementation phases</h2>
+      <section class="card">
+        <div class="note">
+          <span class="tag">Supervised first</span>
+          <p style="margin:6px 0 0">
+            <strong>Phase 0 — DB migration (supervised session).</strong> A human applies
+            <code>0008_task_priority.sql</code> to Supabase (and regenerates
+            <code>database.types.ts</code>) before the rest is built. This is the one step that touches
+            live infrastructure; do it under supervision, commit the migration + regenerated types, then
+            hand off. Everything after Phase 0 is pure app code a longer-running agent can take end-to-end.
+          </p>
+        </div>
+        <ol>
+          <li><strong>Phase 0 (supervised):</strong> apply the migration; regenerate &amp; commit types; confirm <code>task_items</code> exposes <code>priority</code>.</li>
+          <li><strong>Phase 1 — model &amp; constants:</strong> <code>lib/priority.ts</code> (<code>PRIORITY_OPTIONS</code>, <code>priorityRank</code>, <code>byPriorityThenDue</code>) with unit tests for rank order, due-date tiebreak, and null-last.</li>
+          <li><strong>Phase 2 — API seam:</strong> <code>updateItemSchema</code> + PATCH allow-list + <code>TaskFieldPatch</code>; tests that <code>PATCH { priority }</code> validates and persists, and rejects bad values.</li>
+          <li><strong>Phase 3 — editor + badge:</strong> <code>PrioritySelect</code> in <code>TaskMetaPanel</code>; <code>PriorityChip</code> on the row; RTL tests for set/clear and chip rendering; Storybook snapshot for the chip’s three levels.</li>
+          <li><strong>Phase 4 — view + nav:</strong> <code>useTasksByPriority</code>, <code>PriorityView</code>, the <code>/priority</code> route + <code>TaskViews</code> branch + nav link; component test for ordering and the Show-completed toggle; Storybook snapshot of the view.</li>
+          <li><strong>Phase 5 — E2E + demo:</strong> Playwright flow (set a priority in the editor → badge appears → open <code>/priority</code> → correct order); then the showboat demo doc.</li>
+        </ol>
+      </section>
+
+      <!-- ───────────────────────── TESTING ───────────────────────── -->
+      <h2 id="testing">10 · Testing &amp; evidence</h2>
+      <section class="card">
+        <p>Per CLAUDE.md every behavioural change must move at least one test. Coverage map:</p>
+        <table>
+          <thead><tr><th>Layer</th><th>Test</th><th>Asserts</th></tr></thead>
+          <tbody>
+            <tr><td>Unit (Jest)</td><td><code>priority.test.ts</code></td><td><code>compareKey</code>/<code>bestKey</code>: High&lt;Med&lt;Low, earlier due first, null due &amp; null priority sort last; <code>bestKey</code> picks the higher level, then the earlier due.</td></tr>
+            <tr><td>Unit (Jest)</td><td><code>schemas.test.ts</code></td><td><code>updateItemSchema</code> accepts <code>'high'|null</code>, rejects <code>'urgent'</code>.</td></tr>
+            <tr><td>Route (Jest)</td><td><code>items/[id]/route.test.ts</code></td><td><code>PATCH { priority }</code> writes through; absent key leaves it untouched.</td></tr>
+            <tr><td>RTL</td><td><code>task-meta-panel.test.tsx</code></td><td>Selecting a level calls <code>updateTask</code> with that <code>priority</code>; “No priority” clears to <code>null</code>.</td></tr>
+            <tr><td>RTL</td><td><code>priority-view.test.tsx</code></td><td>Top-level only; correct order; <strong>a parent with a High/overdue subtask outranks a Medium parent (subtree rollup)</strong>; a completed subtask does not lift the parent; Show-completed reveals completed.</td></tr>
+            <tr><td>Storybook</td><td><code>priority-chip.stories.tsx</code></td><td>Snapshot of High / Medium / Low chips.</td></tr>
+            <tr><td>E2E (Playwright)</td><td><code>priority.spec.ts</code></td><td>Set priority → badge shows → <code>/priority</code> lists in order.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          <strong>Demo doc:</strong> capture the behaviour with the showboat CLI at
+          <small class="file">docs/demos/alf-37-task-priority.md</small> (set priorities, screenshot the
+          By-Priority view, <code>verify</code> it reproduces). Demo/acceptance evidence follows the
+          <code>showboat</code> skill’s rules — this spec does not restate them.
+        </p>
+      </section>
+
+      <!-- ───────────────────────── ACCEPTANCE ───────────────────────── -->
+      <h2 id="ac">11 · Acceptance criteria</h2>
+      <section class="card">
+        <ul class="ac">
+          <li>A task can be assigned a priority of <strong>High</strong>, <strong>Medium</strong>, or <strong>Low</strong> — or left unprioritised — from the task editor menu (beside due date / notes / repeat).</li>
+          <li>A task’s priority shows as a colour-coded badge on its row (High/Medium/Low); unprioritised tasks show no priority badge.</li>
+          <li>Setting/clearing priority is optimistic: the badge updates instantly and persists across reload; a failed save rolls back.</li>
+          <li>A <strong>By&nbsp;Priority</strong> view is reachable from the Tasks sidebar at <code>/priority</code> and deep-links / hard-loads correctly.</li>
+          <li>The view lists <strong>top-level (parentless) tasks only</strong>, across Inbox and every folder, in one flat list.</li>
+          <li>A top-level task is ranked by the <strong>best priority / urgency across itself and its active subtasks</strong>: a Low-priority parent with a High-priority, overdue subtask outranks a plain Medium-priority task. Completed subtasks don't influence the rank.</li>
+          <li>Order is <strong>High → Medium → Low → unprioritised</strong>; within a level, <strong>earlier due date first</strong>; tasks with no due date come after dated ones; <code>created_at</code> is the final tiebreak. (Applied to each task's rolled-up effective key.)</li>
+          <li>Completed tasks are hidden by default; a <em>Show&nbsp;completed</em> toggle reveals them (matching the Backlog).</li>
+          <li><code>priority</code> is a nullable, task-only field (enforced by <code>items_task_only_fields</code>); non-task items keep it <code>null</code>.</li>
+          <li><code>PATCH /api/items/[id]</code> validates and persists <code>priority</code>; invalid values are rejected.</li>
+          <li>All <code>check:fast</code> + <code>check:slow</code> gates pass; the new behaviour is covered by tests (§10) and captured in a demo doc.</li>
+        </ul>
+      </section>
+
+      <!-- ───────────────────────── OUT OF SCOPE ───────────────────────── -->
+      <h2 id="open">12 · Out of scope &amp; open questions</h2>
+      <section class="card">
+        <h4>Out of scope</h4>
+        <ul class="scope-out">
+          <li><strong>Manual within-level reordering</strong> (Backlog-style chevron swap / drag rank). Refinement chose discrete levels with a due-date tiebreaker; no per-task unique rank, swap RPC, or reorder route.</li>
+          <li><strong>Subtasks as standalone ranked rows.</strong> The list is top-level only. Subtasks are not surfaced as their own rows — but they <em>do</em> influence ranking: a parent inherits the best priority / urgency of its active subtree (§4). Per-subtask placement in the list is out of scope.</li>
+          <li><strong>Priority on <code>code</code> / <code>knowledge</code> items.</strong> This is a task-only field; the Code Backlog keeps its own separate <code>code_items.priority</code>.</li>
+          <li><strong>Filtering / grouping controls</strong> beyond the level ordering (e.g. “only High”, per-folder filters) — possible later, not now.</li>
+          <li><strong>Auto-priority from due date / LLM classification</strong> — future, not in this ticket.</li>
+        </ul>
+        <h4>Open questions (for the implementation session / review)</h4>
+        <ol>
+          <li>
+            <strong>Recurrence inheritance.</strong> Should a spawned next occurrence inherit the recurring
+            task’s priority? <code>complete_and_spawn()</code> inserts the new root with an explicit column
+            list that does <em>not</em> include <code>priority</code>, so today it would reset to
+            <code>null</code>. Recommend adding <code>priority</code> to that root insert so a recurring task
+            keeps its level — small migration follow-up; flag if undesired.
+          </li>
+          <li>
+            <strong>Badge colours / icons.</strong> Proposed High=<code>destructive</code> (red),
+            Medium=<code>alert</code> (amber), Low=<code>muted</code>, with <code>ChevronsUp/Equal/ChevronsDown</code>.
+            Confirm against the design language (§5.4) or adjust the mapping in <code>PRIORITY_OPTIONS</code>.
+          </li>
+          <li>
+            <strong>Visual grouping vs. flat list.</strong> The mockup shows level group-headings (HIGH /
+            MEDIUM / LOW). These are cosmetic; the ordering is what matters. Keep the headings, or render a
+            single uninterrupted list? (Default: keep headings — easier to scan.)
+          </li>
+          <li>
+            <strong>Editor control primitive.</strong> <code>PrioritySelect</code> as a shadcn
+            <code>Select</code> vs. a <code>DropdownMenu</code> of <code>PRIORITY_OPTIONS</code>. Either fits;
+            pick whichever already has a matching pattern in the repo at build time.
+          </li>
+        </ol>
+      </section>
+
+      <hr />
+      <p class="legend">
+        ALF-37 · refinement spec · <code>docs/specs/ALF-37.html</code> · grounded in the existing Tasks
+        store, item PATCH seam, recurrence-feature precedent (ALF-45), and the Code Backlog pattern (ALF-35).
+      </p>
+    </div>
+  </body>
+</html>
