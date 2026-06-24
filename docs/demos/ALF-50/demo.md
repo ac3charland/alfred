@@ -13,3 +13,11 @@ Colours are assigned **positionally**: a project's slot in the ProjectNav order 
 **The change, shown by the Backlog visual snapshot.** The seeded Backlog story spans two projects — Alfred (#1 → blue) and Relay (#2 → amber) — whose badges were both teal before. The committed snapshot's 3-panel diff (baseline · changed pixels · new render) shows the recolouring lands on exactly the project badges and nothing else (1.14% of pixels moved):
 
 ![Backlog snapshot diff: project badges recoloured from teal to per-project blue and amber](demo-image-1.png)
+
+**Update — red added, and the rotation is now five colours.** The palette round-robins **blue → amber → green → red → teal**. With one project per colour, the Backlog badges show the full sequence at a glance:
+
+![Backlog with five projects, one per palette colour: blue, amber, green, red, teal](demo-image-2.png)
+
+**Sidebar unified with the Backlog.** The Code-view project list now carries each project's colour on both the branch icon and the key pill — the same tinted-badge treatment as the Backlog rows — so the two surfaces read as one system:
+
+![Code sidebar project list, each project's icon and key pill tinted its palette colour](demo-image-3.png)
