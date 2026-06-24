@@ -1,0 +1,11 @@
+# Build output & tool artifacts (generated — don't format)
+dist/
+node_modules/
+.eslintcache
+*.tsbuildinfo
+
+# SQL, shell, and prose are owned elsewhere — keep prettier scoped to the TS harness.
+migrations/
+seed.sql
+scripts/
+README.md

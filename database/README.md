@@ -67,3 +67,24 @@ npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > fronte
 Token-free `--db-url` introspection needs a local Docker `postgres-meta` container, so start
 Docker first. The current CLI dropped the token-free path; pin `supabase@2.95.0`. See the
 `supabase` skill ("Regenerating `database.types.ts`") for the version details.
+
+## Testing the migrations against real Postgres
+
+The app's unit/Storybook/E2E suites run against a **JavaScript Supabase mock**, which
+reimplements the RPCs in JS — so it can't reproduce anything that lives in real-Postgres
+semantics: GRANTs, RLS, constraint-checking timing, sequences, triggers. Two shipped 500s
+proved the gap (`0008` a missing sequence grant; `0007` a non-deferrable-unique 409). This
+package closes it with two checks:
+
+- **`npm run check:slow -w database`** (also via the root `check:slow` fan-out → pre-push +
+  CI) — the **integration suite** (`src/run.ts`). It stands up a throwaway PostgreSQL
+  cluster, seeds the Supabase-provided objects (the three API roles + the `supabase_realtime`
+  publication), applies **every** migration in filename order exactly as production does, then
+  asserts each RPC as the real `authenticated`/`anon` roles (`SET ROLE`). Each known bug is a
+  one-line regression here — red without its fix migration, green with it. Needs the
+  PostgreSQL **server** binaries (`initdb`/`pg_ctl`); install the `postgresql` package if
+  they're missing. Runs the server as the `postgres` user when invoked as root.
+- **`npm run lint:migrations -w tools/migration-lint`** (via the root `check:fast`) — a
+  static linter; its `sequence-grant` rule fails the build if a `create sequence` lacks a
+  `grant usage … to anon, authenticated, service_role`. Cheap, no container; catches the
+  grant class at commit time. See the `migration-lint` skill.

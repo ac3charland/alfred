@@ -2,5 +2,34 @@
   "name": "database",
   "version": "0.0.0",
   "private": true,
-  "description": "Supabase migrations, SQL schema, and generated TypeScript types for alfred."
+  "type": "module",
+  "description": "Supabase migrations, SQL schema, generated types, and the real-Postgres integration suite for alfred.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --fix --cache --cache-location .eslintcache .",
+    "format": "prettier --write --cache .",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
+    "test:integration": "node src/run.ts",
+    "check:fast": "npm run typecheck && npm run lint && npm run format && npm run test",
+    "check:slow": "npm run test:integration"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@tsconfig/strictest": "^2.0.8",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.10",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^3.10.1",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jest": "^29.15.2",
+    "eslint-plugin-unicorn": "^65.0.1",
+    "globals": "^14.0.0",
+    "jest": "^30.4.2",
+    "pg": "^8.13.1",
+    "ts-jest": "^29.4.11",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.61.0"
+  }
 }
