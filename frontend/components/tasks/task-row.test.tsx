@@ -37,6 +37,7 @@ const BASE_ITEM: Item = {
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
+  priority: null,
   recurrence_series_id: null,
 };
 
@@ -897,6 +898,29 @@ describe('TaskRow', () => {
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { title: 'New title' });
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Priority chip (ALF-37)
+  // ---------------------------------------------------------------------------
+
+  describe('priority chip', () => {
+    it('renders a priority badge for a top-level task with a level set', () => {
+      renderTasks([{ ...BASE_ITEM, priority: 'high' }]);
+      expect(screen.getByRole('button', { name: 'Priority: High' })).toBeInTheDocument();
+    });
+
+    it('renders no priority badge when the task is unprioritised', () => {
+      renderTasks([{ ...BASE_ITEM, priority: null }]);
+      expect(screen.queryByRole('button', { name: /^Priority:/ })).not.toBeInTheDocument();
+    });
+
+    it('opens the meta panel Priority control when the chip is clicked', async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, priority: 'medium' }]);
+      await user.click(screen.getByRole('button', { name: 'Priority: Medium' }));
+      expect(screen.getByText('Priority')).toBeInTheDocument();
     });
   });
 

@@ -29,6 +29,8 @@ const dueDate = z.iso
   .date()
   .or(z.iso.datetime({ offset: true }))
   .nullable();
+// Discrete task priority (ALF-37). Nullable so a PATCH can clear it (`{ priority: null }`).
+const taskPriority = z.enum(['high', 'medium', 'low']).nullable();
 
 // ---------------------------------------------------------------------------
 // Recurrence (the RecurrenceRule shape — mirror of lib/recurrence/types)
@@ -144,6 +146,7 @@ export const updateItemSchema = z.object({
   status: itemStatus.optional(),
   // Nullable so a PATCH can clear the rule (`{ recurrence: null }`).
   recurrence: recurrenceSchema.nullable().optional(),
+  priority: taskPriority.optional(),
 });
 
 export type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>;

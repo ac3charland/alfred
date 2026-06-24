@@ -37,6 +37,7 @@ const makeItem = (id: string, status: Item['status']): Item => ({
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
+  priority: null,
   recurrence_series_id: null,
 });
 

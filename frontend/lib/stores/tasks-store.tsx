@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { isDueTodayOrOverdue } from '@/lib/date-utils';
+import { rankByPriority, sortNodesByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -60,8 +61,11 @@ interface AddTaskInput {
   parentId?: string | null | undefined;
 }
 
-/** The inline-editable scalar fields of a task (title, due date, notes, recurrence). */
-type TaskFieldPatch = Pick<api.UpdateItemInput, 'title' | 'due_date' | 'notes' | 'recurrence'>;
+/** The inline-editable scalar fields of a task (title, due date, notes, recurrence, priority). */
+type TaskFieldPatch = Pick<
+  api.UpdateItemInput,
+  'title' | 'due_date' | 'notes' | 'recurrence' | 'priority'
+>;
 
 interface TaskActions {
   /** Optimistically add a task (root or subtask), then reconcile with the saved row. */
@@ -449,7 +453,10 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
     if (scopeType === 'completed') return forest;
     // A completed ROOT belongs to the Completed view, not here — drop it (and its subtree).
     // Completed items only surface in an active view as descendants of an active task.
-    return forest.filter((node) => node.status === 'active');
+    const activeRoots = forest.filter((node) => node.status === 'active');
+    // A folder ranks every level by priority → due date → created_at (ALF-37); the Inbox
+    // keeps buildTree's capture-first (newest) order.
+    return scopeType === 'folder' ? sortNodesByPriority(activeRoots) : activeRoots;
   }, [items, scopeType, folderId]);
 }
 
@@ -478,6 +485,25 @@ export function useDueCountsByFolder(): Record<string, number> {
     }
     return counts;
   }, [items]);
+}
+
+/**
+ * The flat, cross-cutting **By-Priority** list (ALF-37): every top-level (parentless) task
+ * across Inbox and every folder, ranked by how much it needs attention. Derived entirely from
+ * the seeded store — no extra fetch — exactly as `useBacklog` derives the Code backlog.
+ *
+ * Each top-level task is ranked by its **effective key**: the best (most important, then most
+ * urgent) of the task itself AND its *active* descendants (a completed subtask's urgency is
+ * moot). So a Low-priority parent hiding a High/overdue active subtask floats up. The badge on
+ * a row still shows the task's OWN priority — the rollup affects ordering only.
+ *
+ * Order: rank ascending (High → Medium → Low → unprioritised), then due ascending (earliest /
+ * most overdue first; no due date sorts last), then `created_at` as the stable final tiebreak.
+ * Completed tasks are hidden unless `showCompleted`.
+ */
+export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }): Item[] {
+  const items = useTasks();
+  return React.useMemo(() => rankByPriority(items, showCompleted), [items, showCompleted]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */

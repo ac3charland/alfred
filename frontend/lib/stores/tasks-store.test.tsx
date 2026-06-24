@@ -49,6 +49,7 @@ const BASE: Item = {
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
+  priority: null,
   recurrence_series_id: null,
 };
 
@@ -1093,6 +1094,43 @@ describe('useScopedTasks', () => {
     const { result } = renderScope({ type: 'inbox' });
     // Only inbox-active should appear — not work-active (which has folder_id: 'work')
     expect(result.current.map((n) => n.id)).toStrictEqual(['inbox-active']);
+  });
+
+  it('folder ranks top-level tasks by priority → due → created_at (ALF-37)', () => {
+    const ranked: Item[] = [
+      item({ id: 'f-none', folder_id: 'work' }),
+      item({ id: 'f-low', folder_id: 'work', priority: 'low' }),
+      item({ id: 'f-high', folder_id: 'work', priority: 'high' }),
+      item({ id: 'f-med', folder_id: 'work', priority: 'medium' }),
+    ];
+    const { result } = renderHook(() => useScopedTasks({ type: 'folder', folderId: 'work' }), {
+      wrapper: makeWrapper(ranked),
+    });
+    expect(result.current.map((n) => n.id)).toStrictEqual(['f-high', 'f-med', 'f-low', 'f-none']);
+  });
+
+  it('folder ranks subtasks by priority too (all levels)', () => {
+    const nested: Item[] = [
+      item({ id: 'parent', folder_id: 'work' }),
+      item({ id: 'c-low', folder_id: 'work', parent_id: 'parent', priority: 'low' }),
+      item({ id: 'c-high', folder_id: 'work', parent_id: 'parent', priority: 'high' }),
+    ];
+    const { result } = renderHook(() => useScopedTasks({ type: 'folder', folderId: 'work' }), {
+      wrapper: makeWrapper(nested),
+    });
+    expect(result.current[0]?.children.map((c) => c.id)).toStrictEqual(['c-high', 'c-low']);
+  });
+
+  it('inbox keeps capture-first order — priority does not reorder the inbox', () => {
+    const inbox: Item[] = [
+      item({ id: 'old-high', created_at: '2025-01-01T00:00:00Z', priority: 'high' }),
+      item({ id: 'new-low', created_at: '2025-02-01T00:00:00Z', priority: 'low' }),
+    ];
+    const { result } = renderHook(() => useScopedTasks({ type: 'inbox' }), {
+      wrapper: makeWrapper(inbox),
+    });
+    // Newest captured first; priority is ignored in the inbox.
+    expect(result.current.map((n) => n.id)).toStrictEqual(['new-low', 'old-high']);
   });
 
   it('completed = items with completed status, regardless of folder', () => {

@@ -6,6 +6,7 @@ import * as React from 'react';
 import { CompletedView } from '@/components/tasks/completed-view';
 import { FolderView } from '@/components/tasks/folder-view';
 import { InboxScreen } from '@/components/tasks/inbox-screen';
+import { PriorityView } from '@/components/tasks/priority-view';
 
 const FOLDER_PREFIX = '/folders/';
 
@@ -21,6 +22,10 @@ const FOLDER_PREFIX = '/folders/';
 export function TaskViews() {
   const pathname = usePathname();
   const searchParameters = useSearchParams();
+
+  if (pathname === '/priority') {
+    return <PriorityView />;
+  }
 
   if (pathname === '/completed') {
     return <CompletedView />;
