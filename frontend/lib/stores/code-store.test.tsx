@@ -13,6 +13,7 @@ import {
   useCodeActions,
   useProjectBoard,
   useProjects,
+  useRankedProjects,
 } from './code-store';
 
 // api-client is the seam the store calls; mock it so tests never hit the network.
@@ -390,6 +391,41 @@ describe('code-store', () => {
       });
       expect(result.current.activeEpics.map((b) => b.epic.id)).toEqual(['e1', 'e2']);
     });
+
+    it('excludes done/abandoned stories from the epic rank (ALF-49)', () => {
+      const epics = [
+        makeEpic('e1', 'p1', { created_at: '2025-01-01T00:00:00Z' }),
+        makeEpic('e2', 'p1', { created_at: '2025-01-02T00:00:00Z' }),
+      ];
+      const stories = [
+        // e1's top-ranked story (priority 1) is done — it must NOT pull e1 up; e1 ranks by its
+        // only outstanding story (priority 7).
+        makeStory('i1', 'e1', 'p1', { priority: 1, factory_state: 'done' }),
+        makeStory('i2', 'e1', 'p1', { priority: 7, factory_state: 'in_development' }),
+        // e2's outstanding story (priority 5) outranks e1's 7, so e2 leads.
+        makeStory('i3', 'e2', 'p1', { priority: 5, factory_state: 'in_development' }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }),
+      });
+      expect(result.current.activeEpics.map((b) => b.epic.id)).toEqual(['e2', 'e1']);
+    });
+
+    it('ranks an all-done epic last, as if it had no story (ALF-49)', () => {
+      const epics = [
+        makeEpic('e1', 'p1', { created_at: '2025-01-01T00:00:00Z' }),
+        makeEpic('e2', 'p1', { created_at: '2025-01-02T00:00:00Z' }),
+      ];
+      const stories = [
+        // e1 holds only a done story (priority 1) → no outstanding rank → sorts last.
+        makeStory('i1', 'e1', 'p1', { priority: 1, factory_state: 'done' }),
+        makeStory('i2', 'e2', 'p1', { priority: 9, factory_state: 'in_development' }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }),
+      });
+      expect(result.current.activeEpics.map((b) => b.epic.id)).toEqual(['e2', 'e1']);
+    });
   });
 
   describe('useBacklog', () => {
@@ -424,6 +460,58 @@ describe('code-store', () => {
         wrapper: makeWrapper(seed),
       });
       expect(shown.result.current.map((s) => s.item_id)).toEqual(['i1', 'i2', 'i3']);
+    });
+  });
+
+  describe('useRankedProjects (ALF-49)', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+
+    it('orders projects by their best outstanding story priority', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 30, factory_state: 'in_development' }),
+        makeStory('i2', 'eX', 'p2', { priority: 10, factory_state: 'in_development' }),
+      ];
+      const { result } = renderHook(() => useRankedProjects(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      // p2 holds the highest-ranked story (priority 10) → p2 leads p1 (priority 30).
+      expect(result.current.map((p) => p.id)).toEqual(['p2', 'p1']);
+    });
+
+    it('excludes done/abandoned stories from a project rank', () => {
+      const stories = [
+        // p1's top-ranked story (priority 1) is done — it must NOT pull p1 up; p1 ranks 20.
+        makeStory('i1', 'e1', 'p1', { priority: 1, factory_state: 'done' }),
+        makeStory('i2', 'e1', 'p1', { priority: 20, factory_state: 'in_development' }),
+        // p2's outstanding story (priority 10) outranks p1's 20, so p2 leads.
+        makeStory('i3', 'eX', 'p2', { priority: 10, factory_state: 'in_development' }),
+      ];
+      const { result } = renderHook(() => useRankedProjects(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      expect(result.current.map((p) => p.id)).toEqual(['p2', 'p1']);
+    });
+
+    it('sorts a project with no outstanding story last, tie-broken by created_at', () => {
+      const stories = [
+        // p2 has only a done story → no outstanding rank → sorts last despite an earlier seed
+        // position; p1 leads on its outstanding story.
+        makeStory('i1', 'e1', 'p1', { priority: 50, factory_state: 'in_development' }),
+        makeStory('i2', 'eX', 'p2', { priority: 1, factory_state: 'done' }),
+      ];
+      const { result } = renderHook(() => useRankedProjects(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      expect(result.current.map((p) => p.id)).toEqual(['p1', 'p2']);
+    });
+
+    it('keeps seed order among projects with no outstanding stories (created_at tie-break)', () => {
+      const { result } = renderHook(() => useRankedProjects(), {
+        // PROJECT_A (2025-01-01) before PROJECT_B (2025-01-02); pass them reversed to prove the
+        // sort, not the seed order, decides.
+        wrapper: makeWrapper({ projects: [PROJECT_B, PROJECT_A], epics }),
+      });
+      expect(result.current.map((p) => p.id)).toEqual(['p1', 'p2']);
     });
   });
 

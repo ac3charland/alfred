@@ -7,7 +7,7 @@ import * as React from 'react';
 import { IconButton } from '@/components/atoms/icon-button';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
-import { useCodeActions, useProjects } from '@/lib/stores/code-store';
+import { useCodeActions, useRankedProjects } from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,9 @@ interface ProjectNavProperties {
  */
 export function ProjectNav({ onClose }: ProjectNavProperties) {
   const pathname = usePathname();
-  const projects = useProjects();
+  // Ranked by best outstanding-story priority so the sidebar leads with the project holding the
+  // highest-priority open work (ALF-49), matching the board's epic ranking one level up.
+  const projects = useRankedProjects();
   const { createProject } = useCodeActions();
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 

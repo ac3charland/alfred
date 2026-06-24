@@ -89,7 +89,7 @@ export interface BoardEpic {
 /** The derived board for one project: active epics (with lanes) + the archived ones. */
 export interface ProjectBoard {
   project: Project | undefined;
-  /** Non-archived epics, oldest first, each grouped into swimlanes. */
+  /** Non-archived epics, ranked by their best outstanding story's priority, grouped into swimlanes. */
   activeEpics: BoardEpic[];
   /** Archived epics (hidden by default; revealed by the Show-archived toggle). */
   archivedEpics: BoardEpic[];
@@ -868,9 +868,45 @@ export function CodeProvider({
   );
 }
 
-/** Read the project list (ProjectNav). Throws outside a CodeProvider. */
+/** Read the project list, in store order. Throws outside a CodeProvider. */
 export function useProjects(): Project[] {
   return useProjectsValue('useProjects');
+}
+
+/**
+ * A project's Backlog rank: the best (lowest) priority across its OUTSTANDING stories (done and
+ * abandoned excluded, like the epic rank — ALF-49), so the project holding the highest-ranked
+ * *open* story leads. A project with no outstanding story has no rank and sorts LAST.
+ */
+function projectRank(project: Project, stories: CodeStory[]): number {
+  const priorities = stories
+    .filter((story) => story.project_id === project.id && isBacklogOutstanding(story.factory_state))
+    .map((story) => story.priority ?? Number.POSITIVE_INFINITY);
+  return priorities.length > 0 ? Math.min(...priorities) : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * The project list ranked for the sidebar (ALF-49): ordered by each project's best outstanding
+ * story's global priority, with `created_at` ascending as a stable tie-break (so no-outstanding
+ * projects keep a deterministic order). Mirrors the board's epic ranking one level up, so the
+ * sidebar leads with the project carrying the highest-priority open work. Memoized on both slices.
+ */
+export function useRankedProjects(): Project[] {
+  const projects = useProjects();
+  const stories = useCodeStories();
+
+  return React.useMemo<Project[]>(
+    () =>
+      stableSorted(projects, (a, b) => {
+        const rankA = projectRank(a, stories);
+        const rankB = projectRank(b, stories);
+        // Compare equality first: two no-outstanding projects are both +Infinity, and
+        // Infinity - Infinity is NaN (a broken comparator), so fall to the tie-break when equal.
+        if (rankA !== rankB) return rankA - rankB;
+        return a.created_at.localeCompare(b.created_at);
+      }),
+    [projects, stories],
+  );
 }
 
 function useCodeEpics(): Epic[] {
@@ -910,11 +946,15 @@ function epicStories(board: BoardEpic): CodeStory[] {
 }
 
 /**
- * An epic's Backlog rank: the best (lowest) priority across ALL its stories, so the epic holding
- * the highest-ranked story leads. An epic with no stories has no rank and sorts LAST.
+ * An epic's Backlog rank: the best (lowest) priority across its OUTSTANDING stories (done and
+ * abandoned excluded, mirroring the Backlog's own filter — ALF-49), so the epic holding the
+ * highest-ranked *open* story leads. An epic with no outstanding story (none, or all done/
+ * abandoned) has no rank and sorts LAST.
  */
 function epicRank(board: BoardEpic): number {
-  const priorities = epicStories(board).map((story) => story.priority ?? Number.POSITIVE_INFINITY);
+  const priorities = epicStories(board)
+    .filter((story) => isBacklogOutstanding(story.factory_state))
+    .map((story) => story.priority ?? Number.POSITIVE_INFINITY);
   return priorities.length > 0 ? Math.min(...priorities) : Number.POSITIVE_INFINITY;
 }
 

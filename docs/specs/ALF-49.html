@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-49 — Rank epics and projects by priority</title>
+    <style>
+      :root {
+        --bg: #0a0e17;
+        --surface: #0f1626;
+        --surface-2: #121b2e;
+        --border: #1e2a3f;
+        --text: #e8edf5;
+        --muted: #8a96a8;
+        --teal: #4fd1e0;
+        --green: #34d399;
+        --amber: #f0b429;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 700px at 70% -10%, #11203a 0%, var(--bg) 55%) fixed;
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      .wrap {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 40px 22px 96px;
+      }
+      header.hero {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(79, 209, 224, 0.06), rgba(15, 22, 38, 0.4));
+        border-radius: 20px;
+        padding: 28px 30px;
+        box-shadow: 0 0 60px rgba(79, 209, 224, 0.07);
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        color: var(--teal);
+        font-weight: 600;
+      }
+      h1 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 600;
+        font-size: 34px;
+        line-height: 1.2;
+        margin: 8px 0 6px;
+      }
+      h2 {
+        font-family: Georgia, serif;
+        font-size: 24px;
+        margin: 48px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 18px;
+        margin: 28px 0 8px;
+      }
+      p,
+      li {
+        color: var(--text);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin: 16px 0;
+      }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--green);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 2px 10px;
+        margin-right: 8px;
+      }
+      ul {
+        padding-left: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <div class="eyebrow">Software Factory · Backlog ordering</div>
+        <h1>Rank epics and projects by priority, ignoring done stories</h1>
+        <p class="muted">
+          <span class="tag">ALF-49</span> Fix epic ordering so completed work no longer drags a
+          finished-up epic to the top, and extend the same priority ranking to the project list in
+          the sidebar.
+        </p>
+      </header>
+
+      <h2>Problem</h2>
+      <p>
+        The Code module orders work by each story's global Backlog <code>priority</code> (lower =
+        higher priority). The per-project board already ordered epics by their best story's
+        priority, but it counted <em>every</em> story — including <code>done</code> and
+        <code>abandoned</code> ones. A single high-priority completed story therefore kept an epic
+        whose remaining open work is low-priority pinned to the top of the board, which is
+        misleading: ranking should reflect <em>outstanding</em> work, the same set the Backlog
+        shows by default.
+      </p>
+      <p>
+        Separately, the project list in the sidebar was rendered in seed order with no notion of
+        priority, so the sidebar didn't lead with the project that holds the most urgent open work.
+      </p>
+
+      <h2>Change</h2>
+
+      <h3>1. Exclude done/abandoned stories from epic rank</h3>
+      <p>
+        An epic's rank is the best (lowest) priority across its <strong>outstanding</strong> stories
+        only — everything except <code>done</code> and <code>abandoned</code>, mirroring the
+        Backlog's own <code>isBacklogOutstanding</code> filter. An epic with no outstanding story
+        (none, or all done/abandoned) has no rank and sorts last, with <code>created_at</code>
+        ascending as the stable tie-break. This is a one-line filter added inside
+        <code>epicRank</code> in <code>lib/stores/code-store.tsx</code>; within-lane and escape-bucket
+        ordering are unchanged.
+      </p>
+
+      <h3>2. Rank the sidebar project list by priority</h3>
+      <p>
+        A new derived hook <code>useRankedProjects</code> orders projects by each project's best
+        outstanding story's priority — the same rule the board applies to epics, one level up — with
+        <code>created_at</code> ascending as the tie-break for projects with no outstanding work.
+        <code>ProjectNav</code> consumes the ranked list instead of the raw <code>useProjects</code>.
+        The raw <code>useProjects</code> accessor keeps returning store order for other callers.
+      </p>
+
+      <h2>Out of scope</h2>
+      <ul>
+        <li>No schema or API change — ranking is purely client-side over the existing priority.</li>
+        <li>No change to the Backlog list, within-lane order, or the reorder/move RPCs.</li>
+        <li>Archived epics still split out of the active board and rank among themselves.</li>
+      </ul>
+
+      <h2>Acceptance</h2>
+      <ul>
+        <li>An epic whose only high-priority story is <code>done</code> ranks by its outstanding
+          stories; an all-done epic sorts last.</li>
+        <li>The sidebar lists projects ordered by their best outstanding story's priority.</li>
+        <li>Done/abandoned stories never influence either the epic rank or the project rank.</li>
+      </ul>
+      <p class="muted">
+        Demonstrated in <code>docs/demos/ALF-49/epic-and-project-ranking.md</code> and covered by
+        unit tests in <code>lib/stores/code-store.test.tsx</code> and
+        <code>components/code/project-nav.test.tsx</code>.
+      </p>
+    </div>
+  </body>
+</html>
