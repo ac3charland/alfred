@@ -258,7 +258,7 @@
           <ul>
             <li><strong>Priority = discrete levels</strong> (High / Medium / Low), not a manual swap rank.</li>
             <li><strong>Due date is the tiebreaker</strong> within a level (earliest first).</li>
-            <li>The list contains <strong>top-level tasks only</strong> (parentless); subtasks are not independently ranked.</li>
+            <li>The list shows <strong>top-level tasks only</strong> (parentless); subtasks are not ranked as standalone rows — but a parent is ranked by the <strong>best (most important / urgent) priority across itself and its active subtasks</strong> (§4), so a Low parent hiding a High, overdue subtask floats up.</li>
             <li>Priority is <strong>set via a dropdown in the existing task editor menu</strong> (beside due date / notes), and <strong>shown as a badge</strong> on the row — no reorder UI.</li>
           </ul>
         </div>
@@ -286,8 +286,9 @@
           </li>
           <li>
             <strong>View:</strong> a new <strong>By&nbsp;Priority</strong> view at <code>/priority</code> — a flat
-            list of all top-level active tasks across Inbox and every folder, ranked by priority then due
-            date, with a <em>Show&nbsp;completed</em> toggle (matching the Backlog). Derived entirely
+            list of all top-level active tasks across Inbox and every folder, ranked by the best
+            priority / urgency in each task's subtree (§4), with a <em>Show&nbsp;completed</em> toggle
+            (matching the Backlog). Derived entirely
             client-side from the already-seeded store via a new <code>useTasksByPriority()</code> hook (no
             new DB view, no extra fetch).
           </li>
@@ -375,20 +376,33 @@
       <!-- ───────────────────────── SORT SEMANTICS ───────────────────────── -->
       <h2 id="sort">4 · Sort semantics</h2>
       <section class="card">
-        <p>The By-Priority list sorts top-level active tasks by three keys, in order:</p>
+        <p>
+          Each <strong>top-level task is ranked by its “effective” key</strong> — the best (most important,
+          then most urgent) of the task itself <em>and its active subtasks</em>. A task's own fields can
+          understate how much it needs attention: a Low-priority parent might hide a High-priority, overdue
+          subtask. Rolling the subtree up surfaces that.
+        </p>
+        <div class="info">
+          <strong>Worked example.</strong> Parent <em>A</em> = Low, no due date, but has subtask <em>a1</em> =
+          High &amp; overdue. Parent <em>B</em> = Medium, no urgent subtasks. <em>A</em>'s effective key rolls
+          up to <strong>High / overdue</strong> (inherited from <em>a1</em>), so <em>A</em> ranks
+          <strong>above</strong> <em>B</em> — even though A's own level is Low.
+        </div>
+        <h4>How the effective key is built &amp; compared</h4>
         <table>
-          <thead>
-            <tr><th>#</th><th>Key</th><th>Direction</th><th>Null handling</th></tr>
-          </thead>
+          <thead><tr><th>Step</th><th>Rule</th></tr></thead>
           <tbody>
-            <tr><td>1</td><td>Priority level</td><td>High → Medium → Low</td><td><code>null</code> (no priority) sorts <strong>last</strong></td></tr>
-            <tr><td>2</td><td><code>due_date</code></td><td>Ascending (earliest / most overdue first)</td><td>No due date sorts after dated tasks in the same level</td></tr>
-            <tr><td>3</td><td><code>created_at</code></td><td>Ascending (stable final tiebreaker)</td><td>—</td></tr>
+            <tr><td>Per node</td><td>key = <code>{ rank: priorityRank(priority), due: due_date ?? +∞ }</code> — rank High=0, Medium=1, Low=2, none=3.</td></tr>
+            <tr><td>Roll up</td><td>A top-level task's <strong>effective key = best</strong> of its own key and every <strong>active</strong> descendant's key (recursively). Completed subtasks don't count — their urgency is moot.</td></tr>
+            <tr><td>Compare 1</td><td><strong>rank</strong> ascending — High → Medium → Low → unprioritised (<code>null</code> last).</td></tr>
+            <tr><td>Compare 2</td><td><strong>due</strong> ascending — earliest / most overdue first; no due date sorts after dated within the same rank.</td></tr>
+            <tr><td>Compare 3</td><td><code>created_at</code> ascending — stable final tiebreaker.</td></tr>
           </tbody>
         </table>
         <p>
-          A small rank map makes this explicit and testable. It lives with the other priority constants in a
-          new <small class="file">frontend/lib/priority.ts</small>:
+          “Best” is lexicographic: a higher priority level always wins; due date only decides <em>within</em>
+          the same level. The level constants and key helpers live in a new
+          <small class="file">frontend/lib/priority.ts</small>:
         </p>
         <pre><span class="c">// lib/priority.ts</span>
 <span class="kw">export type</span> TaskPriority = 'high' | 'medium' | 'low';
@@ -399,27 +413,59 @@
   <span class="kw">return</span> p === null ? 3 : RANK[p];
 }
 
-<span class="kw">export function</span> byPriorityThenDue(a: Item, b: Item): number {
-  <span class="kw">const</span> byLevel = priorityRank(a.priority) - priorityRank(b.priority);
-  <span class="kw">if</span> (byLevel !== 0) <span class="kw">return</span> byLevel;
-  <span class="kw">const</span> da = a.due_date ? Date.parse(a.due_date) : Number.POSITIVE_INFINITY;
-  <span class="kw">const</span> db = b.due_date ? Date.parse(b.due_date) : Number.POSITIVE_INFINITY;
-  <span class="kw">if</span> (da !== db) <span class="kw">return</span> da - db;
-  <span class="kw">return</span> Date.parse(a.created_at) - Date.parse(b.created_at);
+<span class="c">// A task's importance/urgency, compared lexicographically: level first, then due (earlier = more urgent).</span>
+<span class="kw">export type</span> PriorityKey = { rank: number; due: number };
+<span class="kw">export function</span> ownKey(i: Item): PriorityKey {
+  <span class="kw">return</span> { rank: priorityRank(i.priority), due: i.due_date ? Date.parse(i.due_date) : Infinity };
+}
+<span class="kw">export function</span> bestKey(a: PriorityKey, b: PriorityKey): PriorityKey {
+  <span class="kw">if</span> (a.rank !== b.rank) <span class="kw">return</span> a.rank &lt; b.rank ? a : b;   <span class="c">// higher level wins</span>
+  <span class="kw">return</span> a.due &lt;= b.due ? a : b;                           <span class="c">// then earlier due wins</span>
+}
+<span class="kw">export function</span> compareKey(a: PriorityKey, b: PriorityKey): number {
+  <span class="kw">return</span> a.rank - b.rank || a.due - b.due;
 }</pre>
         <p>
-          The view hook reuses the project’s stable sorter, exactly as <code>useBacklog</code> does
-          (<small class="file">lib/sort.ts</small> → <code>stableSorted</code>):
+          The view hook indexes children, rolls each top-level task's key up over its active subtree, then
+          reuses the project's stable sorter (<small class="file">lib/sort.ts</small> →
+          <code>stableSorted</code>, exactly as <code>useBacklog</code> does):
         </p>
         <pre><span class="c">// lib/stores/tasks-store.tsx — new derived hook</span>
 <span class="kw">export function</span> useTasksByPriority({ showCompleted }: { showCompleted: boolean }): Item[] {
   <span class="kw">const</span> items = useTasks();                      <span class="c">// flat seeded list</span>
   <span class="kw">return</span> React.useMemo(() =&gt; {
-    <span class="kw">const</span> topLevel = items.filter((i) =&gt; i.parent_id === null);   <span class="c">// top-level only</span>
-    <span class="kw">const</span> visible = showCompleted ? topLevel : topLevel.filter((i) =&gt; i.status === 'active');
-    <span class="kw">return</span> stableSorted(visible, byPriorityThenDue);
+    <span class="c">// Index children so a task's key can roll up over its subtree.</span>
+    <span class="kw">const</span> childrenOf = <span class="kw">new</span> Map&lt;string, Item[]&gt;();
+    <span class="kw">for</span> (<span class="kw">const</span> i <span class="kw">of</span> items) {
+      <span class="kw">if</span> (i.parent_id === null) <span class="kw">continue</span>;
+      <span class="kw">const</span> list = childrenOf.get(i.parent_id) ?? [];
+      list.push(i);
+      childrenOf.set(i.parent_id, list);
+    }
+    <span class="c">// Effective key = the BEST of the task itself + its ACTIVE descendants.</span>
+    <span class="kw">const</span> effectiveKey = (node: Item): PriorityKey =&gt; {
+      <span class="kw">let</span> key = ownKey(node);
+      <span class="kw">for</span> (<span class="kw">const</span> child <span class="kw">of</span> childrenOf.get(node.id) ?? []) {
+        <span class="kw">if</span> (child.status === 'active') key = bestKey(key, effectiveKey(child));
+      }
+      <span class="kw">return</span> key;
+    };
+    <span class="kw">const</span> top = items.filter((i) =&gt; i.parent_id === null);
+    <span class="kw">const</span> visible = showCompleted ? top : top.filter((i) =&gt; i.status === 'active');
+    <span class="kw">return</span> stableSorted(visible, (a, b) =&gt;
+      compareKey(effectiveKey(a), effectiveKey(b)) || Date.parse(a.created_at) - Date.parse(b.created_at),
+    );
   }, [items, showCompleted]);
 }</pre>
+        <div class="note">
+          <span class="tag">Note</span>
+          <p style="margin:6px 0 0">
+            The rollup walks each top-level task's subtree client-side. With a few hundred tasks
+            (SPEC scale) this is trivially cheap and memoised; no DB-side aggregation is needed. The badge
+            on a row still shows the task's <em>own</em> priority — the subtree rollup affects
+            <strong>ordering only</strong>, not what the chip displays.
+          </p>
+        </div>
       </section>
 
       <!-- ───────────────────────── DATA FLOW DIAGRAM ───────────────────────── -->
@@ -471,7 +517,7 @@
 
               <rect x="40" y="308" width="360" height="60" rx="10" fill="#0b1f24" stroke="#4fd1e0" stroke-dasharray="5 4" />
               <text x="58" y="334" class="lbl">useTasksByPriority({ showCompleted })  ★ new</text>
-              <text x="58" y="352" class="sub">filter top-level → stableSorted(byPriorityThenDue)</text>
+              <text x="58" y="352" class="sub">filter top-level → roll up subtree-best key → stableSorted</text>
 
               <rect class="b" x="40" y="400" width="360" height="50" />
               <text x="58" y="430" class="lbl">PriorityView ★ → PriorityRow ★ list</text>
@@ -707,10 +753,10 @@ export const updateItemSchema = z.object({
           <tbody>
             <tr><td><code>database/migrations/0008_task_priority.sql</code></td><td>enum + column + index + constraint</td><td>★</td></tr>
             <tr><td><code>frontend/lib/database.types.ts</code></td><td>regenerated (priority + enum)</td><td>gen</td></tr>
-            <tr><td><code>frontend/lib/priority.ts</code></td><td><code>TaskPriority</code>, <code>PRIORITY_OPTIONS</code>, <code>priorityRank</code>, <code>byPriorityThenDue</code></td><td>★</td></tr>
+            <tr><td><code>frontend/lib/priority.ts</code></td><td><code>TaskPriority</code>, <code>PRIORITY_OPTIONS</code>, <code>priorityRank</code>, <code>ownKey</code>/<code>bestKey</code>/<code>compareKey</code></td><td>★</td></tr>
             <tr><td><code>frontend/lib/api/schemas.ts</code></td><td><code>taskPriority</code> + <code>updateItemSchema</code></td><td>—</td></tr>
             <tr><td><code>frontend/app/api/items/[id]/route.ts</code></td><td>allow <code>priority</code> in PATCH</td><td>—</td></tr>
-            <tr><td><code>frontend/lib/stores/tasks-store.tsx</code></td><td><code>TaskFieldPatch</code> + <code>useTasksByPriority</code></td><td>—</td></tr>
+            <tr><td><code>frontend/lib/stores/tasks-store.tsx</code></td><td><code>TaskFieldPatch</code> + <code>useTasksByPriority</code> (subtree rollup)</td><td>—</td></tr>
             <tr><td><code>frontend/components/atoms/priority-chip.tsx</code></td><td>badge atom (+ story + test)</td><td>★</td></tr>
             <tr><td><code>frontend/components/tasks/priority-select.tsx</code></td><td>editor dropdown</td><td>★</td></tr>
             <tr><td><code>frontend/components/tasks/task-row/task-meta-panel.tsx</code></td><td>Priority field</td><td>—</td></tr>
@@ -754,11 +800,11 @@ export const updateItemSchema = z.object({
         <table>
           <thead><tr><th>Layer</th><th>Test</th><th>Asserts</th></tr></thead>
           <tbody>
-            <tr><td>Unit (Jest)</td><td><code>priority.test.ts</code></td><td><code>byPriorityThenDue</code>: High&lt;Med&lt;Low, earlier due first, null due &amp; null priority sort last, <code>created_at</code> final tiebreak.</td></tr>
+            <tr><td>Unit (Jest)</td><td><code>priority.test.ts</code></td><td><code>compareKey</code>/<code>bestKey</code>: High&lt;Med&lt;Low, earlier due first, null due &amp; null priority sort last; <code>bestKey</code> picks the higher level, then the earlier due.</td></tr>
             <tr><td>Unit (Jest)</td><td><code>schemas.test.ts</code></td><td><code>updateItemSchema</code> accepts <code>'high'|null</code>, rejects <code>'urgent'</code>.</td></tr>
             <tr><td>Route (Jest)</td><td><code>items/[id]/route.test.ts</code></td><td><code>PATCH { priority }</code> writes through; absent key leaves it untouched.</td></tr>
             <tr><td>RTL</td><td><code>task-meta-panel.test.tsx</code></td><td>Selecting a level calls <code>updateTask</code> with that <code>priority</code>; “No priority” clears to <code>null</code>.</td></tr>
-            <tr><td>RTL</td><td><code>priority-view.test.tsx</code></td><td>Top-level only; correct order; Show-completed reveals completed.</td></tr>
+            <tr><td>RTL</td><td><code>priority-view.test.tsx</code></td><td>Top-level only; correct order; <strong>a parent with a High/overdue subtask outranks a Medium parent (subtree rollup)</strong>; a completed subtask does not lift the parent; Show-completed reveals completed.</td></tr>
             <tr><td>Storybook</td><td><code>priority-chip.stories.tsx</code></td><td>Snapshot of High / Medium / Low chips.</td></tr>
             <tr><td>E2E (Playwright)</td><td><code>priority.spec.ts</code></td><td>Set priority → badge shows → <code>/priority</code> lists in order.</td></tr>
           </tbody>
@@ -780,7 +826,8 @@ export const updateItemSchema = z.object({
           <li>Setting/clearing priority is optimistic: the badge updates instantly and persists across reload; a failed save rolls back.</li>
           <li>A <strong>By&nbsp;Priority</strong> view is reachable from the Tasks sidebar at <code>/priority</code> and deep-links / hard-loads correctly.</li>
           <li>The view lists <strong>top-level (parentless) tasks only</strong>, across Inbox and every folder, in one flat list.</li>
-          <li>Order is <strong>High → Medium → Low → unprioritised</strong>; within a level, <strong>earlier due date first</strong>; tasks with no due date come after dated ones; <code>created_at</code> is the final tiebreak.</li>
+          <li>A top-level task is ranked by the <strong>best priority / urgency across itself and its active subtasks</strong>: a Low-priority parent with a High-priority, overdue subtask outranks a plain Medium-priority task. Completed subtasks don't influence the rank.</li>
+          <li>Order is <strong>High → Medium → Low → unprioritised</strong>; within a level, <strong>earlier due date first</strong>; tasks with no due date come after dated ones; <code>created_at</code> is the final tiebreak. (Applied to each task's rolled-up effective key.)</li>
           <li>Completed tasks are hidden by default; a <em>Show&nbsp;completed</em> toggle reveals them (matching the Backlog).</li>
           <li><code>priority</code> is a nullable, task-only field (enforced by <code>items_task_only_fields</code>); non-task items keep it <code>null</code>.</li>
           <li><code>PATCH /api/items/[id]</code> validates and persists <code>priority</code>; invalid values are rejected.</li>
@@ -794,7 +841,7 @@ export const updateItemSchema = z.object({
         <h4>Out of scope</h4>
         <ul class="scope-out">
           <li><strong>Manual within-level reordering</strong> (Backlog-style chevron swap / drag rank). Refinement chose discrete levels with a due-date tiebreaker; no per-task unique rank, swap RPC, or reorder route.</li>
-          <li><strong>Independently ranking subtasks.</strong> The list is top-level only; subtasks inherit their parent’s context and are not surfaced as standalone ranked rows.</li>
+          <li><strong>Subtasks as standalone ranked rows.</strong> The list is top-level only. Subtasks are not surfaced as their own rows — but they <em>do</em> influence ranking: a parent inherits the best priority / urgency of its active subtree (§4). Per-subtask placement in the list is out of scope.</li>
           <li><strong>Priority on <code>code</code> / <code>knowledge</code> items.</strong> This is a task-only field; the Code Backlog keeps its own separate <code>code_items.priority</code>.</li>
           <li><strong>Filtering / grouping controls</strong> beyond the level ordering (e.g. “only High”, per-folder filters) — possible later, not now.</li>
           <li><strong>Auto-priority from due date / LLM classification</strong> — future, not in this ticket.</li>
