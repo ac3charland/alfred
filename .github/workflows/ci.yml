@@ -52,5 +52,13 @@ jobs:
         run: npx playwright install --with-deps chromium
         working-directory: frontend
 
+      # The database/ integration suite (check:slow) spins up a throwaway PostgreSQL
+      # cluster from the server binaries, so make sure they're installed on the runner.
+      - name: Ensure PostgreSQL server binaries
+        run: |
+          if ! command -v initdb >/dev/null 2>&1 && ! ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y postgresql
+          fi
+
       - name: Run slow checks
         run: npm run check:slow
