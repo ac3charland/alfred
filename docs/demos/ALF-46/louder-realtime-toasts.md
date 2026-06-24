@@ -24,7 +24,11 @@ _Default toast — unchanged from before._
 
 Previously a dismissed toast was filtered out of the store and unmounted instantly — it popped out with no animation. Now `dismissToast` marks the toast `leaving` (it stays in the queue), the viewport plays the `tw-animate-css` `animate-out` exit, and the store removes it after `EXIT_MS` (200ms). The `DISMISS_MS` auto-expire runs through the same `leaving → remove` path.
 
-To prove the glide both ways, the **debug-animations** probe samples the card's computed `opacity` and `translateY` once per animation frame (the same technique that pinned the inbox fade-out flash). Captured against the live ToastItem with a standalone Playwright run.
+Here is the glide, captured against the live ToastItem — the emphasis toast slides + fades **in**, holds, then slides + fades **out**:
+
+![emphasis toast sliding + fading in, holding, then sliding + fading out](louder-realtime-toasts-video-4.gif)
+
+For the exact curve, the **debug-animations** probe samples the card's computed `opacity` and `translateY` once per animation frame (the same technique that pinned the inbox fade-out flash):
 
 **Enter — slide up + fade in** (opacity 0→1, translateY 8px→0 over ~200ms):
 
