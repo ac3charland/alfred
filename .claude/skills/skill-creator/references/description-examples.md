@@ -59,7 +59,7 @@ it buys nothing but leak:
 ✅ **After** — name the rule as a subject and stop; `sequence-grant` and `permission denied for
 sequence` stay only in the trigger list, as words a user types:
 > Covers migration-lint, the static linter over database/migrations/\*.sql that runs in the
-> global check:fast (pre-commit) — its sequence-grant rule. Use when running or interpreting
+> global check:fast (pre-commit). Use when running or interpreting
 > migration-lint… Trigger on: …, "sequence-grant", "permission denied for sequence", …
 
 This pair shipped **after** the `backpressure` pair above was already in this library — proof
