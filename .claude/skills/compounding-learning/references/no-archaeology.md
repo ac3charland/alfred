@@ -24,6 +24,7 @@ record of what an agent just did. Two failure modes live here, and they share a 
 - Stale workaround for a since-removed constraint (supabase)
 - Authoring a skill as a companion to the refactor that spawned it (frontend-architecture)
 - Annotating a "left out / not done" entry as now-done (data-flow, supabase)
+- "No edit was needed because…" — narrating the wiring just added (backpressure)
 - The constructive counterpart: replace-and-shrink (playwright)
 
 ## Supersession note instead of a deletion — storybook (`a55ea86`)
@@ -201,6 +202,28 @@ push path" section / a pattern-table row), and the list keeps only the still-un-
 the body as current truth and trim the left-out entry to the remaining un-done scope. A "not done"
 list that describes a done thing is the same self-contradiction as a supersession note — a list of
 absences must contain only absences.
+
+## "No edit was needed because…" — narrating the wiring just added (backpressure)
+
+A note about a workspace check explained the *change that added it* — that the wiring needed
+no root edit — instead of just stating where the check runs.
+
+BEFORE:
+```
+A workspace `check:slow` may stand up an external service — the `database` package's
+`check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster); no root
+edit was needed because the fan-out already runs every workspace's `check:slow`.
+```
+AFTER:
+```
+A workspace `check:slow` may stand up an external service — the `database` package's
+`check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster).
+```
+
+**Lesson:** "no X was needed because…" narrates the diff, not the standing rule. The
+surrounding text already states the fan-out runs every workspace's `check:slow`; the current
+truth is just that a workspace `check:slow` can stand up a service. State the rule, not what
+the change didn't have to touch.
 
 ## The constructive counterpart: replace-and-shrink — playwright (`a652f2e`)
 

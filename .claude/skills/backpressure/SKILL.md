@@ -25,8 +25,7 @@ A check's **scope** — the files it's responsible for — decides where it's wi
   `typecheck`, `lint`, `format`, `test`. It goes in **that workspace's** `check:fast` /
   `check:slow`; the root fan-out (`npm run <tier> --workspaces --if-present`) runs it there.
   A workspace `check:slow` may stand up an external service — the `database` package's
-  `check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster); no root
-  edit was needed because the fan-out already runs every workspace's `check:slow`.
+  `check:slow` runs the real-Postgres integration suite (it spins a throwaway cluster).
 
 - **Monorepo-wide:** a check whose scope is the *whole repo* — `skill-lint` over all of
   `.claude/skills/`, `demo-lint` over all of `docs/demos/`. It goes **explicitly in the root**
