@@ -9,8 +9,14 @@
 #   ```alfred
 #   alfred-ticket: ALF-42              # one ref, or a comma-separated list
 #   phase: refinement                  # refinement | implementation
-#   spec-path: docs/specs/ALF-42.html  # refinement PRs only (a self-contained HTML plan)
+#   spec-path: docs/specs/ALF-42.html  # required on refinement PRs (a self-contained HTML plan)
 #   ```
+#
+# Archive rule (implementation PRs): a spec is scaffolding — once it's built, the
+# implementation PR retires it from the active specs directory by git-moving it into
+# `docs/specs/archive/`. The check fails the PR when the `spec-path` it carries still
+# resolves to a file in the active directory (i.e. the spec was left un-archived). A
+# skip-refinement (bypass) PR has no file at `spec-path`, so it passes unaffected.
 
 name: alfred-frontmatter
 on:
@@ -21,11 +27,16 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # Check out the PR's merge result so the archive rule can see whether the spec still sits
+      # in the active specs directory after this PR is applied.
+      - uses: actions/checkout@v4
+
       - name: Validate alfred frontmatter block
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
           node -e '
+            const fs = require("fs");
             const b = process.env.BODY || "";
             const m = b.match(/```alfred\s+([\s\S]*?)```/);
             if (!m) { console.error("missing ```alfred block"); process.exit(1); }
@@ -33,8 +44,21 @@ jobs:
             const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
             const phase  = /phase:\s*(refinement|implementation)/.exec(blk);
             if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
-            if (phase[1] === "refinement" && !/spec-path:\s*\S+/.test(blk)) {
+            const specPath = (/spec-path:\s*(\S+)/.exec(blk) || [])[1];
+            if (phase[1] === "refinement" && !specPath) {
               console.error("refinement PRs need spec-path"); process.exit(1);
+            }
+            // An implementation PR must ARCHIVE its spec: git-move it out of the active
+            // docs/specs/ directory into docs/specs/archive/. Fail when the recorded spec-path
+            // still resolves to a file in the active directory. A bypass PR (no committed spec)
+            // has nothing at spec-path, so existsSync is false and it passes.
+            if (phase[1] === "implementation" && specPath
+                && specPath.startsWith("docs/specs/")
+                && !specPath.startsWith("docs/specs/archive/")
+                && fs.existsSync(specPath)) {
+              const archived = "docs/specs/archive/" + specPath.split("/").pop();
+              console.error("implementation PR must archive its spec: git-move " + specPath + " to " + archived);
+              process.exit(1);
             }
             console.log("ok:", ticket[1].trim(), phase[1]);
           '
