@@ -38,9 +38,6 @@ A check's **scope** — the files it's responsible for — decides where it's wi
   "check:slow": "npm run lint:demos  -w tools/demo-lint  && npm run check:slow --workspaces --if-present",
   ```
 
-  `migration-lint` (over all of `database/migrations/`) is the third repo-wide linter, wired the
-  same way and in `check:fast` because it's cheap and static.
-
 The tool that *implements* a repo-wide check is usually itself a workspace (e.g.
 `tools/skill-lint`), and it keeps its own `check:fast` for **its own** source. The distinction
 is the *target*: linting the linter's `src/` is workspace-scoped; running the linter **against
