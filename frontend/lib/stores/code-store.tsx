@@ -195,6 +195,14 @@ export interface CodeActions {
    * returned `code_items` rows via `codeItemToStoryPatch`; roll the priorities back on error.
    */
   reorderStory: (ref: string, neighbourRef: string) => Promise<void>;
+  /**
+   * Jump a story to the **top** (`toTop`) or **bottom** of the global Backlog (the double-chevron
+   * move) by re-ranking its `priority` past the current extreme — the same `min-1` / `max+1` the
+   * `move_code_priority` RPC computes. Optimistic: patch the story to that extreme (capturing its
+   * prior priority for rollback); reconcile from the returned `code_items` row via
+   * `codeItemToStoryPatch`; roll the priority back on error.
+   */
+  moveStory: (ref: string, toTop: boolean) => Promise<void>;
 }
 
 interface CodeState {
@@ -801,6 +809,46 @@ export function CodeProvider({
           },
           onError: () => {
             showToastRef.current("Couldn't reorder story");
+          },
+        });
+      },
+      async moveStory(ref, toTop) {
+        const { stories } = stateRef.current;
+        const target = stories.find((s) => s.ref === ref);
+        if (target === undefined) {
+          throw new Error(`Code story ${ref} not found in the code store`);
+        }
+        const itemId = target.item_id;
+        if (itemId === null) {
+          throw new Error(`Code story ${ref} has no item_id`);
+        }
+        const priorPriority = target.priority;
+        // Compute the optimistic extreme over the OTHER stories — exactly what the RPC does
+        // (min-1 to jump to the top, max+1 to the bottom) — so the row re-sorts immediately.
+        const priorities = stories.filter((s) => s.item_id !== itemId).map((s) => s.priority ?? 0);
+        // Mirror the RPC's `coalesce(min/max(priority), 0) ± 1` (0 when this is the only story).
+        const extreme =
+          priorities.length === 0 ? 0 : toTop ? Math.min(...priorities) : Math.max(...priorities);
+        const nextPriority = toTop ? extreme - 1 : extreme + 1;
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patchStory', itemId, patch: { priority: nextPriority } });
+          },
+          apiCall: () => api.moveCode(ref, toTop),
+          reconcile: (rows) => {
+            for (const row of rows) {
+              dispatch({
+                type: 'patchStory',
+                itemId: row.item_id,
+                patch: codeItemToStoryPatch(row),
+              });
+            }
+          },
+          rollback: () => {
+            dispatch({ type: 'patchStory', itemId, patch: { priority: priorPriority } });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't move story");
           },
         });
       },

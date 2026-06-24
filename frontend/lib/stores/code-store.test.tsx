@@ -26,6 +26,7 @@ const mockUpdateEpic = jest.mocked(api.updateEpic);
 const mockUpdateItem = jest.mocked(api.updateItem);
 const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
 const mockReorderCode = jest.mocked(api.reorderCode);
+const mockMoveCode = jest.mocked(api.moveCode);
 
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so tests can drive a
 // simulated `code_items` change through it without a live Realtime channel. (Overrides the
@@ -985,6 +986,82 @@ describe('code-store', () => {
       });
     });
 
+    describe('moveStory (Backlog jump to top/bottom)', () => {
+      const epic = makeEpic('e1', 'p1');
+      const a = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 10 });
+      const b = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 20 });
+      const c = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 30 });
+
+      it('jumps the last story to the top: optimistic min-1 then reconcile', async () => {
+        mockMoveCode.mockResolvedValue([
+          makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: -1 }),
+        ]);
+        const { result } = renderHook(
+          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
+          },
+        );
+
+        await act(async () => {
+          await result.current.actions.moveStory('ALF-3', true);
+        });
+
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-3', true);
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: -1 });
+      });
+
+      it('jumps the first story to the bottom: optimistic max+1 then reconcile', async () => {
+        mockMoveCode.mockResolvedValue([
+          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 31 }),
+        ]);
+        const { result } = renderHook(
+          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
+          },
+        );
+
+        await act(async () => {
+          await result.current.actions.moveStory('ALF-1', false);
+        });
+
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-1', false);
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+      });
+
+      it('rolls the priority back on API failure', async () => {
+        mockMoveCode.mockRejectedValue(new Error('move failed'));
+        const { result } = renderHook(
+          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
+          },
+        );
+
+        await act(async () => {
+          await expect(result.current.actions.moveStory('ALF-3', true)).rejects.toThrow(
+            'move failed',
+          );
+        });
+
+        // Restored to the original ranking.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: 30 });
+      });
+
+      it('throws (and does not call the api) when the ref is unknown', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStory('ALF-404', true)).rejects.toThrow(/not found/i);
+        });
+        expect(mockMoveCode).not.toHaveBeenCalled();
+      });
+    });
+
     describe('updateEpic (name + notes + archive)', () => {
       it('optimistically patches epic name, then reconciles with the saved row', async () => {
         mockUpdateEpic.mockResolvedValue(makeSavedEpic({ name: 'Renamed Epic' }));
@@ -1440,6 +1517,21 @@ describe('code-store', () => {
         });
 
         expect(mockShowToast).toHaveBeenCalledWith("Couldn't reorder story");
+      });
+
+      it('moveStory toasts "Couldn\'t move story"', async () => {
+        mockMoveCode.mockRejectedValue(new Error('move failed'));
+        const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+        const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStory('ALF-1', true)).rejects.toThrow('move failed');
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
       });
     });
   });
