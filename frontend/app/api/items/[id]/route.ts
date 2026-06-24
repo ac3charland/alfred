@@ -33,6 +33,7 @@ export const PATCH = withSession(
       'parent_id',
       'item_type',
       'status',
+      'recurrence',
     ]);
 
     const { data, error } = await supabase

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { todayISODate } from '@/lib/date-utils';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree } from '@/lib/tree';
@@ -323,7 +324,7 @@ describe('TaskRow', () => {
   // ---------------------------------------------------------------------------
 
   it('shows the checkbox as checked the instant it is clicked (before the row leaves)', async () => {
-    mockCompleteTask.mockResolvedValue([]);
+    mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
@@ -338,7 +339,7 @@ describe('TaskRow', () => {
   });
 
   it('does NOT call completeTask until the collapse transition ends', async () => {
-    mockCompleteTask.mockResolvedValue([]);
+    mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
@@ -348,7 +349,7 @@ describe('TaskRow', () => {
   });
 
   it('does not let an unrelated transition on the wrapper commit the completion', async () => {
-    mockCompleteTask.mockResolvedValue([]);
+    mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
@@ -360,7 +361,7 @@ describe('TaskRow', () => {
   });
 
   it('does not let a child transition (e.g. the title colour fade) commit the completion', async () => {
-    mockCompleteTask.mockResolvedValue([]);
+    mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
@@ -373,7 +374,7 @@ describe('TaskRow', () => {
   });
 
   it('calls completeTask and removes the task once the collapse transition ends', async () => {
-    mockCompleteTask.mockResolvedValue([]);
+    mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
@@ -400,7 +401,7 @@ describe('TaskRow', () => {
   describe('reduced motion', () => {
     it('completes immediately on click, with no animation to wait on', async () => {
       mockReducedMotion(true);
-      mockCompleteTask.mockResolvedValue([]);
+      mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
       const user = userEvent.setup();
       renderTasks([BASE_ITEM]);
 
@@ -1712,7 +1713,7 @@ describe('TaskRow', () => {
 
   describe('cascade modal', () => {
     it('confirms cascade completion, closes the modal, and completes after the animation', async () => {
-      mockCompleteTask.mockResolvedValue([]);
+      mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
@@ -2695,7 +2696,10 @@ describe('TaskRow', () => {
 
   describe('completing an active child', () => {
     it('moves a completed leaf child into the "Show completed" section', async () => {
-      mockCompleteTask.mockResolvedValue([{ ...CHILD_ITEM, status: 'completed' }]);
+      mockCompleteTask.mockResolvedValue({
+        completed: [{ ...CHILD_ITEM, status: 'completed' }],
+        spawned: null,
+      });
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
@@ -3350,6 +3354,80 @@ describe('TaskRow — classification & type-gating', () => {
       // …and the gated item has left the inbox view (removed from the store).
       await waitFor(() => {
         expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+      });
+    });
+  });
+});
+
+// 2026-06-01 is a Monday — the weekly anchor for these recurrence fixtures.
+const RECURRING_ITEM: Item = {
+  ...BASE_ITEM,
+  due_date: '2026-06-01',
+  occurrence_index: 1,
+  recurrence: { freq: 'weekly', interval: 1, byweekday: [1], end: { type: 'never' } },
+};
+
+describe('TaskRow — recurrence', () => {
+  it('shows a recurrence chip on a top-level recurring task row', () => {
+    renderTasks([RECURRING_ITEM]);
+    expect(screen.getByRole('button', { name: 'Repeats: Weekly on Mon' })).toBeInTheDocument();
+  });
+
+  it('does not show a recurrence chip on a non-recurring task', () => {
+    renderTasks([BASE_ITEM]);
+    expect(screen.queryByRole('button', { name: /repeats:/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the Repeat control in the meta panel for a top-level task', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    await activateMenuItem(user, /add notes/i);
+    expect(screen.getByRole('button', { name: 'Repeat' })).toBeInTheDocument();
+  });
+
+  it('hides the Repeat control on a code row', async () => {
+    const user = userEvent.setup();
+    renderTasks([CODE_ITEM]);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    await activateMenuItem(user, /add notes/i);
+    expect(screen.queryByRole('button', { name: 'Repeat' })).not.toBeInTheDocument();
+  });
+
+  it('opening the chip reveals the Repeat control with the current summary', async () => {
+    const user = userEvent.setup();
+    renderTasks([RECURRING_ITEM]);
+    await user.click(screen.getByRole('button', { name: 'Repeats: Weekly on Mon' }));
+    expect(screen.getByRole('button', { name: 'Repeat' })).toHaveTextContent('Weekly on Mon');
+  });
+
+  it('setting a preset with no due date stamps today as the anchor and saves the rule', async () => {
+    const user = userEvent.setup();
+    // BASE_ITEM has no due date; choosing Daily must set due_date (today) + the rule.
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM });
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    await activateMenuItem(user, /add notes/i);
+
+    // Open the Repeat preset menu and pick Daily (portal-safe keyboard nav).
+    await user.click(screen.getByRole('button', { name: 'Repeat' }));
+    await screen.findByRole('menu');
+    const daily = screen.getByRole('menuitem', { name: /^Daily$/ });
+    const itemCount = screen.getAllByRole('menuitem').length;
+    for (let index = 0; index < itemCount; index += 1) {
+      if (document.activeElement === daily) break;
+      await user.keyboard('[ArrowDown]');
+    }
+    await user.keyboard('[Enter]');
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+        recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
+        due_date: todayISODate(),
       });
     });
   });

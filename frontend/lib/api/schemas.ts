@@ -31,6 +31,72 @@ const dueDate = z.iso
   .nullable();
 
 // ---------------------------------------------------------------------------
+// Recurrence (the RecurrenceRule shape — mirror of lib/recurrence/types)
+// ---------------------------------------------------------------------------
+
+const weekday = z.union([
+  z.literal(0),
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+]);
+
+const monthlyMode = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('day_of_month') }),
+  z.object({
+    kind: z.literal('positional'),
+    setpos: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+      z.literal(-1),
+    ]),
+    weekday,
+  }),
+]);
+
+const recurrenceEnd = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('never') }),
+  z.object({ type: z.literal('on_date'), until: z.iso.date() }),
+  z.object({ type: z.literal('after'), count: z.number().int().min(1) }),
+]);
+
+/**
+ * Zod mirror of `lib/recurrence` `RecurrenceRule`, with the cross-field invariants the type
+ * alone can't express: `byweekday` is weekly-only and non-empty; `monthly` is monthly-only;
+ * weekly rules carry days and monthly rules carry a mode. Persisted as JSONB on `items`.
+ */
+export const recurrenceSchema = z
+  .object({
+    freq: z.enum(['hourly', 'daily', 'weekly', 'monthly', 'yearly']),
+    interval: z.number().int().min(1),
+    byweekday: z.array(weekday).nonempty().optional(),
+    monthly: monthlyMode.optional(),
+    end: recurrenceEnd,
+  })
+  .refine((r) => r.byweekday === undefined || r.freq === 'weekly', {
+    message: '"byweekday" is only valid for a weekly rule',
+    path: ['byweekday'],
+  })
+  .refine((r) => r.freq !== 'weekly' || r.byweekday !== undefined, {
+    message: 'a weekly rule requires a non-empty "byweekday"',
+    path: ['byweekday'],
+  })
+  .refine((r) => r.monthly === undefined || r.freq === 'monthly', {
+    message: '"monthly" is only valid for a monthly rule',
+    path: ['monthly'],
+  })
+  .refine((r) => r.freq !== 'monthly' || r.monthly !== undefined, {
+    message: 'a monthly rule requires a "monthly" mode',
+    path: ['monthly'],
+  });
+
+// ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
 
@@ -54,6 +120,8 @@ export const createItemSchema = z
     due_date: dueDate.optional(),
     folder_id: nullableUuid.optional(),
     parent_id: nullableUuid.optional(),
+    // Nullable so a create can omit it (one-shot task) or send null explicitly.
+    recurrence: recurrenceSchema.nullable().optional(),
   })
   .refine((data) => data.title !== undefined || data.text !== undefined, {
     message: 'Either "title" or "text" is required',
@@ -74,9 +142,14 @@ export const updateItemSchema = z.object({
   parent_id: nullableUuid.optional(),
   item_type: itemType.optional(),
   status: itemStatus.optional(),
+  // Nullable so a PATCH can clear the rule (`{ recurrence: null }`).
+  recurrence: recurrenceSchema.nullable().optional(),
 });
 
 export type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>;
+
+/** The validated recurrence-rule shape (the JSONB column's parsed form). */
+export type RecurrenceInput = z.infer<typeof recurrenceSchema>;
 
 // ---------------------------------------------------------------------------
 // Folders

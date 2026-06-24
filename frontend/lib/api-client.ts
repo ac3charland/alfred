@@ -95,8 +95,29 @@ export function moveToInbox(id: string): Promise<Item> {
   });
 }
 
-export function completeTask(id: string): Promise<Item[]> {
-  return apiRequest<Item[]>(`/api/tasks/${id}/complete`, { method: 'POST' });
+/**
+ * The result of completing a task: the rows marked completed, plus the next occurrence
+ * `spawned` when the task was a recurring one whose series hasn't ended (otherwise `null`).
+ */
+export interface CompleteTaskResult {
+  completed: Item[];
+  spawned: Item | null;
+}
+
+/**
+ * Complete a task and its subtree. The route returns either the plain affected-rows array
+ * (non-recurring path, unchanged) or `{ completed, spawned }` (recurring path); both are
+ * normalized here to a single {@link CompleteTaskResult} so callers don't branch on the wire
+ * shape.
+ */
+export async function completeTask(id: string): Promise<CompleteTaskResult> {
+  const data = await apiRequest<Item[] | { completed: Item[]; spawned: Item | null }>(
+    `/api/tasks/${id}/complete`,
+    { method: 'POST' },
+  );
+  return Array.isArray(data)
+    ? { completed: data, spawned: null }
+    : { completed: data.completed, spawned: data.spawned };
 }
 
 // ---------------------------------------------------------------------------

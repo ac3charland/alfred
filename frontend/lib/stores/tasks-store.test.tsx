@@ -229,10 +229,13 @@ describe('completeTask', () => {
   const child = item({ id: 'c-1', parent_id: 'item-1' });
 
   it('marks the task and its subtree completed, then reconciles', async () => {
-    mockCompleteTask.mockResolvedValue([
-      { ...parent, status: 'completed' },
-      { ...child, status: 'completed' },
-    ]);
+    mockCompleteTask.mockResolvedValue({
+      completed: [
+        { ...parent, status: 'completed' },
+        { ...child, status: 'completed' },
+      ],
+      spawned: null,
+    });
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
 
     await act(async () => {
@@ -244,7 +247,7 @@ describe('completeTask', () => {
   });
 
   it('marks the subtree completed optimistically before the request resolves', () => {
-    mockCompleteTask.mockReturnValue(new Promise<Item[]>(() => {}));
+    mockCompleteTask.mockReturnValue(new Promise<apiClient.CompleteTaskResult>(() => {}));
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
 
     act(() => {
@@ -276,6 +279,122 @@ describe('completeTask', () => {
     expect(mockCompleteTask).not.toHaveBeenCalled();
     // Store unchanged
     expect(result.current.tasks[0]?.status).toBe('active');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// completeTask — recurrence (spawn the next occurrence)
+// ---------------------------------------------------------------------------
+
+describe('completeTask with recurrence', () => {
+  // A daily recurring top-level task due 2026-06-01 (a real YYYY-MM-DD so the engine advances).
+  const recurring = item({
+    id: 'r-1',
+    due_date: '2026-06-01',
+    occurrence_index: 1,
+    recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
+  });
+
+  it('optimistically inserts the next occurrence before the request resolves', () => {
+    mockCompleteTask.mockReturnValue(new Promise<apiClient.CompleteTaskResult>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([recurring]) });
+
+    act(() => {
+      void result.current.actions.completeTask('r-1');
+    });
+
+    const active = result.current.tasks.filter((t) => t.status === 'active');
+    expect(active).toHaveLength(1);
+    expect(active[0]?.due_date).toBe('2026-06-02');
+    expect(active[0]?.occurrence_index).toBe(2);
+    // The completed original is kept (Completed view history).
+    expect(result.current.tasks.find((t) => t.id === 'r-1')?.status).toBe('completed');
+  });
+
+  it('replaces the optimistic occurrence with the authoritative server row', async () => {
+    const serverSpawn = item({
+      id: 'r-2',
+      due_date: '2026-06-02',
+      occurrence_index: 2,
+      recurrence_series_id: 'series-xyz',
+      recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
+    });
+    mockCompleteTask.mockResolvedValue({
+      completed: [{ ...recurring, status: 'completed' }],
+      spawned: serverSpawn,
+    });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([recurring]) });
+
+    await act(async () => {
+      await result.current.actions.completeTask('r-1');
+    });
+
+    // The temp optimistic row is gone; the server row (with its series id) is present.
+    const active = result.current.tasks.filter((t) => t.status === 'active');
+    expect(active).toHaveLength(1);
+    expect(active[0]?.id).toBe('r-2');
+    expect(active[0]?.recurrence_series_id).toBe('series-xyz');
+  });
+
+  it('drops the optimistic occurrence when the server reports no spawn (series ended)', async () => {
+    // The store predicts a spawn (end: never), but the server authoritatively returns none.
+    mockCompleteTask.mockResolvedValue({
+      completed: [{ ...recurring, status: 'completed' }],
+      spawned: null,
+    });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([recurring]) });
+
+    await act(async () => {
+      await result.current.actions.completeTask('r-1');
+    });
+
+    expect(result.current.tasks.filter((t) => t.status === 'active')).toHaveLength(0);
+    expect(result.current.tasks.find((t) => t.id === 'r-1')?.status).toBe('completed');
+  });
+
+  it('rolls back the completion AND the optimistic occurrence on failure', async () => {
+    mockCompleteTask.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([recurring]) });
+
+    await act(async () => {
+      await result.current.actions.completeTask('r-1').catch(() => {});
+    });
+
+    expect(result.current.tasks).toHaveLength(1);
+    expect(result.current.tasks[0]?.id).toBe('r-1');
+    expect(result.current.tasks[0]?.status).toBe('active');
+  });
+
+  it('does not spawn for a non-recurring task', () => {
+    mockCompleteTask.mockReturnValue(new Promise<apiClient.CompleteTaskResult>(() => {}));
+    const plain = item({ id: 'p-1', due_date: '2026-06-01' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([plain]) });
+
+    act(() => {
+      void result.current.actions.completeTask('p-1');
+    });
+
+    // Only the (now-completed) original — no new active row.
+    expect(result.current.tasks).toHaveLength(1);
+    expect(result.current.tasks[0]?.status).toBe('completed');
+  });
+
+  it('does not spawn when the local end condition is already reached', () => {
+    mockCompleteTask.mockReturnValue(new Promise<apiClient.CompleteTaskResult>(() => {}));
+    const ended = item({
+      id: 'e-1',
+      due_date: '2026-06-01',
+      occurrence_index: 1,
+      recurrence: { freq: 'daily', interval: 1, end: { type: 'after', count: 1 } },
+    });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([ended]) });
+
+    act(() => {
+      void result.current.actions.completeTask('e-1');
+    });
+
+    expect(result.current.tasks).toHaveLength(1);
+    expect(result.current.tasks[0]?.status).toBe('completed');
   });
 });
 
@@ -1091,7 +1210,10 @@ describe('useDueCountsByFolder', () => {
       item({ id: 'a', folder_id: 'f1', due_date: dueYMD(-1) }),
       item({ id: 'b', folder_id: 'f1', due_date: dueYMD(0) }),
     ];
-    mockCompleteTask.mockResolvedValue([{ ...item({ id: 'a' }), status: 'completed' }]);
+    mockCompleteTask.mockResolvedValue({
+      completed: [{ ...item({ id: 'a' }), status: 'completed' }],
+      spawned: null,
+    });
     const { result } = renderHook(
       () => ({ counts: useDueCountsByFolder(), actions: useTaskActions() }),
       { wrapper: makeWrapper(items) },

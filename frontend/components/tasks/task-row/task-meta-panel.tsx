@@ -6,7 +6,9 @@ import { FieldLabel } from '@/components/atoms/field-label';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
+import { RepeatField } from '@/components/tasks/recurrence/repeat-field';
 import { formatDueDate } from '@/lib/date-utils';
+import type { RecurrenceRule } from '@/lib/recurrence';
 import type { ItemNode } from '@/lib/tree';
 
 import { dateInputClass } from './task-meta-panel.styles';
@@ -17,6 +19,14 @@ interface TaskMetaPanelProperties {
   isTask: boolean;
   /** Left margin (rem) so the panel clears the checkbox column, scaled by row depth. */
   metaLeft: string;
+
+  // Repeat (recurrence) — top-level tasks only
+  /** Whether to show the Repeat control (a top-level `task` row). */
+  showRepeat: boolean;
+  /** The current recurrence rule, or null when the task doesn't recur. */
+  recurrence: RecurrenceRule | null;
+  /** Persist a recurrence rule (or null to clear); `anchorDate` becomes the due date if unset. */
+  onChangeRecurrence: (rule: RecurrenceRule | null, anchorDate: string) => void;
 
   // Due date
   isEditingDueDate: boolean;
@@ -48,6 +58,9 @@ export function TaskMetaPanel({
   node,
   isTask,
   metaLeft,
+  showRepeat,
+  recurrence,
+  onChangeRecurrence,
   isEditingDueDate,
   draftDueDate,
   onDraftDueDateChange,
@@ -114,6 +127,16 @@ export function TaskMetaPanel({
             </InlineEditTrigger>
           )}
         </div>
+      )}
+
+      {/* Repeat (recurrence) — top-level `task` rows only. */}
+      {showRepeat && (
+        <RepeatField
+          fieldId={`repeat-${node.id}`}
+          rule={recurrence}
+          dueDate={node.due_date}
+          onChange={onChangeRecurrence}
+        />
       )}
 
       {/* Notes field */}
