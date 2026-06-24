@@ -140,6 +140,17 @@ describe('updateItemSchema', () => {
       updateItemSchema.safeParse({ recurrence: { freq: 'fortnightly', interval: 1 } }).success,
     ).toBe(false);
   });
+
+  it('accepts each valid priority level and null to clear it', () => {
+    expect(updateItemSchema.safeParse({ priority: 'high' }).success).toBe(true);
+    expect(updateItemSchema.safeParse({ priority: 'medium' }).success).toBe(true);
+    expect(updateItemSchema.safeParse({ priority: 'low' }).success).toBe(true);
+    expect(updateItemSchema.safeParse({ priority: null }).success).toBe(true);
+  });
+
+  it('rejects an unknown priority level', () => {
+    expect(updateItemSchema.safeParse({ priority: 'urgent' }).success).toBe(false);
+  });
 });
 
 describe('recurrenceSchema', () => {

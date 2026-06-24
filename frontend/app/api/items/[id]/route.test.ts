@@ -247,6 +247,74 @@ describe('PATCH /api/items/[id]', () => {
     expect(Object.keys(payload)).not.toContain('source_url');
   });
 
+  it('includes priority in update payload when provided', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ priority: 'high' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ priority: 'high' });
+  });
+
+  it('includes priority: null in payload to clear it', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ priority: null }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    expect(chain.update).toHaveBeenCalledWith({ priority: null });
+  });
+
+  it('does NOT include priority in payload when absent', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: 'Only title' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    const chain = mockSupabase._chain;
+    const payload = firstCallArg(chain.update);
+    expect(Object.keys(payload)).not.toContain('priority');
+  });
+
+  it('returns 400 for an invalid priority value', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request(`http://localhost/api/items/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ priority: 'urgent' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
+
   it('includes due_date in update payload when provided', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
