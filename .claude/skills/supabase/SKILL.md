@@ -327,4 +327,15 @@ This is **separate from RLS** — GRANTs decide whether a role may touch the tab
 decides which rows it sees once it can. Always pair public grants with RLS enabled. See
 [Exposing a Table to the Data API](https://supabase.com/docs/guides/api/securing-your-api.md).
 
+**Guardrails for this class (the JS mock can't catch it).** Two checks gate the grant / RLS /
+constraint bugs that only manifest in real Postgres: `migration-lint` (`check:fast`) statically
+fails the build if a `create sequence` lacks a USAGE grant to the API roles (the `0005`→`0008`
+500); and the **`database` integration suite** (`check:slow` — `npm run check:slow -w database`,
+`src/run.ts`) spins up a throwaway Postgres, seeds the Supabase-provided objects (the three API
+roles + the `supabase_realtime` publication 0003 needs), applies **every** migration in order,
+and asserts each RPC as the real `authenticated` / `anon` roles via `SET ROLE` — so a missing
+grant, an RLS gap, or a non-deferrable-unique 409 (the `0007` swap bug) is a red gate, not a
+shipped 500. Add a regression there for any new DB-semantics bug. See the `migration-lint` and
+`backpressure` skills.
+
 > See `references/` for detailed SQL patterns: `references/rls-policies.md` for policy templates, `references/recursive-subtasks.md` for the WITH RECURSIVE CTE.
