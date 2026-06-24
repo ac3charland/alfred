@@ -11,6 +11,15 @@ const mockCreateFolder = jest.mocked(apiClient.createFolder);
 const mockUpdateFolder = jest.mocked(apiClient.updateFolder);
 const mockDeleteFolder = jest.mocked(apiClient.deleteFolder);
 
+// Capture showToast so the error-toast tests can assert the message a failed write surfaces
+// (ALF-33). Mocking useToastActions short-circuits the context, so the provider needs no
+// ToastProvider wrapper — consistent with code-store.test.tsx.
+const mockShowToast = jest.fn();
+jest.mock('@/lib/stores/toast-store', () => ({
+  ...jest.requireActual<typeof import('@/lib/stores/toast-store')>('@/lib/stores/toast-store'),
+  useToastActions: () => ({ showToast: mockShowToast, dismissToast: jest.fn() }),
+}));
+
 const WORK: Folder = { id: 'f-1', name: 'Work', created_at: '2025-01-01T00:00:00Z' };
 const HOME: Folder = { id: 'f-2', name: 'Home', created_at: '2025-01-02T00:00:00Z' };
 const PLAY: Folder = { id: 'f-3', name: 'Play', created_at: '2025-01-03T00:00:00Z' };
@@ -323,6 +332,55 @@ describe('removeFolder', () => {
 
     expect(result.current.folders).toHaveLength(1);
     expect(result.current.folders[0]?.id).toBe('f-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error toasts (ALF-33)
+// ---------------------------------------------------------------------------
+
+describe('error toasts', () => {
+  it('addFolder toasts "Couldn\'t create folder" and re-throws on failure', async () => {
+    const networkError = new Error('network');
+    mockCreateFolder.mockRejectedValue(networkError);
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([]) });
+    let caught: unknown;
+
+    await act(async () => {
+      try {
+        await result.current.actions.addFolder('Projects');
+      } catch (error) {
+        caught = error;
+      }
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't create folder");
+    expect(result.current.folders).toStrictEqual([]);
+    expect(caught).toBe(networkError);
+  });
+
+  it('renameFolder toasts "Couldn\'t rename folder" on failure', async () => {
+    mockUpdateFolder.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK]) });
+
+    await act(async () => {
+      await result.current.actions.renameFolder('f-1', 'Job').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't rename folder");
+    expect(result.current.folders[0]?.name).toBe('Work');
+  });
+
+  it('removeFolder toasts "Couldn\'t delete folder" on failure', async () => {
+    mockDeleteFolder.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK, HOME]) });
+
+    await act(async () => {
+      await result.current.actions.removeFolder('f-1').catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't delete folder");
+    expect(result.current.folders.map((f) => f.id)).toStrictEqual(['f-1', 'f-2']);
   });
 });
 
