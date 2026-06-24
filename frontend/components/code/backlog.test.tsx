@@ -8,9 +8,10 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import { Backlog } from './backlog';
 
-// The chevron reorder goes through the store's reorderStory → api-client; mock the seam.
+// The chevron reorder/move goes through the store → api-client; mock the seam.
 jest.mock('@/lib/api-client');
 const mockReorderCode = jest.mocked(api.reorderCode);
+const mockMoveCode = jest.mocked(api.moveCode);
 
 // The realtime channel the CodeProvider subscribes — stub it so the provider mounts.
 jest.mock('@/lib/supabase/client', () => ({
@@ -110,6 +111,7 @@ function renderBacklog(stories: CodeStory[]) {
 describe('Backlog', () => {
   beforeEach(() => {
     mockReorderCode.mockReset();
+    mockMoveCode.mockReset();
   });
 
   it('renders the header hero and a Show completed toggle', () => {
@@ -165,6 +167,49 @@ describe('Backlog', () => {
     expect(mockReorderCode).toHaveBeenCalledWith('ALF-b', 'ALF-a');
     await waitFor(() => {
       expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
+    });
+  });
+
+  it('disables to-top on the first row and to-bottom on the last', () => {
+    renderBacklog([makeStory('a', { priority: 1 }), makeStory('b', { priority: 2 })]);
+    expect(screen.getByRole('button', { name: 'Move ALF-a to top' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-b to bottom' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-a to bottom' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-b to top' })).toBeEnabled();
+  });
+
+  it('jumps to the top via the double chevron: last row moves above the rest and re-sorts', async () => {
+    const user = userEvent.setup();
+    mockMoveCode.mockResolvedValue([makeSidecar('c', -1)]);
+    renderBacklog([
+      makeStory('a', { priority: 10 }),
+      makeStory('b', { priority: 20 }),
+      makeStory('c', { priority: 30 }),
+    ]);
+    expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-c to top' }));
+
+    expect(mockMoveCode).toHaveBeenCalledWith('ALF-c', true);
+    await waitFor(() => {
+      expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
+    });
+  });
+
+  it('jumps to the bottom via the double chevron: first row moves below the rest and re-sorts', async () => {
+    const user = userEvent.setup();
+    mockMoveCode.mockResolvedValue([makeSidecar('a', 31)]);
+    renderBacklog([
+      makeStory('a', { priority: 10 }),
+      makeStory('b', { priority: 20 }),
+      makeStory('c', { priority: 30 }),
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-a to bottom' }));
+
+    expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
+    await waitFor(() => {
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
     });
   });
 

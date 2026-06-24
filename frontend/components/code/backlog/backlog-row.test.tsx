@@ -41,6 +41,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 
 function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {}) {
   const onReorder = jest.fn();
+  const onMove = jest.fn();
   render(
     <ul>
       <BacklogRow
@@ -48,11 +49,12 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
         prevRef="ALF-0"
         nextRef="ALF-2"
         onReorder={onReorder}
+        onMove={onMove}
         {...props}
       />
     </ul>,
   );
-  return { onReorder };
+  return { onReorder, onMove };
 }
 
 describe('BacklogRow', () => {
@@ -75,10 +77,12 @@ describe('BacklogRow', () => {
     );
   });
 
-  it('disables Up at the top and Down at the bottom', () => {
+  it('disables Up and to-top at the top, Down and to-bottom at the bottom', () => {
     renderRow({ prevRef: null });
     expect(screen.getByRole('button', { name: 'Move ALF-1 up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Move ALF-1 down' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom' })).toBeEnabled();
   });
 
   it('swaps with the previous neighbour on Up and the next on Down', async () => {
@@ -90,5 +94,16 @@ describe('BacklogRow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
     expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-2');
+  });
+
+  it('jumps to the top on the double-up chevron and the bottom on the double-down', async () => {
+    const user = userEvent.setup();
+    const { onMove } = renderRow();
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
+    expect(onMove).toHaveBeenCalledWith('ALF-1', true);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
+    expect(onMove).toHaveBeenCalledWith('ALF-1', false);
   });
 });
