@@ -3,6 +3,7 @@ import type { Database } from '@/lib/database.types';
 
 export type ItemType = Database['public']['Enums']['item_type'];
 export type ItemStatus = Database['public']['Enums']['item_status'];
+export type ItemPriority = Database['public']['Enums']['task_priority'];
 
 export type Item = Database['public']['Tables']['items']['Row'];
 export type ItemInsert = Database['public']['Tables']['items']['Insert'];

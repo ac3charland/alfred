@@ -19,6 +19,7 @@ const BASE_NODE: ItemNode = {
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
+  priority: null,
   recurrence_series_id: null,
   children: [],
 };
