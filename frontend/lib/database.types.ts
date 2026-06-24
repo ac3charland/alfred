@@ -188,8 +188,11 @@ export type Database = {
           id: string
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string | null
+          occurrence_index: number | null
           parent_id: string | null
           raw_capture: string | null
+          recurrence: Json | null
+          recurrence_series_id: string | null
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"]
           title: string
@@ -202,8 +205,11 @@ export type Database = {
           id?: string
           item_type?: Database["public"]["Enums"]["item_type"]
           notes?: string | null
+          occurrence_index?: number | null
           parent_id?: string | null
           raw_capture?: string | null
+          recurrence?: Json | null
+          recurrence_series_id?: string | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"]
           title: string
@@ -216,8 +222,11 @@ export type Database = {
           id?: string
           item_type?: Database["public"]["Enums"]["item_type"]
           notes?: string | null
+          occurrence_index?: number | null
           parent_id?: string | null
           raw_capture?: string | null
+          recurrence?: Json | null
+          recurrence_series_id?: string | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"]
           title?: string
@@ -413,6 +422,10 @@ export type Database = {
       }
     }
     Functions: {
+      complete_and_spawn: {
+        Args: { next_due: string; next_index: number; root_id: string }
+        Returns: Json
+      }
       complete_subtree: {
         Args: { root_id: string }
         Returns: {
@@ -423,8 +436,11 @@ export type Database = {
           id: string
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string | null
+          occurrence_index: number | null
           parent_id: string | null
           raw_capture: string | null
+          recurrence: Json | null
+          recurrence_series_id: string | null
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"]
           title: string
@@ -525,8 +541,11 @@ export type Database = {
           id: string
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string
+          occurrence_index: number
           parent_id: string
           raw_capture: string
+          recurrence: Json
+          recurrence_series_id: string
           source_url: string
           status: Database["public"]["Enums"]["item_status"]
           title: string

@@ -35,6 +35,9 @@ const makeItem = (id: string, status: Item['status']): Item => ({
   completed_at: status === 'completed' ? '2025-01-02T00:00:00Z' : null,
   folder_id: null,
   parent_id: null,
+  occurrence_index: null,
+  recurrence: null,
+  recurrence_series_id: null,
 });
 
 describe('CompletedView', () => {
