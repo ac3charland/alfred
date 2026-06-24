@@ -16,16 +16,17 @@ import { useBacklog, useCodeActions } from '@/lib/stores/code-store';
  * - **Header (the repurposed hero):** the old `CodeLanding` treatment — the `GitBranch` badge and
  *   the `font-serif` "The Software Factory" title — re-copied to describe the Backlog, with a
  *   **Show completed** toggle that reveals `done`/`abandoned` stories (hidden by default).
- * - **List:** one `BacklogRow` per story, ranked by global `priority`. The chevrons swap a story
- *   with its visible neighbour (`reorderStory`); the reorder is animated via `useFlipList` (FLIP),
- *   honouring `prefers-reduced-motion`.
+ * - **List:** one `BacklogRow` per story, ranked by global `priority`. The single chevrons swap a
+ *   story with its visible neighbour (`reorderStory`); the double chevrons jump it to the top or
+ *   bottom of the Backlog (`moveStory`). Both are animated via `useFlipList` (FLIP), honouring
+ *   `prefers-reduced-motion`.
  *
  * Must be mounted under a `CodeProvider` (reads `useBacklog` / `useCodeActions`).
  */
 export function Backlog() {
   const [showCompleted, setShowCompleted] = React.useState(false);
   const stories = useBacklog({ showCompleted });
-  const { reorderStory } = useCodeActions();
+  const { reorderStory, moveStory } = useCodeActions();
   // Animate the reorder: FLIP keyed by item_id over the currently rendered order.
   const registerRow = useFlipList(stories.map((story) => story.item_id ?? ''));
 
@@ -40,6 +41,19 @@ export function Backlog() {
       })();
     },
     [reorderStory],
+  );
+
+  const handleMove = React.useCallback(
+    (ref: string, toTop: boolean) => {
+      void (async () => {
+        try {
+          await moveStory(ref, toTop);
+        } catch {
+          // The store rolled the move back; nothing extra to undo here.
+        }
+      })();
+    },
+    [moveStory],
   );
 
   return (
@@ -76,6 +90,7 @@ export function Backlog() {
               prevRef={index === 0 ? null : (stories[index - 1]?.ref ?? null)}
               nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
               onReorder={handleReorder}
+              onMove={handleMove}
             />
           ))}
         </ul>

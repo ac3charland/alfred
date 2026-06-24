@@ -316,6 +316,19 @@ export const reorderCodeSchema = z
 
 export type ReorderCodeInput = z.infer<typeof reorderCodeSchema>;
 
+/**
+ * Body for POST /api/code/move — the Backlog double-chevron "jump to top / bottom". `ref` is the
+ * story ref (KEY-N, keyed like the swap, NOT a UUID); `to_top` picks the end — `true` re-ranks it
+ * above every other story, `false` below them all — which the `move_code_priority` RPC does in one
+ * atomic UPDATE. Unlike the swap there is no second ref, so no self-reference `.refine` is needed.
+ */
+export const moveCodeSchema = z.object({
+  ref: z.string().min(1),
+  to_top: z.boolean(),
+});
+
+export type MoveCodeInput = z.infer<typeof moveCodeSchema>;
+
 // ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------

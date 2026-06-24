@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsDown, ChevronsUp } from 'lucide-react';
 import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
@@ -18,20 +18,23 @@ export interface BacklogRowProperties {
   nextRef: string | null;
   /** Swap this story's priority with the given neighbour ref (the store's `reorderStory`). */
   onReorder: (ref: string, neighbourRef: string) => void;
+  /** Jump this story to the top (`toTop`) or bottom of the Backlog (the store's `moveStory`). */
+  onMove: (ref: string, toTop: boolean) => void;
 }
 
 /**
  * One Backlog row, single column: a link body to the story's detail modal in its project board
  * (`/code/<projectId>?story=<ref>` — see board.tsx's deep-link seam) showing the ref, title,
  * a project badge, an epic badge, and a **status badge for every factory state** (the shared
- * `StateChip`, not `story-card`'s blocked/abandoned-only chip); plus two chevron `IconButton`s
- * for the neighbour-swap reorder, kept OUTSIDE the link so there are no nested interactive
- * elements (mirroring how `story-card` separates its clickable body from its launch buttons).
+ * `StateChip`, not `story-card`'s blocked/abandoned-only chip); plus a chevron cluster — single
+ * chevrons for the neighbour-swap reorder and double chevrons to jump straight to the top/bottom
+ * of the Backlog — kept OUTSIDE the link so there are no nested interactive elements (mirroring
+ * how `story-card` separates its clickable body from its launch buttons).
  *
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
-  { story, prevRef, nextRef, onReorder },
+  { story, prevRef, nextRef, onReorder, onMove },
   ref,
 ) {
   const storyRef = story.ref;
@@ -57,27 +60,51 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
         <StateChip state={story.factory_state} />
       </ViewLink>
 
-      <div className="flex shrink-0 flex-col pr-1.5">
-        <IconButton
-          size="sm"
-          aria-label={`Move ${storyRef ?? ''} up`}
-          disabled={prevRef === null}
-          onClick={() => {
-            if (prevRef !== null && storyRef !== null) onReorder(storyRef, prevRef);
-          }}
-        >
-          <ChevronUp size={14} />
-        </IconButton>
-        <IconButton
-          size="sm"
-          aria-label={`Move ${storyRef ?? ''} down`}
-          disabled={nextRef === null}
-          onClick={() => {
-            if (nextRef !== null && storyRef !== null) onReorder(storyRef, nextRef);
-          }}
-        >
-          <ChevronDown size={14} />
-        </IconButton>
+      <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
+        <div className="flex flex-col">
+          <IconButton
+            size="sm"
+            aria-label={`Move ${storyRef ?? ''} up`}
+            disabled={prevRef === null}
+            onClick={() => {
+              if (prevRef !== null && storyRef !== null) onReorder(storyRef, prevRef);
+            }}
+          >
+            <ChevronUp size={14} />
+          </IconButton>
+          <IconButton
+            size="sm"
+            aria-label={`Move ${storyRef ?? ''} down`}
+            disabled={nextRef === null}
+            onClick={() => {
+              if (nextRef !== null && storyRef !== null) onReorder(storyRef, nextRef);
+            }}
+          >
+            <ChevronDown size={14} />
+          </IconButton>
+        </div>
+        <div className="flex flex-col">
+          <IconButton
+            size="sm"
+            aria-label={`Move ${storyRef ?? ''} to top`}
+            disabled={prevRef === null}
+            onClick={() => {
+              if (prevRef !== null && storyRef !== null) onMove(storyRef, true);
+            }}
+          >
+            <ChevronsUp size={14} />
+          </IconButton>
+          <IconButton
+            size="sm"
+            aria-label={`Move ${storyRef ?? ''} to bottom`}
+            disabled={nextRef === null}
+            onClick={() => {
+              if (nextRef !== null && storyRef !== null) onMove(storyRef, false);
+            }}
+          >
+            <ChevronsDown size={14} />
+          </IconButton>
+        </div>
       </div>
     </li>
   );

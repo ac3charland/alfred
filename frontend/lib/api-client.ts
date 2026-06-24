@@ -284,6 +284,20 @@ export async function reorderCode(a: string, b: string): Promise<CodeItem[]> {
   return rows;
 }
 
+/**
+ * Jump the Backlog: re-rank one story to the top (`toTop`) or bottom of the global `priority`
+ * order (the double-chevron move). POSTs the ref + direction to the atomic `move_code_priority`
+ * RPC behind `/api/code/move` — a single-row UPDATE to just beyond the current extreme — and
+ * returns the updated `code_items` row, which the store reconciles via `codeItemToStoryPatch`.
+ */
+export async function moveCode(ref: string, toTop: boolean): Promise<CodeItem[]> {
+  const { rows } = await apiRequest<{ rows: CodeItem[] }>('/api/code/move', {
+    method: 'POST',
+    body: JSON.stringify({ ref, to_top: toTop }),
+  });
+  return rows;
+}
+
 export {
   type CreateItemInput,
   type CreateProjectInput,

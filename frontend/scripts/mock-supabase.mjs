@@ -510,6 +510,23 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // Jump a story to the top/bottom of the global Backlog (migration 0009 — the double-chevron
+  // move). Re-rank it one step beyond the current extreme (min-1 / max+1 over the OTHER rows), a
+  // single-row write outside the live range, so the unique index never sees a transient duplicate.
+  if (fn === 'move_code_priority' && req.method === 'POST') {
+    const target = codeItems.find((row) => row.ref === body?.p_ref);
+    if (target === undefined) {
+      sendJson(res, 400, { message: `move_code_priority: unknown ref (${body?.p_ref})` });
+      return;
+    }
+    const others = codeItems.filter((row) => row !== target).map((row) => row.priority);
+    target.priority = body?.p_to_top
+      ? (others.length === 0 ? 0 : Math.min(...others)) - 1
+      : (others.length === 0 ? 0 : Math.max(...others)) + 1;
+    sendJson(res, 200, [target]);
+    return;
+  }
+
   sendJson(res, 404, { message: `No rpc: ${fn}` });
 }
 

@@ -90,6 +90,26 @@ test('reorders a story up with the chevron and persists the new order', async ({
   await expect(rows.nth(1)).toContainText('ALF-4');
 });
 
+test('jumps a story to the top and the bottom with the double chevrons', async ({ page, seed }) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await page.goto('/code/backlog');
+
+  const rows = page.getByRole('listitem');
+  await expect(rows.nth(0)).toContainText('ALF-3');
+  await expect(rows.nth(2)).toContainText('ALF-5');
+
+  // Bump the LAST row to the top: move_code_priority re-ranks it below every live priority in one
+  // shot (min-1), unlike the adjacent swap. It should leap over BOTH rows above it, not just one.
+  await page.getByRole('button', { name: 'Move ALF-5 to top' }).click();
+  await expect(rows.nth(0)).toContainText('ALF-5');
+
+  // It persists across a reload (re-seeded read), then send it back to the bottom (max+1).
+  await page.reload();
+  await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-5');
+  await page.getByRole('button', { name: 'Move ALF-5 to bottom' }).click();
+  await expect(rows.nth(2)).toContainText('ALF-5');
+});
+
 test('opens a story modal on its project board from a Backlog row', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.goto('/code');
