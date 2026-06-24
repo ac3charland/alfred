@@ -249,6 +249,12 @@ action closures can fire it without it becoming a memo dep.
 - **Never mirror store data in ad-hoc `useState`.** Local state is only for transient UI
   with no cross-row reach (an input draft, the meta panel) — a flag a header command must
   touch (row expansion) belongs in a coordination store, not per-row state.
+- **Never key a stable per-entity attribute off a display-ordered list.** A value meant to
+  stick to an entity (a project's colour from its palette slot — ALF-50) must be derived from
+  a **stable** order (creation order, `useProjects()`), not a view selector whose order is
+  dynamic (`useRankedProjects()` re-sorts by live priority). Keying colour off the ranked list
+  would reshuffle every project's colour as work re-ranks. Take the display order from the
+  selector and the identity-derived attribute from the stable list — they're different reads.
 
 ## File Map
 
