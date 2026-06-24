@@ -10,6 +10,7 @@ import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
+import { RecurrenceChip } from '@/components/atoms/recurrence-chip';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
@@ -22,6 +23,8 @@ import { useAnimatedCompletion } from '@/lib/hooks/use-animated-completion';
 import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
+import { parseRecurrenceRule } from '@/lib/recurrence';
+import type { RecurrenceRule } from '@/lib/recurrence';
 import {
   sameEditor,
   useActiveEditor,
@@ -120,6 +123,14 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
     isCompleted,
     draggedSubtreeIds,
   );
+
+  // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
+  // Repeat control. A subtask or non-task row never recurs (the control is hidden there).
+  const recurrenceRule = React.useMemo<RecurrenceRule | null>(
+    () => parseRecurrenceRule(node.recurrence),
+    [node.recurrence],
+  );
+  const isTopLevelTask = isTask && node.parent_id === null;
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -268,10 +279,26 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
     const currentValue = node.due_date ?? '';
     if (newValue === currentValue) return;
     try {
-      // Empty string clears the due date (PATCH { due_date: null }).
-      await updateTask(node.id, { due_date: newValue === '' ? null : newValue });
+      // Empty string clears the due date (PATCH { due_date: null }). Clearing the anchor also
+      // clears any recurrence rule — a rule has nowhere to anchor without a due date.
+      await (newValue === '' && node.recurrence !== null
+        ? updateTask(node.id, { due_date: null, recurrence: null })
+        : updateTask(node.id, { due_date: newValue === '' ? null : newValue }));
     } catch {
       setDraftDueDate(node.due_date ?? '');
+    }
+  };
+
+  const handleSaveRecurrence = async (rule: RecurrenceRule | null, anchorDate: string) => {
+    try {
+      // Setting a rule requires an anchor due date: when the task has none, stamp the anchor
+      // (default today) in the same patch.
+      await updateTask(node.id, {
+        recurrence: rule,
+        ...(rule !== null && node.due_date === null && { due_date: anchorDate }),
+      });
+    } catch {
+      // The store already rolled the row back.
     }
   };
 
@@ -322,6 +349,11 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
 
   const handleOpenNotesEditor = () => {
     setIsEditingNotes(true);
+    setIsMetaOpen(true);
+  };
+
+  // The repeat chip / control lives in the meta panel; opening the panel reveals it.
+  const handleOpenRepeatEditor = () => {
     setIsMetaOpen(true);
   };
 
@@ -474,6 +506,11 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               <DueDateChip dueDate={node.due_date} onClick={handleOpenDueDateEditor} />
             )}
 
+            {/* Recurrence chip — top-level recurring tasks only; opens the Repeat control. */}
+            {isTopLevelTask && recurrenceRule !== null && (
+              <RecurrenceChip rule={recurrenceRule} onClick={handleOpenRepeatEditor} />
+            )}
+
             {/* Active children count badge */}
             {activeChildren.length > 0 && !isExpanded && (
               <Badge variant="secondary">{activeChildren.length}</Badge>
@@ -554,6 +591,11 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
               node={node}
               isTask={isTask}
               metaLeft={metaIndentLeft}
+              showRepeat={isTopLevelTask}
+              recurrence={recurrenceRule}
+              onChangeRecurrence={(rule, anchorDate) => {
+                void handleSaveRecurrence(rule, anchorDate);
+              }}
               isEditingDueDate={isEditingDueDate}
               draftDueDate={draftDueDate}
               onDraftDueDateChange={setDraftDueDate}
