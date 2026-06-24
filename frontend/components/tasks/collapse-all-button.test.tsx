@@ -22,6 +22,9 @@ const BASE_ITEM: Item = {
   completed_at: null,
   folder_id: null,
   parent_id: null,
+  occurrence_index: null,
+  recurrence: null,
+  recurrence_series_id: null,
 };
 
 const CHILD_ITEM: Item = {

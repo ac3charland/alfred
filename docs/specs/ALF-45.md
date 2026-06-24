@@ -9,13 +9,12 @@
 > (migrations, RLS, RPCs, type regen), and the `jest` skill (the recurrence engine is
 > heavily unit-tested per the ticket).
 
-> **Phase 0 (migration) status:** ⏳ **NOT YET RUN.** The schema migration + type
-> regeneration below must be applied in a **supervised** session *before* any feature
-> code is merged. When that session completes, it updates this line to **✅ DONE
-> (migration `00NN_recurring_tasks.sql`, types regenerated)** and checks off the Phase 0
-> acceptance criteria — that is the signal the rest of the work may proceed. See
-> [Phase 0](#phase-0--schema--types-supervised) and the ticket's instruction to record
-> migration completion back into this spec.
+> **Phase 0 (migration) status:** ✅ **DONE (migration `0006_recurring_tasks.sql`,
+> types regenerated).** The schema migration adds the recurrence columns, the
+> `recurrence_series_id` index, and the `complete_and_spawn` RPC, and
+> `frontend/lib/database.types.ts` carries the new columns/RPC. Phase 0 acceptance
+> criteria are checked off below. The rest of the work may proceed. See
+> [Phase 0](#phase-0--schema--types-supervised).
 
 ---
 
@@ -239,16 +238,16 @@ operable; the day-of-week toggles and steppers are labeled for a11y (the `tailwi
 ## Acceptance criteria
 
 ### Phase 0 — schema & types (supervised)
-- [ ] Migration adds `items.recurrence jsonb`, `items.recurrence_series_id uuid`,
+- [x] Migration adds `items.recurrence jsonb`, `items.recurrence_series_id uuid`,
       `items.occurrence_index int` (nullable/defaulted appropriately), an index on
       `recurrence_series_id`, and RLS/grants matching the existing `items` pattern.
-- [ ] `complete_and_spawn` RPC exists, completes the subtree and inserts the next
+- [x] `complete_and_spawn` RPC exists, completes the subtree and inserts the next
       occurrence (with a reset deep copy of the active subtree) **atomically**, and is
       granted to the right roles.
-- [ ] `frontend/lib/database.types.ts` regenerated from the live schema (raw `supabase gen
+- [x] `frontend/lib/database.types.ts` regenerated from the live schema (raw `supabase gen
       types` output, not hand-edited) and the new columns/RPC are present.
-- [ ] `npm run check` is green on the regenerated types.
-- [ ] **This spec's Phase 0 status line is updated to ✅ DONE** with the migration filename.
+- [x] `npm run check` is green on the regenerated types.
+- [x] **This spec's Phase 0 status line is updated to ✅ DONE** with the migration filename.
 
 ### Recurrence engine (pure, unit-tested)
 - [ ] `nextOccurrence` is correct for every frequency and interval, with explicit tests for:

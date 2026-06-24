@@ -195,6 +195,9 @@ export function makeOptimisticItem(input: CreateItemInput): Item {
     status: 'active',
     completed_at: null,
     created_at: new Date().toISOString(),
+    occurrence_index: null,
+    recurrence: null,
+    recurrence_series_id: null,
   };
 }
 
