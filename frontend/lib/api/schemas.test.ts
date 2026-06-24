@@ -3,6 +3,7 @@ import {
   createItemSchema,
   createProjectSchema,
   listItemsQuerySchema,
+  recurrenceSchema,
   updateCodeSchema,
   updateEpicSchema,
   updateFolderSchema,
@@ -122,6 +123,131 @@ describe('updateItemSchema', () => {
 
   it('rejects a non-date due_date string', () => {
     expect(updateItemSchema.safeParse({ due_date: 'not-a-date' }).success).toBe(false);
+  });
+
+  it('accepts a valid recurrence rule and accepts null to clear it', () => {
+    expect(
+      updateItemSchema.safeParse({
+        recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
+      }).success,
+    ).toBe(true);
+    expect(updateItemSchema.safeParse({ recurrence: null }).success).toBe(true);
+  });
+
+  it('rejects an invalid recurrence rule', () => {
+    expect(
+      updateItemSchema.safeParse({ recurrence: { freq: 'fortnightly', interval: 1 } }).success,
+    ).toBe(false);
+  });
+});
+
+describe('recurrenceSchema', () => {
+  it('accepts each frequency with a valid end', () => {
+    expect(
+      recurrenceSchema.safeParse({ freq: 'daily', interval: 1, end: { type: 'never' } }).success,
+    ).toBe(true);
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'weekly',
+        interval: 2,
+        byweekday: [1, 3, 5],
+        end: { type: 'never' },
+      }).success,
+    ).toBe(true);
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'monthly',
+        interval: 1,
+        monthly: { kind: 'positional', setpos: -1, weekday: 5 },
+        end: { type: 'never' },
+      }).success,
+    ).toBe(true);
+    expect(
+      recurrenceSchema.safeParse({ freq: 'yearly', interval: 1, end: { type: 'never' } }).success,
+    ).toBe(true);
+  });
+
+  it('accepts the on_date and after end conditions', () => {
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'daily',
+        interval: 1,
+        end: { type: 'on_date', until: '2026-08-01' },
+      }).success,
+    ).toBe(true);
+    expect(
+      recurrenceSchema.safeParse({ freq: 'daily', interval: 1, end: { type: 'after', count: 5 } })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects an interval below 1', () => {
+    expect(
+      recurrenceSchema.safeParse({ freq: 'daily', interval: 0, end: { type: 'never' } }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an after count below 1', () => {
+    expect(
+      recurrenceSchema.safeParse({ freq: 'daily', interval: 1, end: { type: 'after', count: 0 } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects an empty byweekday array', () => {
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'weekly',
+        interval: 1,
+        byweekday: [],
+        end: { type: 'never' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects byweekday on a non-weekly rule', () => {
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'daily',
+        interval: 1,
+        byweekday: [1],
+        end: { type: 'never' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a weekly rule with no byweekday', () => {
+    expect(
+      recurrenceSchema.safeParse({ freq: 'weekly', interval: 1, end: { type: 'never' } }).success,
+    ).toBe(false);
+  });
+
+  it('rejects monthly metadata on a non-monthly rule', () => {
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'daily',
+        interval: 1,
+        monthly: { kind: 'day_of_month' },
+        end: { type: 'never' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a monthly rule with no mode', () => {
+    expect(
+      recurrenceSchema.safeParse({ freq: 'monthly', interval: 1, end: { type: 'never' } }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an out-of-range weekday', () => {
+    expect(
+      recurrenceSchema.safeParse({
+        freq: 'weekly',
+        interval: 1,
+        byweekday: [7],
+        end: { type: 'never' },
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -4,12 +4,40 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { isDueTodayOrOverdue } from '@/lib/date-utils';
+import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import type { ItemNode } from '@/lib/tree';
-import { buildTree, collectSubtree, makeOptimisticItem } from '@/lib/tree';
+import { buildTree, collectSubtree, makeOptimisticItem, tempId } from '@/lib/tree';
 import type { Item } from '@/lib/types';
+
+/**
+ * The optimistic next occurrence of a recurring task, or `null` when none should spawn
+ * (the task isn't a recurring top-level task, has no due date, or its series has ended).
+ * Mirrors the server's complete-and-spawn decision using the SAME engine, so the row shown
+ * instantly matches the authoritative one the server returns. The spawned row is a copy of the
+ * task with a temp id, the computed due date, and `occurrence_index + 1`; the server's
+ * reconcile replaces it (and adds the reset subtree on the next full load).
+ */
+function computeOptimisticSpawn(root: Item): Item | null {
+  if (root.parent_id !== null || root.item_type !== 'task') return null;
+  if (root.due_date === null) return null;
+  const rule = parseRecurrenceRule(root.recurrence);
+  if (rule === null) return null;
+  const index = root.occurrence_index ?? 1;
+  const next = nextOccurrence(rule, root.due_date, index);
+  if (next === null) return null;
+  return {
+    ...root,
+    id: tempId(),
+    due_date: next,
+    occurrence_index: index + 1,
+    status: 'active',
+    completed_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
 
 /**
  * Tasks store — the central, optimistic source of truth for ALL items.
@@ -31,8 +59,8 @@ interface AddTaskInput {
   parentId?: string | null | undefined;
 }
 
-/** The inline-editable scalar fields of a task (title, due date, notes). */
-type TaskFieldPatch = Pick<api.UpdateItemInput, 'title' | 'due_date' | 'notes'>;
+/** The inline-editable scalar fields of a task (title, due date, notes, recurrence). */
+type TaskFieldPatch = Pick<api.UpdateItemInput, 'title' | 'due_date' | 'notes' | 'recurrence'>;
 
 interface TaskActions {
   /** Optimistically add a task (root or subtask), then reconcile with the saved row. */
@@ -133,6 +161,8 @@ export function TasksProvider({
         const affected = collectSubtree(tasksRef.current, id);
         if (affected.length === 0) return;
         const ids = affected.map((item) => item.id);
+        const root = affected.find((item) => item.id === id);
+        const spawn = root === undefined ? null : computeOptimisticSpawn(root);
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({
@@ -140,13 +170,28 @@ export function TasksProvider({
               ids,
               patch: { status: 'completed', completed_at: new Date().toISOString() },
             });
+            // Show the next occurrence immediately for a recurring task.
+            if (spawn !== null) dispatch({ type: 'insert', item: spawn });
           },
           apiCall: () => api.completeTask(id),
-          reconcile: (rows) => {
-            dispatch({ type: 'upsert', items: rows });
+          reconcile: (result) => {
+            dispatch({ type: 'upsert', items: result.completed });
+            if (result.spawned !== null) {
+              // Swap the optimistic occurrence for the authoritative server row (or insert it
+              // if we didn't predict one).
+              if (spawn === null) {
+                dispatch({ type: 'upsert', items: [result.spawned] });
+              } else {
+                dispatch({ type: 'replace', id: spawn.id, item: result.spawned });
+              }
+            } else if (spawn !== null) {
+              // We predicted a spawn but the server didn't make one — drop the optimistic row.
+              dispatch({ type: 'remove', ids: [spawn.id] });
+            }
           },
           rollback: () => {
             dispatch({ type: 'upsert', items: affected });
+            if (spawn !== null) dispatch({ type: 'remove', ids: [spawn.id] });
           },
         });
       },
