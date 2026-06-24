@@ -249,6 +249,20 @@ export function moveCodeEpic(ref: string, epicId: string): Promise<CodeItem> {
   });
 }
 
+/**
+ * Reorder the Backlog: swap two stories' global `priority` (the chevron move). POSTs both refs
+ * to the atomic `swap_code_priority` RPC behind `/api/code/reorder` — one statement so the
+ * `unique(priority)` index never sees a transient duplicate — and returns the two updated
+ * `code_items` rows, which the store reconciles via `codeItemToStoryPatch`.
+ */
+export async function reorderCode(a: string, b: string): Promise<CodeItem[]> {
+  const { rows } = await apiRequest<{ rows: CodeItem[] }>('/api/code/reorder', {
+    method: 'POST',
+    body: JSON.stringify({ a, b }),
+  });
+  return rows;
+}
+
 export {
   type CreateItemInput,
   type CreateProjectInput,

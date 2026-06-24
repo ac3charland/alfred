@@ -3,6 +3,7 @@ import {
   createItemSchema,
   createProjectSchema,
   listItemsQuerySchema,
+  reorderCodeSchema,
   updateCodeSchema,
   updateEpicSchema,
   updateFolderSchema,
@@ -281,5 +282,23 @@ describe('updateCodeSchema optional fields + epic move', () => {
 
   it('rejects a blocked_reason-only body (a companion never travels alone)', () => {
     expect(updateCodeSchema.safeParse({ blocked_reason: 'why' }).success).toBe(false);
+  });
+});
+
+describe('reorderCodeSchema (the Backlog swap)', () => {
+  it('accepts two distinct refs', () => {
+    expect(reorderCodeSchema.safeParse({ a: 'ALF-1', b: 'ALF-2' }).success).toBe(true);
+  });
+
+  it('rejects swapping a story with itself', () => {
+    expect(reorderCodeSchema.safeParse({ a: 'ALF-1', b: 'ALF-1' }).success).toBe(false);
+  });
+
+  it('rejects an empty ref', () => {
+    expect(reorderCodeSchema.safeParse({ a: '', b: 'ALF-2' }).success).toBe(false);
+  });
+
+  it('rejects a missing ref', () => {
+    expect(reorderCodeSchema.safeParse({ a: 'ALF-1' }).success).toBe(false);
   });
 });

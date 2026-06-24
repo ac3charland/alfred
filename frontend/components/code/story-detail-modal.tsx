@@ -3,7 +3,6 @@
 import { ChevronDown, Pencil } from 'lucide-react';
 import * as React from 'react';
 
-import { Badge } from '@/components/atoms/badge';
 import { DialogClose, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import {
   DropdownMenu,
@@ -14,28 +13,14 @@ import {
 import { EditableTextField } from '@/components/atoms/editable-text-field';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextareaField } from '@/components/atoms/textarea-field';
+import { StateChip } from '@/components/code/state-chip';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
 import { PrimaryAction } from '@/components/code/story-detail/primary-action';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
-import { stateLabel } from '@/components/code/story-detail/state-helpers';
 import type { LaunchPhase } from '@/lib/code/launch';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
-import type { CodeFactoryState, CodeStory, Project } from '@/lib/types';
-
-/** The factory-state chip, tinted per happy-path / blocked / abandoned. */
-function StateChip({ state }: { state: CodeFactoryState | null }) {
-  const variant = state === 'blocked' ? 'alert' : state === 'abandoned' ? 'destructive' : 'accent';
-  return (
-    <Badge
-      variant={variant}
-      data-factory-state={state ?? undefined}
-      className="font-semibold uppercase tracking-wide"
-    >
-      {stateLabel(state)}
-    </Badge>
-  );
-}
+import type { CodeStory, Project } from '@/lib/types';
 
 /**
  * The inline-editable title (reusing task-row's edit pattern): a double-click / pencil

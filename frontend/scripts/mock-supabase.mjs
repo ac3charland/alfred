@@ -21,7 +21,7 @@
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
- *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module}
+ *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,swap_code_priority}
  *                                                             → Software Factory RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
@@ -67,6 +67,9 @@ let projects = [];
 let epics = [];
 /** @type {Record<string, unknown>[]} */
 let codeItems = [];
+// The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
+// seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
+let nextPriority = 1;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -233,7 +236,29 @@ function newCodeItem(input) {
     blocked_reason: input.blocked_reason ?? null,
     created_at: input.created_at ?? now,
     updated_at: input.updated_at ?? now,
+    // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
+    priority: input.priority ?? nextPriority++,
   };
+}
+
+/** Park `nextPriority` past every existing rank so appends land at the bottom (mirrors setval). */
+function syncPrioritySequence() {
+  let max = 0;
+  for (const code of codeItems) max = Math.max(max, Number(code.priority) || 0);
+  nextPriority = max + 1;
+}
+
+/**
+ * Set one code_item's priority, enforcing the IMMEDIATE unique index `code_items_priority_key`
+ * the way Postgres does — reject if any OTHER row already holds the new value. This is what makes
+ * the swap RPC a faithful model: a sequence that ever assigns a value still held by another row
+ * throws here, exactly as the live DB 409s. Throws on collision; the caller maps it to a 409.
+ */
+function setPriorityImmediate(target, value) {
+  if (codeItems.some((row) => row !== target && row.priority === value)) {
+    throw new Error(`duplicate key value violates unique constraint "code_items_priority_key"`);
+  }
+  target.priority = value;
 }
 
 /** Build a function that picks the right row constructor for a real table. */
@@ -309,6 +334,7 @@ function codeStoryRows() {
       blocked_reason: code.blocked_reason,
       code_created_at: code.created_at,
       code_updated_at: code.updated_at,
+      priority: code.priority,
       title: item.title,
       notes: item.notes,
       source_url: item.source_url,
@@ -454,6 +480,36 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // Swap two stories' global priority (migration 0005/0006 — the Backlog chevron reorder).
+  // Modelled faithfully: `code_items_priority_key` is a NON-deferrable unique index, so Postgres
+  // checks uniqueness PER ROW as each row is updated. A naive `a := b; b := a` therefore 409s
+  // mid-swap (two rows momentarily share a priority) — the exact production bug. So set each row
+  // through `setPriorityImmediate`, which rejects a transient duplicate, and use the same
+  // negative-sentinel sequence the fixed RPC does so every per-row step is unique.
+  if (fn === 'swap_code_priority' && req.method === 'POST') {
+    const a = codeItems.find((row) => row.ref === body?.p_a);
+    const b = codeItems.find((row) => row.ref === body?.p_b);
+    if (a === undefined || b === undefined) {
+      sendJson(res, 400, {
+        message: `swap_code_priority: unknown ref (${body?.p_a} / ${body?.p_b})`,
+      });
+      return;
+    }
+    const aPriority = a.priority;
+    const bPriority = b.priority;
+    try {
+      setPriorityImmediate(a, -aPriority); // park p_a negative, vacating a_pri
+      setPriorityImmediate(b, aPriority); //  p_b takes a_pri (now free)
+      setPriorityImmediate(a, bPriority); //  p_a lands on b_pri (vacated by p_b)
+    } catch (error) {
+      // Mirror the PostgREST 409 the real unique index raises on a transient duplicate.
+      sendJson(res, 409, { message: error instanceof Error ? error.message : 'duplicate key' });
+      return;
+    }
+    sendJson(res, 200, [a, b]);
+    return;
+  }
+
   sendJson(res, 404, { message: `No rpc: ${fn}` });
 }
 
@@ -582,15 +638,19 @@ function handleControl(req, res, url, body) {
     projects = [];
     epics = [];
     codeItems = [];
+    nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
   }
   if (url.pathname === '/__mock__/seed' && req.method === 'POST') {
+    nextPriority = 1;
     folders = Array.isArray(body?.folders) ? body.folders.map((f) => newFolder(f)) : [];
     items = Array.isArray(body?.items) ? body.items.map((i) => newItem(i)) : [];
     projects = Array.isArray(body?.projects) ? body.projects.map((p) => newProject(p)) : [];
     epics = Array.isArray(body?.epics) ? body.epics.map((e) => newEpic(e)) : [];
     codeItems = Array.isArray(body?.codeItems) ? body.codeItems.map((c) => newCodeItem(c)) : [];
+    // Park the sequence above every seeded rank so gate-created stories append at the bottom.
+    syncPrioritySequence();
     sendJson(res, 200, { folders, items, projects, epics, codeItems });
     return;
   }
