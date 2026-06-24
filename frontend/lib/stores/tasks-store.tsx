@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { isDueTodayOrOverdue } from '@/lib/date-utils';
+import { rankByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -60,8 +61,11 @@ interface AddTaskInput {
   parentId?: string | null | undefined;
 }
 
-/** The inline-editable scalar fields of a task (title, due date, notes, recurrence). */
-type TaskFieldPatch = Pick<api.UpdateItemInput, 'title' | 'due_date' | 'notes' | 'recurrence'>;
+/** The inline-editable scalar fields of a task (title, due date, notes, recurrence, priority). */
+type TaskFieldPatch = Pick<
+  api.UpdateItemInput,
+  'title' | 'due_date' | 'notes' | 'recurrence' | 'priority'
+>;
 
 interface TaskActions {
   /** Optimistically add a task (root or subtask), then reconcile with the saved row. */
@@ -478,6 +482,25 @@ export function useDueCountsByFolder(): Record<string, number> {
     }
     return counts;
   }, [items]);
+}
+
+/**
+ * The flat, cross-cutting **By-Priority** list (ALF-37): every top-level (parentless) task
+ * across Inbox and every folder, ranked by how much it needs attention. Derived entirely from
+ * the seeded store — no extra fetch — exactly as `useBacklog` derives the Code backlog.
+ *
+ * Each top-level task is ranked by its **effective key**: the best (most important, then most
+ * urgent) of the task itself AND its *active* descendants (a completed subtask's urgency is
+ * moot). So a Low-priority parent hiding a High/overdue active subtask floats up. The badge on
+ * a row still shows the task's OWN priority — the rollup affects ordering only.
+ *
+ * Order: rank ascending (High → Medium → Low → unprioritised), then due ascending (earliest /
+ * most overdue first; no due date sorts last), then `created_at` as the stable final tiebreak.
+ * Completed tasks are hidden unless `showCompleted`.
+ */
+export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }): Item[] {
+  const items = useTasks();
+  return React.useMemo(() => rankByPriority(items, showCompleted), [items, showCompleted]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */
