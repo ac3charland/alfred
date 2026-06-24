@@ -2,12 +2,11 @@
 name: migration-lint
 description: >
   Covers migration-lint, the static linter over database/migrations/*.sql that runs in the
-  global check:fast (pre-commit). Its sequence-grant rule fails the build when a created
-  sequence has no USAGE grant to anon/authenticated/service_role — the latent "permission
-  denied for sequence" 500. Use when running or interpreting migration-lint, fixing a
-  sequence-grant finding, adding a rule, or wiring it into the build. Trigger on:
-  "migration-lint", "lint the migrations", "sequence-grant", "permission denied for sequence",
-  "missing grant on sequence", "add a migration-lint rule", or editing tools/migration-lint.
+  global check:fast (pre-commit) — its sequence-grant rule. Use when running or interpreting
+  migration-lint, fixing a sequence-grant finding, adding or changing a rule, or wiring it into
+  the build. Trigger on: "migration-lint", "lint the migrations", "sequence-grant", "permission
+  denied for sequence", "missing grant on sequence", "add a migration-lint rule", or editing
+  tools/migration-lint.
 ---
 
 # migration-lint — lint the SQL migrations
