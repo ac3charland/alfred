@@ -5,8 +5,9 @@ import * as React from 'react';
 
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { BacklogRow } from '@/components/code/backlog/backlog-row';
+import { projectColorFor } from '@/lib/code/project-color';
 import { useFlipList } from '@/lib/hooks/use-flip-list';
-import { useBacklog, useCodeActions } from '@/lib/stores/code-store';
+import { useBacklog, useCodeActions, useProjects } from '@/lib/stores/code-store';
 
 /**
  * The Backlog — the default Code view (bare `/code` and `/code/backlog`). A single global,
@@ -26,6 +27,7 @@ import { useBacklog, useCodeActions } from '@/lib/stores/code-store';
 export function Backlog() {
   const [showCompleted, setShowCompleted] = React.useState(false);
   const stories = useBacklog({ showCompleted });
+  const projects = useProjects();
   const { reorderStory, moveStory } = useCodeActions();
   // Animate the reorder: FLIP keyed by item_id over the currently rendered order.
   const registerRow = useFlipList(stories.map((story) => story.item_id ?? ''));
@@ -87,6 +89,7 @@ export function Backlog() {
               key={story.item_id}
               ref={registerRow(story.item_id ?? '')}
               story={story}
+              projectColor={projectColorFor(projects, story.project_id)}
               prevRef={index === 0 ? null : (stories[index - 1]?.ref ?? null)}
               nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
               onReorder={handleReorder}

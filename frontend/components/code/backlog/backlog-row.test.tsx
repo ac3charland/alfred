@@ -46,6 +46,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
     <ul>
       <BacklogRow
         story={makeStory()}
+        projectColor="blue"
         prevRef="ALF-0"
         nextRef="ALF-2"
         onReorder={onReorder}
@@ -67,6 +68,11 @@ describe('BacklogRow', () => {
     expect(screen.getByText('ALF-3')).toBeInTheDocument();
     // The status chip is labelled for EVERY state — here a happy-path one.
     expect(screen.getByText('In Development')).toBeInTheDocument();
+  });
+
+  it('tints the project badge with the assigned project colour (ALF-50)', () => {
+    renderRow({ projectColor: 'amber' });
+    expect(screen.getByText('Alfred')).toHaveClass('bg-accent-amber/15', 'text-accent-amber');
   });
 
   it('links the body to the story modal in its project board', () => {

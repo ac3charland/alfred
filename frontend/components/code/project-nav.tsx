@@ -4,10 +4,12 @@ import { GitBranch, ListOrdered, Plus } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
+import { Badge } from '@/components/atoms/badge';
 import { IconButton } from '@/components/atoms/icon-button';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
-import { useCodeActions, useRankedProjects } from '@/lib/stores/code-store';
+import { projectBadgeClasses, projectColorFor, projectTextClasses } from '@/lib/code/project-color';
+import { useCodeActions, useProjects, useRankedProjects } from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
@@ -32,6 +34,9 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
   // Ranked by best outstanding-story priority so the sidebar leads with the project holding the
   // highest-priority open work (ALF-49), matching the board's epic ranking one level up.
   const projects = useRankedProjects();
+  // Colour is keyed to a project's STABLE creation order (ALF-50), not the priority ranking above —
+  // so a project keeps the same colour even as its rank (and thus its row position) shifts.
+  const projectsByCreation = useProjects();
   const { createProject } = useCodeActions();
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
@@ -83,6 +88,9 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
         <div className="mt-1 flex flex-col gap-0.5">
           {projects.map((project) => {
             const href = `/code/${project.id}`;
+            // One colour per project (its stable creation slot) shared by the branch icon and the
+            // key pill, so the sidebar reads with the same tinted-badge treatment as the Backlog.
+            const color = projectColorFor(projectsByCreation, project.id);
             return (
               <ViewLink
                 key={project.id}
@@ -90,11 +98,14 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
                 className={cn(navLinkClass(pathname === href), 'min-w-0')}
                 {...closeProperty}
               >
-                <GitBranch size={14} className="shrink-0" />
+                <GitBranch size={14} className={cn('shrink-0', projectTextClasses(color))} />
                 <span className="truncate">{project.name}</span>
-                <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground/70">
+                <Badge
+                  variant="plain"
+                  className={cn('ml-auto font-mono', projectBadgeClasses(color))}
+                >
                   {project.key}
-                </span>
+                </Badge>
               </ViewLink>
             );
           })}

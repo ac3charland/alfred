@@ -26,6 +26,20 @@ describe('Badge', () => {
     expect(badgeVariants({ variant: 'overdue' })).toContain('text-accent-amber');
   });
 
+  it('gives the plain variant only the pill base, leaving tone to the caller className', () => {
+    // The plain variant carries no colour of its own — used by the per-project backlog badge,
+    // which supplies a computed `bg-accent-*`/`text-accent-*` via className.
+    render(
+      <Badge variant="plain" className="bg-accent-blue/15 text-accent-blue">
+        Alfred
+      </Badge>,
+    );
+    const badge = screen.getByText('Alfred');
+    expect(badge).toHaveClass('rounded-full', 'bg-accent-blue/15', 'text-accent-blue');
+    // No leftover border/muted tone from a default variant.
+    expect(badge).not.toHaveClass('border', 'text-muted-foreground');
+  });
+
   it('adds the hover/transition treatment only for an interactive bordered chip', () => {
     // Non-interactive (default): no hover darkening, so a static folder/overdue chip
     // doesn't react to the pointer.

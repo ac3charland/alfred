@@ -18,6 +18,9 @@ import { cn } from '@/lib/utils';
 const badgeVariants = cva('shrink-0 rounded-full px-2 py-0.5 text-xs', {
   variants: {
     variant: {
+      // A bare pill — shape only, no tone. The caller supplies the colour via `className`
+      // (e.g. the per-project backlog badge, whose colour is computed, not a fixed variant).
+      plain: '',
       muted: 'border border-border/70 text-muted-foreground',
       secondary: 'bg-secondary text-muted-foreground',
       accent: 'bg-accent-teal/15 text-accent-teal',

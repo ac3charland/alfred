@@ -140,6 +140,20 @@ describe('ProjectNav', () => {
     expect(screen.getByText('RLP')).toBeInTheDocument();
   });
 
+  it('tints each project icon and key pill with its assigned colour, in palette order (ALF-50)', () => {
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /alfred/i }).querySelector('svg')).toHaveClass(
+      'text-accent-blue',
+    );
+    expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
+      'text-accent-amber',
+    );
+    // The key chip echoes the Backlog badge's tinted-pill treatment in the same project colour.
+    expect(screen.getByText('ALF')).toHaveClass('bg-accent-blue/15', 'text-accent-blue');
+    expect(screen.getByText('RLP')).toHaveClass('bg-accent-amber/15', 'text-accent-amber');
+  });
+
   it('orders projects by their best outstanding story priority (ALF-49)', () => {
     // Relay (p2) holds the highest-ranked open story (priority 5) → it leads Alfred (p1, priority 20),
     // overriding the seed order in which Alfred comes first.
@@ -156,6 +170,26 @@ describe('ProjectNav', () => {
       .map((link) => link.getAttribute('href'))
       .filter((href) => href?.startsWith('/code/p'));
     expect(projectHrefs).toEqual(['/code/p2', '/code/p1']);
+  });
+
+  it('keeps each project colour keyed to creation order even when the rank reorders the list', () => {
+    // Same setup as the ALF-49 ranking test: Relay (p2) leads in display order. Its colour must
+    // still be amber (creation slot #2), and Alfred's still blue (slot #1) — the colour follows the
+    // project's identity, not its shifting row position. Guards against keying colour off the rank.
+    renderNav(PROJECTS, {
+      epics: [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')],
+      stories: [
+        makeStory('i1', 'e1', 'p1', { priority: 20 }),
+        makeStory('i2', 'eX', 'p2', { priority: 5 }),
+      ],
+    });
+
+    expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
+      'text-accent-amber',
+    );
+    expect(screen.getByRole('link', { name: /alfred/i }).querySelector('svg')).toHaveClass(
+      'text-accent-blue',
+    );
   });
 
   it('points each project link at /code/<id>', () => {
