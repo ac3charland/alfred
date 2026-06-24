@@ -164,8 +164,8 @@ ids — single edit or cascade), `upsert` (replace present + add missing), `remo
 4. On success, **reconcile**: `upsert` the returned row(s) — swaps client values for
    server-canonical ones (and `replace` a temp id for the saved id on create).
 5. On failure, **roll back**: `upsert` the captured rows (re-applies the originals, re-adding
-   any that were removed) and **re-throw** so the caller can react (keep an edit form open,
-   show an error).
+   any that were removed), **fire an error toast** (below), and **re-throw** so the caller can
+   still react (keep an edit form open, reset a draft).
 
 Reference: `tasks-store.tsx` (`addTask`/`completeTask`/`updateTask`/`moveTask`/`deleteTask`)
 and `folders-store.tsx`. Views update because the **selector filters the changed list** —
@@ -173,7 +173,8 @@ completing a task flips its `status`, so it drops out of the active views automa
 
 The shared `runOptimisticMutation` helper (`lib/stores/optimistic-mutation.ts`) owns this
 try/await/catch sequencing; an action passes `optimistic` / `apiCall` / `reconcile` /
-`rollback` closures (omit `reconcile` for a delete — its rows are already gone). The
+`rollback` (and an optional `onError`) closures (omit `reconcile` for a delete — its rows are
+already gone). The
 **capture for rollback** stays the action's own, before the call, and picks the lightest of
 three strategies for *what* it restores:
 
@@ -188,6 +189,26 @@ three strategies for *what* it restores:
 - **Position-aware** (`insertAt(prev, index)`) — order matters and the op removes a row:
   capture the row **and its index**, and restore it at that slot, not appended. Use for
   `folders-store`'s `removeFolder`.
+
+### Centralized error toast on rollback
+
+A failed write must **tell the user it failed** — never snap back silently. So the rollback
+path also fires **one error toast, from the store**, not from each component `catch`: pass
+`runOptimisticMutation` an `onError: () => notifyError(message)` (it runs after `rollback`,
+before the re-throw, and **only** for an API rejection — not a `reconcile` throw or a pre-call
+guard throw). Manual `try/catch` actions (`code-store`'s `createProject`/`createEpic`) call it
+in the `catch` after the rollback dispatch. Use a short, human-readable message
+(`Couldn't save changes`) — **never `error.message`**, which leaks the HTTP status + response
+body. The re-throw stays, so component-local UI reset (a title draft, `isConfirming`) is
+unaffected. A client-only action with no API call (`tasks-store.removeGatedItem`) fires no
+toast.
+
+For this to work `ToastProvider` is mounted **above** the store providers — it is the
+**outermost** provider in the shell layout (`app/(shell)/layout.tsx`), so the stores can reach
+`useToastActions()`. **Stores sit above `ToastProvider` unless it's lifted**, so a store calling
+it would otherwise throw "must be used within a ToastProvider". Each provider captures
+`showToast` through an effect-synced ref (`showToastRef`, like `tasksRef`) so the stable (`[]`)
+action closures can fire it without it becoming a memo dep.
 
 ### Non-negotiable invariants
 
