@@ -5,7 +5,7 @@ import * as React from 'react';
 import * as api from '@/lib/api-client';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { Project } from '@/lib/types';
+import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import { ProjectNav } from './project-nav';
 
@@ -48,15 +48,75 @@ const PROJECTS: Project[] = [
   },
 ];
 
-function renderNav(projects: Project[], properties: Partial<{ onClose: () => void }> = {}) {
+function renderNav(
+  projects: Project[],
+  properties: Partial<{ onClose: () => void; epics: Epic[]; stories: CodeStory[] }> = {},
+) {
   const onCloseProperty = properties.onClose ? { onClose: properties.onClose } : {};
   return render(
     <ToastProvider>
-      <CodeProvider initialProjects={projects} initialEpics={[]} initialStories={[]}>
+      <CodeProvider
+        initialProjects={projects}
+        initialEpics={properties.epics ?? []}
+        initialStories={properties.stories ?? []}
+      >
         <ProjectNav {...onCloseProperty} />
       </CodeProvider>
     </ToastProvider>,
   );
+}
+
+/** A minimal epic for a project (only the fields the store reads to rank by story). */
+function makeEpic(id: string, projectId: string): Epic {
+  return {
+    id,
+    project_id: projectId,
+    name: `Epic ${id}`,
+    notes: null,
+    ref_number: 1,
+    ref: 'ALF-1',
+    archived_at: null,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+}
+
+/** A minimal code story carrying just the project/epic/priority/state the rank reads. */
+function makeStory(
+  itemId: string,
+  epicId: string,
+  projectId: string,
+  overrides: Partial<CodeStory> = {},
+): CodeStory {
+  return {
+    item_id: itemId,
+    project_id: projectId,
+    epic_id: epicId,
+    ref_number: 1,
+    ref: 'ALF-1',
+    factory_state: 'in_development',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    code_created_at: '2025-01-01T00:00:00Z',
+    code_updated_at: '2025-01-01T00:00:00Z',
+    title: `Story ${itemId}`,
+    notes: null,
+    source_url: null,
+    item_created_at: '2025-01-01T00:00:00Z',
+    project_key: 'ALF',
+    project_name: 'Alfred',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    epic_name: `Epic ${epicId}`,
+    epic_ref: 'ALF-1',
+    epic_archived_at: null,
+    priority: 1,
+    ...overrides,
+  };
 }
 
 describe('ProjectNav', () => {
@@ -88,6 +148,44 @@ describe('ProjectNav', () => {
     );
     expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
       'text-accent-amber',
+    );
+  });
+
+  it('orders projects by their best outstanding story priority (ALF-49)', () => {
+    // Relay (p2) holds the highest-ranked open story (priority 5) → it leads Alfred (p1, priority 20),
+    // overriding the seed order in which Alfred comes first.
+    renderNav(PROJECTS, {
+      epics: [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')],
+      stories: [
+        makeStory('i1', 'e1', 'p1', { priority: 20 }),
+        makeStory('i2', 'eX', 'p2', { priority: 5 }),
+      ],
+    });
+
+    const projectHrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+      .filter((href) => href?.startsWith('/code/p'));
+    expect(projectHrefs).toEqual(['/code/p2', '/code/p1']);
+  });
+
+  it('keeps each project colour keyed to creation order even when the rank reorders the list', () => {
+    // Same setup as the ALF-49 ranking test: Relay (p2) leads in display order. Its colour must
+    // still be amber (creation slot #2), and Alfred's still blue (slot #1) — the colour follows the
+    // project's identity, not its shifting row position. Guards against keying colour off the rank.
+    renderNav(PROJECTS, {
+      epics: [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')],
+      stories: [
+        makeStory('i1', 'e1', 'p1', { priority: 20 }),
+        makeStory('i2', 'eX', 'p2', { priority: 5 }),
+      ],
+    });
+
+    expect(screen.getByRole('link', { name: /relay/i }).querySelector('svg')).toHaveClass(
+      'text-accent-amber',
+    );
+    expect(screen.getByRole('link', { name: /alfred/i }).querySelector('svg')).toHaveClass(
+      'text-accent-blue',
     );
   });
 

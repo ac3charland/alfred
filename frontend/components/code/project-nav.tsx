@@ -8,7 +8,7 @@ import { IconButton } from '@/components/atoms/icon-button';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
 import { ViewLink } from '@/components/tasks/view-link';
 import { projectColorFor, projectTextClasses } from '@/lib/code/project-color';
-import { useCodeActions, useProjects } from '@/lib/stores/code-store';
+import { useCodeActions, useProjects, useRankedProjects } from '@/lib/stores/code-store';
 import type { Project } from '@/lib/types';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,12 @@ interface ProjectNavProperties {
  */
 export function ProjectNav({ onClose }: ProjectNavProperties) {
   const pathname = usePathname();
-  const projects = useProjects();
+  // Ranked by best outstanding-story priority so the sidebar leads with the project holding the
+  // highest-priority open work (ALF-49), matching the board's epic ranking one level up.
+  const projects = useRankedProjects();
+  // Colour is keyed to a project's STABLE creation order (ALF-50), not the priority ranking above —
+  // so a project keeps the same colour even as its rank (and thus its row position) shifts.
+  const projectsByCreation = useProjects();
   const { createProject } = useCodeActions();
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
@@ -93,7 +98,7 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
                   size={14}
                   className={cn(
                     'shrink-0',
-                    projectTextClasses(projectColorFor(projects, project.id)),
+                    projectTextClasses(projectColorFor(projectsByCreation, project.id)),
                   )}
                 />
                 <span className="truncate">{project.name}</span>
