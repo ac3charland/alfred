@@ -68,4 +68,7 @@ once the scope is clear do you write the spec below.
   actually a story (a question, a bug report, a duplicate of existing behavior), or can't be
   scoped from what you have, stop and tell the human — propose a split or a next step instead of
   forcing a spec to exist.
+- **Spec demo/acceptance evidence must match showboat's rules — cross-reference, don't
+  restate.** When the spec pins the demo or verification evidence for a user-visible change,
+  follow the `showboat` skill's evidence-matching rather than inventing your own. Point it at the showboat rules and let those stay the source of truth.
 - **Iterate via PR comments.** Refinement back-and-forth happens in review comments on this PR.

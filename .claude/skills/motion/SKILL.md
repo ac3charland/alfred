@@ -109,6 +109,7 @@ Content is conditionally rendered ({open && <X/>})?
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
 | **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
+| **Animate a list whose rows _reorder_** (a DOM sibling reorder, e.g. a priority re-rank) | The FLIP `useFlipList` hook (below) | CSS can't transition a sibling reorder on its own. FLIP measures before/after rects and glides each row. Gate on reduced motion (rows snap). |
 
 ---
 
@@ -215,6 +216,25 @@ order: play the exit first, commit the mutation last.** Used by `components/task
 - Test the **reduced-motion** branch by overriding `matchMedia` to `matches: true` (see the jsdom
   gotcha below); there completion is synchronous, no `transitionend` needed.
 
+### The store-modeled exit (a queue that animates its own removals)
+
+When the data is a **store-owned queue** (the toast queue), keep the animate-then-commit logic
+in the **store**, not each item. `dismissToast` doesn't filter the toast out — it flips a
+`leaving` flag (the toast stays queued) and schedules the real removal after an `EXIT_MS`
+constant matched to the exit duration. The auto-expire timer calls the same path, so both the
+close button and auto-dismiss animate out; re-flagging an already-`leaving` toast is idempotent.
+The viewport then needs no `isCompleting`/`transitionend` plumbing — it just renders the
+`tw-animate-css` enter classes for a `visible` toast and the exit classes (+ `fill-mode-forwards`,
+see the pitfall above) for a `leaving` one. Removal is timer-driven, **not** `animationend`-driven,
+so reduced motion (`motion-reduce:animate-none`) simply holds the toast for `EXIT_MS` then drops
+it — no stranded toast, no `animationend`-that-never-fires branch. Used by `toast-store.tsx` +
+`toast-viewport.tsx`.
+
+A **sound cue counts as motion**: gate it on `prefers-reduced-motion` too (silent when reduced).
+Fire it from the **imperative store action** (the single `showToast` call), not a mount effect —
+an effect double-fires under StrictMode, playing the chime twice. Read `matchMedia` directly
+there (always-defined client-side, per the pitfall above).
+
 ---
 
 ## The grid-rows expand/collapse pattern (height: 0 → auto without JS measurement)
@@ -269,6 +289,48 @@ await expect(page.getByRole('list', { name: 'Subtasks' })).not.toBeVisible();
 
 ---
 
+## The FLIP list-reorder pattern (animate a sibling reorder)
+
+When a list **re-sorts** — rows swap places (e.g. the Backlog's `priority` swap, ALF-35) — the
+DOM siblings reorder, which CSS can't transition on its own (and there's no Framer Motion in the
+stack). Use **FLIP** (First → Last → Invert → Play): the shared hook
+`frontend/lib/hooks/use-flip-list.ts` (`useFlipList`).
+
+```tsx
+const items = useBacklog(...);                       // the (re)sorted list
+const register = useFlipList(items.map((i) => i.id)); // keys in CURRENT render order
+// each row: <li ref={register(item.id)}> … </li>    // forwardRef the root to the registrar
+```
+
+In a `useLayoutEffect` it reads each tracked row's previous and new `getBoundingClientRect`
+(First/Last), sets a no-transition `translateY(Δ)` so the row looks un-moved (Invert), then on the
+next `requestAnimationFrame` clears the offset under `transform 200ms ease-out` (Play) so the rows
+glide. Key things:
+
+- **Reduced motion:** the hook gates the whole effect on `usePrefersReducedMotion()` — when reduced
+  it skips the transform entirely (rows snap), so there's no transition to strand.
+- **Keys are the identity:** pass them in current render order; only rows present before *and* after
+  animate (entering/leaving rows are left alone). Forward the registrar ref to the row's root.
+- **Only animate a genuine reorder — a same-order re-render must be a no-op.** An optimistic store
+  swap is followed by a **server reconcile** that re-renders with the *same* order (the reconcile
+  re-applies the confirmed values). If the layout effect re-measures/re-inverts on that render it
+  **interrupts the in-flight transition** — the row freezes at its old slot, then jumps ¾ of the way
+  in one frame, then eases the rest (classic mid-flight jank). Track the previous key order and
+  **bail out when it's unchanged**; only run the FLIP when the order actually changed.
+- **Measure "Last" cleanly and store THOSE rects.** Read each new slot *after* clearing any leftover
+  `transform`/`transition`, and save that clean measurement as the next baseline. Snapshotting
+  *after* applying the invert records the inverted (old) positions, so alternating swaps compute
+  Δ=0 and snap. (This pairs with the bail-out above; both were found via the `debug-animations`
+  probe and pinned by `e2e/code-backlog-reorder-flip.spec.ts`, which asserts no frame covers >40%
+  of the journey.)
+- **`react-hooks/immutability` (React Compiler):** an object passed as `useRef`'s initial argument
+  is frozen, so the hook would be flagged for mutating tracked nodes' `.style`. Create the Maps
+  **lazily** (`const m = (ref.current ??= new Map<…>())`) instead of `useRef(new Map())`, and type
+  each `new Map<K, V>()` so the nodes don't widen to `any`.
+- **jsdom has no layout:** `getBoundingClientRect` is all-zero, so the transform never fires under
+  Jest — assert the row *order*, not the transform. To actually measure the glide, sample
+  `transform` over frames in Playwright (the `debug-animations` skill).
+
 ## Common Pitfalls
 
 - **Always pair `motion-reduce:animate-none` with every `animate-*`** (and
@@ -292,6 +354,17 @@ await expect(page.getByRole('list', { name: 'Subtasks' })).not.toBeVisible();
   "just add `forwards`" attempt fails). Demo: `docs/demos/inbox-fade-stutter.md`. To *catch or
   measure* this class of one-frame glitch, sample the element frame by frame — see the
   `debug-animations` skill.
+
+- **`tw-animate-css`'s `animate-out` reverts unless you add `fill-mode-forwards`.** Its
+  `--animate-out` shorthand ends with `var(--tw-animation-fill-mode, none)`, so a compound
+  `animate-out fade-out-0 slide-out-to-bottom-2` snaps back to full opacity the frame after it
+  finishes. Unlike the project's `--animate-fade-out` token (whose shorthand *hardcodes*
+  `forwards`, so a separate fill-mode utility is overridden), here the standalone
+  `fill-mode-forwards` utility **is** the intended companion — it sets the var the shorthand
+  reads, so it holds. Needed **even when removal is timer-driven** (a store `leaving` phase +
+  delayed unmount — the store-modeled exit below): if the exit animation and the removal timer
+  are the same length, the
+  revert frame can still paint in the gap before the unmount commits. Used by `toast-viewport.tsx`.
 
 - **`onAnimationEnd` bubbles from descendants.** Guard with
   `event.target === event.currentTarget` so a child's animation doesn't trigger parent logic.

@@ -299,6 +299,23 @@ export const updateCodeSchema = z
 
 export type UpdateCodeInput = z.infer<typeof updateCodeSchema>;
 
+/**
+ * Body for POST /api/code/reorder — the Backlog chevron swap. `a` and `b` are story **refs**
+ * (KEY-N, the code module's keying convention — NOT UUIDs, exactly as `PATCH /api/code/[ref]`
+ * keys by ref), whose global `priority` the `swap_code_priority` RPC exchanges atomically. The
+ * `.refine` rejects `a === b`: a story can't swap with itself, and a no-op swap is a wasted call.
+ */
+export const reorderCodeSchema = z
+  .object({
+    a: z.string().min(1),
+    b: z.string().min(1),
+  })
+  .refine((data) => data.a !== data.b, {
+    message: 'Cannot reorder a story with itself',
+  });
+
+export type ReorderCodeInput = z.infer<typeof reorderCodeSchema>;
+
 // ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------

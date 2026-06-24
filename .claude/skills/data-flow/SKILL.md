@@ -79,6 +79,27 @@ and a no-op when absent, so a change for an unknown/removed row is ignored; and 
 user's own optimistic write re-applies identical values, so it's **idempotent** — no self-write
 filtering. Tasks/Folders have a single browser writer and stay pure seed-once.
 
+## Priority: the code module's one global ordering column (ALF-35)
+
+The Backlog, the project board's epic order, and within-lane order all derive from **one**
+`code_items.priority` column (a global rank across every project; lower = higher). Don't add a
+second ordering source — the board *reflects* priority, it doesn't set it:
+
+- **`useBacklog({ showCompleted })`** returns every story sorted by `priority` (outstanding-only
+  unless `showCompleted`); **`useProjectBoard`** sorts each lane/escape bucket by `priority` and
+  orders epics by their best (`min(priority)`) story (no-story epics last). All memoized like the
+  other selectors.
+- **`reorderStory(ref, neighbourRef)`** is the only writer: an optimistic **swap** — `patchStory`
+  each of the two stories with the other's `priority` (capture the prior pair for rollback) →
+  `api.reorderCode` → reconcile both returned rows via `codeItemToStoryPatch`. The **view** owns
+  the filter/sort and picks the visible neighbour, so the action just swaps the pair it's handed.
+  It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
+  sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
+  skill (a one-statement CASE swap 409s under a non-deferrable unique index).
+- `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
+  cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
+- Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
+
 ## Transient UI state: local until a cross-row command needs it
 
 Per-row UI state stays in the row's own `useState` — an input draft, the meta panel, the

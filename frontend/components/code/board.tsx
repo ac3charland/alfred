@@ -1,6 +1,7 @@
 'use client';
 
 import { Archive } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
 import { ToggleButton } from '@/components/atoms/toggle-button';
@@ -32,6 +33,8 @@ export interface BoardProperties {
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
   const { openClaudeSession } = useCodeActions();
+  // A `?story=<ref>` deep-link (e.g. from a Backlog row) opens that story's modal — see below.
+  const storyParam = useSearchParams().get('story');
 
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
@@ -39,6 +42,9 @@ export function Board({ projectId }: BoardProperties) {
   // The open story for the detail modal, tracked by item_id so the modal always
   // re-reads the latest row from the store (e.g. after a manual transition reshuffles it).
   const [openStoryId, setOpenStoryId] = React.useState<string | null>(null);
+  // The last `?story=` param we acted on, so the resolve-during-render below fires once per
+  // param change instead of every render (the react-blessed alternative to a setState effect).
+  const [seenStoryParam, setSeenStoryParam] = React.useState<string | null>(null);
 
   const toggleCollapse = React.useCallback((epicId: string) => {
     setCollapsed((current) => {
@@ -79,6 +85,24 @@ export function Board({ projectId }: BoardProperties) {
     [openClaudeSession],
   );
 
+  // Resolve the open story from the current board so the modal reflects live store state
+  // (every epic's lanes + escape bucket cover all of this project's stories).
+  const allStories = [...activeEpics, ...archivedEpics].flatMap((board) => [
+    ...board.lanes.flatMap((lane) => lane.stories),
+    ...board.escapeStories,
+  ]);
+
+  // Deep-link seam (ALF-35): a `?story=<ref>` opens that story's modal. Resolve the ref against
+  // this board and open it; if the ref isn't in this project, ignore it. Adjusting state DURING
+  // render (keyed on the param) fires this once per param change, not every render.
+  if (storyParam !== seenStoryParam) {
+    setSeenStoryParam(storyParam);
+    if (storyParam !== null) {
+      const match = allStories.find((s) => s.ref === storyParam);
+      if (match !== undefined && match.item_id !== null) setOpenStoryId(match.item_id);
+    }
+  }
+
   if (project === undefined) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
@@ -92,12 +116,6 @@ export function Board({ projectId }: BoardProperties) {
   const allCollapsed =
     visibleEpics.length > 0 && visibleEpics.every((b) => collapsed.has(b.epic.id));
 
-  // Resolve the open story from the current board so the modal reflects live store state
-  // (every epic's lanes + escape bucket cover all of this project's stories).
-  const allStories = [...activeEpics, ...archivedEpics].flatMap((board) => [
-    ...board.lanes.flatMap((lane) => lane.stories),
-    ...board.escapeStories,
-  ]);
   const openStory = openStoryId === null ? null : allStories.find((s) => s.item_id === openStoryId);
 
   return (
@@ -174,7 +192,14 @@ export function Board({ projectId }: BoardProperties) {
         story={openStory ?? null}
         open={openStory !== null && openStory !== undefined}
         onOpenChange={(next) => {
-          if (!next) setOpenStoryId(null);
+          if (!next) {
+            setOpenStoryId(null);
+            // Clear a `?story=` deep-link so closing doesn't re-open on the next render and the
+            // URL stays tidy. Replace (not push) — closing the modal shouldn't add history.
+            if (storyParam !== null) {
+              globalThis.history.replaceState(null, '', `/code/${projectId}`);
+            }
+          }
         }}
         onOpenSession={handleOpenSession}
       />
