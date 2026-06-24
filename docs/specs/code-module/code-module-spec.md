@@ -574,14 +574,23 @@ spec-path: docs/specs/ALF-42.md
 - `alfred-ticket` — one ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR that closes
   several stories. Parsed as a list, always.
 - `phase` — `refinement | implementation`.
-- `spec-path` — **refinement PRs only**; declares where the spec lives so Alfred renders from the
-  *recorded* path, never an inferred one (§10).
+- `spec-path` — **required on refinement PRs**; declares where the spec lives so Alfred renders from
+  the *recorded* path, never an inferred one (§10). **Implementation PRs carry it too** so the
+  archive rule below knows which spec to retire.
+
+**Spec archival (implementation PRs).** A spec is scaffolding: once a story is implemented, its
+implementation PR **git-moves the spec out of the active `docs/specs/` directory into
+`docs/specs/archive/`** in the same PR, so the active directory only ever holds specs still awaiting
+work. The block's `spec-path` keeps pointing at the original active path; the enforcing check derives
+the archive location from it. A **skip-refinement** (bypass) PR has no committed spec, so nothing
+exists at `spec-path` and the rule does not apply.
 
 **Enforcing GitHub check.** Each project repo carries a committed reusable workflow
 `.github/workflows/alfred-frontmatter.yml` that runs on `pull_request`
 (`opened`/`edited`/`synchronize`), parses the block, and **fails the check** when it is missing or
-malformed (and when `spec-path` is absent on a refinement PR). Coding agents are already configured
-to open PRs and fix failing checks, so they self-correct. *(Alternative: have the Worker set a commit
+malformed (when `spec-path` is absent on a refinement PR, or when an implementation PR leaves its
+spec un-archived in the active directory). Coding agents are already configured to open PRs and fix
+failing checks, so they self-correct. *(Alternative: have the Worker set a commit
 status via the GitHub API — heavier auth, deferred. The committed Action is self-contained and the v1
 choice.)* Provide the workflow as a ready-to-copy artifact in the spec's repo-setup appendix (§19).
 
@@ -817,10 +826,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4 # so the archive rule can inspect the post-merge tree
       - name: Validate alfred frontmatter block
         env: { BODY: ${{ github.event.pull_request.body }} }
         run: |
           node -e '
+            const fs = require("fs");
             const b = process.env.BODY || "";
             const m = b.match(/```alfred\s+([\s\S]*?)```/);
             if (!m) { console.error("missing ```alfred block"); process.exit(1); }
@@ -828,8 +839,15 @@ jobs:
             const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
             const phase  = /phase:\s*(refinement|implementation)/.exec(blk);
             if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
-            if (phase[1] === "refinement" && !/spec-path:\s*\S+/.test(blk)) {
+            const specPath = (/spec-path:\s*(\S+)/.exec(blk) || [])[1];
+            if (phase[1] === "refinement" && !specPath) {
               console.error("refinement PRs need spec-path"); process.exit(1);
+            }
+            // Implementation PRs must archive the spec out of the active docs/specs/ directory.
+            if (phase[1] === "implementation" && specPath && specPath.startsWith("docs/specs/")
+                && !specPath.startsWith("docs/specs/archive/") && fs.existsSync(specPath)) {
+              console.error("implementation PR must archive its spec: git-move " + specPath
+                + " to docs/specs/archive/" + specPath.split("/").pop()); process.exit(1);
             }
             console.log("ok:", ticket[1].trim(), phase[1]);
           '

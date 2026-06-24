@@ -29,13 +29,22 @@ spec-path: docs/specs/ALF-42.html
 |---|---|---|
 | `alfred-ticket` | The story ref(s) this PR advances. | One ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR closing several stories. Always parsed as a list. |
 | `phase` | Which lifecycle phase the PR belongs to. | `refinement` \| `implementation`. |
-| `spec-path` | Where the spec (a self-contained HTML plan) lives in the repo. | **Refinement PRs only** — declares the path so alfred renders from the *recorded* path, never an inferred one. |
+| `spec-path` | Where the spec (a self-contained HTML plan) lives in the repo. | **Required on refinement PRs** — declares the path so alfred renders from the *recorded* path, never an inferred one. **Implementation PRs carry it too** so the archive rule (below) knows which spec to retire. |
 
 - A **refinement** PR writes the spec artifact and opens with `phase: refinement` +
   `spec-path: docs/specs/<REF>.html`. Merging it moves the story `in_refinement → ready_for_dev` and the
   Worker snapshots the spec.
-- An **implementation** PR implements the merged spec and opens with `phase: implementation`.
-  Opening it moves the story `in_development → ready_for_review`; merging it moves it to `done`.
+- An **implementation** PR implements the merged spec and opens with `phase: implementation`. It also
+  **archives the now-consumed spec** — git-moving `docs/specs/<REF>.html` to
+  `docs/specs/archive/<REF>.html` in the same PR — so the active `docs/specs/` directory only ever
+  holds specs still awaiting work. Opening the PR moves the story `in_development → ready_for_review`;
+  merging it moves it to `done`.
+
+> **Archive rule.** The enforcing check **fails an implementation PR whose `spec-path` still
+> resolves to a file in the active `docs/specs/` directory** (i.e. the spec was left un-archived).
+> The block's `spec-path` keeps pointing at the original active path; the check derives the archive
+> location from it. A **skip-refinement** (bypass) PR has no committed spec, so nothing exists at
+> `spec-path` and it passes unaffected.
 
 A refinement PR *opening* is a **no-op** for the state machine — the Worker just records
 `refinement_pr_url`; back-and-forth happens through PR comments.
@@ -44,7 +53,7 @@ A refinement PR *opening* is a **no-op** for the state machine — the Worker ju
 
 | File | Copy it to | Purpose |
 |---|---|---|
-| [`alfred-frontmatter.yml`](alfred-frontmatter.yml) | the project repo's `.github/workflows/alfred-frontmatter.yml` | The enforcing check: fails the PR when the `alfred` block is missing/malformed, or when a refinement PR omits `spec-path`. Coding agents fix failing checks, so they self-correct. |
+| [`alfred-frontmatter.yml`](alfred-frontmatter.yml) | the project repo's `.github/workflows/alfred-frontmatter.yml` | The enforcing check: fails the PR when the `alfred` block is missing/malformed, when a refinement PR omits `spec-path`, or when an implementation PR leaves its spec un-archived (the archive rule above). Coding agents fix failing checks, so they self-correct. |
 | the refinement skill (`.claude/skills/refinement/SKILL.md`) | the project repo's `.claude/skills/refinement/SKILL.md` | The refinement-guide convention: how a refinement session must write the spec artifact and open its PR. The Claude Code refinement prompt references this committed skill. |
 
 ## One-time per-repo setup checklist (Phase C — credentialed)
