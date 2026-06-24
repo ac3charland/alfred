@@ -630,10 +630,17 @@ close();
           <div class="card-soft"><h4>Recent / history</h4><p>No persisted recent searches or "recently opened" seeding of the empty state. Possible follow-up.</p></div>
           <div class="card-soft"><h4>Match highlighting</h4><p>Bolding the matched substring inside each result is a nice-to-have, not required for acceptance.</p></div>
         </div>
+        <h3 style="margin-top:20px">Confirmed during refinement (locked)</h3>
+        <div class="note teal">
+          <ul style="margin:0">
+            <li><b>Result action — navigate + open/highlight.</b> A task routes to its containing view with the row scrolled-to and highlighted (via a <code>?task=&lt;id&gt;</code> param the views read, or the focus event in §8); a story routes to its board <b>and opens the detail modal</b> via <code>?story=&lt;ref&gt;</code>. (Not "navigate to view only".)</li>
+            <li><b>UI — reuse the repo's Radix Dialog atoms</b> (<code>components/atoms/dialog.tsx</code> + <code>TextField</code> + a keyboard-navigable list). <b>No <code>cmdk</code> dependency.</b></li>
+            <li><b>Scope — active <u>and</u> completed/done.</b> Search includes completed tasks and code stories in every factory state (incl. <code>done</code> / <code>abandoned</code>), so anything is findable. Completed/terminal items are visually de-emphasized but present.</li>
+          </ul>
+        </div>
         <h3 style="margin-top:20px">Open questions (flag at implementation; defaults chosen)</h3>
         <ul>
           <li><b>Shortcut key.</b> Default is <code>⌘P</code> per the ticket, with a <code>preventDefault()</code> override of Print. Should we <i>also</i> bind <code>⌘K</code> (the conventional palette key) as an alias, or switch entirely? <i>Default: <code>⌘P</code> only.</i></li>
-          <li><b>Completed tasks.</b> <code>useTasks()</code> already holds completed items. Include them in results (badged/dimmed) or exclude by default? <i>Default: include, visually de-emphasized.</i></li>
           <li><b>Search scope vs. active module.</b> Always search both modules (proposed), or scope to the active module with a toggle? <i>Default: always both.</i></li>
           <li><b>Folder/project names.</b> Add folders/projects/epics as a third result group later? Out of scope now; noted for a follow-up ticket.</li>
           <li><b>Empty-state seeding.</b> Show a few most-recent items before typing, or just a hint? <i>Default: hint only.</i></li>
