@@ -64,9 +64,5 @@ once the scope is clear do you write the spec below.
   forcing a spec to exist.
 - **Spec demo/acceptance evidence must match showboat's rules — cross-reference, don't
   restate.** When the spec pins the demo or verification evidence for a user-visible change,
-  follow the `showboat` skill's evidence-matching rather than inventing your own: a change with
-  **motion** (a fade/slide/expand/collapse/any transition) requires a **GIF**; a screenshot or a
-  `debug-animations` frame-by-frame timeline only *supplements* it, never substitutes. A spec
-  that prescribes a still (or a frame sample) as the sole evidence for an animation misdirects
-  the implementation session — point it at the showboat rules and let those stay the source of truth.
+  follow the `showboat` skill's evidence-matching rather than inventing your own. Point it at the showboat rules and let those stay the source of truth.
 - **Iterate via PR comments.** Refinement back-and-forth happens in review comments on this PR.
