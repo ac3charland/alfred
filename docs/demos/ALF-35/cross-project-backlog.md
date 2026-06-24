@@ -8,7 +8,7 @@ branch: claude/sleepy-cray-fqi4er
 
 The Code module was project-scoped with no notion of priority — there was no way to answer "across every project and epic, what should I work on next?". This change adds a **Backlog**: one global, re-orderable, priority list of every outstanding story spanning all projects and epics (the default Code view), and makes the per-project board reflect that one global order. Priority is a single `code_items.priority` column (a global sequence); the Backlog, the board's epic order, and within-lane order all derive from it.
 
-## 1. A global priority column + atomic swap RPC (migration 0005). Priority is a *global* total order, so it uses one sequence (not the per-project ref counter); a unique index makes the order strict, and the swap RPC exchanges two rows' priority in one CASE update so the index never sees a transient duplicate.
+## 1. A global priority column (migration 0005). Priority is a *global* total order, so it uses one sequence (not the per-project ref counter); a unique index makes the order strict. Stories reorder by exchanging two rows' priority via the `swap_code_priority` RPC.
 
 ```bash
 sed -n '1,40p' database/migrations/0005_story_priority.sql
@@ -57,7 +57,7 @@ declare a_pri bigint; b_pri bigint;
 begin
 ```
 
-## 2. The reorder is a real, atomic swap. Below, two stories are seeded into the in-memory backend the e2e suite uses (priorities 1 and 2), then a single `POST /rest/v1/rpc/swap_code_priority` (the same RPC the `/api/code/reorder` route calls) exchanges their priority — the Backlog order flips, and the unique(priority) index never sees a transient duplicate because it's one statement. The store's `reorderStory` action wraps this optimistically (rollback on failure).
+## 2. The reorder swaps priority while respecting the unique index. 0005's one-statement CASE swap actually **409'd** in production — a non-deferrable unique index checks uniqueness *per row*, so rewriting row A to B's priority while B still holds it momentarily duplicates. Migration 0006 fixes it: park one row at a negative sentinel, then assign, so every per-row step is unique. Below, two stories are seeded into the in-memory backend the e2e suite uses (priorities 1 and 2) — which now models that same immediate unique constraint — then `POST /rest/v1/rpc/swap_code_priority` (the RPC the `/api/code/reorder` route calls) exchanges their priority and the Backlog order flips. The store's `reorderStory` wraps it optimistically (rollback on failure).
 
 ```bash
 cd frontend

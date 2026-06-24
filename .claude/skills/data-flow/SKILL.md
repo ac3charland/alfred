@@ -93,8 +93,9 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   each of the two stories with the other's `priority` (capture the prior pair for rollback) →
   `api.reorderCode` → reconcile both returned rows via `codeItemToStoryPatch`. The **view** owns
   the filter/sort and picks the visible neighbour, so the action just swaps the pair it's handed.
-  It's a single atomic `swap_code_priority` RPC (not two PATCHes) so a `unique(priority)` index
-  never sees a transient duplicate — see the supabase skill.
+  It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
+  sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
+  skill (a one-statement CASE swap 409s under a non-deferrable unique index).
 - `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
   cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
