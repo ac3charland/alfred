@@ -303,7 +303,6 @@ export type Database = {
           item_type: Database["public"]["Enums"]["item_type"] | null
           notes: string | null
           parent_id: string | null
-          priority: Database["public"]["Enums"]["task_priority"] | null
           raw_capture: string | null
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"] | null
@@ -318,7 +317,6 @@ export type Database = {
           item_type?: Database["public"]["Enums"]["item_type"] | null
           notes?: string | null
           parent_id?: string | null
-          priority?: Database["public"]["Enums"]["task_priority"] | null
           raw_capture?: string | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
@@ -333,7 +331,6 @@ export type Database = {
           item_type?: Database["public"]["Enums"]["item_type"] | null
           notes?: string | null
           parent_id?: string | null
-          priority?: Database["public"]["Enums"]["task_priority"] | null
           raw_capture?: string | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
@@ -444,6 +441,7 @@ export type Database = {
           notes: string | null
           occurrence_index: number | null
           parent_id: string | null
+          priority: Database["public"]["Enums"]["task_priority"] | null
           raw_capture: string | null
           recurrence: Json | null
           recurrence_series_id: string | null
