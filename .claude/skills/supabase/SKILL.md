@@ -265,6 +265,12 @@ Plain SQL migrations can be applied over the **session pooler** connection strin
 5432) with any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable
 for multi-statement DDL — prefer the session pooler or direct connection for migrations.
 
+To apply **one** migration to the live DB by number, use `npm run migrate -w database <NNNN>`
+(accepts `11`, `0011`, or the full filename). It reads `DATABASE_URL` from `frontend/.env.local`,
+prints the target host, and confirms before writing (`--yes` skips the prompt). It applies a
+single file with no state tracking — fine because most migrations are idempotent-by-design or
+applied once; reach for raw `psql -f` for the schema bootstrap or seed.
+
 **Regenerating `database.types.ts` from `--db-url` is CLI-version-sensitive — pin a mid-2.9x
 version and have Docker running.** Token-free `--db-url` introspection only works on CLI
 versions that spin up a local Docker `postgres-meta` container, so **start Docker Desktop first**
