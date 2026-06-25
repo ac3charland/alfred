@@ -86,3 +86,18 @@ export function validateCommits(commits) {
 
   return errors;
 }
+
+/**
+ * Resolve the signing flag to pass to each `git commit`. `--no-verify` skips hooks but
+ * NOT signing, so by default the batch honors the repo's `commit.gpgsign` — matching what
+ * a normal `git commit` would do — and an explicit CLI flag overrides it either way.
+ * `--no-gpg-sign` wins over `--gpg-sign` if both are passed (opt-out is the safer tie-break).
+ *
+ * @param {{ argv?: string[], gpgsignConfigured?: boolean }} opts
+ * @returns {'--gpg-sign' | '--no-gpg-sign' | null} flag to add, or null for none
+ */
+export function resolveSignFlag({ argv = [], gpgsignConfigured = false } = {}) {
+  if (argv.includes('--no-gpg-sign')) return '--no-gpg-sign';
+  if (argv.includes('--gpg-sign')) return '--gpg-sign';
+  return gpgsignConfigured ? '--gpg-sign' : null;
+}
