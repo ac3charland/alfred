@@ -35,6 +35,54 @@ export function migrationFiles(dir: string = MIGRATIONS_DIR): string[] {
 }
 
 /**
+ * Resolve a single migration file from a user selector — the `0011` (or `11`, or a full
+ * `0011_task_items_view_columns.sql`) passed to `npm run migrate`. A bare number is zero-padded
+ * to the 4-digit `NNNN` prefix, then matched against the `*.sql` basenames. Throws on no match or
+ * an ambiguous selector that hits more than one file, so the applier never guesses which to run.
+ */
+export function resolveMigration(selector: string, dir: string = MIGRATIONS_DIR): string {
+  const needle = /^\d+$/.test(selector) ? selector.padStart(4, '0') : selector;
+  const matches = migrationFiles(dir).filter((file) => {
+    const base = path.basename(file);
+    return base === needle || base === `${needle}.sql` || base.startsWith(`${needle}_`);
+  });
+  const [only] = matches;
+  if (matches.length === 1 && only !== undefined) return only;
+  const available = migrationFiles(dir)
+    .map((file) => path.basename(file))
+    .join(', ');
+  if (matches.length === 0) {
+    throw new Error(`no migration matches "${selector}". Available: ${available}`);
+  }
+  throw new Error(
+    `selector "${selector}" is ambiguous (${String(matches.length)} matches). Available: ${available}`,
+  );
+}
+
+/**
+ * Pull a single value out of a dotenv-style file body (e.g. `frontend/.env.local`). Skips blank and
+ * `#`-comment lines, tolerates a leading `export `, and strips one layer of matching surrounding
+ * quotes. Returns `undefined` when the key isn't present — kept tiny so the package needs no dotenv dep.
+ */
+export function parseEnvValue(content: string, key: string): string | undefined {
+  for (const raw of content.split('\n')) {
+    const line = raw.trim().replace(/^export\s+/, '');
+    if (line === '' || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1 || line.slice(0, eq).trim() !== key) continue;
+    const value = line.slice(eq + 1).trim();
+    return value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return undefined;
+}
+
+/** Where the gitignored `DATABASE_URL` lives — `frontend/.env.local`, relative to this package. */
+export const ENV_LOCAL_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../frontend/.env.local',
+);
+
+/**
  * Create the objects Supabase provides out of the box that the migrations assume exist:
  * the three API roles and the `supabase_realtime` publication (0003 adds a table to it).
  * On a hosted Supabase project these already exist; a vanilla cluster needs them seeded.

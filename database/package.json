@@ -6,6 +6,7 @@
   "description": "Supabase migrations, SQL schema, generated types, and the real-Postgres integration suite for alfred.",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "migrate": "node src/apply.ts",
     "lint": "eslint --fix --cache --cache-location .eslintcache .",
     "format": "prettier --write --cache .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
