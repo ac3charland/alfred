@@ -87,4 +87,12 @@ describe('ViewSwitcher', () => {
 
     expect(screen.getByRole('group', { name: /switch module/i })).toBeInTheDocument();
   });
+
+  it('lays out the container with justify-between so the segments span full width', () => {
+    render(<ViewSwitcher />);
+
+    const group = screen.getByRole('group', { name: /switch module/i });
+    expect(group).toHaveClass('justify-between');
+    expect(group).not.toHaveClass('gap-1');
+  });
 });
