@@ -36,16 +36,31 @@ export const PRIORITY_OPTIONS: readonly PriorityOption[] = [
   OPTIONS.low,
 ];
 
-/** The option metadata for a level (the keyed lookup is exhaustive — every level has an entry). */
-export function priorityOption(value: TaskPriority): PriorityOption {
-  return OPTIONS[value];
+/**
+ * Narrow to a real level (`high` / `medium` / `low`), excluding BOTH `null` and `undefined`.
+ * The render gates use this instead of a bare `!== null` so a row whose `priority` the read
+ * layer never surfaced (a `task_items` view predating the column yields `undefined`, not `null`)
+ * is treated as unprioritised — not waved through to a lookup that then misses.
+ */
+export function isPriorityLevel(value: TaskPriority | null | undefined): value is TaskPriority {
+  return value !== null && value !== undefined;
 }
 
-// Lower rank = higher in the list. Unset (null) ranks last.
+/**
+ * The option metadata for a level, or `undefined` when there is none to show — `null`/`undefined`
+ * (unprioritised) or any value that isn't a known level. The return type is honest about the miss
+ * so callers can't `const { label } = priorityOption(value)` blindly: a `task_items` row can arrive
+ * with no `priority` at all (→ `undefined`), and destructuring the absent option crashes the page.
+ */
+export function priorityOption(value: TaskPriority | null | undefined): PriorityOption | undefined {
+  return isPriorityLevel(value) ? OPTIONS[value] : undefined;
+}
+
+// Lower rank = higher in the list. Unset (null/undefined) ranks last.
 const RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
 
-export function priorityRank(p: TaskPriority | null): number {
-  return p === null ? 3 : RANK[p];
+export function priorityRank(p: TaskPriority | null | undefined): number {
+  return isPriorityLevel(p) ? RANK[p] : 3;
 }
 
 /**

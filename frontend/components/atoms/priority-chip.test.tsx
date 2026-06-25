@@ -27,6 +27,15 @@ describe('PriorityChip', () => {
     expect(screen.getByRole('button', { name: 'Edit priority' })).toBeInTheDocument();
   });
 
+  it('renders nothing when the priority is not a known level (missing column → undefined)', () => {
+    // Backstop for the production crash: a row can reach the chip with `priority` undefined (a
+    // task_items row whose column the read layer dropped). It must render nothing, not destructure
+    // an absent option and white-screen the page.
+    const { container } = render(<PriorityChip priority={undefined as unknown as 'high'} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('forwards onClick', async () => {
     const onClick = jest.fn();
     const user = userEvent.setup();

@@ -159,4 +159,15 @@ describe('PriorityView', () => {
     renderWithProviders(<PriorityView />, { tasks: [] });
     expect(screen.getByText(/No tasks yet/)).toBeInTheDocument();
   });
+
+  it('treats a task whose priority is missing (undefined) as unprioritised, without crashing', () => {
+    // Reproduces the production data shape: getAllItems reads the `task_items` view, which (until
+    // the view is recreated to carry the column) drops `priority`, so every row arrives with it
+    // `undefined` rather than `null`. The row must render the "Set priority" affordance, not 500.
+    const ghost = { ...makeItem('Ghost task'), priority: undefined } as unknown as Item;
+    renderWithProviders(<PriorityView />, { tasks: [ghost] });
+
+    expect(screen.getByText('Ghost task')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set priority' })).toBeInTheDocument();
+  });
 });

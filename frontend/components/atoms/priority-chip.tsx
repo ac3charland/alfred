@@ -25,7 +25,13 @@ export function PriorityChip({
   'aria-label': ariaLabel,
   ...properties
 }: PriorityChipProperties) {
-  const { label, icon: Icon, badgeVariant } = priorityOption(priority);
+  // Backstop: the lookup can miss if a row reaches here without a known level — e.g. a
+  // `task_items` row whose `priority` column the read layer dropped arrives as `undefined`.
+  // Render nothing rather than destructuring the absent option (which white-screens the page).
+  // The render gates (isPriorityLevel) already keep a missing level from getting this far.
+  const option = priorityOption(priority);
+  if (option === undefined) return null;
+  const { label, icon: Icon, badgeVariant } = option;
   return (
     <Badge
       asButton
