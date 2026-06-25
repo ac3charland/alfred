@@ -1,4 +1,4 @@
--- 0009_task_priority.sql — ALF-37: discrete task priority
+-- 0010_task_priority.sql — ALF-37: discrete task priority
 
 -- ── Priority enum (declaration order IS the rank: high < medium < low) ──
 create type task_priority as enum ('high', 'medium', 'low');
