@@ -163,6 +163,8 @@ useEffect(() => {
 
 - **`create or replace view` can only APPEND columns — never reorder, retype, rename, or drop them.** To add a column to an existing view (e.g. `priority` on `v_code_stories`), put the new column at the **end** of the select list; anything else errors with `cannot change name/type of view column`. Drop-and-recreate only when you must restructure.
 
+- **A `select *` / `select t.*` view freezes its column list at CREATE time** — a column ADDed to the base table *later* never appears in the view until you **recreate** it (`create or replace view … select t.*` re-expands `*` and appends the new column, per the rule above). The trap compounds with `.overrideTypes<Row[]>()`: the override *claims* the column is present so typecheck stays green, but the view returns rows without it → the field is `undefined` (not `null`) at runtime, slipping past a `!== null` guard and into a crash. `task_items` froze at `0002` and silently dropped `recurrence` (`0006`) and `priority` (`0010`) — every task read back `priority: undefined`, white-screening the tasks views — until `0011` recreated it. **After adding an `items` column, recreate `task_items` in the same migration.**
+
 - **A single `UPDATE` is NOT immune to a unique violation when it swaps two rows' values.** A plain `unique` index / `UNIQUE` constraint is **non-deferrable**: Postgres checks it **per row, mid-statement**, not at statement end. So `update t set priority = case ref when p_a then b_pri when p_b then a_pri else priority end where ref in (p_a,p_b)` over a `unique(priority)` index **409s** — `duplicate key value violates unique constraint` — the moment it rewrites the first row to a value the second still holds (ALF-35's reorder bug, fixed in `0007`). Two fixes: (a) the **negative-sentinel sequence** in the swap table-row above — keeps the index immediate, no schema change; or (b) make the constraint `unique (priority) deferrable initially deferred` (a table CONSTRAINT, not a plain index — a bare `create unique index` can't be deferrable) so the check runs at commit and the one CASE update stands. The "one statement is atomic so it can't transiently duplicate" intuition is wrong for non-deferrable constraints.
 
 ### Security traps
@@ -262,6 +264,12 @@ and always **verify a change with a follow-up query** — a fix without verifica
 Plain SQL migrations can be applied over the **session pooler** connection string (port
 5432) with any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable
 for multi-statement DDL — prefer the session pooler or direct connection for migrations.
+
+To apply **one** migration to the live DB by number, use `npm run migrate -w database <NNNN>`
+(accepts `11`, `0011`, or the full filename). It reads `DATABASE_URL` from `frontend/.env.local`,
+prints the target host, and confirms before writing (`--yes` skips the prompt). It applies a
+single file with no state tracking — fine because most migrations are idempotent-by-design or
+applied once; reach for raw `psql -f` for the schema bootstrap or seed.
 
 **Regenerating `database.types.ts` from `--db-url` is CLI-version-sensitive — pin a mid-2.9x
 version and have Docker running.** Token-free `--db-url` introspection only works on CLI

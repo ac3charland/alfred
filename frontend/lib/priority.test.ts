@@ -2,6 +2,7 @@ import {
   type TaskPriority,
   bestKey,
   compareKey,
+  isPriorityLevel,
   ownKey,
   priorityOption,
   priorityRank,
@@ -41,13 +42,36 @@ describe('priorityRank', () => {
     expect(priorityRank('low')).toBe(2);
     expect(priorityRank(null)).toBe(3);
   });
+
+  it('ranks a missing priority (undefined) last, like null', () => {
+    // A row whose `priority` the read layer never surfaced arrives as `undefined`, not `null`;
+    // it must still rank as unprioritised rather than producing a NaN rank that scrambles order.
+    expect(priorityRank(undefined)).toBe(3);
+  });
+});
+
+describe('isPriorityLevel', () => {
+  it('is true only for a real level, false for null and undefined', () => {
+    expect(isPriorityLevel('high')).toBe(true);
+    expect(isPriorityLevel('medium')).toBe(true);
+    expect(isPriorityLevel('low')).toBe(true);
+    expect(isPriorityLevel(null)).toBe(false);
+    expect(isPriorityLevel(undefined)).toBe(false);
+  });
 });
 
 describe('priorityOption', () => {
   it('maps each level to its label', () => {
-    expect(priorityOption('high').label).toBe('High');
-    expect(priorityOption('medium').label).toBe('Medium');
-    expect(priorityOption('low').label).toBe('Low');
+    expect(priorityOption('high')?.label).toBe('High');
+    expect(priorityOption('medium')?.label).toBe('Medium');
+    expect(priorityOption('low')?.label).toBe('Low');
+  });
+
+  it('returns undefined for null or a missing (undefined) priority instead of throwing', () => {
+    // The crash this guards: a `task_items` row without a `priority` column → `undefined` →
+    // a blind `const { label } = priorityOption(value)` white-screens the whole list.
+    expect(priorityOption(null)).toBeUndefined();
+    expect(priorityOption(undefined)).toBeUndefined();
   });
 });
 

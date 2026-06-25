@@ -8,7 +8,7 @@ import { PriorityChip } from '@/components/atoms/priority-chip';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { PriorityMenu } from '@/components/tasks/priority-select';
-import type { TaskPriority } from '@/lib/priority';
+import { type TaskPriority, isPriorityLevel } from '@/lib/priority';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasksByPriority } from '@/lib/stores/tasks-store';
 import type { Item } from '@/lib/types';
@@ -48,12 +48,12 @@ function PriorityRow({ task, folderName }: { task: Item; folderName: string }) {
       {task.due_date && <DueDateChip dueDate={task.due_date} />}
 
       <PriorityMenu value={task.priority} onChange={handleChange} align="end">
-        {task.priority === null ? (
+        {isPriorityLevel(task.priority) ? (
+          <PriorityChip priority={task.priority} />
+        ) : (
           <Badge asButton variant="muted" interactive className="font-medium hover:text-foreground">
             Set priority
           </Badge>
-        ) : (
-          <PriorityChip priority={task.priority} />
         )}
       </PriorityMenu>
 

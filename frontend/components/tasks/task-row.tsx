@@ -25,6 +25,7 @@ import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
+import { isPriorityLevel } from '@/lib/priority';
 import { parseRecurrenceRule } from '@/lib/recurrence';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import {
@@ -537,7 +538,7 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
             )}
 
             {/* Priority chip — top-level tasks with a level set; opens the Priority control. */}
-            {isTopLevelTask && node.priority !== null && (
+            {isTopLevelTask && isPriorityLevel(node.priority) && (
               <PriorityChip priority={node.priority} onClick={handleOpenPriorityEditor} />
             )}
 

@@ -11,7 +11,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
-import { PRIORITY_OPTIONS, type TaskPriority, priorityOption } from '@/lib/priority';
+import {
+  PRIORITY_OPTIONS,
+  type TaskPriority,
+  isPriorityLevel,
+  priorityOption,
+} from '@/lib/priority';
 
 interface PriorityMenuProperties {
   /** The current level, or `null` for unprioritised. */
@@ -88,10 +93,10 @@ export function PrioritySelect({ id, value, onChange }: PrioritySelectProperties
         id={id}
         className="text-sm text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none focus-visible:ring-offset-1 focus-visible:ring-offset-background"
       >
-        {value === null ? (
-          <span className="text-muted-foreground">No priority</span>
+        {isPriorityLevel(value) ? (
+          priorityOption(value)?.label
         ) : (
-          priorityOption(value).label
+          <span className="text-muted-foreground">No priority</span>
         )}
       </InlineEditTrigger>
     </PriorityMenu>

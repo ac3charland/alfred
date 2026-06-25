@@ -55,7 +55,11 @@ URI (it's IPv6 and works from a normal machine). If your network is IPv4-only, u
 is unreliable for multi-statement DDL.
 
 ```bash
-# Apply schema + seed (any Postgres client; example uses psql):
+# Apply ONE migration to the live DB by number — reads DATABASE_URL from frontend/.env.local,
+# prints the target host, and confirms before writing (add --yes to skip the prompt):
+npm run migrate -w database 11           # accepts 11, 0011, or 0011_task_items_view_columns.sql
+
+# Or drive any file directly with psql (schema bootstrap, seed, a hand-picked migration):
 psql "$DATABASE_URL" -f database/migrations/0001_initial_schema.sql
 psql "$DATABASE_URL" -f database/seed.sql
 
