@@ -168,6 +168,38 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const taskItemsColumnsResult = await attempt(
+    'task_items view surfaces late-added items columns (priority, recurrence) (0011)',
+    async () => {
+      // A `select *` view freezes its column list at CREATE time, so columns added to `items`
+      // after the view (recurrence in 0006, priority in 0010) stay invisible until it's recreated.
+      // getAllItems() reads this view, so a dropped `priority` becomes `undefined` on every task and
+      // crashes the By-Priority/folder/inbox lists. Round-trip a set value to prove the view carries it.
+      const inserted = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, priority, recurrence)
+             values ('prioritised task', 'task', 'high', '{"freq":"daily"}'::jsonb)
+           returning id`,
+        ),
+      );
+      const id = inserted.rows[0]?.id;
+      if (!id) throw new Error('item insert returned no id');
+      const { rows } = await asRole(client, 'authenticated', () =>
+        client.query<{ priority: string | null; recurrence: unknown }>(
+          `select priority, recurrence from task_items where id = $1`,
+          [id],
+        ),
+      );
+      const row = rows[0];
+      if (!row) throw new Error('task_items did not return the inserted row');
+      if (row.priority !== 'high')
+        throw new Error(`priority not surfaced by the view (got ${String(row.priority)})`);
+      if (row.recurrence === null || row.recurrence === undefined)
+        throw new Error('recurrence not surfaced by the view');
+      return `priority=${row.priority}, recurrence carried`;
+    },
+  );
+
   const anonInsertResult = await attempt('anon cannot insert (RLS write denial)', async () => {
     let denied = false;
     try {
@@ -202,6 +234,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     enterModuleResult,
     swapResult,
     moveResult,
+    taskItemsColumnsResult,
     anonInsertResult,
     anonReadResult,
   ];
