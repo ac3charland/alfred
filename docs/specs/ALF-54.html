@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-54 — Inbox multi-edit (bulk classify, file, and send-to-code)</title>
+    <style>
+      :root {
+        --bg: #0a0e17;
+        --surface: #0f1626;
+        --surface-2: #121b2e;
+        --border: #1e2a3f;
+        --text: #e8edf5;
+        --muted: #8a96a8;
+        --teal: #4fd1e0;
+        --green: #34d399;
+        --blue: #60a5fa;
+        --amber: #f0b429;
+        --red: #f87171;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 700px at 70% -10%, #11203a 0%, var(--bg) 55%) fixed;
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      .wrap {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 40px 22px 96px;
+      }
+      header.hero {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(79, 209, 224, 0.06), rgba(15, 22, 38, 0.4));
+        border-radius: 20px;
+        padding: 28px 30px;
+        box-shadow: 0 0 60px rgba(79, 209, 224, 0.07);
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        color: var(--teal);
+        font-weight: 600;
+      }
+      h1 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 600;
+        font-size: 32px;
+        line-height: 1.2;
+        margin: 8px 0 6px;
+      }
+      h2 {
+        font-family: Georgia, serif;
+        font-size: 24px;
+        margin: 52px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 18px;
+        margin: 30px 0 8px;
+        color: var(--text);
+      }
+      h4 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 20px 0 6px;
+      }
+      p,
+      li {
+        color: var(--text);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      strong {
+        color: #fff;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.88em;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+      pre {
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        overflow-x: auto;
+      }
+      pre .c {
+        color: var(--muted);
+      }
+      pre .k {
+        color: var(--blue);
+      }
+      pre .s {
+        color: var(--green);
+      }
+      pre .t {
+        color: var(--teal);
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin: 16px 0;
+      }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--green);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 2px 10px;
+        margin-right: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 14px 0;
+        font-size: 14.5px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--teal);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+      }
+      td code {
+        white-space: nowrap;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      li {
+        margin: 4px 0;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 720px) {
+        .grid2 {
+          grid-template-columns: 1fr;
+        }
+      }
+      .pill {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+      }
+      .pill.task {
+        color: var(--teal);
+      }
+      .pill.code {
+        color: var(--blue);
+      }
+      .pill.unc {
+        color: var(--amber);
+      }
+      .yes {
+        color: var(--green);
+        font-weight: 600;
+      }
+      .no {
+        color: var(--muted);
+      }
+      .check {
+        list-style: none;
+        padding-left: 0;
+      }
+      .check li {
+        padding-left: 30px;
+        position: relative;
+        margin: 8px 0;
+      }
+      .check li::before {
+        content: "☐";
+        position: absolute;
+        left: 4px;
+        top: -1px;
+        color: var(--teal);
+        font-size: 16px;
+      }
+      .note {
+        border-left: 3px solid var(--amber);
+        background: rgba(240, 180, 41, 0.06);
+        padding: 10px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 16px 0;
+      }
+      .figcap {
+        text-align: center;
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      /* ---- mockup ---- */
+      .mock {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg);
+        padding: 18px;
+        margin: 16px 0;
+        font-size: 14px;
+      }
+      .mock-eyebrow {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: rgba(138, 150, 168, 0.7);
+        margin-bottom: 10px;
+      }
+      .mock-select-btn {
+        font-size: 12px;
+        color: var(--teal);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 3px 10px;
+        letter-spacing: normal;
+        text-transform: none;
+      }
+      .mrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        margin: 7px 0;
+        background: var(--surface);
+      }
+      .mrow.sel {
+        border-color: var(--teal);
+        box-shadow: 0 0 0 1px rgba(79, 209, 224, 0.4), 0 0 22px rgba(79, 209, 224, 0.08);
+        background: rgba(79, 209, 224, 0.04);
+      }
+      .mbox {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        border: 1.5px solid var(--muted);
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: var(--bg);
+      }
+      .mbox.on {
+        background: var(--teal);
+        border-color: var(--teal);
+      }
+      .mtitle {
+        flex: 1;
+      }
+      .actionbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid var(--teal);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(79, 209, 224, 0.08), rgba(15, 22, 38, 0.6));
+      }
+      .actionbar .count {
+        font-weight: 600;
+        color: var(--teal);
+        margin-right: 6px;
+      }
+      .btn {
+        font-size: 13px;
+        padding: 5px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        color: var(--text);
+      }
+      .btn.dim {
+        color: var(--muted);
+        opacity: 0.5;
+      }
+      .btn.ghost {
+        background: transparent;
+        margin-left: auto;
+        color: var(--muted);
+      }
+      .footer-meta {
+        margin-top: 40px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      a {
+        color: var(--teal);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <div class="eyebrow">Tasks · Inbox triage · Bulk editing</div>
+        <h1>Inbox multi-edit: select many items, classify / file / send-to-code in one pass</h1>
+        <p class="muted">
+          <span class="tag">ALF-54</span> Add an explicit selection mode to the Inbox so the owner
+          can act on several captured items at once — classify their type, file tasks into a folder,
+          or send a batch into the Code module — instead of repeating the per-row "More actions"
+          menu N times.
+        </p>
+      </header>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        Capture is frictionless by design, so the Inbox fills with raw, <span class="pill unc"
+          >unclassified</span
+        >
+        items (plus any <span class="pill task">task</span> still sitting at <code>folder_id = null</code>).
+        Triage today is strictly <strong>one row at a time</strong>: each
+        <code>TaskRow</code> carries a "More actions" dropdown (<code
+          >components/tasks/task-row/task-row-menu.tsx</code
+        >) that offers <em>Classify as…</em>, <em>Move to…</em>, <em>Send to Code module…</em>, and
+        <em>Delete</em> — but only for that single item. Clearing an Inbox of a dozen captures means
+        opening a dozen menus and making the same choice a dozen times.
+      </p>
+      <p>
+        There is <strong>no multi-select anywhere in the app yet</strong>. The only checkbox is
+        <code>CheckboxButton</code> (the per-row <em>completion</em> toggle); the coordination stores
+        that exist (<code>ExpansionProvider</code>, <code>ActiveEditorProvider</code>) manage
+        expand/collapse and which row is being edited — neither tracks a selection set. So this
+        ticket adds a genuinely new interaction layer, scoped to the Inbox where the repetition
+        actually hurts.
+      </p>
+      <div class="note">
+        <strong>Scope decided in refinement.</strong> The three bulk actions in v1 are
+        <em>Classify type</em>, <em>Move to folder</em>, and <em>Send to Code (project/epic)</em>.
+        The selection model is an <strong>explicit "Select" mode toggle</strong> (persistent
+        checkboxes, Done/Cancel to exit) — not always-on hover checkboxes. Bulk
+        <strong>Delete</strong> was de-scoped during refinement and is listed under
+        <a href="#oos">Out of scope</a>.
+      </div>
+
+      <h2>How the Inbox renders today</h2>
+      <p>
+        The landing/Inbox screen is <code>components/tasks/inbox-screen.tsx</code>. Its list is a
+        single <code>&lt;TaskList scope={{ type: 'inbox' }} /&gt;</code> derived client-side from the
+        shared <code>TasksProvider</code> store — no per-view fetch. The header row already hosts an
+        <code>INBOX</code> eyebrow and a <code>CollapseAllButton</code>; the new <strong>Select</strong>
+        control lands right beside them.
+      </p>
+      <pre><span class="c">// components/tasks/inbox-screen.tsx — the existing list header (where "Select" is added)</span>
+&lt;<span class="k">div</span> className=<span class="s">"mb-2 flex items-center justify-between gap-2"</span>&gt;
+  &lt;<span class="k">span</span> className=<span class="s">"… uppercase text-muted-foreground/70"</span>&gt;Inbox&lt;/<span class="k">span</span>&gt;
+  <span class="c">/* + new: &lt;InboxSelectToggle /&gt; sits alongside CollapseAllButton */</span>
+  &lt;<span class="t">CollapseAllButton</span> scope={{ type: <span class="s">'inbox'</span> }} /&gt;
+&lt;/<span class="k">div</span>&gt;
+&lt;<span class="t">TaskList</span> scope={{ type: <span class="s">'inbox'</span> }} emptyMessage=<span class="s">"Your inbox is empty"</span> /&gt;</pre>
+
+      <h2>Proposed change</h2>
+
+      <h3>1 · Selection mode — state machine</h3>
+      <p>
+        A new <strong>coordination store</strong>, <code>InboxSelectionProvider</code>, follows the
+        same pattern as <code>ExpansionProvider</code> (transient, cross-row UI state that no single
+        row owns — see the <em>data-flow</em> skill). It holds an <code>active</code> flag and a
+        <code>Set&lt;string&gt;</code> of selected item ids, and is mounted inside the Tasks shell so
+        the action bar and every Inbox row can read/write it.
+      </p>
+
+      <svg viewBox="0 0 920 300" width="100%" role="img" aria-label="Selection mode state machine" style="margin-top:8px">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#4fd1e0" />
+          </marker>
+          <style>
+            .st { fill: #0f1626; stroke: #1e2a3f; }
+            .stsel { fill: rgba(79,209,224,0.06); stroke: #4fd1e0; }
+            .lbl { fill: #e8edf5; font: 600 14px var(--sans, sans-serif); }
+            .sub { fill: #8a96a8; font: 12px var(--sans, sans-serif); }
+            .edge { stroke: #4fd1e0; stroke-width: 1.6; fill: none; }
+            .et { fill: #8a96a8; font: 12px var(--sans, sans-serif); }
+          </style>
+        </defs>
+
+        <rect class="st" x="20" y="115" width="150" height="64" rx="12" />
+        <text class="lbl" x="95" y="143" text-anchor="middle">Idle</text>
+        <text class="sub" x="95" y="162" text-anchor="middle">normal Inbox</text>
+
+        <rect class="stsel" x="370" y="40" width="190" height="70" rx="12" />
+        <text class="lbl" x="465" y="68" text-anchor="middle">Selecting · 0</text>
+        <text class="sub" x="465" y="88" text-anchor="middle">bar shown, actions off</text>
+
+        <rect class="stsel" x="370" y="185" width="190" height="70" rx="12" />
+        <text class="lbl" x="465" y="213" text-anchor="middle">Selecting · n</text>
+        <text class="sub" x="465" y="233" text-anchor="middle">eligible actions on</text>
+
+        <rect class="st" x="740" y="113" width="160" height="68" rx="12" />
+        <text class="lbl" x="820" y="141" text-anchor="middle">Applied</text>
+        <text class="sub" x="820" y="160" text-anchor="middle">optimistic mutate</text>
+
+        <!-- idle -> selecting0 -->
+        <path class="edge" d="M170,135 C260,110 300,90 368,80" marker-end="url(#arrow)" />
+        <text class="et" x="250" y="98">press “Select”</text>
+        <!-- selecting0 -> n -->
+        <path class="edge" d="M465,110 L465,183" marker-end="url(#arrow)" />
+        <text class="et" x="475" y="152">toggle a row</text>
+        <!-- n -> selecting0 (deselect last) -->
+        <path class="edge" d="M440,183 C420,150 420,140 440,112" marker-end="url(#arrow)" />
+        <text class="et" x="300" y="150">deselect last</text>
+        <!-- n -> applied -->
+        <path class="edge" d="M560,220 C650,200 690,180 740,160" marker-end="url(#arrow)" />
+        <text class="et" x="612" y="210">run bulk action</text>
+        <!-- applied -> idle (auto-exit) / or back to selecting -->
+        <path class="edge" d="M820,181 C820,260 250,265 95,181" marker-end="url(#arrow)" />
+        <text class="et" x="430" y="282">on success → clear selection &amp; exit (Done / Cancel also return to Idle)</text>
+      </svg>
+      <p class="figcap">
+        Selection lifecycle. "Send to Code" inserts the gate dialog between
+        <em>Selecting · n</em> and <em>Applied</em>; the other two actions apply immediately.
+      </p>
+
+      <h4>Store shape</h4>
+      <pre><span class="c">// lib/stores/inbox-selection-store.tsx (new) — mirrors ExpansionProvider</span>
+<span class="k">interface</span> <span class="t">InboxSelection</span> {
+  active: <span class="t">boolean</span>;              <span class="c">// is select mode on?</span>
+  selectedIds: <span class="t">ReadonlySet</span>&lt;<span class="t">string</span>&gt;;
+}
+<span class="k">interface</span> <span class="t">InboxSelectionActions</span> {
+  enter(): <span class="t">void</span>;                   <span class="c">// Idle → Selecting·0</span>
+  exit(): <span class="t">void</span>;                    <span class="c">// clear set + active=false (Done / Cancel)</span>
+  toggle(id: <span class="t">string</span>): <span class="t">void</span>;
+  clear(): <span class="t">void</span>;                   <span class="c">// empty the set, stay in mode</span>
+  isSelected(id: <span class="t">string</span>): <span class="t">boolean</span>;
+}</pre>
+      <p class="muted">
+        The set is keyed by item id and only ever holds <strong>root Inbox items</strong> — the rows
+        <code>TaskList</code> renders at <code>scope.inbox</code>. Subtask selection is out of scope.
+        Entering or exiting the Tasks view, or an item leaving the Inbox, prunes stale ids.
+      </p>
+
+      <h3>2 · The Inbox row in select mode</h3>
+      <p>
+        When <code>active</code> is true, each Inbox <code>TaskRow</code> swaps its leading affordance
+        (the drag handle / completion checkbox) for a <strong>selection checkbox</strong>, and the
+        whole row toggles selection on click — inline editing, expand, and the per-row "More actions"
+        menu are suppressed while selecting, so the row has exactly one meaning. A selected row gets
+        the teal ring already used elsewhere for focus/active emphasis.
+      </p>
+
+      <div class="mock">
+        <div class="mock-eyebrow">
+          <span>Inbox</span>
+          <span class="mock-select-btn">✓ Selecting</span>
+        </div>
+        <div class="mrow sel">
+          <span class="mbox on">✓</span><span class="mtitle">Email the accountant about Q2</span>
+          <span class="pill unc">unclassified</span>
+        </div>
+        <div class="mrow sel">
+          <span class="mbox on">✓</span><span class="mtitle">Draft the onboarding doc</span>
+          <span class="pill unc">unclassified</span>
+        </div>
+        <div class="mrow">
+          <span class="mbox"></span><span class="mtitle">Buy a new laptop charger</span>
+          <span class="pill task">task</span>
+        </div>
+        <div class="mrow sel">
+          <span class="mbox on">✓</span><span class="mtitle">Spike: websocket reconnection</span>
+          <span class="pill unc">unclassified</span>
+        </div>
+
+        <div class="actionbar">
+          <span class="count">3 selected</span>
+          <button class="btn">Classify as ▾</button>
+          <button class="btn dim">Move to folder ▾</button>
+          <button class="btn">Send to Code…</button>
+          <button class="btn ghost">Done</button>
+        </div>
+      </div>
+      <p class="figcap">
+        Action bar appears once ≥1 item is selected. Here the selection is all-unclassified, so
+        <em>Move to folder</em> (task-only) is disabled while <em>Classify</em> and
+        <em>Send to Code</em> are live.
+      </p>
+
+      <h3>3 · The bulk action bar &amp; the enablement matrix</h3>
+      <p>
+        The bar is a new <code>components/tasks/inbox-bulk-bar.tsx</code> that renders only while
+        <code>active &amp;&amp; selectedIds.size &gt; 0</code>. Each action's availability depends on
+        the <em>composition</em> of the selection, keeping each bulk operation type-coherent (the same
+        gating the single-row menu applies, lifted to a set):
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Enabled when…</th>
+            <th>Picker</th>
+            <th>Underlying op (per item)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Classify as</strong> Task / Code</td>
+            <td>every selected item is <span class="pill unc">unclassified</span></td>
+            <td>small dropdown (Task · Code)</td>
+            <td><code>classifyItem(id, type)</code></td>
+          </tr>
+          <tr>
+            <td><strong>Move to folder</strong></td>
+            <td>every selected item is <span class="pill task">task</span></td>
+            <td>folder list (incl. "Inbox" to unfile)</td>
+            <td><code>moveTask(id, folderId)</code> — cascades subtree</td>
+          </tr>
+          <tr>
+            <td><strong>Send to Code</strong></td>
+            <td>selection is non-empty (any Inbox item is eligible)</td>
+            <td><a href="#gate">shared gate dialog</a> (project → epic)</td>
+            <td><code>convertTaskToCode(item, projectId, epicId)</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted">
+        A disabled action shows a tooltip explaining the gate (e.g. "Only tasks can be filed into a
+        folder"). The bar always shows the live <strong>count</strong> and a
+        <strong>Done</strong> button (exits mode); pressing <kbd>Esc</kbd> also exits.
+      </p>
+
+      <h3>4 · Store: three new batch actions</h3>
+      <p>
+        The single-item actions already exist; v1 adds thin <strong>batch wrappers</strong> on
+        <code>TaskActions</code> (and reuses <code>code-store</code> for the gate). The reducer already
+        supports multi-id patches — <code>dispatch({ type: 'patch', ids, patch })</code> takes an
+        <code>ids: string[]</code> — so the optimistic step is a single dispatch over the whole set,
+        and rollback restores the captured snapshot for all of them. No bulk HTTP endpoint is added:
+        the wrappers fan the existing per-item routes out with <code>Promise.allSettled</code> and
+        report partial failure.
+      </p>
+      <pre><span class="c">// lib/stores/tasks-store.tsx — new on TaskActions (signatures)</span>
+bulkClassify(ids: <span class="t">string</span>[], itemType: <span class="s">'task'</span> | <span class="s">'code'</span>): <span class="t">Promise</span>&lt;<span class="t">void</span>&gt;;
+bulkMove(ids: <span class="t">string</span>[], folderId: <span class="t">string</span> | <span class="t">null</span>): <span class="t">Promise</span>&lt;<span class="t">void</span>&gt;;
+
+<span class="c">// each follows the existing optimistic shape, but over the whole set:</span>
+<span class="k">async</span> bulkClassify(ids, itemType) {
+  <span class="k">const</span> previous = tasksRef.current.filter((i) =&gt; ids.includes(i.id)); <span class="c">// snapshot</span>
+  <span class="k">await</span> runOptimisticMutation({
+    optimistic: () =&gt; dispatch({ type: <span class="s">'patch'</span>, ids, patch: { item_type: itemType } }),
+    apiCall: () =&gt; <span class="t">Promise</span>.allSettled(ids.map((id) =&gt; api.updateItem(id, { item_type: itemType }))),
+    reconcile: (rows) =&gt; dispatch({ type: <span class="s">'upsert'</span>, items: rows }),
+    rollback: () =&gt; dispatch({ type: <span class="s">'upsert'</span>, items: previous }),
+    onError: () =&gt; showToastRef.current(<span class="s">"Couldn't classify some items"</span>),
+  });
+}</pre>
+      <div class="note">
+        <strong>Partial-failure policy.</strong> With <code>allSettled</code>, items that saved stay
+        applied and items that failed roll back individually; the toast reports the count that
+        failed (e.g. "2 of 5 couldn't be filed"). On success the store clears the selection and exits
+        mode.
+      </div>
+
+      <h3 id="gate">5 · Reusing the code gate for a batch</h3>
+      <p>
+        Per refinement, bulk send-to-code picks <strong>one project + epic for the whole
+        selection</strong>. Rather than build a second dialog, the existing
+        <code>GateDialog</code> (<code>components/code/gate-dialog.tsx</code>) is generalized from a
+        single <code>item: GateItem</code> to <code>items: GateItem[]</code>: the project→epic picker
+        is unchanged, the title/description pluralize ("Send 3 items to a project and epic"), and
+        <em>Confirm</em> runs <code>convertTaskToCode</code> for each item, then
+        <code>removeGatedItem(id)</code> for each (the items fall out of the
+        <code>task_items</code> view once their <code>code_items</code> sidecar exists, exactly as in
+        the single-item flow today).
+      </p>
+      <pre><span class="c">// components/code/gate-dialog.tsx — widen the contract; single-item callers pass [item]</span>
+<span class="k">interface</span> <span class="t">GateDialogProperties</span> {
+  open: <span class="t">boolean</span>;
+  onOpenChange: (open: <span class="t">boolean</span>) =&gt; <span class="t">void</span>;
+  items: <span class="t">GateItem</span>[];                       <span class="c">// was: item: GateItem</span>
+  onComplete: (stories: <span class="t">CodeStory</span>[]) =&gt; <span class="t">void</span>;  <span class="c">// was: (story) — now a batch</span>
+}
+
+<span class="c">// Confirm handler (project + epic already chosen, button gated on both):</span>
+onSubmit: () =&gt; <span class="t">Promise</span>.all(items.map((it) =&gt; convertTaskToCode(it, projectId, epicId))),
+onSuccess: (stories) =&gt; { onComplete(stories); onOpenChange(false); },</pre>
+      <p class="muted">
+        The existing single-row "Send to Code module…" / "Convert to Code Story…" entry points keep
+        working by passing a one-element array — a pure refactor covered by their current tests.
+      </p>
+
+      <h2>Files touched</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>lib/stores/inbox-selection-store.tsx</code></td><td><span class="yes">new</span> · selection coordination store (provider + hooks)</td></tr>
+          <tr><td><code>components/tasks/inbox-bulk-bar.tsx</code></td><td><span class="yes">new</span> · the action bar + enablement logic + pickers</td></tr>
+          <tr><td><code>components/tasks/inbox-screen.tsx</code></td><td>add the <em>Select</em> toggle to the header; render the bar</td></tr>
+          <tr><td><code>components/tasks/task-row.tsx</code></td><td>in select mode: selection checkbox, row-click toggles, suppress inline edit/menu</td></tr>
+          <tr><td><code>lib/stores/tasks-store.tsx</code></td><td>add <code>bulkClassify</code>, <code>bulkMove</code></td></tr>
+          <tr><td><code>components/code/gate-dialog.tsx</code></td><td>widen <code>item</code>→<code>items[]</code>; batch the confirm; pluralize copy</td></tr>
+          <tr><td>callers of <code>GateDialog</code> (task-row)</td><td>pass <code>[item]</code> and adapt <code>onComplete</code> to a list</td></tr>
+          <tr><td>shell layout (Tasks)</td><td>mount <code>InboxSelectionProvider</code> alongside the other coordination providers</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">
+        No schema, migration, or new API route. All three bulk operations reuse the existing
+        <code>PATCH /api/items/[id]</code> and the <code>enter_code_module</code> RPC.
+      </p>
+
+      <h2>Acceptance criteria</h2>
+      <ul class="check">
+        <li>The Inbox header shows a <strong>Select</strong> control; pressing it enters selection
+          mode, replacing each Inbox row's leading control with a selection checkbox.</li>
+        <li>Clicking a row (or its checkbox) toggles its membership in the selection; the live
+          <strong>count</strong> updates. <kbd>Esc</kbd> or <strong>Done</strong> exits mode and
+          clears the selection.</li>
+        <li>The bulk action bar appears only when ≥1 item is selected and offers <em>Classify as</em>,
+          <em>Move to folder</em>, and <em>Send to Code…</em>.</li>
+        <li><strong>Classify</strong> is enabled only when every selected item is unclassified, and
+          sets <code>item_type</code> on all of them in one optimistic pass.</li>
+        <li><strong>Move to folder</strong> is enabled only when every selected item is a task, and
+          moves all of them (subtrees cascading) to the chosen folder or back to the Inbox.</li>
+        <li><strong>Send to Code</strong> opens the gate, which picks one project + epic and admits
+          every selected item to the factory; the gated items leave the Inbox.</li>
+        <li>A partial failure leaves saved items applied, rolls back only the failed ones, and toasts
+          how many failed; full success clears the selection and exits mode.</li>
+        <li>Single-row "More actions" behavior (classify / move / send-to-code on one item) is
+          unchanged.</li>
+      </ul>
+
+      <h2 id="oos">Out of scope / open questions</h2>
+      <ul>
+        <li><strong>Bulk delete</strong> — named in the ticket title but de-scoped in refinement;
+          revisit as a fast follow once the selection model is in. (Single-row delete is unchanged.)</li>
+        <li><strong>Selecting subtasks</strong> — only root Inbox rows are selectable in v1.</li>
+        <li><strong>Bulk set priority / due date</strong> — the "etc." in the title; not in v1.</li>
+        <li><strong>Multi-select outside the Inbox</strong> (folders, completed, the Code board) —
+          this ticket is Inbox-only.</li>
+        <li><strong>A server-side bulk endpoint</strong> — v1 fans the existing per-item routes out
+          client-side; a batched endpoint is a possible later optimization, not required.</li>
+        <li><strong>Select-all / range-select / shift-click</strong> — individual toggling only in
+          v1; open question whether a "Select all" affordance is worth adding.</li>
+      </ul>
+
+      <div class="footer-meta">
+        <p>
+          <strong>Testing.</strong> Unit: <code>inbox-selection-store.test.tsx</code> (enter/toggle/
+          exit/prune) and <code>tasks-store.test.tsx</code> (bulk actions: optimistic apply,
+          reconcile, partial-failure rollback). Component (RTL): the Inbox in select mode — toggling,
+          enablement gating, the action bar. Storybook: the bulk bar's states (counts, enabled/
+          disabled mixes) for the snapshot gate. E2E (Playwright): select three captures → classify →
+          file → send-to-code happy path. Per the project's TDD rule, every criterion above maps to at
+          least one of these; demo doc to follow at
+          <code>docs/demos/ALF-54/inbox-multi-edit.md</code> per the <em>showboat</em> rules.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
