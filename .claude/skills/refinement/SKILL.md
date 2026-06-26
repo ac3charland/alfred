@@ -26,7 +26,11 @@ once the scope is clear do you write the spec below.
 ## What to produce
 
 1. **A spec authored as a self-contained HTML plan at `docs/specs/<REF>.html`** (e.g.
-   `docs/specs/ALF-42.html`, using the story's ref). Write it as a rich, scannable document a human will actually open and review, not a wall of prose:
+   `docs/specs/ALF-42.html`, using the story's ref) — **HTML, not a markdown file.** The spec is a
+   long, human-read artifact, so lean on the "unreasonable effectiveness of HTML": its rich
+   structure (headings, sections, tables, inline diagrams) pays off here where flat markdown
+   wouldn't. Write it as a rich, scannable document a human will actually open and review, not a
+   wall of prose:
    - **One self-contained file:** inline all CSS in a `<style>` block; no build step, no external
      dependencies, no JS required — it opens directly in a browser. Make it easy to read and
      digest, and mobile-friendly.

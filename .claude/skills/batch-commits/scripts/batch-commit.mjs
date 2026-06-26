@@ -22,10 +22,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { parseBatchInput, validateCommits } from './parse.mjs';
+import { parseBatchInput, resolveSignFlag, validateCommits } from './parse.mjs';
 
 const USAGE = [
-  'Usage: node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file>',
+  'Usage: node .claude/skills/batch-commits/scripts/batch-commit.mjs <input-file> [--gpg-sign | --no-gpg-sign]',
   '',
   'Create several commits in one pass, running check:fast only once.',
   '',
@@ -40,6 +40,9 @@ const USAGE = [
   '',
   'Rules: a "message:" line starts a commit; following non-blank lines are its',
   'file paths; blank lines separate commits; "#" lines are comments.',
+  '',
+  'Signing: by default each commit honors the repo\'s commit.gpgsign setting',
+  '(--no-verify skips hooks, not signing). Pass --gpg-sign or --no-gpg-sign to force it.',
 ].join('\n');
 
 function fail(message) {
@@ -61,9 +64,11 @@ function partialSummary(created) {
 }
 
 function main() {
-  const inputPath = process.argv[2];
-  if (!inputPath || inputPath === '--help' || inputPath === '-h') {
-    if (inputPath) {
+  const args = process.argv.slice(2);
+  // The input path is the first positional arg; flags (--gpg-sign, …) may sit on either side.
+  const inputPath = args.find((a) => !a.startsWith('-'));
+  if (!inputPath || args.includes('--help') || args.includes('-h')) {
+    if (args.includes('--help') || args.includes('-h')) {
       console.log(USAGE);
     } else {
       console.error(USAGE);
@@ -79,7 +84,14 @@ function main() {
     return;
   }
   const repoRoot = toplevel.stdout.trim();
-  const git = (args, opts = {}) => run('git', args, { cwd: repoRoot, ...opts });
+  const git = (gitArgs, opts = {}) => run('git', gitArgs, { cwd: repoRoot, ...opts });
+
+  // Decide signing once: honor commit.gpgsign unless a CLI flag overrides it. --no-verify
+  // (used on each commit below) skips hooks but NOT signing, so without this an unsigned
+  // commit only happens when the repo isn't configured to sign in the first place.
+  const gpgsignConfigured =
+    git(['config', '--bool', '--get', 'commit.gpgsign']).stdout.trim() === 'true';
+  const signFlag = resolveSignFlag({ argv: args, gpgsignConfigured });
 
   // 2. Parse input.
   let commits;
@@ -191,7 +203,13 @@ function main() {
       fail(`commit ${n} would be empty after staging\n${partialSummary(created)}`);
       return;
     }
-    const res = git(['commit', '-m', commit.message, '--no-verify']);
+    const res = git([
+      'commit',
+      '-m',
+      commit.message,
+      '--no-verify',
+      ...(signFlag ? [signFlag] : []),
+    ]);
     if (res.status !== 0) {
       fail(`commit ${n} failed: ${res.stderr.trim()}\n${partialSummary(created)}`);
       return;

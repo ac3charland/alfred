@@ -86,19 +86,31 @@ describe('buildRefinementUrl', () => {
     expect(firstLine).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
   });
 
-  it('instructs a spec-only artifact (no implementation) saved to docs/specs/<REF>.html', () => {
+  it('instructs a spec-only artifact (no implementation) without hardcoding the spec path', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
     expect(prompt).toMatch(/spec/i);
     expect(prompt).toMatch(/no implementation|do not implement|not.*implement/i);
-    expect(prompt).toContain('docs/specs/ALF-42.html');
+    // The path/format is the refinement skill's job now — the prompt must NOT bake in a concrete
+    // spec location, so an OpenSpec (multi-file folder) project isn't forced to a single .html.
+    expect(prompt).not.toContain('docs/specs/ALF-42.html');
   });
 
-  it('directs the agent to author the spec as a self-contained HTML plan', () => {
+  it('defers the spec format/structure to the refinement skill, not the prompt', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
-    // The whole point of this change: the produced spec is a rich HTML document, not markdown.
-    expect(prompt).toMatch(/self-contained HTML plan/i);
-    expect(prompt).toMatch(/NOT a markdown file/i);
-    expect(prompt).toMatch(/SVG diagram/i);
+    // The HTML-plan + section-skeleton mandate moved INTO the skill; the prompt no longer bakes
+    // a format convention, so each project's skill can choose its own (HTML, OpenSpec, …).
+    expect(prompt).not.toMatch(/NOT a markdown file/i);
+    expect(prompt).not.toMatch(/SVG diagram/i);
+    expect(prompt).toMatch(/following the refinement skill/i);
+    expect(prompt).toMatch(/it defines this repo's spec format/i);
+  });
+
+  it('names HTML only as the no-skill fallback format', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    // When the skill is absent there is no convention to follow, so the prompt falls back to a
+    // self-contained HTML doc — a sensible default, but only as the fallback.
+    expect(prompt).toMatch(/if the skill is absent/i);
+    expect(prompt).toMatch(/self-contained HTML/i);
   });
 
   it('points at the refinement skill dropped into each repo', () => {
@@ -106,12 +118,13 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toContain('.claude/skills/refinement/SKILL.md');
   });
 
-  it('embeds the alfred frontmatter block with ticket, refinement phase, and spec-path', () => {
+  it('embeds the alfred block with ticket + refinement phase and a fill-in spec-path', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
     expect(prompt).toContain('```alfred');
     expect(prompt).toContain('alfred-ticket: ALF-42');
     expect(prompt).toContain('phase: refinement');
-    expect(prompt).toContain('spec-path: docs/specs/ALF-42.html');
+    // spec-path is a placeholder the agent fills with the spec's real path, not a baked location.
+    expect(prompt).toContain('spec-path: <path-or-folder-of-the-spec>');
   });
 
   it('tells Claude to open a PR carrying that block', () => {
@@ -133,12 +146,13 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
   });
 
-  it('carries a self-contained section skeleton for the no-guide fallback', () => {
+  it('no longer inlines the alfred section skeleton (it moved to the skill)', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
-    // When the refinement skill is absent the prompt must still define the spec shape, so
-    // "OpenSpec-style" is no longer an undefined term the model has to guess at.
-    expect(prompt).toContain('Acceptance criteria');
-    expect(prompt).toContain('Out of scope');
+    // The Title/Context/Proposed-change/Acceptance-criteria/Out-of-scope skeleton is an
+    // alfred-specific spec convention — it lives in the refinement skill now, not the prompt,
+    // so a project with its own skill isn't forced into alfred's section layout.
+    expect(prompt).not.toContain('Out of scope');
+    expect(prompt).not.toContain('Proposed change');
   });
 
   it('asks Claude to self-check the saved spec and verbatim block before the PR', () => {
@@ -184,7 +198,8 @@ describe('buildRefinementUrl', () => {
     const { repo, prompt } = parse(url);
     expect(repo).toBe('me/relay');
     expect((prompt ?? '').split('\n', 1)[0]).toBe('RLP-7: Add the digest scheduler');
-    expect(prompt).toContain('docs/specs/RLP-7.html');
+    // No hardcoded spec path — only the ticket ref threads through to the alfred block.
+    expect(prompt).not.toContain('docs/specs/RLP-7');
     expect(prompt).toContain('alfred-ticket: RLP-7');
   });
 });
@@ -281,6 +296,19 @@ describe('buildImplementationUrl', () => {
     expect(prompt).toMatch(/ask me here/i);
     expect(prompt).toMatch(/verbatim|reproduced exactly/i);
   });
+
+  it('points at the implement-spec skill for the build-from-a-spec conventions', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toContain('.claude/skills/implement-spec/SKILL.md');
+  });
+
+  it('references the spec format-agnostically (no baked HTML/open-in-a-browser assumption)', () => {
+    const prompt = parse(buildImplementationUrl(makeProject(), makeStory())).prompt ?? '';
+    // The spec may be HTML, markdown, or an OpenSpec folder — the refinement skill chose; the
+    // implementation prompt must not assume a single rendered HTML file.
+    expect(prompt).not.toMatch(/self-contained HTML plan/i);
+    expect(prompt).not.toMatch(/open it in a browser/i);
+  });
 });
 
 describe('buildBypassUrl', () => {
@@ -334,6 +362,11 @@ describe('buildBypassUrl', () => {
     const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
     expect(prompt).toMatch(/open.*(pull request|pr)/i);
     expect(prompt).toMatch(/verbatim|reproduced exactly/i);
+  });
+
+  it('points at the implement-spec skill for the build conventions', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toContain('.claude/skills/implement-spec/SKILL.md');
   });
 
   it('flags truncated notes so partial context is not mistaken for the whole', () => {
