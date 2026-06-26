@@ -106,3 +106,39 @@ test('renders seeded stories grouped into the right swimlanes under collapsible 
   await epicHeader.click();
   await expect(page.getByRole('region', { name: 'Needs Refinement' })).toBeVisible();
 });
+
+test('creates an epic from the board toolbar (allocating the shared ref)', async ({
+  page,
+  seed,
+}) => {
+  // A project with no epics (ref_seq 0 → the first allocated ref is ALF-1). The id is a real
+  // UUID because POST /api/epics validates project_id as a UUID (the projects PK type).
+  const projectId = '33333333-3333-4333-8333-333333333333';
+  const project = makeProject('Alfred', { id: projectId, key: 'ALF' });
+  await seed({ projects: [project] });
+  await page.goto(`/code/${projectId}`);
+
+  // The board starts empty and offers "Create epic" in its toolbar.
+  await expect(page.getByText(/no epics yet/i)).toBeVisible();
+  const createEpic = page.getByRole('button', { name: /create epic/i });
+  await expect(createEpic).toBeVisible();
+
+  // Open the New-epic dialog (scoped to this project) and submit a name.
+  await createEpic.click();
+  const epicDialog = page.getByRole('dialog', { name: /new epic/i });
+  await expect(epicDialog).toBeVisible();
+  await epicDialog.getByRole('textbox', { name: /epic name/i }).fill('Communication Firewall');
+  await epicDialog.getByRole('button', { name: /create epic/i }).click();
+  await expect(epicDialog).toBeHidden();
+
+  // The new epic lands on the board: its header (anchored so it doesn't match the "New story
+  // in …" + button) carries the server-allocated ALF-1 ref and its swimlanes are expanded.
+  const epicHeader = page.getByRole('button', { name: /^communication firewall/i });
+  await expect(epicHeader).toBeVisible();
+  await expect(epicHeader).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('ALF-1')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Needs Refinement' })).toBeVisible();
+
+  // The empty state is gone now that the project has an epic.
+  await expect(page.getByText(/no epics yet/i)).toBeHidden();
+});

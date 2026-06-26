@@ -4,10 +4,10 @@ description: >
   Covers demo-lint, the linter that enforces the docs/demos folder-per-demo
   structure and runs in the global check:slow (pre-push). Use when running or
   interpreting demo-lint, fixing a demo-lint finding, adding or changing one of its
-  rules (no-root-files, branch-folder), or wiring the tool into the build. Trigger
-  on: "demo-lint", "lint the demos", "demo lint failing", "no-root-files",
-  "branch-folder", "demos folder structure", "add a demo-lint rule", or editing
-  tools/demo-lint.
+  rules (no-root-files, branch-folder, no-test-in-demo), or wiring the tool into the
+  build. Trigger on: "demo-lint", "lint the demos", "demo lint failing",
+  "no-root-files", "branch-folder", "no-test-in-demo", "demos folder structure",
+  "add a demo-lint rule", or editing tools/demo-lint.
 ---
 
 # demo-lint — lint the docs/demos structure
@@ -53,6 +53,7 @@ Both rules are **errors** (exit 1 fails the push).
 | --- | --- | --- |
 | `no-root-files` | any file other than `README.md` sits **directly** in `docs/demos/` | move it into its own folder: `docs/demos/<feature-name>/` |
 | `branch-folder` | you're on a feature branch that touches code (changes outside `docs/`) and no demo doc claims it — no doc has `branch: <current-branch>` in front matter (and no legacy folder named after the branch has content) | capture this branch's demo in its own (semantically-named) folder: `npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>"` stamps the branch into front matter for you |
+| `no-test-in-demo` | a demo doc contains a test invocation (e.g. an `npm run test` exec block) | a demo must show the **new behavior** (screenshot the UI, or capture a real request/response), not prove non-regression — drop the test block; the `check` suites already gate the tests |
 
 `branch-folder` **skips** trunk (`main`/`master`), any state where the branch can't be
 determined (detached HEAD, no git), and a **docs-only** branch — one whose every change
