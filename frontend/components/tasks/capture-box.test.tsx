@@ -476,6 +476,43 @@ describe('CaptureBox', () => {
     expect(screen.queryByText(/what.s on your mind/i)).not.toBeInTheDocument();
   });
 
+  it('keeps the serif prompt hidden after a capture clears the box while still focused', async () => {
+    mockCreateItem.mockResolvedValue({ id: '1', title: 'Buy milk' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    const textarea = screen.getByRole('textbox', { name: /capture box/i });
+    await user.type(textarea, 'Buy milk');
+    await user.keyboard('{Enter}');
+
+    // The box is empty again but still focused/engaged — the prompt must NOT reappear.
+    await waitFor(() => {
+      expect(textarea).toHaveValue('');
+    });
+    expect(screen.queryByText(/what.s on your mind/i)).not.toBeInTheDocument();
+  });
+
+  it('restores the serif prompt once focus leaves the empty box', async () => {
+    mockCreateItem.mockResolvedValue({ id: '1', title: 'Buy milk' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    const textarea = screen.getByRole('textbox', { name: /capture box/i });
+    await user.type(textarea, 'Buy milk');
+    await user.keyboard('{Enter}');
+    expect(screen.queryByText(/what.s on your mind/i)).not.toBeInTheDocument();
+
+    // Focus leaves the capture entirely — the resting hint returns.
+    await user.click(document.body);
+    expect(screen.getByText(/what.s on your mind/i)).toBeInTheDocument();
+  });
+
   it('shows the capture button text "Capture" when not saving', () => {
     renderWithProviders(<CaptureBox />);
 

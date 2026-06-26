@@ -41,6 +41,10 @@ export function CaptureBox({
   onDismiss,
 }: CaptureBoxProperties) {
   const [value, setValue] = React.useState('');
+  // Has the user typed during the current focus session? The serif prompt is a resting hint:
+  // it shows only while the box is empty AND the user has not yet engaged, so it does NOT pop
+  // back up after a capture clears the box (still focused) — only once focus leaves the box.
+  const [engaged, setEngaged] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
   // Transient "ghosts" of just-captured text that fade+slide right out of the box. An array so
@@ -180,11 +184,16 @@ export function CaptureBox({
       onSubmit={(event_) => {
         void handleSubmit(event_);
       }}
+      onBlur={(event_) => {
+        // Reset only when focus leaves the whole capture (not when it moves to the Capture
+        // button), so the prompt stays hidden through a button-click capture too.
+        if (!event_.currentTarget.contains(event_.relatedTarget)) setEngaged(false);
+      }}
       className="relative"
     >
       <div className={captureSurfaceClass}>
-        {/* Serif prompt — only visible when empty */}
-        {!value && (
+        {/* Serif prompt — a resting hint shown only while empty and not yet engaged */}
+        {!value && !engaged && (
           <p
             className="pointer-events-none absolute left-4 top-4 font-serif text-lg text-muted-foreground/60 select-none"
             aria-hidden
@@ -197,7 +206,11 @@ export function CaptureBox({
           ref={textareaReference}
           value={value}
           onChange={(event_) => {
-            setValue(event_.target.value);
+            const next = event_.target.value;
+            setValue(next);
+            // Once the user has typed something, stay engaged for the rest of this focus
+            // session so the prompt doesn't flicker back after the box is cleared on capture.
+            if (next !== '') setEngaged(true);
           }}
           onKeyDown={handleKeyDown}
           rows={3}
