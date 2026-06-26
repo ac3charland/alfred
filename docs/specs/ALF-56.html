@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-56 — Make the webhook's alfred-block parsing position-independent</title>
+    <style>
+      :root {
+        --bg: #0a0e17;
+        --surface: #0f1626;
+        --surface-2: #121b2e;
+        --border: #1e2a3f;
+        --text: #e8edf5;
+        --muted: #8a96a8;
+        --teal: #4fd1e0;
+        --green: #34d399;
+        --blue: #60a5fa;
+        --amber: #f0b429;
+        --red: #f87171;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 700px at 70% -10%, #11203a 0%, var(--bg) 55%) fixed;
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      .wrap {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 40px 22px 96px;
+      }
+      header.hero {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(79, 209, 224, 0.06), rgba(15, 22, 38, 0.4));
+        border-radius: 20px;
+        padding: 28px 30px;
+        box-shadow: 0 0 60px rgba(79, 209, 224, 0.07);
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 12px;
+        color: var(--teal);
+        font-weight: 600;
+      }
+      h1 {
+        font-family: Georgia, "Times New Roman", serif;
+        font-weight: 600;
+        font-size: 32px;
+        line-height: 1.2;
+        margin: 8px 0 6px;
+      }
+      h2 {
+        font-family: Georgia, serif;
+        font-size: 24px;
+        margin: 52px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 18px;
+        margin: 30px 0 8px;
+        color: var(--text);
+      }
+      h4 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 20px 0 6px;
+      }
+      p,
+      li {
+        color: var(--text);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      strong {
+        color: #fff;
+      }
+      a {
+        color: var(--teal);
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.86em;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+      pre {
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        overflow-x: auto;
+      }
+      pre .c {
+        color: var(--muted);
+      }
+      pre .k {
+        color: var(--blue);
+      }
+      pre .s {
+        color: var(--green);
+      }
+      pre .t {
+        color: var(--teal);
+      }
+      pre .r {
+        color: var(--red);
+      }
+      pre .a {
+        color: var(--amber);
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin: 16px 0;
+      }
+      .tldr {
+        border-left: 3px solid var(--teal);
+        background: rgba(79, 209, 224, 0.05);
+      }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--green);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 2px 10px;
+        margin-right: 8px;
+      }
+      .tag.amber {
+        color: var(--amber);
+      }
+      .tag.blue {
+        color: var(--blue);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 14px 0;
+        font-size: 14.5px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--teal);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+      }
+      td code {
+        white-space: nowrap;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      li {
+        margin: 4px 0;
+      }
+      .figcap {
+        text-align: center;
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+      figure {
+        margin: 22px 0;
+      }
+      .svgwrap {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--surface);
+        padding: 14px;
+        overflow-x: auto;
+      }
+      .note {
+        border-left: 3px solid var(--amber);
+        background: rgba(240, 180, 41, 0.06);
+        padding: 10px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 16px 0;
+      }
+      .bad {
+        border-left: 3px solid var(--red);
+        background: rgba(248, 113, 113, 0.06);
+        padding: 10px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 16px 0;
+      }
+      .good {
+        border-left: 3px solid var(--green);
+        background: rgba(52, 211, 153, 0.06);
+        padding: 10px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 16px 0;
+      }
+      .yes {
+        color: var(--green);
+        font-weight: 600;
+      }
+      .no {
+        color: var(--red);
+        font-weight: 600;
+      }
+      .check {
+        list-style: none;
+        padding-left: 0;
+      }
+      .check li {
+        padding-left: 30px;
+        position: relative;
+        margin: 9px 0;
+      }
+      .check li::before {
+        content: "☐";
+        position: absolute;
+        left: 4px;
+        top: -1px;
+        color: var(--teal);
+        font-size: 16px;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 760px) {
+        .grid2 {
+          grid-template-columns: 1fr;
+        }
+      }
+      .pill {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+      }
+      .meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      /* PR-body mockup */
+      .mock {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        padding: 0;
+        margin: 12px 0;
+        overflow: hidden;
+        font-size: 13px;
+      }
+      .mock-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: rgba(138, 150, 168, 0.75);
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .mock-body {
+        padding: 12px 14px;
+        font-family: var(--sans);
+      }
+      .mock-line {
+        color: var(--muted);
+        margin: 3px 0;
+      }
+      .mock-fence {
+        font-family: var(--mono);
+        font-size: 12px;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin: 8px 0;
+        border: 1px solid var(--border);
+        white-space: pre;
+        overflow-x: auto;
+      }
+      .mock-fence.example {
+        background: rgba(248, 113, 113, 0.06);
+        border-color: rgba(248, 113, 113, 0.4);
+      }
+      .mock-fence.real {
+        background: rgba(52, 211, 153, 0.06);
+        border-color: rgba(52, 211, 153, 0.4);
+      }
+      .tagline {
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 1px 7px;
+        border-radius: 6px;
+        margin-left: 8px;
+      }
+      .tagline.picked {
+        color: var(--bg);
+        background: var(--red);
+      }
+      .tagline.picked.fix {
+        background: var(--green);
+      }
+      .tagline.skip {
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <div class="eyebrow">Refinement Spec · Software Factory / Webhook Worker</div>
+        <h1>ALF-56 — Make the webhook's <code>alfred</code>-block parsing position-independent</h1>
+        <p class="muted" style="margin: 6px 0 0">
+          The ticket title (&ldquo;Confirm real-time updates are listened to in all modules&rdquo;) is a
+          <strong>misnomer</strong>. The real defect is in the GitHub PR webhook Worker: it advances a ticket
+          <em>sometimes</em>, and whether it does correlates with <strong>where the <code>alfred</code> block
+          sits in the PR description</strong>. This spec pins the bug to a first-match regex and specifies a
+          position-independent fix, kept in lockstep across the Worker and its enforcing CI check.
+        </p>
+        <div class="meta-row">
+          <span class="tag blue">ALF-56</span>
+          <span class="tag">phase: refinement</span>
+          <span class="tag amber">area: workers/</span>
+          <span class="tag amber">no UI</span>
+        </div>
+      </header>
+
+      <div class="card tldr">
+        <h4 style="margin-top: 0">TL;DR</h4>
+        <p style="margin: 0">
+          <code>parseFrontmatter()</code> (<code>workers/src/frontmatter.ts</code>) and the mirrored CI check
+          (<code>alfred-frontmatter.yml</code>) both match the <strong>first</strong>
+          <code>```alfred … ```</code> region in the PR body
+          (<code>/```alfred\s+([\s\S]*?)```/</code> &mdash; no <code>g</code> flag). When the operative block
+          is at the <strong>top</strong> it is the first match and everything works. When it is at the
+          <strong>bottom</strong> and any earlier <code>```alfred</code> fence exists in the body (an example
+          block — which our own refinement skill, the PR template, and spec prose all invite authors to paste),
+          the parser locks onto the <em>wrong</em> block. The wrong block can still satisfy CI (green), while the
+          Worker patches a non-existent ref &rarr; <code>patchCodeItem</code> returns <code>0</code> &rarr; a
+          <strong>silent no-op</strong> &rarr; the ticket never advances. Fix: scan <em>all</em> blocks, keep only
+          <em>operative</em> ones (valid phase + a real-shaped ref), and select the <strong>last</strong> one.
+        </p>
+      </div>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        alfred's Software Factory has no LLM in the loop on the webhook side: a single Cloudflare Worker turns
+        <code>pull_request</code> webhooks into deterministic <code>code_items</code> state transitions. The
+        <strong>only</strong> signal it reads is a machine-readable <code>alfred</code> block carried in the PR
+        description:
+      </p>
+      <pre><span class="c">```alfred</span>
+<span class="k">alfred-ticket:</span> <span class="t">ALF-56</span>
+<span class="k">phase:</span> <span class="t">refinement</span>
+<span class="k">spec-path:</span> <span class="s">docs/specs/ALF-56.html</span>
+<span class="c">```</span></pre>
+      <p>
+        On each delivery the Worker verifies the HMAC, parses that block, plans a transition from
+        <code>(phase, action, merged)</code>, and PATCHes every ticket the block names
+        (<code>workers/src/index.ts</code>). The on-screen swimlanes then update over the existing
+        <code>code_items</code> realtime subscription — so a reliable parse is the first domino in the
+        &ldquo;live update&rdquo; the title alludes to.
+      </p>
+
+      <div class="note">
+        <strong>Why the title misleads.</strong> &ldquo;Real-time updates in all modules&rdquo; sounds like a
+        frontend subscription gap. It is not. The frontend realtime path (<code>code-store.tsx</code> subscribing
+        to <code>code_items</code>) works; what is flaky is the <em>upstream</em> webhook write that the
+        subscription would relay. If the Worker never patches the row, no realtime event is ever emitted — so the
+        symptom <em>looks</em> like &ldquo;updates aren't listened to.&rdquo;
+      </div>
+
+      <h3>The observed symptom</h3>
+      <p>
+        Tickets advance &ldquo;sometimes.&rdquo; The reporter noticed a correlation with the position of the
+        <code>alfred</code> block in the PR description and named two real PRs:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>PR</th>
+            <th>Phase</th>
+            <th>Block position in body</th>
+            <th>Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="https://github.com/ac3charland/alfred/pull/136">#136 · ALF-37</a></td>
+            <td>implementation</td>
+            <td><strong>near the top</strong> (right after the opening line)</td>
+            <td><span class="yes">advanced ✓</span></td>
+          </tr>
+          <tr>
+            <td><a href="https://github.com/ac3charland/alfred/pull/138">#138 · ALF-50</a></td>
+            <td>implementation</td>
+            <td><strong>at the bottom</strong> (just above the Claude trailer)</td>
+            <td><span class="no">did not advance ✗</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Root cause</h2>
+      <p>
+        Both the Worker parser and the CI check that mirrors it use a <strong>single, non-global, first-match</strong>
+        regex to find the block:
+      </p>
+      <pre><span class="c">// workers/src/frontmatter.ts:34</span>
+<span class="k">const</span> BLOCK_RE = <span class="r">/```alfred\s+([\s\S]*?)```/</span>;   <span class="c">// ← no `g`, no `m`: matches the FIRST ```alfred … ``` only</span>
+
+<span class="c">// workers/src/frontmatter.ts:47</span>
+<span class="k">const</span> block = BLOCK_RE.exec(body ?? <span class="s">''</span>)?.[<span class="t">1</span>];   <span class="c">// ← whatever the FIRST fence pairs to wins</span></pre>
+      <pre><span class="c"># docs/code-module/repo-setup/alfred-frontmatter.yml:41 — the enforcing CI check, same regex</span>
+<span class="k">const</span> m = b.match(<span class="r">/```alfred\s+([\s\S]*?)```/</span>);
+<span class="k">if</span> (!m) { console.error(<span class="s">"missing ```alfred block"</span>); process.exit(<span class="t">1</span>); }</pre>
+
+      <p>
+        <code>BLOCK_RE.exec()</code> on a regex without the <code>g</code> flag returns the <strong>first</strong>
+        match. The field regexes (<code>alfred-ticket</code>, <code>phase</code>, <code>spec-path</code>) then run
+        <em>only</em> on that first captured region. So the parser is hard-wired to read whichever
+        <code>```alfred</code> fence appears <strong>first</strong> in the body — never &ldquo;the real one.&rdquo;
+      </p>
+
+      <h3>Why &ldquo;top works, bottom fails&rdquo;</h3>
+      <ul>
+        <li>
+          <strong>Block at the top:</strong> the operative block is, trivially, the first <code>```alfred</code>
+          fence in the body. First-match grabs it. <span class="yes">Correct.</span>
+        </li>
+        <li>
+          <strong>Block at the bottom:</strong> the operative block is the <em>last</em> fence. If anything earlier
+          in the body is (or contains) a <code>```alfred</code> fence, <strong>that</strong> earlier fence is
+          matched first and the real block is never read. <span class="no">Wrong block — or no usable block.</span>
+        </li>
+      </ul>
+      <p>An earlier <code>```alfred</code> fence is not exotic — the project actively encourages it:</p>
+      <ul>
+        <li>
+          The <strong>refinement skill</strong> (<code>.claude/skills/refinement/SKILL.md</code>) shows the block
+          format as a fenced example, and the launch prompt reproduces the fence verbatim.
+        </li>
+        <li>
+          A spec or PR narrative frequently <strong>quotes the block format</strong> to explain the change (this
+          very spec does, above).
+        </li>
+        <li>
+          An implementation PR that touches the parser may paste a <strong>diff or code sample</strong> containing
+          the literal fence.
+        </li>
+      </ul>
+
+      <figure>
+        <div class="svgwrap">
+          <svg viewBox="0 0 940 360" width="100%" role="img" aria-label="First-match parser: top vs bottom block placement">
+            <style>
+              .lbl { font: 13px var(--sans, sans-serif); fill: #e8edf5; }
+              .sm { font: 11px ui-monospace, monospace; fill: #8a96a8; }
+              .ttl { font: 600 13px var(--sans, sans-serif); fill: #4fd1e0; letter-spacing: 0.04em; }
+              .box { fill: #121b2e; stroke: #1e2a3f; }
+              .ok { fill: #34d399; }
+              .err { fill: #f87171; }
+            </style>
+            <!-- TOP scenario -->
+            <text x="20" y="26" class="ttl">CASE A · block at TOP</text>
+            <rect x="20" y="38" width="180" height="150" rx="10" class="box" />
+            <rect x="32" y="50" width="156" height="40" rx="6" fill="rgba(52,211,153,0.10)" stroke="#34d399" />
+            <text x="40" y="68" class="sm">```alfred (real)</text>
+            <text x="40" y="82" class="sm" fill="#34d399">alfred-ticket: ALF-37</text>
+            <text x="40" y="116" class="sm">## What changed …</text>
+            <text x="40" y="138" class="sm">## Tests …</text>
+            <text x="40" y="160" class="sm">🤖 Generated …</text>
+            <!-- arrow -->
+            <line x1="200" y1="70" x2="300" y2="70" stroke="#4fd1e0" stroke-width="1.5" marker-end="url(#ar)" />
+            <text x="210" y="60" class="sm">first match</text>
+            <rect x="300" y="44" width="150" height="52" rx="8" class="box" />
+            <text x="312" y="66" class="lbl">parses</text>
+            <text x="312" y="84" class="sm" fill="#34d399">→ ALF-37 ✓</text>
+            <circle cx="430" cy="70" r="6" class="ok" />
+
+            <!-- BOTTOM scenario -->
+            <text x="20" y="222" class="ttl">CASE B · block at BOTTOM (example above)</text>
+            <rect x="20" y="234" width="180" height="110" rx="10" class="box" />
+            <rect x="32" y="244" width="156" height="34" rx="6" fill="rgba(248,113,113,0.10)" stroke="#f87171" />
+            <text x="40" y="258" class="sm">```alfred (example)</text>
+            <text x="40" y="272" class="sm" fill="#f87171">alfred-ticket: &lt;REF&gt;</text>
+            <rect x="32" y="300" width="156" height="34" rx="6" fill="rgba(52,211,153,0.07)" stroke="#1e2a3f" />
+            <text x="40" y="314" class="sm">```alfred (real)</text>
+            <text x="40" y="328" class="sm" fill="#8a96a8">alfred-ticket: ALF-50</text>
+            <!-- arrow -->
+            <line x1="200" y1="261" x2="300" y2="261" stroke="#f87171" stroke-width="1.5" marker-end="url(#arr)" />
+            <text x="206" y="251" class="sm">first match</text>
+            <rect x="300" y="234" width="220" height="92" rx="8" class="box" />
+            <text x="312" y="256" class="lbl">parses the EXAMPLE</text>
+            <text x="312" y="276" class="sm" fill="#f87171">→ ticket "&lt;REF&gt;"</text>
+            <text x="312" y="294" class="sm">PATCH code_items?ref=&lt;REF&gt;</text>
+            <text x="312" y="312" class="sm" fill="#f87171">→ 0 rows · silent no-op</text>
+            <circle cx="540" cy="280" r="6" class="err" />
+            <text x="560" y="284" class="sm">ALF-50 stuck</text>
+
+            <!-- right rail note -->
+            <rect x="610" y="44" width="310" height="282" rx="10" class="box" />
+            <text x="626" y="68" class="ttl">The silent failure</text>
+            <text x="626" y="92" class="sm">1 · CI runs the SAME first-match regex,</text>
+            <text x="626" y="108" class="sm">   finds an alfred block, fields look</text>
+            <text x="626" y="124" class="sm">   valid → check is GREEN.</text>
+            <text x="626" y="148" class="sm">2 · PR merges normally.</text>
+            <text x="626" y="172" class="sm">3 · Worker patches the wrong / empty</text>
+            <text x="626" y="188" class="sm">   ref → 0 rows matched.</text>
+            <text x="626" y="212" class="sm">4 · handler returns 200 {tickets: []}</text>
+            <text x="626" y="228" class="sm">   — no error, no log.</text>
+            <text x="626" y="258" class="lbl" fill="#f0b429">Result: looks fine, ticket frozen.</text>
+            <text x="626" y="288" class="sm">"Works sometimes" = depends on which</text>
+            <text x="626" y="304" class="sm">```alfred fence happens to be first.</text>
+
+            <defs>
+              <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#4fd1e0" />
+              </marker>
+              <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="#f87171" />
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcap class="figcap">
+          First-match parsing: the top-placed block is always read; a bottom-placed block loses to any earlier
+          <code>```alfred</code> fence, and the failure is silent because CI shares the same blind spot.
+        </figcap>
+      </figure>
+
+      <div class="bad">
+        <strong>Two regexes, one blind spot.</strong> The Worker and the CI check intentionally mirror each other
+        &ldquo;field-for-field so a PR that passes CI always parses here too&rdquo;
+        (<code>frontmatter.ts</code> header comment). They mirror the <em>bug</em> too: CI greenlights a body the
+        Worker then mis-reads. Both must be fixed together or the contract drifts.
+      </div>
+
+      <h3>Honest investigation note</h3>
+      <div class="note">
+        As they read <em>today</em>, the #136 and #138 bodies each contain exactly one <code>```alfred</code>
+        fence, so for those exact current bodies first-match alone would still land on the real block. That means
+        one of: (a) a body was edited after merge (the webhook fires on the body <em>at event time</em>, which we
+        cannot retrieve now), or (b) a second factor contributed (e.g. a missing <code>code_items</code> row for
+        the ref, so even a correct parse PATCHes 0 rows). The first-match fragility is nonetheless a <strong>real,
+        position-dependent defect</strong> that exactly produces &ldquo;top works / bottom fails,&rdquo; and the
+        silent <code>0-rows</code> no-op is a real observability gap. This spec therefore fixes the parser
+        <em>and</em> adds the logging needed to diagnose the next occurrence conclusively. Confirming the live
+        <code>code_items</code> state of <code>ALF-50</code> is listed as an open question.
+      </div>
+
+      <h2>Proposed change</h2>
+      <p>
+        Replace first-match with <strong>scan-all-then-select</strong>, in both the Worker and the CI check.
+        The selection is deterministic and position-independent:
+      </p>
+      <ol>
+        <li>
+          <strong>Find every</strong> <code>```alfred … ```</code> region (global, non-greedy) — not just the
+          first.
+        </li>
+        <li>
+          <strong>Keep only operative blocks</strong>: a block qualifies when it has a valid
+          <code>phase</code> (<code>refinement</code> | <code>implementation</code>) <em>and</em> at least one
+          ticket matching the real ref shape <code>/^[A-Z][A-Z0-9]*-\d+$/</code>. This filters out illustrative
+          examples that use placeholders like <code>&lt;REF&gt;</code>.
+        </li>
+        <li>
+          <strong>Select the last operative block</strong>. Operative blocks are rare-to-singular; when more than
+          one survives the filter, the canonical machine block is the one authors append last (examples lead,
+          the real block trails). Emit a warning log on ambiguity (&gt;1 operative block).
+        </li>
+        <li>
+          <strong>Zero operative blocks</strong> &rarr; <code>undefined</code> (the PR isn't ours), exactly as
+          today.
+        </li>
+      </ol>
+
+      <h4>Sketch — Worker parser</h4>
+      <pre><span class="c">// workers/src/frontmatter.ts — illustrative, not final</span>
+<span class="k">const</span> BLOCK_RE = <span class="r">/```alfred\s+([\s\S]*?)```/g</span>;   <span class="c">// ← `g`: iterate ALL blocks</span>
+<span class="k">const</span> REF_RE = <span class="r">/^[A-Z][A-Z0-9]*-\d+$/</span>;          <span class="c">// a real ref, not a &lt;REF&gt; placeholder</span>
+
+<span class="k">export function</span> <span class="t">parseFrontmatter</span>(body?: <span class="k">string</span>): AlfredFrontmatter | <span class="k">undefined</span> {
+  <span class="k">const</span> operative: AlfredFrontmatter[] = [];
+  <span class="k">for</span> (<span class="k">const</span> m <span class="k">of</span> (body ?? <span class="s">''</span>).matchAll(BLOCK_RE)) {
+    <span class="k">const</span> parsed = parseBlock(m[<span class="t">1</span>]);              <span class="c">// the existing field-regex logic, factored out</span>
+    <span class="k">if</span> (parsed && parsed.tickets.some((r) => REF_RE.test(r))) operative.push(parsed);
+  }
+  <span class="k">if</span> (operative.length === <span class="t">0</span>) <span class="k">return</span> <span class="k">undefined</span>;
+  <span class="k">if</span> (operative.length &gt; <span class="t">1</span>) console.warn(<span class="s">`alfred: ${operative.length} operative blocks; using the last`</span>);
+  <span class="k">return</span> operative[operative.length - <span class="t">1</span>];      <span class="c">// last operative block wins</span>
+}</pre>
+      <p class="muted" style="font-size: 14px">
+        <code>parseBlock()</code> keeps the current field regexes verbatim
+        (<code>alfred-ticket:[ \t]*(.*)</code>, <code>phase:[ \t]*(refinement|implementation)</code>,
+        <code>spec-path:[ \t]*(\S+)</code>) — they are correct and well-tested; only block <em>selection</em>
+        changes. The existing Stryker-disable comments move with the regexes.
+      </p>
+
+      <h4>Sketch — CI check (keep identical semantics)</h4>
+      <pre><span class="c"># docs/code-module/repo-setup/alfred-frontmatter.yml — iterate all blocks, pick the last operative one</span>
+<span class="k">const</span> blocks = [...b.matchAll(<span class="r">/```alfred\s+([\s\S]*?)```/g</span>)].map(m =&gt; m[<span class="t">1</span>]);
+<span class="k">const</span> ops = blocks.filter(blk =&gt; {
+  <span class="k">const</span> t = /alfred-ticket:[ \t]*(.+)/.exec(blk), p = /phase:[ \t]*(refinement|implementation)/.exec(blk);
+  <span class="k">return</span> t &amp;&amp; p &amp;&amp; t[<span class="t">1</span>].split(<span class="s">','</span>).some(r =&gt; /^[A-Z][A-Z0-9]*-\d+$/.test(r.trim()));
+});
+<span class="k">if</span> (!ops.length) { console.error(<span class="s">"missing/invalid ```alfred block"</span>); process.exit(<span class="t">1</span>); }
+<span class="k">const</span> blk = ops[ops.length - <span class="t">1</span>];   <span class="c"># then the existing phase / spec-path / archive checks run on blk</span></pre>
+      <div class="note">
+        <strong>Guardrail.</strong> <code>alfred-frontmatter.yml</code> is a CI check the repo treats as
+        scaffolding to copy into project repos, not tooling that gates <em>this</em> repo's commits — so editing
+        it here is the deliberate, in-scope change, not a back-pressure bypass. The Worker fix is ordinary app
+        code under TDD.
+      </div>
+
+      <h4>Observability (close the silent-failure gap)</h4>
+      <p>Independent of selection, surface the two cases that are invisible today:</p>
+      <ul>
+        <li>
+          In <code>handleWebhook</code> (<code>index.ts</code>), when a parse succeeded but
+          <strong>every</strong> ref matched 0 rows (<code>matched.length === 0</code> with a non-empty
+          <code>frontmatter.tickets</code>), <code>console.warn</code> the refs so a stuck ticket is greppable in
+          Worker logs. The HTTP response stays <code>200</code> (a PR for another repo's ticket is still a benign
+          no-op), but it is no longer silent.
+        </li>
+        <li>
+          When the body contains a <code>```alfred</code> substring but yields <strong>no operative block</strong>,
+          <code>console.warn</code> &ldquo;malformed alfred block&rdquo; rather than treating it as
+          indistinguishable from a non-alfred PR.
+        </li>
+      </ul>
+
+      <h3>Before / after on a bottom-placed block</h3>
+      <div class="grid2">
+        <div>
+          <div class="mock">
+            <div class="mock-bar"><span>PR body</span><span style="color: var(--red)">today · first-match</span></div>
+            <div class="mock-body">
+              <p class="mock-line">Closes ALF-50. This explains the block format:</p>
+              <div class="mock-fence example">```alfred
+alfred-ticket: &lt;REF&gt;
+phase: refinement<span class="tagline picked">PICKED ✗</span></div>
+              <p class="mock-line">## How … ## Tests …</p>
+              <div class="mock-fence real">```alfred
+alfred-ticket: ALF-50
+phase: implementation<span class="tagline skip">ignored</span></div>
+              <p class="mock-line">🤖 Generated with Claude Code</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="mock">
+            <div class="mock-bar"><span>PR body</span><span style="color: var(--green)">fixed · scan + last-operative</span></div>
+            <div class="mock-body">
+              <p class="mock-line">Closes ALF-50. This explains the block format:</p>
+              <div class="mock-fence example">```alfred
+alfred-ticket: &lt;REF&gt;
+phase: refinement<span class="tagline skip">filtered (&lt;REF&gt;)</span></div>
+              <p class="mock-line">## How … ## Tests …</p>
+              <div class="mock-fence real">```alfred
+alfred-ticket: ALF-50
+phase: implementation<span class="tagline picked fix">PICKED ✓</span></div>
+              <p class="mock-line">🤖 Generated with Claude Code</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Files touched</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>workers/src/frontmatter.ts</code></td>
+            <td>Global scan + operative-block filter + last-operative selection; factor field-parsing into <code>parseBlock()</code>. Behavior-preserving for single-block bodies.</td>
+          </tr>
+          <tr>
+            <td><code>workers/src/frontmatter.test.ts</code></td>
+            <td>New RED cases: example-above-real, position sweep (top/middle/bottom), placeholder filtering, multiple-operative tiebreak. Existing cases stay green.</td>
+          </tr>
+          <tr>
+            <td><code>workers/src/index.ts</code></td>
+            <td>Add the two <code>console.warn</code> observability lines (all-refs-unmatched; malformed block). Response shape unchanged.</td>
+          </tr>
+          <tr>
+            <td><code>workers/src/index.test.ts</code></td>
+            <td>Assert the all-unmatched warning fires (extend the existing <code>matchedRefs: []</code> case).</td>
+          </tr>
+          <tr>
+            <td><code>docs/code-module/repo-setup/alfred-frontmatter.yml</code></td>
+            <td>Mirror the scan + last-operative selection so CI and the Worker agree. <strong>Also redeploy the copy living in <code>.github/workflows/</code></strong> of each consuming repo (see open questions).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Acceptance criteria</h2>
+      <ul class="check">
+        <li>
+          A PR body with an <strong>example</strong> <code>```alfred</code> block (placeholder ref) <em>above</em>
+          the operative block parses to the <strong>operative</strong> ticket — verified by a unit test that fails
+          on <code>main</code> and passes after the change.
+        </li>
+        <li>
+          The operative block parses identically whether it sits at the <strong>top, middle, or bottom</strong> of
+          the body (parametrized unit test).
+        </li>
+        <li>
+          A block whose only ticket is a placeholder (e.g. <code>&lt;REF&gt;</code>) is <strong>not</strong>
+          selected; a body containing only such a block yields <code>undefined</code>.
+        </li>
+        <li>
+          With two operative blocks, the <strong>last</strong> is selected and a warning is logged.
+        </li>
+        <li>
+          Every existing <code>frontmatter.test.ts</code> case still passes (single-block bodies, comma lists,
+          no-space-after-colon, missing-field undefined cases) — no regression.
+        </li>
+        <li>
+          When a parsed PR's refs all match 0 <code>code_items</code> rows, the Worker emits a
+          <code>console.warn</code> naming the refs; the HTTP response stays <code>200</code>.
+        </li>
+        <li>
+          <code>alfred-frontmatter.yml</code> uses the same scan + last-operative logic; a manual run over the
+          example-above-real body validates the operative block (its <code>ok:</code> line names the real ref).
+        </li>
+        <li>
+          <code>npm run check:fast -w workers</code> is green (typecheck, lint, format, Jest). No
+          <code>--no-verify</code>, no config weakened, no <code>eslint-disable</code>/<code>@ts-ignore</code>.
+        </li>
+      </ul>
+
+      <h2>Test plan</h2>
+      <p>
+        Pure-logic change in a no-LLM Worker — the evidence is the Jest suite, not a UI demo, so no showboat demo
+        doc is required (per the trivial/non-visual carve-out). Red-first:
+      </p>
+      <ul>
+        <li>
+          <strong>Red:</strong> add <code>parseFrontmatter</code> tests for example-above-real and the position
+          sweep; confirm they fail against the current first-match implementation.
+        </li>
+        <li><strong>Green:</strong> implement scan + filter + last-operative; all cases pass.</li>
+        <li>
+          <strong>Mutation sanity (optional):</strong> the file carries Stryker-disable annotations; re-run
+          <code>npm run mutation -w workers</code> if the survived-mutant baseline shifts, keeping disables
+          justified (don't add new ones to dodge a survivor).
+        </li>
+      </ul>
+
+      <h2>Out of scope / open questions</h2>
+      <ul>
+        <li>
+          <strong>No frontend change.</strong> Per refinement decision, the task stores and the
+          <code>code_items</code> realtime subscription are left exactly as-is — this ticket is the Worker parse
+          only.
+        </li>
+        <li>
+          <strong>Selection rule — confirm last-vs-first.</strong> The spec picks <em>last operative block</em>
+          (examples lead, real block trails). If the house convention is instead &ldquo;the block is always
+          first,&rdquo; the rule flips to <em>first operative</em>. The validity filter makes both robust against
+          placeholder examples; only the multi-real tiebreak differs. Flag for confirmation before build.
+        </li>
+        <li>
+          <strong>What actually froze ALF-50?</strong> Confirm the live <code>code_items</code> row + state for
+          <code>ALF-50</code> (and whether #138's body was edited post-merge). If the row never existed, that's a
+          separate gap (gate/admission), and this fix only adds the log that would have surfaced it.
+        </li>
+        <li>
+          <strong>Body truncation.</strong> GitHub caps a PR body at 65,536 chars; a block beyond that cap is
+          unparseable by anyone. Out of scope here (no evidence either PR approached the cap), but worth a
+          one-line note in the skill that the block belongs in the body, not an over-long appendix.
+        </li>
+        <li>
+          <strong>Propagating the CI check.</strong> <code>alfred-frontmatter.yml</code> is a template copied into
+          each consuming repo's <code>.github/workflows/</code>. Updating the template here does not update those
+          copies; re-syncing them is a rollout follow-up, not part of this PR's diff.
+        </li>
+        <li>
+          <strong>Skill nudge (optional).</strong> Until this ships, authors can dodge the bug by keeping the
+          operative block near the top and not pasting example blocks above it. Whether to add that interim note to
+          the <code>refinement</code> skill is a judgment call, not a requirement.
+        </li>
+      </ul>
+
+      <p class="muted" style="margin-top: 48px; font-size: 13px">
+        ALF-56 · refinement spec · <code>docs/specs/ALF-56.html</code> · Worker parse reliability, no UI surface.
+      </p>
+    </div>
+  </body>
+</html>
