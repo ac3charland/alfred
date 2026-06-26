@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSub,
@@ -47,6 +48,26 @@ describe('DropdownMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
     const remove = screen.getByRole('menuitem', { name: 'Delete' });
     expect(remove).toHaveClass('text-destructive');
+  });
+
+  it('renders checkbox items reflecting their checked state via aria-checked', () => {
+    render(
+      <DropdownMenu open>
+        <DropdownMenuTrigger>Open</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuCheckboxItem checked>On</DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={false}>Off</DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    expect(screen.getByRole('menuitemcheckbox', { name: 'On' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Off' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
   it('renders a styled sub-trigger and sub-content', () => {
