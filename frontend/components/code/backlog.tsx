@@ -58,9 +58,12 @@ export function Backlog() {
     );
   }, []);
 
-  // Any non-default selection narrows the list — flag it on the trigger so the owner sees the
-  // Backlog isn't showing everything (the default itself hides `done`/`abandoned`).
-  const isFiltering = statuses.length !== ALL_FACTORY_STATES.length;
+  // Flag the trigger (teal + count) only when the selection differs from the default — the
+  // default (outstanding states, `done`/`abandoned` hidden) is the resting state, so it shows
+  // neither. Any other selection, narrower or wider, surfaces the count.
+  const isFiltering =
+    statuses.length !== DEFAULT_BACKLOG_STATUSES.length ||
+    !DEFAULT_BACKLOG_STATUSES.every((state) => statuses.includes(state));
 
   const handleReorder = React.useCallback(
     (ref: string, neighbourRef: string) => {

@@ -120,6 +120,25 @@ describe('Backlog', () => {
     expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
   });
 
+  it('shows a count on the trigger only when the selection differs from the default', async () => {
+    const user = userEvent.setup();
+    renderBacklog([
+      makeStory('a', { priority: 10, factory_state: 'needs_refinement' }),
+      makeStory('b', { priority: 20, factory_state: 'in_development' }),
+    ]);
+    // The default selection (done/abandoned hidden) is the resting state — no count.
+    expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
+
+    // Uncheck one default status; the selection now differs from the default → a count appears.
+    await user.click(screen.getByRole('button', { name: 'Filter by status' }));
+    await screen.findByRole('menu');
+    await user.keyboard('[ArrowDown][Enter]');
+    await user.keyboard('[Escape]');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /filter by status \(\d+\)/i })).toBeInTheDocument();
+    });
+  });
+
   it('lists stories in priority order with a status chip on every row', () => {
     renderBacklog([
       makeStory('a', { priority: 30 }),
