@@ -85,8 +85,9 @@ The Backlog, the project board's epic order, and within-lane order all derive fr
 `code_items.priority` column (a global rank across every project; lower = higher). Don't add a
 second ordering source — the board *reflects* priority, it doesn't set it:
 
-- **`useBacklog({ showCompleted })`** returns every story sorted by `priority` (outstanding-only
-  unless `showCompleted`); **`useProjectBoard`** sorts each lane/escape bucket by `priority` and
+- **`useBacklog({ statuses })`** returns every story sorted by `priority`, filtered to the
+  `statuses` the caller wants visible (`DEFAULT_BACKLOG_STATUSES` is outstanding-only; pass any
+  subset of `ALL_FACTORY_STATES`, empty = empty list); **`useProjectBoard`** sorts each lane/escape bucket by `priority` and
   orders epics by their best (`min(priority)`) story (no-story epics last). All memoized like the
   other selectors.
 - **`reorderStory(ref, neighbourRef)`** is the only writer: an optimistic **swap** — `patchStory`

@@ -70,6 +70,25 @@ export const FACTORY_STATE_LABELS: Record<CodeFactoryState, string> = {
   abandoned: 'Abandoned',
 };
 
+/**
+ * Every factory state in display order — the six happy-path lanes (board order) followed by the
+ * two off-board escape states. The Backlog's "Filter by status" dropdown lists these as checkboxes.
+ */
+export const ALL_FACTORY_STATES = [
+  ...HAPPY_PATH_STATES,
+  'blocked',
+  'abandoned',
+] as const satisfies readonly CodeFactoryState[];
+
+/**
+ * The statuses the Backlog shows by default — every state except the completed ones
+ * (`done`/`abandoned`), preserving the "outstanding-only" default the Backlog had before the
+ * status filter existed.
+ */
+export const DEFAULT_BACKLOG_STATUSES: readonly CodeFactoryState[] = ALL_FACTORY_STATES.filter(
+  (state) => isBacklogOutstanding(state),
+);
+
 /** One swimlane: a happy-path state and the stories currently in it (ref order). */
 export interface BoardLane {
   state: HappyPathState;
@@ -1022,18 +1041,22 @@ export function useProjectBoard(projectId: string): ProjectBoard {
 
 /**
  * The flat, ranked, cross-project Backlog list (ALF-35): every story sorted by global `priority`
- * ascending, filtered to outstanding states (everything except `done`/`abandoned`) unless
- * `showCompleted` reveals them. Memoized on the stories slice + the flag, like `useProjectBoard`.
+ * ascending, filtered to the `statuses` the caller wants visible (ALF-52's "Filter by status"
+ * multi-select). Pass `DEFAULT_BACKLOG_STATUSES` for the outstanding-only default, or any subset
+ * of `ALL_FACTORY_STATES`; an empty list yields an empty Backlog. Keep `statuses` referentially
+ * stable (e.g. in component state) so the memo only recomputes when the selection actually
+ * changes. Memoized on the stories slice + the selection, like `useProjectBoard`.
  */
-export function useBacklog({ showCompleted }: { showCompleted: boolean }): CodeStory[] {
+export function useBacklog({ statuses }: { statuses: readonly CodeFactoryState[] }): CodeStory[] {
   const stories = useCodeStories();
 
   return React.useMemo<CodeStory[]>(() => {
-    const visible = showCompleted
-      ? stories
-      : stories.filter((story) => isBacklogOutstanding(story.factory_state));
+    const allowed = new Set<CodeFactoryState>(statuses);
+    const visible = stories.filter(
+      (story) => story.factory_state !== null && allowed.has(story.factory_state),
+    );
     return stableSorted(visible, byPriorityAsc);
-  }, [stories, showCompleted]);
+  }, [stories, statuses]);
 }
 
 /** Read the code mutation actions (the gate / ProjectNav `+`). Throws outside a CodeProvider. */

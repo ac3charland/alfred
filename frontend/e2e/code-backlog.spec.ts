@@ -110,6 +110,52 @@ test('jumps a story to the top and the bottom with the double chevrons', async (
   await expect(rows.nth(2)).toContainText('ALF-5');
 });
 
+test('filters the Backlog by status via the Filter by status dropdown', async ({ page, seed }) => {
+  // Two outstanding stories plus one `done` story (hidden by the default filter).
+  const filterItems = [
+    makeItem('Draft the inbound filter spec', { id: 'i1', item_type: 'code' }),
+    makeItem('Ship the release notes', { id: 'i2', item_type: 'code' }),
+  ];
+  const filterStories = [
+    makeCodeStory({
+      item_id: 'i1',
+      project_id: 'p1',
+      epic_id: 'e1',
+      ref_number: 3,
+      ref: 'ALF-3',
+      priority: 1,
+      factory_state: 'needs_refinement',
+    }),
+    makeCodeStory({
+      item_id: 'i2',
+      project_id: 'p1',
+      epic_id: 'e1',
+      ref_number: 6,
+      ref: 'ALF-6',
+      priority: 2,
+      factory_state: 'done',
+    }),
+  ];
+  await seed({ projects: [project], epics: [epic], items: filterItems, codeItems: filterStories });
+  await page.goto('/code/backlog');
+
+  const rows = page.getByRole('listitem');
+  // Done is hidden by default — the filter starts on the outstanding states only.
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0)).toContainText('ALF-3');
+
+  // Check "Done" in the multi-select filter; the menu stays open for further toggles, so close it
+  // (Escape) before reading the rows it aria-hides while open.
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  // `exact` avoids matching "Abandoned", whose accessible name contains "Done".
+  await page.getByRole('menuitemcheckbox', { name: 'Done', exact: true }).click();
+  await page.keyboard.press('Escape');
+
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('ALF-3');
+  await expect(rows.nth(1)).toContainText('ALF-6');
+});
+
 test('opens a story modal on its project board from a Backlog row', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.goto('/code');

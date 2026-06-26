@@ -5,7 +5,9 @@ import * as api from '@/lib/api-client';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
+  ALL_FACTORY_STATES,
   CodeProvider,
+  DEFAULT_BACKLOG_STATUSES,
   HAPPY_PATH_STATES,
   codeItemToStoryPatch,
   isEscapeState,
@@ -437,13 +439,13 @@ describe('code-store', () => {
         makeStory('i2', 'eX', 'p2', { priority: 10 }),
         makeStory('i3', 'e1', 'p1', { priority: 20 }),
       ];
-      const { result } = renderHook(() => useBacklog({ showCompleted: false }), {
+      const { result } = renderHook(() => useBacklog({ statuses: ALL_FACTORY_STATES }), {
         wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
       });
       expect(result.current.map((s) => s.item_id)).toEqual(['i2', 'i3', 'i1']);
     });
 
-    it('hides done/abandoned by default and reveals them when showCompleted is true', () => {
+    it('hides done/abandoned with the default statuses and reveals them when all are selected', () => {
       const stories = [
         makeStory('i1', 'e1', 'p1', { priority: 10, factory_state: 'in_development' }),
         makeStory('i2', 'e1', 'p1', { priority: 20, factory_state: 'done' }),
@@ -451,15 +453,37 @@ describe('code-store', () => {
       ];
       const seed = { projects: [PROJECT_A], epics, stories };
 
-      const hidden = renderHook(() => useBacklog({ showCompleted: false }), {
+      const hidden = renderHook(() => useBacklog({ statuses: DEFAULT_BACKLOG_STATUSES }), {
         wrapper: makeWrapper(seed),
       });
       expect(hidden.result.current.map((s) => s.item_id)).toEqual(['i1']);
 
-      const shown = renderHook(() => useBacklog({ showCompleted: true }), {
+      const shown = renderHook(() => useBacklog({ statuses: ALL_FACTORY_STATES }), {
         wrapper: makeWrapper(seed),
       });
       expect(shown.result.current.map((s) => s.item_id)).toEqual(['i1', 'i2', 'i3']);
+    });
+
+    it('lists only the stories whose status is in the selected set', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 10, factory_state: 'in_development' }),
+        makeStory('i2', 'e1', 'p1', { priority: 20, factory_state: 'blocked' }),
+        makeStory('i3', 'e1', 'p1', { priority: 30, factory_state: 'needs_refinement' }),
+      ];
+      const { result } = renderHook(
+        () => useBacklog({ statuses: ['blocked', 'needs_refinement'] }),
+        { wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }) },
+      );
+      // 'in_development' is excluded; the rest keep priority order.
+      expect(result.current.map((s) => s.item_id)).toEqual(['i2', 'i3']);
+    });
+
+    it('returns an empty list when no statuses are selected', () => {
+      const stories = [makeStory('i1', 'e1', 'p1', { priority: 10 })];
+      const { result } = renderHook(() => useBacklog({ statuses: [] }), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }),
+      });
+      expect(result.current).toEqual([]);
     });
   });
 
@@ -1029,7 +1053,10 @@ describe('code-store', () => {
           makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
         ]);
         const { result } = renderHook(
-          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
           { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
         );
 
@@ -1046,7 +1073,10 @@ describe('code-store', () => {
       it('rolls the priorities back on API failure', async () => {
         mockReorderCode.mockRejectedValue(new Error('swap failed'));
         const { result } = renderHook(
-          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
           { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
         );
 
@@ -1085,7 +1115,10 @@ describe('code-store', () => {
           makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: -1 }),
         ]);
         const { result } = renderHook(
-          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
           {
             wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
           },
@@ -1105,7 +1138,10 @@ describe('code-store', () => {
           makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 31 }),
         ]);
         const { result } = renderHook(
-          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
           {
             wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
           },
@@ -1122,7 +1158,10 @@ describe('code-store', () => {
       it('rolls the priority back on API failure', async () => {
         mockMoveCode.mockRejectedValue(new Error('move failed'));
         const { result } = renderHook(
-          () => ({ actions: useCodeActions(), backlog: useBacklog({ showCompleted: false }) }),
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
           {
             wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
           },
