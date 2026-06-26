@@ -8,8 +8,9 @@ import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
 import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
 import { useTaskActions } from '@/lib/stores/tasks-store';
+import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
-import { captureSurfaceClass, captureTextareaClass } from './capture-box.styles';
+import { captureGhostClass, captureSurfaceClass, captureTextareaClass } from './capture-box.styles';
 
 interface CaptureBoxProperties {
   /** The folder to scope the capture to. Undefined means Inbox (no folder). */
@@ -42,6 +43,12 @@ export function CaptureBox({
   const [value, setValue] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
+  // Transient "ghosts" of just-captured text that fade+slide right out of the box. An array so
+  // rapid captures each get their own flourish; each carries a unique id (a monotonic counter)
+  // so its own animationend removes exactly itself.
+  const [ghosts, setGhosts] = React.useState<{ id: number; text: string }[]>([]);
+  const ghostIdReference = React.useRef(0);
+  const prefersReducedMotion = usePrefersReducedMotion();
   const { addTask } = useTaskActions();
   const textareaReference = React.useRef<HTMLTextAreaElement>(null);
   const inputReference = React.useRef<HTMLInputElement>(null);
@@ -79,6 +86,14 @@ export function CaptureBox({
     setValue('');
     setErrorMessage(undefined);
 
+    // Send the captured thought off with a fade+slide-right flourish (full mode only). Gated on
+    // reduced motion: the ghost is removed on animationend, which never fires when the animation
+    // is disabled — so under reduced motion we simply skip it rather than strand it on screen.
+    if (!compact && !prefersReducedMotion) {
+      const id = (ghostIdReference.current += 1);
+      setGhosts((current) => [...current, { id, text: trimmed }]);
+    }
+
     // If a previous capture is still saving, the user out-typed the network — surface the
     // spinner and hold it until every in-flight save has drained.
     if (inFlightReference.current > 0) setIsSaving(true);
@@ -96,6 +111,10 @@ export function CaptureBox({
       inFlightReference.current -= 1;
       if (inFlightReference.current === 0) setIsSaving(false);
     }
+  };
+
+  const handleGhostAnimationEnd = (id: number) => {
+    setGhosts((current) => current.filter((ghost) => ghost.id !== id));
   };
 
   const handleKeyDown = (event_: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -206,6 +225,20 @@ export function CaptureBox({
           </Button>
         </div>
       </div>
+      {/* Capture flourish: each ghost fades+slides right, then removes itself on animationend. */}
+      {ghosts.map((ghost) => (
+        <span
+          key={ghost.id}
+          data-testid="capture-ghost"
+          aria-hidden
+          className={captureGhostClass}
+          onAnimationEnd={() => {
+            handleGhostAnimationEnd(ghost.id);
+          }}
+        >
+          {ghost.text}
+        </span>
+      ))}
     </form>
   );
 }

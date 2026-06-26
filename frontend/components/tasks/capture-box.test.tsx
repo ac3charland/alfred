@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -161,6 +161,91 @@ describe('CaptureBox', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to save/i);
     // The optimistic clear must not lose the capture — the failed text is restored.
     expect(textarea).toHaveValue('Buy milk');
+  });
+
+  it('flies a fading ghost of the captured text to the right after a full-mode capture', async () => {
+    mockCreateItem.mockResolvedValue({ id: '1', title: 'Buy milk' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
+    await user.keyboard('{Enter}');
+
+    const ghost = await screen.findByTestId('capture-ghost');
+    expect(ghost).toHaveTextContent('Buy milk');
+    expect(ghost).toHaveClass('animate-out', 'slide-out-to-right-8');
+  });
+
+  it('removes the ghost once its slide-out animation ends', async () => {
+    mockCreateItem.mockResolvedValue({ id: '1', title: 'Buy milk' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox />);
+
+    await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
+    await user.keyboard('{Enter}');
+
+    const ghost = await screen.findByTestId('capture-ghost');
+    // jsdom runs no animations, so fire the end event by hand to drive the cleanup.
+    fireEvent.animationEnd(ghost);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('capture-ghost')).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not fly a ghost when the user prefers reduced motion', async () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    globalThis.matchMedia = (query: string) =>
+      ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+      }) as unknown as MediaQueryList;
+
+    try {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'Buy milk' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />);
+
+      await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Buy milk');
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId('capture-ghost')).not.toBeInTheDocument();
+    } finally {
+      globalThis.matchMedia = originalMatchMedia;
+    }
+  });
+
+  it('does not fly a ghost in compact mode', async () => {
+    mockCreateItem.mockResolvedValue({ id: '1', title: 'Subtask' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox compact />);
+
+    await user.type(screen.getByPlaceholderText(/add subtask/i), 'Subtask');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(mockCreateItem).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('capture-ghost')).not.toBeInTheDocument();
   });
 
   it('calls onCapture callback after successful capture in compact mode', async () => {
