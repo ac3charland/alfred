@@ -1,6 +1,7 @@
 'use client';
 
 import { type VariantProps, cva } from 'class-variance-authority';
+import { Check } from 'lucide-react';
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui';
 import * as React from 'react';
 
@@ -71,6 +72,37 @@ const DropdownMenuItem = React.forwardRef<
 ));
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName;
 
+/**
+ * A multi-select menu item with a leading check indicator (Radix `CheckboxItem`). Reflects
+ * `checked` via `aria-checked` and toggles through `onCheckedChange`. To keep the menu open
+ * across several toggles (the multi-select use), the caller should `preventDefault()` the
+ * item's `onSelect` — otherwise Radix closes the menu on each pick.
+ */
+const DropdownMenuCheckboxItem = React.forwardRef<
+  React.ComponentRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
+>(({ className, children, ...props }, ref) => (
+  <DropdownMenuPrimitive.CheckboxItem
+    ref={ref}
+    className={cn(
+      'relative flex cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none',
+      'transition-colors focus:bg-secondary focus:text-secondary-foreground',
+      'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'motion-reduce:transition-none',
+      className,
+    )}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <Check className="h-3.5 w-3.5" />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.CheckboxItem>
+));
+DropdownMenuCheckboxItem.displayName = DropdownMenuPrimitive.CheckboxItem.displayName;
+
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.SubTrigger>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger>
@@ -132,6 +164,7 @@ export {
   DropdownMenuPortal,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
   dropdownMenuItemVariants,
   DropdownMenuSub,
   DropdownMenuSubTrigger,

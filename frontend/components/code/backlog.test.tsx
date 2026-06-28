@@ -114,10 +114,29 @@ describe('Backlog', () => {
     mockMoveCode.mockReset();
   });
 
-  it('renders the header hero and a Show completed toggle', () => {
+  it('renders the header hero and a Filter by status control', () => {
     renderBacklog([makeStory('a', { priority: 1 })]);
     expect(screen.getByText('The Software Factory')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show completed' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
+  });
+
+  it('shows a count on the trigger only when the selection differs from the default', async () => {
+    const user = userEvent.setup();
+    renderBacklog([
+      makeStory('a', { priority: 10, factory_state: 'needs_refinement' }),
+      makeStory('b', { priority: 20, factory_state: 'in_development' }),
+    ]);
+    // The default selection (done/abandoned hidden) is the resting state — no count.
+    expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
+
+    // Uncheck one default status; the selection now differs from the default → a count appears.
+    await user.click(screen.getByRole('button', { name: 'Filter by status' }));
+    await screen.findByRole('menu');
+    await user.keyboard('[ArrowDown][Enter]');
+    await user.keyboard('[Escape]');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /filter by status \(\d+\)/i })).toBeInTheDocument();
+    });
   });
 
   it('lists stories in priority order with a status chip on every row', () => {
@@ -131,7 +150,7 @@ describe('Backlog', () => {
     expect(screen.getAllByText('In Development')).toHaveLength(3);
   });
 
-  it('hides done/abandoned until Show completed is toggled on', async () => {
+  it('hides done/abandoned by default and reveals Done when its status is checked', async () => {
     const user = userEvent.setup();
     renderBacklog([
       makeStory('a', { priority: 10, factory_state: 'in_development' }),
@@ -140,11 +159,50 @@ describe('Backlog', () => {
     ]);
     expect(rowOrder()).toEqual(['ALF-a']);
 
-    await user.click(screen.getByRole('button', { name: 'Show completed' }));
-    expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
+    // Open the multi-select status filter. Radix portals set pointer-events:none on the body, so
+    // drive the menu by keyboard (see folder-nav.test.tsx). The options follow ALL_FACTORY_STATES
+    // order, so "Done" is the 6th item; toggling it on reveals the done story (priority order kept).
+    await user.click(screen.getByRole('button', { name: /filter by status/i }));
+    await screen.findByRole('menu');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Done' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Show completed' }));
-    expect(rowOrder()).toEqual(['ALF-a']);
+    await user.keyboard(
+      '[ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][Enter]',
+    );
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Done' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    // The open menu marks the rows aria-hidden, so close it before reading the row order.
+    await user.keyboard('[Escape]');
+    await waitFor(() => {
+      expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
+    });
+    // Abandoned was never checked, so its story stays hidden.
+    expect(rowOrder()).not.toContain('ALF-c');
+  });
+
+  it('narrows the list to a single status when the defaults are unchecked', async () => {
+    const user = userEvent.setup();
+    renderBacklog([
+      makeStory('a', { priority: 10, factory_state: 'needs_refinement' }),
+      makeStory('b', { priority: 20, factory_state: 'in_development' }),
+    ]);
+    expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
+
+    // Uncheck "Needs Refinement" (the 1st default-checked option) — only the in_development row stays.
+    await user.click(screen.getByRole('button', { name: /filter by status/i }));
+    await screen.findByRole('menu');
+    await user.keyboard('[ArrowDown][Enter]');
+    // Close the menu (it aria-hides the rows while open), then read the narrowed order.
+    await user.keyboard('[Escape]');
+    await waitFor(() => {
+      expect(rowOrder()).toEqual(['ALF-b']);
+    });
   });
 
   it('disables Up on the first row and Down on the last', () => {
