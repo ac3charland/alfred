@@ -28,6 +28,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/lib/api-client');
 const mockUpdateEpic = jest.mocked(api.updateEpic);
 const mockCreateCodeStory = jest.mocked(api.createCodeStory);
+const mockCreateEpic = jest.mocked(api.createEpic);
 
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so a test can emit a
 // simulated `code_items` change and assert the card moves swimlanes with no user interaction.
@@ -592,6 +593,45 @@ describe('Board', () => {
 
       await waitFor(() => {
         expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'A fresh story', null);
+      });
+    });
+  });
+
+  describe('the "Create epic" button', () => {
+    it('renders in the toolbar even when the project has no epics', () => {
+      renderBoard({ epics: [] });
+
+      expect(screen.getByRole('button', { name: /create epic/i })).toBeInTheDocument();
+    });
+
+    it('opens the new-epic dialog scoped to the project', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [] });
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /create epic/i }));
+
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByText(/new epic/i)).toBeInTheDocument();
+      // The dialog names the project the epic lands in.
+      expect(dialog.getByText('Alfred')).toBeInTheDocument();
+      expect(dialog.getByLabelText(/epic name/i)).toBeInTheDocument();
+    });
+
+    it('creates an epic through the store when the dialog is submitted', async () => {
+      mockCreateEpic.mockResolvedValue(makeEpic('new-1', { name: 'Comms', ref: 'ALF-9' }));
+      const user = userEvent.setup();
+      renderBoard({ epics: [] });
+
+      await user.click(screen.getByRole('button', { name: /create epic/i }));
+
+      const dialog = within(screen.getByRole('dialog'));
+      await user.type(dialog.getByLabelText(/epic name/i), 'Comms');
+      await user.click(dialog.getByRole('button', { name: /create epic/i }));
+
+      await waitFor(() => {
+        expect(mockCreateEpic).toHaveBeenCalledWith('p1', 'Comms');
       });
     });
   });

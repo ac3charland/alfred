@@ -5,7 +5,9 @@ description: >
   issues, setting/updating a PR or issue body or title, commenting, and scripting GitHub via
   `gh api`. Use when running `gh pr create`, `gh pr edit`, `gh pr comment`, `gh issue edit`, or `gh api` —
   "update the PR description", "edit the PR body", or a `gh` command that errors with a
-  GraphQL / "Projects (classic)" message. This is where the project's commit → push → PR
+  GraphQL / "Projects (classic)" message. Also covers editing PRs through the GitHub MCP
+  server in the web/remote environment (no `gh`) — e.g. a demo/body link rendering as inline
+  code because the URL got backtick-wrapped. This is where the project's commit → push → PR
   workflow (see CLAUDE.md) meets the GitHub CLI.
 ---
 
@@ -59,6 +61,29 @@ grep for a marker you just wrote:
 gh pr view <n> --json body --jq '.body' | grep -q "Status: live and in use" \
   && echo "applied" || echo "NOT applied — retry via gh api"
 ```
+
+## The gotcha in the web/remote environment: the GitHub MCP server backtick-wraps URLs
+
+In Claude Code on the web there is **no `gh`** — PRs are created/edited via the GitHub
+**MCP** tools (`mcp__github__create_pull_request` / `update_pull_request`). These silently
+wrap any `https://…` URL in the body in **double backticks**, so a Markdown link
+`[text](https://github.com/…)` is stored as `[text](``https://…``)` and GitHub renders the
+URL as **inline code, not a clickable link** (a bare URL and a reference-style `[id]: https://…`
+definition are wrapped too; an `<a href>` tag is stripped entirely). The body otherwise saves
+fine, so it looks like it worked.
+
+**Fix — link with a root-relative path (no `https://` token to wrap):**
+
+```text
+📝 **Demo:** [path/to/file.md](/<owner>/<repo>/blob/<branch>/path/to/file.md)
+```
+
+GitHub resolves a leading-`/` href against `github.com`, so `/ac3charland/alfred/blob/<branch>/…`
+is a real clickable link to the blob on the head branch — and contains no `https://`, so the
+wrapper leaves it alone. (`npm run demo -- pr-link` emits an *absolute* `https://` blob URL,
+which is correct for `gh`; when posting through the MCP server, convert it to the root-relative
+form first.) Verify with a WebFetch of the PR page (cache-bust with `?cb=N` — WebFetch caches a
+URL for 15 min) and confirm the demo text is an anchor, not inline code.
 
 ## What still works fine (don't over-correct)
 

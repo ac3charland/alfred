@@ -1,11 +1,13 @@
 'use client';
 
-import { Archive } from 'lucide-react';
+import { Archive, Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic-block';
+import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
 import { useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
@@ -32,13 +34,14 @@ export interface BoardProperties {
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
-  const { openClaudeSession } = useCodeActions();
+  const { openClaudeSession, createEpic } = useCodeActions();
   // A `?story=<ref>` deep-link (e.g. from a Backlog row) opens that story's modal — see below.
   const storyParam = useSearchParams().get('story');
 
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
   const [showBlocked, setShowBlocked] = React.useState(false);
+  const [newEpicOpen, setNewEpicOpen] = React.useState(false);
   // The open story for the detail modal, tracked by item_id so the modal always
   // re-reads the latest row from the store (e.g. after a manual transition reshuffles it).
   const [openStoryId, setOpenStoryId] = React.useState<string | null>(null);
@@ -126,6 +129,16 @@ export function Board({ projectId }: BoardProperties) {
           <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setNewEpicOpen(true);
+            }}
+          >
+            <Plus size={14} />
+            Create epic
+          </Button>
           {visibleEpics.length > 0 ? (
             <ToggleButton
               pressed={false}
@@ -181,10 +194,23 @@ export function Board({ projectId }: BoardProperties) {
       ) : (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border p-10">
           <p className="max-w-sm text-center text-sm text-muted-foreground">
-            No epics yet. Send a story to this project from the inbox to start its first epic.
+            No epics yet. Create your first epic above, or send a story to this project from the
+            inbox.
           </p>
         </div>
       )}
+
+      {/* Create a new epic directly on the board (mirrors the gate's "+ New epic"): the
+          store inserts it optimistically, so the board picks it up with no refetch. */}
+      <NewEpicDialog
+        open={newEpicOpen}
+        onOpenChange={setNewEpicOpen}
+        projectName={project.name}
+        onCreateEpic={(name) => createEpic(projectId, name)}
+        onCreated={() => {
+          // The store already inserted the epic optimistically; nothing to select here.
+        }}
+      />
 
       {/* The story detail modal: opens on a card click; reads the latest row from the
           store by item_id; reuses the board's launch handler for its primary action. */}

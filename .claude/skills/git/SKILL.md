@@ -24,6 +24,26 @@ Set these before any commit session:
 git config user.email noreply@anthropic.com && git config user.name Claude
 ```
 
+## First rule out the false alarm: an unpushed tip mid-`check:slow`
+
+The stop hook flags commits not yet on `origin`. A `git push` runs the **pre-push gate
+(`check:slow`)** — Storybook snapshots + Playwright E2E, minutes long — so while that push is
+in flight the tip commit isn't on the remote yet and the hook fires on it, even though it is
+**correctly signed**. Don't reach for the rewrite recipes below on reflex: they'd force a
+needless force-push of an already-good commit.
+
+Confirm it's the race, not a real problem, before rewriting:
+
+```bash
+git cat-file commit HEAD | grep -E '^(committer|gpgsig)'   # committer noreply@anthropic.com + an SSH gpgsig? → signed fine
+git rev-parse HEAD; git rev-parse origin/<branch>          # equal once the push lands → hook clears itself
+```
+
+Local `git log --format=%G?` shows **`N` for every commit** (verified or not) because
+`gpg.ssh.allowedSignersFile` isn't configured in the worktree — so `%G?` is **not** a signal
+here. Trust the `gpgsig` header + committer email instead. Only rewrite (below) when the commit
+genuinely lacks a `gpgsig` line or shows the wrong committer email.
+
 ## Rewriting author metadata on existing commits
 
 ### The safe way: `rebase --onto` + `filter-branch` on the right base
