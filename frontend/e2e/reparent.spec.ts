@@ -136,10 +136,10 @@ test.describe('re-parent a task by dragging it onto another task', () => {
 
     // "Keep me" is still a top-level row (a direct child of the Tasks list) and still owns
     // its subtask — it neither vanished into a cycle nor nested under the hovered task. The
-    // collapsed row's "1" badge proves the subtree came through intact.
+    // collapsed row's "0/1" subtask-count badge proves the subtree came through intact.
     const tasks = page.getByRole('list', { name: 'Tasks', exact: true });
     const keepRow = tasks.locator(':scope > li').filter({ hasText: 'Keep me' });
     await expect(keepRow).toBeVisible();
-    await expect(keepRow.getByText('1', { exact: true })).toBeVisible();
+    await expect(keepRow.getByText('0/1', { exact: true })).toBeVisible();
   });
 });
