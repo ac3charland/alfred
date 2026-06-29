@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
+import { InboxBulkBar, InboxSelectToggle } from '@/components/tasks/inbox-bulk-bar';
 import { TaskList } from '@/components/tasks/task-list';
 import { ViewLink } from '@/components/tasks/view-link';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
@@ -104,9 +105,13 @@ export function InboxScreen({ open }: InboxScreenProperties) {
                 <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
                   Inbox
                 </span>
-                <CollapseAllButton scope={{ type: 'inbox' }} />
+                <div className="flex items-center gap-1">
+                  <InboxSelectToggle />
+                  <CollapseAllButton scope={{ type: 'inbox' }} />
+                </div>
               </div>
-              <TaskList scope={{ type: 'inbox' }} emptyMessage="Your inbox is empty" />
+              <TaskList scope={{ type: 'inbox' }} emptyMessage="Your inbox is empty" selectable />
+              <InboxBulkBar />
             </div>
           </div>
         </div>

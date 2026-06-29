@@ -19,6 +19,17 @@ jest.mock('./collapse-all-button', () => ({
   },
 }));
 
+// The Select toggle + bulk bar read the inbox-selection store; stub them like the other
+// store-reading children (these tests render InboxScreen without providers).
+jest.mock('./inbox-bulk-bar', () => ({
+  InboxSelectToggle: function MockInboxSelectToggle() {
+    return <button type="button">Select</button>;
+  },
+  InboxBulkBar: function MockInboxBulkBar() {
+    return <div data-testid="inbox-bulk-bar" />;
+  },
+}));
+
 // Capture the last-rendered scope so tests can assert on it.
 let lastTaskListScope: unknown;
 jest.mock('./task-list', () => ({
