@@ -105,7 +105,7 @@ Content is conditionally rendered ({open && <X/>})?
 | **Reveal/collapse a region with a real fade both ways** | The reveal/collapse pattern (below) | Keep mounted through the exit; unmount on `animationend`; honour reduced motion. |
 | **Reveal/collapse a region with a height expand both ways** | Use `animate-expand-y` / `animate-collapse-y` on a `grid` wrapper, with `overflow-hidden` inner div (same two-div as the grid-rows transition). `onAnimationEnd` with `event.target === event.currentTarget && !open` unmounts on collapse. | Analogous to the fade reveal/collapse pattern but for height. `forwards` on collapse-y holds height at 0 between `animationend` and unmount (same flash reason as fade-out). |
 | **Smooth height expand/collapse (height: 0 → auto)** | CSS grid-rows trick (below) | `height: 0 → auto` can't be transitioned directly; `grid-template-rows: 0fr → 1fr` can. Drive it with a **`transition`** (class toggle), and for a _collapse_ prefer **`ease-out`** — `ease-in` crawls at the start and reads as sluggish. |
-| **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): the grid-rows transition + commit the store mutation on `transitionend` | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Used by `task-row.tsx` completion. |
+| **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): the grid-rows transition + commit the store mutation on `transitionend`, via the shared `useAnimatedRowExit` hook | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Used by `task-row.tsx` for both completion and deletion. |
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
 | **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
@@ -181,22 +181,32 @@ When an item's exit is driven by a **store mutation that filters it out of the v
 completing a task flips `status` and `useScopedTasks` drops it), the row **unmounts the instant
 the store updates** — there's nothing left to animate. The reveal/collapse pattern above doesn't
 apply (it owns its own `open` prop); here the unmount is the data layer's call. So **invert the
-order: play the exit first, commit the mutation last.** Used by `components/tasks/task-row.tsx`
-(completion: checkbox pop → height collapse → text fade, then `completeTask`).
+order: play the exit first, commit the mutation last.** The mechanism — `isExiting` state, the
+once-only commit, the navigate-away fallback, the collapse-end commit — lives in the shared
+`lib/hooks/use-animated-row-exit.ts` (`useAnimatedRowExit(onCommit, prefersReducedMotion)`).
+`components/tasks/task-row.tsx` uses it **twice**: completion (checkbox pop → height collapse →
+text fade, then `completeTask`) and deletion (whole-row fade-out + height collapse, then
+`deleteTask`). Don't re-inline the commit plumbing for a new row exit — call the hook.
 
-- **Local `isCompleting` state plays the exit.** A click sets it `true`; the row keeps rendering
-  (still "active" in the store) and applies the exit classes. The store mutation is **not** called
-  yet.
+- **`isExiting` state plays the exit.** The trigger sets it `true`; the row keeps rendering (still
+  in the store) and applies the exit classes. The store mutation is **not** called yet. Both
+  exits share one collapse wrapper, so the grid-rows track is gated on `isCompleting || isDeleting`
+  and the wrapper's `onTransitionEnd` calls **both** hooks' handlers (each acts only on its own
+  `grid-template-rows` transition while its flag is set).
+- **Deletion fades the whole row** via `transition-opacity` + `opacity-0` on the clipped inner div,
+  applied in the same render that flips `isDeleting` — the element persists, so the opacity
+  transitions 1→0 normally. Its collapse track drops the completion's `delay-200` (no checkbox pop
+  to lead), so the fade and shrink run together.
 - **Collapse the height with the grid-rows _transition_ below** — a one-shot `1fr → 0fr` gated on
-  `isCompleting`, with `ease-out` and a small `delay-` so the checkbox pop leads. A transition (not
-  a keyframe) so the curve matches the subtask collapse and eases responsively; a keyframe
-  collapse with `ease-in` measurably crawls at the start and reads as sluggish.
+  the exit flag, with `ease-out` (completion adds a small `delay-` so the checkbox pop leads). A
+  transition (not a keyframe) so the curve matches the subtask collapse and eases responsively; a
+  keyframe collapse with `ease-in` measurably crawls at the start and reads as sluggish.
 - **Commit on `transitionend`**, guarded by **both** `e.propertyName === 'grid-template-rows'`
   **and** `e.target === e.currentTarget` — the inner subtask grid _also_ transitions
   `grid-template-rows` and bubbles up, as do child colour fades. The mutation's optimistic patch
   then filters the row out — it unmounts already collapsed to 0 height, so no jump.
-- **Commit exactly once, with an unmount fallback.** Guard the mutation behind a
-  `hasCompletedRef`, and **also call it from an unmount effect's cleanup** when `isCompleting` —
+- **Commit exactly once, with an unmount fallback.** The hook guards the mutation behind a
+  `hasCommittedRef`, and **also calls it from an unmount effect's cleanup** while exiting —
   otherwise navigating away mid-collapse (the row unmounts before `transitionend`) **silently drops
   the mutation**. (Effect cleanup runs only for client-side unmounts, not full reloads — fine: a
   full reload mid-exit just no-ops the click.)
