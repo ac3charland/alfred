@@ -5,6 +5,8 @@ import {
   chevronIconClass,
   collapseClass,
   confirmTitleClass,
+  deleteCollapseClass,
+  deleteFadeClass,
   dropPlusClass,
   rowBaseClass,
   rowDropTargetClass,
@@ -19,6 +21,19 @@ describe('task-row styles', () => {
     expect(collapseClass).toContain('transition-[grid-template-rows]');
     expect(collapseClass).toContain('delay-200');
     expect(collapseClass).toContain('motion-reduce:transition-none');
+  });
+
+  it('delete collapse animates the grid-rows track WITHOUT the completion delay', () => {
+    expect(deleteCollapseClass).toContain('grid');
+    expect(deleteCollapseClass).toContain('transition-[grid-template-rows]');
+    expect(deleteCollapseClass).toContain('motion-reduce:transition-none');
+    // No checkbox pop to hold the collapse behind, so it starts immediately.
+    expect(deleteCollapseClass).not.toContain('delay-200');
+  });
+
+  it('delete fade transitions opacity and is disabled under reduced motion', () => {
+    expect(deleteFadeClass).toContain('transition-opacity');
+    expect(deleteFadeClass).toContain('motion-reduce:transition-none');
   });
 
   it('row base is a flex layout with a colour transition', () => {

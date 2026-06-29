@@ -12,6 +12,18 @@ import { cn } from '@/lib/utils';
 export const collapseClass =
   'grid transition-[grid-template-rows] duration-300 ease-out delay-200 motion-reduce:transition-none';
 
+/**
+ * Outer wrapper for the *deletion* collapse — the same grid-rows shrink as completion, but with
+ * NO `delay-200`: there's no checkbox pop to hold the collapse behind, so the height pulls the
+ * neighbouring rows up the instant delete is chosen, in step with the row fading out.
+ */
+export const deleteCollapseClass =
+  'grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none';
+
+/** The deletion fade: the whole row content fades to transparent as the height collapses. */
+export const deleteFadeClass =
+  'transition-opacity duration-200 ease-out motion-reduce:transition-none';
+
 /** Main row layout + colour transition. */
 export const rowBaseClass = cn(
   'flex items-start gap-2 rounded-sm py-2 pr-2',
