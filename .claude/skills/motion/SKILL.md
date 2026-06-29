@@ -103,7 +103,7 @@ Content is conditionally rendered ({open && <X/>})?
 | **Fade something in on mount** | `className="animate-fade-in motion-reduce:animate-none"` | The `motion-reduce:animate-none` guard is mandatory (see Pitfalls). |
 | **Fade + slide a panel in** | compose with tw-animate-css: `animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none` | `animate-in` / `slide-in-*` come from `tw-animate-css` (already imported). Our `--animate-fade-*` tokens are for the pure-opacity reusable case. |
 | **Reveal/collapse a region with a real fade both ways** | The reveal/collapse pattern (below) | Keep mounted through the exit; unmount on `animationend`; honour reduced motion. |
-| **Reveal/collapse a region with a height expand both ways** | Use `animate-expand-y` / `animate-collapse-y` on a `grid` wrapper, with `overflow-hidden` inner div (same two-div as the grid-rows transition). `onAnimationEnd` with `event.target === event.currentTarget && !open` unmounts on collapse. | Analogous to the fade reveal/collapse pattern but for height. `forwards` on collapse-y holds height at 0 between `animationend` and unmount (same flash reason as fade-out). |
+| **Reveal/collapse a region with a height expand both ways** (mount → grow in, shrink out → unmount) | `components/atoms/animated-height-reveal.tsx` (`AnimatedHeightReveal`): `animate-expand-y` / `animate-collapse-y` on the `grid` wrapper + `animate-fade-in` / `animate-fade-out` on the inner layer; its target-guarded `onAnimationEnd` fires `onExited` on collapse. The **parent owns mount/unmount** (renders it through the exit, drops it in `onExited`). Used by `task-row.tsx` for the add-subtask field. | `forwards` on collapse-y / fade-out holds at 0 between `animationend` and unmount (same flash reason as fade-out). The parent must derive its render flag during render and unmount **immediately** under reduced motion — no `animationend` fires then (see the enclosing-container gotcha below). |
 | **Smooth height expand/collapse (height: 0 → auto)** | CSS grid-rows trick (below) | `height: 0 → auto` can't be transitioned directly; `grid-template-rows: 0fr → 1fr` can. Drive it with a **`transition`** (class toggle), and for a _collapse_ prefer **`ease-out`** — `ease-in` crawls at the start and reads as sluggish. |
 | **Collapse a row's height to 0 (and animate it out of a list that filters it on a state change)** | The animate-then-commit pattern (below): the grid-rows transition + commit the store mutation on `transitionend`, via the shared `useAnimatedRowExit` hook | The store change unmounts the row instantly, so you can't animate _after_ it — defer the mutation. Used by `task-row.tsx` for both completion and deletion. |
 | **Drive a reveal that another part of the tree can also close** (e.g. a header logo that resets a page section) | Make the open state **URL-driven** (`/` vs `/?view=inbox`) and pass it as a prop; navigate with `<Link>` | URL state is shared across component trees for free — no context/prop-drilling. The page re-renders with the new prop and the section animates. |
@@ -405,6 +405,13 @@ glide. Key things:
 
 - **`onAnimationEnd` bubbles from descendants.** Guard with
   `event.target === event.currentTarget` so a child's animation doesn't trigger parent logic.
+
+- **A mount-through-exit reveal nested in a container gated on the *same* open condition gets
+  its exit killed.** The add-subtask field lived inside `{(hasChildren || showAddSubtask) && …}`,
+  so closing it flipped that gate false and unmounted the whole container before the field could
+  animate out (for a childless row `hasChildren` can't hold it open). Fix: lift a `rendered` flag
+  into the parent (mount during render when open; unmount in the reveal's `onExited`), and gate the
+  enclosing container on **that flag**, not on `open` — so the container survives the exit too.
 
 - **Don't inline bespoke `@keyframes` in a component for something reusable.** Add an
   `--animate-*` token to `@theme` in `globals.css` so it becomes a shared `animate-*` utility.

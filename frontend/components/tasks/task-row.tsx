@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
 import { AnimatedHeightEnter } from '@/components/atoms/animated-height-enter';
+import { AnimatedHeightReveal } from '@/components/atoms/animated-height-reveal';
 import { Badge } from '@/components/atoms/badge';
 import { Button } from '@/components/atoms/button';
 import { CheckboxButton } from '@/components/atoms/checkbox-button';
@@ -189,6 +190,20 @@ export function TaskRow({
   // either here closes whatever input another row had open (see active-editor-store).
   const isEditingTitle = sameEditor(activeEditor, { itemId: node.id, kind: 'title' });
   const showAddSubtask = sameEditor(activeEditor, { itemId: node.id, kind: 'subtask' });
+
+  // The inline add-subtask field animates in (height-grow + fade) and back out (ALF-66), so it
+  // must stay mounted through its exit — otherwise the unmount kills the animation. Derive the
+  // render flag from `showAddSubtask` DURING RENDER (React's recommended pattern over a
+  // setState-in-effect): mount as soon as it opens, and — under reduced motion, where there is no
+  // animation to wait on — unmount immediately on close. The animated path unmounts on the
+  // reveal's onExited. This flag also keeps the subtask container (below) alive through the exit
+  // for a childless task, where `hasChildren` can't.
+  const [addSubtaskRendered, setAddSubtaskRendered] = React.useState(showAddSubtask);
+  if (showAddSubtask && !addSubtaskRendered) {
+    setAddSubtaskRendered(true);
+  } else if (!showAddSubtask && addSubtaskRendered && prefersReducedMotion) {
+    setAddSubtaskRendered(false);
+  }
   // The title's draft + trim/no-op/rollback save run through the shared useInlineEdit machine;
   // the EDIT-MODE flag stays in the cross-row active-editor store (so opening one row's title
   // closes any other's — the single-open-editor invariant). We therefore drive only the draft
@@ -719,8 +734,10 @@ export function TaskRow({
               />
             )}
 
-            {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr */}
-            {(hasChildren || showAddSubtask) && (
+            {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr.
+              The container stays mounted while the add-subtask field animates out (the lifted
+              `addSubtaskRendered` flag), so a childless row's field can finish its exit. */}
+            {(hasChildren || addSubtaskRendered) && (
               <AnimatedHeightCollapse
                 open={isExpanded}
                 className={cn(
@@ -729,20 +746,30 @@ export function TaskRow({
                 )}
               >
                 <ul aria-label="Subtasks">
-                  {/* Add subtask inline form */}
-                  {showAddSubtask && (
+                  {/* Add subtask inline form — grows in and fades, shrinks out on dismiss (ALF-66).
+                    Kept mounted through the exit by `addSubtaskRendered`; the reveal's onExited
+                    drops it once the collapse animation ends. */}
+                  {addSubtaskRendered && (
                     <li
-                      className="list-none py-1"
+                      className="list-none"
                       style={{ paddingLeft: `${String((depth + 1) * 1.25 + 2.5)}rem` }}
                     >
-                      <CaptureBox
-                        parentId={node.id}
-                        folderId={node.folder_id}
-                        compact
-                        onDismiss={() => {
-                          closeEditor({ itemId: node.id, kind: 'subtask' });
+                      <AnimatedHeightReveal
+                        open={showAddSubtask}
+                        onExited={() => {
+                          setAddSubtaskRendered(false);
                         }}
-                      />
+                        className="py-1"
+                      >
+                        <CaptureBox
+                          parentId={node.id}
+                          folderId={node.folder_id}
+                          compact
+                          onDismiss={() => {
+                            closeEditor({ itemId: node.id, kind: 'subtask' });
+                          }}
+                        />
+                      </AnimatedHeightReveal>
                     </li>
                   )}
 

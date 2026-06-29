@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -1311,6 +1311,62 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Add-subtask field entry/exit animation (ALF-66) — the field grows in with a
+  // fade when opened and shrinks back out, staying mounted through its exit so the
+  // collapse can play, then unmounting on the animation's end.
+  // ---------------------------------------------------------------------------
+
+  describe('add subtask field animation', () => {
+    it('grows the field in with a height-grow + fade when opened', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+
+      const reveal = screen.getByTestId('animated-height-reveal');
+      // The field's wrapper plays the expand (not collapse) keyframe and contains the input.
+      expect(reveal).toHaveClass('animate-expand-y');
+      expect(reveal).not.toHaveClass('animate-collapse-y');
+      expect(within(reveal).getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+    });
+
+    it('plays the collapse keyframe and stays mounted while it shrinks out on dismiss', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+      // Toggle off — the field is now closing, but still mounted so the exit can animate.
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+
+      const reveal = screen.getByTestId('animated-height-reveal');
+      expect(reveal).toHaveClass('animate-collapse-y');
+      expect(reveal).not.toHaveClass('animate-expand-y');
+      // The input is still in the DOM mid-exit (queryable by placeholder, not by role — the
+      // closing region is aria-hidden).
+      expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+
+      // Once the collapse animation ends, the field unmounts.
+      act(() => {
+        fireEvent.animationEnd(reveal);
+      });
+      expect(screen.queryByPlaceholderText(/add subtask/i)).not.toBeInTheDocument();
+    });
+
+    it('unmounts the field immediately on dismiss under reduced motion (no animation to wait on)', async () => {
+      mockReducedMotion(true);
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+      expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+
+      // No animationEnd is fired, yet the field is gone right away.
+      await user.click(screen.getByRole('button', { name: /add subtask/i }));
+      expect(screen.queryByPlaceholderText(/add subtask/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Single active inline input across rows
   //
   // Only ONE inline input may be open across all task rows: the title-edit text box
@@ -1333,14 +1389,12 @@ describe('TaskRow', () => {
 
       await user.click(secondAdd);
 
-      // Exactly one subtask entry box remains, and it belongs to the second row.
-      expect(screen.getAllByPlaceholderText(/add subtask/i)).toHaveLength(1);
-      expect(
-        within(rowFor('Write tests')).queryByPlaceholderText(/add subtask/i),
-      ).not.toBeInTheDocument();
-      expect(
-        within(rowFor('Second task')).getByPlaceholderText(/add subtask/i),
-      ).toBeInTheDocument();
+      // Exactly one ACTIVE subtask entry box remains, and it belongs to the second row. The first
+      // row's box is animating out (ALF-66) — still mounted but aria-hidden — so query by role,
+      // which excludes the closing region, to assert it's no longer the active input.
+      expect(screen.getAllByRole('textbox')).toHaveLength(1);
+      expect(within(rowFor('Write tests')).queryByRole('textbox')).not.toBeInTheDocument();
+      expect(within(rowFor('Second task')).getByRole('textbox')).toBeInTheDocument();
     });
 
     it('abandons an in-progress title edit without saving when another title is double-clicked', async () => {
@@ -1551,12 +1605,12 @@ describe('TaskRow', () => {
     });
 
     it('does not render the subtasks list when expanded but has no children and no add-subtask', async () => {
-      // This tests hasChildren || showAddSubtask: when both are false, no <ul> should render
+      // This tests hasChildren || addSubtaskRendered: when both are false, no <ul> should render
       // even if isExpanded=true. To get isExpanded=true without hasChildren, we need
       // to expand (but BASE_ITEM has no children, so expand button is hidden/disabled).
       // We use the "Add subtask" toggle which sets isExpanded=true AND showAddSubtask=true.
       // Then we toggle it off: showAddSubtask=false, isExpanded=true, hasChildren=false.
-      // With mutation `hasChildren || showAddSubtask → true`, the ul would still show.
+      // With mutation `hasChildren || addSubtaskRendered → true`, the ul would still show.
       const user = userEvent.setup();
       renderTasks([BASE_ITEM]);
 
@@ -1564,8 +1618,12 @@ describe('TaskRow', () => {
       // isExpanded=true, showAddSubtask=true → subtasks list visible
       expect(screen.getByRole('list', { name: /subtasks/i })).toBeInTheDocument();
 
-      // Toggle off
+      // Toggle off — the field animates out (ALF-66), so the container lingers until the
+      // collapse animation ends. Drive that to completion, then the list unmounts.
       await user.click(screen.getByRole('button', { name: /add subtask/i }));
+      act(() => {
+        fireEvent.animationEnd(screen.getByTestId('animated-height-reveal'));
+      });
       // isExpanded=true, showAddSubtask=false, hasChildren=false → no subtasks list
       expect(screen.queryByRole('list', { name: /subtasks/i })).not.toBeInTheDocument();
     });
@@ -1672,6 +1730,10 @@ describe('TaskRow', () => {
       await user.click(captureInput);
       await user.keyboard('[Escape]');
 
+      // Escape dismisses, then the field animates out (ALF-66) and unmounts on collapse end.
+      act(() => {
+        fireEvent.animationEnd(screen.getByTestId('animated-height-reveal'));
+      });
       expect(document.querySelector('input[placeholder]')).not.toBeInTheDocument();
     });
   });
