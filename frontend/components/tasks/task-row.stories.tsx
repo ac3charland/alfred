@@ -90,6 +90,28 @@ export const CodeClassified: Story = {
   },
 };
 
+// ALF-65: the "Task" label is redundant where the type is already implied. A subtask sits
+// under a task, so it shows the title and affordances but NO "Task" badge.
+export const Subtask: Story = {
+  args: {
+    node: { ...CHILD_NODE, title: 'Outline key sections' },
+    depth: 1,
+  },
+};
+
+// A task filed in a folder is, by definition, a task — so the "Task" badge is suppressed
+// there too (ALF-65). Rendered with its folder_id set; contrast with TaskClassified (Inbox).
+export const TaskInFolder: Story = {
+  args: {
+    node: { ...BASE_NODE, title: 'Draft the project brief', folder_id: 'f1' },
+  },
+  parameters: {
+    store: {
+      folders: [{ id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' }],
+    },
+  },
+};
+
 export const WithDueDate: Story = {
   args: {
     node: { ...BASE_NODE, due_date: '2099-06-30' },
