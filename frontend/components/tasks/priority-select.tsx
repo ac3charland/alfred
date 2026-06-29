@@ -10,13 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
-import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
-import {
-  PRIORITY_OPTIONS,
-  type TaskPriority,
-  isPriorityLevel,
-  priorityOption,
-} from '@/lib/priority';
+import { PRIORITY_OPTIONS, type TaskPriority } from '@/lib/priority';
 
 interface PriorityMenuProperties {
   /** The current level, or `null` for unprioritised. */
@@ -30,8 +24,8 @@ interface PriorityMenuProperties {
 
 /**
  * The shared priority dropdown — "No priority" plus the three {@link PRIORITY_OPTIONS} levels,
- * check-marking the active one. Wraps any trigger (`children`) so both the editor field
- * (`PrioritySelect`) and the By-Priority row's chip can re-prioritise in place from one menu.
+ * check-marking the active one. Wraps any trigger (`children`) so the By-Priority row's chip can
+ * re-prioritise in place from one menu.
  */
 export function PriorityMenu({
   value,
@@ -70,35 +64,5 @@ export function PriorityMenu({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-interface PrioritySelectProperties {
-  /** The id the meta-panel's `FieldLabel` associates with. */
-  id: string;
-  value: TaskPriority | null;
-  onChange: (next: TaskPriority | null) => void;
-}
-
-/**
- * The **Priority** control in a task's meta panel: a trigger showing the current level (or
- * "No priority"), opening the shared {@link PriorityMenu}. Picking a value is a single atomic
- * choice (no draft/save dance like the free-text due-date / notes fields), so it writes straight
- * through the optimistic `updateTask` path the caller wires to `onChange`.
- */
-export function PrioritySelect({ id, value, onChange }: PrioritySelectProperties) {
-  return (
-    <PriorityMenu value={value} onChange={onChange}>
-      <InlineEditTrigger
-        id={id}
-        className="text-sm text-foreground hover:text-accent-teal transition-colors motion-reduce:transition-none focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-      >
-        {isPriorityLevel(value) ? (
-          priorityOption(value)?.label
-        ) : (
-          <span className="text-muted-foreground">No priority</span>
-        )}
-      </InlineEditTrigger>
-    </PriorityMenu>
   );
 }

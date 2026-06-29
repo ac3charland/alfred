@@ -9,4 +9,4 @@ export type {
 } from './types';
 export { nextOccurrence, sortedWeekdays, summarizeRule } from './engine';
 export { parseRecurrenceRule } from './parse';
-export { presetForRule, ruleFromPreset } from './presets';
+export { REPEAT_PRESETS, presetForRule, ruleFromPreset } from './presets';

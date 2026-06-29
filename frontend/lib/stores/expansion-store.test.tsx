@@ -16,6 +16,23 @@ describe('ExpansionProvider', () => {
     const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
     expect(result.current.state.subtasks.size).toBe(0);
     expect(result.current.state.completed.size).toBe(0);
+    expect(result.current.state.details.size).toBe(0);
+  });
+
+  it('toggleDetails opens a row’s detail panel independently of subtasks', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.toggleDetails('a');
+    });
+    expect(result.current.state.details.has('a')).toBe(true);
+    // Detail panel and subtask tree are separate flags.
+    expect(result.current.state.subtasks.has('a')).toBe(false);
+
+    act(() => {
+      result.current.actions.toggleDetails('a');
+    });
+    expect(result.current.state.details.has('a')).toBe(false);
   });
 
   it('toggleSubtasks opens a row, toggling again closes it', () => {
@@ -75,15 +92,17 @@ describe('ExpansionProvider', () => {
     expect(result.current.state.completed.has('a')).toBe(false);
   });
 
-  it('collapseAll clears the passed ids from BOTH the subtask and completed sets', () => {
+  it('collapseAll clears the passed ids from the subtask, completed AND detail sets', () => {
     const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
 
     act(() => {
       result.current.actions.expandSubtasks('a');
       result.current.actions.toggleCompleted('a');
+      result.current.actions.toggleDetails('a');
     });
     expect(result.current.state.subtasks.has('a')).toBe(true);
     expect(result.current.state.completed.has('a')).toBe(true);
+    expect(result.current.state.details.has('a')).toBe(true);
 
     act(() => {
       result.current.actions.collapseAll(['a']);
@@ -91,6 +110,7 @@ describe('ExpansionProvider', () => {
 
     expect(result.current.state.subtasks.has('a')).toBe(false);
     expect(result.current.state.completed.has('a')).toBe(false);
+    expect(result.current.state.details.has('a')).toBe(false);
   });
 
   it('collapseAll leaves ids outside the passed set untouched (per-view scope)', () => {

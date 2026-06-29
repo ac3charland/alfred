@@ -19,7 +19,7 @@ import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
-import { TaskMetaPanel } from '@/components/tasks/task-row/task-meta-panel';
+import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
@@ -41,12 +41,7 @@ import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
-import {
-  countCompletedDescendants,
-  getAncestorTitles,
-  getDescendantIds,
-  isTempId,
-} from '@/lib/tree';
+import { getAncestorTitles, getDescendantIds, isTempId } from '@/lib/tree';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -84,15 +79,15 @@ interface TaskRowProperties {
  * layout + the recursive subtree, with cohesive pieces pulled into their own units. The
  * item-type flags (`useTaskRowFlags`), the indentation math (`useIndentation`), and the
  * delicate completion/deletion exits (`useAnimatedRowExit`) are hooks; the actions dropdown
- * (`TaskRowMenu`) and the due-date/notes card (`TaskMetaPanel`) are sub-components. The
+ * (`TaskRowMenu`) and the auto-saving detail panel (`TaskDetailPanel`) are sub-components. The
  * subtask + completed-children reveals use the shared `AnimatedHeightCollapse`; the
  * completion-collapse stays bespoke (its 300ms + `delay-200` timing and the once-only commit
  * differ from the plain 200ms reveal).
  *
  * Features:
- * - Expand/collapse subtask tree
+ * - Expand/collapse subtask tree (chevron or row-body click)
  * - Checkbox to complete (cascade modal for tasks with children)
- * - Inline title edit + due date + notes edit
+ * - Inline title edit; "Open details" reveals the auto-saving due/repeat/priority/notes panel
  * - "Add subtask" affordance
  * - Move-to-folder dropdown + classify / gate entries
  * - Delete
@@ -118,8 +113,12 @@ export function TaskRow({
   const activeEditor = useActiveEditor();
   const { openEditor, closeEditor } = useActiveEditorActions();
   const prefersReducedMotion = usePrefersReducedMotion();
-  const { subtasks: expandedSubtasks, completed: expandedCompleted } = useExpansion();
-  const { toggleSubtasks, expandSubtasks, toggleCompleted } = useExpansionActions();
+  const {
+    subtasks: expandedSubtasks,
+    completed: expandedCompleted,
+    details: openDetails,
+  } = useExpansion();
+  const { toggleSubtasks, expandSubtasks, toggleCompleted, toggleDetails } = useExpansionActions();
   const { active: selectModeActive, selectedIds } = useInboxSelection();
   const { toggle: toggleSelection } = useInboxSelectionActions();
   // A selectable root row in active select mode is a selection checkbox, not a normal row.
@@ -127,6 +126,9 @@ export function TaskRow({
   const isSelected = selectedIds.has(node.id);
   const isExpanded = expandedSubtasks.has(node.id);
   const showCompleted = expandedCompleted.has(node.id);
+  // The inline detail panel ("Open details") — independent of the subtask tree (§08): a row can
+  // show its detail, its subtasks, both, or neither.
+  const isDetailOpen = openDetails.has(node.id);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
 
   // A row's completed state is read off the node itself (not the view), so a completed
@@ -155,12 +157,11 @@ export function TaskRow({
   );
   const isTopLevelTask = isTask && node.parent_id === null;
 
-  // The "Task" badge earns its space only where the type is ambiguous — a root Inbox row. A
-  // subtask sits under a task and every item filed in a folder is a task, so the label is
-  // redundant noise there and is hidden (ALF-65). "Code" keeps its badge everywhere (the
-  // rare, meaningful distinction); an unclassified row never had one.
-  const showTypeBadge =
-    node.item_type !== 'task' || (node.parent_id === null && node.folder_id === null);
+  // Only "Code" earns a row badge now. The "Task" pill is gone from the parent row (ALF-67) on
+  // top of already being hidden for subtasks / folder items (ALF-65), so a task never shows one;
+  // "Code" keeps its badge everywhere (the rare, meaningful distinction). An unclassified row
+  // has no badge either way.
+  const showTypeBadge = node.item_type === 'code';
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -198,12 +199,6 @@ export function TaskRow({
     selectAllOnEdit: false,
   });
   const { draft: draftTitle, setDraft: setDraftTitle } = titleEdit;
-
-  const [isEditingDueDate, setIsEditingDueDate] = React.useState(false);
-  const [isEditingNotes, setIsEditingNotes] = React.useState(false);
-  const [draftDueDate, setDraftDueDate] = React.useState(node.due_date ?? '');
-  const [draftNotes, setDraftNotes] = React.useState(node.notes ?? '');
-  const [isMetaOpen, setIsMetaOpen] = React.useState(false);
 
   // The gate: "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
   // unclassified rows). Both open the SAME dialog, which (since ALF-27) routes through the
@@ -260,6 +255,9 @@ export function TaskRow({
 
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
+  // The row's subtask-count badge reads `${completed}/${total}` over the DIRECT subtasks (ALF-67).
+  const totalSubtasks = node.children.length;
+  const completedSubtasks = node.children.filter((child) => child.status === 'completed').length;
   // The checkbox reads as "complete" both for a completed row and during the exit
   // animation, so its fill + check icon appear the instant completion begins.
   const showAsComplete = isCompleted || isCompleting;
@@ -273,7 +271,6 @@ export function TaskRow({
   const completedChildren = isCompletedView
     ? []
     : node.children.filter((child) => child.status === 'completed');
-  const completedDescendantCount = isCompletedView ? 0 : countCompletedDescendants(node);
 
   // On the Completed screen, each root row carries a context label showing where the
   // task lives: its ancestor breadcrumb (oldest → youngest) when it's a nested subtask,
@@ -330,20 +327,25 @@ export function TaskRow({
     await titleEdit.save();
   };
 
-  const handleSaveDueDate = async () => {
-    setIsEditingDueDate(false);
-    // Stryker disable next-line MethodExpression: AT_CEILING — draftDueDate is only ever written by the date input's onChange or initialized from node.due_date (a clean YYYY-MM-DD or ''). A `type="date"` input rejects any value containing whitespace (its .value becomes ''), so draftDueDate can never hold surrounding whitespace; `.trim()` is therefore a provable no-op and removing it leaves every comparison identical.
-    const newValue = draftDueDate.trim();
-    const currentValue = node.due_date ?? '';
-    if (newValue === currentValue) return;
+  // The detail panel's Due chip auto-saves on every pick. Setting a date is a bare patch;
+  // clearing it also clears any recurrence rule (a rule has nowhere to anchor without a due date).
+  const handleSelectDueDate = async (iso: string) => {
+    if (iso === (node.due_date ?? '')) return;
     try {
-      // Empty string clears the due date (PATCH { due_date: null }). Clearing the anchor also
-      // clears any recurrence rule — a rule has nowhere to anchor without a due date.
-      await (newValue === '' && node.recurrence !== null
-        ? updateTask(node.id, { due_date: null, recurrence: null })
-        : updateTask(node.id, { due_date: newValue === '' ? null : newValue }));
+      await updateTask(node.id, { due_date: iso });
     } catch {
-      setDraftDueDate(node.due_date ?? '');
+      // The store already rolled the row back.
+    }
+  };
+
+  const handleClearDueDate = async () => {
+    if (node.due_date === null) return;
+    try {
+      await (node.recurrence === null
+        ? updateTask(node.id, { due_date: null })
+        : updateTask(node.id, { due_date: null, recurrence: null }));
+    } catch {
+      // The store already rolled the row back.
     }
   };
 
@@ -360,16 +362,15 @@ export function TaskRow({
     }
   };
 
-  const handleSaveNotes = async () => {
-    setIsEditingNotes(false);
-    const newValue = draftNotes.trim();
-    const currentValue = node.notes ?? '';
-    if (newValue === currentValue) return;
+  // The detail panel's notes editor auto-saves on blur, handing back the raw text. Trim, no-op on
+  // an unchanged value, and clear with null when emptied.
+  const handleCommitNotes = async (value: string) => {
+    const newValue = value.trim();
+    if (newValue === (node.notes ?? '')) return;
     try {
-      // Empty string clears the notes (PATCH { notes: null }).
       await updateTask(node.id, { notes: newValue === '' ? null : newValue });
     } catch {
-      setDraftNotes(node.notes ?? '');
+      // The store already rolled the row back.
     }
   };
 
@@ -394,40 +395,12 @@ export function TaskRow({
     }
   };
 
-  // Opening the meta panel for a due-date / notes edit. These are sync, fire-and-forget
-  // entry points the row and the menu both use.
-  const handleOpenDueDateEditor = () => {
-    setIsEditingDueDate(true);
-    setIsMetaOpen(true);
-  };
-
-  const handleOpenNotesEditor = () => {
-    setIsEditingNotes(true);
-    setIsMetaOpen(true);
-  };
-
-  // The repeat chip / control lives in the meta panel; opening the panel reveals it.
-  const handleOpenRepeatEditor = () => {
-    setIsMetaOpen(true);
-  };
-
-  // The priority chip / control lives in the meta panel (same affordance as the repeat chip).
-  const handleOpenPriorityEditor = () => {
-    setIsMetaOpen(true);
-  };
-
   const handleSavePriority = async (next: ItemNode['priority']) => {
     try {
       await updateTask(node.id, { priority: next });
     } catch {
       // The store already rolled the row back.
     }
-  };
-
-  const handleCloseMeta = () => {
-    setIsMetaOpen(false);
-    setIsEditingDueDate(false);
-    setIsEditingNotes(false);
   };
 
   // Select mode: the whole row is one toggle button — its leading control becomes a selection
@@ -619,6 +592,13 @@ export function TaskRow({
                   >
                     {node.title}
                   </span>
+                  {/* Notes preview — a single muted line beneath the title when notes exist,
+                    so the row stays scannable without opening the detail (ALF-67 §2). */}
+                  {node.notes !== null && node.notes !== '' && (
+                    <span className="truncate text-[12.5px] leading-snug text-[#6b7689]">
+                      {node.notes}
+                    </span>
+                  )}
                   {contextLabel !== null && (
                     <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
                       <ListCheck size={10} className="shrink-0" />
@@ -628,40 +608,34 @@ export function TaskRow({
                 </div>
               )}
 
-              {/* Type badge — shown once the item is classified (Task / Code); nothing for
-                an unclassified row. The "Task" label is suppressed for subtasks and folder
-                items, where the type is already implied (ALF-65); "Code" still shows. */}
+              {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed in
+                ALF-67 / ALF-65); an unclassified row shows none. */}
               {showTypeBadge && <TypeBadge itemType={node.item_type} />}
 
-              {/* Due date chip — `task`-only. */}
-              {isTask && node.due_date && !isEditingDueDate && (
-                <DueDateChip dueDate={node.due_date} onClick={handleOpenDueDateEditor} />
-              )}
+              {/* Right cluster of scannable badges (Due → Repeat → Priority → Subtask count):
+                display-only here — editing happens on the detail panel's chips. */}
 
-              {/* Recurrence chip — top-level recurring tasks only; opens the Repeat control. */}
+              {/* Due date — `task`-only. */}
+              {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
+
+              {/* Repeat — top-level recurring tasks only. */}
               {isTopLevelTask && recurrenceRule !== null && (
-                <RecurrenceChip rule={recurrenceRule} onClick={handleOpenRepeatEditor} />
+                <RecurrenceChip rule={recurrenceRule} />
               )}
 
-              {/* Priority chip — top-level tasks with a level set; opens the Priority control. */}
+              {/* Priority — top-level tasks with a level set; symbol-only on the row. */}
               {isTopLevelTask && isPriorityLevel(node.priority) && (
-                <PriorityChip priority={node.priority} onClick={handleOpenPriorityEditor} />
+                <PriorityChip priority={node.priority} symbolOnly />
               )}
 
-              {/* Active children count badge */}
-              {activeChildren.length > 0 && !isExpanded && (
-                <Badge variant="secondary">{activeChildren.length}</Badge>
-              )}
-
-              {/* Completed descendants count badge (all depths) — right of the active one */}
-              {completedDescendantCount > 0 && !isExpanded && (
+              {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
+              {totalSubtasks > 0 && (
                 <Badge
-                  variant="muted"
-                  aria-label={`${String(completedDescendantCount)} completed`}
-                  className="inline-flex items-center gap-1 text-muted-foreground/60"
+                  variant="plain"
+                  aria-label={`${String(completedSubtasks)} of ${String(totalSubtasks)} subtasks complete`}
+                  className="bg-[#1b2438] px-3 py-[3px] text-[13px] text-[#8b97a9]"
                 >
-                  <Check size={10} strokeWidth={3} className="shrink-0" />
-                  {completedDescendantCount}
+                  {completedSubtasks}/{totalSubtasks}
                 </Badge>
               )}
 
@@ -700,20 +674,16 @@ export function TaskRow({
                   isUnclassified={isUnclassified}
                   isCode={isCode}
                   canConvert={canConvert}
-                  isTask={isTask}
-                  hasDueDate={node.due_date !== null}
-                  hasNotes={node.notes !== null}
-                  hasPriority={node.priority !== null}
                   folders={folders}
+                  onOpenDetails={() => {
+                    toggleDetails(node.id);
+                  }}
                   onClassify={(itemType) => {
                     void handleClassify(itemType);
                   }}
                   onOpenGate={() => {
                     setShowGate(true);
                   }}
-                  onSetDueDate={handleOpenDueDateEditor}
-                  onEditNotes={handleOpenNotesEditor}
-                  onSetPriority={handleOpenPriorityEditor}
                   onMoveToFolder={(targetFolderId) => {
                     void handleMoveToFolder(targetFolderId);
                   }}
@@ -722,48 +692,30 @@ export function TaskRow({
               </div>
             </div>
 
-            {/* Inline meta panel (due date + notes) — opens when requested */}
-            {isMetaOpen && (
-              <TaskMetaPanel
+            {/* Inline detail panel ("Open details") — the auto-saving chip row + notes. Sits
+              between the row and the subtask list (row → detail → subtasks). */}
+            {isDetailOpen && (
+              <TaskDetailPanel
                 node={node}
-                isTask={isTask}
                 metaLeft={metaIndentLeft}
+                isTask={isTask}
                 showRepeat={isTopLevelTask}
                 recurrence={recurrenceRule}
                 onChangeRecurrence={(rule, anchorDate) => {
                   void handleSaveRecurrence(rule, anchorDate);
                 }}
-                priority={node.priority}
-                onSavePriority={(next) => {
+                onSelectDueDate={(iso) => {
+                  void handleSelectDueDate(iso);
+                }}
+                onClearDueDate={() => {
+                  void handleClearDueDate();
+                }}
+                onChangePriority={(next) => {
                   void handleSavePriority(next);
                 }}
-                isEditingDueDate={isEditingDueDate}
-                draftDueDate={draftDueDate}
-                onDraftDueDateChange={setDraftDueDate}
-                onSaveDueDate={() => {
-                  void handleSaveDueDate();
+                onCommitNotes={(value) => {
+                  void handleCommitNotes(value);
                 }}
-                onBeginEditDueDate={() => {
-                  setIsEditingDueDate(true);
-                }}
-                onCancelDueDate={() => {
-                  setIsEditingDueDate(false);
-                  setDraftDueDate(node.due_date ?? '');
-                }}
-                isEditingNotes={isEditingNotes}
-                draftNotes={draftNotes}
-                onDraftNotesChange={setDraftNotes}
-                onSaveNotes={() => {
-                  void handleSaveNotes();
-                }}
-                onBeginEditNotes={() => {
-                  setIsEditingNotes(true);
-                }}
-                onCancelNotes={() => {
-                  setIsEditingNotes(false);
-                  setDraftNotes(node.notes ?? '');
-                }}
-                onClose={handleCloseMeta}
               />
             )}
 

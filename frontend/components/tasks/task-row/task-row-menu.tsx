@@ -22,45 +22,32 @@ interface TaskRowMenuProperties {
   isCode: boolean;
   /** True for a task / unclassified row (offers "Convert to Code Story…"). */
   canConvert: boolean;
-  /** True for a `task` row (offers the due-date entry; due dates are task-only). */
-  isTask: boolean;
-  /** Whether the row currently carries a due date (toggles the Set/Edit label). */
-  hasDueDate: boolean;
-  /** Whether the row currently carries notes (toggles the Add/Edit label). */
-  hasNotes: boolean;
-  /** Whether the row currently carries a priority (toggles the Set/Edit label). */
-  hasPriority: boolean;
   /** The folders the row can be moved into (the "Move to…" submenu; hidden when empty). */
   folders: readonly Folder[];
+  /** Open the row's inline detail panel (the primary, leading entry). */
+  onOpenDetails: () => void;
   onClassify: (itemType: 'task' | 'code') => void;
   onOpenGate: () => void;
-  onSetDueDate: () => void;
-  onEditNotes: () => void;
-  onSetPriority: () => void;
   onMoveToFolder: (targetFolderId?: string) => void;
   onDelete: () => void;
 }
 
 /**
- * The task row's "More actions" dropdown. Every entry's visibility gates on the row's
- * item-type flags (Classify-as while unclassified; Send/Convert for code vs task; due date
- * for tasks; Move-to when folders exist) — those conditionals stay encapsulated here so the
- * row body composes the menu without restating them. Uses the styled `DropdownMenu*` atoms.
+ * The task row's "More actions" dropdown. **"Open details" leads** (teal, the primary action —
+ * it's how the detail is reached now), then the item-type entries (Classify-as while
+ * unclassified, Send/Convert for code vs task), Move-to (when folders exist), and finally a
+ * destructive Delete below a divider. The per-field "Set due date / Set priority / Add notes"
+ * entries are gone — those edits live on the detail panel's auto-saving chips and notes. Every
+ * conditional stays encapsulated here so the row body composes the menu without restating them.
  */
 export function TaskRowMenu({
   isUnclassified,
   isCode,
   canConvert,
-  isTask,
-  hasDueDate,
-  hasNotes,
-  hasPriority,
   folders,
+  onOpenDetails,
   onClassify,
   onOpenGate,
-  onSetDueDate,
-  onEditNotes,
-  onSetPriority,
   onMoveToFolder,
   onDelete,
 }: TaskRowMenuProperties) {
@@ -72,10 +59,19 @@ export function TaskRowMenu({
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {/* Classify as ▸ — inbox triage, offered only while the row is
-            still unclassified. Picking a type flips item_type (the optimistic
-            classifyItem action). Knowledge is reserved — leave room, don't build
-            it. "Send to Code module…" / "Convert to Code Story…" route into the Code module. */}
+        {/* Open details — the primary action, highlighted teal. Opens the inline detail panel
+            with the auto-saving Due / Repeat / Priority chips and the notes editor. */}
+        <DropdownMenuItem
+          onSelect={onOpenDetails}
+          className="font-semibold text-accent-teal focus:text-accent-teal data-[highlighted]:bg-accent-teal/10"
+        >
+          Open details
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        {/* Classify as ▸ — inbox triage, offered only while the row is still unclassified.
+            Picking a type flips item_type (the optimistic classifyItem action). */}
         {isUnclassified && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
@@ -97,42 +93,18 @@ export function TaskRowMenu({
               >
                 Code
               </DropdownMenuItem>
-              {/* Knowledge: reserved — future type, not built. */}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         )}
 
-        {/* Send to Code module… — a code-classified inbox item enters the gate.
-            The RPC creates the code_items sidecar; the item then
-            leaves the Tasks/Inbox views. */}
+        {/* Send to Code module… — a code-classified inbox item enters the gate. */}
         {isCode && <DropdownMenuItem onSelect={onOpenGate}>Send to Code module…</DropdownMenuItem>}
 
-        {/* Convert to Code Story… — the path for an existing task (or an
-            unclassified item): the gate both flips item_type and creates the
-            factory row in one step (the enter_code_module RPC clears task-only
-            fields, so a task with a due date / subtasks converts safely). */}
+        {/* Convert to Code Story… — the path for an existing task (or an unclassified item):
+            the gate both flips item_type and creates the factory row in one step. */}
         {canConvert && (
           <DropdownMenuItem onSelect={onOpenGate}>Convert to Code Story…</DropdownMenuItem>
         )}
-
-        {/* Set/Edit due date — `task`-only. */}
-        {isTask && (
-          <DropdownMenuItem onSelect={onSetDueDate}>
-            {hasDueDate ? 'Edit due date' : 'Set due date'}
-          </DropdownMenuItem>
-        )}
-
-        {/* Set/Edit priority — `task`-only (opens the meta panel's Priority control). */}
-        {isTask && (
-          <DropdownMenuItem onSelect={onSetPriority}>
-            {hasPriority ? 'Edit priority' : 'Set priority'}
-          </DropdownMenuItem>
-        )}
-
-        {/* Edit notes */}
-        <DropdownMenuItem onSelect={onEditNotes}>
-          {hasNotes ? 'Edit notes' : 'Add notes'}
-        </DropdownMenuItem>
 
         {/* Move to folder */}
         {folders.length > 0 && (

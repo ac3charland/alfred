@@ -10,17 +10,25 @@ export interface PriorityChipProperties extends Omit<
 > {
   /** The level to render — `high` / `medium` / `low` (an unprioritised row renders no chip). */
   priority: TaskPriority;
+  /**
+   * Render the icon alone, no text label — the compact form used on a task row where space is
+   * tight (ALF-67). The accessible name still carries the level (`Priority: High`) via the
+   * `aria-label`, so the chip stays legible to assistive tech. The detail view uses the labelled
+   * form. Defaults to false (icon + label).
+   */
+  symbolOnly?: boolean;
 }
 
 /**
- * The priority pill on a task row: a level-mapped lucide icon + label, rendered as a clickable
- * {@link Badge} that opens the priority editor (the meta panel's `PrioritySelect`). Mirrors
- * `RecurrenceChip` / `DueDateChip`: it owns only the priority domain mapping (icon, label, badge
- * variant, default aria-label) and leans on the single-source {@link priorityOption}; the pill
- * geometry and the clickable `<button>` live in `Badge` (`asButton`).
+ * The priority pill on a task row: a level-mapped lucide icon + label, rendered as a {@link Badge}.
+ * Pass `symbolOnly` for the compact icon-only form used on the row (the label still rides the
+ * `aria-label`). Mirrors `RecurrenceChip` / `DueDateChip`: it owns only the priority domain
+ * mapping (icon, label, badge variant, default aria-label) and leans on the single-source
+ * {@link priorityOption}; the pill geometry lives in `Badge`.
  */
 export function PriorityChip({
   priority,
+  symbolOnly = false,
   className,
   'aria-label': ariaLabel,
   ...properties
@@ -42,7 +50,7 @@ export function PriorityChip({
       {...properties}
     >
       <Icon size={10} strokeWidth={2.5} className="shrink-0" />
-      {label}
+      {!symbolOnly && label}
     </Badge>
   );
 }

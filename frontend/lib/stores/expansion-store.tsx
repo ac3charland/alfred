@@ -24,6 +24,12 @@ export interface ExpansionState {
   subtasks: ReadonlySet<string>;
   /** Ids of rows whose completed-children sub-panel is open. */
   completed: ReadonlySet<string>;
+  /**
+   * Ids of rows whose inline detail panel is open. Independent of `subtasks`: a row can show
+   * its detail, its subtasks, both, or neither (a detail opens from the ⋯ menu's "Open
+   * details"; subtasks toggle from the chevron / row body).
+   */
+  details: ReadonlySet<string>;
 }
 
 interface ExpansionActions {
@@ -33,9 +39,12 @@ interface ExpansionActions {
   expandSubtasks: (id: string) => void;
   /** Flip a row's completed-children sub-panel open/closed. */
   toggleCompleted: (id: string) => void;
+  /** Flip a row's inline detail panel open/closed ("Open details"). */
+  toggleDetails: (id: string) => void;
   /**
-   * Collapse the given ids' subtask trees AND completed panels in one move. The collapse
-   * button passes the current view's ids, so collapsing in one view leaves others alone.
+   * Collapse the given ids' subtask trees, completed panels AND detail panels in one move.
+   * The collapse button passes the current view's ids, so collapsing in one view leaves
+   * others alone.
    */
   collapseAll: (ids: Iterable<string>) => void;
 }
@@ -66,10 +75,11 @@ function withoutIds(set: ReadonlySet<string>, remove: ReadonlySet<string>): Read
 export function ExpansionProvider({ children }: { children: React.ReactNode }) {
   const [subtasks, setSubtasks] = React.useState<ReadonlySet<string>>(() => new Set());
   const [completed, setCompleted] = React.useState<ReadonlySet<string>>(() => new Set());
+  const [details, setDetails] = React.useState<ReadonlySet<string>>(() => new Set());
 
   const state = React.useMemo<ExpansionState>(
-    () => ({ subtasks, completed }),
-    [subtasks, completed],
+    () => ({ subtasks, completed, details }),
+    [subtasks, completed, details],
   );
 
   const actions = React.useMemo<ExpansionActions>(
@@ -85,10 +95,14 @@ export function ExpansionProvider({ children }: { children: React.ReactNode }) {
       toggleCompleted(id) {
         setCompleted((current) => withToggled(current, id));
       },
+      toggleDetails(id) {
+        setDetails((current) => withToggled(current, id));
+      },
       collapseAll(ids) {
         const remove = new Set(ids);
         setSubtasks((current) => withoutIds(current, remove));
         setCompleted((current) => withoutIds(current, remove));
+        setDetails((current) => withoutIds(current, remove));
       },
     }),
     [],
