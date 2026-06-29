@@ -26,7 +26,9 @@ once the scope is clear do you write the spec below.
 ## What to produce
 
 1. **A spec authored as a self-contained HTML plan at `docs/specs/<REF>.html`** (e.g.
-   `docs/specs/ALF-42.html`, using the story's ref). Write it as a rich, scannable document a human will actually open and review, not a wall of prose:
+   `docs/specs/ALF-42.html`, using the story's ref) — **HTML, not a markdown file.** The spec is a
+   human-read artifact, so write it as a rich, scannable document a human will actually open and
+   review, not a wall of prose:
    - **One self-contained file:** inline all CSS in a `<style>` block; no build step, no external
      dependencies, no JS required — it opens directly in a browser. Make it easy to read and
      digest, and mobile-friendly.
@@ -41,7 +43,7 @@ once the scope is clear do you write the spec below.
      *can* answer with the human up front (see above) and list only the genuinely-open ones here
      — this section is for deferred decisions, not for guesses you didn't check.
 
-2. **A pull request** whose description carries the machine-readable `alfred` block so the Worker
+3. **A pull request** whose description carries the machine-readable `alfred` block so the Worker
    can advance the ticket. The `spec-path` MUST match the file you created:
 
    ````markdown

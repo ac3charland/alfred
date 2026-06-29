@@ -27,6 +27,16 @@ const CLAUDE_CODE_WEB_URL = 'https://claude.ai/code';
 /** The refinement skill dropped into each project repo; a refinement session auto-loads it. */
 const REFINEMENT_SKILL_PATH = '.claude/skills/refinement/SKILL.md';
 
+/** The implementation-guide skill; an implementation/bypass session loads it where present. */
+const IMPLEMENT_SKILL_PATH = '.claude/skills/implement-spec/SKILL.md';
+
+/**
+ * Refinement PRs record where the spec ended up rather than alfred guessing it up front. The
+ * refinement skill — not this prompt — decides the spec's shape and location (a single file here,
+ * a multi-file folder elsewhere), so the agent replaces this placeholder with the real path.
+ */
+const SPEC_PATH_PLACEHOLDER = '<path-or-folder-of-the-spec>';
+
 /**
  * The story's ref / title as plain strings. `CodeStory` is the `v_code_stories` VIEW row, so
  * its generated type makes every column nullable even though the view's inner joins always
@@ -102,7 +112,7 @@ function notesContext(story: CodeStory): string {
   const notes = story.notes?.trim();
   if (notes === undefined || notes.length === 0) return '';
   if (notes.length > MAX_INLINE_NOTES) {
-    return `\n\nContext (from the ticket — TRUNCATED; the full notes live in alfred, not this repo, so ask me here if you need the rest):\n${notes.slice(0, MAX_INLINE_NOTES)}…`;
+    return `\n\nContext (from the ticket — TRUNCATED; the full notes live in the orchestrator, not this repo, so ask me here if you need the rest):\n${notes.slice(0, MAX_INLINE_NOTES)}…`;
   }
   return `\n\nContext (from the ticket):\n${notes}`;
 }
@@ -118,41 +128,37 @@ function buildUrl(project: Project, prompt: string): string {
 
 /**
  * Build the REFINEMENT link prompt (active in `needs_refinement`): write a spec artifact only —
- * NO implementation — following the refinement skill, save it to `docs/specs/<REF>.html`, and
- * open a PR carrying the machine-readable ticket block with `phase: refinement`. Ref + title
- * lead the prompt so the new browser tab is scannable.
+ * NO implementation — following the project's refinement skill, then open a PR carrying the
+ * machine-readable ticket block with `phase: refinement`. Ref + title lead the prompt so the new
+ * browser tab is scannable.
  *
- * The spec is authored as a **self-contained HTML plan**, not markdown — the prompt tells the
- * agent to "do what the HTML-effectiveness guidance shows": a rich, scannable document a human
- * will actually open and review, with real structure, an SVG diagram for data/flow, annotated
- * code snippets, and a mockup where a UI is involved. (Why the agent's OUTPUT is HTML while this
- * prompt stays plain text: HTML pays off for the long, human-read artifact, not a one-screen
- * instruction.)
+ * The prompt is deliberately THIN on spec conventions. HOW the spec is shaped (format, sections)
+ * and WHERE it lives are the refinement skill's job, so each project owns its own refinement
+ * conventions — a single self-contained HTML plan here, an OpenSpec change folder elsewhere —
+ * while still hooking into alfred through the one shared contract, the `alfred` block. So the
+ * prompt does NOT hardcode the spec's path or format: the agent saves the spec wherever its skill
+ * says and records that real `spec-path` (a file, or a folder for a multi-file spec) in the block.
+ * A one-line fallback (write a self-contained HTML doc) covers a repo where the skill is absent.
  *
- * The body also carries the agentic guardrails directly (not just in the skill, which may be
- * absent for the target repo): ground in the repo first, a clarification gate so a thin ticket
- * gets questions instead of invented scope, a self-contained section skeleton for the no-skill
- * fallback, and a verbatim-block self-check. These are what stop a smaller model from
- * one-shotting a confidently-wrong spec.
+ * What the prompt DOES keep are the project-agnostic guardrails that stop a smaller model
+ * one-shotting a confidently-wrong spec: ground in the repo first, a clarification gate so a thin
+ * ticket gets questions instead of invented scope, and a verbatim-block self-check.
  */
 export function buildRefinementUrl(project: Project, story: CodeStory): string {
   const ref = refOf(story);
-  const specPath = specPathFor(story);
   const prompt = [
     `${ref}: ${titleOf(story)}`,
     '',
     `You are refining the ticket ${ref}. Produce a SPEC ONLY — describe the concrete change in enough detail that a later session can build it, but do NOT implement anything yet (no app or source changes).`,
     '',
-    `Author the spec as a single, self-contained HTML plan — NOT a markdown file. Do what Claude Code's "unreasonable effectiveness of HTML" guidance shows: a rich, easy-to-read document a human will actually open and review. Use real structure (headings, sections, tables), an SVG diagram for any data flow or state machine, annotated snippets of the key code a reviewer would want to see, and a small mockup where a UI is involved. Inline all CSS so it opens directly in a browser with no build step or dependencies, and make it easy to read and digest.`,
-    '',
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base the spec on the code that already exists.`,
-    `2. If the title and context don't pin down the scope and acceptance criteria, ASK ME HERE before writing the spec — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
-    `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session). If it's absent, cover these sections in the HTML: Title, Context/problem, Proposed change, Acceptance criteria, Out of scope / open questions. Save it to \`${specPath}\`.`,
-    `4. Open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
+    `2. If the title and context below don't pin down the scope and acceptance criteria, ASK ME HERE before writing the spec — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
+    `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session) — it defines this repo's spec format, structure, and where the spec lives. If the skill is absent, write the spec as a single self-contained HTML document and save it under the repo's specs directory.`,
+    `4. Open a pull request whose description carries this machine-readable block — the orchestrator (alfred) reads it to advance the ticket and a CI check enforces it. Reproduce the \`alfred-ticket\` and \`phase\` lines exactly, and set \`spec-path\` to where you saved the spec (a file, or the folder for a multi-file spec):`,
     '',
-    frontmatterBlock(story, 'refinement', specPath),
+    frontmatterBlock(story, 'refinement', SPEC_PATH_PLACEHOLDER),
     '',
-    `5. Before opening the PR, confirm the spec is saved at \`${specPath}\` and the block above is reproduced exactly.`,
+    `5. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), and the block is reproduced exactly.`,
     notesContext(story),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -163,9 +169,11 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
  * implement the merged spec at the story's recorded `spec_path` (falling back to the
  * conventional path), archive that now-consumed spec, and open a PR carrying the
  * machine-readable ticket block with `phase: implementation`.
- * References the committed spec file — does NOT inline the spec body. Carries the same
- * shared guardrails as refinement (ground in the repo, ask when the spec is ambiguous/stale,
- * verbatim-block self-check) so the implementation path isn't the thinner instruction set.
+ * References the committed spec file — does NOT inline the spec body, and stays format-agnostic
+ * (the spec may be HTML, markdown, or a multi-file folder — whatever the refinement skill chose).
+ * Carries the same shared guardrails as refinement (ground in the repo, ask when the spec is
+ * ambiguous/stale, verbatim-block self-check) and points at the implement-spec skill for the
+ * archiving convention, while keeping the CI-enforced archive step inline as the system hook.
  */
 export function buildImplementationUrl(project: Project, story: CodeStory): string {
   const ref = refOf(story);
@@ -176,9 +184,9 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
   const prompt = [
     `${ref}: ${titleOf(story)}`,
     '',
-    `You are implementing the ticket ${ref}. Implement the merged spec committed at \`${specPath}\` in this repo — it's a self-contained HTML plan, so open it in a browser (or read the source) first, then build it.`,
+    `You are implementing the ticket ${ref}. Implement the merged spec committed at \`${specPath}\` in this repo — read it first, then build it.`,
     '',
-    `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab.`,
+    `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab. Follow the implement-spec skill at \`${IMPLEMENT_SKILL_PATH}\` where present — it owns the conventions for building from a spec (archiving the consumed spec, pinning each requirement with a test).`,
     '',
     // The spec is scaffolding: once it's built, retire it from the active specs directory so
     // only specs still awaiting implementation remain there. The alfred-frontmatter check fails
@@ -222,7 +230,7 @@ export function buildBypassUrl(project: Project, story: CodeStory): string {
     '',
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your work on the code that already exists.`,
     `2. If the title and context below don't pin down the scope, ASK ME HERE before building rather than guessing — you don't need to guess, I'm in this tab. Once the plan is settled, go ahead.`,
-    `3. Implement the change directly, following the repo's own conventions (tests/TDD included).`,
+    `3. Implement the change directly, following the repo's own conventions (tests/TDD included) and the implement-spec skill at \`${IMPLEMENT_SKILL_PATH}\` where present (pin each requirement with a test).`,
     `4. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
     frontmatterBlock(story, 'implementation', specPath),

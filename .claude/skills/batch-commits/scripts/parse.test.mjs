@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseBatchInput, validateCommits } from './parse.mjs';
+import { parseBatchInput, resolveSignFlag, validateCommits } from './parse.mjs';
 
 test('parses commits with their files in order', () => {
   const { commits } = parseBatchInput(
@@ -103,4 +103,28 @@ test('validateCommits returns no errors for valid input', () => {
     ]),
     [],
   );
+});
+
+test('resolveSignFlag honors commit.gpgsign when no flag is passed', () => {
+  assert.equal(resolveSignFlag({ argv: [], gpgsignConfigured: true }), '--gpg-sign');
+  assert.equal(resolveSignFlag({ argv: [], gpgsignConfigured: false }), null);
+});
+
+test('resolveSignFlag lets an explicit CLI flag override the config', () => {
+  assert.equal(resolveSignFlag({ argv: ['--gpg-sign'], gpgsignConfigured: false }), '--gpg-sign');
+  assert.equal(
+    resolveSignFlag({ argv: ['in.txt', '--no-gpg-sign'], gpgsignConfigured: true }),
+    '--no-gpg-sign',
+  );
+});
+
+test('resolveSignFlag tie-breaks to --no-gpg-sign when both flags are present', () => {
+  assert.equal(
+    resolveSignFlag({ argv: ['--gpg-sign', '--no-gpg-sign'], gpgsignConfigured: true }),
+    '--no-gpg-sign',
+  );
+});
+
+test('resolveSignFlag defaults safely with no args', () => {
+  assert.equal(resolveSignFlag(), null);
 });
