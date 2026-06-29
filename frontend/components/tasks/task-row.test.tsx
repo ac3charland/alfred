@@ -3145,6 +3145,49 @@ describe('TaskRow — classification & type-gating', () => {
 
       expect(screen.getByText('Code')).toBeInTheDocument();
     });
+
+    // ALF-65: the "Task" label is redundant where the type is already implied — a subtask
+    // sits under a task, and every item filed in a folder is a task. "Code" stays visible.
+    it('hides the "Task" badge on a subtask row', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      // The root task keeps its badge; the nested subtask does not.
+      const subtaskRow = screen.getByText('Write unit tests').closest('li');
+      expect(subtaskRow).not.toBeNull();
+      expect(within(subtaskRow as HTMLElement).queryByText('Task')).not.toBeInTheDocument();
+    });
+
+    it('hides the "Task" badge for a task filed in a folder', () => {
+      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1' }], {
+        folders: [FOLDER],
+        scope: { type: 'folder', folderId: 'folder-1' },
+      });
+
+      expect(screen.queryByText('Task')).not.toBeInTheDocument();
+    });
+
+    it('still shows the "Code" badge on a code subtask', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, item_type: 'code' }]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      const subtaskRow = screen.getByText('Write unit tests').closest('li');
+      expect(subtaskRow).not.toBeNull();
+      expect(within(subtaskRow as HTMLElement).getByText('Code')).toBeInTheDocument();
+    });
+
+    it('still shows the "Code" badge for a code item filed in a folder', () => {
+      renderTasks([{ ...CODE_ITEM, folder_id: 'folder-1' }], {
+        folders: [FOLDER],
+        scope: { type: 'folder', folderId: 'folder-1' },
+      });
+
+      expect(screen.getByText('Code')).toBeInTheDocument();
+    });
   });
 
   describe('the Classify as… submenu', () => {

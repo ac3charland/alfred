@@ -155,6 +155,13 @@ export function TaskRow({
   );
   const isTopLevelTask = isTask && node.parent_id === null;
 
+  // The "Task" badge earns its space only where the type is ambiguous — a root Inbox row. A
+  // subtask sits under a task and every item filed in a folder is a task, so the label is
+  // redundant noise there and is hidden (ALF-65). "Code" keeps its badge everywhere (the
+  // rare, meaningful distinction); an unclassified row never had one.
+  const showTypeBadge =
+    node.item_type !== 'task' || (node.parent_id === null && node.folder_id === null);
+
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
   // reduced motion); the collapse wrapper's onTransitionEnd commits.
@@ -455,7 +462,7 @@ export function TaskRow({
             {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">{node.title}</span>
-          <TypeBadge itemType={node.item_type} />
+          {showTypeBadge && <TypeBadge itemType={node.item_type} />}
         </Button>
       </li>
     );
@@ -622,8 +629,9 @@ export function TaskRow({
               )}
 
               {/* Type badge — shown once the item is classified (Task / Code); nothing for
-                an unclassified row. */}
-              <TypeBadge itemType={node.item_type} />
+                an unclassified row. The "Task" label is suppressed for subtasks and folder
+                items, where the type is already implied (ALF-65); "Code" still shows. */}
+              {showTypeBadge && <TypeBadge itemType={node.item_type} />}
 
               {/* Due date chip — `task`-only. */}
               {isTask && node.due_date && !isEditingDueDate && (
