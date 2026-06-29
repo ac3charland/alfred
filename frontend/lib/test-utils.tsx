@@ -6,6 +6,7 @@ import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
+import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
@@ -45,13 +46,15 @@ export function renderWithProviders(
           <TasksProvider initialTasks={tasks}>
             <ActiveEditorProvider>
               <ExpansionProvider>
-                <CodeProvider
-                  initialProjects={projects}
-                  initialEpics={epics}
-                  initialStories={stories}
-                >
-                  {children}
-                </CodeProvider>
+                <InboxSelectionProvider>
+                  <CodeProvider
+                    initialProjects={projects}
+                    initialEpics={epics}
+                    initialStories={stories}
+                  >
+                    {children}
+                  </CodeProvider>
+                </InboxSelectionProvider>
               </ExpansionProvider>
             </ActiveEditorProvider>
           </TasksProvider>
