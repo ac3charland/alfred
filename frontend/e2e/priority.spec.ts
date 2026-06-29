@@ -21,17 +21,15 @@ test('set a priority from the editor menu → the badge appears → it ranks on 
   const tasks = page.getByRole('list', { name: 'Tasks' });
   await expect(tasks.getByText('Triage the production bug')).toBeVisible();
 
-  // Open the row's More actions menu → Set priority (opens the inline meta panel).
+  // Open the row's More actions menu → Open details, then pick High from the Priority chip.
   await tasks.getByText('Triage the production bug').hover();
   await page.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: 'Set priority' }).click();
+  await page.getByRole('menuitem', { name: 'Open details' }).click();
 
-  // In the meta panel, open the Priority select (its FieldLabel names the trigger
-  // "Priority") and choose High.
-  await page.getByRole('button', { name: 'Priority' }).click();
-  await page.getByRole('menuitem', { name: 'High', exact: true }).click();
+  await page.getByRole('button', { name: 'Priority', exact: true }).click();
+  await page.getByRole('button', { name: 'High', exact: true }).click();
 
-  // The colour-coded badge now shows on the row.
+  // The colour-coded (symbol-only) badge now shows on the row.
   await expect(page.getByRole('button', { name: 'Priority: High' })).toBeVisible();
 
   // And the task is reachable + ranked on the By-Priority view.

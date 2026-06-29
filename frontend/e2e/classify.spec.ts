@@ -5,7 +5,8 @@ import { expect, test } from './support/fixtures';
  * Inbox classification & type badges. A captured item starts `unclassified` — no
  * type badge, no completion checkbox, no add-subtask affordance. The actions-menu
  * "Classify as…" submenu flips its type: Code shows a Code badge but still no task
- * affordances; Task unlocks the checkbox, due date and subtasks plus the Task badge.
+ * affordances; Task unlocks the checkbox, subtasks and the detail's task-only chips
+ * (a task itself carries no row pill — ALF-67).
  *
  * The submenu is driven by keyboard (hover the subtrigger → ArrowRight to open →
  * ArrowDown/Enter to pick) because synthetic pointer clicks race Radix's safe-triangle
@@ -73,16 +74,15 @@ test.describe('inbox classification', () => {
     await expect(page.getByRole('menuitem', { name: 'Task' })).toBeFocused();
     await page.keyboard.press('Enter');
 
-    const row = page.getByRole('listitem').filter({ hasText: 'Plan the sprint' });
-    await expect(row.getByText('Task', { exact: true })).toBeVisible();
-    // The full task affordances are now present.
+    // The full task affordances are now present (a task carries no row pill — ALF-67).
     await expect(
       page.getByRole('button', { name: 'Mark "Plan the sprint" complete' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add subtask' })).toBeVisible();
 
-    // The actions menu now offers "Set due date" (task-only), which it didn't before.
+    // The detail panel now exposes the task-only Due chip, which an unclassified row didn't.
     await page.getByRole('button', { name: 'More actions' }).click();
-    await expect(page.getByRole('menuitem', { name: 'Set due date' })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
+    await expect(page.getByRole('button', { name: 'Due date', exact: true })).toBeVisible();
   });
 });

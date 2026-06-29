@@ -37,27 +37,27 @@ test.describe('inbox multi-edit', () => {
     await bar.getByRole('button', { name: /classify as/i }).click();
     await page.getByRole('menuitem', { name: /^task$/i }).click();
 
-    // The two selected rows are now Tasks; mode exits on full success.
+    // The two selected rows are now Tasks (a task carries no row pill — ALF-67 — so the proof is
+    // the completion checkbox, a task-only affordance); mode exits on full success.
     const list = page.getByRole('list', { name: 'Tasks' });
     const classified = list
       .getByRole('listitem')
       .filter({ hasText: 'Email the accountant about Q2' });
-    await expect(classified.getByText('Task', { exact: true })).toBeVisible();
+    await expect(classified.getByRole('button', { name: /complete$/i })).toBeVisible();
     await expect(
-      list.getByRole('listitem').filter({ hasText: 'Draft the onboarding doc' }).getByText('Task', {
-        exact: true,
-      }),
+      list
+        .getByRole('listitem')
+        .filter({ hasText: 'Draft the onboarding doc' })
+        .getByRole('button', { name: /complete$/i }),
     ).toBeVisible();
     await expect(page.getByRole('region', { name: 'Bulk actions' })).toBeHidden();
-    // The untouched third capture is still unclassified (no Task badge).
+    // The untouched third capture is still unclassified (no completion checkbox).
     await expect(
       list
         .getByRole('listitem')
         .filter({ hasText: 'Spike: websocket reconnection' })
-        .getByText('Task', {
-          exact: true,
-        }),
-    ).toBeHidden();
+        .getByRole('button', { name: /complete$/i }),
+    ).toHaveCount(0);
   });
 
   test('select a batch of tasks and file them into a folder', async ({ page, seed }) => {
