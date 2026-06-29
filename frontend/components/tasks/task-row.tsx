@@ -22,7 +22,7 @@ import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskMetaPanel } from '@/components/tasks/task-row/task-meta-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
-import { useAnimatedCompletion } from '@/lib/hooks/use-animated-completion';
+import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
@@ -57,6 +57,8 @@ import {
   chevronIconClass,
   collapseClass,
   confirmTitleClass,
+  deleteCollapseClass,
+  deleteFadeClass,
   dropPlusClass,
   rowBaseClass,
   rowDropTargetClass,
@@ -81,7 +83,7 @@ interface TaskRowProperties {
  * A single task row, recursively rendering its children — the composition root for the row:
  * layout + the recursive subtree, with cohesive pieces pulled into their own units. The
  * item-type flags (`useTaskRowFlags`), the indentation math (`useIndentation`), and the
- * delicate completion exit (`useAnimatedCompletion`) are hooks; the actions dropdown
+ * delicate completion/deletion exits (`useAnimatedRowExit`) are hooks; the actions dropdown
  * (`TaskRowMenu`) and the due-date/notes card (`TaskMetaPanel`) are sub-components. The
  * subtask + completed-children reveals use the shared `AnimatedHeightCollapse`; the
  * completion-collapse stays bespoke (its 300ms + `delay-200` timing and the once-only commit
@@ -157,10 +159,22 @@ export function TaskRow({
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
   // reduced motion); the collapse wrapper's onTransitionEnd commits.
   const {
-    isCompleting,
+    isExiting: isCompleting,
     begin: beginComplete,
     onCollapseEnd: handleCompleteCollapseEnd,
-  } = useAnimatedCompletion(() => completeTask(node.id), prefersReducedMotion);
+  } = useAnimatedRowExit(() => completeTask(node.id), prefersReducedMotion);
+
+  // The deletion exit: the same animate-then-commit mechanism, so the row fades out and its
+  // height collapses (pulling the surrounding rows up) before `deleteTask` filters it out of
+  // the store. Reduced motion commits straight away (no collapse to wait on).
+  const {
+    isExiting: isDeleting,
+    begin: beginDelete,
+    onCollapseEnd: handleDeleteCollapseEnd,
+  } = useAnimatedRowExit(() => deleteTask(node.id), prefersReducedMotion);
+
+  // Either exit collapses the row to nothing; the deletion additionally fades the whole row out.
+  const isExiting = isCompleting || isDeleting;
 
   // Only one inline input may be open across all rows, so the title-edit and add-subtask
   // flags are derived from the shared active-editor store, not held per-row. Opening
@@ -361,13 +375,9 @@ export function TaskRow({
     }
   };
 
-  const handleDelete = async () => {
-    try {
-      await deleteTask(node.id);
-    } catch {
-      // The store already restored the row.
-    }
-  };
+  // Deletion is animated: beginDelete plays the fade + height collapse and only fires
+  // deleteTask once the collapse ends (the store rolls the row back on failure). Under
+  // reduced motion it commits immediately. See useAnimatedRowExit.
 
   const handleClassify = async (itemType: 'task' | 'code') => {
     try {
@@ -457,19 +467,33 @@ export function TaskRow({
           the rows below it down (ALF-20). For an existing row this wrapper is a no-op
           passthrough. */}
       <AnimatedHeightEnter entering={isEntering}>
-        {/* The completion exit collapses the row (and its expanded subtree): a transition
-          on the grid row track from 1fr to 0fr shrinks the height to nothing, pulling the
-          rows below up. `ease-out` (a transition, not a keyframe) makes the collapse start
-          briskly, then settle — `delay-200` holds it back until the 200ms checkbox pop has
-          finished, so the dismissal doesn't cover the pop. The inner child is clipped so it
-          can shrink past its content. Kept bespoke (not AnimatedHeightCollapse) for the
-          300ms + delay-200 timing and the commit-on-end contract. */}
+        {/* Both exits (complete + delete) collapse the row (and its expanded subtree): a
+          transition on the grid row track from 1fr to 0fr shrinks the height to nothing,
+          pulling the rows below up. `ease-out` (a transition, not a keyframe) makes the
+          collapse start briskly, then settle. Completion uses `collapseClass` (delay-200 holds
+          the collapse back until the 200ms checkbox pop finishes); deletion uses
+          `deleteCollapseClass` (no delay — nothing to wait on) and fades the whole row out via
+          `deleteFadeClass` on the clipped inner child. The inner child is clipped so it can
+          shrink past its content. Kept bespoke (not AnimatedHeightCollapse) for the 300ms
+          timing and the commit-on-end contract. Both exits' onTransitionEnd handlers run; each
+          only acts on its own `grid-template-rows` transition while its flag is set. */}
         <div
-          className={cn(collapseClass, isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]')}
+          className={cn(
+            isDeleting ? deleteCollapseClass : collapseClass,
+            isExiting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
+          )}
           data-testid="task-collapse"
-          onTransitionEnd={handleCompleteCollapseEnd}
+          onTransitionEnd={(event) => {
+            handleCompleteCollapseEnd(event);
+            handleDeleteCollapseEnd(event);
+          }}
         >
-          <div className={cn(isCompleting && 'overflow-hidden')}>
+          <div
+            className={cn(
+              isExiting && 'overflow-hidden',
+              isDeleting && cn(deleteFadeClass, 'opacity-0'),
+            )}
+          >
             {/* Main row — the whole surface is the drag handle (RowPointerSensor lets the
               buttons/input below stay clickable). Dropping another task here re-parents it. */}
             <div
@@ -685,9 +709,7 @@ export function TaskRow({
                   onMoveToFolder={(targetFolderId) => {
                     void handleMoveToFolder(targetFolderId);
                   }}
-                  onDelete={() => {
-                    void handleDelete();
-                  }}
+                  onDelete={beginDelete}
                 />
               </div>
             </div>

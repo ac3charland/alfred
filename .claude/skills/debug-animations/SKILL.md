@@ -98,6 +98,18 @@ inline the same rAF loop in a one-off `page.evaluate` (fire-and-forget into a pa
 global, click, then read the global back). That raw form is exactly what the helper
 generalises; reach for it only when a custom per-frame computation needs it.
 
+**Sampling a node across its own unmount needs a bespoke read — `selector` aliases.**
+`sampleDuring` re-runs `document.querySelector(selector)` every frame, so a positional
+selector (`li:first-child`, `li:nth-child(2)`) doesn't follow one node: the instant the
+watched row unmounts, the sibling that slides into that slot matches instead, and the
+timeline reads its full height/opacity as if nothing animated (the deleting row's collapse
+is invisible). To watch a row through its exit — or a sibling as it shifts position — capture
+the **element reference** up front in a bespoke `page.evaluate` and read that same node each
+frame (use `document.contains(node)` for the present/GONE signal). A "pull the rows below up"
+check is then cleaner as fresh before/after locator `boundingBox()` measurements than as
+per-frame sampling, since those rows are reconciled to new DOM nodes on commit. Used by
+`e2e/task-delete.spec.ts`.
+
 ## Limitations (state these when you report a finding)
 
 - **~16ms granularity.** Sampling is per `requestAnimationFrame`, so a glitch shorter

@@ -166,6 +166,13 @@ async function activateMenuItem(
   await user.keyboard('[Enter]');
 }
 
+/** Open a row's actions menu and choose "Delete". */
+async function chooseDelete(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('button', { name: /more actions/i }));
+  await screen.findByRole('menu');
+  await activateMenuItem(user, /^delete$/i);
+}
+
 /**
  * Focus a submenu trigger by name (order-independently, like `activateMenuItem`) and open
  * it with ArrowRight, leaving its first item focused. Returns once the submenu is open.
@@ -551,14 +558,70 @@ describe('TaskRow', () => {
     expect(screen.getByRole('button', { name: /due date/i })).toBeInTheDocument();
   });
 
-  it('deletes the task via the actions menu', async () => {
+  // ---------------------------------------------------------------------------
+  // Deletion — animate-then-commit (same exit mechanism as completion). Choosing
+  // "Delete" fades the row out and collapses its height (pulling the rows below up);
+  // deleteItem only fires once that collapse transition ends. jsdom doesn't run CSS
+  // transitions, so we drive the collapse's transitionend by hand (endCollapse). Under
+  // reduced motion there's no animation, so deletion is immediate.
+  // ---------------------------------------------------------------------------
+
+  it('fades the row out and does NOT call deleteItem until the collapse ends', async () => {
     mockDeleteItem.mockResolvedValue({ success: true });
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
 
-    await user.click(screen.getByRole('button', { name: /more actions/i }));
-    await screen.findByRole('menu');
-    await activateMenuItem(user, /^delete$/i);
+    await chooseDelete(user);
+
+    // The row is still present, animating out (fading + collapsing), not removed yet.
+    expect(screen.getByText('Write tests')).toBeInTheDocument();
+    expect(mockDeleteItem).not.toHaveBeenCalled();
+  });
+
+  it('deletes the task once the collapse transition ends', async () => {
+    mockDeleteItem.mockResolvedValue({ success: true });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await chooseDelete(user);
+    endCollapse('Write tests');
+
+    await waitFor(() => {
+      expect(mockDeleteItem).toHaveBeenCalledWith('item-1');
+    });
+    expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+  });
+
+  it('does not let an unrelated transition on the wrapper commit the deletion', async () => {
+    mockDeleteItem.mockResolvedValue({ success: true });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await chooseDelete(user);
+    // The fade is an opacity transition that bubbles up — only grid-template-rows commits.
+    fireTransitionEnd(collapseWrapperFor('Write tests'), 'opacity');
+
+    expect(mockDeleteItem).not.toHaveBeenCalled();
+  });
+
+  it('restores the task when deleteItem fails after the animation', async () => {
+    mockDeleteItem.mockRejectedValue(new Error('Network error'));
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await chooseDelete(user);
+    endCollapse('Write tests');
+
+    expect(await screen.findByText('Write tests')).toBeInTheDocument();
+  });
+
+  it('deletes immediately on choose under reduced motion, with no animation to wait on', async () => {
+    mockReducedMotion(true);
+    mockDeleteItem.mockResolvedValue({ success: true });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await chooseDelete(user);
 
     await waitFor(() => {
       expect(mockDeleteItem).toHaveBeenCalledWith('item-1');
