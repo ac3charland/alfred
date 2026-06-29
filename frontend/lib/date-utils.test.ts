@@ -1,4 +1,11 @@
-import { MONTHS, formatDueDate, isDueDateOverdue, isDueTodayOrOverdue } from './date-utils';
+import {
+  MONTHS,
+  formatDueDate,
+  isDueDateOverdue,
+  isDueTodayOrOverdue,
+  monthGridDays,
+  toISODate,
+} from './date-utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -185,5 +192,68 @@ describe('isDueTodayOrOverdue', () => {
     // be false. This test kills the EqualityOperator mutant on the boundary.
     const todayMidnightLocal = new Date(new Date().toDateString());
     expect(isDueTodayOrOverdue(todayMidnightLocal.toISOString())).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toISODate
+// ---------------------------------------------------------------------------
+
+describe('toISODate', () => {
+  it('zero-pads month and day', () => {
+    expect(toISODate(2025, 0, 5)).toBe('2025-01-05');
+  });
+
+  it('maps the 0-based month to its 1-based string', () => {
+    expect(toISODate(2025, 11, 31)).toBe('2025-12-31');
+  });
+
+  it('zero-pads a short year', () => {
+    expect(toISODate(7, 6, 4)).toBe('0007-07-04');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// monthGridDays — the due-date picker's month grid
+// ---------------------------------------------------------------------------
+
+describe('monthGridDays', () => {
+  it('always returns 42 cells (6 weeks)', () => {
+    expect(monthGridDays(2025, 6)).toHaveLength(42);
+    expect(monthGridDays(2025, 1)).toHaveLength(42); // February
+  });
+
+  it('starts on the Sunday on/before the 1st', () => {
+    // July 2025: the 1st is a Tuesday, so the grid leads with Jun 29 (Sun), 30, then Jul 1.
+    const grid = monthGridDays(2025, 6);
+    expect(grid[0]).toEqual({ iso: '2025-06-29', day: 29, inMonth: false });
+    expect(grid[1]).toEqual({ iso: '2025-06-30', day: 30, inMonth: false });
+    expect(grid[2]).toEqual({ iso: '2025-07-01', day: 1, inMonth: true });
+  });
+
+  it('marks the month’s own days inMonth and spill days not', () => {
+    const grid = monthGridDays(2025, 6);
+    const july = grid.filter((c) => c.inMonth);
+    expect(july).toHaveLength(31);
+    expect(july[0]?.iso).toBe('2025-07-01');
+    expect(july.at(-1)?.iso).toBe('2025-07-31');
+    // Trailing spill comes from August.
+    const trailing = grid.find((c) => !c.inMonth && c.iso > '2025-07-31');
+    expect(trailing?.iso).toBe('2025-08-01');
+  });
+
+  it('handles a month that starts on Sunday with no leading spill', () => {
+    // June 2025 starts on a Sunday.
+    const grid = monthGridDays(2025, 5);
+    expect(grid[0]).toEqual({ iso: '2025-06-01', day: 1, inMonth: true });
+  });
+
+  it('rolls the year over for January and December grids', () => {
+    // January 2025 leads with late-December 2024 days.
+    const jan = monthGridDays(2025, 0);
+    expect(jan[0]?.iso.startsWith('2024-12')).toBe(true);
+    // December 2025 trails into January 2026.
+    const dec = monthGridDays(2025, 11);
+    expect(dec.at(-1)?.iso.startsWith('2026-01')).toBe(true);
   });
 });

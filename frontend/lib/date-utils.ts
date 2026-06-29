@@ -46,6 +46,50 @@ export function formatMonthDay(iso: string): string {
   return `${MONTHS[date.getMonth()] ?? ''} ${String(date.getDate())}`;
 }
 
+/** Build a `YYYY-MM-DD` string from local year / 0-based month / day numbers. */
+export function toISODate(year: number, month0: number, day: number): string {
+  const y = String(year).padStart(4, '0');
+  const m = String(month0 + 1).padStart(2, '0');
+  const d = String(day).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** One cell of the calendar month grid. */
+export interface MonthGridDay {
+  /** The cell's local calendar date as `YYYY-MM-DD`. */
+  iso: string;
+  /** The day-of-month number (1–31) shown in the cell. */
+  day: number;
+  /** Whether the cell belongs to the month being shown (vs. a leading/trailing spill day). */
+  inMonth: boolean;
+}
+
+/**
+ * The 6×7 (42-cell) calendar grid for a month, starting on Sunday — the data behind the due-date
+ * picker's month view. Leading cells fill from the previous month and trailing cells from the
+ * next, so every week is complete and the grid height never jumps between months. Pure (local
+ * calendar dates via {@link toISODate}) so it unit-tests without rendering.
+ */
+export function monthGridDays(year: number, month0: number): MonthGridDay[] {
+  // The weekday (0=Sun) of the 1st tells us how many leading spill days to prepend.
+  const firstOfMonth = new Date(year, month0, 1);
+  const leading = firstOfMonth.getDay();
+  // Day 0 of the next month is the last day of this month → its date is the day count.
+  const cells: MonthGridDay[] = [];
+  // Start at the Sunday on/of-before the 1st, then walk 42 consecutive days. Using a Date and
+  // incrementing the day handles month/year rollovers (and DST) without manual arithmetic.
+  const start = new Date(year, month0, 1 - leading);
+  for (let index = 0; index < 42; index += 1) {
+    const cell = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+    cells.push({
+      iso: toISODate(cell.getFullYear(), cell.getMonth(), cell.getDate()),
+      day: cell.getDate(),
+      inMonth: cell.getMonth() === month0,
+    });
+  }
+  return cells;
+}
+
 /** Today's local calendar date as a `YYYY-MM-DD` string (the default recurrence anchor). */
 export function todayISODate(): string {
   const now = new Date();
