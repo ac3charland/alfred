@@ -74,24 +74,23 @@ export const Unclassified: Story = {
   },
 };
 
-// A task row: the "Task" badge plus the full task affordances (checkbox + due date +
-// subtasks). This is BASE_NODE's type; spelled out here for the contrast with the others.
+// A task row: the full task affordances (checkbox + add-subtask) and NO row pill — the
+// "Task" badge was removed in ALF-67. This is BASE_NODE's type; spelled out for contrast.
 export const TaskClassified: Story = {
   args: {
     node: { ...BASE_NODE, item_type: 'task', title: 'Write the first draft' },
   },
 };
 
-// A code-classified row: the "Code" badge, but still NO task affordances. (Notes stay
-// generic — available via the actions menu on every type.)
+// A code-classified row: the "Code" badge (the one type that still earns a row pill), but
+// still NO task affordances. (Notes stay generic — available via "Open details" on every type.)
 export const CodeClassified: Story = {
   args: {
     node: { ...BASE_NODE, item_type: 'code', title: 'Build the webhook worker' },
   },
 };
 
-// ALF-65: the "Task" label is redundant where the type is already implied. A subtask sits
-// under a task, so it shows the title and affordances but NO "Task" badge.
+// A subtask row: title + affordances and NO "Task" pill (ALF-67 removed it everywhere).
 export const Subtask: Story = {
   args: {
     node: { ...CHILD_NODE, title: 'Outline key sections' },
@@ -99,8 +98,8 @@ export const Subtask: Story = {
   },
 };
 
-// A task filed in a folder is, by definition, a task — so the "Task" badge is suppressed
-// there too (ALF-65). Rendered with its folder_id set; contrast with TaskClassified (Inbox).
+// A task filed in a folder: no "Task" pill either (ALF-67). Rendered with its folder_id set;
+// contrast with TaskClassified (Inbox).
 export const TaskInFolder: Story = {
   args: {
     node: { ...BASE_NODE, title: 'Draft the project brief', folder_id: 'f1' },
@@ -173,8 +172,8 @@ export const WithAllMetadata: Story = {
   },
 };
 
-// An ACTIVE parent with both an active and a completed child. The completed descendants
-// badge (top-right) counts all completed descendants; expanding reveals the active child
+// An ACTIVE parent with both an active and a completed child. The subtask-count badge
+// (top-right) reads completed/total of the direct subtasks; expanding reveals the active child
 // plus a "Show completed (N)" toggle that unhides the completed ones.
 export const WithCompletedChildren: Story = {
   args: {

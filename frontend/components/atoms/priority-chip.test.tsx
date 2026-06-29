@@ -17,6 +17,14 @@ describe('PriorityChip', () => {
     expect(screen.getByText('Low')).toBeInTheDocument();
   });
 
+  it('renders symbol-only (no visible label) while keeping the aria-label (ALF-67)', () => {
+    render(<PriorityChip priority="high" symbolOnly />);
+    const badge = screen.getByRole('button', { name: 'Priority: High' });
+    expect(badge).toBeInTheDocument();
+    // The level word is not rendered as visible text in symbol-only mode.
+    expect(screen.queryByText('High')).not.toBeInTheDocument();
+  });
+
   it('defaults to type="button" so it never submits a form', () => {
     render(<PriorityChip priority="low" />);
     expect(screen.getByRole('button')).toHaveAttribute('type', 'button');

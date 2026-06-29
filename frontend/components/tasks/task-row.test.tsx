@@ -282,45 +282,6 @@ describe('TaskRow', () => {
   // subtree — expands it.
   // ---------------------------------------------------------------------------
 
-  describe('editing metadata does not expand the subtree', () => {
-    it('opening the due-date editor from the menu leaves the subtree collapsed', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      // The meta panel opened, but the subtask tree stayed collapsed.
-      expect(screen.getByText('Due date')).toBeInTheDocument();
-      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
-    });
-
-    it('opening the notes editor from the menu leaves the subtree collapsed', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /add notes/i);
-
-      expect(screen.getByRole('textbox', { name: /notes/i })).toBeInTheDocument();
-      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
-    });
-
-    it('adding a subtask still expands the subtree', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /add subtask/i }));
-
-      // The inline add-subtask form lives inside the subtree, so it must reveal it.
-      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Active task completion — animated exit, THEN optimistic removal
   //
@@ -978,13 +939,6 @@ describe('TaskRow', () => {
       renderTasks([{ ...BASE_ITEM, priority: null }]);
       expect(screen.queryByRole('button', { name: /^Priority:/ })).not.toBeInTheDocument();
     });
-
-    it('opens the meta panel Priority control when the chip is clicked', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, priority: 'medium' }]);
-      await user.click(screen.getByRole('button', { name: 'Priority: Medium' }));
-      expect(screen.getByText('Priority')).toBeInTheDocument();
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -1136,98 +1090,13 @@ describe('TaskRow', () => {
   // Children count badge — shown only when collapsed and has children
   // ---------------------------------------------------------------------------
 
-  describe('children count badge', () => {
-    it('shows the count badge when the task has children and is collapsed', () => {
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-      expect(screen.getByText('1')).toBeInTheDocument();
-    });
-
-    it('hides the count badge when there are no children', () => {
-      renderTasks([BASE_ITEM]);
-      // No numeric count should appear
-      expect(screen.queryByText('1')).not.toBeInTheDocument();
-    });
-
-    it('hides the count badge when the task is expanded', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-
-      // Badge visible before expansion
-      expect(screen.getByText('1')).toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
-
-      // After expansion the badge should disappear
-      expect(screen.queryByText('1')).not.toBeInTheDocument();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Due date chip visibility — hidden when editing due date
   // ---------------------------------------------------------------------------
 
-  describe('due date chip visibility', () => {
-    it('hides the due date chip when the meta panel is open and editing due date', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      // Chip is visible initially
-      expect(screen.getByRole('button', { name: /due date:/i })).toBeInTheDocument();
-
-      // Click the chip to open editing
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // The chip should now be hidden (isEditingDueDate=true)
-      expect(screen.queryByRole('button', { name: /due date:/i })).not.toBeInTheDocument();
-    });
-
-    it('restores the due date chip after cancelling due date edit', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-      // Chip hidden during edit
-      expect(screen.queryByRole('button', { name: /due date:/i })).not.toBeInTheDocument();
-
-      // Cancel the edit
-      await user.click(screen.getByRole('button', { name: /cancel/i }));
-
-      // Chip should reappear
-      expect(screen.getByRole('button', { name: /due date:/i })).toBeInTheDocument();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // isMetaOpen panel
   // ---------------------------------------------------------------------------
-
-  describe('meta panel', () => {
-    it('opens the meta panel when the due date chip is clicked', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      expect(screen.getByText('Due date')).toBeInTheDocument();
-    });
-
-    it('does not show the meta panel initially', () => {
-      renderTasks([BASE_ITEM]);
-      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
-    });
-
-    it('closes the meta panel when the Close button is clicked', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-      expect(screen.getByText('Due date')).toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /^close$/i }));
-
-      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // Completed checkbox visual state (isCompleted conditional class)
@@ -1397,81 +1266,9 @@ describe('TaskRow', () => {
   // draftDueDate / draftNotes initial value from node
   // ---------------------------------------------------------------------------
 
-  describe('initial draft state from node', () => {
-    it('shows the existing due date pre-filled in the meta panel date input', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      // Open meta panel via the chip
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // The date input is type="date" (not role textbox); query by label association
-      const dueDateInput = document.querySelector('input[type="date"]');
-      if (!dueDateInput) throw new Error('date input not found');
-      expect(dueDateInput).toBeInTheDocument();
-      expect((dueDateInput as HTMLInputElement).value).toBe('2099-12-31');
-    });
-
-    it('shows the existing notes pre-filled in the meta panel textarea', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'My existing notes' }]);
-
-      // Open the meta panel via the actions menu
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      // Notes textarea should be visible with existing content
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      expect(textarea).toHaveValue('My existing notes');
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // 'Edit due date' vs 'Set due date' label in dropdown
   // ---------------------------------------------------------------------------
-
-  describe('due date dropdown item label', () => {
-    it('shows "Edit due date" in the menu when a due date already exists', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByText('Edit due date')).toBeInTheDocument();
-    });
-
-    it('shows "Set due date" in the menu when there is no due date', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByText('Set due date')).toBeInTheDocument();
-    });
-
-    it('shows "Edit notes" in the menu when notes already exist', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Some notes' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByText('Edit notes')).toBeInTheDocument();
-    });
-
-    it('shows "Add notes" in the menu when there are no notes', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByText('Add notes')).toBeInTheDocument();
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // Add subtask — shows/hides subtask capture box and sets isExpanded
@@ -1671,202 +1468,9 @@ describe('TaskRow', () => {
   // Due date save/cancel in meta panel
   // ---------------------------------------------------------------------------
 
-  describe('due date meta panel editing', () => {
-    it('calls updateItem with the new due date on Save', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: '2099-06-30' });
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2099-06-30' } });
-
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: '2099-06-30' });
-      });
-    });
-
-    it('does not call updateItem if the due date is unchanged', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // Save without changing the value
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('restores the original due date on cancel', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-
-      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('calls updateItem with null when due date is cleared', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: null });
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '' } });
-
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: null });
-      });
-    });
-
-    it('reverts draft due date on network error', async () => {
-      mockUpdateItem.mockRejectedValue(new Error('Network error'));
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalled();
-      });
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Notes meta panel editing
   // ---------------------------------------------------------------------------
-
-  describe('notes meta panel editing', () => {
-    it('opens notes editing via the menu', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
-    });
-
-    it('calls updateItem with new notes on Save', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'New notes' });
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, 'New notes');
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'New notes' });
-      });
-    });
-
-    it('calls updateItem with null when notes are cleared', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: null });
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Old notes' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.clear(textarea);
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: null });
-      });
-    });
-
-    it('does not call updateItem when notes are unchanged', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Same notes' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      await screen.findByRole('textbox', { name: /notes/i });
-      // Save without changing
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('does not call updateItem when notes edit is cancelled', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, 'Never saved');
-
-      // Cancel
-      const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
-      if (!cancelBtn) throw new Error('cancel button not found');
-      await user.click(cancelBtn);
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('shows existing notes in the view (not editing) button', () => {
-      renderTasks([{ ...BASE_ITEM, notes: 'My note content' }]);
-      // The meta panel isn't open yet — but notes render in the panel only when isMetaOpen.
-      // The 'Add notes' / 'Edit notes' text in the dropdown tells us the state.
-      // We just need to verify the note content appears once meta opens.
-      // (Covered by the existing notes tests above; this is for 'no notes' case.)
-      expect(screen.queryByText('My note content')).not.toBeInTheDocument();
-    });
-
-    it('shows "Add notes…" placeholder when no notes exist in meta panel', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      // After notes edit mode opens and then we save/cancel back to view mode
-      await screen.findByRole('textbox', { name: /notes/i });
-      const [cancelBtn2] = screen.getAllByRole('button', { name: /^cancel$/i });
-      if (!cancelBtn2) throw new Error('cancel button not found');
-      await user.click(cancelBtn2);
-
-      // In view mode, should show the placeholder
-      expect(screen.getByText('Add notes…')).toBeInTheDocument();
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // Cascade modal — isPending=false ensures modal is functional
@@ -1921,57 +1525,9 @@ describe('TaskRow', () => {
   // "Set a due date…" placeholder in meta panel when no due date
   // ---------------------------------------------------------------------------
 
-  describe('meta panel due date placeholder', () => {
-    it('shows "Set a due date…" placeholder when no due date exists and meta is open', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      // Open meta via "Set due date" menu item, then exit edit mode via Cancel
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      // Meta panel is open in editing mode; cancel to get to view mode
-      await screen.findByRole('button', { name: /^cancel$/i });
-      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-      expect(screen.getByText('Set a due date…')).toBeInTheDocument();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // draftDueDate / draftNotes initial value when node fields are null
   // ---------------------------------------------------------------------------
-
-  describe('initial draft values from null node fields', () => {
-    it('initializes draftDueDate to empty string when node.due_date is null', async () => {
-      const user = userEvent.setup();
-      // BASE_ITEM has due_date: null
-      renderTasks([BASE_ITEM]);
-
-      // Open meta panel in edit mode via the menu
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      // The date input should have an empty value, not "Stryker was here!"
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      expect((dateInput as HTMLInputElement).value).toBe('');
-    });
-
-    it('initializes draftNotes to empty string when node.notes is null', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      expect(textarea).toHaveValue('');
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // contextLabel !== null guard — context label container absent when null
@@ -2013,464 +1569,29 @@ describe('TaskRow', () => {
   // metaIndentLeft — meta panel marginLeft matches depth
   // ---------------------------------------------------------------------------
 
-  describe('meta panel indentation by depth', () => {
-    it('meta panel has marginLeft for a root task (depth=0)', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // The meta panel div gets style marginLeft = metaIndentLeft = `${0*1.25+2.5}rem` = '2.5rem'
-      // CSS inline style uses hyphenated 'margin-left', so query with the hyphenated form
-      const metaPanel = document.querySelector('[style*="margin-left"]');
-      if (!metaPanel) throw new Error('meta panel not found');
-      expect(metaPanel).toHaveStyle({ marginLeft: '2.5rem' });
-    });
-
-    it('meta panel has larger marginLeft for a nested task (depth=1)', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-
-      // Expand the parent first
-      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
-
-      // Now open the child's meta panel via its menu
-      const childTitle = screen.getByText('Write unit tests');
-      const childRow = childTitle.closest('li');
-      if (!childRow) throw new Error('child row not found');
-      const childMoreBtn = within(childRow).getByRole('button', { name: /more actions/i });
-      await user.click(childMoreBtn);
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      // depth=1: metaIndentLeft = `${1*1.25+2.5}rem` = '3.75rem'
-      const childLi = childTitle.closest('li');
-      if (!childLi) throw new Error('child li not found');
-      const metaPanel = childLi.querySelector('[style*="margin-left"]');
-      if (!metaPanel) throw new Error('meta panel not found in child li');
-      expect(metaPanel).toHaveStyle({ marginLeft: '3.75rem' });
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // handleSaveDueDate — behavioral mutations
   // ---------------------------------------------------------------------------
-
-  describe('handleSaveDueDate behavior', () => {
-    it('exits editing mode immediately when Save is clicked (setIsEditingDueDate → false)', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: '2099-06-30' });
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2099-06-30' } });
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      // After save, editing mode should be off — the date input should be gone
-      await waitFor(() => {
-        expect(document.querySelector('input[type="date"]')).not.toBeInTheDocument();
-      });
-    });
-
-    it('trims whitespace from the due date value before comparing (no-op on no real change)', async () => {
-      // If trim() is removed (mutation), draftDueDate=' 2099-12-31 ' !== '2099-12-31' → triggers update.
-      // With trim(): ' 2099-12-31 '.trim() === '2099-12-31' → no-op (same value).
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // Simulate a change that adds whitespace (which trim should handle)
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      // Date inputs can't have whitespace, but we can test via the Save button skipping updateItem
-      // Save without changing the value → no updateItem call (trim is effectively a no-op here)
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('reverts draftDueDate to original when update fails (catch block restores)', async () => {
-      mockUpdateItem.mockRejectedValue(new Error('Network error'));
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      // After failure, meta panel reopens in view mode with original date
-      await waitFor(() => {
-        // The chip should show the original formatted due date again (not '2025-01-01')
-        expect(mockUpdateItem).toHaveBeenCalled();
-      });
-      // Reopen editing to check the draft was reset
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-      const resetInput = document.querySelector('input[type="date"]');
-      if (!resetInput) throw new Error('date input not found after reopen');
-      expect((resetInput as HTMLInputElement).value).toBe('2099-12-31');
-    });
-
-    it('cancels with original value restored when node.due_date is non-null (LogicalOperator)', async () => {
-      // Mutation: `node.due_date ?? '' → node.due_date && ''`. When node.due_date='2099-12-31',
-      // `'2099-12-31' && ''` = '' (empty string) instead of '2099-12-31'. After cancel,
-      // draftDueDate would be reset to '' (wrong). This test catches that regression.
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-
-      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-      // After cancel, chip should restore to original date
-      expect(screen.getByRole('button', { name: /due date: 2099-12-31/i })).toBeInTheDocument();
-
-      // Re-open to verify the draft was restored to original
-      await user.click(screen.getByRole('button', { name: /due date: 2099-12-31/i }));
-      const reopenedInput = document.querySelector('input[type="date"]');
-      if (!reopenedInput) throw new Error('date input not found after reopen');
-      expect((reopenedInput as HTMLInputElement).value).toBe('2099-12-31');
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // handleSaveNotes — behavioral mutations
   // ---------------------------------------------------------------------------
 
-  describe('handleSaveNotes behavior', () => {
-    it('exits notes editing mode when Save is clicked (setIsEditingNotes → false)', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'New content' });
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, 'New content');
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      // After save, textarea (edit mode) should be gone
-      await waitFor(() => {
-        expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
-      });
-    });
-
-    it('trims whitespace from notes value when unchanged (no-op)', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Existing note' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      await screen.findByRole('textbox', { name: /notes/i });
-      // Save without changing the value → trim('Existing note') === 'Existing note' → no updateItem
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('saves trimmed notes — calls updateItem with trimmed value (not the whitespace-padded one)', async () => {
-      // This test kills the MethodExpression mutant `draftNotes.trim() → draftNotes`.
-      // With the mutant, 'Existing note  ' !== 'Existing note' → updateItem('Existing note  ')
-      // (extra trailing spaces). With correct trim(), ' Existing note  '.trim() = 'Existing note'
-      // which equals node.notes → no updateItem call (it's unchanged after trimming).
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Existing note' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      // Add trailing whitespace to simulate user typing spaces
-      await user.type(textarea, ' '.repeat(3));
-      // Now draftNotes = 'Existing note   ' — trimmed = 'Existing note' = unchanged → no save
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      // trim() makes it unchanged → no updateItem; without trim → updateItem called
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('uses notes current value correctly when comparing (not "Stryker was here!")', async () => {
-      // Mutation: `node.notes ?? '' → node.notes ?? "Stryker was here!"`. With notes=null,
-      // currentValue = "Stryker was here!" → draftNotes (empty) !== "Stryker was here!" → triggers update.
-      // This test renders with notes=null, saves without changes → should NOT call updateItem.
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // notes=null
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      await screen.findByRole('textbox', { name: /notes/i });
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    it('reverts draftNotes when update fails (catch block restores notes)', async () => {
-      mockUpdateItem.mockRejectedValue(new Error('Network error'));
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Original note' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.clear(textarea);
-      await user.type(textarea, 'Failed update');
-      await user.click(screen.getByRole('button', { name: /^save$/i }));
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalled();
-      });
-
-      // After failure, reopen notes to verify draft was reset to original
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const reopenedTextarea = await screen.findByRole('textbox', { name: /notes/i });
-      expect(reopenedTextarea).toHaveValue('Original note');
-    });
-
-    it('reverts draftNotes to original using ?? operator (LogicalOperator)', async () => {
-      // Mutation: `node.notes ?? '' → node.notes && ''`. When notes='Saved note',
-      // `'Saved note' && ''` = '' instead of 'Saved note'. After cancel, draft = '' (wrong).
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Saved note' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.clear(textarea);
-      await user.type(textarea, 'Never saved');
-
-      const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
-      if (!cancelBtn) throw new Error('cancel button not found');
-      await user.click(cancelBtn);
-
-      // After cancel, reopen to verify draft was reset to 'Saved note' not ''
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const reopenedTextarea = await screen.findByRole('textbox', { name: /notes/i });
-      expect(reopenedTextarea).toHaveValue('Saved note');
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Meta panel label/input association (htmlFor / id template literals)
   // ---------------------------------------------------------------------------
-
-  describe('meta panel label associations', () => {
-    it('the "Due date" label is associated with the date input when editing', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // getByLabelText uses the htmlFor ↔ id association
-      const input = screen.getByLabelText('Due date');
-      expect(input).toBeInTheDocument();
-      expect((input as HTMLInputElement).type).toBe('date');
-    });
-
-    it('the "Notes" label is associated with the textarea when editing', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByLabelText('Notes');
-      expect(textarea.tagName.toLowerCase()).toBe('textarea');
-    });
-
-    it('the "Due date" label is associated with the view-mode button when not editing', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      // Open meta panel without editing
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      // Cancel to get to view mode
-      await screen.findByRole('button', { name: /^cancel$/i });
-      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-      // In view mode, the "Due date" label should be associated with the view button
-      const viewButton = screen.getByLabelText('Due date');
-      expect(viewButton.tagName.toLowerCase()).toBe('button');
-    });
-
-    it('the "Notes" label is associated with the view-mode button when not editing', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      await screen.findByRole('textbox', { name: /notes/i });
-      const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
-      if (!cancelBtn) throw new Error('cancel button not found');
-      await user.click(cancelBtn);
-
-      const viewButton = screen.getByLabelText('Notes');
-      expect(viewButton.tagName.toLowerCase()).toBe('button');
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // Meta panel onBlur saves due date
   // ---------------------------------------------------------------------------
 
-  describe('due date input onBlur', () => {
-    it('saves the due date when the date input loses focus (onBlur)', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: '2099-06-15' });
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      const dateInput = document.querySelector('input[type="date"]');
-      if (!dateInput) throw new Error('date input not found');
-      fireEvent.change(dateInput, { target: { value: '2099-06-15' } });
-      // Trigger blur on the date input
-      fireEvent.blur(dateInput);
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: '2099-06-15' });
-      });
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // View-mode clickable area: clicking due date / notes text enters edit mode
   // ---------------------------------------------------------------------------
 
-  describe('view-mode panel click enters edit mode', () => {
-    it('clicking the due date view button enters editing mode', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      // Open meta panel via menu, cancel to get to view mode
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-      await screen.findByRole('button', { name: /^cancel$/i });
-      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-      // In view mode — "Set a due date…" is the view button
-      expect(screen.getByText('Set a due date…')).toBeInTheDocument();
-
-      // Click the due date view button to enter editing
-      const viewBtn = screen.getByLabelText('Due date');
-      await user.click(viewBtn);
-
-      // Should now show the date input (editing mode)
-      expect(document.querySelector('input[type="date"]')).toBeInTheDocument();
-    });
-
-    it('clicking the notes view button enters editing mode', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      // Open meta panel in notes view mode
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      await screen.findByRole('textbox', { name: /notes/i });
-      const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
-      if (!cancelBtn) throw new Error('cancel button not found');
-      await user.click(cancelBtn);
-
-      // In view mode — "Add notes…" is the view button
-      expect(screen.getByText('Add notes…')).toBeInTheDocument();
-
-      // Click the notes view button to enter editing
-      const viewBtn = screen.getByLabelText('Notes');
-      await user.click(viewBtn);
-
-      // Should now show the textarea (editing mode)
-      expect(screen.getByRole('textbox', { name: /notes/i })).toBeInTheDocument();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Close button resets editing state
   // ---------------------------------------------------------------------------
-
-  describe('Close button resets editing state', () => {
-    it('Close button sets isEditingDueDate to false (not true)', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      // Open due date editing
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      // Verify date input is visible (editing mode)
-      expect(document.querySelector('input[type="date"]')).toBeInTheDocument();
-
-      // Click Close
-      await user.click(screen.getByRole('button', { name: /^close$/i }));
-
-      // Meta panel closed entirely — no date input
-      expect(document.querySelector('input[type="date"]')).not.toBeInTheDocument();
-      // The chip should reappear (due date still set)
-      expect(screen.getByRole('button', { name: /due date: 2099-12-31/i })).toBeInTheDocument();
-    });
-
-    it('Close button sets isEditingNotes to false (not true)', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      // Notes textarea should be visible (editing mode)
-      expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
-
-      // Click Close
-      await user.click(screen.getByRole('button', { name: /^close$/i }));
-
-      // Meta panel closed — no textarea
-      expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
-
-      // Reopen the meta panel via "Set due date" (which only sets isEditingDueDate=true).
-      // With mutation setIsEditingNotes(true), re-opening would also show the textarea.
-      // With correct setIsEditingNotes(false), notes should be in VIEW mode (no textarea).
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      // The meta panel is now open (date editing) — notes textarea should NOT be present
-      await screen.findByRole('button', { name: /^close$/i });
-      expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
-    });
-  });
 
   // ---------------------------------------------------------------------------
   // hasChildren || showAddSubtask condition for children section
@@ -2731,49 +1852,6 @@ describe('TaskRow', () => {
   // Completed-descendants badge — counts ALL completed descendants
   // ---------------------------------------------------------------------------
 
-  describe('completed descendants badge', () => {
-    const COMPLETED_CHILD: Item = { ...CHILD_ITEM, status: 'completed' };
-    const COMPLETED_GRANDCHILD: Item = { ...GRANDCHILD_ITEM, status: 'completed' };
-
-    it('shows the total completed-descendant count (all depths) when collapsed', () => {
-      renderTasks([BASE_ITEM, COMPLETED_CHILD, COMPLETED_GRANDCHILD]);
-      expect(screen.getByLabelText('2 completed')).toBeInTheDocument();
-    });
-
-    it('shows no completed badge when there are no completed descendants', () => {
-      renderTasks([BASE_ITEM, CHILD_ITEM]); // active child only
-      expect(screen.queryByLabelText(/completed/i)).not.toBeInTheDocument();
-    });
-
-    it('renders the active count badge alongside the completed badge', () => {
-      // One active direct child + one completed direct child → active badge "1" (bg-secondary
-      // pill) and completed badge "1 completed".
-      const doneChild: Item = {
-        ...BASE_ITEM,
-        id: 'item-2c',
-        title: 'Done child',
-        parent_id: 'item-1',
-        status: 'completed',
-      };
-      renderTasks([BASE_ITEM, CHILD_ITEM, doneChild]);
-      expect(screen.getByLabelText('1 completed')).toBeInTheDocument();
-      // The active badge is the bg-secondary pill showing the active child count.
-      const activeBadge = screen.getByText('1', { selector: 'span.bg-secondary' });
-      expect(activeBadge).toBeInTheDocument();
-    });
-
-    it('hides both badges when the row is expanded', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, COMPLETED_CHILD]);
-
-      expect(screen.getByLabelText('1 completed')).toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
-
-      expect(screen.queryByLabelText('1 completed')).not.toBeInTheDocument();
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Unchecking a completed child pops it back to active
   // ---------------------------------------------------------------------------
@@ -2901,287 +1979,14 @@ describe('TaskRow', () => {
       });
     });
   });
-
-  describe('draftDueDate initializer (StringLiteral ?? "")', () => {
-    // Mutation: `node.due_date ?? '' → node.due_date ?? "Stryker was here!"` on the
-    // useState initializer. With node.due_date null and the mutant, draftDueDate
-    // starts as "Stryker was here!"; saving unchanged then diffs against currentValue
-    // ('') and spuriously calls updateItem. Correct code keeps draftDueDate '' → no call.
-    it('initializes the draft to "" (not a sentinel) when due_date is null, so an unchanged save is a no-op', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // due_date null
-
-      // Open the date editor via the menu ("Set due date").
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      const dateInput = await screen.findByLabelText('Due date');
-      // Mutant initializer would seed a non-date sentinel; a real date input shows ''.
-      expect((dateInput as HTMLInputElement).value).toBe('');
-
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('handleSaveDueDate — flushed async kills', () => {
-    // Mutation (line ~137): `currentValue = node.due_date ?? ''` →
-    // `?? "Stryker was here!"`. With a real due_date and an unchanged save,
-    // currentValue must equal the stored date so the guard short-circuits; the
-    // mutant makes currentValue a sentinel → spurious updateItem call.
-    it('does NOT call updateItem when an existing due date is saved unchanged (currentValue ?? "")', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      await user.click(screen.getByRole('button', { name: /due date:/i }));
-
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    // Mutation (catch block, line ~145): `setDraftDueDate(node.due_date ?? '')` →
-    // `?? "Stryker was here!"`. After a failed save the draft must restore to the
-    // original date; the mutant restores a sentinel. Re-open the editor and read
-    // the input's value back.
-    // The catch-block restore reaches the `?? ''` fallback only when node.due_date
-    // is NULL, so we start from a null due date. After a failed save the draft must
-    // restore to '' (the original empty value); the `?? "Stryker was here!"` mutant
-    // restores a sentinel into the draft state. We surface that hidden state by
-    // re-opening the editor and Saving again WITHOUT changing anything: with the
-    // correct '' the second save is a no-op (draft '' === currentValue ''), but the
-    // sentinel draft differs from '' → a spurious SECOND updateItem call.
-    it('restores the draft to "" (not a sentinel) after a failed save from a null due date', async () => {
-      mockUpdateItem.mockRejectedValue(new Error('Network error'));
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // due_date null
-
-      // Open the date editor via the menu ("Set due date").
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      const dateInput = await screen.findByLabelText('Due date');
-      fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-
-      // First save → updateItem rejects → catch restores the draft.
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledTimes(1);
-      });
-
-      // Re-enter edit mode (does not touch the draft) and save unchanged.
-      await user.click(screen.getByLabelText('Due date'));
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      // Correct restore ('') → no second call. Sentinel restore → second call.
-      expect(mockUpdateItem).toHaveBeenCalledTimes(1);
-    });
-
-    // Mutation (Cancel button, line ~490): `setDraftDueDate(node.due_date ?? '')`.
-    // The `?? ''` fallback is only exercised when node.due_date is NULL. After
-    // Cancel the draft must be '' so a later unchanged save is a no-op; the sentinel
-    // mutant leaves a non-'' draft that triggers a spurious updateItem call.
-    it('restores the draft to "" on Cancel (not a sentinel) when due date is null', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // due_date null
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /set due date/i);
-
-      const dateInput = await screen.findByLabelText('Due date');
-      fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-
-      // Cancel restores the draft via `node.due_date ?? ''`.
-      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-      // Re-enter edit mode and save unchanged.
-      await user.click(screen.getByLabelText('Due date'));
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      // Correct restore ('') → no updateItem. Sentinel restore → updateItem called.
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('handleSaveNotes — flushed async kills', () => {
-    // Mutation (line ~151): `draftNotes.trim()` → `draftNotes`. Notes (unlike a
-    // date input) CAN hold whitespace; typing trailing spaces onto an unchanged
-    // note must trim back to the original → no updateItem. The mutant keeps the
-    // spaces → 'Existing note   ' !== 'Existing note' → updateItem called.
-    it('trims notes before comparing — whitespace-only change is a no-op', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, notes: 'Existing note' }]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, ' '.repeat(3));
-
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    // Mutation (line ~151): `draftNotes.trim()` → `draftNotes`, observed via the
-    // SAVED value. Typing surrounding whitespace around new text must persist the
-    // trimmed text; the mutant would persist the padded text.
-    it('saves the trimmed notes value (not the whitespace-padded one)', async () => {
-      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Fresh note' });
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // notes null
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, '  Fresh note  ');
-
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Fresh note' });
-      });
-    });
-
-    // Mutation (line ~153): `currentValue = node.notes ?? ''` → `?? "Stryker..."`.
-    // With notes null, saving unchanged must short-circuit; the sentinel makes
-    // currentValue differ from the empty draft → spurious updateItem call.
-    it('does NOT call updateItem when null notes are saved unchanged (currentValue ?? "")', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // notes null
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      await screen.findByRole('textbox', { name: /notes/i });
-
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-
-      expect(mockUpdateItem).not.toHaveBeenCalled();
-    });
-
-    // Mutation (catch block, line ~153): `setDraftNotes(node.notes ?? '')` →
-    // `?? "Stryker was here!"`. The `?? ''` fallback is only reached when node.notes
-    // is NULL, so we start from null notes. A textarea renders whatever string it is
-    // given, so the sentinel is directly observable: after a failed save the
-    // re-opened textarea must be '' (correct) rather than the sentinel (mutant).
-    it('restores the draft to "" (not a sentinel) after a failed save from null notes', async () => {
-      mockUpdateItem.mockRejectedValue(new Error('Network error'));
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // notes null
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, 'Doomed edit');
-
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name: /^save$/i }));
-      });
-      await waitFor(() => {
-        expect(mockUpdateItem).toHaveBeenCalled();
-      });
-
-      // Re-open notes; the restored draft must be '' — a textarea shows the sentinel
-      // verbatim if the `?? "Stryker was here!"` mutant ran.
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const reopened = await screen.findByRole('textbox', { name: /notes/i });
-      expect(reopened).toHaveValue('');
-    });
-
-    // Mutation (Cancel button, line ~553): `setDraftNotes(node.notes ?? '')`.
-    // Again the `?? ''` fallback is only reached with null notes; the re-opened
-    // textarea renders the sentinel verbatim if the mutant ran.
-    it('restores the draft to "" on Cancel (not a sentinel) when notes are null', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]); // notes null
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const textarea = await screen.findByRole('textbox', { name: /notes/i });
-      await user.type(textarea, 'Never saved');
-
-      const [cancelBtn] = screen.getAllByRole('button', { name: /^cancel$/i });
-      if (!cancelBtn) throw new Error('cancel button not found');
-      await user.click(cancelBtn);
-
-      // Re-open notes; the draft must be '' (not the sentinel).
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-
-      const reopened = await screen.findByRole('textbox', { name: /notes/i });
-      expect(reopened).toHaveValue('');
-    });
-  });
-
-  describe('Close button resets notes editing (BooleanLiteral)', () => {
-    // Mutation (Close button, line ~599): `setIsEditingNotes(false)` →
-    // `setIsEditingNotes(true)`. After Close, re-opening the panel in due-date
-    // mode must NOT show a notes textarea; the mutant would leave notes editing on,
-    // so the textarea would render.
-    it('closes notes editing so the textarea is gone after re-opening the panel', async () => {
-      const user = userEvent.setup();
-      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
-
-      // Open notes editor via the menu so isEditingNotes = true.
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /(?:add|edit) notes/i);
-      expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
-
-      // Close the meta panel — this must set isEditingNotes back to false.
-      await user.click(screen.getByRole('button', { name: /^close$/i }));
-      await waitFor(() => {
-        expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
-      });
-
-      // Re-open the panel via the due-date chip (does NOT touch isEditingNotes).
-      // If Close had set isEditingNotes=true (mutant), the textarea would reappear.
-      await user.click(screen.getByRole('button', { name: /due date: 2099-12-31/i }));
-      await screen.findByText('Due date');
-      expect(screen.queryByRole('textbox', { name: /notes/i })).not.toBeInTheDocument();
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
 // Classification & type-gating
 //
 // Capture creates `unclassified` items; `Classify as Task` unlocks the task-only
-// affordances (checkbox, due date, subtasks) plus the Task badge; `Classify as Code`
-// shows the Code badge but still no task affordances. `notes` stay generic on every type.
+// affordances (checkbox, subtasks); `Classify as Code` shows the Code badge but still
+// no task affordances. Only "Code" earns a row badge now (ALF-67 removed the "Task" pill).
 // ---------------------------------------------------------------------------
 
 const UNCLASSIFIED_ITEM: Item = { ...BASE_ITEM, item_type: 'unclassified' };
@@ -3196,10 +2001,12 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.queryByText('Code')).not.toBeInTheDocument();
     });
 
-    it('shows a "Task" badge on a task row', () => {
+    // ALF-67: the "Task" pill is gone from every row (a parent task no longer shows one, on
+    // top of ALF-65 already hiding it for subtasks / folder items). "Code" stays everywhere.
+    it('shows no "Task" badge on a root task row', () => {
       renderTasks([BASE_ITEM]);
 
-      expect(screen.getByText('Task')).toBeInTheDocument();
+      expect(screen.queryByText('Task')).not.toBeInTheDocument();
     });
 
     it('shows a "Code" badge on a code row', () => {
@@ -3208,21 +2015,18 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.getByText('Code')).toBeInTheDocument();
     });
 
-    // ALF-65: the "Task" label is redundant where the type is already implied — a subtask
-    // sits under a task, and every item filed in a folder is a task. "Code" stays visible.
-    it('hides the "Task" badge on a subtask row', async () => {
+    it('shows no "Task" badge on a subtask row', async () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM, CHILD_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
 
-      // The root task keeps its badge; the nested subtask does not.
       const subtaskRow = screen.getByText('Write unit tests').closest('li');
       expect(subtaskRow).not.toBeNull();
       expect(within(subtaskRow as HTMLElement).queryByText('Task')).not.toBeInTheDocument();
     });
 
-    it('hides the "Task" badge for a task filed in a folder', () => {
+    it('shows no "Task" badge for a task filed in a folder', () => {
       renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1' }], {
         folders: [FOLDER],
         scope: { type: 'folder', folderId: 'folder-1' },
@@ -3300,8 +2104,7 @@ describe('TaskRow — classification & type-gating', () => {
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { item_type: 'task' });
       });
-      // Optimistic flip: the Task badge and the completion checkbox now show.
-      expect(screen.getByText('Task')).toBeInTheDocument();
+      // Optimistic flip: the completion checkbox now shows (a task carries no row pill).
       expect(
         screen.getByRole('button', { name: 'Mark "Write tests" complete' }),
       ).toBeInTheDocument();
@@ -3393,63 +2196,6 @@ describe('TaskRow — classification & type-gating', () => {
       renderTasks([BASE_ITEM]);
 
       expect(screen.getByRole('button', { name: 'Add subtask' })).toBeInTheDocument();
-    });
-
-    it('an unclassified row offers no Set due date menu item', async () => {
-      const user = userEvent.setup();
-      renderTasks([UNCLASSIFIED_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.queryByText('Set due date')).not.toBeInTheDocument();
-      expect(screen.queryByText('Edit due date')).not.toBeInTheDocument();
-    });
-
-    it('a code row offers no Set due date menu item', async () => {
-      const user = userEvent.setup();
-      renderTasks([CODE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.queryByText('Set due date')).not.toBeInTheDocument();
-    });
-
-    it('a task row offers the Set due date menu item', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByText('Set due date')).toBeInTheDocument();
-    });
-  });
-
-  describe('notes stay generic across every type', () => {
-    it('an unclassified row still offers Add notes', async () => {
-      const user = userEvent.setup();
-      renderTasks([UNCLASSIFIED_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByText('Add notes')).toBeInTheDocument();
-    });
-
-    it('a code row still offers Add notes and opens the notes editor (no due-date field)', async () => {
-      const user = userEvent.setup();
-      renderTasks([CODE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await user.click(screen.getByRole('menuitem', { name: 'Add notes' }));
-
-      // The notes editor is available on a code row…
-      expect(await screen.findByRole('textbox', { name: /notes/i })).toBeInTheDocument();
-      // …but the (task-only) due-date field is NOT rendered in the meta panel.
-      expect(screen.queryByText('Due date')).not.toBeInTheDocument();
     });
   });
 
@@ -3589,60 +2335,6 @@ describe('TaskRow — recurrence', () => {
     renderTasks([BASE_ITEM]);
     expect(screen.queryByRole('button', { name: /repeats:/i })).not.toBeInTheDocument();
   });
-
-  it('shows the Repeat control in the meta panel for a top-level task', async () => {
-    const user = userEvent.setup();
-    renderTasks([BASE_ITEM]);
-    await user.click(screen.getByRole('button', { name: /more actions/i }));
-    await screen.findByRole('menu');
-    await activateMenuItem(user, /add notes/i);
-    expect(screen.getByRole('button', { name: 'Repeat' })).toBeInTheDocument();
-  });
-
-  it('hides the Repeat control on a code row', async () => {
-    const user = userEvent.setup();
-    renderTasks([CODE_ITEM]);
-    await user.click(screen.getByRole('button', { name: /more actions/i }));
-    await screen.findByRole('menu');
-    await activateMenuItem(user, /add notes/i);
-    expect(screen.queryByRole('button', { name: 'Repeat' })).not.toBeInTheDocument();
-  });
-
-  it('opening the chip reveals the Repeat control with the current summary', async () => {
-    const user = userEvent.setup();
-    renderTasks([RECURRING_ITEM]);
-    await user.click(screen.getByRole('button', { name: 'Repeats: Weekly on Mon' }));
-    expect(screen.getByRole('button', { name: 'Repeat' })).toHaveTextContent('Weekly on Mon');
-  });
-
-  it('setting a preset with no due date stamps today as the anchor and saves the rule', async () => {
-    const user = userEvent.setup();
-    // BASE_ITEM has no due date; choosing Daily must set due_date (today) + the rule.
-    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM });
-    renderTasks([BASE_ITEM]);
-
-    await user.click(screen.getByRole('button', { name: /more actions/i }));
-    await screen.findByRole('menu');
-    await activateMenuItem(user, /add notes/i);
-
-    // Open the Repeat preset menu and pick Daily (portal-safe keyboard nav).
-    await user.click(screen.getByRole('button', { name: 'Repeat' }));
-    await screen.findByRole('menu');
-    const daily = screen.getByRole('menuitem', { name: /^Daily$/ });
-    const itemCount = screen.getAllByRole('menuitem').length;
-    for (let index = 0; index < itemCount; index += 1) {
-      if (document.activeElement === daily) break;
-      await user.keyboard('[ArrowDown]');
-    }
-    await user.keyboard('[Enter]');
-
-    await waitFor(() => {
-      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
-        recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
-        due_date: todayISODate(),
-      });
-    });
-  });
 });
 
 /**
@@ -3701,5 +2393,266 @@ describe('TaskRow entrance animation', () => {
     expect(entranceWrapperFor('New subtask')).not.toBeNull();
     expect(entranceWrapperFor('Existing subtask')).toBeNull();
     expect(entranceWrapperFor('Parent')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ALF-67 — row badges, the ⋯ menu's "Open details", and the auto-saving detail panel
+// ---------------------------------------------------------------------------
+
+/**
+ * Open the root row's ⋯ menu and choose "Open details", revealing the inline detail panel.
+ * Uses the FIRST "More actions" button so an expanded subtree (whose child rows carry their own
+ * menu) doesn't make the query ambiguous.
+ */
+async function openDetails(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  const [moreActions] = screen.getAllByRole('button', { name: /more actions/i });
+  if (!moreActions) throw new Error('no "More actions" button found');
+  await user.click(moreActions);
+  await screen.findByRole('menu');
+  await activateMenuItem(user, /open details/i);
+  return screen.getByTestId('task-detail-panel');
+}
+
+describe('TaskRow — row badges (ALF-67)', () => {
+  it('renders the priority symbol-only on the row (no visible label, aria-label intact)', () => {
+    renderTasks([{ ...BASE_ITEM, priority: 'high' }]);
+    const badge = screen.getByRole('button', { name: 'Priority: High' });
+    // Symbol-only: the level word is not rendered as visible text on the row.
+    expect(badge).not.toHaveTextContent('High');
+  });
+
+  it('shows the subtask count as completed/total of the direct subtasks', () => {
+    const done: Item = { ...CHILD_ITEM, id: 'c1', status: 'completed' };
+    const open: Item = { ...CHILD_ITEM, id: 'c2', title: 'Open one' };
+    renderTasks([BASE_ITEM, done, open]);
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+  });
+
+  it('shows no subtask-count badge when the task has no subtasks', () => {
+    renderTasks([BASE_ITEM]);
+    expect(screen.queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the subtask-count badge while the subtree is expanded', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
+    expect(screen.getByText('0/1')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+    expect(screen.getByText('0/1')).toBeInTheDocument();
+  });
+
+  it('shows a one-line notes preview beneath the title when notes exist', () => {
+    renderTasks([{ ...BASE_ITEM, notes: 'Compare three vendors first' }]);
+    expect(screen.getByText('Compare three vendors first')).toBeInTheDocument();
+  });
+
+  it('shows no notes preview when the task has no notes', () => {
+    renderTasks([BASE_ITEM]);
+    expect(screen.queryByText(/vendors/i)).not.toBeInTheDocument();
+  });
+
+  it('does not open the detail panel when the due-date badge is clicked (display-only)', async () => {
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }]);
+    await user.click(screen.getByRole('button', { name: /due date:/i }));
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+});
+
+describe('TaskRow — ⋯ menu (ALF-67)', () => {
+  it('offers "Open details" as the first menu item', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    expect(screen.getAllByRole('menuitem')[0]).toHaveAccessibleName(/open details/i);
+  });
+
+  it('no longer offers Set due date / Set priority / Add notes', async () => {
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', notes: 'hi', priority: 'high' }]);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    expect(screen.queryByRole('menuitem', { name: /due date/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /priority/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /notes/i })).not.toBeInTheDocument();
+  });
+
+  it('does not offer a Duplicate entry (deferred)', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    expect(screen.queryByRole('menuitem', { name: /duplicate/i })).not.toBeInTheDocument();
+  });
+
+  it('still offers Move to… and Delete', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM], { folders: [FOLDER] });
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    expect(screen.getByRole('menuitem', { name: /move to/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^delete$/i })).toBeInTheDocument();
+  });
+});
+
+describe('TaskRow — detail panel (ALF-67)', () => {
+  it('opens the inline detail panel from "Open details"', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+    await openDetails(user);
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+  });
+
+  it('toggles the detail panel closed when "Open details" is chosen again', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    await activateMenuItem(user, /open details/i);
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('opening the detail panel does NOT expand the subtask tree', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
+    await openDetails(user);
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+  });
+
+  it('shows the Due, Repeat and Priority chips plus a Notes editor for a top-level task', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+    expect(screen.getByRole('button', { name: 'Due date' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Repeat' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Priority' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Notes' })).toBeInTheDocument();
+  });
+
+  it('has no Save / Cancel / Close controls (edits auto-save)', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    const panel = await openDetails(user);
+    expect(within(panel).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole('button', { name: /^close$/i })).not.toBeInTheDocument();
+  });
+
+  it('auto-saves a priority pick and closes the popover', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, priority: 'high' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Priority' }));
+    await user.click(await screen.findByRole('button', { name: 'High' }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { priority: 'high' });
+    });
+  });
+
+  it('auto-saves a repeat preset (stamping today as the anchor when there is no due date)', async () => {
+    mockUpdateItem.mockResolvedValue(BASE_ITEM);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Repeat' }));
+    await user.click(await screen.findByRole('button', { name: 'Daily' }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalled();
+    });
+    const patch = mockUpdateItem.mock.calls.find((call) => call[0] === 'item-1')?.[1];
+    // A daily rule is saved, and today is stamped as the anchor since the task had no due date.
+    expect(patch).toMatchObject({ recurrence: { freq: 'daily' }, due_date: todayISODate() });
+  });
+
+  it('auto-saves a due date picked from the calendar (Today)', async () => {
+    mockUpdateItem.mockResolvedValue(BASE_ITEM);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Due date' }));
+    await user.click(await screen.findByRole('button', { name: /^today$/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: todayISODate() });
+    });
+  });
+
+  it('clears the due date (and its recurrence) from the calendar footer', async () => {
+    mockUpdateItem.mockResolvedValue(BASE_ITEM);
+    const user = userEvent.setup();
+    renderTasks([
+      {
+        ...BASE_ITEM,
+        due_date: '2099-12-31',
+        recurrence: { freq: 'daily', interval: 1, end: { type: 'never' } },
+      },
+    ]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Due date' }));
+    await user.click(await screen.findByRole('button', { name: /^clear$/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: null, recurrence: null });
+    });
+  });
+
+  it('auto-saves notes on blur', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    const notes = screen.getByRole('textbox', { name: 'Notes' });
+    await user.type(notes, 'Buy milk');
+    await user.tab();
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+
+  it('does not save notes that are unchanged', async () => {
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, notes: 'Existing' }]);
+    await openDetails(user);
+
+    const notes = screen.getByRole('textbox', { name: 'Notes' });
+    expect(notes).toHaveValue('Existing');
+    await user.click(notes);
+    await user.tab();
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('hides the Due, Repeat and Priority chips on a non-task row but keeps Notes', async () => {
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, item_type: 'unclassified' }]);
+    await openDetails(user);
+    expect(screen.queryByRole('button', { name: 'Due date' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Repeat' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Priority' })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Notes' })).toBeInTheDocument();
+  });
+
+  it('keeps the detail panel and the subtask tree independent', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM, CHILD_ITEM]);
+    // Expand subtasks, then open the detail: both are visible at once.
+    await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+    await openDetails(user);
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
   });
 });

@@ -212,33 +212,35 @@ test.describe('inline editing', () => {
     await expect(page.getByRole('textbox', { name: 'Edit title' })).toBeVisible();
   });
 
-  test('sets a due date from the actions menu', async ({ page, seed }) => {
+  test('sets a due date from the detail panel calendar (auto-save)', async ({ page, seed }) => {
     await seed({ items: [makeTask('Schedule review')] });
     await page.goto('/?view=inbox');
 
+    // Open details → the Due chip → pick "Today" from the calendar. The pick auto-saves and
+    // closes the popover, so the row's due badge appears with no Save step.
     await page.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Set due date' }).click();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
+    await page.getByRole('button', { name: 'Due date', exact: true }).click();
+    await page.getByRole('button', { name: 'Today', exact: true }).click();
 
-    // The date input auto-saves on blur, so committing the value is enough — no
-    // need to click the (then-unmounted) Save button.
-    const dateInput = page.getByLabel('Due date');
-    await dateInput.fill('2099-12-31');
-    await dateInput.blur();
-
-    await expect(page.getByRole('button', { name: 'Due date: 2099-12-31' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Due date:', exact: false })).toBeVisible();
   });
 
-  test('adds notes from the actions menu', async ({ page, seed }) => {
+  test('adds notes from the detail panel (auto-saves on blur)', async ({ page, seed }) => {
     await seed({ items: [makeTask('Research options')] });
     await page.goto('/?view=inbox');
 
     await page.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Add notes' }).click();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
 
-    await page.getByLabel('Notes').fill('Compare three vendors first');
-    await page.getByRole('button', { name: 'Save' }).click();
+    const notes = page.getByRole('textbox', { name: 'Notes' });
+    await notes.fill('Compare three vendors first');
+    await notes.blur();
 
-    await expect(page.getByText('Compare three vendors first')).toBeVisible();
+    // The saved notes surface as the row's one-line preview span (distinct from the textarea).
+    await expect(
+      page.locator('span').filter({ hasText: 'Compare three vendors first' }),
+    ).toBeVisible();
   });
 });
 

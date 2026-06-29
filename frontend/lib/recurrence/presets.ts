@@ -9,6 +9,28 @@ import { parseDueDate } from '@/lib/date-utils';
 import { sortedWeekdays } from './engine';
 import type { RecurrencePreset, RecurrenceRule, Weekday } from './types';
 
+/**
+ * The selectable presets shown in the Repeat picker, in menu order. Hourly is deferred (it
+ * needs a time anchor) and `custom` is appended by the UI, so this lists only the canonical
+ * `'never'` … `'yearly'` presets. Single-sourced here so the meta-panel field and the detail
+ * chip's popover never drift on the option set or its labels.
+ */
+export const REPEAT_PRESETS: readonly {
+  value: Exclude<RecurrencePreset, 'custom' | 'hourly'>;
+  label: string;
+}[] = [
+  { value: 'never', label: 'Never' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekends', label: 'Weekends' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Biweekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'every-3-months', label: 'Every 3 Months' },
+  { value: 'every-6-months', label: 'Every 6 Months' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
 /** The weekday of an anchor due date (0 = Sunday … 6 = Saturday). */
 function anchorWeekday(anchorDate: string): Weekday {
   return parseDueDate(anchorDate).getDay() as Weekday;

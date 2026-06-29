@@ -74,7 +74,7 @@ test.describe('collapse all', () => {
     await expect(page.getByRole('button', { name: 'Collapse all' })).toBeVisible();
   });
 
-  test('editing a parent’s due date does not expand its subtree', async ({ page, seed }) => {
+  test('opening a parent’s detail panel does not expand its subtree', async ({ page, seed }) => {
     await seed({
       items: [
         makeTask('Write the proposal', { id: 'p1' }),
@@ -87,12 +87,11 @@ test.describe('collapse all', () => {
     await expect(subtasks).toBeHidden();
 
     await page.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Set due date' }).click();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
 
-    // The meta panel opens for editing… (`exact` so "Due date" doesn't also match the
-    // "Set due date" menuitem mid-close).
-    await expect(page.getByText('Due date', { exact: true })).toBeVisible();
-    // …but the subtree stays collapsed (the meta panel is a sibling of the subtree).
+    // The detail panel opens (its Due chip is present)…
+    await expect(page.getByRole('button', { name: 'Due date', exact: true })).toBeVisible();
+    // …but the subtree stays collapsed (detail-open and subtasks-expanded are independent).
     await expect(subtasks).toBeHidden();
   });
 });
