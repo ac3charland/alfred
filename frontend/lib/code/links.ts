@@ -112,7 +112,7 @@ function notesContext(story: CodeStory): string {
   const notes = story.notes?.trim();
   if (notes === undefined || notes.length === 0) return '';
   if (notes.length > MAX_INLINE_NOTES) {
-    return `\n\nContext (from the ticket — TRUNCATED; the full notes live in alfred, not this repo, so ask me here if you need the rest):\n${notes.slice(0, MAX_INLINE_NOTES)}…`;
+    return `\n\nContext (from the ticket — TRUNCATED; the full notes live in the orchestrator, not this repo, so ask me here if you need the rest):\n${notes.slice(0, MAX_INLINE_NOTES)}…`;
   }
   return `\n\nContext (from the ticket):\n${notes}`;
 }
@@ -154,7 +154,7 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base the spec on the code that already exists.`,
     `2. If the title and context below don't pin down the scope and acceptance criteria, ASK ME HERE before writing the spec — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
     `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session) — it defines this repo's spec format, structure, and where the spec lives. If the skill is absent, write the spec as a single self-contained HTML document and save it under the repo's specs directory.`,
-    `4. Open a pull request whose description carries this machine-readable block — alfred reads it to advance the ticket and a CI check enforces it. Reproduce the \`alfred-ticket\` and \`phase\` lines exactly, and set \`spec-path\` to where you saved the spec (a file, or the folder for a multi-file spec):`,
+    `4. Open a pull request whose description carries this machine-readable block — the orchestrator (alfred) reads it to advance the ticket and a CI check enforces it. Reproduce the \`alfred-ticket\` and \`phase\` lines exactly, and set \`spec-path\` to where you saved the spec (a file, or the folder for a multi-file spec):`,
     '',
     frontmatterBlock(story, 'refinement', SPEC_PATH_PLACEHOLDER),
     '',
