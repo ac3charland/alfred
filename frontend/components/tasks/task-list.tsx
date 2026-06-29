@@ -14,6 +14,12 @@ interface TaskListProperties {
   /** Which view to render (inbox / a folder / completed) — filters the shared store. */
   scope: TaskScope;
   emptyMessage?: string;
+  /**
+   * When true, the view's ROOT rows participate in Inbox multi-edit: while select mode is on
+   * each becomes a selection checkbox toggling membership. Only the Inbox passes this; subtask
+   * rows are never selectable (subtask selection is out of scope).
+   */
+  selectable?: boolean;
 }
 
 /**
@@ -66,7 +72,11 @@ function PromoteRootZone({ position }: { position: 'top' | 'bottom' }) {
  * Each TaskRow handles its own recursive subtree rendering and reads folders from the
  * FoldersProvider. The list is bracketed by promote-to-root drop zones (see PromoteRootZone).
  */
-export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListProperties) {
+export function TaskList({
+  scope,
+  emptyMessage = 'No tasks yet',
+  selectable = false,
+}: TaskListProperties) {
   const nodes = useScopedTasks(scope);
   const isCompletedView = scope.type === 'completed';
 
@@ -86,7 +96,12 @@ export function TaskList({ scope, emptyMessage = 'No tasks yet' }: TaskListPrope
         )}
       >
         {nodes.map((node) => (
-          <TaskRow key={node.id} node={node} isCompletedView={isCompletedView} />
+          <TaskRow
+            key={node.id}
+            node={node}
+            isCompletedView={isCompletedView}
+            selectable={selectable}
+          />
         ))}
       </ul>
       <PromoteRootZone position="bottom" />

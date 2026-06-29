@@ -5,6 +5,7 @@ import '../app/globals.css';
 import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { ExpansionProvider } from '../lib/stores/expansion-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
+import { InboxSelectionProvider } from '../lib/stores/inbox-selection-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
 import { ToastProvider } from '../lib/stores/toast-store';
 import type { Folder, Item } from '../lib/types';
@@ -38,9 +39,13 @@ const preview: Preview = {
                 ExpansionProvider,
                 null,
                 React.createElement(
-                  'div',
-                  { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                  React.createElement(Story),
+                  InboxSelectionProvider,
+                  null,
+                  React.createElement(
+                    'div',
+                    { className: 'dark min-h-screen bg-background text-foreground p-8' },
+                    React.createElement(Story),
+                  ),
                 ),
               ),
             ),

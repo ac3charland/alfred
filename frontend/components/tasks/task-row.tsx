@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
 import { Badge } from '@/components/atoms/badge';
+import { Button } from '@/components/atoms/button';
 import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
@@ -35,6 +36,7 @@ import {
 } from '@/lib/stores/active-editor-store';
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
+import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
@@ -67,6 +69,11 @@ interface TaskRowProperties {
   depth?: number;
   /** True when this row is rendered inside the Completed view (drives the context label). */
   isCompletedView?: boolean;
+  /**
+   * True for a root Inbox row, which may participate in multi-edit: while select mode is on
+   * the row becomes a selection checkbox. Children are never selectable, so they pass false.
+   */
+  selectable?: boolean;
 }
 
 /**
@@ -87,7 +94,12 @@ interface TaskRowProperties {
  * - Move-to-folder dropdown + classify / gate entries
  * - Delete
  */
-export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowProperties) {
+export function TaskRow({
+  node,
+  depth = 0,
+  isCompletedView = false,
+  selectable = false,
+}: TaskRowProperties) {
   const folders = useFolders();
   const allTasks = useTasks();
   const {
@@ -105,6 +117,11 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
   const prefersReducedMotion = usePrefersReducedMotion();
   const { subtasks: expandedSubtasks, completed: expandedCompleted } = useExpansion();
   const { toggleSubtasks, expandSubtasks, toggleCompleted } = useExpansionActions();
+  const { active: selectModeActive, selectedIds } = useInboxSelection();
+  const { toggle: toggleSelection } = useInboxSelectionActions();
+  // A selectable root row in active select mode is a selection checkbox, not a normal row.
+  const inSelectMode = selectable && selectModeActive;
+  const isSelected = selectedIds.has(node.id);
   const isExpanded = expandedSubtasks.has(node.id);
   const showCompleted = expandedCompleted.has(node.id);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
@@ -385,6 +402,44 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
     setIsEditingDueDate(false);
     setIsEditingNotes(false);
   };
+
+  // Select mode: the whole row is one toggle button — its leading control becomes a selection
+  // checkbox and clicking anywhere flips membership. Inline edit, expand, the drag handle and
+  // the "More actions" menu are all suppressed so the row has exactly one meaning, and the
+  // subtree is hidden (only root Inbox rows are selectable). A selected row gets the teal ring.
+  if (inSelectMode) {
+    return (
+      <li className="group/row list-none">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            toggleSelection(node.id);
+          }}
+          aria-pressed={isSelected}
+          aria-label={`${isSelected ? 'Deselect' : 'Select'} "${node.title}"`}
+          className={cn(
+            // Reset the Button atom's centred, fixed-height chrome into a full-width row.
+            'h-auto w-full justify-start gap-2 px-2 py-2 text-left font-normal',
+            isSelected && 'bg-accent-teal/5 ring-2 ring-inset ring-accent-teal',
+          )}
+          style={{ paddingLeft: indentLeft }}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              checkboxSizeClass,
+              'flex items-center justify-center rounded border',
+              isSelected ? 'border-accent-teal bg-accent-teal' : checkboxIncompleteClass,
+            )}
+          >
+            {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm text-foreground">{node.title}</span>
+          <TypeBadge itemType={node.item_type} />
+        </Button>
+      </li>
+    );
+  }
 
   return (
     <li className="group/row list-none">
@@ -766,17 +821,19 @@ export function TaskRow({ node, depth = 0, isCompletedView = false }: TaskRowPro
       <GateDialog
         open={showGate}
         onOpenChange={setShowGate}
-        item={{
-          id: node.id,
-          title: node.title,
-          notes: node.notes,
-          source_url: node.source_url,
-        }}
-        onComplete={(story) => {
+        items={[
+          {
+            id: node.id,
+            title: node.title,
+            notes: node.notes,
+            source_url: node.source_url,
+          },
+        ]}
+        onComplete={(stories) => {
           removeGatedItem(node.id);
           // The reconciled story always carries its allocated ref by now (`?? ''` only
           // satisfies the all-nullable view row type).
-          showToast(`Created ${story.ref ?? ''}`);
+          showToast(`Created ${stories[0]?.ref ?? ''}`);
         }}
       />
     </li>
