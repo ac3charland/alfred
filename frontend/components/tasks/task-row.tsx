@@ -5,6 +5,7 @@ import { Check, ChevronRight, ListCheck, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
+import { AnimatedHeightEnter } from '@/components/atoms/animated-height-enter';
 import { Badge } from '@/components/atoms/badge';
 import { Button } from '@/components/atoms/button';
 import { CheckboxButton } from '@/components/atoms/checkbox-button';
@@ -227,6 +228,15 @@ export function TaskRow({
   // A valid drop target lights up and swaps its checkbox for a "+" while a task hovers it.
   const isDropTarget = isOver && isValidDropTarget;
 
+  // A just-captured row enters with a height-expand + fade/slide-from-above (ALF-20), pushing
+  // the rows below it down. The trigger is the optimistic temp id: a row carries one only
+  // between its insert and the server reconcile, so exactly the freshly-added rows animate —
+  // a top-level capture, a new subtask, or a recurring task's next occurrence. Rows seeded
+  // from the server (a page load, a view switch) already have real ids, so they never animate.
+  // On reconcile the temp id is swapped for the real one, remounting the row at its rested
+  // height, which also ends the one-shot entrance.
+  const isEntering = isTempId(node.id);
+
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
   // The checkbox reads as "complete" both for a completed row and during the exit
@@ -443,366 +453,376 @@ export function TaskRow({
 
   return (
     <li className="group/row list-none">
-      {/* The completion exit collapses the row (and its expanded subtree): a transition
+      {/* A freshly-captured row grows in from 0 height and slides down from above, pushing
+          the rows below it down (ALF-20). For an existing row this wrapper is a no-op
+          passthrough. */}
+      <AnimatedHeightEnter entering={isEntering}>
+        {/* The completion exit collapses the row (and its expanded subtree): a transition
           on the grid row track from 1fr to 0fr shrinks the height to nothing, pulling the
           rows below up. `ease-out` (a transition, not a keyframe) makes the collapse start
           briskly, then settle — `delay-200` holds it back until the 200ms checkbox pop has
           finished, so the dismissal doesn't cover the pop. The inner child is clipped so it
           can shrink past its content. Kept bespoke (not AnimatedHeightCollapse) for the
           300ms + delay-200 timing and the commit-on-end contract. */}
-      <div
-        className={cn(collapseClass, isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]')}
-        data-testid="task-collapse"
-        onTransitionEnd={handleCompleteCollapseEnd}
-      >
-        <div className={cn(isCompleting && 'overflow-hidden')}>
-          {/* Main row — the whole surface is the drag handle (RowPointerSensor lets the
+        <div
+          className={cn(collapseClass, isCompleting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]')}
+          data-testid="task-collapse"
+          onTransitionEnd={handleCompleteCollapseEnd}
+        >
+          <div className={cn(isCompleting && 'overflow-hidden')}>
+            {/* Main row — the whole surface is the drag handle (RowPointerSensor lets the
               buttons/input below stay clickable). Dropping another task here re-parents it. */}
-          <div
-            ref={setRowRef}
-            {...(dragListeners ?? {})}
-            data-drop-over={isDropTarget ? 'true' : undefined}
-            className={cn(
-              rowBaseClass,
-              // A valid drop target lights up (teal); otherwise the usual hover wash.
-              isDropTarget ? rowDropTargetClass : rowHoverClass,
-              // Dim the in-place row while its DragOverlay clone is being dragged.
-              isDragging && 'opacity-40',
-              // A search-selected row rings briefly, then the ring fades out.
-              'transition-shadow duration-700 motion-reduce:transition-none',
-              isSearchHighlighted && 'ring-2 ring-inset ring-accent-teal',
-            )}
-            style={{ paddingLeft: indentLeft }}
-          >
-            {/* Expand/collapse toggle */}
-            <IconButton
-              size="sm"
-              onClick={() => {
-                toggleSubtasks(node.id);
-              }}
-              aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
-              aria-expanded={isExpanded}
-              className={cn(chevronButtonClass, !hasChildren && 'invisible pointer-events-none')}
-            >
-              <ChevronRight size={14} className={cn(chevronIconClass, isExpanded && 'rotate-90')} />
-            </IconButton>
-
-            {/* Completion is `task`-only: an unclassified/code row shows no checkbox,
-                just a spacer so its title stays aligned with task rows. */}
-            {isTask ? (
-              isDropTarget ? (
-                <div aria-hidden="true" className={dropPlusClass}>
-                  <Plus size={10} strokeWidth={3} />
-                </div>
-              ) : (
-                <CheckboxButton
-                  onClick={() => {
-                    if (isCompleting) return;
-                    if (isCompleted) {
-                      void handleToggleUncomplete();
-                    } else {
-                      handleToggleComplete();
-                    }
-                  }}
-                  aria-label={
-                    isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`
-                  }
-                  className={cn(
-                    checkboxSizeClass,
-                    showAsComplete ? 'bg-accent-teal border-accent-teal' : checkboxIncompleteClass,
-                    // The snappy press: a quick scale overshoot the instant completion begins.
-                    isCompleting && 'animate-check-pop motion-reduce:animate-none',
-                  )}
-                >
-                  {showAsComplete && (
-                    <Check size={10} className="text-background" strokeWidth={3} />
-                  )}
-                </CheckboxButton>
-              ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
-                signals it will become a child here (replaces the checkbox; no animation). */
-            ) : (
-              <div className="h-4 w-4 shrink-0" aria-hidden="true" />
-            )}
-
-            {/* Title */}
-            {isEditingTitle ? (
-              <InlineEditField
-                value={draftTitle}
-                onChange={setDraftTitle}
-                onSubmit={() => {
-                  void handleSaveTitle();
-                }}
-                onCancel={() => {
-                  setDraftTitle(node.title);
-                  closeEditor({ itemId: node.id, kind: 'title' });
-                }}
-                confirmLabel="Confirm title"
-                inputLabel="Edit title"
-                requireValue={false}
-                dissolveIntoGrid
-                inputClassName={titleInputClass}
-                confirmClassName={confirmTitleClass}
-              />
-            ) : (
-              <div
-                // select-none: the whole row is a drag surface, so the title text is no
-                // longer highlightable. Double-click still opens the inline title editor.
-                className="flex-1 flex flex-col min-w-0 select-none"
-                onDoubleClick={() => {
-                  // Reset the draft so a previously-abandoned edit doesn't resurface.
-                  setDraftTitle(node.title);
-                  openEditor({ itemId: node.id, kind: 'title' });
-                }}
-              >
-                <span
-                  className={cn(
-                    // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
-                    titleTextClass,
-                    // Fade to low-contrast as the row completes; a completed row reads
-                    // low-contrast; an active row full-contrast.
-                    isCompleting
-                      ? 'text-muted-foreground/50'
-                      : isCompleted
-                        ? 'text-muted-foreground'
-                        : 'text-foreground',
-                  )}
-                >
-                  {node.title}
-                </span>
-                {contextLabel !== null && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
-                    <ListCheck size={10} className="shrink-0" />
-                    <span className="truncate">{contextLabel}</span>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Type badge — shown once the item is classified (Task / Code); nothing for
-                an unclassified row. */}
-            <TypeBadge itemType={node.item_type} />
-
-            {/* Due date chip — `task`-only. */}
-            {isTask && node.due_date && !isEditingDueDate && (
-              <DueDateChip dueDate={node.due_date} onClick={handleOpenDueDateEditor} />
-            )}
-
-            {/* Recurrence chip — top-level recurring tasks only; opens the Repeat control. */}
-            {isTopLevelTask && recurrenceRule !== null && (
-              <RecurrenceChip rule={recurrenceRule} onClick={handleOpenRepeatEditor} />
-            )}
-
-            {/* Priority chip — top-level tasks with a level set; opens the Priority control. */}
-            {isTopLevelTask && isPriorityLevel(node.priority) && (
-              <PriorityChip priority={node.priority} onClick={handleOpenPriorityEditor} />
-            )}
-
-            {/* Active children count badge */}
-            {activeChildren.length > 0 && !isExpanded && (
-              <Badge variant="secondary">{activeChildren.length}</Badge>
-            )}
-
-            {/* Completed descendants count badge (all depths) — right of the active one */}
-            {completedDescendantCount > 0 && !isExpanded && (
-              <Badge
-                variant="muted"
-                aria-label={`${String(completedDescendantCount)} completed`}
-                className="inline-flex items-center gap-1 text-muted-foreground/60"
-              >
-                <Check size={10} strokeWidth={3} className="shrink-0" />
-                {completedDescendantCount}
-              </Badge>
-            )}
-
-            {/* Row actions — visible on hover */}
-            <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
-              {/* Add subtask — `task`-only: subtasks nest only under tasks, so an
-                  unclassified/code row exposes no add-subtask affordance. */}
-              {isTask && (
-                <IconButton
-                  size="md"
-                  tone="accent"
-                  onMouseDown={(e) => {
-                    // Prevent the browser from moving focus away from the CaptureBox input
-                    // when the toggle is pressed while the box is open. Without this, `blur`
-                    // fires and `onDismiss` closes the box before the `click` handler runs,
-                    // making the handler see showAddSubtask=false and re-open instead of close.
-                    if (showAddSubtask) e.preventDefault();
-                  }}
-                  onClick={() => {
-                    if (showAddSubtask) {
-                      closeEditor({ itemId: node.id, kind: 'subtask' });
-                    } else {
-                      openEditor({ itemId: node.id, kind: 'subtask' });
-                      // The inline add-subtask form renders inside the subtree, so expand it.
-                      expandSubtasks(node.id);
-                    }
-                  }}
-                  aria-label="Add subtask"
-                >
-                  <Plus size={12} />
-                </IconButton>
-              )}
-
-              {/* More actions dropdown — all visibility conditionals live inside it. */}
-              <TaskRowMenu
-                isUnclassified={isUnclassified}
-                isCode={isCode}
-                canConvert={canConvert}
-                isTask={isTask}
-                hasDueDate={node.due_date !== null}
-                hasNotes={node.notes !== null}
-                hasPriority={node.priority !== null}
-                folders={folders}
-                onClassify={(itemType) => {
-                  void handleClassify(itemType);
-                }}
-                onOpenGate={() => {
-                  setShowGate(true);
-                }}
-                onSetDueDate={handleOpenDueDateEditor}
-                onEditNotes={handleOpenNotesEditor}
-                onSetPriority={handleOpenPriorityEditor}
-                onMoveToFolder={(targetFolderId) => {
-                  void handleMoveToFolder(targetFolderId);
-                }}
-                onDelete={() => {
-                  void handleDelete();
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Inline meta panel (due date + notes) — opens when requested */}
-          {isMetaOpen && (
-            <TaskMetaPanel
-              node={node}
-              isTask={isTask}
-              metaLeft={metaIndentLeft}
-              showRepeat={isTopLevelTask}
-              recurrence={recurrenceRule}
-              onChangeRecurrence={(rule, anchorDate) => {
-                void handleSaveRecurrence(rule, anchorDate);
-              }}
-              priority={node.priority}
-              onSavePriority={(next) => {
-                void handleSavePriority(next);
-              }}
-              isEditingDueDate={isEditingDueDate}
-              draftDueDate={draftDueDate}
-              onDraftDueDateChange={setDraftDueDate}
-              onSaveDueDate={() => {
-                void handleSaveDueDate();
-              }}
-              onBeginEditDueDate={() => {
-                setIsEditingDueDate(true);
-              }}
-              onCancelDueDate={() => {
-                setIsEditingDueDate(false);
-                setDraftDueDate(node.due_date ?? '');
-              }}
-              isEditingNotes={isEditingNotes}
-              draftNotes={draftNotes}
-              onDraftNotesChange={setDraftNotes}
-              onSaveNotes={() => {
-                void handleSaveNotes();
-              }}
-              onBeginEditNotes={() => {
-                setIsEditingNotes(true);
-              }}
-              onCancelNotes={() => {
-                setIsEditingNotes(false);
-                setDraftNotes(node.notes ?? '');
-              }}
-              onClose={handleCloseMeta}
-            />
-          )}
-
-          {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr */}
-          {(hasChildren || showAddSubtask) && (
-            <AnimatedHeightCollapse
-              open={isExpanded}
+            <div
+              ref={setRowRef}
+              {...(dragListeners ?? {})}
+              data-drop-over={isDropTarget ? 'true' : undefined}
               className={cn(
-                'transition-opacity motion-reduce:transition-none',
-                isExpanded ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
+                rowBaseClass,
+                // A valid drop target lights up (teal); otherwise the usual hover wash.
+                isDropTarget ? rowDropTargetClass : rowHoverClass,
+                // Dim the in-place row while its DragOverlay clone is being dragged.
+                isDragging && 'opacity-40',
+                // A search-selected row rings briefly, then the ring fades out.
+                'transition-shadow duration-700 motion-reduce:transition-none',
+                isSearchHighlighted && 'ring-2 ring-inset ring-accent-teal',
               )}
+              style={{ paddingLeft: indentLeft }}
             >
-              <ul aria-label="Subtasks">
-                {/* Add subtask inline form */}
-                {showAddSubtask && (
-                  <li
-                    className="list-none py-1"
-                    style={{ paddingLeft: `${String((depth + 1) * 1.25 + 2.5)}rem` }}
+              {/* Expand/collapse toggle */}
+              <IconButton
+                size="sm"
+                onClick={() => {
+                  toggleSubtasks(node.id);
+                }}
+                aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
+                aria-expanded={isExpanded}
+                className={cn(chevronButtonClass, !hasChildren && 'invisible pointer-events-none')}
+              >
+                <ChevronRight
+                  size={14}
+                  className={cn(chevronIconClass, isExpanded && 'rotate-90')}
+                />
+              </IconButton>
+
+              {/* Completion is `task`-only: an unclassified/code row shows no checkbox,
+                just a spacer so its title stays aligned with task rows. */}
+              {isTask ? (
+                isDropTarget ? (
+                  <div aria-hidden="true" className={dropPlusClass}>
+                    <Plus size={10} strokeWidth={3} />
+                  </div>
+                ) : (
+                  <CheckboxButton
+                    onClick={() => {
+                      if (isCompleting) return;
+                      if (isCompleted) {
+                        void handleToggleUncomplete();
+                      } else {
+                        handleToggleComplete();
+                      }
+                    }}
+                    aria-label={
+                      isCompleted ? `Mark "${node.title}" active` : `Mark "${node.title}" complete`
+                    }
+                    className={cn(
+                      checkboxSizeClass,
+                      showAsComplete
+                        ? 'bg-accent-teal border-accent-teal'
+                        : checkboxIncompleteClass,
+                      // The snappy press: a quick scale overshoot the instant completion begins.
+                      isCompleting && 'animate-check-pop motion-reduce:animate-none',
+                    )}
                   >
-                    <CaptureBox
-                      parentId={node.id}
-                      folderId={node.folder_id}
-                      compact
-                      onDismiss={() => {
+                    {showAsComplete && (
+                      <Check size={10} className="text-background" strokeWidth={3} />
+                    )}
+                  </CheckboxButton>
+                ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
+                signals it will become a child here (replaces the checkbox; no animation). */
+              ) : (
+                <div className="h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
+
+              {/* Title */}
+              {isEditingTitle ? (
+                <InlineEditField
+                  value={draftTitle}
+                  onChange={setDraftTitle}
+                  onSubmit={() => {
+                    void handleSaveTitle();
+                  }}
+                  onCancel={() => {
+                    setDraftTitle(node.title);
+                    closeEditor({ itemId: node.id, kind: 'title' });
+                  }}
+                  confirmLabel="Confirm title"
+                  inputLabel="Edit title"
+                  requireValue={false}
+                  dissolveIntoGrid
+                  inputClassName={titleInputClass}
+                  confirmClassName={confirmTitleClass}
+                />
+              ) : (
+                <div
+                  // select-none: the whole row is a drag surface, so the title text is no
+                  // longer highlightable. Double-click still opens the inline title editor.
+                  className="flex-1 flex flex-col min-w-0 select-none"
+                  onDoubleClick={() => {
+                    // Reset the draft so a previously-abandoned edit doesn't resurface.
+                    setDraftTitle(node.title);
+                    openEditor({ itemId: node.id, kind: 'title' });
+                  }}
+                >
+                  <span
+                    className={cn(
+                      // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
+                      titleTextClass,
+                      // Fade to low-contrast as the row completes; a completed row reads
+                      // low-contrast; an active row full-contrast.
+                      isCompleting
+                        ? 'text-muted-foreground/50'
+                        : isCompleted
+                          ? 'text-muted-foreground'
+                          : 'text-foreground',
+                    )}
+                  >
+                    {node.title}
+                  </span>
+                  {contextLabel !== null && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
+                      <ListCheck size={10} className="shrink-0" />
+                      <span className="truncate">{contextLabel}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Type badge — shown once the item is classified (Task / Code); nothing for
+                an unclassified row. */}
+              <TypeBadge itemType={node.item_type} />
+
+              {/* Due date chip — `task`-only. */}
+              {isTask && node.due_date && !isEditingDueDate && (
+                <DueDateChip dueDate={node.due_date} onClick={handleOpenDueDateEditor} />
+              )}
+
+              {/* Recurrence chip — top-level recurring tasks only; opens the Repeat control. */}
+              {isTopLevelTask && recurrenceRule !== null && (
+                <RecurrenceChip rule={recurrenceRule} onClick={handleOpenRepeatEditor} />
+              )}
+
+              {/* Priority chip — top-level tasks with a level set; opens the Priority control. */}
+              {isTopLevelTask && isPriorityLevel(node.priority) && (
+                <PriorityChip priority={node.priority} onClick={handleOpenPriorityEditor} />
+              )}
+
+              {/* Active children count badge */}
+              {activeChildren.length > 0 && !isExpanded && (
+                <Badge variant="secondary">{activeChildren.length}</Badge>
+              )}
+
+              {/* Completed descendants count badge (all depths) — right of the active one */}
+              {completedDescendantCount > 0 && !isExpanded && (
+                <Badge
+                  variant="muted"
+                  aria-label={`${String(completedDescendantCount)} completed`}
+                  className="inline-flex items-center gap-1 text-muted-foreground/60"
+                >
+                  <Check size={10} strokeWidth={3} className="shrink-0" />
+                  {completedDescendantCount}
+                </Badge>
+              )}
+
+              {/* Row actions — visible on hover */}
+              <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
+                {/* Add subtask — `task`-only: subtasks nest only under tasks, so an
+                  unclassified/code row exposes no add-subtask affordance. */}
+                {isTask && (
+                  <IconButton
+                    size="md"
+                    tone="accent"
+                    onMouseDown={(e) => {
+                      // Prevent the browser from moving focus away from the CaptureBox input
+                      // when the toggle is pressed while the box is open. Without this, `blur`
+                      // fires and `onDismiss` closes the box before the `click` handler runs,
+                      // making the handler see showAddSubtask=false and re-open instead of close.
+                      if (showAddSubtask) e.preventDefault();
+                    }}
+                    onClick={() => {
+                      if (showAddSubtask) {
                         closeEditor({ itemId: node.id, kind: 'subtask' });
-                      }}
-                    />
-                  </li>
+                      } else {
+                        openEditor({ itemId: node.id, kind: 'subtask' });
+                        // The inline add-subtask form renders inside the subtree, so expand it.
+                        expandSubtasks(node.id);
+                      }
+                    }}
+                    aria-label="Add subtask"
+                  >
+                    <Plus size={12} />
+                  </IconButton>
                 )}
 
-                {/* Active child rows */}
-                {activeChildren.map((child) => (
-                  <TaskRow
-                    key={child.id}
-                    node={child}
-                    depth={depth + 1}
-                    isCompletedView={isCompletedView}
-                  />
-                ))}
+                {/* More actions dropdown — all visibility conditionals live inside it. */}
+                <TaskRowMenu
+                  isUnclassified={isUnclassified}
+                  isCode={isCode}
+                  canConvert={canConvert}
+                  isTask={isTask}
+                  hasDueDate={node.due_date !== null}
+                  hasNotes={node.notes !== null}
+                  hasPriority={node.priority !== null}
+                  folders={folders}
+                  onClassify={(itemType) => {
+                    void handleClassify(itemType);
+                  }}
+                  onOpenGate={() => {
+                    setShowGate(true);
+                  }}
+                  onSetDueDate={handleOpenDueDateEditor}
+                  onEditNotes={handleOpenNotesEditor}
+                  onSetPriority={handleOpenPriorityEditor}
+                  onMoveToFolder={(targetFolderId) => {
+                    void handleMoveToFolder(targetFolderId);
+                  }}
+                  onDelete={() => {
+                    void handleDelete();
+                  }}
+                />
+              </div>
+            </div>
 
-                {/* Completed children — revealed by the toggle with the same grid-rows
-                    animation as the parent's own expand. The toggle sits at the bottom. */}
-                {completedChildren.length > 0 && (
-                  <li className="list-none">
-                    <AnimatedHeightCollapse
-                      open={showCompleted}
-                      className={cn(
-                        'transition-opacity motion-reduce:transition-none',
-                        showCompleted
-                          ? 'opacity-100 duration-200 delay-75'
-                          : 'opacity-0 duration-100',
-                      )}
-                    >
-                      <ul aria-label="Completed subtasks">
-                        {completedChildren.map((child) => (
-                          <TaskRow
-                            key={child.id}
-                            node={child}
-                            depth={depth + 1}
-                            isCompletedView={isCompletedView}
-                          />
-                        ))}
-                      </ul>
-                    </AnimatedHeightCollapse>
+            {/* Inline meta panel (due date + notes) — opens when requested */}
+            {isMetaOpen && (
+              <TaskMetaPanel
+                node={node}
+                isTask={isTask}
+                metaLeft={metaIndentLeft}
+                showRepeat={isTopLevelTask}
+                recurrence={recurrenceRule}
+                onChangeRecurrence={(rule, anchorDate) => {
+                  void handleSaveRecurrence(rule, anchorDate);
+                }}
+                priority={node.priority}
+                onSavePriority={(next) => {
+                  void handleSavePriority(next);
+                }}
+                isEditingDueDate={isEditingDueDate}
+                draftDueDate={draftDueDate}
+                onDraftDueDateChange={setDraftDueDate}
+                onSaveDueDate={() => {
+                  void handleSaveDueDate();
+                }}
+                onBeginEditDueDate={() => {
+                  setIsEditingDueDate(true);
+                }}
+                onCancelDueDate={() => {
+                  setIsEditingDueDate(false);
+                  setDraftDueDate(node.due_date ?? '');
+                }}
+                isEditingNotes={isEditingNotes}
+                draftNotes={draftNotes}
+                onDraftNotesChange={setDraftNotes}
+                onSaveNotes={() => {
+                  void handleSaveNotes();
+                }}
+                onBeginEditNotes={() => {
+                  setIsEditingNotes(true);
+                }}
+                onCancelNotes={() => {
+                  setIsEditingNotes(false);
+                  setDraftNotes(node.notes ?? '');
+                }}
+                onClose={handleCloseMeta}
+              />
+            )}
 
-                    <div
-                      className="py-1"
-                      style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+            {/* Children — grid-rows trick gives a CSS-only height transition from 0fr→1fr */}
+            {(hasChildren || showAddSubtask) && (
+              <AnimatedHeightCollapse
+                open={isExpanded}
+                className={cn(
+                  'transition-opacity motion-reduce:transition-none',
+                  isExpanded ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
+                )}
+              >
+                <ul aria-label="Subtasks">
+                  {/* Add subtask inline form */}
+                  {showAddSubtask && (
+                    <li
+                      className="list-none py-1"
+                      style={{ paddingLeft: `${String((depth + 1) * 1.25 + 2.5)}rem` }}
                     >
-                      <DisclosureToggle
-                        variant="inline"
-                        onClick={() => {
-                          toggleCompleted(node.id);
+                      <CaptureBox
+                        parentId={node.id}
+                        folderId={node.folder_id}
+                        compact
+                        onDismiss={() => {
+                          closeEditor({ itemId: node.id, kind: 'subtask' });
                         }}
-                        aria-expanded={showCompleted}
+                      />
+                    </li>
+                  )}
+
+                  {/* Active child rows */}
+                  {activeChildren.map((child) => (
+                    <TaskRow
+                      key={child.id}
+                      node={child}
+                      depth={depth + 1}
+                      isCompletedView={isCompletedView}
+                    />
+                  ))}
+
+                  {/* Completed children — revealed by the toggle with the same grid-rows
+                    animation as the parent's own expand. The toggle sits at the bottom. */}
+                  {completedChildren.length > 0 && (
+                    <li className="list-none">
+                      <AnimatedHeightCollapse
+                        open={showCompleted}
+                        className={cn(
+                          'transition-opacity motion-reduce:transition-none',
+                          showCompleted
+                            ? 'opacity-100 duration-200 delay-75'
+                            : 'opacity-0 duration-100',
+                        )}
                       >
-                        {showCompleted
-                          ? 'Hide completed'
-                          : `Show completed (${String(completedChildren.length)})`}
-                      </DisclosureToggle>
-                    </div>
-                  </li>
-                )}
-              </ul>
-            </AnimatedHeightCollapse>
-          )}
+                        <ul aria-label="Completed subtasks">
+                          {completedChildren.map((child) => (
+                            <TaskRow
+                              key={child.id}
+                              node={child}
+                              depth={depth + 1}
+                              isCompletedView={isCompletedView}
+                            />
+                          ))}
+                        </ul>
+                      </AnimatedHeightCollapse>
+
+                      <div
+                        className="py-1"
+                        style={{ paddingLeft: `${String((depth + 1) * 1.25 + 0.75)}rem` }}
+                      >
+                        <DisclosureToggle
+                          variant="inline"
+                          onClick={() => {
+                            toggleCompleted(node.id);
+                          }}
+                          aria-expanded={showCompleted}
+                        >
+                          {showCompleted
+                            ? 'Hide completed'
+                            : `Show completed (${String(completedChildren.length)})`}
+                        </DisclosureToggle>
+                      </div>
+                    </li>
+                  )}
+                </ul>
+              </AnimatedHeightCollapse>
+            )}
+          </div>
         </div>
-      </div>
+      </AnimatedHeightEnter>
 
       {/* Cascade completion modal */}
       <CascadeModal
