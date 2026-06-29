@@ -775,6 +775,75 @@ describe('classifyItem', () => {
 });
 
 // ---------------------------------------------------------------------------
+// bulkClassify — fan the per-item classify route out over a whole set, settling
+// each independently so a partial failure rolls back only the failed items.
+// ---------------------------------------------------------------------------
+
+describe('bulkClassify', () => {
+  const a = item({ id: 'a', item_type: 'unclassified' });
+  const b = item({ id: 'b', item_type: 'unclassified' });
+
+  it('patches item_type on the whole set optimistically before the requests resolve', () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([a, b]) });
+
+    act(() => {
+      void result.current.actions.bulkClassify(['a', 'b'], 'task');
+    });
+
+    expect(result.current.tasks.every((t) => t.item_type === 'task')).toBe(true);
+  });
+
+  it('calls the API per id and reconciles with each server row, resolving with no failures', async () => {
+    mockUpdateItem.mockImplementation((id) => Promise.resolve(item({ id, item_type: 'task' })));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([a, b]) });
+
+    let failed: string[] = ['sentinel'];
+    await act(async () => {
+      failed = await result.current.actions.bulkClassify(['a', 'b'], 'task');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('a', { item_type: 'task' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('b', { item_type: 'task' });
+    expect(result.current.tasks.every((t) => t.item_type === 'task')).toBe(true);
+    expect(failed).toEqual([]);
+  });
+
+  it('leaves saved items applied, rolls back only the failed one, and reports it', async () => {
+    // 'a' saves, 'b' fails — a partial failure.
+    mockUpdateItem.mockImplementation((id) =>
+      id === 'b'
+        ? Promise.reject(new Error('network'))
+        : Promise.resolve(item({ id, item_type: 'code' })),
+    );
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([a, b]) });
+
+    let failed: string[] = [];
+    await act(async () => {
+      failed = await result.current.actions.bulkClassify(['a', 'b'], 'code');
+    });
+
+    const byId = Object.fromEntries(result.current.tasks.map((t) => [t.id, t.item_type]));
+    expect(byId['a']).toBe('code'); // saved stays applied
+    expect(byId['b']).toBe('unclassified'); // failed rolls back
+    expect(failed).toEqual(['b']);
+    expect(mockShowToast).toHaveBeenCalledWith("1 of 2 couldn't be classified");
+  });
+
+  it('is a no-op (no API call) when no id is in the store', async () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([a]) });
+
+    let failed: string[] = ['sentinel'];
+    await act(async () => {
+      failed = await result.current.actions.bulkClassify(['ghost'], 'task');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(failed).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // moveTask (cascades) + deleteTask (cascades)
 // ---------------------------------------------------------------------------
 
@@ -835,6 +904,86 @@ describe('moveTask', () => {
 
     // Both items must be restored to 'old-folder'
     expect(result.current.tasks.every((t) => t.folder_id === 'old-folder')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bulkMove — file a set of tasks (each cascading its subtree) into one folder,
+// settling each root independently so a partial failure leaves the rest filed.
+// ---------------------------------------------------------------------------
+
+describe('bulkMove', () => {
+  it('moves every selected root and its subtree, resolving with no failures', async () => {
+    mockUpdateItem.mockImplementation((id) => Promise.resolve(item({ id, folder_id: 'folder-2' })));
+    const root1 = item({ id: 'r1' });
+    const child = item({ id: 'c1', parent_id: 'r1' });
+    const root2 = item({ id: 'r2' });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([root1, child, root2]),
+    });
+
+    let failed: string[] = ['sentinel'];
+    await act(async () => {
+      failed = await result.current.actions.bulkMove(['r1', 'r2'], 'folder-2');
+    });
+
+    expect(result.current.tasks.every((t) => t.folder_id === 'folder-2')).toBe(true);
+    expect(mockUpdateItem).toHaveBeenCalledWith('c1', { folder_id: 'folder-2' });
+    expect(failed).toEqual([]);
+  });
+
+  it('uses moveToInbox for each item when filing back to the Inbox (null target)', async () => {
+    mockMoveToInbox.mockImplementation((id) => Promise.resolve(item({ id, folder_id: null })));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'r1', folder_id: 'folder-9' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.bulkMove(['r1'], null);
+    });
+
+    expect(mockMoveToInbox).toHaveBeenCalledWith('r1');
+  });
+
+  it('rolls back only the failed root, leaving the filed one applied, and reports it', async () => {
+    // r1 files into folder-2; r2 fails and snaps back to its original folder.
+    mockUpdateItem.mockImplementation((id) =>
+      id === 'r2'
+        ? Promise.reject(new Error('network'))
+        : Promise.resolve(item({ id, folder_id: 'folder-2' })),
+    );
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({ id: 'r1', folder_id: null }),
+        item({ id: 'r2', folder_id: null }),
+      ]),
+    });
+
+    let failed: string[] = [];
+    await act(async () => {
+      failed = await result.current.actions.bulkMove(['r1', 'r2'], 'folder-2');
+    });
+
+    const byId = Object.fromEntries(result.current.tasks.map((t) => [t.id, t.folder_id]));
+    expect(byId['r1']).toBe('folder-2'); // filed stays applied
+    expect(byId['r2']).toBe(null); // failed rolls back to the Inbox
+    expect(failed).toEqual(['r2']);
+    expect(mockShowToast).toHaveBeenCalledWith("1 of 2 couldn't be filed");
+  });
+
+  it('is a no-op (no API call) when no id is in the store', async () => {
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'r1' })]),
+    });
+
+    let failed: string[] = ['sentinel'];
+    await act(async () => {
+      failed = await result.current.actions.bulkMove(['ghost'], 'folder-2');
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(mockMoveToInbox).not.toHaveBeenCalled();
+    expect(failed).toEqual([]);
   });
 });
 

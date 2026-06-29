@@ -76,7 +76,7 @@ function renderGate(
         <GateDialog
           open
           onOpenChange={onOpenChange}
-          item={overrides.item ?? ITEM}
+          items={overrides.items ?? [ITEM]}
           onComplete={onComplete}
         />
       </CodeProvider>
@@ -133,11 +133,40 @@ describe('GateDialog', () => {
     await waitFor(() => {
       expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1');
     });
-    // onComplete gets the flattened, reconciled CodeStory (carrying the allocated ref), not
-    // the raw sidecar.
-    expect(onComplete).toHaveBeenCalledWith(
+    // onComplete gets the batch of flattened, reconciled CodeStories (carrying the allocated
+    // ref), not the raw sidecar. A single-item send yields a one-element array.
+    expect(onComplete).toHaveBeenCalledWith([
       expect.objectContaining({ item_id: 'item-1', ref: 'ALF-42' }),
+    ]);
+  });
+
+  it('admits a batch under one project + epic and fires onComplete with every story', async () => {
+    mockEnterCodeModule.mockImplementation((itemId: string) =>
+      Promise.resolve({ ...SIDECAR, item_id: itemId, ref: `ALF-${itemId}` }),
     );
+    const user = userEvent.setup();
+    const { onComplete } = renderGate({
+      items: [
+        { id: 'i1', title: 'First capture', notes: null, source_url: null },
+        { id: 'i2', title: 'Second capture', notes: null, source_url: null },
+      ],
+    });
+
+    // Pluralized copy reflects the count.
+    expect(screen.getByText(/assign these/i)).toHaveTextContent('2 items');
+
+    await user.click(await screen.findByRole('option', { name: /alfred/i }));
+    await user.click(await screen.findByRole('option', { name: /communication firewall/i }));
+    await user.click(screen.getByRole('button', { name: /send to code module/i }));
+
+    await waitFor(() => {
+      expect(mockEnterCodeModule).toHaveBeenCalledWith('i1', 'p1', 'e1');
+    });
+    expect(mockEnterCodeModule).toHaveBeenCalledWith('i2', 'p1', 'e1');
+    expect(onComplete).toHaveBeenCalledWith([
+      expect.objectContaining({ item_id: 'i1' }),
+      expect.objectContaining({ item_id: 'i2' }),
+    ]);
   });
 
   describe('New project sub-dialog', () => {

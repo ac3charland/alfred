@@ -25,13 +25,17 @@ export interface GateItem {
 interface GateDialogProperties {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The inbox/task row being sent into the factory. */
-  item: GateItem;
   /**
-   * Called with the created code story after a successful gate. The caller (task-row)
-   * removes the gated item from the tasks store and toasts the allocated ref.
+   * The inbox/task row(s) being sent into the factory. A single-row caller passes a
+   * one-element array; the Inbox bulk bar passes the whole selection — one project + epic
+   * admits every item.
    */
-  onComplete: (story: CodeStory) => void;
+  items: GateItem[];
+  /**
+   * Called with the created code stories after a successful gate. The caller removes the
+   * gated items from the tasks store and toasts the outcome.
+   */
+  onComplete: (stories: CodeStory[]) => void;
 }
 
 /** One selectable option in a combobox-style list (a project or an epic). */
@@ -87,7 +91,7 @@ function AddNewRow({ label, onClick }: { label: string; onClick: () => void }) {
  * lists straight from the store and routes its creates + the gated story through
  * `useCodeActions` — no local fetch, and the new story lands on the board with no refetch.
  */
-function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties, 'open'>) {
+function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties, 'open'>) {
   const projects = useProjects();
   const epics = useEpics();
   const { createProject, createEpic, convertTaskToCode } = useCodeActions();
@@ -104,11 +108,13 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
     isPending: isConfirming,
     submit: handleConfirm,
   } = useFormSubmit({
-    // Route through the store so the optimistic card lands on the board with no refetch.
+    // Route through the store so the optimistic card(s) land on the board with no refetch.
     // The button is disabled until both ids are set, so the assertions hold when it runs.
-    onSubmit: () => convertTaskToCode(item, projectId ?? '', epicId ?? ''),
-    onSuccess: (story) => {
-      onComplete(story);
+    // One project + epic for the whole batch; a single-item caller just passes [item].
+    onSubmit: () =>
+      Promise.all(items.map((it) => convertTaskToCode(it, projectId ?? '', epicId ?? ''))),
+    onSuccess: (stories) => {
+      onComplete(stories);
       onOpenChange(false);
     },
     errorMessage: 'Could not send to the Code module. Try again.',
@@ -140,8 +146,19 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
         Send to Code module
       </DialogTitle>
       <DialogDescription className="mt-1 text-sm text-muted-foreground">
-        Assign <span className="font-medium text-foreground">&ldquo;{item.title}&rdquo;</span> to a
-        project and epic. It will leave your tasks and enter the factory at Needs Refinement.
+        {items.length === 1 ? (
+          <>
+            Assign{' '}
+            <span className="font-medium text-foreground">&ldquo;{items[0]?.title}&rdquo;</span> to
+            a project and epic. It will leave your tasks and enter the factory at Needs Refinement.
+          </>
+        ) : (
+          <>
+            Assign these <span className="font-medium text-foreground">{items.length} items</span>{' '}
+            to a project and epic. They will leave your tasks and enter the factory at Needs
+            Refinement.
+          </>
+        )}
       </DialogDescription>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
@@ -268,7 +285,7 @@ function GateForm({ item, onOpenChange, onComplete }: Omit<GateDialogProperties,
  * gated story through `useCodeActions`, so the new card lands on the board with no refetch
  * after a (now client-side) module switch. See the data-flow skill.
  */
-export function GateDialog({ open, onOpenChange, item, onComplete }: GateDialogProperties) {
+export function GateDialog({ open, onOpenChange, items, onComplete }: GateDialogProperties) {
   return (
     <FormDialog
       open={open}
@@ -276,7 +293,7 @@ export function GateDialog({ open, onOpenChange, item, onComplete }: GateDialogP
       maxWidth="lg"
       className="flex max-h-[85vh] flex-col"
     >
-      <GateForm item={item} onOpenChange={onOpenChange} onComplete={onComplete} />
+      <GateForm items={items} onOpenChange={onOpenChange} onComplete={onComplete} />
     </FormDialog>
   );
 }

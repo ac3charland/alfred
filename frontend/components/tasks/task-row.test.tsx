@@ -3539,3 +3539,62 @@ describe('TaskRow — recurrence', () => {
     });
   });
 });
+
+/**
+ * The capture entrance (ALF-20): a freshly-added row animates in — its height expands from 0,
+ * pushing the rows below it down, while its content fades and slides in from above. The trigger
+ * is the optimistic temp id every just-inserted row carries until the server reconcile swaps it
+ * for the real id, so server-seeded rows (a page load, a view switch) never animate.
+ */
+/**
+ * A row's OWN entrance wrapper (a direct child of its <li>), or null when the row is not
+ * animating in. Scoped to `:scope >` so a parent doesn't match a nested subtask's wrapper.
+ */
+function entranceWrapperFor(title: string): HTMLElement | null {
+  const li = screen.getByText(title).closest('li');
+  if (!li) throw new Error('task row <li> not found');
+  return li.querySelector<HTMLElement>(':scope > [data-testid="animated-height-enter"]');
+}
+
+describe('TaskRow entrance animation', () => {
+  const TEMP_ITEM: Item = {
+    ...BASE_ITEM,
+    id: 'temp-abc',
+    title: 'Just captured',
+    item_type: 'unclassified',
+  };
+
+  it('wraps a freshly-added (temp-id) row in the height-expand entrance', () => {
+    renderTasks([TEMP_ITEM]);
+    const wrapper = entranceWrapperFor('Just captured');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toHaveClass('animate-expand-y', 'motion-reduce:animate-none');
+  });
+
+  it('does not animate a server-seeded (real-id) row', () => {
+    renderTasks([BASE_ITEM]);
+    expect(entranceWrapperFor('Write tests')).toBeNull();
+  });
+
+  it('animates a freshly-added subtask but not its already-present siblings', () => {
+    const parent: Item = { ...BASE_ITEM, id: 'parent-1', title: 'Parent' };
+    const existingChild: Item = {
+      ...CHILD_ITEM,
+      id: 'child-real',
+      title: 'Existing subtask',
+      parent_id: 'parent-1',
+    };
+    const newChild: Item = {
+      ...CHILD_ITEM,
+      id: 'temp-child',
+      title: 'New subtask',
+      parent_id: 'parent-1',
+      created_at: '2025-01-01T12:00:00Z',
+    };
+    renderTasks([parent, existingChild, newChild]);
+
+    expect(entranceWrapperFor('New subtask')).not.toBeNull();
+    expect(entranceWrapperFor('Existing subtask')).toBeNull();
+    expect(entranceWrapperFor('Parent')).toBeNull();
+  });
+});

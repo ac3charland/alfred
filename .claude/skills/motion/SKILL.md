@@ -110,6 +110,7 @@ Content is conditionally rendered ({open && <X/>})?
 | **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
 | **Animate a list whose rows _reorder_** (a DOM sibling reorder, e.g. a priority re-rank) | The FLIP `useFlipList` hook (below) | CSS can't transition a sibling reorder on its own. FLIP measures before/after rects and glides each row. Gate on reduced motion (rows snap). |
+| **Animate a brand-new row _entering_ a visible list** (a capture, a new subtask) | `AnimatedHeightEnter`, keyed on the optimistic temp id (the row-entrance pattern below) | Height expands `0fr → 1fr` (pushing the rows below down) + content fades/slides from above. Keyframes, so they play once on mount; the temp→server-id reconcile remounts the row and ends the one-shot. |
 
 ---
 
@@ -298,6 +299,32 @@ await expect(page.getByRole('list', { name: 'Subtasks' })).not.toBeVisible();
 ```
 
 ---
+
+## The row-entrance pattern (animate an optimistically-inserted row in)
+
+When the user adds a row to a *visible* list — a captured inbox item, a new subtask — it
+should grow in and push the rows below it down, not pop into place. Use
+`components/atoms/animated-height-enter.tsx` (`AnimatedHeightEnter`): an outer `grid` running
+`animate-expand-y` (`grid-template-rows: 0fr → 1fr`, so the row's own height pushes its
+siblings down) wraps an inner `overflow-hidden` clip and a fade + `slide-in-from-top-2` (the
+content drops in from above). Both are **keyframes**, so they fire once on mount and never
+replay on a re-render. Used by `task-row.tsx`.
+
+- **Trigger on the optimistic temp id** (`isTempId(node.id)`), not a mount or a render-diff.
+  A row carries a temp id only between its store insert and the server reconcile, so exactly
+  the freshly-added rows animate — a server-seeded row (page load, view switch) already has
+  its real id and stays still. This buys "only when the list is visible" for free: an
+  unmounted list never plays it.
+- **The reconcile remount snaps to rest — that's the intended degradation, not a bug to
+  engineer around.** Reconcile `replace`s the temp id with the server id, changing the React
+  key, so the row remounts *without* the wrapper (its real id isn't a temp id); if the server
+  answers mid-animation the row settles to full height. Don't try to carry the entrance across
+  the remount with a transferred "still-entering" flag — a fresh keyframe on the remounted
+  element **restarts from 0fr** (a worse jump than the snap). Snap-to-final is the better
+  failure mode, and slowing the create response is how a demo capture keeps the full entrance
+  on screen.
+- **Reduced motion:** `motion-reduce:animate-none` on both layers leaves the row at rest;
+  nothing to strand, since removal isn't `animationend`-driven (unlike the reveal/collapse).
 
 ## The FLIP list-reorder pattern (animate a sibling reorder)
 

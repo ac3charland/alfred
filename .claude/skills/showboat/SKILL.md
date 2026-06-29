@@ -260,10 +260,13 @@ login page.
 
 Write a throwaway capture spec under `frontend/e2e/` — it runs inside the harness
 that boots the mock, the Next server, and the logged-in `storageState`, and seeds
-per test:
+per test. **Name it `*.spec.ts`**, not bare `.ts`: the Playwright project's `testMatch`
+only picks up `*.spec.ts`, so a `capture.flow.ts` runs as "No tests found". (The
+`node --import tsx/esm` capture script above is the exception — it bypasses Playwright,
+so its name is free.) Delete it before pushing so the real suite doesn't run it.
 
 ```ts
-// e2e/capture.flow.ts  (delete after capturing; don't commit the spec)
+// e2e/capture-flow.spec.ts  (delete after capturing; don't commit the spec)
 import { makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
@@ -278,7 +281,7 @@ test('capture: complete-a-task flow', async ({ page, seed }) => {
 });
 ```
 
-Run it through the harness (`npm run test:e2e -w frontend -- capture.flow.ts`),
+Run it through the harness (`npm run test:e2e -w frontend -- capture-flow.spec.ts`),
 then embed each shot with `npm run demo -- image`. **Look at every PNG** (Read it)
 before embedding.
 
@@ -308,7 +311,7 @@ When you do record a video, **scope it to just the animation and keep the file
 tiny**:
 
 ```ts
-// e2e/capture.anim.ts  (delete after capturing)
+// e2e/capture-anim.spec.ts  (delete after capturing; must be *.spec.ts — see above)
 import { makeItem } from './support/constants';
 import { test } from './support/fixtures';
 

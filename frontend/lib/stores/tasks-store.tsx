@@ -87,6 +87,22 @@ interface TaskActions {
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
   /**
+   * Bulk inbox-triage: classify a set of items by flipping each one's `item_type`. One
+   * optimistic patch over the whole set, then the existing per-item route fanned out with
+   * `Promise.allSettled` so a failure on one item doesn't abort the rest — saved items stay
+   * applied, failed items roll back individually, and a toast reports the count that failed.
+   * Resolves with the ids that FAILED (empty = full success), so the caller can keep just
+   * those selected for a retry.
+   */
+  bulkClassify: (ids: string[], itemType: 'task' | 'code') => Promise<string[]>;
+  /**
+   * Bulk move: file a set of tasks (each cascading its subtree) into a folder, or back to the
+   * Inbox when null. Each selected root is moved atomically (its whole subtree succeeds or
+   * rolls back together), and roots are settled independently so a partial failure leaves the
+   * rest filed. Resolves with the root ids that FAILED (empty = full success).
+   */
+  bulkMove: (ids: string[], folderId: string | null) => Promise<string[]>;
+  /**
    * Re-parent a task. With a `newParentId`, nest it under that task and have its whole
    * subtree adopt the new parent's folder (a subtree shares one folder bucket). With
    * `null`, promote it to a top-level task (clear `parent_id`, keep its current folder).
@@ -111,6 +127,46 @@ type TaskAction = SimpleAction<Item>;
 /** Pure reducer over the flat item list — the generic five-move store reducer. */
 export function tasksReducer(state: Item[], action: TaskAction): Item[] {
   return simpleReducer(state, action, 'task action');
+}
+
+/** One unit of a bulk operation: a selected root, the rows to restore if it fails, and its request. */
+interface BulkUnit {
+  /** The selected root id — reported back when this unit fails (for retry). */
+  id: string;
+  /** The rows to re-apply if the request rejects (the root, or its whole subtree). */
+  snapshot: Item[];
+  /** The API work for this unit; resolves to the server rows to reconcile. */
+  request: () => Promise<Item[]>;
+}
+
+/**
+ * Fan a bulk operation's per-unit requests out with `Promise.allSettled`, then in one upsert
+ * apply the server rows for units that succeeded and re-apply the captured snapshot for units
+ * that failed (a per-unit rollback). Toasts the count that failed and returns the failed ids.
+ * The optimistic patch is the caller's — this owns only the settle/reconcile step.
+ */
+async function applyBulkSettled(
+  dispatch: React.Dispatch<TaskAction>,
+  showToast: (message: string) => void,
+  units: BulkUnit[],
+  failureMessage: (failed: number, total: number) => string,
+): Promise<string[]> {
+  const results = await Promise.allSettled(units.map((unit) => unit.request()));
+  const reconciled: Item[] = [];
+  const failedIds: string[] = [];
+  for (const [index, result] of results.entries()) {
+    const unit = units[index];
+    if (unit === undefined) continue;
+    if (result.status === 'fulfilled') {
+      reconciled.push(...result.value);
+    } else {
+      failedIds.push(unit.id);
+      reconciled.push(...unit.snapshot);
+    }
+  }
+  if (reconciled.length > 0) dispatch({ type: 'upsert', items: reconciled });
+  if (failedIds.length > 0) showToast(failureMessage(failedIds.length, units.length));
+  return failedIds;
 }
 
 const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
@@ -310,6 +366,68 @@ export function TasksProvider({
             showToastRef.current("Couldn't move task");
           },
         });
+      },
+      async bulkClassify(ids, itemType) {
+        const current = tasksRef.current;
+        const byId = new Map(current.map((row) => [row.id, row] as const));
+        // An unclassified item is always a leaf (subtasks nest only under tasks), so each
+        // selected id is its own unit — no subtree to gather.
+        const units: BulkUnit[] = ids.flatMap((id) => {
+          const previous = byId.get(id);
+          if (previous === undefined) return [];
+          return [
+            {
+              id,
+              snapshot: [previous],
+              request: () => api.updateItem(id, { item_type: itemType }).then((row) => [row]),
+            },
+          ];
+        });
+        if (units.length === 0) return [];
+        // One optimistic patch over the whole set, then settle + per-unit reconcile/rollback.
+        dispatch({
+          type: 'patch',
+          ids: units.map((unit) => unit.id),
+          patch: { item_type: itemType },
+        });
+        return applyBulkSettled(
+          dispatch,
+          showToastRef.current,
+          units,
+          (failed, total) => `${String(failed)} of ${String(total)} couldn't be classified`,
+        );
+      },
+      async bulkMove(ids, folderId) {
+        const current = tasksRef.current;
+        // Each selected root carries its subtree: file the whole subtree together, and roll
+        // the whole subtree back if any of its rows fails (matching single-item moveTask).
+        const units: BulkUnit[] = ids.flatMap((id) => {
+          const subtree = collectSubtree(current, id);
+          if (subtree.length === 0) return [];
+          return [
+            {
+              id,
+              snapshot: subtree,
+              request: () =>
+                Promise.all(
+                  subtree.map((row) =>
+                    folderId === null
+                      ? api.moveToInbox(row.id)
+                      : api.updateItem(row.id, { folder_id: folderId }),
+                  ),
+                ),
+            },
+          ];
+        });
+        if (units.length === 0) return [];
+        const affectedIds = units.flatMap((unit) => unit.snapshot.map((row) => row.id));
+        dispatch({ type: 'patch', ids: affectedIds, patch: { folder_id: folderId } });
+        return applyBulkSettled(
+          dispatch,
+          showToastRef.current,
+          units,
+          (failed, total) => `${String(failed)} of ${String(total)} couldn't be filed`,
+        );
       },
       async reparentTask(id, newParentId) {
         const current = tasksRef.current;

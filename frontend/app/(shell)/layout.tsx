@@ -10,6 +10,7 @@ import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
+import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
@@ -53,15 +54,17 @@ export default async function ShellLayout({ children }: { children: React.ReactN
           <TaskDndProvider>
             <ActiveEditorProvider>
               <ExpansionProvider>
-                <CodeProvider
-                  initialProjects={projects}
-                  initialEpics={epics}
-                  initialStories={stories}
-                >
-                  <SearchProvider>
-                    <AppShell>{children}</AppShell>
-                  </SearchProvider>
-                </CodeProvider>
+                <InboxSelectionProvider>
+                  <CodeProvider
+                    initialProjects={projects}
+                    initialEpics={epics}
+                    initialStories={stories}
+                  >
+                    <SearchProvider>
+                      <AppShell>{children}</AppShell>
+                    </SearchProvider>
+                  </CodeProvider>
+                </InboxSelectionProvider>
               </ExpansionProvider>
             </ActiveEditorProvider>
           </TaskDndProvider>
