@@ -737,6 +737,35 @@ describe('code-store', () => {
           expect(lane?.stories.map((s) => s.title)).toEqual(['Pending']);
         });
       });
+
+      it('lands the gated card at the top of the backlog (ALF-71)', async () => {
+        mockEnterCodeModule.mockImplementation(() => new Promise(() => {}));
+        const existing = [
+          makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 }),
+          makeStory('old-2', 'e1', 'p1', { ref: 'ALF-8', priority: 8 }),
+        ];
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: existing }) },
+        );
+
+        act(() => {
+          void result.current.actions.convertTaskToCode(
+            { id: 'task-1', title: 'Gated', notes: null, source_url: null },
+            'p1',
+            'e1',
+          );
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog[0]?.title).toBe('Gated');
+        });
+        // The gated story outranks every pre-existing one (lower number = higher rank).
+        expect(result.current.backlog[0]?.priority).toBeLessThan(5);
+      });
     });
 
     describe('createStory (new story from the board)', () => {
@@ -823,6 +852,38 @@ describe('code-store', () => {
           (l) => l.state === 'needs_refinement',
         );
         expect(lane?.stories).toEqual([]);
+      });
+
+      it('lands the optimistic card at the top of the backlog (ALF-71)', async () => {
+        // A never-resolving call keeps the optimistic card in flight so we read its placement
+        // before the server priority reconciles.
+        mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+        const existing = [
+          makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 }),
+          makeStory('old-2', 'e1', 'p1', { ref: 'ALF-8', priority: 8 }),
+        ];
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: existing }) },
+        );
+
+        act(() => {
+          void result.current.actions.createStory('e1', 'Newest story', null);
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog[0]?.title).toBe('Newest story');
+        });
+        // It outranks every pre-existing story (lower priority number = higher rank).
+        expect(result.current.backlog[0]?.priority).toBeLessThan(5);
+        expect(result.current.backlog.map((s) => s.priority?.toString())).toEqual([
+          result.current.backlog[0]?.priority?.toString(),
+          '5',
+          '8',
+        ]);
       });
 
       it('throws (and does not call the api) when the epic is not in the store', async () => {
