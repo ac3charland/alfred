@@ -79,4 +79,38 @@ describe('ToastViewport', () => {
 
     expect(mockDismissToast).toHaveBeenCalledWith('x');
   });
+
+  it('renders the message as a link when the toast has an href', () => {
+    mockQueue = [makeToast({ message: 'Created ALF-42', href: '/code/p1?story=ALF-42' })];
+    render(<ToastViewport />);
+
+    expect(screen.getByRole('link', { name: 'Created ALF-42' })).toHaveAttribute(
+      'href',
+      '/code/p1?story=ALF-42',
+    );
+  });
+
+  it('renders a plain, non-link message when the toast has no href', () => {
+    mockQueue = [makeToast({ message: 'Created ALF-42' })];
+    render(<ToastViewport />);
+
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText('Created ALF-42')).toBeInTheDocument();
+  });
+
+  it('navigates client-side and dismisses when the link is clicked', async () => {
+    const user = userEvent.setup();
+    // ViewLink drives navigation through history.pushState; stub it so jsdom history is untouched.
+    const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+    mockQueue = [
+      makeToast({ id: 'link1', message: 'Created ALF-42', href: '/code/p1?story=ALF-42' }),
+    ];
+    render(<ToastViewport />);
+
+    await user.click(screen.getByRole('link', { name: 'Created ALF-42' }));
+
+    expect(pushState).toHaveBeenCalledWith(null, '', '/code/p1?story=ALF-42');
+    expect(mockDismissToast).toHaveBeenCalledWith('link1');
+    pushState.mockRestore();
+  });
 });

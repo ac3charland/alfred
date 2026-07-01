@@ -68,6 +68,31 @@ describe('ToastProvider', () => {
     });
   });
 
+  describe('href', () => {
+    it('stores an href when passed, making the toast a clickable nav target', () => {
+      const { result } = renderHook(useToastTest, { wrapper: Wrapper });
+
+      act(() => {
+        result.current.actions.showToast('Created ALF-42', 'default', '/code/p1?story=ALF-42');
+      });
+
+      expect(result.current.toasts[0]).toMatchObject({
+        message: 'Created ALF-42',
+        href: '/code/p1?story=ALF-42',
+      });
+    });
+
+    it('leaves href absent when none is passed', () => {
+      const { result } = renderHook(useToastTest, { wrapper: Wrapper });
+
+      act(() => {
+        result.current.actions.showToast('Created ALF-42');
+      });
+
+      expect(result.current.toasts[0]?.href).toBeUndefined();
+    });
+  });
+
   describe('sound', () => {
     it('plays the chime once for an emphasis toast', () => {
       const { result } = renderHook(useToastTest, { wrapper: Wrapper });

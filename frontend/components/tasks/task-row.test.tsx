@@ -2307,8 +2307,11 @@ describe('TaskRow — classification & type-gating', () => {
       await user.click(await within(dialog).findByRole('option', { name: /firewall/i }));
       await user.click(within(dialog).getByRole('button', { name: /send to code module/i }));
 
-      // The toast announces the new ref…
-      expect(await screen.findByText('Created ALF-42')).toBeInTheDocument();
+      // The toast announces the new ref and deep-links to the story's board modal…
+      expect(await screen.findByRole('link', { name: 'Created ALF-42' })).toHaveAttribute(
+        'href',
+        '/code/p1?story=ALF-42',
+      );
       // …and the gated item has left the inbox view (removed from the store).
       await waitFor(() => {
         expect(screen.queryByText('Write tests')).not.toBeInTheDocument();

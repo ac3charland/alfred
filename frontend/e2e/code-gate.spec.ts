@@ -167,3 +167,66 @@ test('Convert to Code Story on a task → it leaves Tasks and lands on the board
   await expect(needsRefinement.getByText('ALF-5')).toBeVisible();
   await expect(needsRefinement.getByText('Refactor the parser')).toBeVisible();
 });
+
+test('the "Created …" toast is clickable and deep-links to the new story (ALF-68)', async ({
+  page,
+  seed,
+}) => {
+  // Seed a project + epic so the gate is a single selection and the created ref is deterministic
+  // (ref_seq 4 → ALF-5). We know the project id, so we can assert the toast's deep-link target.
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  const epicId = '22222222-2222-4222-8222-222222222222';
+  await seed({
+    items: [
+      makeItem('Refactor the parser', {
+        id: '99999999-9999-4999-8999-999999999999',
+        item_type: 'task',
+      }),
+    ],
+    projects: [
+      {
+        id: projectId,
+        name: 'Alfred',
+        key: 'ALF',
+        repo_owner: 'ac3charland',
+        repo_name: 'alfred',
+        github_url: null,
+        ref_seq: 4,
+        created_at: new Date(Date.UTC(2024, 0, 1)).toISOString(),
+      },
+    ],
+    epics: [
+      {
+        id: epicId,
+        project_id: projectId,
+        name: 'Core',
+        notes: null,
+        ref_number: 1,
+        ref: 'ALF-1',
+        archived_at: null,
+        created_at: new Date(Date.UTC(2024, 0, 2)).toISOString(),
+      },
+    ],
+  });
+  await page.goto('/?view=inbox');
+
+  // Convert the task through the gate.
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: /convert to code story/i }).click();
+  const gate = page.getByRole('dialog', { name: /send to code module/i });
+  await gate.getByRole('option', { name: /alfred/i }).click();
+  await gate.getByRole('option', { name: /core/i }).click();
+  await gate.getByRole('button', { name: /send to code module/i }).click();
+  await expect(gate).toBeHidden();
+
+  // The toast is now a LINK (ALF-68), not inert text, pointing at the story's board modal.
+  const toast = page.getByRole('link', { name: /created alf-5/i });
+  await expect(toast).toHaveAttribute('href', `/code/${projectId}?story=ALF-5`);
+
+  // Clicking it navigates to the board and opens the story's detail modal — the whole point of
+  // the ticket: from the confirmation straight to the story, with no manual hunting.
+  await toast.click();
+  await expect(page).toHaveURL(`/code/${projectId}?story=ALF-5`);
+  const storyModal = page.getByRole('dialog', { name: /refactor the parser/i });
+  await expect(storyModal).toBeVisible();
+});

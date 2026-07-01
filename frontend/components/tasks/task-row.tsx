@@ -860,9 +860,16 @@ export function TaskRow({
         ]}
         onComplete={(stories) => {
           removeGatedItem(node.id);
-          // The reconciled story always carries its allocated ref by now (`?? ''` only
-          // satisfies the all-nullable view row type).
-          showToast(`Created ${stories[0]?.ref ?? ''}`);
+          // The reconciled story always carries its allocated ref + project_id by now (`?? ''`
+          // only satisfies the all-nullable view row type). Deep-link the toast to the new
+          // story's board modal so a click jumps straight there (see board.tsx's `?story=` seam).
+          const story = stories[0];
+          const ref = story?.ref ?? '';
+          const href =
+            story?.project_id != null && ref !== ''
+              ? `/code/${story.project_id}?story=${ref}`
+              : undefined;
+          showToast(`Created ${ref}`, 'default', href);
         }}
       />
     </li>
