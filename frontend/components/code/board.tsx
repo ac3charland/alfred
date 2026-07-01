@@ -8,8 +8,10 @@ import { Button } from '@/components/atoms/button';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic-block';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
+import { StatusFilterMenu } from '@/components/code/status-filter-menu';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
-import { useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
+import { useStatusFilter } from '@/lib/hooks/use-status-filter';
+import { HAPPY_PATH_STATES, useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
 export interface BoardProperties {
@@ -41,6 +43,14 @@ export function Board({ projectId }: BoardProperties) {
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
   const [showBlocked, setShowBlocked] = React.useState(false);
+  // "Filter by status": hides unchecked happy-path lanes across every epic. Defaults to all six
+  // shown, so an untouched board is identical to before. The off-track (blocked/abandoned) cards
+  // stay governed by the separate Show-blocked toggle — they are not lanes.
+  const {
+    statuses: visibleStates,
+    toggle: toggleState,
+    isFiltering,
+  } = useStatusFilter(HAPPY_PATH_STATES);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
   // The open story for the detail modal, tracked by item_id so the modal always
   // re-reads the latest row from the store (e.g. after a manual transition reshuffles it).
@@ -153,6 +163,12 @@ export function Board({ projectId }: BoardProperties) {
               {allCollapsed ? 'Open all' : 'Collapse all'}
             </ToggleButton>
           ) : null}
+          <StatusFilterMenu
+            options={HAPPY_PATH_STATES}
+            selected={visibleStates}
+            onToggle={toggleState}
+            isFiltering={isFiltering}
+          />
           <ToggleButton
             pressed={showBlocked}
             onToggle={() => {
@@ -185,6 +201,7 @@ export function Board({ projectId }: BoardProperties) {
               onToggleCollapse={() => {
                 toggleCollapse(board.epic.id);
               }}
+              visibleStates={visibleStates}
               showBlocked={showBlocked}
               onOpenStory={handleOpenStory}
               onOpenSession={handleOpenSession}
