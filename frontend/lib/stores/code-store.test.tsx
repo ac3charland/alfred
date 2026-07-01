@@ -30,6 +30,7 @@ const mockUpdateItem = jest.mocked(api.updateItem);
 const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
 const mockReorderCode = jest.mocked(api.reorderCode);
 const mockMoveCode = jest.mocked(api.moveCode);
+const mockListCode = jest.mocked(api.listCode);
 
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so tests can drive a
 // simulated `code_items` change through it without a live Realtime channel. (Overrides the
@@ -1757,6 +1758,122 @@ describe('code-store', () => {
         code_updated_at: '2025-02-02T00:00:00Z',
         priority: 9,
       });
+    });
+  });
+
+  describe('refreshStatuses (ALF-69 navigation refetch)', () => {
+    const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+    it('patches each seeded story to its freshly-fetched factory_state', async () => {
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'done' }),
+      ]);
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+      expect(findStoryState(result.current.board)).toBe('in_refinement');
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+
+      expect(mockListCode).toHaveBeenCalledTimes(1);
+      expect(findStoryState(result.current.board)).toBe('done');
+    });
+
+    it('reconciles the status companions (lane, blocked_reason) alongside the state', async () => {
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'blocked',
+          lane: 'local',
+          blocked_reason: 'checks failing',
+        }),
+      ]);
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'in_development',
+        lane: 'human',
+        blocked_reason: null,
+      });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+
+      const refreshed = findStory(result.current.board);
+      expect(refreshed?.factory_state).toBe('blocked');
+      expect(refreshed?.lane).toBe('local');
+      expect(refreshed?.blocked_reason).toBe('checks failing');
+    });
+
+    it('leaves non-status fields (title, priority, notes) untouched', async () => {
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'done',
+          title: 'Renamed elsewhere',
+          priority: 99,
+        }),
+      ]);
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'in_refinement',
+        title: 'Local title',
+        priority: 1,
+      });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+
+      const refreshed = findStory(result.current.board);
+      expect(refreshed?.factory_state).toBe('done');
+      expect(refreshed?.title).toBe('Local title');
+      expect(refreshed?.priority).toBe(1);
+    });
+
+    it('ignores a fetched story absent from the store (statuses only, no insert)', async () => {
+      mockListCode.mockResolvedValue([
+        makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'done' }),
+        makeStory('new', 'e1', 'p1', { ref: 'ALF-99', factory_state: 'ready_for_dev' }),
+      ]);
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+
+      const stories = result.current.board.activeEpics.flatMap((b) =>
+        b.lanes.flatMap((l) => l.stories),
+      );
+      expect(stories.map((s) => s.item_id)).toEqual(['i1']);
+      expect(findStoryState(result.current.board)).toBe('done');
+    });
+
+    it('swallows a failed fetch and leaves the seeded status intact', async () => {
+      mockListCode.mockRejectedValue(new Error('network down'));
+      const story = makeStory('i1', 'e1', 'p1', { ref: 'ALF-42', factory_state: 'in_refinement' });
+      const { result } = renderHook(() => useStore('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      await act(async () => {
+        await result.current.actions.refreshStatuses();
+      });
+
+      expect(findStoryState(result.current.board)).toBe('in_refinement');
+      expect(mockShowToast).not.toHaveBeenCalled();
     });
   });
 
