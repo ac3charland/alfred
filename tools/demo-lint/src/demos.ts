@@ -58,6 +58,14 @@ export interface DemosContext {
    * the exception on a guess.
    */
   readonly hasChangesOutsideDocs: boolean;
+  /**
+   * The trunk ref this branch is *behind* — trunk has commits not reachable from HEAD —
+   * or `undefined` when the branch is up to date, trunk is unknown, or git can't tell. A
+   * stale base inflates the changed-since-trunk set with trunk's own intervening (often
+   * non-docs) commits, which can wrongly suppress the docs-only `branch-folder` exemption;
+   * the rule surfaces the rebase fix when this is set (see the demo-lint skill).
+   */
+  readonly staleBaseTrunkRef: string | undefined;
 }
 
 /**
@@ -262,6 +270,23 @@ export function changedPathsSinceTrunk(): readonly string[] | undefined {
     .filter((line) => line.length > 0);
 }
 
+/**
+ * The trunk ref this branch is *behind* — trunk has commits not reachable from HEAD — or
+ * `undefined` when the branch is up to date, trunk is unknown (see {@link chooseTrunkRef}),
+ * or git can't tell (no git, or a failed command). Uses the SAME trunk ref
+ * {@link changedPathsSinceTrunk} diffs against, so "behind" lines up exactly with the
+ * inflated changed-set it produces. The CLI passes this into {@link gatherDemos}; the
+ * `branch-folder` rule reads it to add the rebase hint when a docs-only branch is masked by
+ * a stale base.
+ */
+export function trunkRefIfBehind(): string | undefined {
+  const trunk = chooseTrunkRef(gatherTrunkRefFacts());
+  if (trunk === undefined) return undefined;
+  const behind = spawnSync('git', ['rev-list', '--count', `HEAD..${trunk}`], { encoding: 'utf8' });
+  if (behind.status !== 0) return undefined;
+  return Number(behind.stdout.trim()) > 0 ? trunk : undefined;
+}
+
 /** A changed path under `docs/demos/<key>` → the `<key>`: a demo folder or a root file name. */
 const DEMO_PATH = /(?:^|\/)docs\/demos\/([^/]+)/;
 
@@ -300,6 +325,10 @@ function demoKeyOf(relativePath: string): string {
  * rule never retroactively fails an untouched demo. An unknown diff still lints every demo.
  * `branchFolder` / `declaredBranches` stay computed over all demos — the branch-folder rule
  * needs the whole picture regardless of what changed.
+ *
+ * `staleBaseTrunkRef` is the trunk ref this branch is behind (the CLI reads it from
+ * {@link trunkRefIfBehind}); it feeds the branch-folder rule's rebase hint. Pass `undefined`
+ * for "up to date / unknown".
  */
 export function gatherDemos(
   demosDir: string,
@@ -307,6 +336,7 @@ export function gatherDemos(
   branch?: string,
   changedPaths?: readonly string[],
   changedOnly = false,
+  staleBaseTrunkRef?: string,
 ): DemosContext {
   const absolute = path.resolve(demosDir);
   const isTrunk = branch !== undefined && TRUNK_BRANCHES.has(branch);
@@ -329,5 +359,6 @@ export function gatherDemos(
     // docs-only `branch-folder` exception on a guess.
     hasChangesOutsideDocs:
       changedPaths === undefined ? true : changedPaths.some((p) => !isDocsPath(p)),
+    staleBaseTrunkRef,
   };
 }

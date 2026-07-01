@@ -53,6 +53,12 @@ const noRootFiles: Rule = {
  * The rule skips trunk and an undeterminable branch so it only fires on a real feature
  * branch that has no demo at all. It also skips a **docs-only** branch — one whose every
  * change lives under `docs/` — since such a change owes no demo.
+ *
+ * A **stale base** is the classic false positive: when the branch is behind trunk, the
+ * changed-since-trunk diff includes trunk's own intervening (often non-docs) commits, so a
+ * genuinely docs-only branch reads as `hasChangesOutsideDocs` and this rule fires. When
+ * {@link DemosContext.staleBaseTrunkRef} is set the message appends the rebase fix so a
+ * future agent doesn't have to rediscover it.
  */
 const branchFolder: Rule = {
   name: 'branch-folder',
@@ -62,11 +68,15 @@ const branchFolder: Rule = {
     if (!demos.hasChangesOutsideDocs) return []; // docs-only branch owes no demo.
     if (demos.declaredBranches.includes(demos.branchFolder)) return []; // claimed in front matter.
     if (demos.branchFolderHasContent) return []; // legacy: folder named after the branch.
+    const staleHint =
+      demos.staleBaseTrunkRef === undefined
+        ? ''
+        : ` NOTE: this branch is behind ${demos.staleBaseTrunkRef}, so the changed-file set includes intervening commits from trunk — if this is really a docs-only branch, that stale base is why the exemption didn't apply. Rebase onto current trunk (git fetch origin && git rebase ${demos.staleBaseTrunkRef}) so the diff is docs-only, then re-run.`;
     return [
       {
         rule: 'branch-folder',
         severity: 'error',
-        message: `branch "${demos.branchFolder}" has no demo. Capture it in its own folder under ${demos.displayPath}/ — npm run demo -- init ${demos.displayPath}/<feature-name>/<name>.md "<title>" records this branch in the doc's front matter automatically.`,
+        message: `branch "${demos.branchFolder}" has no demo. Capture it in its own folder under ${demos.displayPath}/ — npm run demo -- init ${demos.displayPath}/<feature-name>/<name>.md "<title>" records this branch in the doc's front matter automatically.${staleHint}`,
       },
     ];
   },

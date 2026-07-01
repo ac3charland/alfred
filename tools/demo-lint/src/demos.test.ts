@@ -115,6 +115,13 @@ describe('gatherDemos', () => {
     expect(gatherDemos(root, root, 'feat/x').hasChangesOutsideDocs).toBe(true);
   });
 
+  it('threads the stale-base trunk ref into the context', () => {
+    expect(
+      gatherDemos(root, root, 'feat/x', undefined, false, 'origin/main').staleBaseTrunkRef,
+    ).toBe('origin/main');
+    expect(gatherDemos(root, root, 'feat/x').staleBaseTrunkRef).toBeUndefined();
+  });
+
   it('changed-only mode narrows demoContents and rootFiles to the demos that changed', () => {
     write('# old — runs npm run test\n', 'old-demo', 'demo.md');
     write('# new\n', 'new-demo', 'demo.md');
