@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-3 — ⌘K to navigate (command palette)</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --surface-2: #1e222b;
+        --border: #2a2f3a;
+        --fg: #e6e9ef;
+        --muted: #9aa3b2;
+        --teal: #4fd1c5;
+        --blue: #6ea8fe;
+        --amber: #f0b429;
+        --green: #4ade80;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 2rem 1.25rem 4rem;
+      }
+      main { max-width: 60rem; margin: 0 auto; }
+      h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 0.25rem; }
+      h2 {
+        font-size: 1.15rem;
+        margin: 2.5rem 0 0.75rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--teal); }
+      p, li { color: var(--fg); }
+      a { color: var(--blue); }
+      code, .mono { font-family: var(--mono); font-size: 0.9em; }
+      code {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.05rem 0.35rem;
+      }
+      pre {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+      .lead { color: var(--muted); font-size: 1.02rem; margin: 0.25rem 0 0; }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--teal);
+        background: rgba(79, 209, 197, 0.12);
+        border: 1px solid rgba(79, 209, 197, 0.35);
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+        margin-bottom: 1rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.92rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+      td .mono { color: var(--teal); }
+      .card-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.15rem;
+        margin: 1rem 0;
+      }
+      ul.checklist { list-style: none; padding-left: 0; }
+      ul.checklist li { position: relative; padding-left: 1.9rem; margin: 0.5rem 0; }
+      ul.checklist li::before {
+        content: "☐";
+        position: absolute;
+        left: 0;
+        color: var(--teal);
+        font-size: 1.05rem;
+      }
+      .note {
+        background: rgba(240, 180, 41, 0.08);
+        border-left: 3px solid var(--amber);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+        color: var(--fg);
+      }
+      kbd {
+        font-family: var(--mono);
+        font-size: 0.78em;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        padding: 0.05rem 0.4rem;
+        color: var(--fg);
+      }
+      /* --- palette mockup --- */
+      .mock-overlay {
+        background:
+          radial-gradient(120% 90% at 50% 0%, rgba(79, 209, 197, 0.06), transparent 60%),
+          var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 2.25rem 1rem;
+        margin: 1rem 0;
+        display: flex;
+        justify-content: center;
+      }
+      .palette {
+        width: 26rem;
+        max-width: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 0 40px 0 rgba(79, 209, 197, 0.08);
+        overflow: hidden;
+      }
+      .palette .p-input {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.7rem 0.85rem;
+        border-bottom: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .palette .p-input .cursor { color: var(--fg); }
+      .palette .p-group {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--muted);
+        padding: 0.55rem 0.85rem 0.2rem;
+      }
+      .palette .p-row {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.4rem 0.85rem;
+        font-size: 0.86rem;
+      }
+      .palette .p-row .ico { color: var(--muted); font-size: 0.9rem; width: 1rem; text-align: center; }
+      .palette .p-row.active {
+        background: var(--surface-2);
+        box-shadow: inset 0 0 0 1px rgba(79, 209, 197, 0.5);
+      }
+      .palette .p-row .pill {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        color: var(--amber);
+        border: 1px solid rgba(240, 180, 41, 0.4);
+        border-radius: 5px;
+        padding: 0.02rem 0.35rem;
+      }
+      .palette .p-foot {
+        display: flex;
+        gap: 0.9rem;
+        border-top: 1px solid var(--border);
+        padding: 0.5rem 0.85rem;
+        font-size: 0.68rem;
+        color: var(--muted);
+      }
+      .palette .p-foot .right { margin-left: auto; }
+      .files td:first-child { white-space: nowrap; }
+      svg { max-width: 100%; height: auto; }
+      @media (max-width: 640px) {
+        body { padding: 1.25rem 0.9rem 3rem; }
+        table { font-size: 0.85rem; }
+        .palette { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">Refinement spec · phase: refinement</span>
+      <h1>ALF-3 — <kbd>⌘K</kbd> to navigate (command palette)</h1>
+      <p class="lead">
+        Add a keyboard-first <strong>navigation palette</strong>: pressing <kbd>⌘K</kbd> (⌘K on
+        macOS, <kbd>Ctrl K</kbd> on Windows/Linux) pops a centered command palette listing every
+        place you can go — the two modules, the cross-cutting views, every folder, and every
+        project — filterable by typing, driven entirely by the keyboard. Pick one and it jumps you
+        there instantly.
+      </p>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        Navigating <code>alfred</code> today means reaching for the sidebar with the mouse: the
+        <strong>Tasks ⇄ Code</strong> switcher (<code>components/shell/view-switcher.tsx</code>),
+        the folder list (<code>components/tasks/folder-nav.tsx</code>), the project list
+        (<code>components/code/project-nav.tsx</code>), and the cross-cutting <em>Priority</em> /
+        <em>Completed</em> / <em>Backlog</em> links. As the number of folders and projects grows,
+        hunting the sidebar for one of them is slow, and on the Code module the Tasks folders
+        aren't even visible (the sidebar swaps per module), so jumping from a folder to a project
+        is a two-step mouse dance.
+      </p>
+      <p>
+        The app already ships a <strong>global content search</strong> bound to <kbd>⌘P</kbd>
+        (<code>components/shell/search-box.tsx</code> + <code>search-results.ts</code>): it fuzzy-finds
+        individual <em>task and story rows</em> by title/notes/ref and jumps to the one you pick.
+        That answers <em>"where is this item?"</em>. It deliberately does <strong>not</strong> answer
+        <em>"take me to that place"</em> — an empty query shows nothing, folders and projects are
+        only used as subtitles (never as destinations), and the modules/views aren't in it at all.
+      </p>
+      <div class="note">
+        <strong>Scope decision (confirmed with owner).</strong> <kbd>⌘K</kbd> is a
+        <strong>destination navigator</strong>, a separate concern from <kbd>⌘P</kbd> content
+        search. <kbd>⌘P</kbd> stays exactly as it is. The two coexist: <kbd>⌘P</kbd> = "find an
+        item", <kbd>⌘K</kbd> = "go to a place". This mirrors the split in tools like Linear
+        (go-to vs. search) and keeps each surface simple.
+      </div>
+
+      <h2>Proposed change</h2>
+      <p>
+        Introduce a <strong>command palette</strong> mounted once in the shell. It is a centered
+        modal overlay (not the anchored header dropdown that <kbd>⌘P</kbd> uses) built on the
+        existing <code>FormDialog</code> atom, containing a filter input over a grouped, keyboard-
+        navigable list of navigation <em>destinations</em>. Selecting a destination performs the
+        same client-side <code>history.pushState</code> switch the sidebar links already use
+        (the <code>ViewLink</code> convention), then closes the palette.
+      </p>
+
+      <h3>The destinations</h3>
+      <p>
+        Destinations come from two sources — a small <strong>static</strong> set (modules + views,
+        known at build time) and the <strong>dynamic</strong> folders and projects read from the
+        already-seeded stores (<code>useFolders()</code>, <code>useProjects()</code>). No network:
+        the shell layout already fetches and seeds both (<code>app/(shell)/layout.tsx</code>).
+      </p>
+      <table class="files">
+        <thead>
+          <tr><th>Group</th><th>Destination</th><th>href</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="6">Go&nbsp;to</td><td>Tasks</td><td><span class="mono">/</span></td><td rowspan="6">static</td></tr>
+          <tr><td>Inbox</td><td><span class="mono">/?view=inbox</span></td></tr>
+          <tr><td>Priority</td><td><span class="mono">/priority</span></td></tr>
+          <tr><td>Completed</td><td><span class="mono">/completed</span></td></tr>
+          <tr><td>Code</td><td><span class="mono">/code</span></td></tr>
+          <tr><td>Backlog</td><td><span class="mono">/code/backlog</span></td></tr>
+          <tr><td>Folders</td><td>one row per folder</td><td><span class="mono">/folders/{id}</span></td><td><code>useFolders()</code></td></tr>
+          <tr><td>Projects</td><td>one row per project</td><td><span class="mono">/code/{id}</span></td><td><code>useProjects()</code></td></tr>
+        </tbody>
+      </table>
+      <p>
+        Each row shows a leading <strong>lucide icon</strong> reused from the matching sidebar entry
+        (e.g. <code>FolderOpen</code> for folders, <code>GitBranch</code> for projects,
+        <code>ListOrdered</code> for Priority/Backlog, <code>Check</code> for Completed) and its label;
+        project rows also show the mono <code>KEY</code> pill exactly like <code>ProjectNav</code>.
+      </p>
+
+      <h3>Filtering &amp; ranking</h3>
+      <p>
+        Extract a pure, DOM-free module <code>command-destinations.ts</code> — the direct sibling of
+        <code>search-results.ts</code> — so the matching rules are exhaustively unit-testable on their
+        own. It takes the query plus the folder/project snapshots and returns the grouped, ranked,
+        capped destination list.
+      </p>
+      <ul>
+        <li>
+          <strong>Empty query lists everything.</strong> Unlike <kbd>⌘P</kbd> (empty → nothing), an
+          empty query shows the full destination set grouped as above — the palette doubles as a
+          browsable "where can I go?" menu.
+        </li>
+        <li>
+          <strong>Match</strong> is case-insensitive on the destination <em>label</em> (folders/projects
+          match on their name; projects additionally match on their <code>key</code>, so typing a ref
+          prefix like <code>ALF</code> surfaces that project). <strong>Rank</strong> reuses the
+          <code>search-results.ts</code> ladder: label-prefix (0) beats label-substring (1); ties break
+          by the group's natural order (static order for Go-to, the store's existing order for
+          folders/projects). Non-matches are dropped.
+        </li>
+        <li>
+          <strong>Grouping is preserved</strong> in the output (<em>Go to</em> → <em>Folders</em> →
+          <em>Projects</em>), and the groups are <strong>flattened</strong> into one ordered array for
+          <kbd>↑</kbd>/<kbd>↓</kbd> keyboard traversal, mirroring <code>flattenResults</code>. Each
+          destination carries a stable id for <code>aria-activedescendant</code>.
+        </li>
+        <li>
+          <strong>No per-group cap needed</strong> at MVP scale (hundreds of folders/projects at
+          most). If a future cap is wanted it follows the <code>RESULTS_PER_GROUP</code> "+N more"
+          pattern — noted, not built.
+        </li>
+      </ul>
+
+      <h3>Opening, keyboard model &amp; selection</h3>
+      <ul>
+        <li>
+          <strong>Open:</strong> a single global <code>keydown</code> listener claims
+          <kbd>⌘K</kbd>/<kbd>Ctrl K</kbd> (bare, no Shift/Alt), <code>preventDefault()</code>s to take
+          it from the browser's default (Firefox/Chrome bind it to the address/search bar), and
+          <strong>toggles</strong> the palette open. This is a new hook
+          <code>use-command-palette-shortcut.ts</code>, a sibling of the existing
+          <code>use-global-search-shortcut.ts</code> — same shape, different key and a toggle instead
+          of a focus callback. It fires globally, including while another input is focused (a nav
+          palette should always be reachable).
+        </li>
+        <li>
+          <strong>Focus &amp; typing:</strong> on open the filter input autofocuses (Radix Dialog traps
+          focus); the query resets to empty each open, so every invocation starts from the full list.
+        </li>
+        <li>
+          <strong>Keyboard:</strong> <kbd>↑</kbd>/<kbd>↓</kbd> move the active row (clamped to the
+          flattened list), <kbd>↵</kbd> selects the active row, <kbd>Esc</kbd> closes (Radix Dialog's
+          own Esc/overlay-click also closes). The active row follows the mouse on hover so pointer and
+          keyboard agree — the exact interaction contract already implemented in
+          <code>search-results-popover.tsx</code>/<code>search-box.tsx</code>, reused here.
+        </li>
+        <li>
+          <strong>Select</strong> = <code>history.pushState(null, '', href)</code> then close the
+          palette. Every view re-derives from the URL via <code>ModuleRouter</code>, so no reload and
+          no RSC round-trip. Selecting the destination you're already on is a harmless no-op push that
+          just closes the palette.
+        </li>
+      </ul>
+
+      <h3>Mockup</h3>
+      <div class="mock-overlay">
+        <div class="palette">
+          <div class="p-input"><span>🔎</span><span class="cursor">soft</span><span>▏</span></div>
+          <div class="p-group">Go to</div>
+          <div class="p-row"><span class="ico">✔</span><span>Completed</span></div>
+          <div class="p-group">Folders</div>
+          <div class="p-row"><span class="ico">🗂</span><span>Software</span></div>
+          <div class="p-group">Projects</div>
+          <div class="p-row active"><span class="ico">⑃</span><span>Software Factory</span><span class="pill">SFT</span></div>
+          <div class="p-row"><span class="ico">⑃</span><span>Alfred Softworks</span><span class="pill">ALF</span></div>
+          <div class="p-foot"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> go</span><span><kbd>esc</kbd> close</span><span class="right">3 results</span></div>
+        </div>
+      </div>
+      <p class="lead" style="text-align:center;font-size:0.88rem">
+        Typing <code>soft</code> filters across all groups; matches keep their group headers. Empty
+        query shows every destination.
+      </p>
+
+      <h3>Where it mounts &amp; discoverability</h3>
+      <ul>
+        <li>
+          Mount <code>&lt;CommandPalette /&gt;</code> once inside <code>AppShell</code>
+          (<code>components/shell/app-shell.tsx</code>), alongside <code>ToastViewport</code>. It reads
+          the already-mounted <code>FoldersProvider</code>/<code>CodeProvider</code> stores; no new
+          provider is required. The palette owns its own <code>open</code> state locally (nothing else
+          needs to read it), so — unlike <code>SearchProvider</code>, which exists only to sync two
+          input fields — <strong>no store is added</strong>.
+        </li>
+        <li>
+          <strong>Discoverability (in scope, minimal):</strong> the desktop <kbd>⌘P</kbd> field already
+          renders a <code>&lt;kbd&gt;⌘P&lt;/kbd&gt;</code> hint. Add an equally quiet
+          <kbd>⌘K</kbd> affordance so the shortcut is discoverable without a mouse-only user ever
+          knowing it exists — e.g. a small <code>⌘K</code> hint in the sidebar. Exact placement is an
+          implementation detail; a hint must exist somewhere in the persistent chrome.
+        </li>
+      </ul>
+
+      <h2>Files &amp; shape</h2>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">components/shell/command-destinations.ts</td><td><strong>new</strong> — pure <code>buildDestinations(query, folders, projects)</code> + <code>flattenDestinations</code> + <code>destinationDomId</code>; the DOM-free filter/rank/group layer (sibling of <code>search-results.ts</code>).</td></tr>
+          <tr><td class="mono">components/shell/command-destinations.test.ts</td><td><strong>new</strong> — unit coverage of the rules below.</td></tr>
+          <tr><td class="mono">components/shell/use-command-palette-shortcut.ts</td><td><strong>new</strong> — global <kbd>⌘K</kbd>/<kbd>Ctrl K</kbd> listener that toggles the palette (sibling of <code>use-global-search-shortcut.ts</code>).</td></tr>
+          <tr><td class="mono">components/shell/command-palette.tsx</td><td><strong>new</strong> — the <code>FormDialog</code>-based combobox: input + grouped listbox + footer, wired to the pure module and the shortcut. Reads <code>useFolders()</code>/<code>useProjects()</code>.</td></tr>
+          <tr><td class="mono">components/shell/command-palette.test.tsx</td><td><strong>new</strong> — RTL behavior coverage.</td></tr>
+          <tr><td class="mono">components/shell/command-palette.stories.tsx</td><td><strong>new (optional)</strong> — an open-state snapshot story if a visual baseline is wanted.</td></tr>
+          <tr><td class="mono">components/shell/app-shell.tsx</td><td><strong>edit</strong> — mount <code>&lt;CommandPalette /&gt;</code>; add the <kbd>⌘K</kbd> discoverability hint.</td></tr>
+          <tr><td class="mono">frontend/e2e/command-palette.spec.ts</td><td><strong>new</strong> — E2E of the open → filter → navigate flow (mirrors <code>global-search.spec.ts</code>).</td></tr>
+        </tbody>
+      </table>
+      <div class="note">
+        <strong>Reuse, don't re-invent.</strong> The keyboard/active-index/hover contract, the grouped
+        <code>role="listbox"</code> + <code>aria-activedescendant</code> combobox wiring, and the
+        pure-module-plus-thin-component split all already exist for <kbd>⌘P</kbd>
+        (<code>search-box.tsx</code>, <code>search-results-popover.tsx</code>, <code>search-results.ts</code>).
+        This feature is that same pattern re-applied to <em>destinations</em> in a modal shell —
+        follow those files closely rather than designing anew. Consult the <code>frontend-architecture</code>
+        skill on whether any of that keyboard-combobox logic is worth extracting into a shared hook vs.
+        kept parallel; a shared extraction is welcome but not required by this ticket.
+      </div>
+
+      <h2>Acceptance criteria</h2>
+      <ul class="checklist">
+        <li><kbd>⌘K</kbd> (and <kbd>Ctrl K</kbd>) from anywhere in the shell opens the palette; the browser's default for that chord does not fire (it's <code>preventDefault</code>ed). Pressing it again while open closes it.</li>
+        <li>On open, the filter input is focused and empty, and the list shows <strong>all</strong> destinations grouped <em>Go to</em> → <em>Folders</em> → <em>Projects</em> (Go-to = Tasks, Inbox, Priority, Completed, Code, Backlog).</li>
+        <li>Every seeded folder appears as a Folders row (→ <code>/folders/{id}</code>); every seeded project appears as a Projects row (→ <code>/code/{id}</code>) with its <code>KEY</code> pill.</li>
+        <li>Typing filters case-insensitively across all groups; group headers remain for any group with ≥1 match; label-prefix matches sort above label-substring matches; a project matches on its <code>key</code> as well as its name.</li>
+        <li><kbd>↑</kbd>/<kbd>↓</kbd> move the active row across the flattened list; hovering a row makes it active; <kbd>↵</kbd> navigates to the active row's destination and closes the palette; <kbd>Esc</kbd> (and overlay click) closes it without navigating.</li>
+        <li>Selecting a destination performs a client-side <code>pushState</code> (no full reload/RSC round-trip) and the corresponding view renders; selecting a Code destination shows the Code module, a Tasks destination the Tasks module.</li>
+        <li>The palette is a labelled combobox/listbox (accessible name via a visually-hidden <code>DialogTitle</code>, <code>aria-activedescendant</code> tracks the active row); it is keyboard-operable end to end and honors <code>prefers-reduced-motion</code> (inherited from <code>FormDialog</code>/overlay classes).</li>
+        <li>A quiet <kbd>⌘K</kbd> hint is visible somewhere in the persistent chrome so the shortcut is discoverable.</li>
+        <li><kbd>⌘P</kbd> content search is unchanged and still works independently.</li>
+        <li>Behavior is pinned by tests at the right level — unit (<code>command-destinations.test.ts</code>: empty-query-shows-all, filtering, prefix-before-substring ranking, project-key match, grouping, href correctness), RTL (<code>command-palette.test.tsx</code>: open/filter/keyboard-select/close), and E2E (<code>command-palette.spec.ts</code>: <kbd>⌘K</kbd> → type a folder/project name → <kbd>↵</kbd> lands on that view; <kbd>Esc</kbd> closes). <code>npm run check</code> is green.</li>
+        <li>A demo doc at <code>docs/demos/alf-3-cmd-k-nav/…</code> captures the open → filter → navigate flow with a screenshot of the running palette, per the <code>showboat</code> skill, and <code>npm run demo -- verify</code> passes.</li>
+      </ul>
+
+      <h2>Out of scope / open questions</h2>
+      <ul>
+        <li><strong>Content search stays on <kbd>⌘P</kbd>.</strong> <kbd>⌘K</kbd> lists <em>destinations</em>, never individual task/story rows — no overlap, no merge, and <kbd>⌘P</kbd> is untouched.</li>
+        <li><strong>Command <em>actions</em></strong> (e.g. "New folder", "Complete task", "Sign out") are a natural future extension of a palette but are <strong>not</strong> in this ticket — navigation only. The <em>Go to</em> grouping leaves room to add an <em>Actions</em> group later.</li>
+        <li><strong>Recency / frecency ordering</strong> and fuzzy (non-substring) scoring are out; ranking is the simple prefix/substring ladder reused from <kbd>⌘P</kbd>.</li>
+        <li><strong>Per-group "+N more" caps</strong> are unnecessary at MVP scale and deferred; the <code>RESULTS_PER_GROUP</code> pattern is the template if ever needed.</li>
+        <li><strong>Mobile trigger:</strong> <kbd>⌘K</kbd> is keyboard-first; mobile users already have the hamburger drawer for the same destinations, so no touch trigger button is added. The palette itself remains responsive if opened.</li>
+        <li><strong>Open question (deferrable):</strong> should the discoverability <kbd>⌘K</kbd> hint also be a <em>clickable</em> trigger (mouse users)? Default assumption: hint only, not clickable — revisit if desired. Making it clickable would mean lifting <code>open</code> into a tiny store like <code>SearchProvider</code>.</li>
+      </ul>
+    </main>
+  </body>
+</html>
