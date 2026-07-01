@@ -24,6 +24,12 @@ export interface Toast {
   id: string;
   message: string;
   variant: ToastVariant;
+  /**
+   * Optional client-side nav target. When set, the viewport renders the toast body as a link
+   * (see `ToastItem`) so a click jumps there — e.g. a "Created ALF-42" toast deep-links to the
+   * new story's board modal (`/code/<projectId>?story=<ref>`) and dismisses itself.
+   */
+  href?: string;
   /** Marked true once dismissal starts, so the viewport plays the exit before removal. */
   leaving: boolean;
 }
@@ -31,9 +37,10 @@ export interface Toast {
 interface ToastActions {
   /**
    * Enqueue a transient toast; it auto-dismisses after a few seconds. `variant` defaults to
-   * `'default'`; pass `'emphasis'` for the louder, chime-playing treatment.
+   * `'default'`; pass `'emphasis'` for the louder, chime-playing treatment. Pass `href` to make
+   * the toast body a link (a client-side nav that dismisses on click — see `ToastItem`).
    */
-  showToast: (message: string, variant?: ToastVariant) => void;
+  showToast: (message: string, variant?: ToastVariant, href?: string) => void;
   /** Dismiss a toast early (the close button / the auto-dismiss timer). Animates out first. */
   dismissToast: (id: string) => void;
 }
@@ -64,9 +71,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     };
 
     return {
-      showToast(message, variant = 'default') {
+      showToast(message, variant = 'default', href) {
         const id = crypto.randomUUID();
-        setToasts((current) => [...current, { id, message, variant, leaving: false }]);
+        // Conditionally spread `href` (never assign it `undefined`) so the optional property
+        // stays absent under exactOptionalPropertyTypes when no nav target is given.
+        setToasts((current) => [
+          ...current,
+          { id, message, variant, leaving: false, ...(href !== undefined && { href }) },
+        ]);
         // Fire the chime once, from this single imperative call (not a mount effect, which
         // StrictMode would double-invoke). `matchMedia` is always-defined client-side, so the
         // reduced-motion guard reads it directly — sound stays silent when motion is reduced.

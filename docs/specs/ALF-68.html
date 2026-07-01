@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-68 — Make ticket creation toasts clickable to navigate to story</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --surface-2: #1e222b;
+        --border: #2a2f3a;
+        --fg: #e6e9ef;
+        --muted: #9aa3b2;
+        --teal: #4fd1c5;
+        --blue: #6ea8fe;
+        --amber: #f0b429;
+        --green: #4ade80;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 2rem 1.25rem 4rem;
+      }
+      main { max-width: 60rem; margin: 0 auto; }
+      h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 0.25rem; }
+      h2 {
+        font-size: 1.15rem;
+        margin: 2.5rem 0 0.75rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--teal); }
+      p, li { color: var(--fg); }
+      a { color: var(--blue); }
+      code, .mono { font-family: var(--mono); font-size: 0.9em; }
+      code {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.05rem 0.35rem;
+      }
+      pre {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+      .lead { color: var(--muted); font-size: 1.02rem; margin: 0.25rem 0 0; }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--teal);
+        background: rgba(79, 209, 197, 0.12);
+        border: 1px solid rgba(79, 209, 197, 0.35);
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+        margin-bottom: 1rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.92rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+      td .mono { color: var(--teal); }
+      .note {
+        background: rgba(240, 180, 41, 0.08);
+        border-left: 3px solid var(--amber);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+        color: var(--fg);
+      }
+      ul.checklist { list-style: none; padding-left: 0; }
+      ul.checklist li { position: relative; padding-left: 1.9rem; margin: 0.5rem 0; }
+      ul.checklist li::before {
+        content: "\2610";
+        position: absolute;
+        left: 0;
+        color: var(--teal);
+        font-size: 1.05rem;
+      }
+      .files td:first-child { white-space: nowrap; }
+      @media (max-width: 640px) {
+        body { padding: 1.25rem 0.9rem 3rem; }
+        table { font-size: 0.85rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">Implementation spec · phase: implementation</span>
+      <h1>ALF-68 — Make ticket creation toasts clickable to navigate to story</h1>
+      <p class="lead">
+        When a task is admitted to the Software Factory, the confirmation toast
+        (<strong>“Created ALF-42”</strong>) becomes a link: one click deep-links straight to the
+        new story's board modal, instead of leaving the user to hunt for the freshly-created card.
+      </p>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        Sending a task through the gate (<code>frontend/components/code/gate-dialog.tsx</code>) fires
+        a toast via the shared toast store. The single-item path
+        (<code>frontend/components/tasks/task-row.tsx</code>) toasts
+        <code>Created &lt;ref&gt;</code>; the bulk path
+        (<code>frontend/components/tasks/inbox-bulk-bar.tsx</code>) toasts
+        <code>Sent N items to Code</code>. Today those toasts are inert text — the user knows the
+        story exists but has to switch to the Code module and find the card themselves.
+      </p>
+      <p>
+        The board already has a deep-link seam: <code>frontend/components/code/board.tsx</code>
+        resolves a <code>?story=&lt;ref&gt;</code> query param into an open
+        <code>StoryDetailModal</code>, and <code>backlog-row.tsx</code> already links rows to
+        <code>/code/&lt;projectId&gt;?story=&lt;ref&gt;</code> through the client-side
+        <code>ViewLink</code>. ALF-68 reuses exactly that mechanism from the creation toast.
+      </p>
+
+      <h2>Proposed change</h2>
+      <p>
+        Give the toast store an optional navigation target and render a clickable toast as a link.
+      </p>
+      <ul>
+        <li>
+          <strong>Toast store</strong> (<code>frontend/lib/stores/toast-store.tsx</code>) — add an
+          optional <code>href</code> to the <code>Toast</code> type and a third
+          <code>href</code> argument to <code>showToast(message, variant?, href?)</code>. It is
+          spread conditionally so the property stays absent under
+          <code>exactOptionalPropertyTypes</code> when omitted.
+        </li>
+        <li>
+          <strong>Toast viewport</strong> (<code>frontend/components/shell/toast-viewport.tsx</code>)
+          — when a toast has an <code>href</code>, render its message as a <code>ViewLink</code>
+          (a sibling of the close button, never a wrapper, so there are no nested interactive
+          elements). Clicking it navigates client-side <em>and</em> dismisses the toast in one go
+          (ViewLink runs <code>onClick</code> before <code>history.pushState</code>). A toast with
+          no <code>href</code> keeps its plain <code>&lt;span&gt;</code> — unchanged.
+        </li>
+        <li>
+          <strong>Creation site</strong> (<code>frontend/components/tasks/task-row.tsx</code>) — the
+          reconciled <code>CodeStory</code> already carries <code>project_id</code> and
+          <code>ref</code>, so build
+          <code>/code/&lt;project_id&gt;?story=&lt;ref&gt;</code> and pass it to
+          <code>showToast</code>.
+        </li>
+      </ul>
+
+      <h3>Toast → destination</h3>
+      <table>
+        <thead>
+          <tr><th>Toast</th><th>Fired from</th><th>Click destination</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Created &lt;ref&gt;</code></td>
+            <td>single convert (<code>task-row.tsx</code>)</td>
+            <td><span class="mono">/code/&lt;project_id&gt;?story=&lt;ref&gt;</span> (opens the story modal)</td>
+          </tr>
+          <tr>
+            <td><code>Sent N items to Code</code></td>
+            <td>bulk send (<code>inbox-bulk-bar.tsx</code>)</td>
+            <td>— (unchanged; no single-story target)</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        <strong>Scope decision.</strong> The ticket says navigate to <em>story</em> (singular). Only
+        the single-item <code>Created &lt;ref&gt;</code> toast maps cleanly to one story, so only it
+        becomes clickable. The bulk <code>Sent N items</code> toast has no single-story target and is
+        left as plain text; the store's new <code>href</code> field makes extending it (e.g. to the
+        project board) a one-line change later.
+      </div>
+
+      <h3>Files touched</h3>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>frontend/lib/stores/toast-store.tsx</code></td><td>optional <code>href</code> on <code>Toast</code> + <code>showToast</code></td></tr>
+          <tr><td><code>frontend/lib/stores/toast-store.test.tsx</code></td><td>store keeps / omits <code>href</code></td></tr>
+          <tr><td><code>frontend/components/shell/toast-viewport.tsx</code></td><td>render message as <code>ViewLink</code> when <code>href</code> is set</td></tr>
+          <tr><td><code>frontend/components/shell/toast-viewport.test.tsx</code></td><td>link render, plain fallback, click navigates + dismisses</td></tr>
+          <tr><td><code>frontend/components/tasks/task-row.tsx</code></td><td>deep-link the <code>Created</code> toast to the story</td></tr>
+          <tr><td><code>frontend/components/tasks/task-row.test.tsx</code></td><td>assert the toast is a link to the story modal</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="font-size:0.9rem">
+        No API, database, or type-generation changes — the destination fields already exist on the
+        <code>CodeStory</code> row, and navigation reuses the existing <code>?story=</code> board seam.
+      </p>
+
+      <h2>Acceptance criteria</h2>
+      <ul class="checklist">
+        <li>After a single task is sent to Code, the <code>Created &lt;ref&gt;</code> toast is a link
+          whose <code>href</code> is <code>/code/&lt;project_id&gt;?story=&lt;ref&gt;</code>.</li>
+        <li>Clicking that toast navigates client-side to the story's board and dismisses the toast.</li>
+        <li>A toast with no <code>href</code> (every error toast, the code-move toast, the bulk send
+          toast) still renders as plain, non-link text — no regression.</li>
+        <li>The link is a sibling of the dismiss button, so there are no nested interactive elements;
+          the close button still dismisses.</li>
+        <li><code>showToast</code> stores an <code>href</code> when passed and leaves it absent
+          otherwise (unit-tested).</li>
+        <li><code>npm run check</code> is green.</li>
+      </ul>
+
+      <h2>Testing &amp; demo</h2>
+      <ul>
+        <li><strong>Unit</strong> — <code>toast-store.test.tsx</code>: <code>showToast</code> keeps /
+          omits <code>href</code>.</li>
+        <li><strong>Component</strong> — <code>toast-viewport.test.tsx</code>: a toast with an
+          <code>href</code> renders a link with that href; without one it stays plain text; clicking
+          the link calls <code>history.pushState</code> with the href and dismisses the toast.</li>
+        <li><strong>Integration</strong> — <code>task-row.test.tsx</code>: gating a task surfaces a
+          <code>Created ALF-42</code> link to <code>/code/p1?story=ALF-42</code>.</li>
+        <li><strong>Demo doc</strong> — captured under <code>docs/demos/&lt;branch&gt;/</code> via the
+          <code>showboat</code> CLI, verified with <code>npm run demo -- verify</code>.</li>
+      </ul>
+    </main>
+  </body>
+</html>

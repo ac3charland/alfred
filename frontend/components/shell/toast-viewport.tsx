@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import * as React from 'react';
 
 import { CloseButton } from '@/components/atoms/close-button';
+import { ViewLink } from '@/components/tasks/view-link';
 import { type Toast, useToastActions, useToasts } from '@/lib/stores/toast-store';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +13,10 @@ import { cn } from '@/lib/utils';
  * a glowing accent-teal border and a bigger card) and its motion on `leaving` (slide+fade
  * in on appear, slide+fade out on dismissal — both via tw-animate-css). The default branch
  * keeps the exact border/size/background it has always had so default toasts don't regress.
+ *
+ * When the toast carries an `href`, its message becomes a `ViewLink` (a client-side nav that
+ * also dismisses the toast on click) — kept a sibling of the close button, not a wrapper, so
+ * there are no nested interactive elements. A plain message stays a static `<span>`.
  */
 export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const isEmphasis = toast.variant === 'emphasis';
@@ -36,7 +41,19 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () =>
           : 'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 motion-reduce:animate-none',
       )}
     >
-      <span className="min-w-0 break-words">{toast.message}</span>
+      {toast.href === undefined ? (
+        <span className="min-w-0 break-words">{toast.message}</span>
+      ) : (
+        <ViewLink
+          href={toast.href}
+          // Dismiss as we navigate: ViewLink runs onClick before pushState, so the toast leaves
+          // and the URL changes in one click. The visible message is the link's accessible name.
+          onClick={onDismiss}
+          className="min-w-0 break-words rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+        >
+          {toast.message}
+        </ViewLink>
+      )}
       <CloseButton variant="icon" aria-label="Dismiss notification" onClick={onDismiss}>
         <X size={14} />
       </CloseButton>
