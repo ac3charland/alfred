@@ -8,6 +8,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { BacklogRow } from '@/components/code/backlog/backlog-row';
@@ -17,6 +18,7 @@ import {
   ALL_FACTORY_STATES,
   DEFAULT_BACKLOG_STATUSES,
   FACTORY_STATE_LABELS,
+  HUMAN_REVIEW_STATUSES,
   useBacklog,
   useCodeActions,
   useProjects,
@@ -56,6 +58,23 @@ export function Backlog() {
         ? current.filter((candidate) => candidate !== state)
         : [...current, state],
     );
+  }, []);
+
+  // The "Human Review" macro is checked only when the selection is EXACTLY its preset. Because it's
+  // derived from `statuses`, checking or unchecking any individual status below auto-unchecks it the
+  // moment the selection stops matching — no extra bookkeeping needed.
+  const isHumanReview =
+    statuses.length === HUMAN_REVIEW_STATUSES.length &&
+    HUMAN_REVIEW_STATUSES.every((state) => statuses.includes(state));
+
+  const toggleHumanReview = React.useCallback(() => {
+    // Apply the preset when off; fall back to the default selection when toggled off again.
+    setStatuses((current) => {
+      const active =
+        current.length === HUMAN_REVIEW_STATUSES.length &&
+        HUMAN_REVIEW_STATUSES.every((state) => current.includes(state));
+      return active ? DEFAULT_BACKLOG_STATUSES : HUMAN_REVIEW_STATUSES;
+    });
   }, []);
 
   // Flag the trigger (teal + count) only when the selection differs from the default — the
@@ -122,6 +141,18 @@ export function Backlog() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {/* Macro shortcuts sit above the per-status list, split off by a subtle divider. */}
+            <DropdownMenuCheckboxItem
+              checked={isHumanReview}
+              onCheckedChange={toggleHumanReview}
+              // Keep the menu open so the owner can adjust the selection after applying the preset.
+              onSelect={(event) => {
+                event.preventDefault();
+              }}
+            >
+              Human Review
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
             {ALL_FACTORY_STATES.map((state) => (
               <DropdownMenuCheckboxItem
                 key={state}

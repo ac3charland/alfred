@@ -130,9 +130,10 @@ describe('Backlog', () => {
     expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
 
     // Uncheck one default status; the selection now differs from the default → a count appears.
+    // The first menu item is the "Human Review" macro, so "Needs Refinement" is the 2nd item.
     await user.click(screen.getByRole('button', { name: 'Filter by status' }));
     await screen.findByRole('menu');
-    await user.keyboard('[ArrowDown][Enter]');
+    await user.keyboard('[ArrowDown][ArrowDown][Enter]');
     await user.keyboard('[Escape]');
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /filter by status \(\d+\)/i })).toBeInTheDocument();
@@ -160,8 +161,9 @@ describe('Backlog', () => {
     expect(rowOrder()).toEqual(['ALF-a']);
 
     // Open the multi-select status filter. Radix portals set pointer-events:none on the body, so
-    // drive the menu by keyboard (see folder-nav.test.tsx). The options follow ALL_FACTORY_STATES
-    // order, so "Done" is the 6th item; toggling it on reveals the done story (priority order kept).
+    // drive the menu by keyboard (see folder-nav.test.tsx). The first item is the "Human Review"
+    // macro, then the options follow ALL_FACTORY_STATES order, so "Done" is the 7th item; toggling
+    // it on reveals the done story (priority order kept).
     await user.click(screen.getByRole('button', { name: /filter by status/i }));
     await screen.findByRole('menu');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Done' })).toHaveAttribute(
@@ -170,7 +172,7 @@ describe('Backlog', () => {
     );
 
     await user.keyboard(
-      '[ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][Enter]',
+      '[ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][Enter]',
     );
     expect(screen.getByRole('menuitemcheckbox', { name: 'Done' })).toHaveAttribute(
       'aria-checked',
@@ -194,15 +196,71 @@ describe('Backlog', () => {
     ]);
     expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
 
-    // Uncheck "Needs Refinement" (the 1st default-checked option) — only the in_development row stays.
+    // Uncheck "Needs Refinement" (the 2nd item, after the "Human Review" macro) — only the
+    // in_development row stays.
     await user.click(screen.getByRole('button', { name: /filter by status/i }));
     await screen.findByRole('menu');
-    await user.keyboard('[ArrowDown][Enter]');
+    await user.keyboard('[ArrowDown][ArrowDown][Enter]');
     // Close the menu (it aria-hides the rows while open), then read the narrowed order.
     await user.keyboard('[Escape]');
     await waitFor(() => {
       expect(rowOrder()).toEqual(['ALF-b']);
     });
+  });
+
+  it('the Human Review macro narrows to In Refinement, Ready for Dev, and Ready for Review', async () => {
+    const user = userEvent.setup();
+    renderBacklog([
+      makeStory('a', { priority: 10, factory_state: 'needs_refinement' }),
+      makeStory('b', { priority: 20, factory_state: 'in_refinement' }),
+      makeStory('c', { priority: 30, factory_state: 'ready_for_dev' }),
+      makeStory('d', { priority: 40, factory_state: 'ready_for_review' }),
+      makeStory('e', { priority: 50, factory_state: 'in_development' }),
+    ]);
+    // Default (outstanding) selection lists every open story.
+    expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c', 'ALF-d', 'ALF-e']);
+
+    // "Human Review" is the first menu item — checking it narrows to exactly its three states.
+    await user.click(screen.getByRole('button', { name: /filter by status/i }));
+    await screen.findByRole('menu');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Human Review' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    await user.keyboard('[ArrowDown][Enter]');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Human Review' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    await user.keyboard('[Escape]');
+    await waitFor(() => {
+      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-d']);
+    });
+  });
+
+  it('unchecks the Human Review macro when another status is toggled', async () => {
+    const user = userEvent.setup();
+    renderBacklog([makeStory('a', { priority: 10, factory_state: 'in_refinement' })]);
+
+    await user.click(screen.getByRole('button', { name: /filter by status/i }));
+    await screen.findByRole('menu');
+    // Turn the macro on, then check "Needs Refinement" (the next focusable item, past the divider).
+    await user.keyboard('[ArrowDown][Enter]');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Human Review' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await user.keyboard('[ArrowDown][Enter]');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Needs Refinement' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    // The selection no longer matches the preset, so the macro unchecks itself.
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Human Review' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
   it('disables Up on the first row and Down on the last', () => {
