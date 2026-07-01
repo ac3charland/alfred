@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { CommandPalette } from '@/components/shell/command-palette';
 import { SearchBox } from '@/components/shell/search-box';
 import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
 import { ShellNav } from '@/components/shell/shell-nav';
@@ -43,6 +44,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex-1 overflow-y-auto px-2">
             <ShellNav />
           </div>
+          {/* A quiet ⌘K affordance so the navigation palette is discoverable without a mouse. */}
+          <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground/70">
+            <span className="inline-flex items-center gap-1.5">
+              Press
+              <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-muted-foreground">
+                ⌘K
+              </kbd>
+              to go anywhere
+            </span>
+          </div>
         </aside>
 
         {/* Main content area */}
@@ -82,6 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <main className="flex-1 overflow-y-auto flex flex-col">{children}</main>
         </div>
       </div>
+      <CommandPalette />
       <ToastViewport />
     </>
   );
