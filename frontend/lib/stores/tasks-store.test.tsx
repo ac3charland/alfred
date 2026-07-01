@@ -905,6 +905,69 @@ describe('moveTask', () => {
     // Both items must be restored to 'old-folder'
     expect(result.current.tasks.every((t) => t.folder_id === 'old-folder')).toBe(true);
   });
+
+  // ALF-72: filing an unclassified inbox item into a folder must also classify it as a task —
+  // folders hold tasks, so a bare folder move would strand it in a folder still unclassified.
+  it('classifies an unclassified item as a task when filed into a folder', async () => {
+    const unclassified = item({ id: 'u-1', item_type: 'unclassified', folder_id: null });
+    mockUpdateItem.mockResolvedValue({
+      ...unclassified,
+      item_type: 'task',
+      folder_id: 'folder-2',
+    });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([unclassified]) });
+
+    await act(async () => {
+      await result.current.actions.moveTask('u-1', 'folder-2');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('u-1', {
+      folder_id: 'folder-2',
+      item_type: 'task',
+    });
+    expect(result.current.tasks[0]?.item_type).toBe('task');
+    expect(result.current.tasks[0]?.folder_id).toBe('folder-2');
+  });
+
+  it('flips the item type optimistically before the request resolves', () => {
+    const unclassified = item({ id: 'u-1', item_type: 'unclassified', folder_id: null });
+    mockUpdateItem.mockReturnValue(new Promise(() => {})); // never settles
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([unclassified]) });
+
+    act(() => {
+      void result.current.actions.moveTask('u-1', 'folder-2');
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('task');
+    expect(result.current.tasks[0]?.folder_id).toBe('folder-2');
+  });
+
+  it('does not classify an unclassified item when moved to the Inbox (null target)', async () => {
+    const unclassified = item({ id: 'u-1', item_type: 'unclassified', folder_id: 'folder-9' });
+    mockMoveToInbox.mockResolvedValue({ ...unclassified, folder_id: null });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([unclassified]) });
+
+    await act(async () => {
+      await result.current.actions.moveTask('u-1', null);
+    });
+
+    expect(mockMoveToInbox).toHaveBeenCalledWith('u-1');
+    expect(result.current.tasks[0]?.item_type).toBe('unclassified');
+  });
+
+  it('leaves an already-classified task type untouched when filed into a folder', async () => {
+    const task = item({ id: 'item-1', item_type: 'task', folder_id: null });
+    mockUpdateItem.mockResolvedValue({ ...task, folder_id: 'folder-2' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([task]) });
+
+    await act(async () => {
+      await result.current.actions.moveTask('item-1', 'folder-2');
+    });
+
+    // No item_type in the payload — a task stays a task.
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-2' });
+    expect(result.current.tasks[0]?.item_type).toBe('task');
+  });
 });
 
 // ---------------------------------------------------------------------------
