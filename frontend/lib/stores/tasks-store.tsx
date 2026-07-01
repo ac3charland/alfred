@@ -344,16 +344,34 @@ export function TasksProvider({
         // Stryker disable next-line ConditionalExpression: AT_CEILING — empty subtree → ids=[], so Promise.all maps over [] (zero API calls) and the dispatches are no-ops; identical to the early return. (completeTask/deleteTask call the API unconditionally, so their guards stay killable.)
         if (affected.length === 0) return;
         const ids = affected.map((item) => item.id);
+        // Filing into a folder classifies any still-unclassified item as a task — folders hold
+        // tasks, so a bare folder move would otherwise strand an inbox item in a folder while it
+        // stays unclassified (ALF-72). An unclassified item is always a leaf, so this only ever
+        // flips the moved root; moving to the Inbox (folderId null) classifies nothing.
+        const classifyIds =
+          folderId === null
+            ? new Set<string>()
+            : new Set(
+                affected.filter((item) => item.item_type === 'unclassified').map((item) => item.id),
+              );
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
+            if (classifyIds.size > 0) {
+              dispatch({ type: 'patch', ids: [...classifyIds], patch: { item_type: 'task' } });
+            }
           },
           apiCall: () =>
             Promise.all(
               ids.map((itemId) =>
                 folderId === null
                   ? api.moveToInbox(itemId)
-                  : api.updateItem(itemId, { folder_id: folderId }),
+                  : api.updateItem(
+                      itemId,
+                      classifyIds.has(itemId)
+                        ? { folder_id: folderId, item_type: 'task' }
+                        : { folder_id: folderId },
+                    ),
               ),
             ),
           reconcile: (rows) => {
