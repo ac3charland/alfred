@@ -276,6 +276,46 @@ test.describe('move and delete', () => {
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Inbox task')).toBeVisible();
   });
 
+  test('moving an unclassified item into a folder classifies it as a task (ALF-72)', async ({
+    page,
+    seed,
+  }) => {
+    // An unclassified capture has no completion checkbox. Filing it into a folder should
+    // classify it as a task, so it lands in the folder WITH the task affordances unlocked.
+    const work = makeFolder('Work');
+    await seed({
+      folders: [work],
+      items: [makeItem('Unfiled thought')],
+    });
+    await page.goto('/?view=inbox');
+
+    // No checkbox while it's an unclassified inbox item.
+    await expect(
+      page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
+    ).toBeHidden();
+
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Move to…' }).hover();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('menuitem', { name: 'Work' })).toBeVisible();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('menuitem', { name: 'Work' })).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    await expect(
+      page.getByRole('list', { name: 'Tasks' }).getByText('Unfiled thought'),
+    ).toBeHidden();
+
+    // In the folder it's now a task: the completion checkbox (a task-only affordance) is shown.
+    await page.getByRole('link', { name: 'Work' }).click();
+    await expect(
+      page.getByRole('list', { name: 'Tasks' }).getByText('Unfiled thought'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
+    ).toBeVisible();
+  });
+
   test('deletes a task', async ({ page, seed }) => {
     await seed({ items: [makeTask('Delete me')] });
     await page.goto('/?view=inbox');

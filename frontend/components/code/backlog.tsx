@@ -11,6 +11,7 @@ import { useStatusFilter } from '@/lib/hooks/use-status-filter';
 import {
   ALL_FACTORY_STATES,
   DEFAULT_BACKLOG_STATUSES,
+  HUMAN_REVIEW_STATUSES,
   useBacklog,
   useCodeActions,
   useProjects,
@@ -23,9 +24,9 @@ import {
  *
  * - **Header (the repurposed hero):** the old `CodeLanding` treatment — the `GitBranch` badge and
  *   the `font-serif` "The Software Factory" title — re-copied to describe the Backlog, with a
- *   **Filter by status** dropdown (multi-select checkboxes, one per factory state) that controls
- *   which statuses are listed. It defaults to the outstanding states, so `done`/`abandoned` are
- *   hidden until the owner checks them.
+ *   **Filter by status** dropdown (multi-select checkboxes, one per factory state, led by the
+ *   Human Review macro) that controls which statuses are listed. It defaults to the outstanding
+ *   states, so `done`/`abandoned` are hidden until the owner checks them.
  * - **List:** one `BacklogRow` per story, ranked by global `priority`. The single chevrons swap a
  *   story with its visible neighbour (`reorderStory`); the double chevrons jump it to the top or
  *   bottom of the Backlog (`moveStory`). Both are animated via `useFlipList` (FLIP), honouring
@@ -35,12 +36,29 @@ import {
  */
 export function Backlog() {
   // Defaults to the outstanding states (`done`/`abandoned` hidden until checked).
-  const { statuses, toggle, isFiltering } = useStatusFilter(DEFAULT_BACKLOG_STATUSES);
+  const { statuses, setStatuses, toggle, isFiltering } = useStatusFilter(DEFAULT_BACKLOG_STATUSES);
   const stories = useBacklog({ statuses });
   const projects = useProjects();
   const { reorderStory, moveStory } = useCodeActions();
   // Animate the reorder: FLIP keyed by item_id over the currently rendered order.
   const registerRow = useFlipList(stories.map((story) => story.item_id ?? ''));
+
+  // The "Human Review" macro is checked only when the selection is EXACTLY its preset. Because it's
+  // derived from `statuses`, checking or unchecking any individual status below auto-unchecks it the
+  // moment the selection stops matching — no extra bookkeeping needed.
+  const isHumanReview =
+    statuses.length === HUMAN_REVIEW_STATUSES.length &&
+    HUMAN_REVIEW_STATUSES.every((state) => statuses.includes(state));
+
+  const toggleHumanReview = React.useCallback(() => {
+    // Apply the preset when off; fall back to the default selection when toggled off again.
+    setStatuses((current) => {
+      const active =
+        current.length === HUMAN_REVIEW_STATUSES.length &&
+        HUMAN_REVIEW_STATUSES.every((state) => current.includes(state));
+      return active ? DEFAULT_BACKLOG_STATUSES : HUMAN_REVIEW_STATUSES;
+    });
+  }, [setStatuses]);
 
   const handleReorder = React.useCallback(
     (ref: string, neighbourRef: string) => {
@@ -87,6 +105,7 @@ export function Backlog() {
           selected={statuses}
           onToggle={toggle}
           isFiltering={isFiltering}
+          macros={[{ label: 'Human Review', checked: isHumanReview, onToggle: toggleHumanReview }]}
         />
       </div>
 

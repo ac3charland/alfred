@@ -236,4 +236,94 @@ describe('StoryCard', () => {
       expect(screen.queryByRole('status', { name: /opening/i })).not.toBeInTheDocument();
     });
   });
+
+  describe('the "Review PR" chip', () => {
+    const REFINEMENT_PR = 'https://github.com/ac3charland/alfred/pull/1';
+    const IMPLEMENTATION_PR = 'https://github.com/ac3charland/alfred/pull/2';
+
+    it('links to the refinement PR in the in_refinement state', () => {
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: REFINEMENT_PR })}
+        />,
+      );
+
+      const link = screen.getByRole('link', { name: /review pr/i });
+      expect(link).toHaveAttribute('href', REFINEMENT_PR);
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('links to the implementation PR in the ready_for_review state', () => {
+      render(
+        <StoryCard
+          story={makeStory({
+            factory_state: 'ready_for_review',
+            implementation_pr_url: IMPLEMENTATION_PR,
+          })}
+        />,
+      );
+
+      const link = screen.getByRole('link', { name: /review pr/i });
+      expect(link).toHaveAttribute('href', IMPLEMENTATION_PR);
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('shows no chip in a review state whose PR url is not recorded yet', () => {
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: null })}
+        />,
+      );
+
+      expect(screen.queryByRole('link', { name: /review pr/i })).not.toBeInTheDocument();
+    });
+
+    it('shows no chip outside the review states even when a PR url is populated', () => {
+      render(
+        <StoryCard
+          story={makeStory({
+            factory_state: 'in_development',
+            refinement_pr_url: REFINEMENT_PR,
+            implementation_pr_url: IMPLEMENTATION_PR,
+          })}
+        />,
+      );
+
+      expect(screen.queryByRole('link', { name: /review pr/i })).not.toBeInTheDocument();
+    });
+
+    it('does not fire the card-level onOpen when the chip is clicked', async () => {
+      const onOpen = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: REFINEMENT_PR })}
+          onOpen={onOpen}
+        />,
+      );
+
+      // jsdom does not implement navigation; suppress the "Not implemented" noise from the
+      // anchor's default navigation so the click's onOpen behavior is what's under test.
+      const link = screen.getByRole('link', { name: /review pr/i });
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+      });
+      await user.click(link);
+
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+
+    it('is keyboard-focusable and carries the accent focus ring', () => {
+      render(
+        <StoryCard
+          story={makeStory({ factory_state: 'in_refinement', refinement_pr_url: REFINEMENT_PR })}
+        />,
+      );
+
+      const link = screen.getByRole('link', { name: /review pr/i });
+      link.focus();
+      expect(link).toHaveFocus();
+      expect(link).toHaveClass('focus-visible:ring-2', 'focus-visible:ring-accent-blue');
+    });
+  });
 });

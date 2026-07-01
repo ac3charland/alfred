@@ -1,6 +1,7 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
+import { StoryCard } from '@/components/code/story-card';
 import * as api from '@/lib/api-client';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
@@ -192,6 +193,26 @@ function emitUpdate(row: CodeItem) {
 /** Override `document.hidden` (jsdom leaves it non-configurable false by default). */
 function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+}
+
+/**
+ * A tiny board harness: renders the live cards for project `p1` off `useProjectBoard`, so a
+ * realtime-driven change to a story row (e.g. a PR url arriving) is observable in the DOM via
+ * the card it mounts — the chip lives on `StoryCard`, driven only by the store's story row.
+ */
+function BoardCards() {
+  const board = useProjectBoard('p1');
+  const stories = board.activeEpics.flatMap((bucket) => [
+    ...bucket.lanes.flatMap((lane) => lane.stories),
+    ...bucket.escapeStories,
+  ]);
+  return (
+    <>
+      {stories.map((liveStory) => (
+        <StoryCard key={liveStory.item_id ?? ''} story={liveStory} />
+      ))}
+    </>
+  );
 }
 
 function makeWrapper(seed: { projects?: Project[]; epics?: Epic[]; stories?: CodeStory[] }) {
@@ -1942,6 +1963,37 @@ describe('code-store', () => {
           expect(document.title).toBe(ORIGINAL_TITLE);
         });
       });
+    });
+
+    // ALF-61: the board's Review PR chip is a pure function of the live story row, so a PR url
+    // arriving out of band (the webhook Worker writes it, a realtime UPDATE delivers it) must
+    // surface the chip with no page refresh — nothing but the store patch drives the re-render.
+    it('surfaces the Review PR chip live when a realtime UPDATE delivers the pr url', () => {
+      const prUrl = 'https://github.com/ac3charland/alfred/pull/61';
+      const story = makeStory('i1', 'e1', 'p1', {
+        ref: 'ALF-42',
+        factory_state: 'in_refinement',
+        refinement_pr_url: null,
+      });
+
+      render(<BoardCards />, {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+      });
+
+      // No chip yet: the session is running but hasn't opened its spec PR.
+      expect(screen.queryByRole('link', { name: /review pr/i })).not.toBeInTheDocument();
+
+      emitUpdate(
+        makeSavedSidecar({
+          item_id: 'i1',
+          ref: 'ALF-42',
+          factory_state: 'in_refinement',
+          refinement_pr_url: prUrl,
+        }),
+      );
+
+      const link = screen.getByRole('link', { name: /review pr/i });
+      expect(link).toHaveAttribute('href', prUrl);
     });
   });
 });

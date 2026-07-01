@@ -75,23 +75,20 @@ function archivePathFor(specPath: string): string {
 
 /**
  * The machine-readable PR ↔ ticket block every phase's PR must carry. Kept dead simple
- * so the Worker can regex it: a fenced ```alfred block with `alfred-ticket` + `phase`, plus
- * `spec-path` on refinement PRs only.
+ * so the Worker can regex it: a fenced ```alfred block with `alfred-ticket` + `phase`, plus a
+ * `spec-path` line when there's a spec to name. Refinement and implementation PRs pass one (the
+ * spec they write / consume); the skip-refinement bypass PR omits it entirely (ALF-75 — there is
+ * no committed spec, so naming one only implied a never-read file). CI requires `spec-path` on
+ * refinement PRs only, so an implementation block is valid without it.
  */
 function frontmatterBlock(
   story: CodeStory,
   phase: 'refinement' | 'implementation',
-  specPath: string,
+  specPath?: string,
 ): string {
-  const lines = [
-    '```alfred',
-    `alfred-ticket: ${refOf(story)}`,
-    `phase: ${phase}`,
-    // spec-path is declared on refinement PRs so Alfred renders the recorded path;
-    // including it on the implementation PR too is harmless and keeps the block uniform.
-    `spec-path: ${specPath}`,
-    '```',
-  ];
+  const lines = ['```alfred', `alfred-ticket: ${refOf(story)}`, `phase: ${phase}`];
+  if (specPath !== undefined) lines.push(`spec-path: ${specPath}`);
+  lines.push('```');
   return lines.join('\n');
 }
 
@@ -214,15 +211,15 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
  * implementation transitions — no refinement PR, no spec file). Ref + title lead the prompt so
  * the new tab is scannable.
  *
- * There is NO spec to archive (unlike `buildImplementationUrl`), so the prompt carries no
- * archive step — and the `alfred-frontmatter` check passes because no file exists at the block's
- * `spec-path` to be left un-archived.
+ * There is NO spec to archive (unlike `buildImplementationUrl`), so the prompt carries no archive
+ * step. And unlike the other two phases (ALF-75), the prompt neither reads the implement-spec skill
+ * (which owns spec-consuming conventions this session has no spec for) nor names a `spec-path` in
+ * the block — pointing at either only invited never-read spec files. It leans on the repo's own
+ * conventions for the build, and the `alfred-frontmatter` check passes because the block carries no
+ * `spec-path` (required on refinement PRs only) and no file is left un-archived.
  */
 export function buildBypassUrl(project: Project, story: CodeStory): string {
   const ref = refOf(story);
-  // Mirror buildImplementationUrl's fallback so frontmatterBlock's spec-path line is a usable
-  // conventional path; it's harmless/ignored on an implementation PR (see frontmatterBlock).
-  const specPath = story.spec_path ?? specPathFor(story);
   const prompt = [
     `${ref}: ${titleOf(story)}`,
     '',
@@ -230,10 +227,10 @@ export function buildBypassUrl(project: Project, story: CodeStory): string {
     '',
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your work on the code that already exists.`,
     `2. If the title and context below don't pin down the scope, ASK ME HERE before building rather than guessing — you don't need to guess, I'm in this tab. Once the plan is settled, go ahead.`,
-    `3. Implement the change directly, following the repo's own conventions (tests/TDD included) and the implement-spec skill at \`${IMPLEMENT_SKILL_PATH}\` where present (pin each requirement with a test).`,
+    `3. Implement the change directly, following the repo's own conventions (tests/TDD included) — pin each requirement with a test.`,
     `4. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
-    frontmatterBlock(story, 'implementation', specPath),
+    frontmatterBlock(story, 'implementation'),
     '',
     `5. Before opening the PR, confirm your changes satisfy the agreed plan and the block above is reproduced exactly.`,
     notesContext(story),

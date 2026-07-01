@@ -98,6 +98,16 @@ export const Subtask: Story = {
   },
 };
 
+// A subtask carrying its own priority: the level chip shows on the subtask row just like a
+// top-level task's (ALF-63) — subtask priority is set on the detail panel and ranked in the
+// Folder view, so it must be visible on the row too.
+export const SubtaskWithPriority: Story = {
+  args: {
+    node: { ...CHILD_NODE, title: 'Outline key sections', priority: 'high' },
+    depth: 1,
+  },
+};
+
 // A task filed in a folder: no "Task" pill either (ALF-67). Rendered with its folder_id set;
 // contrast with TaskClassified (Inbox).
 export const TaskInFolder: Story = {

@@ -62,6 +62,13 @@ The diff is computed against the first existing trunk ref (`origin/main`, `main`
 `origin/master`, `master`); when it can't be computed the branch is treated **conservatively**
 as touching code, so the exception is never granted on a guess.
 
+When `branch-folder` fires **and** the branch is behind trunk, the error appends the rebase
+fix — a stale base pulls trunk's intervening non-docs commits into the changed-set, which
+masks a genuinely docs-only branch and makes the rule demand a demo it doesn't owe. Rebasing
+onto current trunk (`git fetch origin && git rebase origin/main`) shrinks the diff back to
+docs-only and clears the error. This is the exact trap a refinement/spec-only branch hits when
+its base has drifted.
+
 ## Everyday gotchas
 
 - **The folder name is decoupled from the branch.** `branch-folder` is satisfied by a
@@ -86,12 +93,14 @@ as touching code, so the exception is never granted on a guess.
 ## Maintaining the tool
 
 It's a standard rule-registry split: `src/demos.ts` gathers a pure `DemosContext`
-(root files + branch facts + `declaredBranches` + `hasChangesOutsideDocs`), `src/rules.ts`
-holds the rule registry (add a `Rule` to the exported `rules` array to lint something new),
-`src/lint.ts` runs them, and `src/cli.ts` is the entry point. Git facts are computed in the
-CLI and injected for testability: `currentBranch()` and `changedPathsSinceTrunk()` shell out
-to git, the CLI passes both into `gatherDemos(demosDir, cwd, branch, changedPaths, changedOnly)`,
-and tests pass literals (so the raw git calls stay untested).
+(root files + branch facts + `declaredBranches` + `hasChangesOutsideDocs` + `staleBaseTrunkRef`),
+`src/rules.ts` holds the rule registry (add a `Rule` to the exported `rules` array to lint
+something new), `src/lint.ts` runs them, and `src/cli.ts` is the entry point. Git facts are
+computed in the CLI and injected for testability: `currentBranch()`, `changedPathsSinceTrunk()`,
+and `trunkRefIfBehind()` (the trunk ref this branch is behind, feeding the branch-folder rebase
+hint) shell out to git; the CLI passes them into
+`gatherDemos(demosDir, cwd, branch, changedPaths, changedOnly, staleBaseTrunkRef)`, and tests
+pass literals (so the raw git calls stay untested).
 
 **Trunk resolution must match CI, or the changed-only gate retroactively fires on old demos.**
 `changedPathsSinceTrunk()` diffs `merge-base(HEAD, trunk)..HEAD`, so the trunk ref it picks

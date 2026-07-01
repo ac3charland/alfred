@@ -8,6 +8,11 @@ import type { CodeFactoryState } from '@/lib/types';
 export interface StatusFilter {
   /** The currently-selected factory states (a subset of the caller's option list). */
   statuses: readonly CodeFactoryState[];
+  /**
+   * Replace the whole selection — for preset "macro" shortcuts (e.g. the Backlog's Human Review)
+   * that jump to an exact set rather than toggling one state at a time.
+   */
+  setStatuses: React.Dispatch<React.SetStateAction<readonly CodeFactoryState[]>>;
   /** Toggle one state in or out of the selection. */
   toggle: (state: CodeFactoryState) => void;
   /**
@@ -41,5 +46,5 @@ export function useStatusFilter(defaultStatuses: readonly CodeFactoryState[]): S
     statuses.length !== defaultStatuses.length ||
     !defaultStatuses.every((state) => statuses.includes(state));
 
-  return { statuses, toggle, isFiltering };
+  return { statuses, setStatuses, toggle, isFiltering };
 }

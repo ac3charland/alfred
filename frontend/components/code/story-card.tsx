@@ -2,7 +2,9 @@
 
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { LaunchButton } from '@/components/atoms/launch-button';
+import { ReviewPrChip } from '@/components/atoms/review-pr-chip';
 import { type LaunchPhase, launchPhasesFor } from '@/lib/code/launch';
+import { reviewPrUrlFor } from '@/lib/code/review-pr';
 import { isEscapeState } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -29,6 +31,10 @@ export interface StoryCardProperties {
  * *Skip to Development* in `needs_refinement`, *Implement* in `ready_for_dev`, hidden in every
  * other state (one `LaunchButton` per phase `launchPhasesFor` returns).
  *
+ * In the two review states it instead grows a **Review PR** chip linking to the open PR the
+ * human must review (`reviewPrUrlFor`) — `in_refinement` → the spec PR, `ready_for_review` →
+ * the implementation PR — but only once that PR url is recorded on the row.
+ *
  * The card body is an activatable control (opens the detail modal). A `blocked`/
  * `abandoned` story gets a distinct treatment (amber/red edge + a state tag) so it reads as
  * off the happy path even when surfaced via the escape filter.
@@ -37,6 +43,7 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
   const escape = isEscapeState(story.factory_state);
   const blocked = story.factory_state === 'blocked';
   const phases = launchPhasesFor(story.factory_state);
+  const reviewPrUrl = reviewPrUrlFor(story);
 
   return (
     <div
@@ -71,7 +78,7 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
         </span>
         <span className="mt-1 line-clamp-2 block text-sm text-foreground">{story.title}</span>
       </ClickableCard>
-      {phases.length > 0 ? (
+      {phases.length > 0 || reviewPrUrl !== null ? (
         <div className="flex flex-wrap gap-1.5 px-3 pb-2">
           {phases.map((phase) => (
             <LaunchButton
@@ -82,6 +89,7 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
               variant="chip"
             />
           ))}
+          {reviewPrUrl === null ? null : <ReviewPrChip url={reviewPrUrl} />}
         </div>
       ) : null}
     </div>

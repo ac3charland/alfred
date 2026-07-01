@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import { changedPathsSinceTrunk, currentBranch, gatherDemos } from './demos.ts';
+import { changedPathsSinceTrunk, currentBranch, gatherDemos, trunkRefIfBehind } from './demos.ts';
 import { countBySeverity, lintDemos } from './lint.ts';
 
 const HELP = `demo-lint — enforce the docs/demos folder-per-demo structure.
@@ -24,7 +24,9 @@ Rules:
                      lives in its own folder.
   ✗ branch-folder  — a feature branch must own a demo; a doc claims a branch via
                      "branch: <name>" in its YAML front matter (folder name is free).
-                     A docs-only branch (every change under docs/) is exempt.
+                     A docs-only branch (every change under docs/) is exempt. If the
+                     branch is behind trunk, the error flags the stale base and the
+                     rebase fix (a stale base can mask a docs-only branch).
 
 In this repo, run it through the package script: npm run lint:demos -w tools/demo-lint
 `;
@@ -87,6 +89,7 @@ function main(argv: readonly string[]): number {
     branchOverridden ? branch : currentBranch(),
     changedPathsSinceTrunk(),
     changedOnly,
+    trunkRefIfBehind(),
   );
   const findings = lintDemos(demos);
 

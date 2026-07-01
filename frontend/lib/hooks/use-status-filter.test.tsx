@@ -36,6 +36,17 @@ describe('useStatusFilter', () => {
     expect(result.current.isFiltering).toBe(true);
   });
 
+  it('replaces the whole selection via setStatuses (a preset macro jump)', () => {
+    const { result } = renderHook(() => useStatusFilter(DEFAULT));
+
+    act(() => {
+      result.current.setStatuses(['ready_for_review']);
+    });
+
+    expect(result.current.statuses).toEqual(['ready_for_review']);
+    expect(result.current.isFiltering).toBe(true);
+  });
+
   it('returns to not-filtering when the selection matches the default again', () => {
     const { result } = renderHook(() => useStatusFilter(DEFAULT));
 

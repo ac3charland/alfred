@@ -89,6 +89,18 @@ export const DEFAULT_BACKLOG_STATUSES: readonly CodeFactoryState[] = ALL_FACTORY
   (state) => isBacklogOutstanding(state),
 );
 
+/**
+ * The "Human Review" macro selection — the states where a story sits awaiting the owner's eyes:
+ * a spec being reviewed (`in_refinement`) and the two ready-for gates (`ready_for_dev`,
+ * `ready_for_review`). The Backlog's status filter offers this as a one-click shortcut that
+ * narrows the list to exactly these three, deselecting every other status.
+ */
+export const HUMAN_REVIEW_STATUSES = [
+  'in_refinement',
+  'ready_for_dev',
+  'ready_for_review',
+] as const satisfies readonly CodeFactoryState[];
+
 /** One swimlane: a happy-path state and the stories currently in it (ref order). */
 export interface BoardLane {
   state: HappyPathState;

@@ -13,6 +13,7 @@ function makeDemos(overrides: Partial<DemosContext> = {}): DemosContext {
     declaredBranches: [],
     demoContents: [],
     hasChangesOutsideDocs: true,
+    staleBaseTrunkRef: undefined,
     ...overrides,
   };
 }
@@ -67,6 +68,34 @@ describe('branch-folder', () => {
     );
     expect(finding?.severity).toBe('error');
     expect(finding?.message).toContain('claude/foo');
+  });
+
+  it('omits the rebase hint when the base is not stale', () => {
+    const [finding] = findingsFor(
+      'branch-folder',
+      makeDemos({
+        branch: 'claude/foo',
+        branchFolder: 'claude/foo',
+        declaredBranches: [],
+        staleBaseTrunkRef: undefined,
+      }),
+    );
+    expect(finding?.message).not.toContain('rebase');
+  });
+
+  it('appends the rebase fix to the error when the branch is behind trunk', () => {
+    const [finding] = findingsFor(
+      'branch-folder',
+      makeDemos({
+        branch: 'claude/foo',
+        branchFolder: 'claude/foo',
+        declaredBranches: [],
+        staleBaseTrunkRef: 'origin/main',
+      }),
+    );
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('behind origin/main');
+    expect(finding?.message).toContain('git rebase origin/main');
   });
 
   it('skips a docs-only branch with no demo (every change under docs/)', () => {
