@@ -939,6 +939,14 @@ describe('TaskRow', () => {
       renderTasks([{ ...BASE_ITEM, priority: null }]);
       expect(screen.queryByRole('button', { name: /^Priority:/ })).not.toBeInTheDocument();
     });
+
+    it('renders a priority badge for a subtask with a level set (ALF-63)', async () => {
+      const user = userEvent.setup();
+      // Parent unprioritised, subtask Medium — so the only Priority chip is the subtask's.
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, priority: 'medium' }]);
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      expect(screen.getByRole('button', { name: 'Priority: Medium' })).toBeInTheDocument();
+    });
   });
 
   // ---------------------------------------------------------------------------

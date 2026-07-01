@@ -638,8 +638,10 @@ export function TaskRow({
                 <RecurrenceChip rule={recurrenceRule} />
               )}
 
-              {/* Priority — top-level tasks with a level set; symbol-only on the row. */}
-              {isTopLevelTask && isPriorityLevel(node.priority) && (
+              {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
+                the row. Subtasks carry their own priority (set on the detail panel, ranked in the
+                Folder view), so their level must show on the row too (ALF-63). */}
+              {isTask && isPriorityLevel(node.priority) && (
                 <PriorityChip priority={node.priority} symbolOnly />
               )}
 
