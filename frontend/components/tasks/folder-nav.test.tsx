@@ -866,28 +866,45 @@ describe('FolderNav', () => {
     });
   });
 
-  describe('due-today / past-due count badge', () => {
-    it('shows a folder badge with the count of active today-or-overdue tasks', () => {
+  describe('attention (amber) + overdue (red) count badges', () => {
+    it('shows an amber attention badge (high-priority or due today) and a red overdue badge', () => {
       renderWithProviders(<FolderNav />, {
         folders: FOLDERS,
         tasks: [
-          taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(-1) }), // past
-          taskItem({ id: 'b', folder_id: 'f1', due_date: dueYMD(0) }), // today
+          taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(-1) }), // past → overdue
+          taskItem({ id: 'b', folder_id: 'f1', due_date: dueYMD(0) }), // today → attention
+          taskItem({ id: 'c', folder_id: 'f1', priority: 'high', due_date: null }), // hi-pri → attention
         ],
       });
 
-      expect(screen.getByLabelText('2 due today or overdue')).toHaveTextContent('2');
+      const attention = screen.getByLabelText('2 high-priority or due today');
+      expect(attention).toHaveTextContent('2');
+      expect(attention).toHaveClass('text-accent-amber');
+      const overdue = screen.getByLabelText('1 overdue');
+      expect(overdue).toHaveTextContent('1');
+      expect(overdue).toHaveClass('text-accent-red');
     });
 
-    it('renders no badge for a folder with nothing due (no "0" chip)', () => {
+    it('renders neither badge for a folder with nothing to flag (no "0" chip)', () => {
       renderWithProviders(<FolderNav />, {
         folders: FOLDERS,
         tasks: [taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(0) })],
       });
 
-      // f1 has its badge; f2 (nothing due) shows none.
-      expect(screen.getByLabelText('1 due today or overdue')).toBeInTheDocument();
+      // f1 has its attention badge; f2 (nothing to flag) shows none.
+      expect(screen.getByLabelText('1 high-priority or due today')).toBeInTheDocument();
       expect(screen.queryByText('0')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/overdue/i)).not.toBeInTheDocument();
+    });
+
+    it('counts a high-priority overdue task as overdue only, not attention (disjoint)', () => {
+      renderWithProviders(<FolderNav />, {
+        folders: FOLDERS,
+        tasks: [taskItem({ id: 'a', folder_id: 'f1', priority: 'high', due_date: dueYMD(-1) })],
+      });
+
+      expect(screen.getByLabelText('1 overdue')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/high-priority or due today/i)).not.toBeInTheDocument();
     });
 
     it('keeps the badge shrink-0 and the name truncating so a long name never clips it', () => {
@@ -896,7 +913,7 @@ describe('FolderNav', () => {
         tasks: [taskItem({ id: 'a', folder_id: 'f1', due_date: dueYMD(0) })],
       });
 
-      expect(screen.getByLabelText('1 due today or overdue')).toHaveClass('shrink-0');
+      expect(screen.getByLabelText('1 high-priority or due today')).toHaveClass('shrink-0');
       // The folder name flex-fills and truncates, so it yields room before the badge.
       const link = screen.getByRole('link', { name: /work/i });
       const name = link.querySelector('.truncate');
@@ -913,7 +930,8 @@ describe('FolderNav', () => {
         ],
       });
 
-      expect(screen.queryByLabelText(/due today or overdue/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/high-priority or due today/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/overdue/i)).not.toBeInTheDocument();
     });
   });
 });
