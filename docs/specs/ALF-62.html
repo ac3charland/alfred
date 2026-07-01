@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-62 — Add project parsing to inbox task entry</title>
+    <style>
+      :root {
+        --bg: #0a0e17;
+        --surface: #0f1626;
+        --surface-2: #131c30;
+        --border: #1e2a3f;
+        --text: #e8edf5;
+        --muted: #8a96a8;
+        --teal: #4fd1e0;
+        --green: #34d399;
+        --blue: #60a5fa;
+        --amber: #f0b429;
+        --red: #f87171;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      .wrap {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 5rem;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: 'Newsreader', 'Playfair Display', Georgia, serif;
+        line-height: 1.2;
+        color: var(--text);
+      }
+      h1 {
+        font-size: 2rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.4rem;
+        margin: 2.5rem 0 0.75rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 1.1rem;
+        margin: 1.75rem 0 0.5rem;
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--teal);
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 0.95rem;
+        margin: 0 0 1.5rem;
+      }
+      p {
+        margin: 0.6rem 0;
+      }
+      code {
+        font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.08em 0.38em;
+        font-size: 0.85em;
+        color: var(--teal);
+      }
+      pre {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1rem 1.15rem;
+        overflow-x: auto;
+        box-shadow: 0 0 24px -12px rgba(79, 209, 224, 0.35);
+      }
+      pre code {
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--text);
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        border: 1px solid var(--border);
+        padding: 0.55rem 0.7rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--surface-2);
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.74rem;
+      }
+      tr:nth-child(even) td {
+        background: rgba(15, 22, 38, 0.5);
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 1.1rem 1.25rem;
+        margin: 1.1rem 0;
+      }
+      .card.teal {
+        box-shadow: 0 0 30px -14px rgba(79, 209, 224, 0.5);
+        border-color: rgba(79, 209, 224, 0.4);
+      }
+      .card.amber {
+        box-shadow: 0 0 30px -14px rgba(240, 180, 41, 0.5);
+        border-color: rgba(240, 180, 41, 0.4);
+      }
+      ul,
+      ol {
+        margin: 0.5rem 0;
+        padding-left: 1.3rem;
+      }
+      li {
+        margin: 0.35rem 0;
+      }
+      .pill {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 0.1em 0.7em;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        border: 1px solid;
+      }
+      .pill.teal {
+        color: var(--teal);
+        border-color: rgba(79, 209, 224, 0.5);
+        background: rgba(79, 209, 224, 0.08);
+      }
+      .pill.amber {
+        color: var(--amber);
+        border-color: rgba(240, 180, 41, 0.5);
+        background: rgba(240, 180, 41, 0.08);
+      }
+      .ac {
+        list-style: none;
+        padding-left: 0;
+      }
+      .ac li {
+        position: relative;
+        padding-left: 1.9rem;
+        margin: 0.5rem 0;
+      }
+      .ac li::before {
+        content: '☐';
+        position: absolute;
+        left: 0;
+        top: -0.05rem;
+        color: var(--teal);
+        font-size: 1.1rem;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      strong {
+        color: var(--text);
+      }
+      .flow {
+        display: block;
+        margin: 1.25rem auto;
+        max-width: 100%;
+      }
+      svg text {
+        font-family: 'Inter', sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="eyebrow">Refinement spec · Tasks module</p>
+      <h1>ALF-62 — Add project parsing to inbox task entry</h1>
+      <p class="sub">
+        Type <code>ALF: ship dark mode</code> in the Inbox capture box and the item is captured as a
+        <strong>Code</strong> item, pre-assigned to the <strong>Alfred</strong> project, titled
+        <strong>“Ship dark mode”</strong> — no menus, no gate, no epic required yet.
+      </p>
+
+      <h2>1 · Context &amp; problem</h2>
+      <p>
+        Capture is meant to be frictionless (SPEC §1, §4). Today, turning a captured thought into a
+        Code item is a two-step, menu-driven chore: capture it as an <code>unclassified</code> Inbox
+        item, then open the row menu and pick <em>Classify as → Code</em>. Even after that, the item
+        carries <strong>no project</strong> — the only way to attach a project is the
+        <em>Send to Code module</em> gate, which also demands an epic.
+      </p>
+      <p>
+        The owner already thinks in project shorthand (“ALF: …”, “Alfred: …”). This ticket lets that
+        shorthand do the classification work at the moment of capture: a recognized
+        <code>&lt;project&gt;:</code> prefix classifies the item as Code and pre-assigns the project
+        in one keystroke-cheap gesture, leaving the item in the Inbox for later triage.
+      </p>
+
+      <h3>The two “code” states in the data model (why this needs a new column)</h3>
+      <p>
+        There is a real distinction in the schema, and this feature lives in the gap between them:
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>State</th>
+            <th>How it's represented</th>
+            <th>Where it lives</th>
+            <th>Project?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Code-classified inbox item</td>
+            <td>
+              <code>items.item_type = 'code'</code>, <strong>no</strong> <code>code_items</code> row
+            </td>
+            <td>Inbox (kept by the <code>task_items</code> view)</td>
+            <td>None today — <strong>this ticket adds it</strong></td>
+          </tr>
+          <tr>
+            <td>Factory story</td>
+            <td>
+              <code>items.item_type = 'code'</code> + a <code>code_items</code> sidecar
+            </td>
+            <td>Code board (leaves the Inbox)</td>
+            <td>
+              <code>code_items.project_id</code> + <code>epic_id</code> (both <code>NOT NULL</code>)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Because a code-classified inbox item has nowhere to record a project, the prefix flow needs a
+        lightweight, epic-free association on <code>items</code> itself. That is the crux of this
+        spec.
+      </p>
+
+      <h2>2 · Resolved scope (from refinement Q&amp;A)</h2>
+      <div class="card teal">
+        <ul>
+          <li>
+            <strong>Project link without an epic.</strong> The item stays in the Inbox as
+            <code>item_type = 'code'</code> with a project assigned but <strong>no epic</strong>. A
+            new nullable column, <code>items.intended_project_id</code>, holds that assignment.
+          </li>
+          <li>
+            <strong>Gate pre-population.</strong> When the item later goes through
+            <em>Send to Code module</em>, the gate pre-selects the assigned project. In the
+            <strong>bulk</strong> send path the project is pre-selected <em>and locked</em> when the
+            whole selection shares one assigned project.
+          </li>
+          <li>
+            <strong>Surface.</strong> Parsing applies to the <strong>main Inbox capture box only</strong>
+            (full mode, no folder, no parent). Folder captures, inline subtask captures, and the
+            external <code>POST /api/items</code> (Siri) ingest path are untouched.
+          </li>
+        </ul>
+      </div>
+
+      <h2>3 · Proposed change</h2>
+
+      <h3>3.1 · The prefix grammar</h3>
+      <p>
+        On capture, split the trimmed text at the <strong>first colon</strong>. The text before the
+        colon (trimmed) is the <em>candidate prefix</em>; the text after (trimmed) is the
+        <em>remainder</em>. The prefix matches a project when, compared
+        <strong>case-insensitively</strong>, it equals that project's <code>key</code> (its
+        “initials”, e.g. <code>ALF</code>) or its <code>name</code> (e.g. <code>Alfred</code>). A
+        match triggers classification; anything else is captured verbatim as an
+        <code>unclassified</code> item exactly as today.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Typed in the Inbox box</th>
+            <th>Matched?</th>
+            <th>Resulting item</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ALF: add dark mode</code></td>
+            <td>key <code>ALF</code></td>
+            <td>Code · project Alfred · title <strong>“Add dark mode”</strong></td>
+          </tr>
+          <tr>
+            <td><code>alfred: add dark mode</code></td>
+            <td>name (case-insensitive)</td>
+            <td>Code · project Alfred · title <strong>“Add dark mode”</strong></td>
+          </tr>
+          <tr>
+            <td><code>alf:fix bug</code> (no space)</td>
+            <td>key <code>ALF</code></td>
+            <td>Code · project Alfred · title <strong>“Fix bug”</strong></td>
+          </tr>
+          <tr>
+            <td><code>ALF: rename the : separator</code></td>
+            <td>key <code>ALF</code> (first colon only)</td>
+            <td>Code · Alfred · title <strong>“Rename the : separator”</strong></td>
+          </tr>
+          <tr>
+            <td><code>Note: buy milk</code> (no such project)</td>
+            <td>no match</td>
+            <td>Unclassified · title <strong>“Note: buy milk”</strong> (verbatim)</td>
+          </tr>
+          <tr>
+            <td><code>buy milk</code> (no colon)</td>
+            <td>no match</td>
+            <td>Unclassified · title <strong>“buy milk”</strong> (verbatim, unchanged)</td>
+          </tr>
+          <tr>
+            <td><code>ALF:</code> / <code>ALF:&nbsp;&nbsp;</code> (empty remainder)</td>
+            <td>ignored</td>
+            <td>Unclassified · verbatim (nothing worth capturing after the colon)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p><strong>Matching precedence &amp; ambiguity.</strong></p>
+      <ul>
+        <li>
+          <code>key</code> is unique, so a key match is unambiguous and wins first.
+        </li>
+        <li>
+          Otherwise fall back to a case-insensitive <code>name</code> match. <code>name</code> is
+          <em>not</em> unique in the schema — if the prefix matches the name of
+          <strong>more than one</strong> project, treat it as <strong>no match</strong> (capture
+          verbatim) rather than guessing.
+        </li>
+        <li>
+          <strong>Capitalization</strong> uppercases only the first character of the remainder
+          (<code>remainder[0].toUpperCase() + remainder.slice(1)</code>); the rest is left as typed.
+          A remainder that starts with a non-letter is left unchanged.
+        </li>
+        <li>
+          <code>raw_capture</code> preserves the <strong>original, unstripped</strong> text
+          (e.g. <code>"ALF: add dark mode"</code>) so nothing is lost for future re-processing
+          (SPEC §3.2).
+        </li>
+      </ul>
+
+      <h3>3.2 · Data flow</h3>
+      <svg
+        class="flow"
+        viewBox="0 0 820 250"
+        role="img"
+        aria-label="Flow: capture text parsed against the projects list, matched items become code with an intended project, unmatched items stay unclassified"
+      >
+        <defs>
+          <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#4fd1e0" />
+          </marker>
+        </defs>
+        <rect x="10" y="95" width="150" height="56" rx="10" fill="#0f1626" stroke="#1e2a3f" />
+        <text x="85" y="119" fill="#e8edf5" font-size="12" text-anchor="middle">Inbox capture box</text>
+        <text x="85" y="136" fill="#8a96a8" font-size="11" text-anchor="middle">"ALF: add dark mode"</text>
+
+        <rect x="220" y="90" width="170" height="66" rx="10" fill="#0f1626" stroke="#4fd1e0" />
+        <text x="305" y="114" fill="#e8edf5" font-size="12" text-anchor="middle">parseProjectPrefix()</text>
+        <text x="305" y="131" fill="#8a96a8" font-size="10.5" text-anchor="middle">reads projects from</text>
+        <text x="305" y="145" fill="#8a96a8" font-size="10.5" text-anchor="middle">the code-store</text>
+
+        <rect x="470" y="20" width="330" height="64" rx="10" fill="#0f1626" stroke="#f0b429" />
+        <text x="635" y="44" fill="#f0b429" font-size="12" text-anchor="middle">match → Code item</text>
+        <text x="635" y="61" fill="#8a96a8" font-size="10.5" text-anchor="middle">item_type='code', intended_project_id=ALF,</text>
+        <text x="635" y="74" fill="#8a96a8" font-size="10.5" text-anchor="middle">title="Add dark mode", raw_capture=original</text>
+
+        <rect x="470" y="162" width="330" height="60" rx="10" fill="#0f1626" stroke="#1e2a3f" />
+        <text x="635" y="186" fill="#e8edf5" font-size="12" text-anchor="middle">no match → Unclassified item</text>
+        <text x="635" y="203" fill="#8a96a8" font-size="10.5" text-anchor="middle">title = raw text, verbatim (today's behavior)</text>
+
+        <line x1="160" y1="123" x2="214" y2="123" stroke="#4fd1e0" stroke-width="1.5" marker-end="url(#arw)" />
+        <line x1="390" y1="112" x2="464" y2="70" stroke="#4fd1e0" stroke-width="1.5" marker-end="url(#arw)" />
+        <line x1="390" y1="134" x2="464" y2="185" stroke="#4fd1e0" stroke-width="1.5" marker-end="url(#arw)" />
+      </svg>
+      <p class="muted">
+        Matching needs the project list, which lives client-side in the <code>CodeProvider</code>
+        store (it already wraps the Tasks view — see the gate dialog). So parsing happens
+        client-side, at the Inbox capture box, before <code>addTask</code>.
+      </p>
+
+      <h3>3.3 · The pure parser <span class="pill teal">new</span></h3>
+      <p>
+        Add <code>frontend/lib/code/project-prefix.ts</code> — a pure, dependency-free function so the
+        matching rules are unit-tested in isolation (co-located <code>project-prefix.test.ts</code>).
+      </p>
+      <pre><code>// frontend/lib/code/project-prefix.ts
+import type { Project } from '@/lib/types';
+
+export interface ProjectPrefixMatch {
+  project: Project;   // the matched project
+  title: string;      // remainder, prefix stripped + first letter capitalized
+}
+
+/**
+ * If `text` starts with `&lt;project name|key&gt;:` (case-insensitive, first colon),
+ * return the matched project and the cleaned title. Otherwise return null.
+ *
+ * - key match (unique) wins; else a case-insensitive name match, but only if
+ *   exactly one project has that name (ambiguous name → null).
+ * - empty remainder → null. No colon → null.
+ */
+export function parseProjectPrefix(
+  text: string,
+  projects: readonly Project[],
+): ProjectPrefixMatch | null;</code></pre>
+
+      <h3>3.4 · Database <span class="pill amber">migration</span></h3>
+      <p>Add <code>database/migrations/0012_intended_project.sql</code> (next after <code>0011</code>):</p>
+      <pre><code>-- ALF-62 — a code-classified INBOX item may carry an intended project
+-- (pre-factory, epic-free). code_items.project_id remains authoritative
+-- once the item enters the factory; this is only the Inbox hint.
+alter table items
+  add column intended_project_id uuid references projects (id) on delete set null;
+
+-- Only a code item may hold an intended project (keeps unclassified/task rows clean).
+alter table items add constraint items_intended_project_code_only check (
+  intended_project_id is null or item_type = 'code'
+);
+
+create index items_intended_project_id_idx on items (intended_project_id);</code></pre>
+      <ul>
+        <li>
+          <code>on delete set null</code>: deleting a project must not orphan or break Inbox rows —
+          the item simply loses its hint and stays a plain code item.
+        </li>
+        <li>
+          <strong>No new GRANTs / RLS changes.</strong> A column add inherits the table's existing
+          grants and <code>authenticated full access</code> policy; migration-lint only flags missing
+          sequence grants, and no sequence is created here.
+        </li>
+        <li>
+          The <code>task_items</code> view is <code>select i.*</code>, so it picks up the new column
+          automatically. <code>get_subtree</code> lists columns explicitly but does
+          <strong>not</strong> need it — subtasks are always <code>task</code>, never code.
+        </li>
+        <li>
+          Regenerate <code>frontend/lib/database.types.ts</code> with <code>supabase gen types</code>
+          and commit it verbatim (it's a generated file — never hand-edit; see the supabase skill).
+        </li>
+        <li>
+          Optional tidy-up: <code>enter_code_module</code> may also clear
+          <code>intended_project_id</code> (the sidecar's <code>project_id</code> supersedes it once
+          in the factory). Harmless either way since the factory item leaves the <code>task_items</code>
+          view; leave the RPC untouched unless trivial.
+        </li>
+      </ul>
+
+      <h3>3.5 · API — create path</h3>
+      <ul>
+        <li>
+          <code>frontend/lib/api/schemas.ts</code> — add
+          <code>intended_project_id: nullableUuid.optional()</code> to <code>createItemSchema</code>
+          (mirrors <code>folder_id</code>/<code>parent_id</code>). This flows into
+          <code>CreateItemInput</code> automatically.
+        </li>
+        <li>
+          <code>frontend/app/api/items/route.ts</code> (<code>POST</code>) — pass
+          <code>intended_project_id: input.intended_project_id ?? null</code> in the insert. Guard it
+          the same way <code>item_type</code> is guarded: a row with a <code>parent_id</code> is
+          forced to <code>task</code>, so it must never carry an intended project — set it to
+          <code>null</code> whenever <code>parent_id</code> is present (belt-and-braces with the DB
+          CHECK).
+        </li>
+      </ul>
+
+      <h3>3.6 · Store — <code>addTask</code></h3>
+      <p>
+        Extend <code>AddTaskInput</code> in <code>frontend/lib/stores/tasks-store.tsx</code> with two
+        optional fields the Inbox capture box supplies when the prefix matched:
+      </p>
+      <pre><code>interface AddTaskInput {
+  text: string;                 // raw captured text → raw_capture (unchanged)
+  folderId?: string | null;
+  parentId?: string | null;
+  // ALF-62 — supplied only by the Inbox capture box on a prefix match:
+  title?: string;               // cleaned title (stripped + capitalized)
+  itemType?: ItemType;          // 'code' on a match
+  intendedProjectId?: string | null;
+}</code></pre>
+      <p>Inside <code>addTask</code>:</p>
+      <ul>
+        <li>
+          Build <code>createInput</code> with <code>raw_capture: input.text</code>, an explicit
+          <code>title: input.title ?? input.text</code>, and
+          <code>item_type</code> = <code>parentId ? 'task' : (input.itemType ?? 'unclassified')</code>
+          (existing precedence, extended to honor an explicit type).
+        </li>
+        <li>
+          Pass <code>intended_project_id</code> only when a project is present and there's no parent.
+        </li>
+        <li>
+          <code>makeOptimisticItem</code> must reflect the cleaned <code>title</code>,
+          <code>item_type</code>, and <code>intended_project_id</code> so the optimistic Inbox row
+          renders as Code with its project immediately (then reconciles with the saved row).
+        </li>
+      </ul>
+
+      <h3>3.7 · Capture box wiring (Inbox only)</h3>
+      <p>
+        <code>CaptureBox</code> is shared (Inbox, folders, subtasks), so parsing must be opt-in to
+        keep it off the folder/subtask instances. Add a boolean prop
+        <code>parseProjectPrefix?: boolean</code> (default <code>false</code>); the Inbox page's
+        capture box passes <code>true</code>. When the prop is set (and thus only in full mode with no
+        <code>folderId</code>/<code>parentId</code>):
+      </p>
+      <ul>
+        <li>Read the project list via <code>useProjects()</code> from the code-store.</li>
+        <li>
+          On submit, run <code>parseProjectPrefix(trimmed, projects)</code>. On a match, call
+          <code>addTask</code> with <code>{ text: trimmed, itemType: 'code', title: match.title,
+          intendedProjectId: match.project.id }</code>; otherwise call <code>addTask</code> exactly as
+          today.
+        </li>
+        <li>The ghost/flourish, error handling, and out-typing behavior are unchanged.</li>
+      </ul>
+
+      <h3>3.8 · Gate pre-population</h3>
+      <ul>
+        <li>
+          Extend <code>GateItem</code> (<code>gate-dialog.tsx</code>) with
+          <code>intendedProjectId: string | null</code>; the single-row caller (<code>task-row.tsx</code>)
+          and the bulk caller (<code>inbox-bulk-bar.tsx</code>) populate it from
+          <code>node.intended_project_id</code>.
+        </li>
+        <li>
+          <strong>Single item:</strong> initialize the gate's <code>projectId</code> from
+          <code>items[0].intendedProjectId</code> (still user-changeable). Epic selection is
+          unchanged (user must still pick one).
+        </li>
+        <li>
+          <strong>Bulk:</strong> if <em>every</em> selected item shares the same non-null
+          <code>intendedProjectId</code>, pre-select it and <strong>lock</strong> the project selector
+          (render the project as a fixed, read-only chip instead of the interactive listbox); the user
+          only picks the epic. If the selection's projects differ or any is null, fall back to today's
+          interactive, unselected picker.
+        </li>
+      </ul>
+
+      <h3>3.9 · Inbox affordance (project chip)</h3>
+      <p>
+        A code inbox row already shows a <code>TypeBadge</code>. When
+        <code>intended_project_id</code> is set, also render the project's <code>key</code> as a small
+        pill chip beside the badge (e.g. <span class="pill amber">ALF</span>) so the owner can see
+        which project was assigned at a glance. Reuse the existing project-color helper
+        (<code>lib/code/project-color.ts</code>) for the chip accent. Keep it modest — a read-only
+        indicator, not an editor.
+      </p>
+
+      <h2>4 · Acceptance criteria</h2>
+      <ul class="ac">
+        <li>
+          Typing <code>ALF: add dark mode</code> (key) or <code>Alfred: add dark mode</code> (name)
+          in the Inbox capture box creates a <strong>Code</strong> Inbox item assigned to the Alfred
+          project, titled <strong>“Add dark mode”</strong>, with <code>raw_capture</code> holding the
+          original text.
+        </li>
+        <li>Prefix matching is case-insensitive against both the project <code>key</code> and <code>name</code>.</li>
+        <li>The first letter of the post-colon remainder is capitalized; the rest is left as typed.</li>
+        <li>Only the first colon splits; later colons stay in the title.</li>
+        <li>
+          A colon with an unrecognized prefix, an ambiguous (duplicate-name) prefix, no colon, or an
+          empty remainder is captured verbatim as an <code>unclassified</code> item (no
+          classification, no stripping).
+        </li>
+        <li>The created Code inbox row shows the Code type badge and the assigned project's key chip.</li>
+        <li>
+          Parsing does <strong>not</strong> run in folder capture boxes, inline subtask capture, or the
+          <code>POST /api/items</code> Siri path — those behave exactly as before.
+        </li>
+        <li>
+          Opening <em>Send to Code module…</em> on such an item pre-selects its assigned project
+          (epic still required).
+        </li>
+        <li>
+          Bulk-sending a selection that all shares one assigned project pre-selects and
+          <strong>locks</strong> that project; a mixed/absent selection falls back to the interactive
+          picker.
+        </li>
+        <li>
+          <code>items.intended_project_id</code> exists, is nullable, references
+          <code>projects(id)</code> with <code>on delete set null</code>, and is constrained to code
+          items; <code>database.types.ts</code> is regenerated.
+        </li>
+        <li>The full <code>npm run check</code> passes green.</li>
+      </ul>
+
+      <h2>5 · Testing strategy (TDD)</h2>
+      <ul>
+        <li>
+          <strong>Unit — <code>project-prefix.test.ts</code>:</strong> the full match matrix — key
+          match, name match, case-insensitivity, no colon, no-such-project, ambiguous duplicate name,
+          empty remainder, no-space colon, multiple colons, capitalization (letter, non-letter first
+          char), surrounding whitespace.
+        </li>
+        <li>
+          <strong>RTL — capture box:</strong> the Inbox instance (prop on) maps <code>ALF: foo</code>
+          to an <code>addTask</code> call with <code>itemType: 'code'</code>, the project id, and
+          title <code>Foo</code>; a plain string stays unclassified; a folder/subtask instance
+          (prop off) never classifies.
+        </li>
+        <li>
+          <strong>Unit — store:</strong> <code>addTask</code> threads <code>title</code>,
+          <code>item_type</code>, and <code>intended_project_id</code> into <code>createItem</code>
+          and into the optimistic row.
+        </li>
+        <li>
+          <strong>API — route/schema test:</strong> <code>createItemSchema</code> accepts
+          <code>intended_project_id</code>; <code>POST /api/items</code> inserts it and nulls it when a
+          <code>parent_id</code> is present.
+        </li>
+        <li>
+          <strong>RTL — gate:</strong> single-item pre-selects from <code>intendedProjectId</code>;
+          bulk locks on a unanimous project and stays interactive on a mixed selection.
+        </li>
+        <li>
+          <strong>E2E (Playwright), optional:</strong> capture <code>ALF: …</code> on the Inbox and
+          assert the row renders as Code with the project chip and cleaned title.
+        </li>
+      </ul>
+
+      <h2>6 · Demo evidence</h2>
+      <p>
+        Per the workflow, capture the behavior in a demo doc at
+        <code>docs/demos/alf-62-inbox-project-parsing.md</code> once <code>check</code> is green:
+        capture <code>Alfred: build the thing</code> in the Inbox, screenshot the resulting Code row
+        (badge + <span class="pill amber">ALF</span> chip, title “Build the thing”), then open
+        <em>Send to Code module</em> to show the project pre-selected. Follow the <code>showboat</code>
+        skill for the exact commands and evidence-matching rules — those stay the source of truth; do
+        not restate them here.
+      </p>
+
+      <h2>7 · Out of scope / open questions</h2>
+      <ul>
+        <li>
+          <strong>Out of scope:</strong> epic assignment or auto-creating a default epic (the item
+          stays epic-free until the gate); parsing on the Siri/API ingest path; parsing in folder or
+          subtask captures; fuzzy/partial project matching; LLM-based classification (SPEC §4.2
+          future layer); editing/adding a prefix after capture; a multi-project prefix syntax.
+        </li>
+        <li>
+          <strong>Confirm (reasonable default chosen):</strong> for a <em>bulk</em> send whose items
+          have <em>different</em> assigned projects, this spec falls back to the interactive,
+          unselected picker (no lock). If instead the bulk bar should refuse or split such a mix, say
+          so in review.
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>
