@@ -44,7 +44,8 @@ once the scope is clear do you write the spec below.
      — this section is for deferred decisions, not for guesses you didn't check.
 
 3. **A pull request** whose description carries the machine-readable `alfred` block so the Worker
-   can advance the ticket. The `spec-path` MUST match the file you created:
+   can advance the ticket, plus a **live preview link** to the rendered spec. The `spec-path`
+   MUST match the file you created:
 
    ````markdown
    ```alfred
@@ -53,6 +54,19 @@ once the scope is clear do you write the spec below.
    spec-path: docs/specs/<REF>.html
    ```
    ````
+
+   - **Link the rendered spec via `htmlpreview.github.io`.** GitHub serves a committed `.html`
+     file as raw source, not a rendered page, so a reviewer who clicks the spec can't actually
+     read it. Add a clickable link in the description that renders it, pointing at the file on
+     **this PR's head branch** (not `main` — the spec isn't there yet):
+
+     ```
+     https://htmlpreview.github.io/?https://github.com/<owner>/<repo>/blob/<branch>/docs/specs/<REF>.html
+     ```
+
+     Fill in the real `<owner>/<repo>` and head-`<branch>` so the link resolves the moment the PR
+     opens. The spec is a self-contained single file (inline CSS, no external deps) — exactly what
+     htmlpreview renders faithfully.
 
 ## Rules
 
