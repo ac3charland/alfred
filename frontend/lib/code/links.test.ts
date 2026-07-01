@@ -364,9 +364,25 @@ describe('buildBypassUrl', () => {
     expect(prompt).toMatch(/verbatim|reproduced exactly/i);
   });
 
-  it('points at the implement-spec skill for the build conventions', () => {
+  it('does NOT point at the implement-spec skill (skip-refinement builds no spec to consume)', () => {
     const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
-    expect(prompt).toContain('.claude/skills/implement-spec/SKILL.md');
+    // ALF-75: the implement-spec skill owns spec-consuming conventions (archiving a consumed
+    // spec); a skip-refinement session has no spec, so pointing at it only invited never-read
+    // spec files. The prompt now leans on the repo's own conventions instead.
+    expect(prompt).not.toContain('.claude/skills/implement-spec/SKILL.md');
+  });
+
+  it('does NOT carry a spec-path in the alfred block (no spec to name)', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    // ALF-75: there is no committed spec, so the block must not name one — a spec-path line only
+    // implied a file that never exists. CI requires spec-path on refinement PRs only, so an
+    // implementation/bypass block is valid without it.
+    expect(prompt).not.toMatch(/spec-path:/i);
+  });
+
+  it('still keeps the TDD nudge to pin each requirement with a test', () => {
+    const prompt = parse(buildBypassUrl(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/tests\/TDD|pin each requirement with a test/i);
   });
 
   it('flags truncated notes so partial context is not mistaken for the whole', () => {
