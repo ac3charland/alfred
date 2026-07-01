@@ -472,7 +472,11 @@ export function CodeProvider({
         // from the Code view, where both are seeded. Surface as an error.
         throw new Error('Project or epic missing from the code store');
       }
-      const optimistic = makeOptimisticStory(item, project, epic);
+      // Land the optimistic card at the top of the Backlog (ALF-71), matching the server.
+      const optimistic = {
+        ...makeOptimisticStory(item, project, epic),
+        priority: topStoryPriority(stateRef.current.stories),
+      };
       let reconciled: CodeStory = optimistic;
       await runOptimisticMutation({
         optimistic: () => {
@@ -599,11 +603,11 @@ export function CodeProvider({
         // The item is server-allocated, so the optimistic card carries a TEMP item id that
         // the reconcile swaps for the real uuid (unlike the gate, where the item exists).
         const tempItemId = tempId();
-        const optimistic = makeOptimisticStory(
-          { id: tempItemId, title, notes, source_url: null },
-          project,
-          epic,
-        );
+        // Land the optimistic card at the top of the Backlog (ALF-71), matching the server.
+        const optimistic = {
+          ...makeOptimisticStory({ id: tempItemId, title, notes, source_url: null }, project, epic),
+          priority: topStoryPriority(stateRef.current.stories),
+        };
         let reconciled: CodeStory = optimistic;
         await runOptimisticMutation({
           optimistic: () => {
@@ -952,6 +956,17 @@ export function useCodeStories(): CodeStory[] {
  */
 function byPriorityAsc(a: CodeStory, b: CodeStory): number {
   return (a.priority ?? Number.POSITIVE_INFINITY) - (b.priority ?? Number.POSITIVE_INFINITY);
+}
+
+/**
+ * The priority a brand-new story takes so it lands at the TOP of the Backlog (ALF-71): one step
+ * below every live priority (lower = higher rank). Mirrors `create_code_story` / `enter_code_module`
+ * and `moveStory`'s to-top math — `coalesce(min, 0) - 1` — so the optimistic card sorts to the top
+ * immediately and matches the server priority it reconciles to.
+ */
+function topStoryPriority(stories: CodeStory[]): number {
+  const priorities = stories.map((s) => s.priority ?? 0);
+  return (priorities.length === 0 ? 0 : Math.min(...priorities)) - 1;
 }
 
 /** The outstanding factory states the Backlog shows by default — everything but done/abandoned. */

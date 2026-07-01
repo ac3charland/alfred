@@ -76,16 +76,21 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   // RLS-read check needs the rows the create checks inserted). Bind each result and return
   // them as one literal rather than mutating an array in place.
   const createStoryResult = await attempt(
-    'create_code_story allocates a priority (0008 sequence grant)',
+    'create_code_story lands a new story at top priority (ALF-71)',
     async () => {
+      // A fresh story must outrank every story already in the Backlog (lower = higher rank),
+      // not append to the bottom. Seed a baseline first, then prove the next one beats it.
+      const baseline = await createStory(client, 'older story');
       const { ref, priority } = await createStory(client, 'Bug created from epic');
       if (!priority) throw new Error('no priority allocated');
-      return `ref=${ref} priority=${priority}`;
+      if (!(Number(priority) < Number(baseline.priority)))
+        throw new Error(`new story priority ${priority} not above baseline ${baseline.priority}`);
+      return `baseline=${baseline.priority}, new=${priority} (ref=${ref})`;
     },
   );
 
   const enterModuleResult = await attempt(
-    'enter_code_module allocates a priority (sequence grant)',
+    'enter_code_module lands a gated story at top priority (ALF-71)',
     async () => {
       const inserted = await asRole(client, 'authenticated', () =>
         client.query<{ id: string }>(
@@ -94,6 +99,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       );
       const itemId = inserted.rows[0]?.id;
       if (!itemId) throw new Error('item insert returned no id');
+      const before = await client.query<{ min: string }>(
+        `select min(priority) as min from code_items`,
+      );
+      const minBefore = Number(before.rows[0]?.min);
       const { rows } = await asRole(client, 'authenticated', () =>
         client.query<{ ref: string; priority: string }>(
           `select ref, priority from enter_code_module($1, $2, $3)`,
@@ -102,7 +111,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       );
       const row = rows[0];
       if (!row?.priority) throw new Error('no priority allocated');
-      return `ref=${row.ref} priority=${row.priority}`;
+      if (!(Number(row.priority) < minBefore))
+        throw new Error(`gated priority ${row.priority} not above min ${String(minBefore)}`);
+      return `min before=${String(minBefore)}, gated=${row.priority} (ref=${row.ref})`;
     },
   );
 
@@ -133,11 +144,17 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   const moveResult = await attempt(
     'move_code_priority jumps a story past both extremes (0009)',
     async () => {
-      const x = await createStory(client, 'story X');
-      const y = await createStory(client, 'story Y');
+      await createStory(client, 'story X');
+      await createStory(client, 'story Y');
       const z = await createStory(client, 'story Z');
-      const minBefore = Math.min(Number(x.priority), Number(y.priority), Number(z.priority));
-      // Jump the lowest-ranked (z) to the top → strictly below every other live priority.
+      // The min over every OTHER live story (what the RPC's to-top reads). Querying it rather
+      // than assuming z starts lowest keeps this independent of the new-story default direction.
+      const minOthers = await client.query<{ min: string }>(
+        `select min(priority) as min from code_items where ref <> $1`,
+        [z.ref],
+      );
+      const minBefore = Number(minOthers.rows[0]?.min);
+      // Jump z to the top → strictly below every other live priority.
       await asRole(client, 'authenticated', () =>
         client.query(`select move_code_priority($1, $2)`, [z.ref, true]),
       );
