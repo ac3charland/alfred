@@ -362,6 +362,53 @@ export function reviewPrUrlFor(story: CodeStory): string | null {
         is written defensively so a future state that has both would still render correctly.
       </div>
 
+      <h3>Real-time behavior (no refresh needed)</h3>
+      <p>
+        The chip must appear the moment a refinement/implementation session opens its PR — no page
+        reload. <strong>This already works with zero additional wiring</strong>, because the chip is
+        a pure function of two fields the store already keeps live:
+      </p>
+      <ul>
+        <li>
+          <code>CodeProvider</code> subscribes to <code>postgres_changes</code> on the base
+          <code>code_items</code> table (<code>frontend/lib/stores/code-store.tsx</code>, the
+          realtime effect around lines 390–450). The webhook Worker writes the PR url (and the
+          review-state transition) out of band; each <code>UPDATE</code> is fed through
+          <code>codeItemToStoryPatch</code>.
+        </li>
+        <li>
+          <code>codeItemToStoryPatch</code> (lines 312–328) <strong>already projects both
+          <code>refinement_pr_url</code> and <code>implementation_pr_url</code></strong> (plus
+          <code>factory_state</code>) onto the story, and <code>patchStory</code> dispatches the
+          patch keyed by <code>item_id</code>. React re-renders the affected <code>StoryCard</code>,
+          <code>reviewPrUrlFor</code> now returns the URL, and the chip mounts.
+        </li>
+      </ul>
+      <p>
+        So the sequence "story enters <code>in_refinement</code> → session opens spec PR → Worker
+        writes <code>refinement_pr_url</code> → realtime <code>UPDATE</code> → chip appears" happens
+        with no user action. The implementation must simply <strong>not</strong> gate the chip on
+        anything the realtime patch doesn't refresh (it doesn't — it reads only
+        <code>story.factory_state</code> and the two url fields, all covered by the patch), and
+        <strong>must add a store-level regression test</strong> proving it:
+      </p>
+      <ul>
+        <li>
+          In <code>frontend/lib/stores/code-store.test.tsx</code> (which already has a realtime
+          UPDATE harness and a <code>codeItemToStoryPatch</code> block asserting the pr-url fields at
+          lines ~1676–1693), add a test that renders a board card in <code>in_refinement</code> with
+          <code>refinement_pr_url: null</code> (no chip), drives a realtime UPDATE carrying the same
+          state + a non-null <code>refinement_pr_url</code>, and asserts the <strong>Review PR</strong>
+          link now appears — <em>without</em> a re-render triggered by anything other than the patch.
+        </li>
+      </ul>
+      <div class="note">
+        Nothing in the store, the subscription, or <code>codeItemToStoryPatch</code> needs to change
+        for real-time to work — this section is a guarantee to preserve and test, not new work. If a
+        future refactor ever drops the pr-url fields from <code>codeItemToStoryPatch</code>, the chip
+        would silently stop updating live; the regression test above guards against that.
+      </div>
+
       <h3>Files touched</h3>
       <table class="files">
         <thead><tr><th>File</th><th>Change</th></tr></thead>
@@ -372,11 +419,13 @@ export function reviewPrUrlFor(story: CodeStory): string | null {
           <tr><td><code>frontend/components/code/story-card.tsx</code></td><td>compute <code>reviewPrUrlFor</code>, render the chip in the footer</td></tr>
           <tr><td><code>frontend/components/code/story-card.test.tsx</code></td><td>add cases for the Review PR chip (shown / hidden / href / no-onOpen)</td></tr>
           <tr><td><code>frontend/components/code/story-card.stories.tsx</code></td><td>add <em>InRefinementWithPr</em> and <em>ReadyForReviewWithPr</em> stories for the snapshot gate</td></tr>
+          <tr><td><code>frontend/lib/stores/code-store.test.tsx</code></td><td>add a realtime-UPDATE regression test: a review-state card gains the Review PR chip live when the patch delivers the pr-url (see "Real-time behavior")</td></tr>
         </tbody>
       </table>
       <p class="lead" style="font-size:0.9rem">
         No API, store, database, or type changes — every field the chip needs already exists on the
-        <code>CodeStory</code> row and flows through the store unchanged.
+        <code>CodeStory</code> row and already flows through the store's optimistic reconcile
+        <em>and</em> its realtime subscription unchanged.
       </p>
 
       <h2>Acceptance criteria</h2>
@@ -396,6 +445,9 @@ export function reviewPrUrlFor(story: CodeStory): string | null {
           and card-open behavior is unchanged.</li>
         <li><code>reviewPrUrlFor</code> is covered by unit tests for all three branches
           (in_refinement, ready_for_review, other) including the null-url fallthrough.</li>
+        <li>When a story already on the board receives its PR url out of band (a realtime
+          <code>code_items</code> UPDATE), the Review PR chip appears <strong>without a page
+          refresh</strong> — proven by a store-level test that drives the realtime handler.</li>
         <li>Storybook snapshot baselines include the two new "with PR" card states (approved via the
           <code>storybook</code> capture-then-approve flow).</li>
         <li><code>npm run check</code> is green.</li>
