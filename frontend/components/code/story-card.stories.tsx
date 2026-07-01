@@ -71,6 +71,37 @@ export const InRefinement: Story = {
   args: { story: { ...BASE_STORY, factory_state: 'in_refinement', ref: 'ALF-46' } },
 };
 
+/**
+ * An `in_refinement` story whose spec PR is open: the card grows a **Review PR** chip linking
+ * to `refinement_pr_url`, so a reviewer can jump to the spec PR straight from the board.
+ */
+export const InRefinementWithPr: Story = {
+  args: {
+    story: {
+      ...BASE_STORY,
+      factory_state: 'in_refinement',
+      ref: 'ALF-46',
+      refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/61',
+    },
+  },
+};
+
+/**
+ * A `ready_for_review` story whose implementation PR is open: the **Review PR** chip links to
+ * `implementation_pr_url`.
+ */
+export const ReadyForReviewWithPr: Story = {
+  args: {
+    story: {
+      ...BASE_STORY,
+      factory_state: 'ready_for_review',
+      ref: 'ALF-47',
+      title: 'Inline detail panel with auto-saving chip pickers',
+      implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/62',
+    },
+  },
+};
+
 /** A blocked story: amber edge + a Blocked tag, surfaced via the board's filter toggle. */
 export const Blocked: Story = {
   args: { story: { ...BASE_STORY, factory_state: 'blocked', ref: 'ALF-43' } },
