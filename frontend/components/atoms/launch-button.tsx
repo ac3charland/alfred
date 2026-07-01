@@ -3,10 +3,10 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { CardChip } from '@/components/atoms/card-chip';
 import { Spinner } from '@/components/atoms/spinner';
 import { LAUNCH_LABELS, type LaunchPhase } from '@/lib/code/launch';
 import type { CodeStory } from '@/lib/types';
-import { cn } from '@/lib/utils';
 
 export interface LaunchButtonProperties {
   /** The story to launch. */
@@ -78,24 +78,15 @@ export function LaunchButton({
   }
 
   return (
-    <button
-      type="button"
+    <CardChip
+      tone={isSecondary ? 'subordinate' : 'accent'}
       onClick={() => {
         void handleLaunch();
       }}
       disabled={launching}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium',
-        'transition-colors duration-100 motion-reduce:transition-none',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue',
-        'disabled:cursor-not-allowed disabled:opacity-70',
-        isSecondary
-          ? 'border-border bg-transparent text-muted-foreground hover:bg-secondary hover:text-secondary-foreground'
-          : 'border-accent-teal/40 bg-accent-teal/10 text-accent-teal hover:bg-accent-teal/20',
-      )}
     >
       {launching ? <Spinner size={12} label={labels.busy} /> : null}
       {labels.idle}
-    </button>
+    </CardChip>
   );
 }
