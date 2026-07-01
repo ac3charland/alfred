@@ -42,16 +42,18 @@ const meta = {
   component: FolderNav,
   parameters: {
     layout: 'centered',
-    // The sidebar reads folders + the flat item store; seed both so the due-count badges
-    // render against real data (Work has 3 due today/overdue, Personal 1, Someday none).
+    // The sidebar reads folders + the flat item store; seed both so the two folder badges
+    // render against real data. Work: 2 overdue (red) + 2 attention (today + a hi-pri no-due,
+    // amber). Personal: 1 attention (today). Someday: nothing (a future low-pri task).
     store: {
       folders: FOLDERS,
       tasks: [
-        task({ id: 'a', folder_id: 'f1', due_date: dueYMD(-3) }),
-        task({ id: 'b', folder_id: 'f1', due_date: dueYMD(-1) }),
-        task({ id: 'c', folder_id: 'f1', due_date: dueYMD(0) }),
-        task({ id: 'd', folder_id: 'f1', due_date: dueYMD(7) }), // future — not counted
-        task({ id: 'e', folder_id: 'f2', due_date: dueYMD(0) }),
+        task({ id: 'a', folder_id: 'f1', due_date: dueYMD(-3) }), // overdue
+        task({ id: 'b', folder_id: 'f1', due_date: dueYMD(-1) }), // overdue
+        task({ id: 'c', folder_id: 'f1', due_date: dueYMD(0) }), // due today → attention
+        task({ id: 'g', folder_id: 'f1', priority: 'high', due_date: null }), // hi-pri → attention
+        task({ id: 'd', folder_id: 'f1', due_date: dueYMD(7) }), // future low-pri — not counted
+        task({ id: 'e', folder_id: 'f2', due_date: dueYMD(0) }), // due today → attention
         task({ id: 'f', folder_id: 'f3', due_date: dueYMD(2) }), // future — not counted
       ],
     },
@@ -63,8 +65,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * The sidebar with per-folder due-today/past-due badges: Work shows 3 (one past, one
- * yesterday, one today — the future one is excluded), Personal shows 1, Someday shows none.
+ * The sidebar with per-folder badges: Work shows an amber attention badge (2 — one due today,
+ * one high-priority no-due) plus a red overdue badge (2), Personal shows 1 attention, Someday
+ * shows none (its only task is a future low-priority one).
  */
 export const WithDueBadges: Story = {
   decorators: [

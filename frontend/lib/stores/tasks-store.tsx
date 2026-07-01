@@ -3,7 +3,7 @@
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
-import { isDueTodayOrOverdue } from '@/lib/date-utils';
+import { isDueDateOverdue, isDueTodayOrOverdue } from '@/lib/date-utils';
 import { rankByPriority, sortNodesByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
@@ -596,28 +596,52 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
   }, [items, scopeType, folderId]);
 }
 
+/** A folder's two badge counts (ALF-84): the amber "attention" tally and the red "overdue" tally. */
+export interface FolderBadgeCounts {
+  /** Active tasks needing attention — high-priority OR due today — that are NOT overdue (amber). */
+  attention: number;
+  /** Active tasks past due (due strictly before today), the most urgent bucket (red). */
+  overdue: number;
+}
+
 /**
- * Per-folder count of active task items due today or earlier (today + past-due), keyed by
- * `folder_id`. Returns a map so a folder list can look up each folder's count in its existing
- * `folders.map(...)` without N hook calls. Derived from the shared store via `useMemo`, so it
- * updates optimistically with every capture, completion, due-date edit, and drag-to-folder.
+ * Per-folder badge counts (ALF-84), keyed by `folder_id`: an **overdue** tally (red) and an
+ * **attention** tally (amber). Returns a map so a folder list can look up each folder's counts in
+ * its existing `folders.map(...)` without N hook calls. Derived from the shared store via
+ * `useMemo`, so both update optimistically with every capture, completion, due-date edit,
+ * priority change, and drag-to-folder.
  *
- * An item counts when ALL hold: it lives in a folder (`folder_id !== null`, so inbox items
- * never count), it's active (completed excluded), and it has a `due_date` that is today or
- * earlier. Filtering on `due_date !== null` already restricts to tasks (the DB
- * `items_task_only_fields` constraint lets only `item_type = 'task'` rows carry a due date), and
- * subtasks share their ancestor's `folder_id`, so this flat count includes nested subtasks.
+ * The two buckets are **disjoint** — every counted task lands in exactly one — so the numbers
+ * never double-count the same task:
+ * - **overdue** (red): active, in a folder, with a `due_date` strictly before today. Past-due
+ *   takes precedence, so a high-priority overdue task counts here, not in attention.
+ * - **attention** (amber): active, in a folder, NOT overdue, and either high-priority (regardless
+ *   of due date — a high-priority task with no due date still counts) OR due today.
+ *
+ * Inbox items (`folder_id === null`) and completed tasks never count. A `due_date` implies the
+ * row is a task (the DB `items_task_only_fields` constraint), and subtasks share their ancestor's
+ * `folder_id`, so these flat counts include nested subtasks.
  */
-export function useDueCountsByFolder(): Record<string, number> {
+export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
   const items = useTasks();
   return React.useMemo(() => {
-    const counts: Record<string, number> = {};
+    const counts: Record<string, FolderBadgeCounts> = {};
+    const bump = (folderId: string, key: keyof FolderBadgeCounts) => {
+      const bucket = (counts[folderId] ??= { attention: 0, overdue: 0 });
+      bucket[key] += 1;
+    };
     for (const item of items) {
       if (item.folder_id === null) continue;
       if (item.status !== 'active') continue;
-      if (item.due_date === null) continue;
-      if (!isDueTodayOrOverdue(item.due_date)) continue;
-      counts[item.folder_id] = (counts[item.folder_id] ?? 0) + 1;
+      if (item.due_date !== null && isDueDateOverdue(item.due_date)) {
+        bump(item.folder_id, 'overdue');
+        continue;
+      }
+      // Not overdue: a due date that is today-or-earlier can only be today here.
+      const isDueToday = item.due_date !== null && isDueTodayOrOverdue(item.due_date);
+      if (item.priority === 'high' || isDueToday) {
+        bump(item.folder_id, 'attention');
+      }
     }
     return counts;
   }, [items]);
