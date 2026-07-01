@@ -14,7 +14,7 @@ ALF-68 gives the toast store an optional `href` and renders a toast that carries
 
 ![](clickable-creation-toasts-image-1.png)
 
-**After the click** — one click lands on the story's board at `/code/<projectId>?story=ALF-5` with the **detail modal open** on "Refactor the parser" (ALF-5, Needs Refinement). The click both navigated and dismissed nothing prematurely — the toast is still visible mid-transition. No manual module switch, no hunting for the card.
+**After the click** — one click lands on the story's board at `/code/<projectId>?story=ALF-5` with the **detail modal open** on "Refactor the parser" (ALF-5, Needs Refinement). No manual module switch, no hunting for the card.
 
 ![](clickable-creation-toasts-image-2.png)
 
