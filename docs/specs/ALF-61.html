@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-61 — Add "Review PR" buttons to cards in Refinement / Ready for Review stages</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --surface-2: #1e222b;
+        --border: #2a2f3a;
+        --fg: #e6e9ef;
+        --muted: #9aa3b2;
+        --teal: #4fd1c5;
+        --blue: #6ea8fe;
+        --amber: #f0b429;
+        --green: #4ade80;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 2rem 1.25rem 4rem;
+      }
+      main { max-width: 60rem; margin: 0 auto; }
+      h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 0.25rem; }
+      h2 {
+        font-size: 1.15rem;
+        margin: 2.5rem 0 0.75rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--teal); }
+      p, li { color: var(--fg); }
+      a { color: var(--blue); }
+      code, .mono { font-family: var(--mono); font-size: 0.9em; }
+      code {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.05rem 0.35rem;
+      }
+      pre {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+      .lead { color: var(--muted); font-size: 1.02rem; margin: 0.25rem 0 0; }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--teal);
+        background: rgba(79, 209, 197, 0.12);
+        border: 1px solid rgba(79, 209, 197, 0.35);
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+        margin-bottom: 1rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.92rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+      td .mono { color: var(--teal); }
+      .card-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.15rem;
+        margin: 1rem 0;
+      }
+      ul.checklist { list-style: none; padding-left: 0; }
+      ul.checklist li { position: relative; padding-left: 1.9rem; margin: 0.5rem 0; }
+      ul.checklist li::before {
+        content: "☐";
+        position: absolute;
+        left: 0;
+        color: var(--teal);
+        font-size: 1.05rem;
+      }
+      .note {
+        background: rgba(240, 180, 41, 0.08);
+        border-left: 3px solid var(--amber);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+        color: var(--fg);
+      }
+      /* --- inline card mockup --- */
+      .mock-wrap { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+      .mock {
+        width: 15rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .mock .lane-head {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        padding: 0.4rem 0.75rem;
+        background: var(--surface-2);
+      }
+      .mock .body { padding: 0.5rem 0.75rem 0.65rem; }
+      .mock .ref { font-family: var(--mono); font-size: 0.72rem; color: var(--teal); font-weight: 600; }
+      .mock .title { font-size: 0.85rem; margin: 0.25rem 0 0.55rem; }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--blue);
+        background: rgba(110, 168, 254, 0.1);
+        border: 1px solid rgba(110, 168, 254, 0.4);
+        border-radius: 6px;
+        padding: 0.25rem 0.55rem;
+      }
+      .chip.teal { color: var(--teal); background: rgba(79, 209, 197, 0.1); border-color: rgba(79, 209, 197, 0.4); }
+      svg { max-width: 100%; height: auto; }
+      .files td:first-child { white-space: nowrap; }
+      @media (max-width: 640px) {
+        body { padding: 1.25rem 0.9rem 3rem; }
+        table { font-size: 0.85rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">Refinement spec · phase: refinement</span>
+      <h1>ALF-61 — Add "Review PR" buttons to cards in Refinement / Ready for Review stages when they exist</h1>
+      <p class="lead">
+        Surface a one-click <strong>Review PR</strong> link on a story card while its work is
+        awaiting human review, so a reviewer can jump straight to the open pull request from the
+        board — without opening the detail modal first.
+      </p>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        The code board (<code>frontend/components/code/board.tsx</code> → <code>swimlane.tsx</code> →
+        <code>story-card.tsx</code>) renders each story as a compact card. Today a card only grows an
+        action in the two <em>launchable</em> states: a <strong>Refine</strong> (+ subordinate
+        <strong>Skip to Development</strong>) chip in <code>needs_refinement</code>, and an
+        <strong>Implement</strong> chip in <code>ready_for_dev</code>
+        (see <code>launchPhasesFor</code> in <code>frontend/lib/code/launch.ts</code>). In every
+        other state the card is just <em>ref + title</em>.
+      </p>
+      <p>
+        That leaves a gap in the two states where the human's job is literally to
+        <strong>review an open PR</strong>:
+      </p>
+      <ul>
+        <li>
+          <strong>In Refinement</strong> (<code>in_refinement</code>) — a refinement session has
+          opened its spec PR; the human needs to review that <code>refinement_pr_url</code>.
+        </li>
+        <li>
+          <strong>Ready for Review</strong> (<code>ready_for_review</code>) — an implementation
+          session has opened its PR; the human needs to review that
+          <code>implementation_pr_url</code>.
+        </li>
+      </ul>
+      <p>
+        Both URLs already exist on the story row. <code>CodeStory</code> is the
+        <code>v_code_stories</code> view row, which carries <code>refinement_pr_url</code> and
+        <code>implementation_pr_url</code> (populated by the webhook Worker and already mapped in the
+        store, <code>frontend/lib/stores/code-store.tsx</code>). The
+        <strong>detail modal already links them</strong> via <code>PrLink</code>
+        (<code>frontend/components/code/story-detail-modal.tsx</code> lines 223–228). But you have to
+        open the modal to get there. ALF-61 brings that link up onto the card itself, so the board
+        is actionable at a glance.
+      </p>
+
+      <h2>Proposed change</h2>
+      <p>
+        Add a <strong>Review PR</strong> chip to the card's action footer (the same
+        <code>flex flex-wrap gap-1.5</code> row that today holds the launch chips) in the two review
+        states, <strong>only when the state's PR URL is present</strong>. The chip is an external
+        link (opens the GitHub PR in a new tab), styled as a card chip and carrying the
+        <code>ExternalLink</code> icon already used by the modal's <code>PrLink</code>.
+      </p>
+
+      <h3>State → PR-URL mapping</h3>
+      <table>
+        <thead>
+          <tr><th>Factory state</th><th>Lane label</th><th>PR the chip links to</th><th>Shown when</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>in_refinement</code></td>
+            <td>In Refinement</td>
+            <td><span class="mono">refinement_pr_url</span></td>
+            <td><code>refinement_pr_url !== null</code></td>
+          </tr>
+          <tr>
+            <td><code>ready_for_review</code></td>
+            <td>Ready for Review</td>
+            <td><span class="mono">implementation_pr_url</span></td>
+            <td><code>implementation_pr_url !== null</code></td>
+          </tr>
+          <tr>
+            <td>any other state</td>
+            <td>—</td>
+            <td>— (no Review PR chip)</td>
+            <td>never</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="lead" style="font-size:0.9rem">
+        The two review states never also render a launch chip (<code>launchPhasesFor</code> returns
+        <code>[]</code> for both), so Review PR is the only footer action in these states — no
+        collision with the launch buttons.
+      </p>
+
+      <svg viewBox="0 0 720 150" role="img" aria-label="State to PR-URL selection">
+        <defs>
+          <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#6ea8fe" />
+          </marker>
+        </defs>
+        <rect x="10" y="20" width="180" height="46" rx="8" fill="#1e222b" stroke="#2a2f3a" />
+        <text x="100" y="40" fill="#e6e9ef" font-size="13" text-anchor="middle">story.factory_state</text>
+        <text x="100" y="57" fill="#9aa3b2" font-size="11" text-anchor="middle">+ pr urls</text>
+
+        <rect x="270" y="8" width="210" height="30" rx="6" fill="#171a21" stroke="#2a2f3a" />
+        <text x="375" y="27" fill="#4fd1c5" font-size="11.5" text-anchor="middle">in_refinement → refinement_pr_url</text>
+
+        <rect x="270" y="60" width="210" height="30" rx="6" fill="#171a21" stroke="#2a2f3a" />
+        <text x="375" y="79" fill="#4fd1c5" font-size="11.5" text-anchor="middle">ready_for_review → implementation_pr_url</text>
+
+        <rect x="270" y="112" width="210" height="30" rx="6" fill="#171a21" stroke="#2a2f3a" />
+        <text x="375" y="131" fill="#9aa3b2" font-size="11.5" text-anchor="middle">else → null (no chip)</text>
+
+        <rect x="560" y="55" width="150" height="40" rx="8" fill="#1e222b" stroke="#6ea8fe" />
+        <text x="635" y="79" fill="#6ea8fe" font-size="12" text-anchor="middle">Review PR chip</text>
+
+        <line x1="190" y1="43" x2="266" y2="23" stroke="#6ea8fe" stroke-width="1.5" marker-end="url(#arrow)" />
+        <line x1="190" y1="43" x2="266" y2="75" stroke="#6ea8fe" stroke-width="1.5" marker-end="url(#arrow)" />
+        <line x1="190" y1="43" x2="266" y2="127" stroke="#2a2f3a" stroke-width="1.5" marker-end="url(#arrow)" />
+        <line x1="480" y1="23" x2="556" y2="68" stroke="#6ea8fe" stroke-width="1.5" marker-end="url(#arrow)" />
+        <line x1="480" y1="75" x2="556" y2="78" stroke="#6ea8fe" stroke-width="1.5" marker-end="url(#arrow)" />
+      </svg>
+
+      <h3>Card mockup (after)</h3>
+      <div class="mock-wrap">
+        <div class="mock">
+          <div class="lane-head">In Refinement</div>
+          <div class="body">
+            <div class="ref">ALF-46</div>
+            <div class="title">Verify the GitHub webhook HMAC signature</div>
+            <span class="chip">↗ Review PR</span>
+          </div>
+        </div>
+        <div class="mock">
+          <div class="lane-head">Ready for Review</div>
+          <div class="body">
+            <div class="ref">ALF-47</div>
+            <div class="title">Inline detail panel with auto-saving chip pickers</div>
+            <span class="chip">↗ Review PR</span>
+          </div>
+        </div>
+        <div class="mock">
+          <div class="lane-head">In Refinement</div>
+          <div class="body">
+            <div class="ref">ALF-48</div>
+            <div class="title">Spec PR not opened yet — no chip</div>
+          </div>
+        </div>
+      </div>
+      <p class="lead" style="font-size:0.88rem">
+        (The <span class="mono">↗</span> stands in for the <code>ExternalLink</code> lucide icon.
+        The third card is <code>in_refinement</code> with a null <code>refinement_pr_url</code> —
+        the session is running but hasn't opened its PR yet, so no chip renders.)
+      </p>
+
+      <h3>Where the logic lives</h3>
+      <p>
+        Mirror the existing <code>launchPhasesFor</code> pattern with a small, pure, unit-tested
+        selector rather than inlining the state→url branching in the component. Proposed new module
+        <code>frontend/lib/code/review-pr.ts</code>:
+      </p>
+      <pre>import type { CodeStory } from '@/lib/types';
+
+/**
+ * The open PR a reviewer should look at for a story in a *review* state, or null.
+ * `in_refinement` → the refinement (spec) PR; `ready_for_review` → the implementation PR.
+ * Any other state (or a review state whose PR isn't recorded yet) returns null, so the card
+ * renders no Review PR chip.
+ */
+export function reviewPrUrlFor(story: CodeStory): string | null {
+  if (story.factory_state === 'in_refinement') return story.refinement_pr_url;
+  if (story.factory_state === 'ready_for_review') return story.implementation_pr_url;
+  return null;
+}</pre>
+
+      <h3>The chip atom</h3>
+      <p>
+        Add a presentational atom <code>frontend/components/atoms/review-pr-chip.tsx</code>, matching
+        the <code>LaunchButton</code> chip's placement and geometry but rendered as an
+        <strong>anchor</strong> (it navigates, it doesn't launch a session). It reuses the modal's
+        icon-plus-label idiom for consistency:
+      </p>
+      <ul>
+        <li>Renders <code>&lt;a href={url} target="_blank" rel="noreferrer"&gt;</code> with an
+          <code>ExternalLink</code> icon (<code>size={12}</code>) and the text <strong>Review PR</strong>.</li>
+        <li>Chip chrome consistent with the launch chip: <code>inline-flex items-center gap-1.5
+          rounded-md border px-2 py-1 text-xs font-medium</code>, teal/blue accent, and the same
+          <code>focus-visible:ring-2 focus-visible:ring-accent-blue</code> focus ring the card
+          controls use.</li>
+        <li>Accessible name is simply <strong>“Review PR”</strong>. If we want it screen-reader
+          unambiguous across many cards, include the ref via <code>aria-label={`Review PR ${ref}`}</code>
+          (decide during implementation; a plain "Review PR" name is acceptable since each card is
+          its own landmark).</li>
+      </ul>
+
+      <h3>Wiring into the card</h3>
+      <p>
+        In <code>frontend/components/code/story-card.tsx</code>, compute
+        <code>const reviewPrUrl = reviewPrUrlFor(story)</code> and render the chip inside the same
+        footer container that holds the launch chips (kept <strong>outside</strong>
+        <code>ClickableCard</code> so clicking it does <em>not</em> fire the card's
+        <code>onOpen</code>, exactly like the launch chips today). Render the footer when
+        <em>either</em> there are launch phases <em>or</em> a review PR URL exists:
+      </p>
+      <pre>const reviewPrUrl = reviewPrUrlFor(story);
+// ...
+{phases.length > 0 || reviewPrUrl !== null ? (
+  &lt;div className="flex flex-wrap gap-1.5 px-3 pb-2"&gt;
+    {phases.map((phase) =&gt; (
+      &lt;LaunchButton key={phase} story={story} phase={phase} onOpenSession={onOpenSession} variant="chip" /&gt;
+    ))}
+    {reviewPrUrl !== null ? &lt;ReviewPrChip url={reviewPrUrl} /&gt; : null}
+  &lt;/div&gt;
+) : null}</pre>
+      <div class="note">
+        The two review states never return launch phases, so in practice the footer holds
+        <em>either</em> launch chips <em>or</em> the Review PR chip, never both — but the condition
+        is written defensively so a future state that has both would still render correctly.
+      </div>
+
+      <h3>Files touched</h3>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>frontend/lib/code/review-pr.ts</code></td><td>new — <code>reviewPrUrlFor</code> selector</td></tr>
+          <tr><td><code>frontend/lib/code/review-pr.test.ts</code></td><td>new — unit tests for the selector (each state + null-url cases)</td></tr>
+          <tr><td><code>frontend/components/atoms/review-pr-chip.tsx</code></td><td>new — the anchor chip atom</td></tr>
+          <tr><td><code>frontend/components/code/story-card.tsx</code></td><td>compute <code>reviewPrUrlFor</code>, render the chip in the footer</td></tr>
+          <tr><td><code>frontend/components/code/story-card.test.tsx</code></td><td>add cases for the Review PR chip (shown / hidden / href / no-onOpen)</td></tr>
+          <tr><td><code>frontend/components/code/story-card.stories.tsx</code></td><td>add <em>InRefinementWithPr</em> and <em>ReadyForReviewWithPr</em> stories for the snapshot gate</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="font-size:0.9rem">
+        No API, store, database, or type changes — every field the chip needs already exists on the
+        <code>CodeStory</code> row and flows through the store unchanged.
+      </p>
+
+      <h2>Acceptance criteria</h2>
+      <ul class="checklist">
+        <li>A card in <code>in_refinement</code> with a non-null <code>refinement_pr_url</code> shows
+          a <strong>Review PR</strong> chip whose <code>href</code> is that URL, opening in a new tab.</li>
+        <li>A card in <code>ready_for_review</code> with a non-null <code>implementation_pr_url</code>
+          shows a <strong>Review PR</strong> chip whose <code>href</code> is that URL, opening in a new tab.</li>
+        <li>A card in <code>in_refinement</code> or <code>ready_for_review</code> whose relevant PR URL
+          is <code>null</code> shows <strong>no</strong> Review PR chip (ref + title only).</li>
+        <li>No Review PR chip renders in any other state (<code>needs_refinement</code>,
+          <code>ready_for_dev</code>, <code>in_development</code>, <code>done</code>,
+          <code>blocked</code>, <code>abandoned</code>) — even if a PR URL happens to be populated.</li>
+        <li>Clicking the Review PR chip does <strong>not</strong> fire the card's <code>onOpen</code>
+          (the detail modal does not open), matching the launch chips' behavior.</li>
+        <li>The chip is keyboard-focusable and carries the accent focus ring; existing launch-chip
+          and card-open behavior is unchanged.</li>
+        <li><code>reviewPrUrlFor</code> is covered by unit tests for all three branches
+          (in_refinement, ready_for_review, other) including the null-url fallthrough.</li>
+        <li>Storybook snapshot baselines include the two new "with PR" card states (approved via the
+          <code>storybook</code> capture-then-approve flow).</li>
+        <li><code>npm run check</code> is green.</li>
+      </ul>
+
+      <h2>Testing &amp; demo</h2>
+      <ul>
+        <li><strong>Unit</strong> — <code>review-pr.test.ts</code> for the selector; extend
+          <code>story-card.test.tsx</code> with the RTL cases above (query the chip by role
+          <code>link</code> / name <code>/review pr/i</code>, assert <code>href</code> +
+          <code>target="_blank"</code>, and assert <code>onOpen</code> is not called on chip click).</li>
+        <li><strong>Storybook</strong> — new stories drive the visual-snapshot gate for the two
+          review-state cards; follow the <code>storybook</code> skill's capture-then-approve flow and
+          commit the regenerated PNG baseline(s).</li>
+        <li><strong>Demo doc</strong> — capture the new behavior at
+          <code>docs/demos/&lt;branch&gt;.md</code> via the <code>showboat</code> CLI: a screenshot of
+          a board (or the Storybook card) showing the Review PR chip, plus the passing tests. Match
+          <code>showboat</code>'s evidence rules; verify with
+          <code>npm run demo -- verify</code>.</li>
+      </ul>
+
+      <h2>Out of scope / open questions</h2>
+      <ul>
+        <li><strong>No <code>in_development</code> chip.</strong> An implementation PR may already be
+          open while a story is still <code>in_development</code>, but ALF-61 explicitly scopes the
+          chip to the two <em>review</em> stages. Deferred; revisit if reviewers want the link
+          earlier.</li>
+        <li><strong>No changes to the detail modal.</strong> The modal keeps its existing
+          <code>PrLink</code> rows ("Refinement PR" / "Implementation PR"); this ticket only adds the
+          board-card affordance. (A later cleanup could share one chip/link primitive across card and
+          modal, but that's not required here.)</li>
+        <li><strong>Label wording.</strong> Spec assumes <strong>"Review PR"</strong> for both states
+          (the reviewer's verb is the same regardless of which PR). If a per-state label
+          ("Review spec PR" / "Review PR") is preferred, flag it in refinement review.</li>
+        <li><strong>No new data.</strong> Relies entirely on <code>refinement_pr_url</code> /
+          <code>implementation_pr_url</code> already being populated by the webhook Worker; this
+          ticket does not touch that pipeline.</li>
+      </ul>
+    </main>
+  </body>
+</html>
