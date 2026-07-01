@@ -281,6 +281,83 @@ describe('Board', () => {
     expect(screen.queryByRole('region', { name: /^blocked$/i })).not.toBeInTheDocument();
   });
 
+  describe('the status filter', () => {
+    it('renders a Filter by status control', () => {
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      expect(screen.getByRole('button', { name: /filter by status/i })).toBeInTheDocument();
+    });
+
+    it('shows every swimlane and no count at the default (all statuses shown)', () => {
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      // The resting default matches the pre-filter board, so the trigger carries no count.
+      expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'Needs Refinement' })).toBeInTheDocument();
+    });
+
+    it('hides a swimlane column across every epic when its status is unchecked', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1'), makeEpic('e2')] });
+
+      // Both epics show all six lanes by default.
+      expect(screen.getAllByRole('region', { name: 'Needs Refinement' })).toHaveLength(2);
+
+      // Uncheck "Needs Refinement" (the 1st happy-path option). Radix portals set
+      // pointer-events:none on the body, so drive the menu by keyboard (see backlog.test.tsx).
+      await user.click(screen.getByRole('button', { name: /filter by status/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+      await user.keyboard('[Escape]');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('region', { name: 'Needs Refinement' })).not.toBeInTheDocument();
+      });
+      // The remaining lanes stay on both epics; only the unchecked column is gone.
+      expect(screen.getAllByRole('region', { name: 'In Development' })).toHaveLength(2);
+    });
+
+    it('surfaces a count on the trigger once a status is unchecked', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+      expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /filter by status/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+      await user.keyboard('[Escape]');
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: /filter by status \(\d+\)/i }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('leaves the off-track (Show blocked) cards unaffected by the column filter', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-blocked', factory_state: 'blocked' })],
+      });
+
+      // Reveal the off-track cards.
+      await user.click(screen.getByRole('button', { name: /show blocked/i }));
+      expect(screen.getByText('ALF-blocked')).toBeInTheDocument();
+
+      // Unchecking a happy-path lane must not touch the blocked card (blocked is never a lane).
+      await user.click(screen.getByRole('button', { name: /filter by status/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+      await user.keyboard('[Escape]');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('region', { name: 'Needs Refinement' })).not.toBeInTheDocument();
+      });
+      expect(screen.getByText('ALF-blocked')).toBeInTheDocument();
+    });
+  });
+
   describe('the detail modal', () => {
     it('opens the modal for the clicked story card', async () => {
       const user = userEvent.setup();

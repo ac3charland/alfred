@@ -30,7 +30,7 @@ import type { LaunchPhase } from '@/lib/code/launch';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import type { BoardEpic } from '@/lib/stores/code-store';
 import { useCodeActions } from '@/lib/stores/code-store';
-import type { CodeStory, Epic } from '@/lib/types';
+import type { CodeFactoryState, CodeStory, Epic } from '@/lib/types';
 
 /** The phase-appropriate launch handler the board threads to every card. */
 export type OpenSessionHandler = (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
@@ -96,6 +96,8 @@ interface EpicBlockProperties {
   board: BoardEpic;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  /** The happy-path states whose swimlanes are shown (the board's "Filter by status"). */
+  visibleStates: readonly CodeFactoryState[];
   showBlocked: boolean;
   onOpenStory: (story: CodeStory) => void;
   onOpenSession: OpenSessionHandler;
@@ -106,11 +108,14 @@ export function EpicBlock({
   board,
   collapsed,
   onToggleCollapse,
+  visibleStates,
   showBlocked,
   onOpenStory,
   onOpenSession,
 }: EpicBlockProperties) {
   const { epic, lanes, escapeStories } = board;
+  // Only render the lanes whose state passes the board-level status filter.
+  const visibleLanes = lanes.filter((lane) => visibleStates.includes(lane.state));
   const { updateEpic, createStory } = useCodeActions();
   const headingId = `epic-${epic.id}-heading`;
   const regionId = `epic-${epic.id}-lanes`;
@@ -259,9 +264,10 @@ export function EpicBlock({
 
       {collapsed ? null : (
         <div id={regionId} className="px-2 py-3">
-          {/* The six happy-path lanes, horizontally scrollable to fit the dense layout. */}
+          {/* The happy-path lanes that pass the status filter, horizontally scrollable to fit the
+              dense layout. */}
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {lanes.map((lane) => (
+            {visibleLanes.map((lane) => (
               <Swimlane
                 key={lane.state}
                 lane={lane}
