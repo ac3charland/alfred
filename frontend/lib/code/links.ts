@@ -124,6 +124,19 @@ function buildUrl(project: Project, prompt: string): string {
 }
 
 /**
+ * The decoded prompt a launch URL carries in its `q` param — the exact text the link prefills.
+ *
+ * The `q`/`repo` params are correct on the web + desktop surfaces (both are documented aliases of
+ * `prompt`/`repositories`), but the mobile Claude app opens the universal link WITHOUT prefilling
+ * `q`, so the composer lands empty. The launcher copies this prompt to the clipboard as a
+ * paste-fallback for that case, so it needs the prompt back out of the URL it just built. Returns
+ * '' when the URL carries no `q`.
+ */
+export function promptFromLaunchUrl(url: string): string {
+  return new URL(url).searchParams.get('q') ?? '';
+}
+
+/**
  * Build the REFINEMENT link prompt (active in `needs_refinement`): write a spec artifact only —
  * NO implementation — following the project's refinement skill, then open a PR carrying the
  * machine-readable ticket block with `phase: refinement`. Ref + title lead the prompt so the new

@@ -58,8 +58,18 @@ jest.mock('@/lib/stores/toast-store', () => ({
   useToastActions: () => ({ showToast: mockShowToast, dismissToast: jest.fn() }),
 }));
 
+// Stub the clipboard helper so the launch tests control (and assert) the paste-fallback copy
+// without depending on a real Clipboard API under jsdom. Defaults to a successful copy.
+const mockCopyToClipboard = jest.fn<Promise<boolean>, [string]>();
+jest.mock('@/lib/clipboard', () => ({
+  copyToClipboard: (text: string) => mockCopyToClipboard(text),
+}));
+
 beforeEach(() => {
   mockRealtimeHandler = undefined;
+  // Default the paste-fallback copy to success; a test that exercises the no-clipboard path
+  // overrides this with `mockResolvedValue(false)`.
+  mockCopyToClipboard.mockResolvedValue(true);
 });
 
 const PROJECT_A: Project = {
@@ -1546,6 +1556,68 @@ describe('code-store', () => {
         });
         expect(mockUpdateCodeState).not.toHaveBeenCalled();
         expect(openSpy).not.toHaveBeenCalled();
+      });
+
+      it('copies the launch prompt to the clipboard and confirms it with a toast', async () => {
+        mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_refinement' }));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          title: 'Wire the webhook',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'refinement');
+        });
+
+        // The copied text is the decoded prompt the link would prefill — same text, not the URL.
+        const copied = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(copied).toContain('ALF-42: Wire the webhook');
+        expect(copied).not.toContain('https://claude.ai/code');
+        expect(mockShowToast).toHaveBeenCalledWith('Prompt copied to clipboard');
+        // Still opens the tab — the copy is a fallback, not a replacement.
+        expect(openSpy).toHaveBeenCalledTimes(1);
+      });
+
+      it('opens the tab but shows NO copied toast when the clipboard write fails', async () => {
+        mockCopyToClipboard.mockResolvedValue(false);
+        mockUpdateCodeState.mockResolvedValue(makeSavedSidecar({ factory_state: 'in_refinement' }));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'refinement');
+        });
+
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        expect(mockShowToast).not.toHaveBeenCalledWith('Prompt copied to clipboard');
+      });
+
+      it('does not copy when the state write fails (nothing half-done)', async () => {
+        mockUpdateCodeState.mockRejectedValue(new Error('write failed'));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.openClaudeSession('ALF-42', 'refinement'),
+          ).rejects.toThrow('write failed');
+        });
+
+        expect(mockCopyToClipboard).not.toHaveBeenCalled();
       });
     });
 
