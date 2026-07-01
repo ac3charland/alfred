@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-64 — Account / instance switcher in top right (two-deployment isolation)</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --surface-2: #1e222b;
+        --border: #2a2f3a;
+        --fg: #e6e9ef;
+        --muted: #9aa3b2;
+        --teal: #4fd1c5;
+        --blue: #6ea8fe;
+        --amber: #f0b429;
+        --green: #4ade80;
+        --red: #f87171;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 2rem 1.25rem 4rem;
+      }
+      main { max-width: 62rem; margin: 0 auto; }
+      h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 0.25rem; }
+      h2 {
+        font-size: 1.15rem;
+        margin: 2.5rem 0 0.75rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--teal); }
+      h4 { font-size: 0.9rem; margin: 1.1rem 0 0.4rem; color: var(--blue); }
+      p, li { color: var(--fg); }
+      a { color: var(--blue); }
+      code, .mono { font-family: var(--mono); font-size: 0.9em; }
+      code {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.05rem 0.35rem;
+      }
+      pre {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+      .lead { color: var(--muted); font-size: 1.02rem; margin: 0.25rem 0 0; }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--teal);
+        background: rgba(79, 209, 197, 0.12);
+        border: 1px solid rgba(79, 209, 197, 0.35);
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+        margin-bottom: 1rem;
+      }
+      .story-tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--amber);
+        background: rgba(240, 180, 41, 0.12);
+        border: 1px solid rgba(240, 180, 41, 0.35);
+        border-radius: 999px;
+        padding: 0.1rem 0.55rem;
+        margin-left: 0.5rem;
+        vertical-align: middle;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.92rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+      td .mono { color: var(--teal); }
+      .card-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.15rem;
+        margin: 1rem 0;
+      }
+      ul.checklist { list-style: none; padding-left: 0; }
+      ul.checklist li { position: relative; padding-left: 1.9rem; margin: 0.5rem 0; }
+      ul.checklist li::before {
+        content: "☐";
+        position: absolute;
+        left: 0;
+        color: var(--teal);
+        font-size: 1.05rem;
+      }
+      .note {
+        background: rgba(240, 180, 41, 0.08);
+        border-left: 3px solid var(--amber);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+        color: var(--fg);
+      }
+      .good {
+        background: rgba(74, 222, 128, 0.08);
+        border-left: 3px solid var(--green);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+        color: var(--fg);
+      }
+      svg { max-width: 100%; height: auto; }
+      .files td:first-child { white-space: nowrap; }
+      /* --- role badges + runbook --- */
+      .legend { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.75rem 0 0; align-items: center; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase;
+        letter-spacing: 0.04em; font-weight: 700; border-radius: 999px; padding: 0.12rem 0.55rem;
+      }
+      .badge.human { color: var(--amber); background: rgba(240,180,41,0.12); border: 1px solid rgba(240,180,41,0.4); }
+      .badge.agent { color: var(--teal); background: rgba(79,209,197,0.12); border: 1px solid rgba(79,209,197,0.4); }
+      .badge.both { color: var(--blue); background: rgba(110,168,254,0.12); border: 1px solid rgba(110,168,254,0.4); }
+      .stage { margin: 1.5rem 0; }
+      .stage-title { display: flex; align-items: center; gap: 0.6rem; font-size: 0.98rem; font-weight: 700; color: var(--fg); margin: 0 0 0.6rem; }
+      .stage-num {
+        display: grid; place-items: center; width: 1.7rem; height: 1.7rem; flex-shrink: 0;
+        border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border);
+        font-family: var(--mono); font-size: 0.85rem; color: var(--teal); font-weight: 700;
+      }
+      .steps { border-left: 2px solid var(--border); margin-left: 0.83rem; padding-left: 1.1rem; }
+      .step {
+        display: flex; gap: 0.7rem; align-items: flex-start;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+        padding: 0.65rem 0.85rem; margin: 0.55rem 0;
+      }
+      .step .role { flex-shrink: 0; padding-top: 0.1rem; }
+      .step .body { flex: 1; min-width: 0; }
+      .step .body .t { font-weight: 600; font-size: 0.9rem; }
+      .step .body .d { color: var(--muted); font-size: 0.85rem; margin-top: 0.15rem; }
+      .step .body .d code { font-size: 0.82em; }
+      /* --- instance-menu mockup --- */
+      .mock-wrap { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1rem 0; align-items: flex-start; }
+      .menu {
+        width: 19rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+        font-size: 0.85rem;
+      }
+      .menu .row { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.8rem; }
+      .menu .row.head { background: var(--surface-2); }
+      .menu .sep { height: 1px; background: var(--border); margin: 0.15rem 0; }
+      .pill {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        font-size: 0.78rem; font-weight: 600;
+        border-radius: 999px; padding: 0.2rem 0.6rem;
+        color: var(--teal); background: rgba(79,209,197,0.12); border: 1px solid rgba(79,209,197,0.4);
+      }
+      .pill.amber { color: var(--amber); background: rgba(240,180,41,0.12); border-color: rgba(240,180,41,0.4); }
+      .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: currentColor; }
+      .who .email { color: var(--fg); }
+      .who .sub { color: var(--muted); font-size: 0.75rem; }
+      .menu .act { color: var(--muted); }
+      .menu .act.danger { color: var(--red); }
+      .ic { color: var(--muted); width: 1.1rem; text-align: center; }
+      @media (max-width: 640px) {
+        body { padding: 1.25rem 0.9rem 3rem; }
+        table { font-size: 0.85rem; }
+        .menu { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">Refinement spec · phase: refinement · EPIC</span>
+      <h1>ALF-64 — Account / instance switcher in top right</h1>
+      <p class="lead">
+        Give the top-right of the header a switcher that moves between two <strong>completely isolated
+        alfred instances</strong> — a <em>Personal</em> second brain and a <em>Work</em> second brain —
+        so tasks, code items, and everything else are physically separated, and work data never lands on
+        a personal device.
+      </p>
+
+      <div class="good">
+        <strong>Chosen approach: two deployments, not an in-app multi-account system.</strong> alfred is
+        already a single-user app whose entire config comes from environment variables. The cleanest,
+        lowest-effort, and <em>most compliant</em> way to isolate two second brains is to run the same
+        codebase as <strong>two independent deployments</strong> (separate Supabase project + Vercel
+        project each), and add a tiny top-right menu that links between them. This spec is an
+        <strong>EPIC</strong>; it defines the goal, the deployment model, and the child stories to enter
+        into alfred (<a href="#stories">§ Stories</a>).
+      </div>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        The owner keeps a personal "second brain" in alfred and wants a fully separate work one. The
+        hard requirements:
+      </p>
+      <ul>
+        <li><strong>Complete isolation</strong> of all data (tasks, folders, code items, captures)
+          between the two brains.</li>
+        <li><strong>Data-compliance:</strong> work tasks must not be logged into / reachable from the
+          personal computer.</li>
+        <li>A <strong>switcher in the top right</strong> to move between them.</li>
+      </ul>
+      <p>
+        Today the header (<code>frontend/components/shell/app-shell.tsx</code>, lines 68–78) shows a
+        single ghost <strong>Sign out</strong> button, wired to the <code>signOut</code> server action
+        (<code>frontend/lib/auth/actions.ts</code>). Auth is a single manually-provisioned Supabase user;
+        RLS is the deliberate single-user pattern (<code>using(true)</code>, no <code>user_id</code>;
+        product SPEC §7).
+      </p>
+
+      <h4>Why not an in-app multi-account switcher?</h4>
+      <p>
+        An in-app switcher (one deployment, multiple accounts, per-user RLS) was considered and
+        <strong>rejected for this goal</strong>: it would put both brains in one Supabase database, and
+        logging into the work account on the personal computer would fetch, render, and cache work data
+        on that device — the exact compliance problem we're avoiding. It's also far more work (a
+        <code>user_id</code> migration, an RLS rewrite, and a multi-session token roster). Two
+        deployments give <strong>physical</strong> isolation with essentially no application code.
+      </p>
+      <table>
+        <thead><tr><th></th><th>Two deployments (this spec)</th><th>In-app multi-account (rejected)</th></tr></thead>
+        <tbody>
+          <tr><td>Isolation</td><td><strong>Physical</strong> — separate DB + host per brain</td><td>Logical — one DB, per-user RLS</td></tr>
+          <tr><td>Work data on personal device?</td><td><strong>Never</strong> (don't open the work URL there)</td><td>Yes, once you switch to work</td></tr>
+          <tr><td>App code</td><td>~none (a small link menu)</td><td>Large migration + auth rewrite</td></tr>
+          <tr><td>Reverses SPEC §7?</td><td>No</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="model">The deployment model</h2>
+      <p>
+        Two Vercel <strong>Projects</strong>, both connected to <strong>the same GitHub repo</strong>
+        (both with Root Directory <code>frontend/</code>), each pointed at a <strong>separate Supabase
+        project</strong>. This directly answers the two provisioning questions:
+      </p>
+      <ul>
+        <li><strong>Can Vercel deploy multiple projects from one codebase?</strong> Yes — connecting the
+          same repo to more than one Vercel Project is a first-class, supported pattern. The projects
+          don't interfere; each has its own domain, Environment Variables, and build.</li>
+        <li><strong>Do both URLs track the latest code?</strong> Yes — each project watches the same
+          Production Branch (<code>main</code>), so a push to <code>main</code> triggers a production
+          deploy on <em>both</em> projects. The code is identical across the two; only the
+          <strong>per-project env vars differ</strong>. (Cost: two builds per push — fine on Hobby.)</li>
+      </ul>
+
+      <svg viewBox="0 0 760 250" role="img" aria-label="Two-deployment isolation model">
+        <defs>
+          <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#9aa3b2" />
+          </marker>
+        </defs>
+        <rect x="300" y="12" width="160" height="40" rx="8" fill="#171a21" stroke="#2a2f3a" />
+        <text x="380" y="30" fill="#e6e9ef" font-size="12" text-anchor="middle">GitHub repo</text>
+        <text x="380" y="45" fill="#9aa3b2" font-size="10.5" text-anchor="middle">main (latest code)</text>
+
+        <!-- personal column -->
+        <rect x="40" y="95" width="290" height="140" rx="10" fill="#171a21" stroke="#4fd1c5" />
+        <text x="60" y="118" fill="#4fd1c5" font-size="12">Personal instance</text>
+        <rect x="58" y="128" width="254" height="28" rx="6" fill="#1e222b" stroke="#2a2f3a" />
+        <text x="185" y="146" fill="#e6e9ef" font-size="10.5" text-anchor="middle">Vercel project · personal.alfred.app</text>
+        <rect x="58" y="162" width="254" height="24" rx="6" fill="#1e222b" stroke="#2a2f3a" />
+        <text x="185" y="178" fill="#9aa3b2" font-size="10" text-anchor="middle">env: INSTANCE_LABEL=Personal → Work URL</text>
+        <rect x="58" y="192" width="254" height="28" rx="6" fill="#1e222b" stroke="#4fd1c5" />
+        <text x="185" y="210" fill="#4fd1c5" font-size="10.5" text-anchor="middle">Supabase project · personal DB</text>
+
+        <!-- work column -->
+        <rect x="430" y="95" width="290" height="140" rx="10" fill="#171a21" stroke="#f0b429" />
+        <text x="450" y="118" fill="#f0b429" font-size="12">Work instance</text>
+        <rect x="448" y="128" width="254" height="28" rx="6" fill="#1e222b" stroke="#2a2f3a" />
+        <text x="575" y="146" fill="#e6e9ef" font-size="10.5" text-anchor="middle">Vercel project · work.alfred.app</text>
+        <rect x="448" y="162" width="254" height="24" rx="6" fill="#1e222b" stroke="#2a2f3a" />
+        <text x="575" y="178" fill="#9aa3b2" font-size="10" text-anchor="middle">env: INSTANCE_LABEL=Work → Personal URL</text>
+        <rect x="448" y="192" width="254" height="28" rx="6" fill="#1e222b" stroke="#f0b429" />
+        <text x="575" y="210" fill="#f0b429" font-size="10.5" text-anchor="middle">Supabase project · work DB</text>
+
+        <line x1="340" y1="45" x2="200" y2="122" stroke="#9aa3b2" stroke-width="1.3" marker-end="url(#a)" />
+        <line x1="420" y1="45" x2="560" y2="122" stroke="#9aa3b2" stroke-width="1.3" marker-end="url(#a)" />
+        <text x="250" y="80" fill="#9aa3b2" font-size="9">deploys on push</text>
+        <text x="470" y="80" fill="#9aa3b2" font-size="9">deploys on push</text>
+      </svg>
+      <p class="lead" style="font-size:0.9rem">
+        "Switching" between them is just navigating to the other origin. They share no session, no
+        cookies, and no database — which is exactly what makes the isolation airtight.
+      </p>
+
+      <h2 id="stories">Stories in this epic</h2>
+      <p>Enter these into alfred as the children of ALF-64. Only <strong>ALF-64b</strong> is application code.</p>
+      <div class="legend">
+        <span>Who does each step:</span>
+        <span class="badge human">🧑 Human</span> owner-only console/setup work
+        <span class="badge agent">🤖 Agent</span> a coding session (repo + tests)
+      </div>
+      <table style="margin-top:1rem">
+        <thead><tr><th>Story</th><th>Owner</th><th>Summary</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>ALF-64a</strong><br /><span class="story-tag" style="margin:0">ops</span></td>
+            <td><span class="badge human">🧑 Human</span></td>
+            <td>Provision the second (Work) instance: new Supabase project + Vercel project + auth user + env + Siri. No repo code. Steps in the <a href="#runbook">runbook</a>, stages 2–3 &amp; 5.</td>
+          </tr>
+          <tr>
+            <td><strong>ALF-64b</strong><br /><span class="story-tag" style="margin:0">app code</span></td>
+            <td><span class="badge agent">🤖 Agent</span></td>
+            <td>Instance identity + top-right switch menu (config helper + <code>InstanceMenu</code> + tests). <a href="#alf64b">Implementation detail</a> below. Runbook stage 1.</td>
+          </tr>
+          <tr>
+            <td><strong>ALF-64c</strong><br /><span class="story-tag" style="margin:0">optional docs</span></td>
+            <td><span class="badge both">🧑🤖 Either</span></td>
+            <td>Compliance hardening &amp; operating-discipline docs. Runbook stage 6.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- ══════════════════════════════ RUNBOOK ══════════════════════════════ -->
+      <h2 id="runbook">Rollout runbook — who does what, in order</h2>
+      <p>
+        Follow these stages top-to-bottom. The ordering resolves a real dependency: the two instances
+        cross-reference each other's URLs, so <strong>both deployments must exist before the switch
+        links can be wired</strong> (stage 4). Each step is tagged with who performs it.
+      </p>
+
+      <div class="stage">
+        <div class="stage-title"><span class="stage-num">1</span> Ship the switcher code &nbsp;<span class="badge agent">🤖 Agent</span> &nbsp;·&nbsp; ALF-64b</div>
+        <div class="steps">
+          <div class="step">
+            <span class="role"><span class="badge agent">🤖</span></span>
+            <div class="body">
+              <div class="t">Implement ALF-64b and merge to <code>main</code></div>
+              <div class="d">The config helper defaults are safe, so merging <em>before</em> the Work instance exists is a no-op on the live Personal site: with <code>OTHER_INSTANCE_URL</code> unset, the menu simply shows the label + Sign out (no switch link). See <a href="#alf64b">implementation detail</a>.</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">On the existing <strong>Personal</strong> Vercel project, set <code>NEXT_PUBLIC_INSTANCE_LABEL=Personal</code> and <code>NEXT_PUBLIC_INSTANCE_ACCENT=teal</code></div>
+              <div class="d">The <code>OTHER_*</code> vars are filled later in stage 4 (the Work URL doesn't exist yet).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-title"><span class="stage-num">2</span> Create the Work data backend &nbsp;<span class="badge human">🧑 Human</span> &nbsp;·&nbsp; ALF-64a</div>
+        <div class="steps">
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Create a new Supabase project — "alfred-work"</div>
+              <div class="d">Record its Project URL, anon (publishable) key, and service-role (secret) key.</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge both">🧑🤖</span></span>
+            <div class="body">
+              <div class="t">Apply every migration in <code>database/migrations/*.sql</code> to the Work project</div>
+              <div class="d">So its schema matches Personal. Human runs it, or an agent can if given the Work DB connection (see the <code>supabase</code> / <code>psql</code> skills — <code>db push</code> vs <code>psql -f</code>).</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Create the single Work auth user</div>
+              <div class="d">Supabase Dashboard → Authentication → Users → Add user. No self-service signup, matching the login form's contract.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-title"><span class="stage-num">3</span> Create the Work deployment &nbsp;<span class="badge human">🧑 Human</span> &nbsp;·&nbsp; ALF-64a</div>
+        <div class="steps">
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">New Vercel project → <strong>same GitHub repo</strong></div>
+              <div class="d">Root Directory <code>frontend/</code>, Production Branch <code>main</code> (so it tracks the same latest code as Personal).</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Set the Work project's <strong>backend</strong> env vars</div>
+              <div class="d">From stage 2: <code>NEXT_PUBLIC_SUPABASE_URL</code>, <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code>, and a <em>distinct</em> <code>INGEST_API_KEY</code>.</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Assign / note the Work URL</div>
+              <div class="d">A custom domain (e.g. <code>work.alfred.app</code>) or the Vercel-generated URL. <strong>Now both URLs are known</strong> — proceed to cross-wiring.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-title"><span class="stage-num">4</span> Cross-wire the two instances &nbsp;<span class="badge human">🧑 Human</span></div>
+        <div class="steps">
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Set the instance vars on <strong>both</strong> projects, each pointing at the other</div>
+              <div class="d">
+                <strong>Work:</strong> <code>INSTANCE_LABEL=Work</code>, <code>INSTANCE_ACCENT=amber</code>, <code>OTHER_INSTANCE_LABEL=Personal</code>, <code>OTHER_INSTANCE_URL=&lt;personal url&gt;</code>.<br />
+                <strong>Personal:</strong> add <code>OTHER_INSTANCE_LABEL=Work</code>, <code>OTHER_INSTANCE_URL=&lt;work url&gt;</code> (label/accent set in stage 1).
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Redeploy both projects</div>
+              <div class="d">So the new env vars take effect and the <strong>Open &lt;other&gt;</strong> link appears in each menu.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-title"><span class="stage-num">5</span> Capture path &amp; verify &nbsp;<span class="badge human">🧑 Human</span> &nbsp;·&nbsp; ALF-64a</div>
+        <div class="steps">
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Duplicate the Siri Shortcut for Work</div>
+              <div class="d">Point it at the Work URL with the Work <code>INGEST_API_KEY</code> (SPEC §4.2).</div>
+            </div>
+          </div>
+          <div class="step">
+            <span class="role"><span class="badge human">🧑</span></span>
+            <div class="body">
+              <div class="t">Verify isolation end-to-end</div>
+              <div class="d">Create a task in Personal → confirm it is <strong>absent</strong> in Work; check each pill shows the right label/accent; click <strong>Open &lt;other&gt;</strong> and confirm it lands on the other origin's login/app.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="stage-title"><span class="stage-num">6</span> Hardening &amp; docs &nbsp;<span class="badge both">🧑🤖 Either</span> &nbsp;·&nbsp; ALF-64c (optional)</div>
+        <div class="steps">
+          <div class="step">
+            <span class="role"><span class="badge both">🧑🤖</span></span>
+            <div class="body">
+              <div class="t">Record the operating discipline &amp; hardening notes</div>
+              <div class="d">See <a href="#alf64c">ALF-64c</a>. Defer if you want the minimum — stages 1–5 deliver the feature.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>The chicken-and-egg, resolved:</strong> each instance's <code>OTHER_INSTANCE_URL</code>
+        needs the other's final URL, so don't try to set them during initial project creation. Provision
+        both projects first (stages 1–3) to obtain both URLs, then fill the <code>OTHER_*</code> vars on
+        both and redeploy (stage 4). If you've pre-decided both custom domains, you may set them earlier —
+        but the redeploy in stage 4 is still what makes the links live.</div>
+
+      <!-- ══════════════════════════════ ALF-64b DETAIL ══════════════════════════════ -->
+      <h2 id="alf64b">ALF-64b — implementation detail (the code story)</h2>
+      <p>
+        The only repo change. Read the instance identity from env and render a small top-right menu:
+        which brain you're in, a link to the other brain, and Sign out (preserving today's behavior).
+      </p>
+
+      <h4>Config (env → typed object)</h4>
+      <table>
+        <thead><tr><th>Env var</th><th>Example</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>NEXT_PUBLIC_INSTANCE_LABEL</code></td><td><span class="mono">Personal</span></td><td>Name of <em>this</em> instance (shown in the trigger/menu). Client-readable → <code>NEXT_PUBLIC_</code>.</td></tr>
+          <tr><td><code>NEXT_PUBLIC_INSTANCE_ACCENT</code></td><td><span class="mono">teal</span></td><td>Optional. Accent token to theme this instance (<code>teal</code>/<code>amber</code>/… from SPEC §5.4). Defaults to <code>teal</code>.</td></tr>
+          <tr><td><code>NEXT_PUBLIC_OTHER_INSTANCE_LABEL</code></td><td><span class="mono">Work</span></td><td>Label of the other instance.</td></tr>
+          <tr><td><code>NEXT_PUBLIC_OTHER_INSTANCE_URL</code></td><td><span class="mono">https://work.alfred.app</span></td><td>URL of the other instance. <strong>If unset</strong>, the menu omits the switch link (single-instance / local dev).</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Add a small, unit-tested helper <code>frontend/lib/instance.ts</code> that reads these and
+        returns a typed object, so the component never touches <code>process.env</code> directly:
+      </p>
+      <pre>export interface InstanceConfig {
+  label: string;               // this instance, e.g. "Personal"
+  accent: AccentToken;         // 'teal' | 'amber' | 'blue' | 'green' (default 'teal')
+  other: { label: string; url: string } | null; // null when OTHER_INSTANCE_URL is unset
+}
+
+export function getInstanceConfig(): InstanceConfig { /* read NEXT_PUBLIC_* with safe defaults */ }</pre>
+
+      <h4>UI — replace the bare Sign out button</h4>
+      <p>
+        In <code>app-shell.tsx</code>, swap the <code>&lt;form action={signOut}&gt;</code> block for a new
+        <code>InstanceMenu</code>. It's a client molecule (Radix dropdown needs a client boundary) built
+        on the existing <code>dropdown-menu</code> atom; Sign out remains the existing
+        <code>signOut</code> server action, submitted from a form inside a menu item.
+      </p>
+      <div class="mock-wrap">
+        <div class="menu" role="img" aria-label="Instance menu mockup">
+          <div class="row head">
+            <span class="pill"><span class="dot"></span> Personal</span>
+            <span class="who"><span class="sub" style="margin-left:.2rem">ac3charland@gmail.com</span></span>
+          </div>
+          <div class="sep"></div>
+          <div class="row act"><span class="ic">↗</span> Open Work</div>
+          <div class="sep"></div>
+          <div class="row act danger"><span class="ic">⇥</span> Sign out</div>
+        </div>
+        <div style="flex:1; min-width:16rem">
+          <p style="margin-top:0"><strong>Trigger:</strong> an accent pill showing this instance's label
+            (e.g. <span class="pill"><span class="dot"></span> Personal</span> in teal,
+            <span class="pill amber"><span class="dot"></span> Work</span> in amber) + a
+            <code>ChevronDown</code>, in the top-right where Sign out is today. Accessible name
+            <code>"Account menu"</code>.</p>
+          <p><strong>Menu items (top → bottom):</strong></p>
+          <ul>
+            <li><strong>Header</strong> — instance pill + the signed-in email (from <code>requireUser()</code>).</li>
+            <li><strong>Open &lt;OtherLabel&gt;</strong> — an anchor to <code>other.url</code> (only when
+              <code>other !== null</code>). Rendered as a plain link; a full navigation to the other
+              origin (no shared session). <code>rel="noreferrer"</code>.</li>
+            <li><strong>Sign out</strong> — the existing <code>signOut</code> server action (unchanged behavior).</li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        The email is already available server-side: <code>(shell)/layout.tsx</code> calls
+        <code>requireUser()</code> (which returns the Supabase user) but currently discards it — thread
+        <code>user.email</code> and <code>getInstanceConfig()</code> down to <code>AppShell</code> → the menu.
+      </p>
+      <pre>// app/(shell)/layout.tsx
+const user = await requireUser();
+// ...
+&lt;AppShell email={user.email ?? null} instance={getInstanceConfig()}&gt;{children}&lt;/AppShell&gt;</pre>
+      <p>
+        <strong>Mobile:</strong> the trigger stays in the header's top-right (hamburger is top-left);
+        same component. <strong>Theming (optional):</strong> tint the trigger pill with
+        <code>instance.accent</code> so the current brain is unmistakable at a glance — ties into the
+        module-accent system in SPEC §5.4.
+      </p>
+
+      <h4>Files touched (ALF-64b)</h4>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>frontend/lib/instance.ts</code> (+ <code>.test.ts</code>)</td><td>new — typed env reader with defaults + the "other unset → null" case</td></tr>
+          <tr><td><code>frontend/components/shell/instance-menu.tsx</code> (+ test + stories)</td><td>new — the dropdown (client): header, Open-other link, Sign out</td></tr>
+          <tr><td><code>frontend/components/shell/app-shell.tsx</code></td><td>replace the Sign out <code>&lt;form&gt;</code> with <code>&lt;InstanceMenu&gt;</code>; accept <code>email</code> + <code>instance</code> props</td></tr>
+          <tr><td><code>frontend/app/(shell)/layout.tsx</code></td><td>pass <code>user.email</code> + <code>getInstanceConfig()</code> into <code>AppShell</code></td></tr>
+          <tr><td><code>frontend/.env.example</code> (or equivalent)</td><td>document the four <code>NEXT_PUBLIC_INSTANCE_*</code> vars</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ── ALF-64c ── -->
+      <h3 id="alf64c">ALF-64c — Compliance hardening &amp; docs <span class="story-tag">optional · docs</span></h3>
+      <ul>
+        <li>Document the operating rule: install/bookmark the <em>Work</em> URL only on work devices, the
+          <em>Personal</em> URL only on personal devices — the switch link is a convenience, not a bypass
+          of that discipline.</li>
+        <li>Consider disabling offline/PWA caching of sensitive data if a service worker is ever added
+          (none today).</li>
+        <li>Note the distinct <code>INGEST_API_KEY</code> per instance so a leaked personal key can't
+          write to the work brain.</li>
+      </ul>
+      <p class="lead" style="font-size:0.9rem">Defer if you want the minimum; ALF-64a + ALF-64b deliver the feature.</p>
+
+      <h2>Acceptance criteria</h2>
+      <h4>ALF-64a — provisioning</h4>
+      <ul class="checklist">
+        <li>Two live alfred URLs exist, each backed by its own Supabase project; data created in one is
+          <strong>not</strong> present in the other.</li>
+        <li>Both projects deploy from <code>main</code> — a push updates both.</li>
+        <li>Each instance logs in independently with its own single user; each has its own
+          <code>INGEST_API_KEY</code> and a working capture path.</li>
+      </ul>
+      <h4>ALF-64b — switcher UI</h4>
+      <ul class="checklist">
+        <li>The top-right shows an accent instance pill (this instance's label) + chevron, replacing the
+          bare Sign out button, on desktop and mobile.</li>
+        <li>Opening the menu shows the instance label and the signed-in email.</li>
+        <li>When <code>NEXT_PUBLIC_OTHER_INSTANCE_URL</code> is set, an <strong>Open &lt;OtherLabel&gt;</strong>
+          link navigates to that URL; when unset, no link renders.</li>
+        <li>Sign out still signs out and redirects to <code>/login</code> (existing behavior preserved).</li>
+        <li>Optional accent theming reflects <code>NEXT_PUBLIC_INSTANCE_ACCENT</code>.</li>
+        <li>Menu is keyboard-navigable and screen-reader-labeled (Radix semantics); accent focus ring;
+          <code>prefers-reduced-motion</code> respected.</li>
+        <li><code>getInstanceConfig()</code> is unit-tested (all vars set; other-URL unset → link hidden;
+          default accent). Storybook baselines include the menu in Personal (teal) and Work (amber)
+          states. <code>npm run check</code> is green.</li>
+      </ul>
+
+      <h2>Testing &amp; demo (ALF-64b)</h2>
+      <ul>
+        <li><strong>Unit</strong> — <code>instance.test.ts</code> for <code>getInstanceConfig()</code>
+          (env permutations, defaults, null-other).</li>
+        <li><strong>RTL</strong> — <code>instance-menu.test.tsx</code>: trigger opens the menu; label +
+          email shown; Open-other link has the right <code>href</code> and is absent when
+          <code>other</code> is null; Sign out submits the action. Use the
+          <code>react-testing-library</code> skill's Radix-menu patterns.</li>
+        <li><strong>Storybook</strong> — snapshot the menu open in Personal (teal) and Work (amber);
+          follow the <code>storybook</code> capture-then-approve flow and commit the PNG baselines.</li>
+        <li><strong>Demo doc</strong> — capture at <code>docs/demos/&lt;branch&gt;.md</code> via
+          <code>showboat</code>: a screenshot of the open menu with the Open-other link. Match
+          <code>showboat</code>'s evidence rules (that skill is the source of truth for demo evidence);
+          verify with <code>npm run demo -- verify</code>.</li>
+      </ul>
+
+      <h2 id="scope">Out of scope / open questions</h2>
+      <ul>
+        <li><strong>No in-app account switching or per-user RLS.</strong> Isolation is achieved by
+          separate deployments; the app stays single-user per instance and SPEC §7 is unchanged.</li>
+        <li><strong>Auto-login on the other instance.</strong> Not attempted — the switch link lands you
+          on the other origin, where you log in separately. Cross-origin session sharing is deliberately
+          avoided (it would reintroduce the compliance risk).</li>
+        <li><strong>Instance labels &amp; domains</strong> ("Personal"/"Work", chosen URLs) are owner
+          decisions made during ALF-64a provisioning; the code treats them as opaque env values.</li>
+        <li><strong>More than two instances.</strong> The env model generalizes to a list, but v1 assumes
+          exactly one "other". Extend later if a third brain is ever needed.</li>
+        <li><strong>Cost.</strong> Two Vercel projects (two builds per push) and two Supabase projects.
+          Expected to fit the free/Hobby tiers at this scale (SPEC §1 — hundreds of items).</li>
+        <li><strong>Shared engineering.</strong> Both instances run identical code from <code>main</code>;
+          a schema change must be migrated to <em>both</em> Supabase projects at deploy time — call this
+          out in any future migration's rollout notes.</li>
+      </ul>
+    </main>
+  </body>
+</html>
