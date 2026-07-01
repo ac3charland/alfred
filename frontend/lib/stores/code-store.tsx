@@ -6,6 +6,7 @@ import * as React from 'react';
 import * as api from '@/lib/api-client';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import { buildBypassUrl, buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
+import { codeStoryStatusPatch } from '@/lib/code/status';
 import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
@@ -234,6 +235,16 @@ export interface CodeActions {
    * `codeItemToStoryPatch`; roll the priority back on error.
    */
   moveStory: (ref: string, toTop: boolean) => Promise<void>;
+  /**
+   * Refetch every code story from the server and reconcile the STATUS fields (`factory_state`
+   * plus its companions `lane` / `blocked_reason`) onto the stories already held, keyed by
+   * `item_id`. Fired on navigation to a project board or the Backlog (ALF-69) so a status that
+   * drifted while this tab sat idle — a realtime UPDATE dropped by a stale connection, or a move
+   * that landed while backgrounded — reconciles the moment the user lands on a code view. Patches
+   * only statuses (not title/priority/notes) and only rows present in the store (the race rule),
+   * mirroring the realtime UPDATE path; a failed fetch is swallowed, leaving the current data as-is.
+   */
+  refreshStatuses: () => Promise<void>;
 }
 
 interface CodeState {
@@ -886,6 +897,27 @@ export function CodeProvider({
             showToastRef.current("Couldn't move story");
           },
         });
+      },
+      async refreshStatuses() {
+        let stories: CodeStory[];
+        try {
+          stories = await api.listCode();
+        } catch {
+          // A background reconcile fired by navigation — on failure keep the seeded/realtime
+          // data as-is and stay silent (no rollback, no toast); the next navigation retries.
+          return;
+        }
+        for (const story of stories) {
+          // The view row is all-nullable; skip any without an `item_id` (the patch key). A row
+          // absent from this tab's store is a no-op patch (the race rule), so a story created on
+          // another device is ignored here — this reconciles STATUSES of stories already held.
+          if (story.item_id === null) continue;
+          dispatch({
+            type: 'patchStory',
+            itemId: story.item_id,
+            patch: codeStoryStatusPatch(story),
+          });
+        }
       },
     };
   }, []);

@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { Backlog } from '@/components/code/backlog';
 import { Board } from '@/components/code/board';
+import { useCodeActions } from '@/lib/stores/code-store';
 
 const CODE_PREFIX = '/code/';
 const BACKLOG_SEGMENT = 'backlog';
@@ -18,9 +19,20 @@ const BACKLOG_SEGMENT = 'backlog';
  * it's the SAME mounted component on every code route and reads from the layout-seeded
  * CodeProvider, selecting a project or the Backlog via `ViewLink` (a History push, no RSC
  * round-trip) just re-derives the view. A hard load of any path renders the match server-side.
+ *
+ * The seed-once store means statuses can drift after a long-lived session (a realtime UPDATE
+ * dropped by a stale connection, a move that landed while the tab was backgrounded). So on every
+ * navigation to a board or the Backlog — keyed on `pathname`, which also covers entry to the
+ * module — refetch and reconcile the ticket statuses (ALF-69). `refreshStatuses` is stable and
+ * swallows its own errors, so this is a fire-and-forget reconcile that never blocks the view.
  */
 export function CodeView() {
   const pathname = usePathname();
+  const { refreshStatuses } = useCodeActions();
+
+  React.useEffect(() => {
+    void refreshStatuses();
+  }, [pathname, refreshStatuses]);
 
   if (pathname.startsWith(CODE_PREFIX)) {
     const segment = pathname.slice(CODE_PREFIX.length);
