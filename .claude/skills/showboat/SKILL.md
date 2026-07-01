@@ -285,6 +285,13 @@ Run it through the harness (`npm run test:e2e -w frontend -- capture-flow.spec.t
 then embed each shot with `npm run demo -- image`. **Look at every PNG** (Read it)
 before embedding.
 
+**Wait for animations to settle before `page.screenshot()`.** Playwright's
+`toBeVisible()` / `waitFor()` count an element that's still fading or zooming in
+(opacity 0 mid-transition — a Radix dialog, a toast) as *visible*, so a shot fired the
+instant it appears captures a ghosted, half-drawn frame. After the target is visible,
+let the motion finish — `await page.waitForTimeout(400)`, or await a settled signal like
+a stable bounding box — then screenshot.
+
 #### Images for flows, video only for animations and timing-sensitive changes
 
 The default evidence is **still a screenshot**. Pick the medium deliberately:
