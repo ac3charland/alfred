@@ -172,6 +172,35 @@
       .cardC .subrow .m-title { font-size: 15px; line-height: 1.3; flex: 1 1 auto; }
       .cardC .subrow .s-foot { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; padding-left: calc(22px + 0.55rem); }
 
+      /* backlog (Code module) mockup */
+      .pill.proj { color: #cfe3ff; background: rgba(110,168,254,0.18); font-weight: 600; }
+      .pill.epic { color: var(--muted); background: var(--surface-2); }
+      .pill.epic .r { font-family: var(--mono); opacity: 0.7; margin-left: 0.3rem; }
+      .pill.state { color: var(--teal); background: rgba(79,209,197,0.12); border: 1px solid rgba(79,209,197,0.35); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+      .bl-ref { font-family: var(--mono); color: var(--teal); font-weight: 600; flex: 0 0 auto; }
+      .bl-ctrls { display: flex; gap: 0.2rem; flex: 0 0 auto; align-items: center; }
+      .bl-ctrls .col { display: flex; flex-direction: column; }
+      .bl-ctrls .col span { color: var(--muted); line-height: 1; text-align: center; }
+      .bl .m-list { display: flex; flex-direction: column; gap: 0.6rem; }
+      .blcard { background: var(--surface); border: 1px solid var(--border); }
+      /* before */
+      .bl.cur .blcard { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; border-radius: 12px; padding: 0.5rem 0.55rem; }
+      .bl.cur .bl-ref { font-size: 11px; }
+      .bl.cur .bl-title { font-size: 13px; color: var(--fg); flex: 1 1 40px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bl.cur .pill { font-size: 10.5px; padding: 2px 7px; }
+      .bl.cur .bl-ctrls { font-size: 12px; margin-left: auto; }
+      .bl.cur .bl-ctrls .col span { font-size: 12px; padding: 1px 2px; }
+      /* after */
+      .bl.optC .blcard { border-radius: 14px; padding: 0.8rem 0.85rem; display: flex; align-items: flex-start; gap: 0.6rem; }
+      .bl.optC .bl-body { flex: 1 1 auto; min-width: 0; }
+      .bl.optC .bl-head { display: flex; align-items: baseline; gap: 0.5rem; }
+      .bl.optC .bl-ref { font-size: 13px; }
+      .bl.optC .bl-title { font-size: 16px; line-height: 1.35; color: var(--fg); overflow-wrap: anywhere; }
+      .bl.optC .bl-foot { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
+      .bl.optC .pill { font-size: 12px; padding: 4px 10px; }
+      .bl.optC .bl-ctrls { gap: 0.35rem; margin-top: 1px; }
+      .bl.optC .bl-ctrls .col span { font-size: 20px; padding: 3px 4px; }
+
       @media (max-width: 640px) {
         body { padding: 1.25rem 0.9rem 3rem; }
         table { font-size: 0.85rem; }
@@ -188,7 +217,10 @@
         the right, squeezing long titles into three or four wrapped lines. This spec makes each
         top-level task a <strong>large, tappable card</strong> on mobile — with its
         <strong>subtasks nested inside the same card</strong>, not broken out into cards of their
-        own.
+        own. The <strong>same treatment is applied to the Code module's backlog</strong> (the
+        “Software Factory” story list), which crowds the same way — titles there truncate to
+        “Disabl…”, “Add S…”, “Increa…” because the ref, project / epic / status badges, and the
+        reorder controls all share the title's line.
       </p>
 
       <div class="decision">
@@ -341,6 +373,69 @@
         list container.
       </p>
 
+      <h2>Same approach for Code backlog items</h2>
+      <p>
+        The Code module's backlog (“The Software Factory”, <code>frontend/components/code/backlog.tsx</code>)
+        renders one row per story via <code>frontend/components/code/backlog/backlog-row.tsx</code>. Each
+        row is <em>already</em> an individually-bordered card
+        (<code>rounded-lg border border-border bg-surface</code>) in a gapped column — so unlike the
+        tasks list it needs <strong>no container conversion</strong>. What it shares with the tasks row
+        is the crowding: a <code>ViewLink</code> body lays out ref + <code>truncate</code> title +
+        project badge + epic badge + status chip as one <code>flex-wrap</code> line, with the
+        reorder-chevron cluster beside it — so on a phone the title truncates hard (“Disabl…”,
+        “Add&nbsp;S…”, “Increa…”) while the badges wrap underneath.
+      </p>
+      <p>Apply the <strong>same idea</strong>, scoped to <code>&lt; md</code>:</p>
+      <ul>
+        <li><strong>Give the title its own line, full width.</strong> The ref + title become the row's head; the title stops truncating and wraps instead, at <code>text-base</code> (16&nbsp;px).</li>
+        <li><strong>Move the badges to a metadata footer below the title</strong> — the project badge, epic badge, and <code>StateChip</code> status badge — mirroring the task card's footer, so they no longer compete with the title for width. (They stay inside the <code>ViewLink</code> body, as today.)</li>
+        <li><strong>Enlarge the reorder controls to ≥&nbsp;44&nbsp;px tap targets.</strong> The four <code>IconButton size="sm"</code> chevrons (up / down neighbour-swap, double-up / double-down to top/bottom) get a mobile hit area; they keep their current position beside the body (kept outside the link, as today, so there are no nested interactive elements).</li>
+        <li><strong><code>md</code>+ is unchanged</strong> — the current single-line wrapping row is restored above the breakpoint, matching the tasks change.</li>
+      </ul>
+      <div class="note">
+        <strong>Backlog rows have no checkbox and no nesting</strong> — they're leaf story links, so
+        this is purely the head/footer restructure + sizing (no card-container or subtree work). That
+        makes it the lighter half of this ticket.
+      </div>
+
+      <h3>Before / after (backlog, mobile)</h3>
+      <div class="mock-wrap">
+        <div>
+          <div class="phone bl cur">
+            <div class="m-group">Software Factory</div>
+            <div class="m-list">
+              <div class="blcard"><span class="bl-ref">ALF-89</span><span class="bl-title">Disable draft-mode toggle for mobile</span><span class="pill proj">Alfred</span><span class="pill epic">Mobile<span class="r">ALF-85</span></span><span class="pill state">Needs refinement</span><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
+              <div class="blcard"><span class="bl-ref">ALF-83</span><span class="bl-title">Create roadmap for server migration</span><span class="pill proj">Alfred</span><span class="pill epic">Software Factory<span class="r">ALF-82</span></span><span class="pill state">Needs refinement</span><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
+            </div>
+          </div>
+          <p class="phone-cap">Current — ref, badges &amp; controls crowd the title, so it truncates to “Disabl…”.</p>
+        </div>
+        <div>
+          <div class="phone bl optC">
+            <div class="m-group">Software Factory</div>
+            <div class="m-list">
+              <div class="blcard"><div class="bl-body"><div class="bl-head"><span class="bl-ref">ALF-89</span><span class="bl-title">Disable draft-mode toggle for mobile</span></div><div class="bl-foot"><span class="pill proj">Alfred</span><span class="pill epic">Mobile<span class="r">ALF-85</span></span><span class="pill state">Needs refinement</span></div></div><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
+              <div class="blcard"><div class="bl-body"><div class="bl-head"><span class="bl-ref">ALF-83</span><span class="bl-title">Create roadmap for server migration</span></div><div class="bl-foot"><span class="pill proj">Alfred</span><span class="pill epic">Software Factory<span class="r">ALF-82</span></span><span class="pill state">Needs refinement</span></div></div><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
+            </div>
+          </div>
+          <p class="phone-cap">Proposed — ref + full title on top; project / epic / status badges in a footer; enlarged reorder controls.</p>
+        </div>
+      </div>
+
+      <h3>Files likely touched (backlog)</h3>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>frontend/components/code/backlog/backlog-row.tsx</code></td><td>at <code>&lt; md</code>, restructure the <code>ViewLink</code> body into a head (ref + full-width, non-truncated title) + a metadata footer (project / epic / status badges); enlarge the title and the four reorder <code>IconButton</code>s' tap areas</td></tr>
+          <tr><td><code>frontend/components/code/backlog/backlog-row.test.tsx</code></td><td>assert the mobile head/footer layout and enlarged sizing</td></tr>
+          <tr><td><code>frontend/components/code/backlog.stories.tsx</code></td><td>a mobile-viewport story for the visual snapshot</td></tr>
+          <tr><td><code>frontend/__image_snapshots__/code-backlog--*.png</code></td><td>regenerate the affected baselines via the storybook capture-then-approve flow</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="font-size:0.9rem">
+        Same as the tasks change: presentational/CSS only — no API, database, or type changes.
+      </p>
+
       <h2>Acceptance criteria</h2>
       <ul class="checklist">
         <li>At a mobile viewport (&lt;&nbsp;<code>md</code>), each top-level task renders as a distinct card — rounded <code>surface</code> panel with a border and a visible gap between cards (no shared <code>divide-y</code> container).</li>
@@ -352,14 +447,15 @@
         <li>At <code>md</code> and above, the list and row layout are unchanged from today (desktop density preserved).</li>
         <li>Complete, inline-edit, drag, and reparent interactions still work at the larger sizes.</li>
         <li>New card/row classes are asserted in <code>task-row.styles.test.ts</code>; a mobile-viewport Storybook snapshot covers a card with an expanded nested subtree; <code>npm run check</code> is green.</li>
-        <li>A demo doc under <code>docs/demos/&lt;branch&gt;/</code> captures the before/after at a mobile viewport (per the <code>showboat</code> skill) and <code>npm run demo -- verify</code> passes.</li>
+        <li><strong>Backlog:</strong> at a mobile viewport, each backlog row shows its ref + full title on its own line (title no longer truncated), with the project / epic / status badges in a footer row below; the reorder chevrons present ≥&nbsp;44&nbsp;px tap targets. At <code>md</code>+ the backlog row is unchanged.</li>
+        <li>A demo doc under <code>docs/demos/&lt;branch&gt;/</code> captures the before/after for <em>both</em> the task card and the backlog row at a mobile viewport (per the <code>showboat</code> skill) and <code>npm run demo -- verify</code> passes.</li>
       </ul>
 
       <h2>Out of scope / open questions</h2>
       <ul>
         <li><strong>Exact mobile breakpoint.</strong> Assumed <code>md</code> (the app's existing mobile/desktop divide). Flag if a different threshold is wanted.</li>
-        <li>Folder headers, the capture bar, and other tasks-module chrome are unchanged — this ticket is the task <em>row</em> / list only.</li>
-        <li>No changes to desktop density, information shown, or task behaviour — sizing/layout only.</li>
+        <li>This ticket covers two surfaces — the tasks-module task card and the Code-module backlog row. Folder headers, the capture bar, the Code <em>board</em>/swimlane view, and other module chrome are unchanged.</li>
+        <li>No changes to desktop density, information shown, or behaviour — sizing/layout only.</li>
       </ul>
     </main>
   </body>
