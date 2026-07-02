@@ -218,3 +218,25 @@ export const AllProjectColours: Story = {
     ),
   ],
 };
+
+/**
+ * The ALF-86 mobile backlog: at a phone width each row gives its ref + full title its own line
+ * (no more "Disabl…" truncation), drops the project / epic / status badges into a footer below,
+ * and enlarges the reorder chevrons to ≥44px tap targets. Rendered in a phone-width frame at a
+ * mobile viewport so the `md:`-gated restructure takes effect; the crop targets that frame.
+ */
+export const MobileRows: Story = {
+  decorators: [
+    (Story) => (
+      <div data-testid="backlog-mobile-frame" className="w-[390px] bg-background">
+        <Story />
+      </div>
+    ),
+  ],
+  parameters: {
+    visualTest: {
+      target: '[data-testid="backlog-mobile-frame"]',
+      viewport: { width: 390, height: 844 },
+    },
+  },
+};

@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import { userEvent, within } from 'storybook/test';
 
 import type { ItemNode } from '@/lib/tree';
 
 import { TaskRow } from './task-row';
+import { taskListContainerClass } from './task-row.styles';
 
 const BASE_NODE: ItemNode = {
   id: 'item-1',
@@ -289,6 +291,86 @@ const ANCESTOR_CHAIN: ItemNode[] = ['A', 'B', 'C', 'D', 'E', 'F'].map((title, in
   parent_id: index === 0 ? null : `chain-${String(index - 1)}`,
   children: [],
 }));
+
+// ── Mobile card layout (ALF-86) ──
+
+// A mobile grandchild, so the expanded card shows two levels of nesting inside one card.
+const REUNION_GRANDCHILD: ItemNode = {
+  ...BASE_NODE,
+  id: 'm-gc1',
+  title: 'Compare rental agencies',
+  parent_id: 'm-sc1',
+};
+
+// An expanded top-level card ("Go to Charland reunion") whose subtasks — one carrying its own
+// due / priority / count footer — sit INSIDE the card, a collapsed card with a count, and a
+// long-title leaf whose badges drop to a footer so the title gets the card's full width.
+const REUNION: ItemNode = {
+  ...BASE_NODE,
+  id: 'm-reunion',
+  title: 'Go to Charland reunion',
+  priority: 'high',
+  children: [
+    {
+      ...BASE_NODE,
+      id: 'm-sc1',
+      title: 'Reserve rental car',
+      parent_id: 'm-reunion',
+      due_date: '2099-07-09',
+      priority: 'medium',
+      children: [REUNION_GRANDCHILD],
+    },
+    { ...BASE_NODE, id: 'm-sc2', title: 'Confirm the guest list', parent_id: 'm-reunion' },
+  ],
+};
+
+const FB_ALERTS: ItemNode = {
+  ...BASE_NODE,
+  id: 'm-fb',
+  title: 'Set up Facebook marketplace alerts',
+  priority: 'medium',
+  children: [
+    { ...BASE_NODE, id: 'm-fb1', title: 'Pick search terms', parent_id: 'm-fb' },
+    { ...BASE_NODE, id: 'm-fb2', title: 'Set price ceilings', parent_id: 'm-fb' },
+    { ...BASE_NODE, id: 'm-fb3', title: 'Enable notifications', parent_id: 'm-fb' },
+  ],
+};
+
+const LONG_LEAF: ItemNode = {
+  ...BASE_NODE,
+  id: 'm-long',
+  title: 'Update monthly transfer amounts to account for daycare and the new mortgage',
+  due_date: '2099-07-12',
+  priority: 'high',
+};
+
+// The primary ALF-86 evidence: a phone-width list where each top-level task is its own card,
+// the expanded card nests its subtasks inside, and every title takes the full width with its
+// badges stacked into a footer below. The play fn opens the first card so the snapshot captures
+// the nested subtree; the mobile viewport makes the `md:`-gated card styles take effect.
+export const MobileCards: Story = {
+  // `render` composes its own nodes below, so this arg only satisfies the required `node` prop.
+  args: { node: REUNION },
+  render: () => (
+    <ul aria-label="Tasks" data-testid="tasks-mobile-frame" className={taskListContainerClass}>
+      <TaskRow node={REUNION} />
+      <TaskRow node={FB_ALERTS} />
+      <TaskRow node={LONG_LEAF} />
+    </ul>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Open the first card ("Go to Charland reunion") so its subtree renders inside the card.
+    const [firstExpand] = canvas.getAllByRole('button', { name: 'Expand subtasks' });
+    if (firstExpand) await userEvent.click(firstExpand);
+  },
+  parameters: {
+    visualTest: {
+      target: '[data-testid="tasks-mobile-frame"]',
+      viewport: { width: 390, height: 844 },
+    },
+  },
+};
 
 // A deeply nested completed item shows every ancestor, oldest → youngest, joined by " > ".
 export const CompletedNested: Story = {
