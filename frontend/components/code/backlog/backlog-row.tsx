@@ -51,7 +51,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
   return (
     <li
       ref={ref}
-      className="flex items-start gap-2 rounded-lg border border-border bg-surface transition-colors duration-100 hover:border-accent-teal/50 focus-within:ring-2 focus-within:ring-accent-blue focus-within:ring-offset-1 focus-within:ring-offset-background motion-reduce:transition-none md:items-center"
+      className="flex items-center gap-2 rounded-lg border border-border bg-surface transition-colors duration-100 hover:border-accent-teal/50 focus-within:ring-2 focus-within:ring-accent-blue focus-within:ring-offset-1 focus-within:ring-offset-background motion-reduce:transition-none"
     >
       <ViewLink
         href={href}
