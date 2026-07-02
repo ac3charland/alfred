@@ -8,6 +8,7 @@ import {
   deleteCollapseClass,
   deleteFadeClass,
   dropPlusClass,
+  rowActionsClass,
   rowBaseClass,
   rowDropTargetClass,
   rowHoverClass,
@@ -76,6 +77,20 @@ describe('task-row styles', () => {
     expect(confirmTitleClass).toContain('h-5');
     expect(confirmTitleClass).toContain('border-accent-teal');
     expect(confirmTitleClass).toContain('bg-accent-teal');
+  });
+
+  it('row actions are always visible on mobile, hover-revealed on md+ pointer devices (ALF-88)', () => {
+    // Touch/mobile has no hover, so the actions ship visible by default (below md).
+    expect(rowActionsClass).toContain('opacity-100');
+    // On md+ pointer devices they hide until the row is hovered, then fade in. The hide is
+    // gated on motion-safe so reduced-motion users keep them visible at every width.
+    expect(rowActionsClass).toContain('md:motion-safe:opacity-0');
+    expect(rowActionsClass).toContain('md:motion-safe:group-hover/row:opacity-100');
+    // The reveal fades, and the fade is cut under reduced motion.
+    expect(rowActionsClass).toContain('transition-opacity');
+    expect(rowActionsClass).toContain('motion-reduce:transition-none');
+    // The base state is NOT the old hover-only hide (which was unreachable on touch).
+    expect(rowActionsClass).not.toContain('opacity-0 group-hover/row:opacity-100');
   });
 
   it('title text wraps (break-words) and fades with a delayed colour transition', () => {
