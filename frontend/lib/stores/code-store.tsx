@@ -4,8 +4,14 @@ import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { copyToClipboard } from '@/lib/clipboard';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
-import { buildBypassUrl, buildImplementationUrl, buildRefinementUrl } from '@/lib/code/links';
+import {
+  buildBypassUrl,
+  buildImplementationUrl,
+  buildRefinementUrl,
+  promptFromLaunchUrl,
+} from '@/lib/code/links';
 import { codeStoryStatusPatch } from '@/lib/code/status';
 import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
@@ -213,9 +219,11 @@ export interface CodeActions {
    */
   moveStoryToEpic: (ref: string, epicId: string) => Promise<void>;
   /**
-   * The human launch: show-spinner → AWAIT the state write → open the prefilled
-   * Claude Code tab. Awaiting before `window.open` eliminates the "looks launched but didn't
-   * persist" edge — the tab only opens once the transition is durable. The URL is derived
+   * The human launch: show-spinner → AWAIT the state write → copy the prompt to the clipboard →
+   * open the prefilled Claude Code tab. Awaiting before `window.open` eliminates the "looks
+   * launched but didn't persist" edge — the tab only opens once the transition is durable. The
+   * clipboard copy is a paste-fallback for the mobile app, which opens the universal link but
+   * drops the `q` prompt (a "Prompt copied to clipboard" toast confirms it). The URL is derived
    * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
   openClaudeSession: (ref: string, phase: LaunchPhase) => Promise<void>;
@@ -812,8 +820,16 @@ export function CodeProvider({
           bypass: () => buildBypassUrl(project, story),
         };
         const url = buildUrlForPhase[phase]();
+        const prompt = promptFromLaunchUrl(url);
         await transitionState(ref, LAUNCH_TARGET_STATE[phase], {}, "Couldn't start session");
+        // The link prefills the prompt on web + desktop, but the mobile Claude app opens the
+        // universal link with the composer EMPTY (it drops the `q` param). Copy the prompt to the
+        // clipboard as a paste-fallback and confirm it with a toast so a phone user can just paste.
+        // Start the copy before `window.open` so the write runs under the same user gesture, and
+        // await it only to decide whether to confirm (a failed/absent clipboard shows no toast).
+        const copied = copyToClipboard(prompt);
         window.open(url, '_blank');
+        if (await copied) showToastRef.current('Prompt copied to clipboard');
       },
       async reorderStory(ref, neighbourRef) {
         const { stories } = stateRef.current;
