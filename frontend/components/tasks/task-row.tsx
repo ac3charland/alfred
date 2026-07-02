@@ -47,6 +47,7 @@ import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
 import {
+  cardChromeClass,
   checkboxIncompleteClass,
   checkboxSizeClass,
   chevronButtonClass,
@@ -56,10 +57,14 @@ import {
   deleteCollapseClass,
   deleteFadeClass,
   dropPlusClass,
+  metaFooterClass,
+  mobileTapClass,
   rowActionsClass,
   rowBaseClass,
   rowDropTargetClass,
   rowHoverClass,
+  subtaskCountBadgeClass,
+  subtreeClass,
   titleInputClass,
   titleTextClass,
 } from './task-row.styles';
@@ -278,6 +283,20 @@ export function TaskRow({
   // animation, so its fill + check icon appear the instant completion begins.
   const showAsComplete = isCompleted || isCompleting;
 
+  // Whether this row has any right-cluster metadata (type / due / repeat / priority / count).
+  // On mobile these move into a wrapped footer line below the title; the wrapper is only
+  // rendered when there's something to show, so a bare row doesn't reserve an empty footer line.
+  const hasMeta =
+    showTypeBadge ||
+    (isTask && node.due_date !== null) ||
+    (isTopLevelTask && recurrenceRule !== null) ||
+    (isTask && isPriorityLevel(node.priority)) ||
+    totalSubtasks > 0;
+
+  // The card boundary is drawn exactly once, at a top-level (depth-0) node, enclosing the row
+  // body AND its subtree — so subtasks sit inside the parent's card, never as cards of their own.
+  const isCard = depth === 0;
+
   // In the Completed view every child is itself completed and renders inline (unchanged).
   // In an active view, completed children are split out and tucked behind a "Show completed"
   // toggle, separate from the active children shown directly above them.
@@ -486,6 +505,10 @@ export function TaskRow({
         >
           <div
             className={cn(
+              // At depth 0 this wrapper — which encloses both the row body and the subtree
+              // <ul> — carries the mobile card chrome, so the whole subtree lives inside one
+              // card (md+ dissolves it back into the shared divide-y list).
+              isCard && cardChromeClass,
               isExiting && 'overflow-hidden',
               isDeleting && cn(deleteFadeClass, 'opacity-0'),
             )}
@@ -516,11 +539,20 @@ export function TaskRow({
                 }}
                 aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
                 aria-expanded={isExpanded}
-                className={cn(chevronButtonClass, !hasChildren && 'invisible pointer-events-none')}
+                className={cn(
+                  chevronButtonClass,
+                  mobileTapClass,
+                  !hasChildren && 'invisible pointer-events-none',
+                )}
               >
                 <ChevronRight
                   size={14}
-                  className={cn(chevronIconClass, isExpanded && 'rotate-90')}
+                  className={cn(
+                    chevronIconClass,
+                    // Enlarged glyph on mobile (16px), today's 14px at md+.
+                    'h-4 w-4 md:h-3.5 md:w-3.5',
+                    isExpanded && 'rotate-90',
+                  )}
                 />
               </IconButton>
 
@@ -546,6 +578,7 @@ export function TaskRow({
                     }
                     className={cn(
                       checkboxSizeClass,
+                      mobileTapClass,
                       showAsComplete
                         ? 'bg-accent-teal border-accent-teal'
                         : checkboxIncompleteClass,
@@ -554,13 +587,18 @@ export function TaskRow({
                     )}
                   >
                     {showAsComplete && (
-                      <Check size={10} className="text-background" strokeWidth={3} />
+                      <Check
+                        size={10}
+                        // Scale the check with the enlarged mobile box (14px), 10px at md+.
+                        className="h-3.5 w-3.5 text-background md:h-2.5 md:w-2.5"
+                        strokeWidth={3}
+                      />
                     )}
                   </CheckboxButton>
                 ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
                 signals it will become a child here (replaces the checkbox; no animation). */
               ) : (
-                <div className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <div className={cn(checkboxSizeClass, 'shrink-0')} aria-hidden="true" />
               )}
 
               {/* Title */}
@@ -624,37 +662,44 @@ export function TaskRow({
                 </div>
               )}
 
-              {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed in
-                ALF-67 / ALF-65); an unclassified row shows none. */}
-              {showTypeBadge && <TypeBadge itemType={node.item_type} />}
+              {/* Metadata cluster (Type → Due → Repeat → Priority → Subtask count):
+                display-only here — editing happens on the detail panel's chips. On mobile the
+                wrapper wraps this cluster onto a full-width footer line *below* the title (so a
+                long title isn't squeezed by the badges); at md+ `display:contents` dissolves the
+                wrapper and the badges sit inline to the title's right, exactly as today. Only
+                rendered when there's metadata to show, so a bare row has no empty footer line. */}
+              {hasMeta && (
+                <div className={metaFooterClass}>
+                  {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed
+                    in ALF-67 / ALF-65); an unclassified row shows none. */}
+                  {showTypeBadge && <TypeBadge itemType={node.item_type} />}
 
-              {/* Right cluster of scannable badges (Due → Repeat → Priority → Subtask count):
-                display-only here — editing happens on the detail panel's chips. */}
+                  {/* Due date — `task`-only. */}
+                  {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
 
-              {/* Due date — `task`-only. */}
-              {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
+                  {/* Repeat — top-level recurring tasks only. */}
+                  {isTopLevelTask && recurrenceRule !== null && (
+                    <RecurrenceChip rule={recurrenceRule} />
+                  )}
 
-              {/* Repeat — top-level recurring tasks only. */}
-              {isTopLevelTask && recurrenceRule !== null && (
-                <RecurrenceChip rule={recurrenceRule} />
-              )}
+                  {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
+                    the row. Subtasks carry their own priority (set on the detail panel, ranked in
+                    the Folder view), so their level must show on the row too (ALF-63). */}
+                  {isTask && isPriorityLevel(node.priority) && (
+                    <PriorityChip priority={node.priority} symbolOnly />
+                  )}
 
-              {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
-                the row. Subtasks carry their own priority (set on the detail panel, ranked in the
-                Folder view), so their level must show on the row too (ALF-63). */}
-              {isTask && isPriorityLevel(node.priority) && (
-                <PriorityChip priority={node.priority} symbolOnly />
-              )}
-
-              {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
-              {totalSubtasks > 0 && (
-                <Badge
-                  variant="plain"
-                  aria-label={`${String(completedSubtasks)} of ${String(totalSubtasks)} subtasks complete`}
-                  className="bg-[#1b2438] px-3 py-[3px] text-[13px] text-[#8b97a9]"
-                >
-                  {completedSubtasks}/{totalSubtasks}
-                </Badge>
+                  {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
+                  {totalSubtasks > 0 && (
+                    <Badge
+                      variant="plain"
+                      aria-label={`${String(completedSubtasks)} of ${String(totalSubtasks)} subtasks complete`}
+                      className={subtaskCountBadgeClass}
+                    >
+                      {completedSubtasks}/{totalSubtasks}
+                    </Badge>
+                  )}
+                </div>
               )}
 
               {/* Row actions — always visible on mobile, hover-revealed on md+ (ALF-88). */}
@@ -748,7 +793,7 @@ export function TaskRow({
                   isExpanded ? 'opacity-100 duration-200 delay-75' : 'opacity-0 duration-100',
                 )}
               >
-                <ul aria-label="Subtasks">
+                <ul aria-label="Subtasks" className={subtreeClass}>
                   {/* Add subtask inline form — grows in and fades, shrinks out on dismiss (ALF-66).
                     Kept mounted through the exit by `addSubtaskRendered`; the reveal's onExited
                     drops it once the collapse animation ends. */}

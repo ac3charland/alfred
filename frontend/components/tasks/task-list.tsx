@@ -5,6 +5,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskRow } from '@/components/tasks/task-row';
+import { taskListContainerClass } from '@/components/tasks/task-row.styles';
 import { LIST_BOTTOM_DROP_ID, LIST_TOP_DROP_ID } from '@/lib/dnd/promote-to-root';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { useScopedTasks } from '@/lib/stores/tasks-store';
@@ -87,14 +88,7 @@ export function TaskList({
   return (
     <div>
       <PromoteRootZone position="top" />
-      <ul
-        aria-label="Tasks"
-        className={cn(
-          'rounded-2xl border border-border bg-surface',
-          'divide-y divide-border/50',
-          'overflow-hidden',
-        )}
-      >
+      <ul aria-label="Tasks" className={taskListContainerClass}>
         {nodes.map((node) => (
           <TaskRow
             key={node.id}
