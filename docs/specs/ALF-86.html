@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-86 — Increase size of items/tasks on mobile</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --surface: #171a21;
+        --surface-2: #1e222b;
+        --border: #2a2f3a;
+        --fg: #e6e9ef;
+        --muted: #9aa3b2;
+        --teal: #4fd1c5;
+        --blue: #6ea8fe;
+        --amber: #f0b429;
+        --red: #f87171;
+        --green: #4ade80;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { -webkit-text-size-adjust: 100%; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 2rem 1.25rem 4rem;
+      }
+      main { max-width: 62rem; margin: 0 auto; }
+      h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 0.25rem; }
+      h2 {
+        font-size: 1.15rem;
+        margin: 2.5rem 0 0.75rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { font-size: 1.02rem; margin: 1.5rem 0 0.5rem; color: var(--teal); }
+      h4 { font-size: 0.95rem; margin: 1.1rem 0 0.4rem; color: var(--fg); }
+      p, li { color: var(--fg); }
+      a { color: var(--blue); }
+      code, .mono { font-family: var(--mono); font-size: 0.9em; }
+      code {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.05rem 0.35rem;
+      }
+      pre {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+      .lead { color: var(--muted); font-size: 1.02rem; margin: 0.25rem 0 0; }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--teal);
+        background: rgba(79, 209, 197, 0.12);
+        border: 1px solid rgba(79, 209, 197, 0.35);
+        border-radius: 999px;
+        padding: 0.15rem 0.6rem;
+        margin-bottom: 1rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.92rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+      td .mono { color: var(--teal); }
+      .note {
+        background: rgba(240, 180, 41, 0.08);
+        border-left: 3px solid var(--amber);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+        color: var(--fg);
+      }
+      .decision {
+        background: rgba(79, 209, 197, 0.08);
+        border-left: 3px solid var(--teal);
+        border-radius: 4px;
+        padding: 0.7rem 0.9rem;
+        margin: 1rem 0;
+        font-size: 0.95rem;
+      }
+      ul.checklist { list-style: none; padding-left: 0; }
+      ul.checklist li { position: relative; padding-left: 1.9rem; margin: 0.5rem 0; }
+      ul.checklist li::before {
+        content: "\2610";
+        position: absolute;
+        left: 0;
+        color: var(--teal);
+        font-size: 1.05rem;
+      }
+      .files td:first-child { white-space: nowrap; }
+      .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0; }
+      .pros-cons > div { border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.9rem; }
+      .pros-cons h5 { margin: 0 0 0.35rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+      .pros h5 { color: var(--green); }
+      .cons h5 { color: var(--red); }
+      .pros-cons ul { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+      .pros-cons li { margin: 0.25rem 0; }
+
+      /* ---- Mobile mockup frame ---- */
+      .mock-wrap { display: flex; flex-wrap: wrap; gap: 1.25rem; margin: 1rem 0 0.5rem; }
+      .phone {
+        width: 320px;
+        max-width: 100%;
+        border: 8px solid #23262f;
+        border-radius: 28px;
+        background: var(--bg);
+        padding: 0.5rem;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      }
+      .phone-cap { text-align: center; font-size: 0.8rem; color: var(--muted); margin: 0.5rem 0 0; }
+      .m-group { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding: 0.6rem 0.6rem 0.4rem; }
+      .m-list { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
+      .m-list.cards { border: 0; background: transparent; display: flex; flex-direction: column; gap: 0.55rem; }
+
+      /* generic row bits */
+      .m-cb { flex: 0 0 auto; border: 1.5px solid #3a4150; border-radius: 5px; }
+      .m-title { color: var(--fg); min-width: 0; overflow-wrap: anywhere; }
+      .m-chev { color: var(--muted); flex: 0 0 auto; }
+      .pill { display: inline-flex; align-items: center; border-radius: 999px; font-weight: 600; line-height: 1; white-space: nowrap; }
+      .pill.due { color: var(--blue); border: 1px solid rgba(110,168,254,0.5); }
+      .pill.count { color: #8b97a9; background: #1b2438; }
+      .prio { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-weight: 700; line-height: 1; }
+      .prio.high { color: var(--red); background: rgba(248,113,113,0.16); }
+      .prio.med { color: var(--amber); background: rgba(240,180,41,0.16); }
+      .prio .ch { display: inline-block; transform: rotate(-90deg); }
+
+      /* Current + Option A: single-line, badges right */
+      .rowA { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.5rem 0.5rem; border-bottom: 1px solid rgba(42,47,58,0.5); }
+      .rowA:last-child { border-bottom: 0; }
+      .rowA .m-meta { display: flex; align-items: center; gap: 0.35rem; flex: 0 0 auto; }
+
+      /* current baseline sizes */
+      .cur .m-cb { width: 16px; height: 16px; margin-top: 3px; }
+      .cur .m-title { font-size: 14px; }
+      .cur .pill { font-size: 11px; padding: 2px 8px; }
+      .cur .prio { width: 22px; height: 16px; font-size: 11px; }
+      .cur .m-chev { font-size: 13px; margin-top: 2px; }
+
+      /* Option A bumped sizes */
+      .optA .rowA { padding: 0.7rem 0.6rem; gap: 0.6rem; }
+      .optA .m-cb { width: 24px; height: 24px; margin-top: 2px; }
+      .optA .m-title { font-size: 16px; line-height: 1.35; }
+      .optA .pill { font-size: 13px; padding: 4px 11px; }
+      .optA .prio { width: 30px; height: 24px; font-size: 15px; }
+      .optA .m-chev { font-size: 17px; margin-top: 3px; }
+
+      /* Option B: stacked meta row */
+      .rowB { display: grid; grid-template-columns: auto auto 1fr; gap: 0.15rem 0.6rem; padding: 0.75rem 0.7rem; border-bottom: 1px solid rgba(42,47,58,0.5); align-items: start; }
+      .rowB:last-child { border-bottom: 0; }
+      .rowB .m-chev { grid-row: 1; grid-column: 1; font-size: 17px; margin-top: 2px; }
+      .rowB .m-cb { grid-row: 1; grid-column: 2; width: 24px; height: 24px; margin-top: 1px; }
+      .rowB .m-title { grid-row: 1; grid-column: 3; font-size: 16px; line-height: 1.35; }
+      .rowB .m-metarow { grid-row: 2; grid-column: 3; display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+      .rowB.no-chev .m-cb { grid-column: 1 / span 2; }
+      .rowB.no-chev .m-title, .rowB.no-chev .m-metarow { grid-column: 3; }
+      .optB .pill { font-size: 12.5px; padding: 3px 10px; }
+      .optB .prio { width: 28px; height: 22px; font-size: 14px; }
+
+      /* Option C: cards */
+      .cardC { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0.85rem 0.9rem; }
+      .cardC .c-head { display: flex; align-items: flex-start; gap: 0.7rem; }
+      .cardC .m-cb { width: 26px; height: 26px; margin-top: 1px; }
+      .cardC .m-title { font-size: 16.5px; line-height: 1.35; flex: 1 1 auto; }
+      .cardC .m-chev { font-size: 18px; margin-top: 2px; }
+      .cardC .c-foot { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.6rem; padding-left: calc(26px + 0.7rem); }
+      .optC .pill { font-size: 12.5px; padding: 4px 11px; }
+      .optC .prio { width: 30px; height: 22px; font-size: 15px; }
+
+      @media (max-width: 640px) {
+        body { padding: 1.25rem 0.9rem 3rem; }
+        table { font-size: 0.85rem; }
+        .pros-cons { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="tag">Refinement spec · phase: refinement</span>
+      <h1>ALF-86 — Increase size of items/tasks on mobile</h1>
+      <p class="lead">
+        On a phone the task list reads small and cramped: 16&nbsp;px checkboxes are hard to tap,
+        the title is <code>text-sm</code>, and the date / priority / subtask-count badges crowd in
+        from the right, squeezing long titles into three or four wrapped lines. This spec proposes
+        <strong>three</strong> redesigns of the task row that make items larger and more legible on
+        mobile. <strong>Pick one</strong> and this spec will be rewritten to that single option with
+        finalised acceptance criteria.
+      </p>
+
+      <div class="decision">
+        <strong>Decision needed:</strong> choose <strong>Option A</strong> (scale up in place),
+        <strong>Option B</strong> (metadata on its own line — <em>recommended</em>), or
+        <strong>Option C</strong> (card&nbsp;per&nbsp;task). Everything below the “Options” section
+        (files, testing, acceptance) is written to be true of whichever option is chosen and will be
+        narrowed once you decide.
+      </div>
+
+      <h2>Context &amp; problem</h2>
+      <p>
+        Every item in the tasks module is rendered by a single recursive component,
+        <code>frontend/components/tasks/task-row.tsx</code>, whose cosmetic classes are extracted
+        into <code>frontend/components/tasks/task-row.styles.ts</code>. The list container
+        (<code>frontend/components/tasks/task-list.tsx</code>) wraps the rows in a rounded card and
+        separates them with hairline dividers (<code>divide-y divide-border/50</code>) — there is no
+        gap between rows.
+      </p>
+      <p>The row is <strong>not tuned for mobile today.</strong> The same geometry applies at every viewport:</p>
+      <table>
+        <thead><tr><th>Element</th><th>Current class / size</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Row padding</td><td><code>py-2 pr-2</code> + inline <code>paddingLeft</code> (<code>depth*1.25 + 0.75rem</code>)</td><td><code>task-row.styles.ts</code> <span class="mono">rowBaseClass</span>; <code>use-indentation.ts</code></td></tr>
+          <tr><td>Checkbox (tap target)</td><td><code>h-4 w-4</code> = <strong>16&nbsp;px</strong>, check icon 10&nbsp;px</td><td><span class="mono">checkboxSizeClass</span></td></tr>
+          <tr><td>Title text</td><td><code>text-sm</code> (14&nbsp;px), <code>break-words</code></td><td><span class="mono">titleTextClass</span></td></tr>
+          <tr><td>Expand chevron</td><td><code>IconButton size="sm"</code> = 20&nbsp;px, 14&nbsp;px icon</td><td><code>task-row.tsx</code></td></tr>
+          <tr><td>Due-date pill</td><td><code>Badge</code> <code>text-xs</code> (12&nbsp;px), <code>rounded-full px-2 py-0.5</code></td><td><code>due-date-chip.tsx</code>, <code>badge.tsx</code></td></tr>
+          <tr><td>Priority glyph</td><td><code>PriorityChip symbolOnly</code>, icon 10&nbsp;px</td><td><code>priority-chip.tsx</code></td></tr>
+          <tr><td>Subtask count pill</td><td><code>text-[13px] px-3 py-[3px]</code></td><td><code>task-row.tsx</code> (inline)</td></tr>
+          <tr><td>Responsive rules</td><td><em>only</em> the actions cluster: always visible below <code>md</code>, hover-revealed on <code>md</code>+</td><td><span class="mono">rowActionsClass</span> (ALF-88)</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Two consequences on a phone, both visible in the reference screenshot: (1) the 16&nbsp;px
+        checkbox is well below the ~44&nbsp;px touch-target guideline, and (2) because the badges are
+        right-aligned <em>on the same line as the title</em>, a long title like “Update monthly
+        transfer amounts to account for daycare and new mortgage” is forced to wrap into four narrow
+        lines while a wide empty gutter sits under the badges.
+      </p>
+      <div class="note">
+        <strong>The app's mobile/desktop divide is the <code>md</code> breakpoint</strong> (sidebar
+        <code>hidden md:flex</code>, mobile header <code>md:hidden</code>, and the ALF-88 actions
+        rule). Every option here scopes its enlargements to <strong>below <code>md</code></strong> so
+        the desktop density is unchanged, matching that established convention.
+      </div>
+
+      <h2>Options</h2>
+      <p>
+        The three options are points on a spectrum from “same layout, bigger” to “new container per
+        task”. All three: enlarge the checkbox to a ≥&nbsp;24&nbsp;px visual target, bump the title to
+        <code>text-base</code> (16&nbsp;px), enlarge the badges, and grow the expand chevron — the
+        difference is <em>where the metadata goes</em> and <em>how rows are separated</em>. Mockups are
+        rendered at a phone width so you can compare directly against the screenshot.
+      </p>
+
+      <!-- Baseline for comparison -->
+      <h3>Baseline (current, for comparison)</h3>
+      <div class="mock-wrap">
+        <div>
+          <div class="phone cur">
+            <div class="m-group">Life admin</div>
+            <div class="m-list">
+              <div class="rowA"><span class="m-cb"></span><span class="m-title">Update monthly transfer amounts to account for daycare and new mortgage</span><span class="m-meta"><span class="pill due">Jul 12</span><span class="prio high"><span class="ch">»</span></span></span></div>
+              <div class="rowA"><span class="m-chev">›</span><span class="m-cb"></span><span class="m-title">Go to Charland reunion</span><span class="m-meta"><span class="prio high"><span class="ch">»</span></span><span class="pill count">1/2</span></span></div>
+              <div class="rowA"><span class="m-chev">›</span><span class="m-cb"></span><span class="m-title">Set up Facebook marketplace alerts</span><span class="m-meta"><span class="prio med">=</span><span class="pill count">0/3</span></span></div>
+            </div>
+          </div>
+          <p class="phone-cap">Current — 16&nbsp;px checkbox, 14&nbsp;px title, badges crowd the title.</p>
+        </div>
+      </div>
+
+      <!-- OPTION A -->
+      <h3>Option A — Scale up in place</h3>
+      <p>
+        Keep the exact single-line information architecture (checkbox · title · right-aligned badge
+        cluster) and simply <strong>scale everything up on mobile</strong>: a 24&nbsp;px checkbox with
+        a ≥&nbsp;44&nbsp;px hit area, <code>text-base</code> title, larger pills, larger chevron, more
+        row padding (<code>py-3</code>). Smallest change; keeps desktop and mobile structurally
+        identical.
+      </p>
+      <div class="mock-wrap">
+        <div>
+          <div class="phone optA">
+            <div class="m-group">Life admin</div>
+            <div class="m-list">
+              <div class="rowA"><span class="m-cb"></span><span class="m-title">Update monthly transfer amounts to account for daycare and new mortgage</span><span class="m-meta"><span class="pill due">Jul 12</span><span class="prio high"><span class="ch">»</span></span></span></div>
+              <div class="rowA"><span class="m-chev">›</span><span class="m-cb"></span><span class="m-title">Go to Charland reunion</span><span class="m-meta"><span class="prio high"><span class="ch">»</span></span><span class="pill count">1/2</span></span></div>
+              <div class="rowA"><span class="m-chev">›</span><span class="m-cb"></span><span class="m-title">Set up Facebook marketplace alerts</span><span class="m-meta"><span class="prio med">=</span><span class="pill count">0/3</span></span></div>
+            </div>
+          </div>
+          <p class="phone-cap">Option A — same layout, bigger controls & text.</p>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h5>Pros</h5><ul>
+          <li>Smallest, lowest-risk diff — mostly size tokens.</li>
+          <li>Mobile and desktop stay structurally identical (one mental model).</li>
+          <li>Preserves current density — most tasks per screen of the three.</li>
+        </ul></div>
+        <div class="cons"><h5>Cons</h5><ul>
+          <li>Does <em>not</em> fix the core wrapping problem: bigger badges crowd the title even more, so long titles still wrap to 3–4 lines.</li>
+          <li>Bigger text with the same layout can feel more cramped, not less.</li>
+        </ul></div>
+      </div>
+
+      <!-- OPTION B -->
+      <h3>Option B — Metadata on its own line <em>(recommended)</em></h3>
+      <p>
+        On mobile, give the title the <strong>full row width</strong> and move the badges
+        (due date, priority, subtask count, type) down to a dedicated <strong>meta strip below the
+        title</strong>. Checkbox and title enlarge as in A, but because nothing competes for the
+        title's horizontal space, long titles wrap far less and the metadata reads as a tidy chip row
+        — the pattern of most native mobile task apps. Desktop keeps today's single-line layout; the
+        stacked meta strip is a <code>&lt; md</code>-only rearrangement.
+      </p>
+      <div class="mock-wrap">
+        <div>
+          <div class="phone optB">
+            <div class="m-group">Life admin</div>
+            <div class="m-list">
+              <div class="rowB no-chev"><span class="m-cb"></span><span class="m-title">Update monthly transfer amounts to account for daycare and new mortgage</span><span class="m-metarow"><span class="pill due">Jul 12</span><span class="prio high"><span class="ch">»</span></span></span></div>
+              <div class="rowB"><span class="m-chev">›</span><span class="m-cb"></span><span class="m-title">Go to Charland reunion</span><span class="m-metarow"><span class="prio high"><span class="ch">»</span></span><span class="pill count">1/2</span></span></div>
+              <div class="rowB"><span class="m-chev">›</span><span class="m-cb"></span><span class="m-title">Set up Facebook marketplace alerts</span><span class="m-metarow"><span class="prio med">=</span><span class="pill count">0/3</span></span></div>
+            </div>
+          </div>
+          <p class="phone-cap">Option B — title gets full width; badges drop to a meta strip.</p>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h5>Pros</h5><ul>
+          <li>Directly fixes the wrapping problem — the actual pain in the screenshot.</li>
+          <li>Bigger tap targets <em>and</em> a calmer, more scannable layout.</li>
+          <li>Familiar native-mobile task-list feel; room for the badges to grow.</li>
+        </ul></div>
+        <div class="cons"><h5>Cons</h5><ul>
+          <li>Rows with metadata get taller — slightly fewer per screen than A.</li>
+          <li>Divergent mobile vs desktop layout to build & snapshot-test.</li>
+          <li>A meta-less task (no date/priority/subtasks) shows only the title row — must collapse the empty strip cleanly.</li>
+        </ul></div>
+      </div>
+
+      <!-- OPTION C -->
+      <h3>Option C — Card per task</h3>
+      <p>
+        Replace the divided list with <strong>individually-bordered, spaced cards</strong> on mobile:
+        each task is a rounded <code>surface</code> panel with generous padding, a large checkbox and
+        title on top and a metadata footer below. The biggest, most tappable, most visually distinct
+        treatment — closest to a “widget” list.
+      </p>
+      <div class="mock-wrap">
+        <div>
+          <div class="phone optC">
+            <div class="m-group">Life admin</div>
+            <div class="m-list cards">
+              <div class="cardC"><div class="c-head"><span class="m-cb"></span><span class="m-title">Update monthly transfer amounts to account for daycare and new mortgage</span></div><div class="c-foot"><span class="pill due">Jul 12</span><span class="prio high"><span class="ch">»</span></span></div></div>
+              <div class="cardC"><div class="c-head"><span class="m-cb"></span><span class="m-title">Go to Charland reunion</span><span class="m-chev">›</span></div><div class="c-foot"><span class="prio high"><span class="ch">»</span></span><span class="pill count">1/2</span></div></div>
+              <div class="cardC"><div class="c-head"><span class="m-cb"></span><span class="m-title">Set up Facebook marketplace alerts</span><span class="m-chev">›</span></div><div class="c-foot"><span class="prio med">=</span><span class="pill count">0/3</span></div></div>
+            </div>
+          </div>
+          <p class="phone-cap">Option C — each task is its own padded card.</p>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h5>Pros</h5><ul>
+          <li>Largest, most touch-friendly, most visually distinct rows.</li>
+          <li>Also solves wrapping (title has full width; meta in a footer).</li>
+          <li>Clear per-task boundaries — easy to see where one item ends.</li>
+        </ul></div>
+        <div class="cons"><h5>Cons</h5><ul>
+          <li>Fewest tasks per screen — most scrolling; heavy visual weight.</li>
+          <li>Nested subtasks inside a card get visually complex (cards-in-cards).</li>
+          <li>Biggest departure from desktop; most involved to build & snapshot.</li>
+        </ul></div>
+      </div>
+
+      <h3>At a glance</h3>
+      <table>
+        <thead><tr><th>&nbsp;</th><th>A — Scale up</th><th>B — Meta line <em>(rec.)</em></th><th>C — Cards</th></tr></thead>
+        <tbody>
+          <tr><td>Title width</td><td>shared w/ badges</td><td>full width</td><td>full width</td></tr>
+          <tr><td>Badge location</td><td>right of title</td><td>strip below title</td><td>card footer</td></tr>
+          <tr><td>Fixes wrapping?</td><td>No</td><td>Yes</td><td>Yes</td></tr>
+          <tr><td>Row separator</td><td>hairline divider</td><td>hairline divider</td><td>gap + border</td></tr>
+          <tr><td>Density</td><td>highest</td><td>medium</td><td>lowest</td></tr>
+          <tr><td>Build/test risk</td><td>lowest</td><td>medium</td><td>highest</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Shared implementation notes (any option)</h2>
+      <ul>
+        <li>
+          <strong>Scope to mobile via the <code>md</code> breakpoint.</strong> Enlargements live behind
+          the default (&lt;&nbsp;<code>md</code>) styles with <code>md:</code> prefixes restoring
+          today's compact desktop values — mirroring the existing <span class="mono">rowActionsClass</span>
+          convention. No <code>useMediaQuery</code>/JS branching; pure Tailwind responsive classes.
+        </li>
+        <li>
+          <strong>Enlarge the real tap target, not just the glyph.</strong> The checkbox
+          (<code>CheckboxButton</code>, <code>frontend/components/atoms/checkbox-button.tsx</code>) and
+          the expand chevron (<code>IconButton</code>) must present a ≥&nbsp;44&nbsp;px hit area on
+          mobile even if the drawn box is 24&nbsp;px, so the whole item is comfortably tappable.
+        </li>
+        <li>
+          <strong>Keep the badge components; change only their size context.</strong> The due pill,
+          priority glyph, subtask count and type badge come from shared atoms
+          (<code>badge.tsx</code>, <code>priority-chip.tsx</code>, <code>due-date-chip.tsx</code>,
+          <code>type-badge.tsx</code>). Prefer bumping sizes through those atoms / the row's wrappers
+          over hard-coding new one-off values (the inline
+          <code>text-[13px]&nbsp;px-3</code> subtask-count pill in <code>task-row.tsx</code> should move
+          to a named class alongside the others).
+        </li>
+        <li>
+          <strong>Indentation still works.</strong> Nested subtasks use
+          <code>use-indentation.ts</code> (<code>depth*1.25 + 0.75rem</code>); whatever option is
+          chosen must keep subtask indentation legible at the larger sizes (esp. Option C's cards).
+        </li>
+        <li>
+          <strong>Chrome classes are locked by a test.</strong>
+          <code>task-row.styles.test.ts</code> asserts the row's className constants; new responsive
+          classes are added there (and to <span class="mono">*Class</span> constants in
+          <code>task-row.styles.ts</code>), not sprinkled inline.
+        </li>
+      </ul>
+
+      <h3>Files likely touched</h3>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>frontend/components/tasks/task-row.styles.ts</code></td><td>responsive size classes for row padding, checkbox, title, actions; new meta-strip / card-container class for B / C</td></tr>
+          <tr><td><code>frontend/components/tasks/task-row.tsx</code></td><td>apply the new classes; for B/C, restructure title vs badge cluster into a stacked meta strip / card footer; move the inline count-pill class out</td></tr>
+          <tr><td><code>frontend/components/tasks/task-list.tsx</code></td><td>Option C only: swap <code>divide-y</code> list for gapped, individually-bordered cards on mobile</td></tr>
+          <tr><td><code>frontend/components/atoms/checkbox-button.tsx</code> / <code>icon-button.tsx</code></td><td>if needed, a mobile hit-area affordance behind a ≥24&nbsp;px visual box</td></tr>
+          <tr><td><code>frontend/components/tasks/task-row.styles.test.ts</code></td><td>assert the new responsive classes (locks the chrome)</td></tr>
+          <tr><td><code>frontend/components/tasks/task-row.stories.tsx</code></td><td>a mobile-viewport story so the visual snapshot covers the new layout</td></tr>
+          <tr><td><code>frontend/__image_snapshots__/…</code></td><td>regenerate the affected baselines via the storybook capture-then-approve flow</td></tr>
+        </tbody>
+      </table>
+      <p class="lead" style="font-size:0.9rem">
+        No API, database, or type changes — this is a presentational/CSS change to the task row.
+      </p>
+
+      <h2>Acceptance criteria</h2>
+      <p>Finalised once an option is chosen; these hold for whichever is picked:</p>
+      <ul class="checklist">
+        <li>At a mobile viewport (&lt;&nbsp;<code>md</code>), the checkbox presents a ≥&nbsp;44&nbsp;px tap target with a ≥&nbsp;24&nbsp;px visual box.</li>
+        <li>At a mobile viewport the task title renders at <code>text-base</code> (16&nbsp;px) or larger.</li>
+        <li>At <code>md</code> and above, the row's size/layout is unchanged from today (desktop density preserved).</li>
+        <li>The due-date pill, priority glyph, subtask-count pill and type badge remain present, legible, and correctly coloured at the new sizes.</li>
+        <li>A long title no longer collides with the badge cluster (Options B/C: title takes full width; Option A: badges still fit without clipping).</li>
+        <li>The expand/collapse chevron, inline edit, complete, and drag interactions still work at the larger sizes; nested subtasks stay legibly indented.</li>
+        <li>New responsive classes are asserted in <code>task-row.styles.test.ts</code>; a mobile-viewport Storybook snapshot covers the layout; <code>npm run check</code> is green.</li>
+        <li>A demo doc under <code>docs/demos/&lt;branch&gt;/</code> captures the before/after at a mobile viewport (per the <code>showboat</code> skill) and <code>npm run demo -- verify</code> passes.</li>
+      </ul>
+
+      <h2>Out of scope / open questions</h2>
+      <ul>
+        <li><strong>Which option</strong> — the one decision to make; the spec is then rewritten to just that option.</li>
+        <li><strong>Exact mobile breakpoint.</strong> Assumed <code>md</code> (the app's existing mobile/desktop divide). Flag if a different threshold is wanted.</li>
+        <li>Folder headers, the capture bar, and other tasks-module chrome are unchanged — this ticket is the task <em>row</em> only.</li>
+        <li>No changes to desktop density, information shown, or task behaviour — sizing/layout only.</li>
+      </ul>
+    </main>
+  </body>
+</html>
