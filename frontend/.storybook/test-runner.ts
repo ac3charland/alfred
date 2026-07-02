@@ -15,7 +15,19 @@ interface VisualTestParameters {
   hover?: boolean;
   /** Move keyboard focus into the story (→ `:focus-visible`) before capturing. */
   focus?: boolean;
+  /**
+   * Render at this viewport before capturing. Tailwind's responsive (`md:`) prefixes key on the
+   * *browser viewport*, not the container, so a story exercising mobile-vs-desktop layout must
+   * shrink the real page — a fixed-width wrapper alone can't trigger `md:`. Omit for the desktop
+   * default.
+   */
+  viewport?: { width: number; height: number };
 }
+
+// The default (desktop) viewport, applied to every visual story that doesn't request its own.
+// Set explicitly (rather than relying on Playwright's default) so a preceding mobile story's
+// narrowed viewport can't leak into a later desktop capture and silently flip it to mobile.
+const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
 
 // Baselines are committed to git next to the frontend workspace. `process.cwd()` is the
 // frontend/ dir when `test-storybook` runs (see the package.json scripts).
@@ -47,6 +59,10 @@ const config: TestRunnerConfig = {
     const visual = (storyContext.parameters as { visualTest?: VisualTestParameters }).visualTest;
     // Only atom stories opt in; leave the rest of the Storybook untouched.
     if (!visual) return;
+
+    // Pin the viewport before capture: the requested mobile size for a responsive story, else
+    // the desktop default (which also resets any narrowing a prior mobile story left behind).
+    await page.setViewportSize(visual.viewport ?? DEFAULT_VIEWPORT);
 
     await page.addStyleTag({ content: FREEZE_MOTION });
 
