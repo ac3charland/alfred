@@ -112,4 +112,37 @@ describe('BacklogRow', () => {
     await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
     expect(onMove).toHaveBeenCalledWith('ALF-1', false);
   });
+
+  // ── Mobile card layout (ALF-86): full-width wrapping title + badge footer + big tap targets ──
+
+  it('wraps the full title on mobile (text-base, no truncate) but truncates at md+', () => {
+    renderRow();
+    const title = screen.getByText('Wire the backlog');
+    // Mobile: the title reads at text-base and wraps instead of truncating to "Wire…".
+    expect(title).toHaveClass('text-base', 'break-words');
+    expect(title).not.toHaveClass('truncate');
+    // md+ restores today's single-line truncation.
+    expect(title).toHaveClass('md:truncate', 'md:text-sm');
+  });
+
+  it('drops the badges into a full-width footer on mobile, inline at md+', () => {
+    renderRow();
+    // The project / epic / status badges share one wrapper that wraps below the title on mobile
+    // (basis-full) and dissolves to inline at md+ (display:contents).
+    const footer = screen.getByText('Alfred').parentElement;
+    expect(footer).toHaveClass('basis-full', 'md:contents');
+  });
+
+  it('gives every reorder chevron a ≥44px tap target on mobile, back to 20px at md+', () => {
+    renderRow();
+    for (const name of [
+      'Move ALF-1 up',
+      'Move ALF-1 down',
+      'Move ALF-1 to top',
+      'Move ALF-1 to bottom',
+    ]) {
+      // h-11/w-11 = 44px on mobile; md:h-5/md:w-5 = 20px on desktop.
+      expect(screen.getByRole('button', { name })).toHaveClass('h-11', 'w-11', 'md:h-5', 'md:w-5');
+    }
+  });
 });
