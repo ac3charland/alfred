@@ -16,7 +16,7 @@ The badges (Jul 12, priority, 1/2) sit on the title's line, so a long title coll
 
 ## Task list — after (phone width)
 
-Each top-level task is now a rounded surface card with a gap between cards, a ≥24px checkbox (≥44px hit area) and a text-base title that takes the card's full width. The due / priority / subtask-count badges move to a footer *below* the title. Expanding a card nests its subtasks **inside the same card** — indented, hairline-separated — each with its own metadata footer, never a card of its own. (This is the committed mobile-viewport Storybook snapshot; the first card is expanded.)
+Each top-level task is now a rounded surface card with a gap between cards, a ≥24px checkbox (≥44px hit area) and a compact 15px / snug-leading title that takes the card's full width. The due / priority / subtask-count badges move to a footer *below* the title. Expanding a card nests its subtasks **inside the same card** — indented, hairline-separated — each with its own metadata footer, never a card of its own. (This is the committed mobile-viewport Storybook snapshot; the first card is expanded.)
 
 ![](mobile-item-cards-image-2.png)
 

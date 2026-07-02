@@ -125,12 +125,14 @@ export const titleInputClass = 'flex-1 min-w-0 py-0.5';
 export const confirmTitleClass = 'h-5 w-5 border-accent-teal bg-accent-teal';
 
 /**
- * The title text: `text-base` (16px) on mobile so it reads comfortably on a phone, back to
- * today's `text-sm` (14px) at `md`+. Wraps (break-words for unbroken strings) and fades to
- * low-contrast as the row completes.
+ * The title text: a compact 15px with `leading-snug` on mobile so it reads comfortably on a
+ * phone without a long wrapped title spreading over too many airy lines, back to today's
+ * `text-sm` / 1.25rem leading at `md`+ (`md:leading-5` restores text-sm's native line-height so
+ * desktop is unchanged). Wraps (break-words for unbroken strings) and fades to low-contrast as
+ * the row completes.
  */
 export const titleTextClass =
-  'text-base md:text-sm break-words transition-colors duration-300 delay-200 motion-reduce:transition-none';
+  'text-[15px] leading-snug md:text-sm md:leading-5 break-words transition-colors duration-300 delay-200 motion-reduce:transition-none';
 
 /**
  * The direct-subtask count pill (e.g. `2/5`) — moved out of the row's inline JSX into a named

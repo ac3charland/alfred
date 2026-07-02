@@ -167,8 +167,12 @@ describe('task-row styles', () => {
     expect(titleTextClass).not.toContain('truncate');
   });
 
-  it('title is text-base on mobile, text-sm at md+', () => {
-    expect(titleTextClass).toContain('text-base');
+  it('title is a compact, tight-leading size on mobile, text-sm at md+', () => {
+    // A slightly-shrunk 15px with snug leading so long wrapped titles stay compact on a phone.
+    expect(titleTextClass).toContain('text-[15px]');
+    expect(titleTextClass).toContain('leading-snug');
+    // md+ restores today's text-sm and its native line-height (desktop unchanged).
     expect(titleTextClass).toContain('md:text-sm');
+    expect(titleTextClass).toContain('md:leading-5');
   });
 });
