@@ -39,6 +39,20 @@ export const chevronButtonClass = 'shrink-0';
 /** Chevron icon rotation transition. */
 export const chevronIconClass = 'transition-transform duration-150 motion-reduce:transition-none';
 
+/**
+ * Row-actions cluster (Add subtask + More actions). Touch/mobile has no hover, so the actions
+ * are ALWAYS visible below `md` (ALF-88) — matching the app's `md`-breakpoint = mobile
+ * convention (sidebar `hidden md:flex`, mobile header `md:hidden`). On `md`+ pointer devices
+ * they stay hidden until the row is hovered, then fade in. The hide/reveal are gated on
+ * `motion-safe`, so a reduced-motion user keeps the actions visible at every width (the fade
+ * is also cut via `motion-reduce:transition-none`).
+ */
+export const rowActionsClass = cn(
+  'shrink-0 flex items-center gap-1',
+  'opacity-100 md:motion-safe:opacity-0 md:motion-safe:group-hover/row:opacity-100',
+  'transition-opacity duration-100 motion-reduce:transition-none',
+);
+
 /** The "+" shown in place of the checkbox while a task is dropped onto this row. */
 export const dropPlusClass =
   'flex h-4 w-4 shrink-0 items-center justify-center rounded border border-accent-teal bg-accent-teal text-background';

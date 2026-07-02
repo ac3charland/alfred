@@ -56,6 +56,7 @@ import {
   deleteCollapseClass,
   deleteFadeClass,
   dropPlusClass,
+  rowActionsClass,
   rowBaseClass,
   rowDropTargetClass,
   rowHoverClass,
@@ -656,8 +657,8 @@ export function TaskRow({
                 </Badge>
               )}
 
-              {/* Row actions — visible on hover */}
-              <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
+              {/* Row actions — always visible on mobile, hover-revealed on md+ (ALF-88). */}
+              <div className={rowActionsClass}>
                 {/* Add subtask — `task`-only: subtasks nest only under tasks, so an
                   unclassified/code row exposes no add-subtask affordance. */}
                 {isTask && (
