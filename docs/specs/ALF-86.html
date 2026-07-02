@@ -180,7 +180,9 @@
       .bl-ref { font-family: var(--mono); color: var(--teal); font-weight: 600; flex: 0 0 auto; }
       .bl-ctrls { display: flex; gap: 0.2rem; flex: 0 0 auto; align-items: center; }
       .bl-ctrls .col { display: flex; flex-direction: column; }
-      .bl-ctrls .col span { color: var(--muted); line-height: 1; text-align: center; }
+      .bl-ctrls .col span { color: var(--muted); line-height: 1; text-align: center; display: inline-block; }
+      .bl-ctrls .up { transform: rotate(-90deg); }
+      .bl-ctrls .down { transform: rotate(90deg); }
       .bl .m-list { display: flex; flex-direction: column; gap: 0.6rem; }
       .blcard { background: var(--surface); border: 1px solid var(--border); }
       /* before */
@@ -404,8 +406,8 @@
           <div class="phone bl cur">
             <div class="m-group">Software Factory</div>
             <div class="m-list">
-              <div class="blcard"><span class="bl-ref">ALF-89</span><span class="bl-title">Disable draft-mode toggle for mobile</span><span class="pill proj">Alfred</span><span class="pill epic">Mobile<span class="r">ALF-85</span></span><span class="pill state">Needs refinement</span><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
-              <div class="blcard"><span class="bl-ref">ALF-83</span><span class="bl-title">Create roadmap for server migration</span><span class="pill proj">Alfred</span><span class="pill epic">Software Factory<span class="r">ALF-82</span></span><span class="pill state">Needs refinement</span><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
+              <div class="blcard"><span class="bl-ref">ALF-89</span><span class="bl-title">Disable draft-mode toggle for mobile</span><span class="pill proj">Alfred</span><span class="pill epic">Mobile<span class="r">ALF-85</span></span><span class="pill state">Needs refinement</span><span class="bl-ctrls"><span class="col"><span class="up">›</span><span class="down">›</span></span><span class="col"><span class="up">»</span><span class="down">»</span></span></span></div>
+              <div class="blcard"><span class="bl-ref">ALF-83</span><span class="bl-title">Create roadmap for server migration</span><span class="pill proj">Alfred</span><span class="pill epic">Software Factory<span class="r">ALF-82</span></span><span class="pill state">Needs refinement</span><span class="bl-ctrls"><span class="col"><span class="up">›</span><span class="down">›</span></span><span class="col"><span class="up">»</span><span class="down">»</span></span></span></div>
             </div>
           </div>
           <p class="phone-cap">Current — ref, badges &amp; controls crowd the title, so it truncates to “Disabl…”.</p>
@@ -414,8 +416,8 @@
           <div class="phone bl optC">
             <div class="m-group">Software Factory</div>
             <div class="m-list">
-              <div class="blcard"><div class="bl-body"><div class="bl-head"><span class="bl-ref">ALF-89</span><span class="bl-title">Disable draft-mode toggle for mobile</span></div><div class="bl-foot"><span class="pill proj">Alfred</span><span class="pill epic">Mobile<span class="r">ALF-85</span></span><span class="pill state">Needs refinement</span></div></div><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
-              <div class="blcard"><div class="bl-body"><div class="bl-head"><span class="bl-ref">ALF-83</span><span class="bl-title">Create roadmap for server migration</span></div><div class="bl-foot"><span class="pill proj">Alfred</span><span class="pill epic">Software Factory<span class="r">ALF-82</span></span><span class="pill state">Needs refinement</span></div></div><span class="bl-ctrls"><span class="col"><span>⌃</span><span>⌄</span></span><span class="col"><span>«</span><span>»</span></span></span></div>
+              <div class="blcard"><div class="bl-body"><div class="bl-head"><span class="bl-ref">ALF-89</span><span class="bl-title">Disable draft-mode toggle for mobile</span></div><div class="bl-foot"><span class="pill proj">Alfred</span><span class="pill epic">Mobile<span class="r">ALF-85</span></span><span class="pill state">Needs refinement</span></div></div><span class="bl-ctrls"><span class="col"><span class="up">›</span><span class="down">›</span></span><span class="col"><span class="up">»</span><span class="down">»</span></span></span></div>
+              <div class="blcard"><div class="bl-body"><div class="bl-head"><span class="bl-ref">ALF-83</span><span class="bl-title">Create roadmap for server migration</span></div><div class="bl-foot"><span class="pill proj">Alfred</span><span class="pill epic">Software Factory<span class="r">ALF-82</span></span><span class="pill state">Needs refinement</span></div></div><span class="bl-ctrls"><span class="col"><span class="up">›</span><span class="down">›</span></span><span class="col"><span class="up">»</span><span class="down">»</span></span></span></div>
             </div>
           </div>
           <p class="phone-cap">Proposed — ref + full title on top; project / epic / status badges in a footer; enlarged reorder controls.</p>
