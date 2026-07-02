@@ -165,11 +165,12 @@
       .optC .prio { width: 30px; height: 22px; font-size: 15px; }
       /* nested subtree, inside the same card */
       .cardC .subtree { margin-top: 0.7rem; padding-top: 0.55rem; border-top: 1px solid rgba(42,47,58,0.7); padding-left: calc(26px + 0.7rem); display: flex; flex-direction: column; }
-      .cardC .subrow { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.4rem 0; }
+      .cardC .subrow { padding: 0.5rem 0; }
       .cardC .subrow + .subrow { border-top: 1px solid rgba(42,47,58,0.5); }
+      .cardC .subrow .s-head { display: flex; align-items: flex-start; gap: 0.55rem; }
       .cardC .subrow .m-cb { width: 22px; height: 22px; margin-top: 1px; }
       .cardC .subrow .m-title { font-size: 15px; line-height: 1.3; flex: 1 1 auto; }
-      .cardC .subrow .s-meta { display: flex; align-items: center; gap: 0.35rem; flex: 0 0 auto; margin-top: 1px; }
+      .cardC .subrow .s-foot { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; padding-left: calc(22px + 0.55rem); }
 
       @media (max-width: 640px) {
         body { padding: 1.25rem 0.9rem 3rem; }
@@ -252,7 +253,7 @@
         <li><strong>The card = one top-level item + its whole subtree.</strong> At depth&nbsp;0 the item's outer wrapper gets the card chrome (surface bg, border, <code>rounded-2xl</code>, padding); the list places a gap between cards instead of dividers.</li>
         <li><strong>Card head</strong> — enlarged checkbox (≥&nbsp;24&nbsp;px visual, ≥&nbsp;44&nbsp;px hit area), <code>text-base</code> title, and the expand chevron (enlarged) when the item has children.</li>
         <li><strong>Card footer</strong> — the due / priority / subtask-count badges, moved <em>below</em> the title and aligned under it, so a long title takes the card's full width and no longer collides with the badges.</li>
-        <li><strong>Nested subtasks (depth&nbsp;≥&nbsp;1), inside the card</strong> — rendered in the existing collapsible subtree region, but <em>within</em> the parent card: indented via <code>use-indentation.ts</code>, separated by hairline dividers, each an enlarged compact row (checkbox + title + inline meta). Deeper levels keep indenting inside the same card. No nested card chrome.</li>
+        <li><strong>Nested subtasks (depth&nbsp;≥&nbsp;1), inside the card</strong> — rendered in the existing collapsible subtree region, but <em>within</em> the parent card: indented via <code>use-indentation.ts</code>, separated by hairline dividers. Each subtask uses the <em>same</em> title-then-metadata-footer stacking as the parent — checkbox + title on top, its due / priority / count badges in a footer row below the title (aligned under the subtask title, shown only when the subtask has metadata) — just at a slightly smaller scale. Deeper levels keep indenting inside the same card. No nested card chrome.</li>
         <li><strong>Add-subtask box &amp; “show completed” toggle</strong> stay inside the card (they already live in the subtree region), enlarged to match.</li>
       </ul>
 
@@ -278,8 +279,8 @@
                 <div class="c-head"><span class="m-cb"></span><span class="m-title">Go to Charland reunion</span><span class="m-chev">⌄</span></div>
                 <div class="c-foot"><span class="prio high"><span class="ch">»</span></span><span class="pill count">1/2</span></div>
                 <div class="subtree">
-                  <div class="subrow"><span class="m-cb done"></span><span class="m-title done">Book flights</span></div>
-                  <div class="subrow"><span class="m-cb"></span><span class="m-title">Reserve rental car</span><span class="s-meta"><span class="pill due">Jul 9</span></span></div>
+                  <div class="subrow"><div class="s-head"><span class="m-cb done"></span><span class="m-title done">Book flights</span></div></div>
+                  <div class="subrow"><div class="s-head"><span class="m-cb"></span><span class="m-title">Reserve rental car</span></div><div class="s-foot"><span class="pill due">Jul 9</span><span class="prio med">=</span></div></div>
                 </div>
               </div>
               <!-- collapsed parent -->
@@ -294,7 +295,7 @@
               </div>
             </div>
           </div>
-          <p class="phone-cap">Proposed — a card per top-level task; the expanded item's subtasks sit <em>inside</em> its card; long titles get full width with badges in a footer.</p>
+          <p class="phone-cap">Proposed — a card per top-level task; the expanded item's subtasks sit <em>inside</em> its card and carry their own metadata footer, like the parent; long titles get full width with badges below.</p>
         </div>
       </div>
 
@@ -346,6 +347,7 @@
         <li>A top-level card's checkbox presents a ≥&nbsp;44&nbsp;px tap target with a ≥&nbsp;24&nbsp;px visual box; the title renders at <code>text-base</code> (16&nbsp;px) or larger.</li>
         <li>The due-date, priority, and subtask-count badges render in a footer <em>below</em> the title (not to its right), so a long title takes the card's full width without colliding with them.</li>
         <li>When a card is expanded, its subtasks render <strong>inside that same card</strong> — indented, hairline-separated rows — and <em>not</em> as separate cards. Deeper nesting stays within the top-level card, progressively indented and legible.</li>
+        <li>Each subtask uses the same layout as the parent: its due / priority / count badges render in a footer row <em>below</em> the subtask title (not inline to its right), shown when the subtask has metadata.</li>
         <li>Expand/collapse animates within the card (the card grows/shrinks); the add-subtask box and “show completed” toggle appear inside the card.</li>
         <li>At <code>md</code> and above, the list and row layout are unchanged from today (desktop density preserved).</li>
         <li>Complete, inline-edit, drag, and reparent interactions still work at the larger sizes.</li>
@@ -356,7 +358,6 @@
       <h2>Out of scope / open questions</h2>
       <ul>
         <li><strong>Exact mobile breakpoint.</strong> Assumed <code>md</code> (the app's existing mobile/desktop divide). Flag if a different threshold is wanted.</li>
-        <li><strong>Subtask meta layout.</strong> Inside the card, subtask rows show their badges inline (compact) rather than each getting a parent-style footer, to keep card height bounded; the exact inline-vs-stacked treatment for a subtask with many badges is an implementation detail to settle during build.</li>
         <li>Folder headers, the capture bar, and other tasks-module chrome are unchanged — this ticket is the task <em>row</em> / list only.</li>
         <li>No changes to desktop density, information shown, or task behaviour — sizing/layout only.</li>
       </ul>
