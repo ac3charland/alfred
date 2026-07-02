@@ -76,6 +76,9 @@ test('a needs_refinement story launches a refinement session and advances to In 
 
   // Stub window.open before any app script runs: record the URL, open nothing.
   await stubWindowOpen(page);
+  // The launch copies the prompt to the clipboard as the mobile paste-fallback; grant the
+  // permission so the copy succeeds (and the confirming toast fires) under headless Chromium.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
   await page.goto(`/code/${PROJECT_ID}`);
 
@@ -105,6 +108,12 @@ test('a needs_refinement story launches a refinement session and advances to In 
   const prompt = new URL(url).searchParams.get('q') ?? '';
   expect(prompt).toContain('ALF-3: Draft the inbound filter spec');
   expect(prompt).toContain('phase: refinement');
+
+  // The prompt is also copied to the clipboard — a paste-fallback for the mobile Claude app,
+  // which opens the universal link but drops the `q` prompt — and a toast confirms it.
+  await expect(page.getByText('Prompt copied to clipboard')).toBeVisible();
+  const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboard).toBe(prompt);
 });
 
 test('a needs_refinement story can SKIP refinement: bypass launches development and advances straight to In Development', async ({

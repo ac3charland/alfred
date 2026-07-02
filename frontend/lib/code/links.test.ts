@@ -1,6 +1,11 @@
 import type { CodeStory, Project } from '@/lib/types';
 
-import { buildBypassUrl, buildImplementationUrl, buildRefinementUrl } from './links';
+import {
+  buildBypassUrl,
+  buildImplementationUrl,
+  buildRefinementUrl,
+  promptFromLaunchUrl,
+} from './links';
 
 /**
  * A project row, mirroring what the code store seeds. `repo_owner`/`repo_name` are what the
@@ -401,5 +406,19 @@ describe('buildBypassUrl', () => {
   it('url-encodes the prompt', () => {
     const rawQuery = buildBypassUrl(makeProject(), makeStory()).split('?', 2)[1] ?? '';
     expect(rawQuery).not.toMatch(/[ \n`]/);
+  });
+});
+
+describe('promptFromLaunchUrl', () => {
+  it('round-trips the exact (decoded) prompt a builder embedded in `q`', () => {
+    const story = makeStory();
+    const url = buildRefinementUrl(makeProject(), story);
+    // What the link would prefill IS what we hand to the clipboard fallback — byte-for-byte.
+    expect(promptFromLaunchUrl(url)).toBe(parse(url).prompt);
+    expect(promptFromLaunchUrl(url)).toContain('ALF-42: Verify the GitHub webhook HMAC signature');
+  });
+
+  it('returns an empty string when the URL carries no `q`', () => {
+    expect(promptFromLaunchUrl('https://claude.ai/code?repo=ac3charland/alfred')).toBe('');
   });
 });
