@@ -218,6 +218,16 @@ function dueForDayOffset(offsetDays: number): string {
   return new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000).toISOString();
 }
 
+/**
+ * Today's local calendar date as a date-only YYYY-MM-DD string — the exact format the
+ * DB stores due dates in. parseDueDate reads it as local midnight, which lands it in the
+ * "due today" band (unlike a full datetime, which reads as a later moment on the same day).
+ */
+function todayLocalYMD(): string {
+  const d = new Date();
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 describe('TaskRow', () => {
   it('renders the task title', () => {
     renderTasks([BASE_ITEM]);
@@ -1059,33 +1069,27 @@ describe('TaskRow', () => {
   // UTC-midnight timezone issues (see the formatDueDate describe block).
   // ---------------------------------------------------------------------------
 
-  describe('due date overdue styling', () => {
-    it('applies amber (overdue) classes when the due date is in the past', () => {
+  describe('due date urgency styling', () => {
+    it('applies red (overdue) classes when the due date is in the past', () => {
       // 10 days ago is safely overdue in any timezone
       renderTasks([{ ...BASE_ITEM, due_date: dueForDayOffset(-10) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveClass('text-accent-amber');
+      const chip = screen.getByRole('button', { name: /due date/i });
+      expect(chip).toHaveClass('text-accent-red');
+      expect(chip).not.toHaveClass('text-accent-amber', 'text-accent-blue');
     });
 
-    it('does NOT apply amber classes when the due date is today', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: dueForDayOffset(0) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).not.toHaveClass(
-        'text-accent-amber',
-      );
+    it('applies amber (yellow) classes when the due date is today', () => {
+      renderTasks([{ ...BASE_ITEM, due_date: todayLocalYMD() }]);
+      const chip = screen.getByRole('button', { name: /due date/i });
+      expect(chip).toHaveClass('text-accent-amber');
+      expect(chip).not.toHaveClass('text-accent-red', 'text-accent-blue');
     });
 
-    it('applies blue (future) classes when the due date is today', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: dueForDayOffset(0) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveClass('text-accent-blue');
-    });
-
-    it('applies blue (future) classes when the due date is in the future', () => {
+    it('applies blue (upcoming) classes when the due date is in the future', () => {
       renderTasks([{ ...BASE_ITEM, due_date: dueForDayOffset(10) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).toHaveClass('text-accent-blue');
-    });
-
-    it('does NOT apply blue classes when the due date is overdue', () => {
-      renderTasks([{ ...BASE_ITEM, due_date: dueForDayOffset(-10) }]);
-      expect(screen.getByRole('button', { name: /due date/i })).not.toHaveClass('text-accent-blue');
+      const chip = screen.getByRole('button', { name: /due date/i });
+      expect(chip).toHaveClass('text-accent-blue');
+      expect(chip).not.toHaveClass('text-accent-red', 'text-accent-amber');
     });
   });
 

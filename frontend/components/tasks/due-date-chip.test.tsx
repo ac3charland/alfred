@@ -3,6 +3,12 @@ import userEvent from '@testing-library/user-event';
 
 import { DueDateChip } from './due-date-chip';
 
+/** Today's local YYYY-MM-DD — the date the chip should treat as the "due today" band. */
+function todayLocalYMD(): string {
+  const d = new Date();
+  return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 describe('DueDateChip', () => {
   it('renders the formatted due date as a button', () => {
     render(<DueDateChip dueDate="2999-12-31" />);
@@ -25,15 +31,24 @@ describe('DueDateChip', () => {
 
     const chip = screen.getByRole('button', { name: 'Due date: 2999-12-31' });
     expect(chip).toHaveClass('rounded-full', 'border', 'text-accent-blue');
-    expect(chip).not.toHaveClass('text-accent-amber');
+    expect(chip).not.toHaveClass('text-accent-amber', 'text-accent-red');
   });
 
-  it('uses the amber treatment for an overdue date', () => {
+  it('uses the amber (yellow) treatment for a date due today', () => {
+    const today = todayLocalYMD();
+    render(<DueDateChip dueDate={today} />);
+
+    const chip = screen.getByRole('button', { name: `Due date: ${today}` });
+    expect(chip).toHaveClass('text-accent-amber', 'border-accent-amber/50');
+    expect(chip).not.toHaveClass('text-accent-blue', 'text-accent-red');
+  });
+
+  it('uses the red treatment for an overdue date', () => {
     render(<DueDateChip dueDate="2000-01-01" />);
 
     const chip = screen.getByRole('button', { name: 'Due date: 2000-01-01' });
-    expect(chip).toHaveClass('text-accent-amber', 'border-accent-amber/50');
-    expect(chip).not.toHaveClass('text-accent-blue');
+    expect(chip).toHaveClass('text-accent-red', 'border-accent-red/50');
+    expect(chip).not.toHaveClass('text-accent-blue', 'text-accent-amber');
   });
 
   it('allows overriding the aria-label', () => {
