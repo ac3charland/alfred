@@ -23,7 +23,7 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-background px-4">
+    <main className="min-h-dvh flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm rounded-md border border-border bg-surface p-8 shadow-lg glow-teal">
         <div className="mb-8 text-center">
           <h1 className="font-serif text-2xl text-foreground tracking-tight">alfred</h1>

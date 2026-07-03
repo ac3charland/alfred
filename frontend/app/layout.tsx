@@ -32,9 +32,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased scrollbar-gutter-stable`}
+      className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased scrollbar-gutter-stable`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">{children}</body>
+      <body className="min-h-dvh flex flex-col bg-background text-foreground">{children}</body>
     </html>
   );
 }
