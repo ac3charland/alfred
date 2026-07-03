@@ -5,7 +5,7 @@ import type { KeyboardEvent } from 'react';
 import { isInteractiveTarget } from './pointer-sensor';
 
 /**
- * Keyboard counterpart to {@link RowPointerSensor} (see the dnd-kit skill).
+ * Keyboard counterpart to the row's pointer sensors (see the dnd-kit skill).
  *
  * The task row spreads the draggable listeners — including dnd-kit's keyboard activator —
  * across its whole surface. dnd-kit lifts a draggable when Space/Enter is pressed, so a
@@ -34,7 +34,7 @@ export class RowKeyboardSensor extends KeyboardSensor {
         if (isInteractiveTarget(event.target)) return false;
         event.preventDefault();
         // Call through `options` (not a destructured method) so `this` stays bound — same
-        // as RowPointerSensor.
+        // as the row's pointer sensors.
         options.onActivation?.({ event: event.nativeEvent });
         return true;
       },

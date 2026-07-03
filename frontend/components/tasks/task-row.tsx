@@ -143,7 +143,7 @@ export function TaskRow({
   // reactivates rather than completes.
   const isCompleted = node.status === 'completed';
 
-  // The whole row is a drag source (the RowPointerSensor ignores presses on its buttons
+  // The whole row is a drag source (the row sensors ignore presses on its buttons
   // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
   // be dragged to re-parent it; an active task can also be filed into a folder. A completed
   // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
@@ -513,7 +513,7 @@ export function TaskRow({
               isDeleting && cn(deleteFadeClass, 'opacity-0'),
             )}
           >
-            {/* Main row — the whole surface is the drag handle (RowPointerSensor lets the
+            {/* Main row — the whole surface is the drag handle (the row sensors let the
               buttons/input below stay clickable). Dropping another task here re-parents it. */}
             <div
               ref={setRowRef}
