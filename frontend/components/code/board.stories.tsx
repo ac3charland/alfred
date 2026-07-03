@@ -190,6 +190,28 @@ export const RealtimeMoveAfter: Story = {
   decorators: [realtimeDecorator(true)],
 };
 
+/**
+ * The seeded board at a phone viewport (390×844): the same two epics and their swimlanes in a
+ * phone-width frame, so the `md:`-gated spacing collapses and the lanes/cards reflow for mobile.
+ */
+export const MobileBoard: Story = {
+  // The meta decorator already supplies the CodeProvider + seed data; only the phone-width
+  // frame is story-specific. (It nests inside the meta's desktop frame, which sits off-crop.)
+  decorators: [
+    (Story) => (
+      <div data-testid="board-mobile-frame" className="w-[390px] bg-background">
+        <Story />
+      </div>
+    ),
+  ],
+  parameters: {
+    visualTest: {
+      target: '[data-testid="board-mobile-frame"]',
+      viewport: { width: 390, height: 844 },
+    },
+  },
+};
+
 /** Board with one archived epic — the "Show archived" toggle reveals it. */
 export const WithArchivedEpic: Story = {
   decorators: [

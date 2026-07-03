@@ -1,8 +1,22 @@
-import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 
 import type { ItemNode } from '@/lib/tree';
 
 import { InboxScreen } from './inbox-screen';
+
+/**
+ * Wrap the screen in a fixed-width, auto-height frame so the visual snapshot is a tight,
+ * deterministic crop (the screen's own `flex-1` + growing spacers would otherwise stretch to
+ * the viewport height and swamp the content in empty space). One factory per width so the
+ * desktop and mobile stories can each request their own.
+ */
+function withFrame(widthClass: string): Decorator {
+  return (Story) => (
+    <div data-testid="inbox-frame" className={`${widthClass} bg-background`}>
+      <Story />
+    </div>
+  );
+}
 
 const BASE_NODE: ItemNode = {
   id: 'item-1',
@@ -61,5 +75,29 @@ export const Landing: Story = {
 export const Inbox: Story = {
   args: {
     open: true,
+  },
+};
+
+/**
+ * The revealed inbox at the desktop default viewport — capture box, the Inbox header row, and
+ * the seeded task list — captured in a fixed-width frame for a deterministic crop.
+ */
+export const DesktopInbox: Story = {
+  args: { open: true },
+  decorators: [withFrame('w-[640px]')],
+  parameters: {
+    visualTest: { target: '[data-testid="inbox-frame"]' },
+  },
+};
+
+/**
+ * The same revealed inbox at a phone viewport (390×844): the capture box and task rows take the
+ * full width and the rows adopt their `md:`-gated mobile card layout.
+ */
+export const MobileInbox: Story = {
+  args: { open: true },
+  decorators: [withFrame('w-[390px]')],
+  parameters: {
+    visualTest: { target: '[data-testid="inbox-frame"]', viewport: { width: 390, height: 844 } },
   },
 };
