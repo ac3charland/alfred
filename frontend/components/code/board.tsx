@@ -46,11 +46,13 @@ export function Board({ projectId }: BoardProperties) {
   // "Filter by status": hides unchecked happy-path lanes across every epic. Defaults to all six
   // shown, so an untouched board is identical to before. The off-track (blocked/abandoned) cards
   // stay governed by the separate Show-blocked toggle — they are not lanes.
+  // Keyed by project id so each board keeps its own lane selection across SPA navigation
+  // to the Backlog (or another board) and back.
   const {
     statuses: visibleStates,
     toggle: toggleState,
     isFiltering,
-  } = useStatusFilter(HAPPY_PATH_STATES);
+  } = useStatusFilter(projectId, HAPPY_PATH_STATES);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
   // The open story for the detail modal, tracked by item_id so the modal always
   // re-reads the latest row from the store (e.g. after a manual transition reshuffles it).

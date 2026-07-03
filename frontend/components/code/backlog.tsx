@@ -35,8 +35,12 @@ import {
  * Must be mounted under a `CodeProvider` (reads `useBacklog` / `useCodeActions`).
  */
 export function Backlog() {
-  // Defaults to the outstanding states (`done`/`abandoned` hidden until checked).
-  const { statuses, setStatuses, toggle, isFiltering } = useStatusFilter(DEFAULT_BACKLOG_STATUSES);
+  // Defaults to the outstanding states (`done`/`abandoned` hidden until checked). Keyed
+  // `'backlog'` so the selection persists across SPA navigation to a board and back.
+  const { statuses, setStatuses, toggle, isFiltering } = useStatusFilter(
+    'backlog',
+    DEFAULT_BACKLOG_STATUSES,
+  );
   const stories = useBacklog({ statuses });
   const projects = useProjects();
   const { reorderStory, moveStory } = useCodeActions();
