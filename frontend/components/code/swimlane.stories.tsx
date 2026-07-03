@@ -68,3 +68,24 @@ export const Filled: Story = {
 export const Empty: Story = {
   args: { lane: { state: 'done', label: 'Done', stories: [] } },
 };
+
+/**
+ * A Done lane that has accumulated more than three completions: it opens collapsed to the latest
+ * three (the store recency-sorts it) with a "Show more" control revealing five at a time (ALF-81).
+ * The count badge still reads the true total.
+ */
+export const DoneCollapsed: Story = {
+  args: {
+    lane: {
+      state: 'done',
+      label: 'Done',
+      stories: Array.from({ length: 6 }, (_, index) =>
+        makeStory(
+          `d${String(index + 1)}`,
+          `ALF-${String(90 + index)}`,
+          `Shipped story number ${String(index + 1)}`,
+        ),
+      ),
+    },
+  },
+};

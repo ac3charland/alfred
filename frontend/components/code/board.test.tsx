@@ -713,6 +713,48 @@ describe('Board', () => {
     });
   });
 
+  describe('the Done lane collapse (ALF-81)', () => {
+    // Five done stories with ascending completion timestamps; d5 is the most recent.
+    const doneStories = Array.from({ length: 5 }, (_, index) => {
+      const n = String(index + 1);
+      return makeStory(`d${n}`, 'e1', {
+        ref: `ALF-d${n}`,
+        title: `Done ${n}`,
+        factory_state: 'done',
+        code_updated_at: `2025-0${n}-01T00:00:00Z`,
+      });
+    });
+
+    it('shows only the latest 3 completions, newest first, with a Show more control', () => {
+      renderBoard({ epics: [makeEpic('e1')], stories: doneStories });
+
+      const lane = screen.getByRole('region', { name: 'Done' });
+      const shown = within(lane)
+        .getAllByRole('button', { name: /^open /i })
+        .map((card) => card.getAttribute('aria-label'));
+      // Latest three by code_updated_at: d5, d4, d3 (not d1/d2), in recency order.
+      expect(shown).toHaveLength(3);
+      expect(shown[0]).toContain('ALF-d5');
+      expect(shown[1]).toContain('ALF-d4');
+      expect(shown[2]).toContain('ALF-d3');
+      expect(within(lane).getByText('5')).toBeInTheDocument();
+      expect(within(lane).getByRole('button', { name: /show \d+ more/i })).toBeInTheDocument();
+    });
+
+    it('reveals the remaining completions when Show more is clicked', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')], stories: doneStories });
+
+      const lane = screen.getByRole('region', { name: 'Done' });
+      await user.click(within(lane).getByRole('button', { name: /show \d+ more/i }));
+
+      expect(within(lane).getAllByRole('button', { name: /^open /i })).toHaveLength(5);
+      expect(
+        within(lane).queryByRole('button', { name: /show \d+ more/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('realtime swimlane updates', () => {
     it('moves a card to its new swimlane on an external code_items UPDATE, no refresh', () => {
       renderBoard({
