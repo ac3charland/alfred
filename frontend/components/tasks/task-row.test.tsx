@@ -551,6 +551,20 @@ describe('TaskRow', () => {
     expect(screen.getByRole('button', { name: /due date/i })).toBeInTheDocument();
   });
 
+  it('opens the calendar from the row due-date chip and auto-saves a pick (ALF-94)', async () => {
+    mockUpdateItem.mockResolvedValue(BASE_ITEM);
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, due_date: '2025-07-02' }]);
+
+    // The row badge itself is now clickable — no need to open the detail panel first.
+    await user.click(screen.getByRole('button', { name: 'Due date: 2025-07-02' }));
+    await user.click(await screen.findByRole('button', { name: 'July 10, 2025' }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: '2025-07-10' });
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Deletion — animate-then-commit (same exit mechanism as completion). Choosing
   // "Delete" fades the row out and collapses its height (pulling the rows below up);
