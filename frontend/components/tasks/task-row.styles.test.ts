@@ -13,6 +13,7 @@ import {
   mobileTapClass,
   rowActionsClass,
   rowBaseClass,
+  rowContentColClass,
   rowDropTargetClass,
   rowHoverClass,
   subtaskCountBadgeClass,
@@ -49,17 +50,29 @@ describe('task-row styles', () => {
     expect(rowBaseClass).toContain('transition-colors');
   });
 
-  it('head-line controls centre against the title block on mobile, top-align at md+', () => {
-    // Mobile: the checkbox / chevron / actions sit centred beside a (possibly two-line) title.
+  it('leading controls + actions centre against the whole card on mobile, top-align at md+', () => {
+    // Mobile: the checkbox / chevron / actions centre against the full title+meta column
+    // (see rowContentColClass) so they sit in the card's vertical centre, not the title's
+    // first line.
     expect(rowBaseClass).toContain('items-center');
     // md+ reverts to top-alignment for today's single-line desktop rows.
     expect(rowBaseClass).toContain('md:items-start');
   });
 
-  it('row wraps into head + footer lines on mobile, single line at md+', () => {
-    // Mobile: the badges footer can wrap below the head; md+ restores today's single line.
-    expect(rowBaseClass).toContain('flex-wrap');
-    expect(rowBaseClass).toContain('md:flex-nowrap');
+  it('row is a single non-wrapping line — title+meta stack inside their own column', () => {
+    // The badges no longer wrap onto a sibling row line; they stack inside rowContentColClass,
+    // so the row itself never wraps (there's no flex-wrap to toggle at md+).
+    expect(rowBaseClass).not.toContain('flex-wrap');
+    expect(rowBaseClass).not.toContain('md:flex-nowrap');
+  });
+
+  it('content column stacks title over meta on mobile, dissolves to inline at md+', () => {
+    // Mobile: flex-1 column so a long title + its badges own the row width and give the
+    // controls a full-height block to centre against.
+    expect(rowContentColClass).toContain('flex-1');
+    expect(rowContentColClass).toContain('flex-col');
+    // md+ display:contents dissolves the column so title + badges are direct row children again.
+    expect(rowContentColClass).toContain('md:contents');
   });
 
   it('depth-0 card chrome is a mobile-only rounded surface panel with halved padding', () => {
@@ -75,13 +88,12 @@ describe('task-row styles', () => {
     expect(cardChromeClass).toContain('md:bg-transparent');
   });
 
-  it('meta footer wraps the badges below the title on mobile, contents at md+', () => {
-    // basis-full + order-last pushes the badge cluster onto its own full-width line. The indent
-    // that keeps it under the title is applied inline (it tracks the dropped chevron/checkbox
-    // columns per row — see task-row.test), not baked into this class.
-    expect(metaFooterClass).toContain('basis-full');
-    expect(metaFooterClass).toContain('order-last');
-    expect(metaFooterClass).not.toContain('pl-[3.75rem]');
+  it('meta footer is a wrapping badge line that dissolves to inline at md+', () => {
+    // The badges sit on their own line beneath the title inside the shared content column, so
+    // the footer no longer needs its own basis-full / order / indent — that's the column's job.
+    expect(metaFooterClass).toContain('flex-wrap');
+    expect(metaFooterClass).not.toContain('basis-full');
+    expect(metaFooterClass).not.toContain('order-last');
     // display:contents dissolves the wrapper at md+, so the badges are inline row children again.
     expect(metaFooterClass).toContain('md:contents');
   });

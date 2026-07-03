@@ -25,21 +25,28 @@ export const deleteFadeClass =
   'transition-opacity duration-200 ease-out motion-reduce:transition-none';
 
 /**
- * Main row layout + colour transition. On mobile the row is a *wrapping* flex: the head
- * (chevron / checkbox / title / actions) sits on the first line and the metadata badges wrap
- * to their own full-width footer line below (see `metaFooterClass`). At `md`+ it collapses back
- * to today's single, non-wrapping line — the same responsive convention as `rowActionsClass`.
- *
- * The head-line controls (checkbox / chevron / actions) are `items-center` on mobile so they
- * sit centred against the title block instead of pinned to its first line — a two-line wrapped
- * title reads better with the checkbox centred beside it. At `md`+ it reverts to `items-start`
- * (single-line rows, unchanged desktop layout).
+ * Main row layout + colour transition. On mobile the row is a single, non-wrapping flex line:
+ * chevron / checkbox / a title-and-meta column (see `rowContentColClass`) / actions. The title
+ * and its metadata footer stack *inside that column*, so the leading controls (chevron /
+ * checkbox) and trailing actions are `items-center` against the WHOLE card height — vertically
+ * centred in the card, not pinned to the title's first line. At `md`+ the column dissolves
+ * (`display:contents`) back into today's single inline line and the controls revert to
+ * `items-start` (unchanged desktop layout).
  */
 export const rowBaseClass = cn(
-  'flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-sm py-2 pr-2',
-  'md:flex-nowrap md:items-start md:gap-y-2',
+  'flex items-center gap-x-2 gap-y-1.5 rounded-sm py-2 pr-2',
+  'md:items-start md:gap-y-2',
   'transition-colors duration-100 motion-reduce:transition-none',
 );
+
+/**
+ * Mobile: the title (and, beneath it, the metadata footer) share one column so the leading
+ * controls and trailing actions centre against the full card height rather than the title's
+ * first line. It takes the row's remaining width (`flex-1`) and stacks its children. At `md`+
+ * `display:contents` dissolves the column so the title and badges are direct row children
+ * again — today's single inline line, in the same DOM (and tab) order.
+ */
+export const rowContentColClass = cn('min-w-0 flex-1 flex flex-col gap-y-1.5', 'md:contents');
 
 /**
  * Depth-0 card chrome (mobile): each top-level item + its whole subtree becomes one rounded
@@ -53,18 +60,14 @@ export const cardChromeClass = cn(
 );
 
 /**
- * The mobile metadata footer wrapper: the due / priority / count / type badges wrap to a
- * full-width line *below* the title, so a long title takes the row's full width instead of
- * colliding with the badges. Its left indent — which keeps the footer under the title — is set
- * inline per row (it tracks the chevron/checkbox columns the row actually shows on mobile; both
- * are dropped when absent). At `md`+ `display: contents` dissolves the wrapper, so the badges are
- * direct row children again — today's inline right cluster, in the same DOM (and tab) order, and
- * the inline indent is ignored.
+ * The mobile metadata footer wrapper: the due / priority / count / type badges sit on their own
+ * line *below the title, inside the shared content column* (see `rowContentColClass`), so a long
+ * title never collides with the badges and both stack within the block the controls centre
+ * against — no per-row indent needed, the column already starts under the title. At `md`+
+ * `display: contents` dissolves the wrapper, so the badges are direct row children again —
+ * today's inline right cluster, in the same DOM (and tab) order.
  */
-export const metaFooterClass = cn(
-  'flex basis-full flex-wrap items-center gap-2 order-last',
-  'md:contents',
-);
+export const metaFooterClass = cn('flex flex-wrap items-center gap-2', 'md:contents');
 
 /**
  * Inside a mobile card the subtask subtree is set off from the parent by a hairline and its
