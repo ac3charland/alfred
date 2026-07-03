@@ -44,6 +44,12 @@ export function ShellMobileNav() {
       <DialogPortal>
         <DialogOverlay />
         <DialogContent
+          // Keep focus on the trigger when the drawer opens: Radix otherwise auto-focuses the
+          // first focusable child — the search field — which pops the mobile keyboard and (via
+          // its onFocus) opens the results dropdown every time the drawer is opened.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+          }}
           className={cn(
             'fixed left-0 top-0 bottom-0 z-50 w-64 bg-surface border-r border-border',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',
