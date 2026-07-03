@@ -728,7 +728,9 @@ export function TaskRow({
                     }}
                     aria-label="Add subtask"
                   >
-                    <Plus size={12} />
+                    {/* Enlarged glyph on mobile (16px) for a comfier touch target; today's 12px
+                      at md+. */}
+                    <Plus size={12} className="h-4 w-4 md:h-3 md:w-3" />
                   </IconButton>
                 )}
 

@@ -29,10 +29,15 @@ export const deleteFadeClass =
  * (chevron / checkbox / title / actions) sits on the first line and the metadata badges wrap
  * to their own full-width footer line below (see `metaFooterClass`). At `md`+ it collapses back
  * to today's single, non-wrapping line — the same responsive convention as `rowActionsClass`.
+ *
+ * The head-line controls (checkbox / chevron / actions) are `items-center` on mobile so they
+ * sit centred against the title block instead of pinned to its first line — a two-line wrapped
+ * title reads better with the checkbox centred beside it. At `md`+ it reverts to `items-start`
+ * (single-line rows, unchanged desktop layout).
  */
 export const rowBaseClass = cn(
-  'flex flex-wrap items-start gap-x-2 gap-y-1.5 rounded-sm py-2 pr-2',
-  'md:flex-nowrap md:gap-y-2',
+  'flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-sm py-2 pr-2',
+  'md:flex-nowrap md:items-start md:gap-y-2',
   'transition-colors duration-100 motion-reduce:transition-none',
 );
 
@@ -117,8 +122,10 @@ export const dropPlusClass =
  * 16px at `md`+.
  */
 export const checkboxSizeClass = 'h-6 w-6 md:h-4 md:w-4';
+// The un-checked border reads at a mid-grey (`muted-foreground/50`) rather than the near-invisible
+// `border` token, so the empty box has enough contrast to be spotted at a glance in every view.
 export const checkboxIncompleteClass =
-  'border-border hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none';
+  'border-muted-foreground/50 hover:border-accent-teal transition-colors duration-100 motion-reduce:transition-none';
 
 /** Inline title-edit input + its confirm checkbox. */
 export const titleInputClass = 'flex-1 min-w-0 py-0.5';
