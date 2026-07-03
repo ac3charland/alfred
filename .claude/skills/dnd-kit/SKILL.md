@@ -197,16 +197,24 @@ keyboard-focus + a11y floor with almost no work. To get them you must:
 - **`SortableContext items` must exactly match the rendered order and use the same ids** you pass
   to `useSortable`. A mismatch makes items jump to wrong slots or refuse to sort.
 - **Listeners on the whole row eat button clicks AND keystrokes.** alfred drags from the whole
-  row (no handle), so it guards BOTH sensors against the row's controls via `isInteractiveTarget`
-  (`lib/dnd/pointer-sensor.ts`): `RowPointerSensor` for press, `RowKeyboardSensor` for keys.
-  Without the keyboard guard, the `KeyboardSensor` lifts on **Space/Enter** (its default start
-  codes) when a keydown bubbles up from a focused control inside the row — so pressing space in
-  the inline title `<input>` started a phantom drag and `preventDefault`-ate the typed space,
-  collapsing the editor. Both custom sensors omit the `activatorNode` check (alfred sets no
+  row (no handle), so all three sensors guard the row's controls via `isInteractiveTarget`
+  (`lib/dnd/pointer-sensor.ts`): `RowMouseSensor` + `RowTouchSensor` for press, `RowKeyboardSensor`
+  for keys. Without the keyboard guard, the `KeyboardSensor` lifts on **Space/Enter** (its default
+  start codes) when a keydown bubbles up from a focused control inside the row — so pressing space
+  in the inline title `<input>` started a phantom drag and `preventDefault`-ate the typed space,
+  collapsing the editor. The custom sensors omit the `activatorNode` check (alfred sets no
   `setActivatorNodeRef`), so the interactive guard is the only thing standing between a control
   and an accidental lift; any new draggable-row controls inherit the protection for free.
-- **No `activationConstraint` → every click starts a drag** and taps stop working. Always set
-  `{ distance: 8 }` (or `{ delay, tolerance }` for touch) on the `PointerSensor`.
+- **A single `PointerSensor` can't behave differently for mouse vs touch** — its one
+  `activationConstraint` applies to every input. A `{ distance: 8 }` threshold is right for a
+  mouse but wrong for touch: a scroll swipe crosses 8px instantly, so the sensor activates a drag
+  and `preventDefault`s the move — the list becomes un-scrollable by touch. Split into a
+  `MouseSensor` (`{ distance: 8 }`) and a `TouchSensor` (`{ delay: 250, tolerance: 5 }` — hold
+  ~250ms to lift; move >5px first and the browser scrolls instead). dnd-kit routes each input to
+  the sensor listening for it (`mousedown` vs `touchstart`), so a hybrid touchscreen-laptop gets
+  the right rule per input with no media-query guessing. Do NOT add `touch-action: none` to the
+  row — that disables native scroll, the opposite of the goal. Never leave a sensor with no
+  `activationConstraint` at all → every tap starts a drag.
 - **`rectIntersection` on a vertical list feels broken** (must fully overlap). Use `closestCenter`
   for lists; reserve `rectIntersection`/`pointerWithin` for dropping onto large zones (folders).
 - **Forgetting `if (!over) return;` in `onDragEnd`** throws when the user drops on empty space.
@@ -259,6 +267,15 @@ Chromium), not unit tests:
   click something (expand a row) are fine; a bare drag-after-navigation isn't. Make a shared
   `pickUp` helper that **retries the press until the row enters its dragging state** (the
   `opacity-40` it gets while dragged) before gliding to the target.
+- **Touch drag in E2E needs real touch events — mouse events won't drive a `TouchSensor`.**
+  Set `test.use({ hasTouch: true })` and dispatch via CDP `Input.dispatchTouchEvent`
+  (`page.touchscreen` only does a one-shot `tap`); `e2e/support/touch.ts` wraps down/move/up.
+  The hold is a real 250ms timer with no DOM signal until it fires, so `page.waitForTimeout(350)`
+  past it, then wait on `.opacity-40` (retrying out the hydration race, like the mouse `pickUp`).
+  A quick swipe should NOT drag: assert no `.opacity-40` / `[data-drop-over]` after the move. And
+  synthetic touch scroll moves the **document** (`document.scrollingElement.scrollTop`), not the
+  `overflow-y-auto` element — assert on the former. Keep touch tests at a desktop-width viewport
+  if they need the folder sidebar (it's `hidden md:flex`); `hasTouch` is what matters, not `isMobile`.
 - **The `DragOverlay` clones the dragged item's text**, so `getByText(title)` matches **two**
   nodes mid-drag (the row + the floating clone). Capture any bounding boxes you need *before*
   pressing, or scope past the overlay.
