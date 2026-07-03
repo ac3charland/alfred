@@ -134,3 +134,13 @@ export function isDueTodayOrOverdue(iso: string): boolean {
   // exactly this, so `<=` includes today and every earlier day, excludes the future.
   return parseDueDate(iso) <= new Date(new Date().toDateString());
 }
+
+/**
+ * Returns true when the ISO due-date string represents today's local calendar date
+ * exactly — the "due today" band that sits between overdue (strictly earlier) and
+ * upcoming (strictly later). Composed from the two boundary checks so it shares their
+ * timezone-safe parsing: due-today-or-earlier, minus everything strictly earlier.
+ */
+export function isDueToday(iso: string): boolean {
+  return isDueTodayOrOverdue(iso) && !isDueDateOverdue(iso);
+}
