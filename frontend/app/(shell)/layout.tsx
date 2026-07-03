@@ -7,6 +7,7 @@ import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { getFolders } from '@/lib/data/folders';
 import { getAllItems } from '@/lib/data/items';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
+import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
@@ -60,9 +61,11 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                     initialEpics={epics}
                     initialStories={stories}
                   >
-                    <SearchProvider>
-                      <AppShell>{children}</AppShell>
-                    </SearchProvider>
+                    <CodeFilterProvider>
+                      <SearchProvider>
+                        <AppShell>{children}</AppShell>
+                      </SearchProvider>
+                    </CodeFilterProvider>
                   </CodeProvider>
                 </InboxSelectionProvider>
               </ExpansionProvider>
