@@ -88,11 +88,12 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('group', { name: /switch module/i })).toBeInTheDocument();
   });
 
-  it('lays out the container with justify-between so the segments span full width', () => {
+  it('hugs its content instead of spanning the full sidebar width', () => {
     render(<ViewSwitcher />);
 
     const group = screen.getByRole('group', { name: /switch module/i });
-    expect(group).toHaveClass('justify-between');
-    expect(group).not.toHaveClass('gap-1');
+    expect(group).toHaveClass('w-fit');
+    expect(group).toHaveClass('gap-1');
+    expect(group).not.toHaveClass('justify-between');
   });
 });
