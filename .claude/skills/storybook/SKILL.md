@@ -320,6 +320,11 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
   the browser binary) and then runs the real gate; on **macOS** it **hard-fails** (start Docker
   Desktop — there's no `dockerd` to launch). In the cloud, pre-pull the image in the setup
   script (`docs/cloud-environment.md`) so the auto-started run isn't waiting on a ~3 GB pull.
+  **Auto-start fails with a stale pidfile?** On a reused cloud container the wrapper aborts with
+  `Could not start a Docker daemon` and `dockerd` logs `process with PID <n> is still running`
+  even though that PID is dead — a leftover `/var/run/docker.pid` from a prior session. Confirm
+  the PID is gone (`ps -p <n>`), then `rm -f /var/run/docker.pid && dockerd &` and re-run the
+  gate (or the `git push` whose pre-push hook invokes it).
 
 **When an intentional change moves a baseline — capture the diff, then approve (don't
 make me do it manually).** A failing visual snapshot is not automatically a bug: if *you*
