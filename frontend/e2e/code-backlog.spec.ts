@@ -156,6 +156,61 @@ test('filters the Backlog by status via the Filter by status dropdown', async ({
   await expect(rows.nth(1)).toContainText('ALF-6');
 });
 
+test('keeps the Backlog status filter active across SPA navigation (ALF-79)', async ({
+  page,
+  seed,
+}) => {
+  // One outstanding story plus one `done` story (hidden by the default filter).
+  const filterItems = [
+    makeItem('Draft the inbound filter spec', { id: 'i1', item_type: 'code' }),
+    makeItem('Ship the release notes', { id: 'i2', item_type: 'code' }),
+  ];
+  const filterStories = [
+    makeCodeStory({
+      item_id: 'i1',
+      project_id: 'p1',
+      epic_id: 'e1',
+      ref_number: 3,
+      ref: 'ALF-3',
+      priority: 1,
+      factory_state: 'needs_refinement',
+    }),
+    makeCodeStory({
+      item_id: 'i2',
+      project_id: 'p1',
+      epic_id: 'e1',
+      ref_number: 6,
+      ref: 'ALF-6',
+      priority: 2,
+      factory_state: 'done',
+    }),
+  ];
+  await seed({ projects: [project], epics: [epic], items: filterItems, codeItems: filterStories });
+  await page.goto('/code/backlog');
+
+  const rows = page.getByRole('listitem');
+  // Reveal the `done` story by checking Done — a non-default selection.
+  await expect(rows).toHaveCount(1);
+  await page.getByRole('button', { name: /filter by status/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Done', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(2);
+
+  // Navigate to the project board (a client-side History push via the sidebar), then back to
+  // the Backlog the same way. Before ALF-79 the Backlog remounted at its default and re-hid the
+  // `done` story; now its selection survives the round-trip.
+  const projectNav = page.getByRole('navigation', { name: 'Projects' });
+  await projectNav.getByRole('link', { name: /alfred/i }).click();
+  await expect(page).toHaveURL('/code/p1');
+
+  await projectNav.getByRole('link', { name: 'Backlog' }).click();
+  await expect(page).toHaveURL('/code/backlog');
+
+  // The filter is still on Done: both stories remain listed, and the trigger keeps its count.
+  await expect(page.getByRole('listitem')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /filter by status/i })).toContainText('(7)');
+});
+
 test('opens a story modal on its project board from a Backlog row', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.goto('/code');

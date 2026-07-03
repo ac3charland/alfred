@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
+import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
 import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
@@ -145,7 +146,9 @@ function renderBoard(seed: {
         initialEpics={seed.epics ?? []}
         initialStories={seed.stories ?? []}
       >
-        <Board projectId={seed.projectId ?? 'p1'} />
+        <CodeFilterProvider>
+          <Board projectId={seed.projectId ?? 'p1'} />
+        </CodeFilterProvider>
       </CodeProvider>
     </ToastProvider>,
   );
