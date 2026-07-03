@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ALF-89 — Refine drag gestures on mobile (hold-first)</title>
+    <style>
+      :root {
+        --bg: #0f1420;
+        --surface: #171d2b;
+        --surface-2: #1e2636;
+        --border: #2a3346;
+        --fg: #e6ebf4;
+        --muted: #97a3b8;
+        --teal: #35d0ba;
+        --amber: #e6b450;
+        --red: #e06c75;
+        --code-bg: #10151f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        padding: 2rem 1.25rem 5rem;
+      }
+      main { max-width: 860px; margin: 0 auto; }
+      h1 {
+        font-size: 1.7rem;
+        line-height: 1.25;
+        margin: 0 0 0.25rem;
+      }
+      h1 .ref { color: var(--teal); }
+      h2 {
+        font-size: 1.2rem;
+        margin: 2.4rem 0 0.75rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--fg); }
+      p, li { color: var(--fg); }
+      .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: 0.95rem; }
+      a { color: var(--teal); }
+      code {
+        font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 0.85em;
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.1em 0.35em;
+      }
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+      pre code { background: none; border: none; padding: 0; }
+      .cmt { color: var(--muted); }
+      .add { color: var(--teal); }
+      .del { color: var(--red); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.6rem 0.7rem;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th { background: var(--surface-2); font-weight: 600; }
+      td:first-child { white-space: nowrap; }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin: 1.25rem 0;
+      }
+      .callout {
+        border-left: 3px solid var(--amber);
+        background: var(--surface-2);
+        border-radius: 0 8px 8px 0;
+        padding: 0.75rem 1rem;
+        margin: 1.25rem 0;
+        font-size: 0.92rem;
+      }
+      .callout.teal { border-left-color: var(--teal); }
+      .callout.red { border-left-color: var(--red); }
+      .callout strong { color: var(--fg); }
+      ul.checklist { list-style: none; padding-left: 0; }
+      ul.checklist li {
+        padding-left: 1.9rem;
+        position: relative;
+        margin: 0.5rem 0;
+      }
+      ul.checklist li::before {
+        content: "☐";
+        position: absolute;
+        left: 0;
+        top: -0.05rem;
+        color: var(--teal);
+        font-size: 1.1rem;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      .diagram { margin: 1.5rem 0; text-align: center; }
+      .diagram svg { max-width: 100%; height: auto; }
+      figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
+      .file-path { color: var(--amber); font-weight: 600; }
+      .meta-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1><span class="ref">ALF-89</span> — Refine drag gestures on mobile (hold-first)</h1>
+      <p class="sub">
+        Stop touch scroll gestures from being mis-read as task drags. On a touch device, a
+        drag should require a brief <em>press-and-hold</em> before it engages; a plain swipe
+        must scroll the list as normal.
+      </p>
+      <div class="meta-row">
+        <span class="tag">Module: Tasks</span>
+        <span class="tag">Area: dnd-kit sensors</span>
+        <span class="tag">Type: bug / UX refinement</span>
+        <span class="tag">No schema / API change</span>
+      </div>
+
+      <h2>1 · Context &amp; problem</h2>
+      <p>
+        In the Tasks module the <strong>entire task row is a drag surface</strong> — there is
+        no dedicated drag handle. Dragging a row re-parents the task, files it into a folder,
+        or promotes a subtask to the top level (see
+        <code>components/tasks/task-dnd-provider.tsx</code>). Drag activation is governed by a
+        single custom pointer sensor:
+      </p>
+      <pre><code><span class="cmt">// frontend/components/tasks/task-dnd-provider.tsx</span>
+const sensors = useSensors(
+  useSensor(RowPointerSensor, { activationConstraint: { distance: 8 } }),
+  useSensor(RowKeyboardSensor),
+);</code></pre>
+      <p>
+        <code>RowPointerSensor</code> extends dnd-kit's <code>PointerSensor</code>, which
+        handles mouse <em>and</em> touch through the unified pointer-events model. The
+        <code>{ distance: 8 }</code> constraint means: <strong>as soon as the pointer moves 8px,
+        a drag begins.</strong>
+      </p>
+      <div class="callout red">
+        <strong>The bug.</strong> On a phone/tablet, the natural way to scroll the task list is
+        to press a row and swipe. That swipe moves the pointer well past 8px almost instantly,
+        so <code>PointerSensor</code> activates a drag and calls <code>preventDefault</code> on
+        the move — the page never scrolls, and the user is left dragging a task they only meant
+        to scroll past. The list is effectively un-scrollable by touch.
+      </div>
+      <p>
+        The ticket title captures the intended fix: <em>“hold first, or something.”</em> The
+        correct, idiomatic dnd-kit remedy is to give <strong>touch</strong> a
+        <strong>press-and-hold</strong> activation while leaving <strong>mouse</strong>
+        untouched.
+      </p>
+
+      <h2>2 · Root cause, precisely</h2>
+      <p>
+        A single <code>PointerSensor</code> cannot behave differently for a mouse than for a
+        finger — its one <code>activationConstraint</code> applies to every input. A
+        <code>distance</code> constraint is exactly right for a mouse (a small, deliberate drag)
+        but exactly wrong for touch (indistinguishable from the start of a scroll). We need
+        <strong>per-input-type activation</strong>: distance for mouse, delay-with-tolerance for
+        touch.
+      </p>
+      <div class="callout teal">
+        <strong>Why native scroll still works today (and must keep working).</strong> The rows
+        do <em>not</em> set <code>touch-action: none</code> anywhere (verified across the
+        frontend). That means the browser still owns vertical scrolling by default — the only
+        thing stealing the gesture is the sensor's <code>preventDefault</code> once a drag
+        activates. Fix the activation and native scroll returns for free.
+        <strong>Do not add <code>touch-action: none</code> to task rows</strong> — it would
+        disable scrolling on the row entirely, which is the opposite of the goal.
+      </div>
+
+      <h2>3 · Proposed change</h2>
+      <p>
+        Replace the single unified pointer sensor with the canonical dnd-kit split: a
+        <strong>mouse sensor</strong> and a <strong>touch sensor</strong>, each carrying the
+        existing “don't start a drag from a button / input” guard
+        (<code>isInteractiveTarget</code>). dnd-kit routes each input to the sensor that listens
+        for it (<code>MouseSensor</code> → <code>mousedown</code>,
+        <code>TouchSensor</code> → <code>touchstart</code>), so they coexist under one
+        <code>useSensors</code> and each gets its own activation rule. This also handles hybrid
+        devices (touchscreen laptop) correctly — each input type is routed independently, with
+        no viewport/media-query guessing.
+      </p>
+
+      <h3>3.1 · New / changed sensor classes</h3>
+      <p>
+        <code>lib/dnd/pointer-sensor.ts</code> currently exports <code>RowPointerSensor</code>
+        (extends <code>PointerSensor</code>) and the shared <code>isInteractiveTarget</code>
+        guard. Split the sensor in two, keeping <code>isInteractiveTarget</code> as the single
+        shared guard (do not duplicate it):
+      </p>
+      <table>
+        <thead>
+          <tr><th>Sensor</th><th>Extends</th><th>Activation constraint</th><th>Guard</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>RowMouseSensor</code></td>
+            <td><code>MouseSensor</code></td>
+            <td><code>{ distance: 8 }</code> — unchanged mouse feel: a small deliberate drag lifts the row.</td>
+            <td><code>isInteractiveTarget</code> in the <code>onMouseDown</code> activator (reject drags from buttons/inputs).</td>
+          </tr>
+          <tr>
+            <td><code>RowTouchSensor</code></td>
+            <td><code>TouchSensor</code></td>
+            <td><code>{ delay: 250, tolerance: 5 }</code> — hold the row still for ~250ms to lift it; move &gt;5px within that window and no drag starts (the browser scrolls instead).</td>
+            <td><code>isInteractiveTarget</code> in the <code>onTouchStart</code> activator.</td>
+          </tr>
+          <tr>
+            <td><code>RowKeyboardSensor</code></td>
+            <td><code>KeyboardSensor</code></td>
+            <td><em>unchanged</em> (Space/Enter to lift, arrows to move).</td>
+            <td>existing <code>isInteractiveTarget</code> guard — unchanged.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Each new activator mirrors the existing <code>RowPointerSensor</code> one — same
+        primary-button / primary-touch check, same <code>isInteractiveTarget</code> early-out,
+        same <code>options.onActivation?.({ event })</code> call-through so <code>this</code>
+        stays bound. Only the base class and the <code>eventName</code> differ.
+      </p>
+      <pre><code><span class="cmt">// lib/dnd/pointer-sensor.ts — shape of the touch activator (mirrors the mouse one)</span>
+export class RowTouchSensor extends TouchSensor {
+  static override activators = [
+    {
+      eventName: 'onTouchStart' as const,
+      handler: ({ nativeEvent: event }: TouchEvent, options): boolean => {
+        if (isInteractiveTarget(event.target)) return false;
+        options.onActivation?.({ event });
+        return true;
+      },
+    },
+  ];
+}</code></pre>
+      <p class="sub">
+        File naming is the implementer's call — either keep both mouse &amp; touch sensors in
+        <code>lib/dnd/pointer-sensor.ts</code> (rename considered but not required) or add
+        <code>lib/dnd/touch-sensor.ts</code> alongside it. The shared
+        <code>isInteractiveTarget</code> stays exported from one place.
+      </p>
+
+      <h3>3.2 · Provider wiring</h3>
+      <pre><code><span class="cmt">// frontend/components/tasks/task-dnd-provider.tsx</span>
+const sensors = useSensors(
+  <span class="del">- useSensor(RowPointerSensor, { activationConstraint: { distance: 8 } }),</span>
+  <span class="add">+ useSensor(RowMouseSensor, { activationConstraint: { distance: 8 } }),</span>
+  <span class="add">+ useSensor(RowTouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),</span>
+  useSensor(RowKeyboardSensor),
+);</code></pre>
+      <p>
+        Everything downstream — collision detection (<code>pointerWithinVisible</code>), the
+        drag-end resolution (folder / promote / re-parent), the <code>DragOverlay</code> — is
+        unchanged. Sensors only decide <em>when</em> a drag starts; they don't touch how it
+        resolves.
+      </p>
+
+      <h3>3.3 · Touch activation, as a state machine</h3>
+      <figure class="diagram">
+        <svg viewBox="0 0 720 260" role="img" aria-label="Touch activation state diagram">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6 Z" fill="#97a3b8" />
+            </marker>
+            <style>
+              .st { fill: #1e2636; stroke: #2a3346; }
+              .lbl { fill: #e6ebf4; font: 13px sans-serif; }
+              .edge { stroke: #97a3b8; fill: none; marker-end: url(#arrow); }
+              .elbl { fill: #97a3b8; font: 11.5px sans-serif; }
+              .good { fill: #35d0ba; font: 12px sans-serif; }
+            </style>
+          </defs>
+
+          <rect class="st" x="20" y="105" width="130" height="50" rx="8" />
+          <text class="lbl" x="85" y="135" text-anchor="middle">touchstart</text>
+
+          <rect class="st" x="250" y="105" width="150" height="50" rx="8" />
+          <text class="lbl" x="325" y="128" text-anchor="middle">holding…</text>
+          <text class="elbl" x="325" y="145" text-anchor="middle">(250ms timer)</text>
+
+          <rect class="st" x="520" y="20" width="180" height="50" rx="8" />
+          <text class="good" x="610" y="50" text-anchor="middle">DRAG — lift row</text>
+
+          <rect class="st" x="520" y="190" width="180" height="50" rx="8" />
+          <text class="good" x="610" y="213" text-anchor="middle">SCROLL — no drag</text>
+          <text class="elbl" x="610" y="230" text-anchor="middle">browser handles it</text>
+
+          <path class="edge" d="M150,130 L248,130" />
+          <path class="edge" d="M400,120 C455,120 470,70 518,55" />
+          <text class="elbl" x="452" y="88" text-anchor="middle">timer fires,</text>
+          <text class="elbl" x="452" y="102" text-anchor="middle">move ≤ 5px</text>
+
+          <path class="edge" d="M400,140 C455,140 470,195 518,205" />
+          <text class="elbl" x="452" y="168" text-anchor="middle">move &gt; 5px</text>
+          <text class="elbl" x="452" y="182" text-anchor="middle">before timer</text>
+        </svg>
+        <figcaption>
+          Touch: a drag only wins if the finger stays within 5px until the 250ms timer fires.
+          Any earlier movement cancels the pending drag and the browser scrolls. Mouse is
+          unaffected — it still lifts after an 8px move.
+        </figcaption>
+      </figure>
+
+      <h2>4 · Considered alternatives</h2>
+      <table>
+        <thead><tr><th>Option</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Keep one <code>PointerSensor</code>; pick the constraint via
+              <code>useMediaQuery('(pointer: coarse)')</code> — delay+tolerance when coarse,
+              distance otherwise.</td>
+            <td><strong>Rejected.</strong> Smaller diff, but the media query keys off the
+              <em>primary</em> pointer, so a hybrid touchscreen-laptop with a mouse reports fine
+              and gets the distance constraint for touch <em>too</em> — the scroll bug survives
+              on that device. The MouseSensor+TouchSensor split routes each input independently
+              and needs no viewport guessing. Noted as the fallback if the split proves noisy.</td>
+          </tr>
+          <tr>
+            <td>Give the whole row a delay+tolerance constraint for mouse and touch alike (one
+              <code>PointerSensor</code>, <code>{ delay, tolerance }</code>).</td>
+            <td><strong>Rejected.</strong> Regresses desktop feel — mouse users would have to
+              pause before every drag. We only want the hold on touch.</td>
+          </tr>
+          <tr>
+            <td>Add a dedicated drag handle (grip icon) and drag only from it.</td>
+            <td><strong>Out of scope.</strong> A larger visual/interaction redesign (every row
+              gains a handle; the “whole row is the surface” model is discarded). If the
+              hold-first gesture proves unsatisfying in practice, raise it as a follow-up
+              ticket — not this fix.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>5 · Acceptance criteria</h2>
+      <ul class="checklist">
+        <li><strong>Touch scroll is restored.</strong> On a touch device, pressing a task row
+          and swiping vertically scrolls the list — no drag starts, no <code>DragOverlay</code>
+          appears, no task moves.</li>
+        <li><strong>Touch drag still works, hold-first.</strong> Pressing a row and holding it
+          still for ~250ms, then moving, lifts the row and lets it be dropped onto a folder /
+          another task / the promote zone exactly as before.</li>
+        <li><strong>Mouse behaviour is unchanged.</strong> With a mouse, a row still lifts after
+          an ~8px drag — no hold required, no perceptible change from today.</li>
+        <li><strong>Keyboard drag is unchanged.</strong> Space/Enter to lift, arrows to move,
+          Space to drop, Esc to cancel — the <code>RowKeyboardSensor</code> path is untouched.</li>
+        <li><strong>Interactive controls still click.</strong> On both mouse and touch, tapping
+          a row's checkbox, chevron, add-subtask, or kebab performs its action and never starts
+          a drag (the <code>isInteractiveTarget</code> guard is carried into both new sensors).</li>
+        <li><strong>Inline title edit is unaffected.</strong> Opening and typing in a row's
+          inline title input (incl. spaces) never triggers a phantom drag.</li>
+        <li><strong>No <code>touch-action: none</code></strong> is added to task rows.</li>
+        <li><strong>Guardrails green.</strong> <code>check:fast</code> and
+          <code>check:slow</code> pass; no <code>--no-verify</code>, no config weakening, no
+          disable directives.</li>
+      </ul>
+
+      <h2>6 · Testing &amp; demo evidence</h2>
+      <div class="card">
+        <h3 style="margin-top:0">Unit (fast tier)</h3>
+        <p>
+          Mirror the existing <code>lib/dnd/pointer-sensor.test.ts</code> pattern: reach into
+          <code>RowTouchSensor.activators[0].handler</code> with a hand-built touch-start event
+          and assert (a) a plain press fires <code>onActivation</code> / returns
+          <code>true</code>, and (b) a press whose target
+          <code>isInteractiveTarget</code> (a <code>&lt;button&gt;</code>) returns
+          <code>false</code> and does <em>not</em> activate. Do the same for
+          <code>RowMouseSensor</code> if the mouse activator diverges from the old pointer one.
+          These prove the <em>guard</em>; the delay/tolerance timing is dnd-kit's own runtime
+          concern configured in the provider, not our handler.
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">E2E (slow tier, real Chromium)</h3>
+        <p>
+          Add a Playwright spec run with touch emulation
+          (<code>test.use({ hasTouch: true, isMobile: true })</code>) that proves the two
+          touch behaviours the unit test can't:
+        </p>
+        <ul>
+          <li><strong>Swipe scrolls, doesn't drag:</strong> dispatch a touch press + immediate
+            move (a swipe) on a row and assert the list scrolled and <em>no</em> drag overlay
+            appeared / the task did not change parent or folder. Use
+            <code>page.touchscreen</code> / CDP <code>Input.dispatchTouchEvent</code> for the
+            touch sequence (mouse events won't drive <code>TouchSensor</code>).</li>
+          <li><strong>Hold-then-move drags:</strong> touch down, wait &gt;250ms with the finger
+            still, then glide to a folder and release; assert the task is filed (the existing
+            <code>drag-to-folder</code> assertions, driven by touch).</li>
+        </ul>
+        <p class="sub">
+          See the dnd-kit skill's “Testing under alfred's gates” notes — jsdom can't measure
+          layout, so drag <em>outcomes</em> belong in E2E, not RTL. Reuse the existing
+          <code>e2e/support/drag.ts</code> helpers where possible; add a touch variant of the
+          <code>pickUp</code> helper if needed (retry the press until the row enters its
+          <code>opacity-40</code> dragging state to dodge the hydration race).
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Demo doc</h3>
+        <p>
+          Capture the behaviour as a demo doc at
+          <code>docs/demos/alf-89-mobile-drag/</code> (folder-per-demo — see
+          <code>demo-lint</code>). For this touch-gesture change the evidence is screenshots
+          driven through the Playwright mobile/touch context: (1) a row mid-swipe with the list
+          scrolled and no overlay, and (2) a row lifted after a hold with the drag overlay +
+          drop highlight. Follow the <code>showboat</code> skill's evidence rules; verify with
+          <code>npm run demo -- verify</code> before wrapping up.
+        </p>
+      </div>
+
+      <h2>7 · Out of scope / open questions</h2>
+      <ul>
+        <li><strong>Dedicated drag handle.</strong> Not part of this fix. Only revisit if
+          hold-first proves unsatisfying in real use (would be a new ticket).</li>
+        <li><strong>Tuning the numbers.</strong> <code>delay: 250ms</code> and
+          <code>tolerance: 5px</code> are dnd-kit's recommended touch defaults and the proposed
+          starting values. They are tunable during implementation/QA on a real device — adjust
+          if a 250ms hold feels too slow or a 5px tolerance too twitchy. Any change stays within
+          the same mechanism.</li>
+        <li><strong>Haptics / long-press affordance.</strong> A subtle visual or haptic cue that
+          the hold “took” (row lifts, subtle scale) could improve discoverability. Deferred —
+          the existing <code>DragOverlay</code> lift is the current signal; propose a separate
+          polish ticket if wanted.</li>
+      </ul>
+    </main>
+  </body>
+</html>
