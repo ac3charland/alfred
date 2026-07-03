@@ -16,6 +16,12 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
  * the realtime code-move toast); everything else is `default`. Dismissal is two-phase: a toast
  * is first marked `leaving` so the viewport can animate it out, then removed after `EXIT_MS`
  * (the store-driven analogue of the motion skill's animate-then-commit pattern).
+ *
+ * Auto-dismiss is **visibility-gated**: a toast's DISMISS_MS countdown only runs while the tab
+ * is active (`!document.hidden`). A toast fired into a backgrounded tab is parked untouched;
+ * a running countdown is cancelled and re-parked if the tab loses focus. Each time the tab
+ * regains focus (`visibilitychange` / window `focus`, mirroring the code store), every parked
+ * toast gets a fresh countdown — so the user never returns to a toast that expired unseen.
  */
 
 export type ToastVariant = 'default' | 'emphasis';
@@ -57,20 +63,81 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
 
-  const actions = React.useMemo<ToastActions>(() => {
-    // Two-phase dismissal: mark `leaving` so the exit animation can play, then remove after
-    // EXIT_MS. Idempotent — re-marking an already-leaving toast is a no-op, and the delayed
-    // filter harmlessly no-ops on an id that's already gone.
-    const beginDismiss = (id: string) => {
-      setToasts((current) =>
-        current.map((toast) => (toast.id === id ? { ...toast, leaving: true } : toast)),
-      );
-      setTimeout(() => {
-        setToasts((current) => current.filter((toast) => toast.id !== id));
-      }, EXIT_MS);
-    };
+  // Auto-dismiss bookkeeping (see the visibility-gated note above). `pendingIds` holds toasts
+  // waiting to (re)start their countdown — shown while backgrounded, or parked when the tab
+  // lost focus. `dismissTimers` holds the live DISMISS_MS handles so a countdown can be
+  // cancelled when the tab goes hidden. Both live in refs: they're mutated from timers and
+  // event handlers, and changing them must not trigger a re-render.
+  const pendingIds = React.useRef<Set<string>>(new Set());
+  const dismissTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-    return {
+  // Two-phase dismissal: mark `leaving` so the exit animation can play, then remove after
+  // EXIT_MS. Idempotent — re-marking an already-leaving toast is a no-op, and the delayed
+  // filter harmlessly no-ops on an id that's already gone.
+  const beginDismiss = React.useCallback((id: string) => {
+    pendingIds.current.delete(id);
+    const handle = dismissTimers.current.get(id);
+    if (handle !== undefined) {
+      clearTimeout(handle);
+      dismissTimers.current.delete(id);
+    }
+    setToasts((current) =>
+      current.map((toast) => (toast.id === id ? { ...toast, leaving: true } : toast)),
+    );
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, EXIT_MS);
+  }, []);
+
+  // Start (or restart) one toast's DISMISS_MS countdown. Called when a toast is shown into an
+  // active tab, and for every parked toast when the tab regains focus. Clears any prior handle
+  // first so a restart never leaks a timer.
+  const startDismissTimer = React.useCallback(
+    (id: string) => {
+      pendingIds.current.delete(id);
+      const existing = dismissTimers.current.get(id);
+      if (existing !== undefined) clearTimeout(existing);
+      dismissTimers.current.set(
+        id,
+        setTimeout(() => {
+          beginDismiss(id);
+        }, DISMISS_MS),
+      );
+    },
+    [beginDismiss],
+  );
+
+  // Refocus/background handling. On refocus, give every parked toast a fresh countdown; on
+  // background, cancel every running countdown and re-park its toast so nothing dismisses
+  // while the user is away. `focus` only ever fires on refocus, so it maps to onActive.
+  React.useEffect(() => {
+    const onActive = () => {
+      if (document.hidden) return;
+      const parked = [...pendingIds.current];
+      pendingIds.current.clear();
+      for (const id of parked) startDismissTimer(id);
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        onActive();
+        return;
+      }
+      for (const [id, handle] of dismissTimers.current) {
+        clearTimeout(handle);
+        pendingIds.current.add(id);
+      }
+      dismissTimers.current.clear();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onActive);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onActive);
+    };
+  }, [startDismissTimer]);
+
+  const actions = React.useMemo<ToastActions>(
+    () => ({
       showToast(message, variant = 'default', href) {
         const id = crypto.randomUUID();
         // Conditionally spread `href` (never assign it `undefined`) so the optional property
@@ -85,17 +152,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         if (variant === 'emphasis' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
           playToastSound();
         }
-        // Auto-dismiss through the same animate-out path. A user event always precedes this,
-        // so the timer is harmless in tests (fake timers can flush it) and unmount drops it.
-        setTimeout(() => {
-          beginDismiss(id);
-        }, DISMISS_MS);
+        // Only count down while the tab is active; otherwise park the toast until it regains
+        // focus (the effect above starts the countdown then).
+        if (document.hidden) {
+          pendingIds.current.add(id);
+        } else {
+          startDismissTimer(id);
+        }
       },
       dismissToast(id) {
         beginDismiss(id);
       },
-    };
-  }, []);
+    }),
+    [beginDismiss, startDismissTimer],
+  );
 
   return (
     <ActionsContext.Provider value={actions}>
