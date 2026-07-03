@@ -1019,6 +1019,16 @@ function byPriorityAsc(a: CodeStory, b: CodeStory): number {
 }
 
 /**
+ * Compare two stories by `code_updated_at` DESCENDING (most recent first). The row's `updated_at`
+ * is bumped when a story transitions into `done`, so this is the "just completed" recency proxy.
+ * A missing timestamp sorts last. Used only for the Done lane, whose "latest N" collapse (ALF-81)
+ * wants the freshest completions on top rather than the priority order the other lanes use.
+ */
+function byRecentlyUpdatedDesc(a: CodeStory, b: CodeStory): number {
+  return (b.code_updated_at ?? '').localeCompare(a.code_updated_at ?? '');
+}
+
+/**
  * The priority a brand-new story takes so it lands at the TOP of the Backlog (ALF-71): one step
  * below every live priority (lower = higher rank). Mirrors `create_code_story` / `enter_code_module`
  * and `moveStory`'s to-top math — `coalesce(min, 0) - 1` — so the optimistic card sorts to the top
@@ -1073,7 +1083,9 @@ function buildEpicBoard(epic: Epic, stories: CodeStory[]): BoardEpic {
     label: STATE_LABELS[state],
     stories: stableSorted(
       forEpic.filter((story) => story.factory_state === state),
-      byPriorityAsc,
+      // Done is recency-sorted (latest completion first) to feed its "latest N" collapse (ALF-81);
+      // every other lane keeps the global Backlog priority order.
+      state === 'done' ? byRecentlyUpdatedDesc : byPriorityAsc,
     ),
   }));
   const escapeStories = stableSorted(
