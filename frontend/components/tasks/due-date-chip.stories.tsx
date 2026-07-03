@@ -7,6 +7,7 @@ const meta = {
   title: 'Tasks/DueDateChip',
   component: DueDateChip,
   tags: ['autodocs'],
+  args: { onSelect: () => {}, onClear: () => {} },
   decorators: [
     (Story) => (
       <div className="inline-flex p-3">
@@ -41,15 +42,30 @@ export const Overdue: Story = {
   args: { dueDate: '2000-01-01' },
 };
 
-// All three urgency bands together, so the red/amber/blue progression reads at a glance.
+// The compact row badge, all three urgency bands together, so the red/amber/blue progression
+// reads at a glance.
 export const UrgencyBands: Story = {
   // `render` composes its own chips below; this arg only satisfies the required `dueDate` prop.
   args: { dueDate: '2099-12-31' },
-  render: () => (
+  render: (args) => (
     <div className="flex items-center gap-3">
-      <DueDateChip dueDate="2000-01-01" aria-label="Overdue example" />
-      <DueDateChip dueDate={todayLocalYMD()} aria-label="Due today example" />
-      <DueDateChip dueDate="2099-12-31" aria-label="Upcoming example" />
+      <DueDateChip {...args} dueDate="2000-01-01" aria-label="Overdue example" />
+      <DueDateChip {...args} dueDate={todayLocalYMD()} aria-label="Due today example" />
+      <DueDateChip {...args} dueDate="2099-12-31" aria-label="Upcoming example" />
+    </div>
+  ),
+};
+
+// The larger `comfortable` chip used in the detail panel — same urgency bands, plus the neutral
+// "Set a due date…" prompt when unset.
+export const Comfortable: Story = {
+  args: { dueDate: '2099-12-31', size: 'comfortable' },
+  render: (args) => (
+    <div className="flex items-center gap-3">
+      <DueDateChip {...args} dueDate="2000-01-01" />
+      <DueDateChip {...args} dueDate={todayLocalYMD()} />
+      <DueDateChip {...args} dueDate="2099-12-31" />
+      <DueDateChip {...args} dueDate={null} />
     </div>
   ),
 };

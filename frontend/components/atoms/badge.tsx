@@ -56,19 +56,21 @@ export interface BadgeProperties
   asButton?: boolean;
 }
 
-/** A small status/label pill. Tone via `variant`; weight/case via `className`. */
-export function Badge({
-  className,
-  variant,
-  interactive,
-  asButton = false,
-  ...properties
-}: BadgeProperties) {
-  const classes = cn(badgeVariants({ variant, interactive }), className);
-  if (asButton) {
-    return <button type="button" className={classes} {...properties} />;
-  }
-  return <span className={classes} {...properties} />;
-}
+/**
+ * A small status/label pill. Tone via `variant`; weight/case via `className`. forwardRef so the
+ * `asButton` form can be a Radix Popover/Dropdown trigger (`asChild`) and receive the anchor ref —
+ * e.g. the row's clickable due-date chip. The ref only lands on the `<button>` form; a `<span>`
+ * badge has no interaction and no caller needs its ref.
+ */
+export const Badge = React.forwardRef<HTMLButtonElement, BadgeProperties>(
+  ({ className, variant, interactive, asButton = false, ...properties }, reference) => {
+    const classes = cn(badgeVariants({ variant, interactive }), className);
+    if (asButton) {
+      return <button ref={reference} type="button" className={classes} {...properties} />;
+    }
+    return <span className={classes} {...properties} />;
+  },
+);
+Badge.displayName = 'Badge';
 
 export { badgeVariants };

@@ -3,7 +3,8 @@
 import * as React from 'react';
 
 import { Textarea } from '@/components/atoms/textarea';
-import { DueChip, PriorityChip, RepeatChip } from '@/components/tasks/task-row/detail-chips';
+import { DueDateChip } from '@/components/tasks/due-date-chip';
+import { PriorityChip, RepeatChip } from '@/components/tasks/task-row/detail-chips';
 import type { TaskPriority } from '@/lib/priority';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import type { ItemNode } from '@/lib/tree';
@@ -79,7 +80,12 @@ export function TaskDetailPanel({
       {showChipRow && (
         <div className="flex flex-wrap items-center gap-2">
           {isTask && (
-            <DueChip dueDate={node.due_date} onSelect={onSelectDueDate} onClear={onClearDueDate} />
+            <DueDateChip
+              dueDate={node.due_date}
+              size="comfortable"
+              onSelect={onSelectDueDate}
+              onClear={onClearDueDate}
+            />
           )}
           {showRepeat && (
             <RepeatChip rule={recurrence} dueDate={node.due_date} onChange={onChangeRecurrence} />

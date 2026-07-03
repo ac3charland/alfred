@@ -705,8 +705,19 @@ export function TaskRow({
                     in ALF-67 / ALF-65); an unclassified row shows none. */}
                     {showTypeBadge && <TypeBadge itemType={node.item_type} />}
 
-                    {/* Due date — `task`-only. */}
-                    {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
+                    {/* Due date — `task`-only. Clickable: opens the calendar to change or clear
+                    the date (same chip + auto-save as the detail panel; ALF-94). */}
+                    {isTask && node.due_date && (
+                      <DueDateChip
+                        dueDate={node.due_date}
+                        onSelect={(iso) => {
+                          void handleSelectDueDate(iso);
+                        }}
+                        onClear={() => {
+                          void handleClearDueDate();
+                        }}
+                      />
+                    )}
 
                     {/* Repeat — top-level recurring tasks only. */}
                     {isTopLevelTask && recurrenceRule !== null && (
