@@ -42,7 +42,7 @@ import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
-import { getAncestorTitles, getDescendantIds, isTempId } from '@/lib/tree';
+import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -333,7 +333,10 @@ export function TaskRow({
   // on failure). No router.refresh(), no local dismiss/pending state.
 
   const handleToggleComplete = () => {
-    if (hasChildren) {
+    // The cascade modal only warns about work it will actually change — subtasks that are
+    // still active and about to be swept complete. If every descendant is already completed
+    // (or there are none), completing the parent cascades nothing new, so skip it (ALF-73).
+    if (hasActiveDescendant(node)) {
       setShowCascadeModal(true);
       return;
     }

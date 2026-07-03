@@ -116,6 +116,11 @@ export function countCompletedDescendants(node: ItemNode): number {
   return count;
 }
 
+/** Whether any descendant (any depth) is still `active` (excludes the node itself). */
+export function hasActiveDescendant(node: ItemNode): boolean {
+  return node.children.some((child) => child.status === 'active' || hasActiveDescendant(child));
+}
+
 /** Collect all descendant ids of a built node (not including the node itself). */
 export function getDescendantIds(node: ItemNode): string[] {
   const ids: string[] = [];
