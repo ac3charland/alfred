@@ -2,10 +2,19 @@
 
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { StoryCard } from '@/components/code/story-card';
 import type { LaunchPhase } from '@/lib/code/launch';
 import type { BoardLane } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
+
+/**
+ * The Done lane opens collapsed to its latest few completions and reveals more on demand (ALF-81):
+ * it accumulates every finished story, so showing them all would bury the active lanes. Both are
+ * lane-local, so a later state's swimlanes are unaffected.
+ */
+const DONE_INITIAL_VISIBLE = 3;
+const DONE_REVEAL_STEP = 5;
 
 export interface SwimlaneProperties {
   /** The lane to render: one happy-path state, its label, and the stories in it. */
@@ -27,6 +36,14 @@ export interface SwimlaneProperties {
  * than looking broken.
  */
 export function Swimlane({ lane, onOpenStory, onOpenSession }: SwimlaneProperties) {
+  // The Done lane is capped to its latest few completions until "Show more" reveals another
+  // batch; every other lane renders every card (the counter stays at its initial value, unread).
+  const [visibleCount, setVisibleCount] = React.useState(DONE_INITIAL_VISIBLE);
+  const collapsible = lane.state === 'done';
+  const shownStories = collapsible ? lane.stories.slice(0, visibleCount) : lane.stories;
+  const hiddenCount = lane.stories.length - shownStories.length;
+  const revealNext = Math.min(DONE_REVEAL_STEP, hiddenCount);
+
   return (
     <section
       aria-label={lane.label}
@@ -44,7 +61,7 @@ export function Swimlane({ lane, onOpenStory, onOpenSession }: SwimlanePropertie
         {lane.stories.length === 0 ? (
           <p className="px-1 py-2 text-xs text-muted-foreground/50">No stories</p>
         ) : (
-          lane.stories.map((story) => {
+          shownStories.map((story) => {
             const openProperty = onOpenStory ? { onOpen: onOpenStory } : {};
             const sessionProperty = onOpenSession ? { onOpenSession } : {};
             return (
@@ -52,6 +69,18 @@ export function Swimlane({ lane, onOpenStory, onOpenSession }: SwimlanePropertie
             );
           })
         )}
+        {hiddenCount > 0 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-center text-xs font-medium text-muted-foreground"
+            onClick={() => {
+              setVisibleCount((current) => current + DONE_REVEAL_STEP);
+            }}
+          >
+            Show {revealNext} more
+          </Button>
+        ) : null}
       </div>
     </section>
   );

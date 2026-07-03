@@ -49,6 +49,28 @@ const LANE: BoardLane = {
   ],
 };
 
+/** A lane of `count` distinct cards for `state` (refs ALF-0…), pre-ordered as the store would emit. */
+function laneOf(state: BoardLane['state'], label: string, count: number): BoardLane {
+  return {
+    state,
+    label,
+    stories: Array.from({ length: count }, (_, index) =>
+      makeStory({
+        item_id: `${state}-${String(index)}`,
+        ref: `ALF-${String(index)}`,
+        title: `${label} ${String(index)}`,
+      }),
+    ),
+  };
+}
+
+/** The aria-labels of the story cards currently rendered in a lane, in order. */
+function renderedRefs(lane: HTMLElement): (string | null)[] {
+  return within(lane)
+    .getAllByRole('button', { name: /^open /i })
+    .map((card) => card.getAttribute('aria-label'));
+}
+
 describe('Swimlane', () => {
   it('renders the lane label as its accessible name', () => {
     render(<Swimlane lane={LANE} />);
@@ -92,5 +114,58 @@ describe('Swimlane', () => {
     expect(onOpenStory).toHaveBeenCalledWith(
       expect.objectContaining({ item_id: 'i1', ref: 'ALF-1' }),
     );
+  });
+
+  describe('the Done lane collapse (ALF-81)', () => {
+    it('shows only the latest 3 completed stories with a Show more control', () => {
+      render(<Swimlane lane={laneOf('done', 'Done', 10)} />);
+
+      const lane = screen.getByRole('region', { name: 'Done' });
+      expect(renderedRefs(lane)).toEqual([
+        expect.stringContaining('ALF-0'),
+        expect.stringContaining('ALF-1'),
+        expect.stringContaining('ALF-2'),
+      ]);
+      // The count badge still reflects the true total, not the truncated view.
+      expect(within(lane).getByText('10')).toBeInTheDocument();
+      expect(within(lane).getByRole('button', { name: /show \d+ more/i })).toBeInTheDocument();
+    });
+
+    it('reveals 5 more per Show more click, then drops the control once all are shown', async () => {
+      const user = userEvent.setup();
+      render(<Swimlane lane={laneOf('done', 'Done', 10)} />);
+
+      const lane = screen.getByRole('region', { name: 'Done' });
+      expect(renderedRefs(lane)).toHaveLength(3);
+
+      await user.click(within(lane).getByRole('button', { name: /show \d+ more/i }));
+      expect(renderedRefs(lane)).toHaveLength(8);
+
+      await user.click(within(lane).getByRole('button', { name: /show \d+ more/i }));
+      expect(renderedRefs(lane)).toHaveLength(10);
+      expect(
+        within(lane).queryByRole('button', { name: /show \d+ more/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows all Done stories without a Show more control when there are 3 or fewer', () => {
+      render(<Swimlane lane={laneOf('done', 'Done', 3)} />);
+
+      const lane = screen.getByRole('region', { name: 'Done' });
+      expect(renderedRefs(lane)).toHaveLength(3);
+      expect(
+        within(lane).queryByRole('button', { name: /show \d+ more/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('never collapses a non-Done lane, however many stories it holds', () => {
+      render(<Swimlane lane={laneOf('in_development', 'In Development', 10)} />);
+
+      const region = screen.getByRole('region', { name: 'In Development' });
+      expect(within(region).getAllByRole('button', { name: /^open /i })).toHaveLength(10);
+      expect(
+        within(region).queryByRole('button', { name: /show \d+ more/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
