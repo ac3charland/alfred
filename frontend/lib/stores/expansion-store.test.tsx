@@ -35,6 +35,32 @@ describe('ExpansionProvider', () => {
     expect(result.current.state.details.has('a')).toBe(false);
   });
 
+  it('closeDetails closes an open detail panel', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.toggleDetails('a');
+    });
+    expect(result.current.state.details.has('a')).toBe(true);
+
+    act(() => {
+      result.current.actions.closeDetails('a');
+    });
+    expect(result.current.state.details.has('a')).toBe(false);
+  });
+
+  it('closeDetails on an already-closed row is a no-op (same set reference)', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+    const before = result.current.state.details;
+
+    act(() => {
+      result.current.actions.closeDetails('a');
+    });
+
+    // Nothing to close: the set identity is unchanged (no needless render).
+    expect(result.current.state.details).toBe(before);
+  });
+
   it('toggleSubtasks opens a row, toggling again closes it', () => {
     const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
 

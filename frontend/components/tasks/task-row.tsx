@@ -24,6 +24,7 @@ import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
+import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
@@ -125,7 +126,8 @@ export function TaskRow({
     completed: expandedCompleted,
     details: openDetails,
   } = useExpansion();
-  const { toggleSubtasks, expandSubtasks, toggleCompleted, toggleDetails } = useExpansionActions();
+  const { toggleSubtasks, expandSubtasks, toggleCompleted, toggleDetails, closeDetails } =
+    useExpansionActions();
   const { active: selectModeActive, selectedIds } = useInboxSelection();
   const { toggle: toggleSelection } = useInboxSelectionActions();
   // A selectable root row in active select mode is a selection checkbox, not a normal row.
@@ -137,6 +139,16 @@ export function TaskRow({
   // show its detail, its subtasks, both, or neither.
   const isDetailOpen = openDetails.has(node.id);
   const [showCascadeModal, setShowCascadeModal] = React.useState(false);
+
+  // The open detail panel dismisses on Escape or a pointer press outside this row (ALF-78).
+  // Scoping "outside" to the whole row (not just the panel) keeps the ⋯ menu working — its
+  // "Open details" entry stays the toggle-closed affordance — while the hook excludes the
+  // portaled chip pickers / dialogs so editing a detail never closes it.
+  const rowContainerRef = React.useRef<HTMLLIElement>(null);
+  const handleDismissDetails = React.useCallback(() => {
+    closeDetails(node.id);
+  }, [closeDetails, node.id]);
+  useDismiss(rowContainerRef, handleDismissDetails, isDetailOpen && !inSelectMode);
 
   // A row's completed state is read off the node itself (not the view), so a completed
   // child shown under an active parent renders checked + low-contrast, and clicking it
@@ -480,7 +492,7 @@ export function TaskRow({
   }
 
   return (
-    <li className="group/row list-none">
+    <li ref={rowContainerRef} className="group/row list-none">
       {/* A freshly-captured row grows in from 0 height and slides down from above, pushing
           the rows below it down (ALF-20). For an existing row this wrapper is a no-op
           passthrough. */}
