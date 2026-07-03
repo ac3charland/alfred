@@ -46,7 +46,7 @@ export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
     <div
       role="group"
       aria-label="Switch module"
-      className="flex items-center justify-between rounded-lg border border-border bg-background/60 p-1"
+      className="flex w-fit items-center gap-1 rounded-lg border border-border bg-background/60 p-1"
     >
       <ViewLink
         href="/"
