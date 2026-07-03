@@ -55,7 +55,9 @@ export function TaskRowMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <IconButton size="md" aria-label="More actions">
-          <MoreHorizontal size={14} />
+          {/* Enlarged glyph on mobile (18px) to match the bigger add-subtask "+"; today's 14px
+            at md+. */}
+          <MoreHorizontal size={14} className="h-[18px] w-[18px] md:h-3.5 md:w-3.5" />
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

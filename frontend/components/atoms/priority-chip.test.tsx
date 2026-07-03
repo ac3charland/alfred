@@ -18,11 +18,14 @@ describe('PriorityChip', () => {
   });
 
   it('renders symbol-only (no visible label) while keeping the aria-label (ALF-67)', () => {
-    render(<PriorityChip priority="high" symbolOnly />);
+    const { container } = render(<PriorityChip priority="high" symbolOnly />);
     const badge = screen.getByRole('button', { name: 'Priority: High' });
     expect(badge).toBeInTheDocument();
     // The level word is not rendered as visible text in symbol-only mode.
     expect(screen.queryByText('High')).not.toBeInTheDocument();
+    // The compact glyph grows to 16px on mobile so the row pill matches the due-date chip
+    // height; md+ keeps the 10px icon.
+    expect(container.querySelector('svg')).toHaveClass('h-4', 'md:h-2.5');
   });
 
   it('defaults to type="button" so it never submits a form', () => {

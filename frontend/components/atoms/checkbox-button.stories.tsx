@@ -17,10 +17,12 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-// Empty box — the task-row completion checkbox before it's checked.
+// Empty box — the task-row completion checkbox before it's checked. Its border reads at a
+// mid-grey (`muted-foreground/50`) so the empty box has enough contrast to be spotted at a
+// glance (mirrors `checkboxIncompleteClass` in task-row.styles).
 export const Unchecked: Story = {
   args: {
-    className: 'h-4 w-4 border-border hover:border-accent-teal transition-colors',
+    className: 'h-4 w-4 border-muted-foreground/50 hover:border-accent-teal transition-colors',
   },
 };
 

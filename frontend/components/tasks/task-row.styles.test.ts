@@ -45,9 +45,15 @@ describe('task-row styles', () => {
 
   it('row base is a flex layout with a colour transition', () => {
     expect(rowBaseClass).toContain('flex');
-    expect(rowBaseClass).toContain('items-start');
     expect(rowBaseClass).toContain('rounded-sm');
     expect(rowBaseClass).toContain('transition-colors');
+  });
+
+  it('head-line controls centre against the title block on mobile, top-align at md+', () => {
+    // Mobile: the checkbox / chevron / actions sit centred beside a (possibly two-line) title.
+    expect(rowBaseClass).toContain('items-center');
+    // md+ reverts to top-alignment for today's single-line desktop rows.
+    expect(rowBaseClass).toContain('md:items-start');
   });
 
   it('row wraps into head + footer lines on mobile, single line at md+', () => {
@@ -133,7 +139,8 @@ describe('task-row styles', () => {
     expect(checkboxSizeClass).toContain('w-6');
     expect(checkboxSizeClass).toContain('md:h-4');
     expect(checkboxSizeClass).toContain('md:w-4');
-    expect(checkboxIncompleteClass).toContain('border-border');
+    // A mid-grey border (not the near-invisible `border` token) so the empty box has contrast.
+    expect(checkboxIncompleteClass).toContain('border-muted-foreground/50');
     expect(checkboxIncompleteClass).toContain('hover:border-accent-teal');
   });
 

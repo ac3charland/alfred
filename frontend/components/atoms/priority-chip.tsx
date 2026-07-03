@@ -49,7 +49,13 @@ export function PriorityChip({
       aria-label={ariaLabel ?? `Priority: ${label}`}
       {...properties}
     >
-      <Icon size={10} strokeWidth={2.5} className="shrink-0" />
+      <Icon
+        size={10}
+        strokeWidth={2.5}
+        // In symbol-only mode (the compact row glyph) the icon grows to 16px on mobile so the
+        // pill stands the same height as the neighbouring due-date chip; md+ keeps today's 10px.
+        className={cn('shrink-0', symbolOnly && 'h-4 w-4 md:h-2.5 md:w-2.5')}
+      />
       {!symbolOnly && label}
     </Badge>
   );
