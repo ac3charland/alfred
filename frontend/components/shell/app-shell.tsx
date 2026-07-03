@@ -10,6 +10,8 @@ import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
 import { signOut } from '@/lib/auth/actions';
 
+import { shellRootClass } from './app-shell.styles';
+
 /**
  * Shared application shell (Server Component) mounted once by the `(shell)` layout that
  * seeds every module's providers. It owns the chrome that's identical across modules: the
@@ -29,7 +31,7 @@ import { signOut } from '@/lib/auth/actions';
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <div className="flex h-full min-h-screen bg-background">
+      <div className={shellRootClass}>
         {/* Desktop sidebar */}
         <aside className="hidden md:flex md:w-56 md:shrink-0 md:flex-col border-r border-border bg-surface">
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
