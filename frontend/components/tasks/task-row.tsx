@@ -305,6 +305,13 @@ export function TaskRow({
     (isTask && isPriorityLevel(node.priority)) ||
     totalSubtasks > 0;
 
+  // The mobile metadata footer wraps under the title, so its left indent must track the title's
+  // left edge — which shifts as the chevron (childless rows) and checkbox (unclassified/code
+  // rows) columns are dropped on mobile. Chevron column = 1.25rem (IconButton sm) + 0.5rem gap;
+  // checkbox column = 1.5rem box + 0.5rem gap. At md+ the footer is display:contents, so this
+  // inline padding is ignored (the badges sit inline again).
+  const mobileMetaLeft = `${String((hasChildren ? 1.75 : 0) + (isTask ? 2 : 0))}rem`;
+
   // The card boundary is drawn exactly once, at a top-level (depth-0) node, enclosing the row
   // body AND its subtree — so subtasks sit inside the parent's card, never as cards of their own.
   const isCard = depth === 0;
@@ -557,7 +564,10 @@ export function TaskRow({
                 className={cn(
                   chevronButtonClass,
                   mobileTapClass,
-                  !hasChildren && 'invisible pointer-events-none',
+                  // No children → drop the chevron column on mobile entirely so the title shifts
+                  // left (no reserved space); md+ keeps an invisible spacer so titles stay
+                  // aligned across rows.
+                  !hasChildren && 'hidden md:inline-flex md:invisible md:pointer-events-none',
                 )}
               >
                 <ChevronRight
@@ -613,7 +623,14 @@ export function TaskRow({
                 ) /* Completion checkbox — or, while a task is dropped onto this row, a "+" that
                 signals it will become a child here (replaces the checkbox; no animation). */
               ) : (
-                <div className={cn(checkboxSizeClass, 'shrink-0')} aria-hidden="true" />
+                // Unclassified/code rows have no checkbox: drop the alignment spacer on mobile so
+                // the title reclaims the column; md+ keeps it so titles stay aligned with
+                // checkboxed task rows.
+                <div
+                  className={cn(checkboxSizeClass, 'shrink-0', 'hidden md:block')}
+                  aria-hidden="true"
+                  data-testid="checkbox-spacer"
+                />
               )}
 
               {/* Title */}
@@ -684,7 +701,11 @@ export function TaskRow({
                 wrapper and the badges sit inline to the title's right, exactly as today. Only
                 rendered when there's metadata to show, so a bare row has no empty footer line. */}
               {hasMeta && (
-                <div className={metaFooterClass}>
+                <div
+                  className={metaFooterClass}
+                  style={{ paddingLeft: mobileMetaLeft }}
+                  data-testid="task-meta-footer"
+                >
                   {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed
                     in ALF-67 / ALF-65); an unclassified row shows none. */}
                   {showTypeBadge && <TypeBadge itemType={node.item_type} />}

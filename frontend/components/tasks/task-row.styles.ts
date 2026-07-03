@@ -48,19 +48,21 @@ export const rowBaseClass = cn(
  * fall back into the shared `divide-y` list (see `taskListContainerClass`).
  */
 export const cardChromeClass = cn(
-  'rounded-2xl border border-border bg-surface p-2',
+  'rounded-2xl border border-border bg-surface p-1',
   'md:rounded-none md:border-0 md:bg-transparent md:p-0',
 );
 
 /**
  * The mobile metadata footer wrapper: the due / priority / count / type badges wrap to a
- * full-width line *below* the title (indented to sit under the title column), so a long title
- * takes the row's full width instead of colliding with the badges. At `md`+ `display: contents`
- * dissolves the wrapper, so the badges are direct row children again — today's inline right
- * cluster, in the same DOM (and tab) order.
+ * full-width line *below* the title, so a long title takes the row's full width instead of
+ * colliding with the badges. Its left indent — which keeps the footer under the title — is set
+ * inline per row (it tracks the chevron/checkbox columns the row actually shows on mobile; both
+ * are dropped when absent). At `md`+ `display: contents` dissolves the wrapper, so the badges are
+ * direct row children again — today's inline right cluster, in the same DOM (and tab) order, and
+ * the inline indent is ignored.
  */
 export const metaFooterClass = cn(
-  'flex basis-full flex-wrap items-center gap-2 order-last pl-[3.75rem]',
+  'flex basis-full flex-wrap items-center gap-2 order-last',
   'md:contents',
 );
 
