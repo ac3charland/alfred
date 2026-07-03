@@ -2,6 +2,7 @@ import {
   MONTHS,
   formatDueDate,
   isDueDateOverdue,
+  isDueToday,
   isDueTodayOrOverdue,
   monthGridDays,
   toISODate,
@@ -192,6 +193,33 @@ describe('isDueTodayOrOverdue', () => {
     // be false. This test kills the EqualityOperator mutant on the boundary.
     const todayMidnightLocal = new Date(new Date().toDateString());
     expect(isDueTodayOrOverdue(todayMidnightLocal.toISOString())).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isDueToday
+// ---------------------------------------------------------------------------
+
+describe('isDueToday', () => {
+  it("returns true for today's local date as a YYYY-MM-DD string", () => {
+    expect(isDueToday(todayLocalYMD())).toBe(true);
+  });
+
+  it('returns false for a past (overdue) date', () => {
+    expect(isDueToday(dueForDayOffset(-1))).toBe(false);
+    expect(isDueToday(dueForDayOffset(-10))).toBe(false);
+  });
+
+  it('returns false for tomorrow and the future', () => {
+    expect(isDueToday(dueForDayOffset(1))).toBe(false);
+    expect(isDueToday(dueForDayOffset(10))).toBe(false);
+  });
+
+  it('is exactly the band between overdue and upcoming (today midnight local)', () => {
+    // today midnight local fed back in is EXACTLY the baseline: not overdue, but
+    // due-today-or-overdue — so it lands in the due-today band and nowhere else.
+    const todayMidnightLocal = new Date(new Date().toDateString());
+    expect(isDueToday(todayMidnightLocal.toISOString())).toBe(true);
   });
 });
 
