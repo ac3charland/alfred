@@ -163,6 +163,16 @@ Use this when:
   the input's `onKeyDown` with `aria-activedescendant` pointing at the active `role="option"` — DOM
   focus stays on the field throughout.
 
+- **A hand-rolled outside-press / Escape dismiss for an inline surface must skip Radix portals.**
+  Radix renders Popover / Dropdown / Dialog content into a portal on `document.body` — **outside**
+  your surface's DOM subtree — so a naive `ref.contains(target)` treats a click on a chip picker or
+  menu item as "outside" and closes the surface mid-edit. Exclude the portaled layers: ignore a
+  `pointerdown` whose target `.closest('[data-radix-popper-content-wrapper],[role="dialog"]')`
+  matches, and defer Escape while `document.querySelector(...)` finds one open (the first Escape
+  closes the innermost popover, not your surface). Reuse `lib/hooks/use-dismiss.ts`, which encodes
+  this; scope its ref to the whole owning element (e.g. the task row) so the row's own ⋯ trigger
+  isn't counted as outside.
+
 - **Never** use `space-x-*` or `space-y-*` Tailwind utilities. Use `flex gap-*` instead. The
   `space-*` utilities use a lobotomized-owl selector (`* + *`) that breaks with conditional rendering
   and React fragment children.
