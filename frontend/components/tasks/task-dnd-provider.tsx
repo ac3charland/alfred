@@ -14,7 +14,7 @@ import * as React from 'react';
 
 import { INBOX_DROP_ID, resolveFolderDrop } from '@/lib/dnd/drag-to-folder';
 import { RowKeyboardSensor } from '@/lib/dnd/keyboard-sensor';
-import { RowPointerSensor } from '@/lib/dnd/pointer-sensor';
+import { RowMouseSensor, RowTouchSensor } from '@/lib/dnd/pointer-sensor';
 import { isPromoteZone, resolvePromoteToRoot } from '@/lib/dnd/promote-to-root';
 import { resolveReparent } from '@/lib/dnd/reparent';
 import { useFolders } from '@/lib/stores/folders-store';
@@ -94,10 +94,15 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
   const [activeId, setActiveId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
-    // Drag from anywhere on a row except its buttons/inputs; the 8px threshold keeps a
-    // plain click on a control from being read as the start of a drag (see RowPointerSensor).
-    useSensor(RowPointerSensor, { activationConstraint: { distance: 8 } }),
-    // RowKeyboardSensor, like RowPointerSensor, refuses to lift from the row's buttons or
+    // Mouse: drag from anywhere on a row except its buttons/inputs; the 8px threshold keeps a
+    // plain click on a control from being read as the start of a drag (see RowMouseSensor).
+    useSensor(RowMouseSensor, { activationConstraint: { distance: 8 } }),
+    // Touch: hold the row still for ~250ms to lift it. A plain swipe moves the finger past the
+    // 5px tolerance within that window, so no drag starts and the browser scrolls the list —
+    // without the split, touch inherited the mouse's distance threshold and every scroll swipe
+    // was mis-read as a drag (see RowTouchSensor).
+    useSensor(RowTouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    // RowKeyboardSensor, like the pointer sensors, refuses to lift from the row's buttons or
     // inline edit input — so pressing Space while editing a title types a space instead of
     // starting a phantom keyboard drag that collapses the editor (see the dnd-kit skill).
     useSensor(RowKeyboardSensor),
