@@ -62,10 +62,13 @@ describe('task-row styles', () => {
     expect(rowBaseClass).toContain('md:flex-nowrap');
   });
 
-  it('depth-0 card chrome is a mobile-only rounded surface panel', () => {
+  it('depth-0 card chrome is a mobile-only rounded surface panel with halved padding', () => {
     expect(cardChromeClass).toContain('rounded-2xl');
     expect(cardChromeClass).toContain('border');
     expect(cardChromeClass).toContain('bg-surface');
+    // Padding is the compact p-1 (half of the former p-2) so the mobile card hugs its rows.
+    expect(cardChromeClass).toContain('p-1');
+    expect(cardChromeClass).not.toContain('p-2');
     // md+ dissolves the card so the rows fall back into the shared divide-y list.
     expect(cardChromeClass).toContain('md:rounded-none');
     expect(cardChromeClass).toContain('md:border-0');
@@ -73,11 +76,12 @@ describe('task-row styles', () => {
   });
 
   it('meta footer wraps the badges below the title on mobile, contents at md+', () => {
-    // basis-full + order-last pushes the badge cluster onto its own full-width line, indented
-    // under the title column.
+    // basis-full + order-last pushes the badge cluster onto its own full-width line. The indent
+    // that keeps it under the title is applied inline (it tracks the dropped chevron/checkbox
+    // columns per row — see task-row.test), not baked into this class.
     expect(metaFooterClass).toContain('basis-full');
     expect(metaFooterClass).toContain('order-last');
-    expect(metaFooterClass).toContain('pl-[3.75rem]');
+    expect(metaFooterClass).not.toContain('pl-[3.75rem]');
     // display:contents dissolves the wrapper at md+, so the badges are inline row children again.
     expect(metaFooterClass).toContain('md:contents');
   });

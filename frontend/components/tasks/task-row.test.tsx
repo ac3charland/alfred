@@ -243,14 +243,20 @@ describe('TaskRow', () => {
     );
   });
 
-  it('expand/collapse toggle is invisible when there are no children', () => {
+  it('expand/collapse toggle reserves no space on mobile when there are no children', () => {
     renderTasks([BASE_ITEM]);
-    expect(screen.getByRole('button', { name: /expand subtasks/i })).toHaveClass('invisible');
+    const toggle = screen.getByRole('button', { name: /expand subtasks/i });
+    // Mobile: removed from layout entirely (not just invisible), so the title shifts left.
+    expect(toggle).toHaveClass('hidden');
+    // md+: still an invisible spacer, keeping titles aligned across rows (desktop unchanged).
+    expect(toggle).toHaveClass('md:invisible');
   });
 
-  it('expand toggle is visible when node has children', () => {
+  it('expand toggle is visible and reserves its column when node has children', () => {
     renderTasks([BASE_ITEM, CHILD_ITEM]);
-    expect(screen.getByRole('button', { name: /expand subtasks/i })).not.toHaveClass('invisible');
+    const toggle = screen.getByRole('button', { name: /expand subtasks/i });
+    expect(toggle).not.toHaveClass('hidden');
+    expect(toggle).not.toHaveClass('invisible');
   });
 
   it('shows child tasks when the expand toggle is clicked', async () => {
@@ -2204,6 +2210,22 @@ describe('TaskRow — classification & type-gating', () => {
       ).toBeInTheDocument();
     });
 
+    it('an unclassified row reserves no checkbox space on mobile (spacer only at md+)', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      const spacer = rowFor('Write tests').querySelector('[data-testid="checkbox-spacer"]');
+      // Mobile: the alignment spacer is dropped so the title shifts into the checkbox column.
+      // md+: it reappears as a spacer, keeping titles aligned with checkboxed task rows.
+      expect(spacer).toHaveClass('hidden', 'md:block');
+    });
+
+    it('a code row reserves no checkbox space on mobile (spacer only at md+)', () => {
+      renderTasks([CODE_ITEM]);
+
+      const spacer = rowFor('Write tests').querySelector('[data-testid="checkbox-spacer"]');
+      expect(spacer).toHaveClass('hidden', 'md:block');
+    });
+
     it('an unclassified row exposes no add-subtask affordance', () => {
       renderTasks([UNCLASSIFIED_ITEM]);
 
@@ -2220,6 +2242,25 @@ describe('TaskRow — classification & type-gating', () => {
       renderTasks([BASE_ITEM]);
 
       expect(screen.getByRole('button', { name: 'Add subtask' })).toBeInTheDocument();
+    });
+  });
+
+  describe('mobile meta footer alignment', () => {
+    it('indents the footer past the checkbox column when a childless task has metadata', () => {
+      // No chevron column (childless), checkbox column present → 2rem so the badges line up
+      // under the title.
+      renderTasks([{ ...BASE_ITEM, due_date: '2025-07-10' }]);
+
+      const footer = rowFor('Write tests').querySelector('[data-testid="task-meta-footer"]');
+      expect(footer).toHaveStyle({ paddingLeft: '2rem' });
+    });
+
+    it('indents the footer past both columns when the row has a chevron and a checkbox', () => {
+      // Parent task with a due date: chevron column (has children) + checkbox column → 3.75rem.
+      renderTasks([{ ...BASE_ITEM, due_date: '2025-07-10' }, CHILD_ITEM]);
+
+      const footer = rowFor('Write tests').querySelector('[data-testid="task-meta-footer"]');
+      expect(footer).toHaveStyle({ paddingLeft: '3.75rem' });
     });
   });
 

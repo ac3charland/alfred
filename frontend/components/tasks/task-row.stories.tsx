@@ -372,6 +372,48 @@ export const MobileCards: Story = {
   },
 };
 
+// On mobile a row only reserves a leading column when it actually has that control, so titles
+// shift left as the chevron and checkbox drop away — a staircase down these three cards:
+//   1. a parent (has children + is a task) keeps BOTH the chevron and checkbox columns;
+//   2. a childless task drops the chevron column but keeps the checkbox;
+//   3. an unclassified inbox item has neither, so its title sits flush against the card edge.
+// At md+ each dropped column becomes an invisible spacer again, so titles re-align (unchanged).
+export const MobileColumnCollapse: Story = {
+  // `render` composes its own nodes below; this arg only satisfies the required `node` prop.
+  args: { node: BASE_NODE },
+  render: () => (
+    <ul aria-label="Tasks" data-testid="tasks-mobile-frame" className={taskListContainerClass}>
+      <TaskRow
+        node={{
+          ...BASE_NODE,
+          id: 'mcc-parent',
+          title: 'Plan the team offsite',
+          children: [
+            { ...CHILD_NODE, id: 'mcc-child', parent_id: 'mcc-parent', title: 'Book the venue' },
+          ],
+        }}
+      />
+      <TaskRow
+        node={{ ...BASE_NODE, id: 'mcc-leaf', title: 'Book the dentist', due_date: '2099-07-12' }}
+      />
+      <TaskRow
+        node={{
+          ...BASE_NODE,
+          id: 'mcc-unclassified',
+          item_type: 'unclassified',
+          title: 'Look into weekend hiking trails',
+        }}
+      />
+    </ul>
+  ),
+  parameters: {
+    visualTest: {
+      target: '[data-testid="tasks-mobile-frame"]',
+      viewport: { width: 390, height: 844 },
+    },
+  },
+};
+
 // A deeply nested completed item shows every ancestor, oldest → youngest, joined by " > ".
 export const CompletedNested: Story = {
   args: {
