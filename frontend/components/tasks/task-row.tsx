@@ -62,6 +62,7 @@ import {
   mobileTapClass,
   rowActionsClass,
   rowBaseClass,
+  rowContentColClass,
   rowDropTargetClass,
   rowHoverClass,
   subtaskCountBadgeClass,
@@ -304,13 +305,6 @@ export function TaskRow({
     (isTopLevelTask && recurrenceRule !== null) ||
     (isTask && isPriorityLevel(node.priority)) ||
     totalSubtasks > 0;
-
-  // The mobile metadata footer wraps under the title, so its left indent must track the title's
-  // left edge — which shifts as the chevron (childless rows) and checkbox (unclassified/code
-  // rows) columns are dropped on mobile. Chevron column = 1.25rem (IconButton sm) + 0.5rem gap;
-  // checkbox column = 1.5rem box + 0.5rem gap. At md+ the footer is display:contents, so this
-  // inline padding is ignored (the badges sit inline again).
-  const mobileMetaLeft = `${String((hasChildren ? 1.75 : 0) + (isTask ? 2 : 0))}rem`;
 
   // The card boundary is drawn exactly once, at a top-level (depth-0) node, enclosing the row
   // body AND its subtree — so subtasks sit inside the parent's card, never as cards of their own.
@@ -633,110 +627,112 @@ export function TaskRow({
                 />
               )}
 
-              {/* Title */}
-              {isEditingTitle ? (
-                <InlineEditField
-                  value={draftTitle}
-                  onChange={setDraftTitle}
-                  onSubmit={() => {
-                    void handleSaveTitle();
-                  }}
-                  onCancel={() => {
-                    setDraftTitle(node.title);
-                    closeEditor({ itemId: node.id, kind: 'title' });
-                  }}
-                  confirmLabel="Confirm title"
-                  inputLabel="Edit title"
-                  requireValue={false}
-                  dissolveIntoGrid
-                  inputClassName={titleInputClass}
-                  confirmClassName={confirmTitleClass}
-                />
-              ) : (
-                <div
-                  // select-none: the whole row is a drag surface, so the title text is no
-                  // longer highlightable. Double-click still opens the inline title editor.
-                  className="flex-1 flex flex-col min-w-0 select-none"
-                  onDoubleClick={() => {
-                    // Reset the draft so a previously-abandoned edit doesn't resurface.
-                    setDraftTitle(node.title);
-                    openEditor({ itemId: node.id, kind: 'title' });
-                  }}
-                >
-                  <span
-                    className={cn(
-                      // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
-                      titleTextClass,
-                      // Fade to low-contrast as the row completes; a completed row reads
-                      // low-contrast; an active row full-contrast.
-                      isCompleting
-                        ? 'text-muted-foreground/50'
-                        : isCompleted
-                          ? 'text-muted-foreground'
-                          : 'text-foreground',
-                    )}
+              {/* Title + metadata share one column on mobile so the leading controls
+                (chevron / checkbox) and the trailing actions centre against the WHOLE card
+                height, not the title's first line. `display:contents` at md+ dissolves the
+                column back into today's single inline line. */}
+              <div className={rowContentColClass}>
+                {/* Title */}
+                {isEditingTitle ? (
+                  <InlineEditField
+                    value={draftTitle}
+                    onChange={setDraftTitle}
+                    onSubmit={() => {
+                      void handleSaveTitle();
+                    }}
+                    onCancel={() => {
+                      setDraftTitle(node.title);
+                      closeEditor({ itemId: node.id, kind: 'title' });
+                    }}
+                    confirmLabel="Confirm title"
+                    inputLabel="Edit title"
+                    requireValue={false}
+                    dissolveIntoGrid
+                    inputClassName={titleInputClass}
+                    confirmClassName={confirmTitleClass}
+                  />
+                ) : (
+                  <div
+                    // select-none: the whole row is a drag surface, so the title text is no
+                    // longer highlightable. Double-click still opens the inline title editor.
+                    className="flex-1 flex flex-col min-w-0 select-none"
+                    onDoubleClick={() => {
+                      // Reset the draft so a previously-abandoned edit doesn't resurface.
+                      setDraftTitle(node.title);
+                      openEditor({ itemId: node.id, kind: 'title' });
+                    }}
                   >
-                    {node.title}
-                  </span>
-                  {/* Notes preview — a single muted line beneath the title when notes exist,
+                    <span
+                      className={cn(
+                        // delay-200 keeps the dismissal (fade + collapse) one beat behind the pop.
+                        titleTextClass,
+                        // Fade to low-contrast as the row completes; a completed row reads
+                        // low-contrast; an active row full-contrast.
+                        isCompleting
+                          ? 'text-muted-foreground/50'
+                          : isCompleted
+                            ? 'text-muted-foreground'
+                            : 'text-foreground',
+                      )}
+                    >
+                      {node.title}
+                    </span>
+                    {/* Notes preview — a single muted line beneath the title when notes exist,
                     so the row stays scannable without opening the detail (ALF-67 §2). */}
-                  {node.notes !== null && node.notes !== '' && (
-                    <span className="truncate text-[12.5px] leading-snug text-[#6b7689]">
-                      {node.notes}
-                    </span>
-                  )}
-                  {contextLabel !== null && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
-                      <ListCheck size={10} className="shrink-0" />
-                      <span className="truncate">{contextLabel}</span>
-                    </span>
-                  )}
-                </div>
-              )}
+                    {node.notes !== null && node.notes !== '' && (
+                      <span className="truncate text-[12.5px] leading-snug text-[#6b7689]">
+                        {node.notes}
+                      </span>
+                    )}
+                    {contextLabel !== null && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
+                        <ListCheck size={10} className="shrink-0" />
+                        <span className="truncate">{contextLabel}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
 
-              {/* Metadata cluster (Type → Due → Repeat → Priority → Subtask count):
-                display-only here — editing happens on the detail panel's chips. On mobile the
-                wrapper wraps this cluster onto a full-width footer line *below* the title (so a
-                long title isn't squeezed by the badges); at md+ `display:contents` dissolves the
+                {/* Metadata cluster (Type → Due → Repeat → Priority → Subtask count):
+                display-only here — editing happens on the detail panel's chips. On mobile this
+                sits on its own line *below* the title inside the shared content column (so a long
+                title isn't squeezed by the badges); at md+ `display:contents` dissolves the
                 wrapper and the badges sit inline to the title's right, exactly as today. Only
                 rendered when there's metadata to show, so a bare row has no empty footer line. */}
-              {hasMeta && (
-                <div
-                  className={metaFooterClass}
-                  style={{ paddingLeft: mobileMetaLeft }}
-                  data-testid="task-meta-footer"
-                >
-                  {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed
+                {hasMeta && (
+                  <div className={metaFooterClass}>
+                    {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed
                     in ALF-67 / ALF-65); an unclassified row shows none. */}
-                  {showTypeBadge && <TypeBadge itemType={node.item_type} />}
+                    {showTypeBadge && <TypeBadge itemType={node.item_type} />}
 
-                  {/* Due date — `task`-only. */}
-                  {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
+                    {/* Due date — `task`-only. */}
+                    {isTask && node.due_date && <DueDateChip dueDate={node.due_date} />}
 
-                  {/* Repeat — top-level recurring tasks only. */}
-                  {isTopLevelTask && recurrenceRule !== null && (
-                    <RecurrenceChip rule={recurrenceRule} />
-                  )}
+                    {/* Repeat — top-level recurring tasks only. */}
+                    {isTopLevelTask && recurrenceRule !== null && (
+                      <RecurrenceChip rule={recurrenceRule} />
+                    )}
 
-                  {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
+                    {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
                     the row. Subtasks carry their own priority (set on the detail panel, ranked in
                     the Folder view), so their level must show on the row too (ALF-63). */}
-                  {isTask && isPriorityLevel(node.priority) && (
-                    <PriorityChip priority={node.priority} symbolOnly />
-                  )}
+                    {isTask && isPriorityLevel(node.priority) && (
+                      <PriorityChip priority={node.priority} symbolOnly />
+                    )}
 
-                  {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
-                  {totalSubtasks > 0 && (
-                    <Badge
-                      variant="plain"
-                      aria-label={`${String(completedSubtasks)} of ${String(totalSubtasks)} subtasks complete`}
-                      className={subtaskCountBadgeClass}
-                    >
-                      {completedSubtasks}/{totalSubtasks}
-                    </Badge>
-                  )}
-                </div>
-              )}
+                    {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
+                    {totalSubtasks > 0 && (
+                      <Badge
+                        variant="plain"
+                        aria-label={`${String(completedSubtasks)} of ${String(totalSubtasks)} subtasks complete`}
+                        className={subtaskCountBadgeClass}
+                      >
+                        {completedSubtasks}/{totalSubtasks}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Row actions — always visible on mobile, hover-revealed on md+ (ALF-88). */}
               <div className={rowActionsClass}>

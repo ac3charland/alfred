@@ -2245,24 +2245,11 @@ describe('TaskRow — classification & type-gating', () => {
     });
   });
 
-  describe('mobile meta footer alignment', () => {
-    it('indents the footer past the checkbox column when a childless task has metadata', () => {
-      // No chevron column (childless), checkbox column present → 2rem so the badges line up
-      // under the title.
-      renderTasks([{ ...BASE_ITEM, due_date: '2025-07-10' }]);
-
-      const footer = rowFor('Write tests').querySelector('[data-testid="task-meta-footer"]');
-      expect(footer).toHaveStyle({ paddingLeft: '2rem' });
-    });
-
-    it('indents the footer past both columns when the row has a chevron and a checkbox', () => {
-      // Parent task with a due date: chevron column (has children) + checkbox column → 3.75rem.
-      renderTasks([{ ...BASE_ITEM, due_date: '2025-07-10' }, CHILD_ITEM]);
-
-      const footer = rowFor('Write tests').querySelector('[data-testid="task-meta-footer"]');
-      expect(footer).toHaveStyle({ paddingLeft: '3.75rem' });
-    });
-  });
+  // The mobile meta footer now stacks under the title inside the shared content column
+  // (rowContentColClass) rather than via a per-row inline paddingLeft, so the badges align
+  // under the title structurally. That layout is locked by the task-row.styles unit test
+  // (the content column + footer classes) and the mobile-cards Storybook snapshot; there's no
+  // computed indent left to assert here.
 
   // ---------------------------------------------------------------------------
   // The gate: Send to Code module / Convert to Code Story menu entries
