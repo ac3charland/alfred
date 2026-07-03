@@ -397,6 +397,33 @@ describe('code-store', () => {
       expect(board?.escapeStories.map((s) => s.item_id)).toEqual(['i5', 'i4']);
     });
 
+    it('sorts the Done lane by most-recently-updated (latest completion first), not priority', () => {
+      // Priority order would be i1, i2, i3; recency order (code_updated_at desc) is i2, i3, i1.
+      const stories = [
+        makeStory('i1', 'e1', 'p1', {
+          factory_state: 'done',
+          priority: 1,
+          code_updated_at: '2025-03-01T00:00:00Z',
+        }),
+        makeStory('i2', 'e1', 'p1', {
+          factory_state: 'done',
+          priority: 2,
+          code_updated_at: '2025-05-01T00:00:00Z',
+        }),
+        makeStory('i3', 'e1', 'p1', {
+          factory_state: 'done',
+          priority: 3,
+          code_updated_at: '2025-04-01T00:00:00Z',
+        }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')], stories }),
+      });
+      const [board] = result.current.activeEpics;
+      const lane = board?.lanes.find((l) => l.state === 'done');
+      expect(lane?.stories.map((s) => s.item_id)).toEqual(['i2', 'i3', 'i1']);
+    });
+
     it('orders epics by their best (lowest-priority) story, no-story epics last', () => {
       const epics = [
         makeEpic('e1', 'p1', { created_at: '2025-01-01T00:00:00Z' }),
