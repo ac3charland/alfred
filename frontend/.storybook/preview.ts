@@ -3,6 +3,7 @@ import React from 'react';
 
 import '../app/globals.css';
 import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
+import { CodeFilterProvider } from '../lib/stores/code-filter-store';
 import { ExpansionProvider } from '../lib/stores/expansion-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
 import { InboxSelectionProvider } from '../lib/stores/inbox-selection-store';
@@ -41,10 +42,16 @@ const preview: Preview = {
                 React.createElement(
                   InboxSelectionProvider,
                   null,
+                  // CodeFilterProvider mirrors the shell layout: a server-data-free coordination
+                  // store the Backlog/board views read for their persisted status filter.
                   React.createElement(
-                    'div',
-                    { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                    React.createElement(Story),
+                    CodeFilterProvider,
+                    null,
+                    React.createElement(
+                      'div',
+                      { className: 'dark min-h-screen bg-background text-foreground p-8' },
+                      React.createElement(Story),
+                    ),
                   ),
                 ),
               ),

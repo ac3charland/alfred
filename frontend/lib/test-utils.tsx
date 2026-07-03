@@ -3,6 +3,7 @@ import * as React from 'react';
 
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
+import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
@@ -52,7 +53,7 @@ export function renderWithProviders(
                     initialEpics={epics}
                     initialStories={stories}
                   >
-                    {children}
+                    <CodeFilterProvider>{children}</CodeFilterProvider>
                   </CodeProvider>
                 </InboxSelectionProvider>
               </ExpansionProvider>
