@@ -35,10 +35,26 @@ function setReducedMotion(matches: boolean) {
     }) as unknown as MediaQueryList;
 }
 
+/**
+ * Simulate the tab backgrounding / foregrounding: `document.hidden` is a read-only getter in
+ * jsdom, so shadow it, then fire the event the store listens to (`visibilitychange`, or
+ * `focus` on the window when the tab regains focus).
+ */
+function setTabHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  document.dispatchEvent(new Event('visibilitychange'));
+  if (!hidden) globalThis.dispatchEvent(new Event('focus'));
+}
+
 describe('ToastProvider', () => {
   beforeEach(() => {
     mockPlayToastSound.mockClear();
     setReducedMotion(false);
+  });
+
+  afterEach(() => {
+    // Reset the tab to visible so a hidden-tab test can't leak into the next one.
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   });
 
   describe('variant', () => {
@@ -193,6 +209,85 @@ describe('ToastProvider', () => {
 
       act(() => {
         jest.advanceTimersByTime(EXIT_MS);
+      });
+      expect(result.current.toasts).toHaveLength(0);
+    });
+  });
+
+  describe('visibility-gated auto-dismiss', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+    afterEach(() => {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    });
+
+    it('does not start the countdown while the tab is hidden — the toast stays', () => {
+      setTabHidden(true);
+      const { result } = renderHook(useToastTest, { wrapper: Wrapper });
+
+      act(() => {
+        result.current.actions.showToast('Created ALF-42');
+      });
+
+      // Well past the auto-dismiss window, but the timer never started: the toast is untouched.
+      act(() => {
+        jest.advanceTimersByTime(DISMISS_MS + EXIT_MS);
+      });
+      expect(result.current.toasts).toHaveLength(1);
+      expect(result.current.toasts[0]?.leaving).toBe(false);
+    });
+
+    it('starts the countdown when the tab regains focus, then dismisses', () => {
+      setTabHidden(true);
+      const { result } = renderHook(useToastTest, { wrapper: Wrapper });
+
+      act(() => {
+        result.current.actions.showToast('Created ALF-42');
+        jest.advanceTimersByTime(DISMISS_MS + EXIT_MS);
+      });
+      expect(result.current.toasts).toHaveLength(1);
+
+      // Tab comes back: the fresh countdown starts now.
+      act(() => {
+        setTabHidden(false);
+      });
+      act(() => {
+        jest.advanceTimersByTime(DISMISS_MS);
+      });
+      expect(result.current.toasts[0]?.leaving).toBe(true);
+
+      act(() => {
+        jest.advanceTimersByTime(EXIT_MS);
+      });
+      expect(result.current.toasts).toHaveLength(0);
+    });
+
+    it('cancels a running countdown when the tab goes hidden, so nothing clears while away', () => {
+      // Tab starts visible (jsdom default), so showToast begins the countdown immediately.
+      const { result } = renderHook(useToastTest, { wrapper: Wrapper });
+
+      act(() => {
+        result.current.actions.showToast('Created ALF-42');
+        jest.advanceTimersByTime(DISMISS_MS - 1000);
+      });
+      expect(result.current.toasts[0]?.leaving).toBe(false);
+
+      // Tab hides part-way through: the countdown is cancelled and the toast is parked.
+      act(() => {
+        setTabHidden(true);
+        jest.advanceTimersByTime(DISMISS_MS + EXIT_MS);
+      });
+      expect(result.current.toasts).toHaveLength(1);
+      expect(result.current.toasts[0]?.leaving).toBe(false);
+
+      // Refocusing restarts a full countdown from scratch.
+      act(() => {
+        setTabHidden(false);
+      });
+      act(() => {
+        jest.advanceTimersByTime(DISMISS_MS + EXIT_MS);
       });
       expect(result.current.toasts).toHaveLength(0);
     });
