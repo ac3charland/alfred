@@ -3,31 +3,9 @@ import userEvent from '@testing-library/user-event';
 
 import type { RecurrenceRule } from '@/lib/recurrence';
 
-import { DueChip, PriorityChip, RepeatChip } from './detail-chips';
+import { PriorityChip, RepeatChip } from './detail-chips';
 
 describe('detail chips (ALF-67)', () => {
-  describe('DueChip', () => {
-    it('shows the prompt when no date is set and the formatted date when set', () => {
-      const { rerender } = render(
-        <DueChip dueDate={null} onSelect={jest.fn()} onClear={jest.fn()} />,
-      );
-      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent(/set a due date/i);
-      rerender(<DueChip dueDate="2099-12-31" onSelect={jest.fn()} onClear={jest.fn()} />);
-      expect(screen.getByRole('button', { name: 'Due date' })).toHaveTextContent('Dec 31');
-    });
-
-    it('opens the calendar and applies a picked day', async () => {
-      const onSelect = jest.fn();
-      const user = userEvent.setup();
-      render(<DueChip dueDate="2025-07-02" onSelect={onSelect} onClear={jest.fn()} />);
-
-      await user.click(screen.getByRole('button', { name: 'Due date' }));
-      await user.click(await screen.findByRole('button', { name: 'July 10, 2025' }));
-
-      expect(onSelect).toHaveBeenCalledWith('2025-07-10');
-    });
-  });
-
   describe('PriorityChip', () => {
     it('labels the chip and check-marks the active level in the list', async () => {
       const onChange = jest.fn();

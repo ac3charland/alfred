@@ -10,61 +10,157 @@ function todayLocalYMD(): string {
 }
 
 describe('DueDateChip', () => {
-  it('renders the formatted due date as a button', () => {
-    render(<DueDateChip dueDate="2999-12-31" />);
+  // ---------------------------------------------------------------------------
+  // Compact (task-row badge)
+  // ---------------------------------------------------------------------------
 
-    // Default accessible name is "Due date: <iso>".
-    expect(screen.getByRole('button', { name: 'Due date: 2999-12-31' })).toBeInTheDocument();
+  describe('compact (row badge)', () => {
+    it('renders the formatted due date as a button, aria-label carrying the value', () => {
+      render(<DueDateChip dueDate="2999-12-31" />);
+
+      const chip = screen.getByRole('button', { name: 'Due date: 2999-12-31' });
+      expect(chip).toHaveAttribute('type', 'button');
+      expect(chip).toHaveTextContent('Dec 31');
+    });
+
+    it('uses the blue treatment for a future date', () => {
+      render(<DueDateChip dueDate="2999-12-31" />);
+
+      const chip = screen.getByRole('button', { name: 'Due date: 2999-12-31' });
+      expect(chip).toHaveClass('rounded-full', 'border', 'text-accent-blue');
+      expect(chip).not.toHaveClass('text-accent-amber', 'text-accent-red');
+    });
+
+    it('uses the amber (yellow) treatment for a date due today', () => {
+      const today = todayLocalYMD();
+      render(<DueDateChip dueDate={today} />);
+
+      const chip = screen.getByRole('button', { name: `Due date: ${today}` });
+      expect(chip).toHaveClass('text-accent-amber', 'border-accent-amber/50');
+      expect(chip).not.toHaveClass('text-accent-blue', 'text-accent-red');
+    });
+
+    it('uses the red treatment for an overdue date', () => {
+      render(<DueDateChip dueDate="2000-01-01" />);
+
+      const chip = screen.getByRole('button', { name: 'Due date: 2000-01-01' });
+      expect(chip).toHaveClass('text-accent-red', 'border-accent-red/50');
+      expect(chip).not.toHaveClass('text-accent-blue', 'text-accent-amber');
+    });
+
+    it('allows overriding the aria-label', () => {
+      render(<DueDateChip dueDate="2999-12-31" aria-label="Change due date" />);
+
+      expect(screen.getByRole('button', { name: 'Change due date' })).toBeInTheDocument();
+    });
   });
 
-  it('defaults to type="button"', () => {
-    render(<DueDateChip dueDate="2999-12-31" />);
+  // ---------------------------------------------------------------------------
+  // Comfortable (detail-panel chip) — same urgency bands, larger geometry
+  // ---------------------------------------------------------------------------
 
-    expect(screen.getByRole('button', { name: 'Due date: 2999-12-31' })).toHaveAttribute(
-      'type',
-      'button',
-    );
+  describe('comfortable (detail chip)', () => {
+    it('prompts to set a date when unset, with a neutral tone', () => {
+      render(
+        <DueDateChip dueDate={null} size="comfortable" onSelect={jest.fn()} onClear={jest.fn()} />,
+      );
+
+      const chip = screen.getByRole('button', { name: 'Due date' });
+      expect(chip).toHaveTextContent(/set a due date/i);
+      expect(chip).toHaveClass('rounded-[9px]', 'text-[#8A96A8]');
+    });
+
+    it('colours by urgency band, not a fixed blue', () => {
+      const { rerender } = render(
+        <DueDateChip
+          dueDate="2999-12-31"
+          size="comfortable"
+          onSelect={jest.fn()}
+          onClear={jest.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveClass('text-accent-blue');
+
+      rerender(
+        <DueDateChip
+          dueDate={todayLocalYMD()}
+          size="comfortable"
+          onSelect={jest.fn()}
+          onClear={jest.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveClass('text-accent-amber');
+
+      rerender(
+        <DueDateChip
+          dueDate="2000-01-01"
+          size="comfortable"
+          onSelect={jest.fn()}
+          onClear={jest.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Due date' })).toHaveClass('text-accent-red');
+    });
   });
 
-  it('uses the blue treatment for a future date', () => {
-    render(<DueDateChip dueDate="2999-12-31" />);
+  // ---------------------------------------------------------------------------
+  // Clickable in both sizes — opens the calendar, auto-saves the pick
+  // ---------------------------------------------------------------------------
 
-    const chip = screen.getByRole('button', { name: 'Due date: 2999-12-31' });
-    expect(chip).toHaveClass('rounded-full', 'border', 'text-accent-blue');
-    expect(chip).not.toHaveClass('text-accent-amber', 'text-accent-red');
+  describe('editing (onSelect / onClear given)', () => {
+    it('opens the calendar and applies a picked day (compact)', async () => {
+      const onSelect = jest.fn();
+      const user = userEvent.setup();
+      render(<DueDateChip dueDate="2025-07-02" onSelect={onSelect} onClear={jest.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'Due date: 2025-07-02' }));
+      await user.click(await screen.findByRole('button', { name: 'July 10, 2025' }));
+
+      expect(onSelect).toHaveBeenCalledWith('2025-07-10');
+    });
+
+    it('opens the calendar and applies a picked day (comfortable)', async () => {
+      const onSelect = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <DueDateChip
+          dueDate="2025-07-02"
+          size="comfortable"
+          onSelect={onSelect}
+          onClear={jest.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Due date' }));
+      await user.click(await screen.findByRole('button', { name: 'July 10, 2025' }));
+
+      expect(onSelect).toHaveBeenCalledWith('2025-07-10');
+    });
+
+    it('clears the date from the calendar footer', async () => {
+      const onClear = jest.fn();
+      const user = userEvent.setup();
+      render(<DueDateChip dueDate="2025-07-02" onSelect={jest.fn()} onClear={onClear} />);
+
+      await user.click(screen.getByRole('button', { name: 'Due date: 2025-07-02' }));
+      await user.click(await screen.findByRole('button', { name: 'Clear' }));
+
+      expect(onClear).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it('uses the amber (yellow) treatment for a date due today', () => {
-    const today = todayLocalYMD();
-    render(<DueDateChip dueDate={today} />);
+  // ---------------------------------------------------------------------------
+  // Display-only — no handlers, no calendar (e.g. the Priority view)
+  // ---------------------------------------------------------------------------
 
-    const chip = screen.getByRole('button', { name: `Due date: ${today}` });
-    expect(chip).toHaveClass('text-accent-amber', 'border-accent-amber/50');
-    expect(chip).not.toHaveClass('text-accent-blue', 'text-accent-red');
-  });
-
-  it('uses the red treatment for an overdue date', () => {
-    render(<DueDateChip dueDate="2000-01-01" />);
-
-    const chip = screen.getByRole('button', { name: 'Due date: 2000-01-01' });
-    expect(chip).toHaveClass('text-accent-red', 'border-accent-red/50');
-    expect(chip).not.toHaveClass('text-accent-blue', 'text-accent-amber');
-  });
-
-  it('allows overriding the aria-label', () => {
-    render(<DueDateChip dueDate="2999-12-31" aria-label="Change due date" />);
-
-    expect(screen.getByRole('button', { name: 'Change due date' })).toBeInTheDocument();
-  });
-
-  it('forwards onClick', async () => {
-    const onClick = jest.fn();
+  it('is display-only (no calendar) when no handlers are given', async () => {
     const user = userEvent.setup();
-    render(<DueDateChip dueDate="2999-12-31" onClick={onClick} />);
+    render(<DueDateChip dueDate="2025-07-02" />);
 
-    await user.click(screen.getByRole('button', { name: 'Due date: 2999-12-31' }));
+    await user.click(screen.getByRole('button', { name: 'Due date: 2025-07-02' }));
 
-    expect(onClick).toHaveBeenCalledTimes(1);
+    // No popover trigger wiring → clicking reveals no calendar day cells.
+    expect(screen.queryByRole('button', { name: 'July 10, 2025' })).not.toBeInTheDocument();
   });
 
   it('exposes a stable component name for devtools', () => {
