@@ -3,12 +3,11 @@
 import { Check, Repeat } from 'lucide-react';
 import * as React from 'react';
 
-import { Calendar } from '@/components/atoms/calendar';
 import { Chip } from '@/components/atoms/chip';
 import { OptionButton } from '@/components/atoms/option-button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/atoms/popover';
 import { RecurrenceEditor } from '@/components/tasks/recurrence/recurrence-editor';
-import { formatDueDate, todayISODate } from '@/lib/date-utils';
+import { todayISODate } from '@/lib/date-utils';
 import {
   PRIORITY_OPTIONS,
   type TaskPriority,
@@ -46,51 +45,6 @@ function PickerListItem({
       <span className="flex items-center gap-2">{children}</span>
       {active && <Check size={14} className="shrink-0 text-accent-teal" />}
     </OptionButton>
-  );
-}
-
-interface DueChipProperties {
-  /** The current due date (`YYYY-MM-DD`), or null. */
-  dueDate: string | null;
-  /** Persist a picked date (auto-save). */
-  onSelect: (iso: string) => void;
-  /** Clear the due date (auto-save). */
-  onClear: () => void;
-}
-
-/**
- * The **Due** detail chip: blue with the formatted date when set, neutral slate "Set a due
- * date…" when not. Opens the month-grid {@link Calendar}; picking a day or Today applies
- * immediately and closes, Clear removes the date.
- */
-export function DueChip({ dueDate, onSelect, onClear }: DueChipProperties) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Chip
-          aria-label="Due date"
-          className={cn(
-            dueDate ? 'border-accent-blue/30 bg-accent-blue/[0.08] text-accent-blue' : chipNeutral,
-          )}
-        >
-          {dueDate ? formatDueDate(dueDate) : 'Set a due date…'}
-        </Chip>
-      </PopoverTrigger>
-      <PopoverContent>
-        <Calendar
-          selected={dueDate}
-          onSelect={(iso) => {
-            onSelect(iso);
-            setOpen(false);
-          }}
-          onClear={() => {
-            onClear();
-            setOpen(false);
-          }}
-        />
-      </PopoverContent>
-    </Popover>
   );
 }
 
