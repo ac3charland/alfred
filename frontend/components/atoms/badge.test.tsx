@@ -22,8 +22,10 @@ describe('Badge', () => {
     expect(badgeVariants({ variant: 'destructive' })).toContain('text-destructive');
     expect(badgeVariants({ variant: 'due' })).toContain('border-accent-blue/50');
     expect(badgeVariants({ variant: 'due' })).toContain('text-accent-blue');
-    expect(badgeVariants({ variant: 'overdue' })).toContain('border-accent-amber/50');
-    expect(badgeVariants({ variant: 'overdue' })).toContain('text-accent-amber');
+    expect(badgeVariants({ variant: 'dueToday' })).toContain('border-accent-amber/50');
+    expect(badgeVariants({ variant: 'dueToday' })).toContain('text-accent-amber');
+    expect(badgeVariants({ variant: 'overdue' })).toContain('border-accent-red/50');
+    expect(badgeVariants({ variant: 'overdue' })).toContain('text-accent-red');
   });
 
   it('gives the plain variant only the pill base, leaving tone to the caller className', () => {
@@ -43,9 +45,12 @@ describe('Badge', () => {
   it('adds the hover/transition treatment only for an interactive bordered chip', () => {
     // Non-interactive (default): no hover darkening, so a static folder/overdue chip
     // doesn't react to the pointer.
-    expect(badgeVariants({ variant: 'overdue' })).not.toContain('hover:border-accent-amber');
+    expect(badgeVariants({ variant: 'overdue' })).not.toContain('hover:border-accent-red');
     expect(badgeVariants({ variant: 'overdue', interactive: true })).toContain('transition-colors');
     expect(badgeVariants({ variant: 'overdue', interactive: true })).toContain(
+      'hover:border-accent-red',
+    );
+    expect(badgeVariants({ variant: 'dueToday', interactive: true })).toContain(
       'hover:border-accent-amber',
     );
     expect(badgeVariants({ variant: 'due', interactive: true })).toContain(

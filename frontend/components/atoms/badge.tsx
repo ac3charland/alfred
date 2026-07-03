@@ -27,7 +27,8 @@ const badgeVariants = cva('shrink-0 rounded-full px-2 py-0.5 text-xs', {
       alert: 'bg-amber-500/15 text-amber-400',
       destructive: 'bg-destructive/15 text-destructive',
       due: 'border border-accent-blue/50 text-accent-blue',
-      overdue: 'border border-accent-amber/50 text-accent-amber',
+      dueToday: 'border border-accent-amber/50 text-accent-amber',
+      overdue: 'border border-accent-red/50 text-accent-red',
     },
     interactive: {
       true: 'transition-colors motion-reduce:transition-none',
@@ -37,7 +38,8 @@ const badgeVariants = cva('shrink-0 rounded-full px-2 py-0.5 text-xs', {
   compoundVariants: [
     // The bordered chips darken their border on hover only when they're clickable.
     { variant: 'due', interactive: true, class: 'hover:border-accent-blue' },
-    { variant: 'overdue', interactive: true, class: 'hover:border-accent-amber' },
+    { variant: 'dueToday', interactive: true, class: 'hover:border-accent-amber' },
+    { variant: 'overdue', interactive: true, class: 'hover:border-accent-red' },
   ],
   defaultVariants: {
     variant: 'muted',
