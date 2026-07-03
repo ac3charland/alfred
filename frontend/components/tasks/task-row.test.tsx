@@ -2667,3 +2667,69 @@ describe('TaskRow — detail panel (ALF-67)', () => {
     expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
   });
 });
+
+describe('TaskRow — dismissing the detail panel (ALF-78)', () => {
+  it('closes the detail panel when Escape is pressed', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('closes the detail panel on a pointer press outside the row', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+    await user.click(document.body);
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('keeps the detail panel open when clicking inside it', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    const panel = await openDetails(user);
+    await user.click(within(panel).getByRole('textbox', { name: 'Notes' }));
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+  });
+
+  it('keeps the detail panel open when clicking elsewhere on the same row', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+    // The title lives in the row body, outside the panel but inside the row — not a dismiss.
+    await user.click(screen.getByText('Write tests'));
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+  });
+
+  it('lets an open picker popover consume Escape without closing the panel', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Priority' }));
+    await screen.findByRole('button', { name: 'High' });
+    // First Escape closes the popover; the panel stays open.
+    await user.keyboard('{Escape}');
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'High' })).not.toBeInTheDocument();
+    });
+    // A second Escape (no popover open) now closes the panel.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('does not close the panel when a picker option is clicked', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, priority: 'high' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Priority' }));
+    await user.click(await screen.findByRole('button', { name: 'High' }));
+
+    // Selecting auto-saves and closes the popover, but the detail panel remains open.
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+  });
+});

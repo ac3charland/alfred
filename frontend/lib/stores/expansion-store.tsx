@@ -41,6 +41,8 @@ interface ExpansionActions {
   toggleCompleted: (id: string) => void;
   /** Flip a row's inline detail panel open/closed ("Open details"). */
   toggleDetails: (id: string) => void;
+  /** Close a row's inline detail panel (idempotent) — the Escape / click-outside dismiss. */
+  closeDetails: (id: string) => void;
   /**
    * Collapse the given ids' subtask trees, completed panels AND detail panels in one move.
    * The collapse button passes the current view's ids, so collapsing in one view leaves
@@ -97,6 +99,16 @@ export function ExpansionProvider({ children }: { children: React.ReactNode }) {
       },
       toggleDetails(id) {
         setDetails((current) => withToggled(current, id));
+      },
+      closeDetails(id) {
+        // Idempotent close: return the same set when already closed so a dismiss gesture that
+        // lands after the panel is gone doesn't churn the store.
+        setDetails((current) => {
+          if (!current.has(id)) return current;
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
       },
       collapseAll(ids) {
         const remove = new Set(ids);
