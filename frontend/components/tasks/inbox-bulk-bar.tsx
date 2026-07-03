@@ -15,7 +15,8 @@ import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
-import { cn } from '@/lib/utils';
+
+import { bulkBarClass, bulkBarWrapperClass } from './inbox-bulk-bar.styles';
 
 const CLASSIFY_DISABLED_HINT = 'Only unclassified items can be classified';
 const MOVE_DISABLED_HINT = 'Only tasks can be filed into a folder';
@@ -124,95 +125,94 @@ export function InboxBulkBar() {
 
   return (
     <>
-      <div
-        role="region"
-        aria-label="Bulk actions"
-        className={cn(
-          'mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-accent-teal px-3 py-2.5',
-          'bg-accent-teal/5',
-        )}
-      >
-        <span className="mr-1 text-sm font-semibold text-accent-teal">{count} selected</span>
+      {/* In-flow spacer: the bar is a fixed floating layer, so reserve room here where it used to
+          sit so it never covers the last inbox rows. */}
+      <div aria-hidden className="h-20" />
 
-        {/* Classify as — only when every selected item is still unclassified. */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!allUnclassified}
-              title={allUnclassified ? undefined : CLASSIFY_DISABLED_HINT}
-            >
-              Classify as
-              <ChevronDown size={14} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              onSelect={() => {
-                void handleClassify('task');
-              }}
-            >
-              Task
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                void handleClassify('code');
-              }}
-            >
-              Code
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <div className={bulkBarWrapperClass}>
+        <div role="region" aria-label="Bulk actions" className={bulkBarClass}>
+          <span className="mr-1 text-sm font-semibold text-accent-teal">{count} selected</span>
 
-        {/* Move to folder — only when every selected item is a task. */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!allTask}
-              title={allTask ? undefined : MOVE_DISABLED_HINT}
-            >
-              Move to folder
-              <ChevronDown size={14} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              onSelect={() => {
-                void handleMove(null);
-              }}
-            >
-              Inbox
-            </DropdownMenuItem>
-            {folders.map((folder) => (
+          {/* Classify as — only when every selected item is still unclassified. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!allUnclassified}
+                title={allUnclassified ? undefined : CLASSIFY_DISABLED_HINT}
+              >
+                Classify as
+                <ChevronDown size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
               <DropdownMenuItem
-                key={folder.id}
                 onSelect={() => {
-                  void handleMove(folder.id);
+                  void handleClassify('task');
                 }}
               >
-                {folder.name}
+                Task
               </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void handleClassify('code');
+                }}
+              >
+                Code
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {/* Send to Code — any non-empty selection is eligible. */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setShowGate(true);
-          }}
-        >
-          Send to Code…
-        </Button>
+          {/* Move to folder — only when every selected item is a task. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!allTask}
+                title={allTask ? undefined : MOVE_DISABLED_HINT}
+              >
+                Move to folder
+                <ChevronDown size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                onSelect={() => {
+                  void handleMove(null);
+                }}
+              >
+                Inbox
+              </DropdownMenuItem>
+              {folders.map((folder) => (
+                <DropdownMenuItem
+                  key={folder.id}
+                  onSelect={() => {
+                    void handleMove(folder.id);
+                  }}
+                >
+                  {folder.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={exit}>
-          Done
-        </Button>
+          {/* Send to Code — any non-empty selection is eligible. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowGate(true);
+            }}
+          >
+            Send to Code…
+          </Button>
+
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={exit}>
+            Done
+          </Button>
+        </div>
       </div>
 
       <GateDialog
