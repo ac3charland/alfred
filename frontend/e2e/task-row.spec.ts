@@ -123,6 +123,27 @@ test.describe('cascade completion', () => {
     await expect(page.getByText('2 completed tasks')).toBeVisible();
   });
 
+  test('skips the cascade modal when every descendant is already completed', async ({
+    page,
+    seed,
+  }) => {
+    // Parent with a single, already-completed subtask: completing it cascades nothing new,
+    // so no confirmation is needed — the parent completes straight away (ALF-73).
+    const parent = makeTask('Wrap up');
+    await seed({
+      items: [parent, makeTask('Done already', { parent_id: parent.id, status: 'completed' })],
+    });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'Mark "Wrap up" complete' }).click();
+
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText('Wrap up')).toHaveCount(0);
+
+    await page.getByRole('link', { name: 'Completed' }).click();
+    await expect(page.getByText('2 completed tasks')).toBeVisible();
+  });
+
   test('cancelling the cascade leaves the task active', async ({ page, seed }) => {
     await seed({
       items: [

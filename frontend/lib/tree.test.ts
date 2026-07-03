@@ -8,6 +8,7 @@ import {
   getAncestorTitles,
   getDescendantIds,
   getItemDepth,
+  hasActiveDescendant,
   isTempId,
   makeOptimisticEpic,
   makeOptimisticFolder,
@@ -157,6 +158,36 @@ describe('countCompletedDescendants', () => {
 
   it('returns 0 for a leaf', () => {
     expect(countCompletedDescendants(defined(buildTree([BASE])[0]))).toBe(0);
+  });
+});
+
+describe('hasActiveDescendant', () => {
+  it('is true when a descendant is still active at any depth', () => {
+    // item-1 (completed) → c-1 (completed) → g-1 (active). The lone active node is a grandchild.
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', status: 'completed', created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', status: 'completed' }),
+        item({ id: 'g-1', parent_id: 'c-1', status: 'active' }),
+      ])[0],
+    );
+    expect(hasActiveDescendant(root)).toBe(true);
+  });
+
+  it('is false when every descendant is completed (the node itself is ignored)', () => {
+    // item-1 (active) → c-1 (completed) → g-1 (completed). Only descendants count.
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', status: 'active', created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', status: 'completed' }),
+        item({ id: 'g-1', parent_id: 'c-1', status: 'completed' }),
+      ])[0],
+    );
+    expect(hasActiveDescendant(root)).toBe(false);
+  });
+
+  it('is false for a leaf', () => {
+    expect(hasActiveDescendant(defined(buildTree([BASE])[0]))).toBe(false);
   });
 });
 

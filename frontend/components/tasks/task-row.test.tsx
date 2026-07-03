@@ -413,6 +413,22 @@ describe('TaskRow', () => {
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
+  it('skips the cascade modal and completes directly when every descendant is already completed', async () => {
+    // A parent whose only subtask is already completed: completing it cascades nothing new,
+    // so there is nothing to warn about (ALF-73).
+    mockReducedMotion(true);
+    const completedChild: Item = { ...CHILD_ITEM, status: 'completed' };
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM, completedChild]);
+
+    await user.click(screen.getByRole('button', { name: /mark "Write tests" complete/i }));
+
+    expect(screen.queryByText(/complete with subtasks/i)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockCompleteTask).toHaveBeenCalledWith('item-1');
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Completed view — uncomplete
   // ---------------------------------------------------------------------------
