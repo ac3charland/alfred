@@ -112,6 +112,18 @@ export const ReadyForDev: Story = {
 };
 
 /**
+ * The `ready_for_dev` story in the modal at a phone viewport (390×844): the dialog spans the
+ * full phone width and its header actions, breadcrumb, notes, and rendered spec reflow for
+ * mobile — the mobile counterpart of {@link ReadyForDev}.
+ */
+export const MobileReadyForDev: Story = {
+  args: { story: STORY },
+  parameters: {
+    visualTest: { target: '[role="dialog"]', viewport: { width: 390, height: 844 } },
+  },
+};
+
+/**
  * A story with no notes: the "Add notes…" affordance is shown in the Notes section.
  */
 export const NoNotes: Story = {

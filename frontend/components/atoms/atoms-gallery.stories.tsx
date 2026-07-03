@@ -26,8 +26,11 @@ type Story = StoryObj<typeof meta>;
 
 const TONES = ['neutral', 'accent', 'affirm', 'danger'] as const;
 
-export const Library: Story = {
-  render: () => (
+// The shared panel body, rendered by both the desktop and mobile gallery stories so the two
+// viewports audit the identical composition. The `max-w-md` column is wider than a phone, so at
+// the 390px mobile viewport the sections reflow — the value the mobile snapshot captures.
+function GalleryPanel() {
+  return (
     <div className="flex max-w-md flex-col gap-8">
       <section className="flex flex-col gap-3">
         <FieldLabel>Icon buttons</FieldLabel>
@@ -62,5 +65,34 @@ export const Library: Story = {
         <Spinner label="Loading" size={20} className="text-accent-teal" />
       </section>
     </div>
-  ),
+  );
+}
+
+/** The atom library at the desktop default viewport. */
+export const Library: Story = {
+  render: () => <GalleryPanel />,
+};
+
+/**
+ * The library at a phone content width. Atoms are fixed-size with no `md:`-gated behaviour, so a
+ * shrink-wrapped crop is viewport-independent (identical to {@link Library}); the mobile audit
+ * value is seeing the shared atoms at a realistic phone column width — the `w-full` text field
+ * stretches edge-to-edge as it does in the capture box on a real phone. So this renders in a
+ * fixed phone-width frame (targeted for capture) rather than the shrink-to-fit visual frame.
+ */
+export const MobileLibrary: Story = {
+  decorators: [
+    (Story) => (
+      <div data-testid="gallery-mobile-frame" className="w-[358px] bg-background">
+        <Story />
+      </div>
+    ),
+  ],
+  render: () => <GalleryPanel />,
+  parameters: {
+    visualTest: {
+      target: '[data-testid="gallery-mobile-frame"]',
+      viewport: { width: 390, height: 844 },
+    },
+  },
 };
