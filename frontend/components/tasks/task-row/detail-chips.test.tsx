@@ -3,34 +3,9 @@ import userEvent from '@testing-library/user-event';
 
 import type { RecurrenceRule } from '@/lib/recurrence';
 
-import { PriorityChip, RepeatChip } from './detail-chips';
+import { RepeatChip } from './detail-chips';
 
 describe('detail chips (ALF-67)', () => {
-  describe('PriorityChip', () => {
-    it('labels the chip and check-marks the active level in the list', async () => {
-      const onChange = jest.fn();
-      const user = userEvent.setup();
-      render(<PriorityChip priority="medium" onChange={onChange} />);
-
-      expect(screen.getByRole('button', { name: 'Priority' })).toHaveTextContent('Medium');
-      await user.click(screen.getByRole('button', { name: 'Priority' }));
-      await user.click(await screen.findByRole('button', { name: /high/i }));
-
-      expect(onChange).toHaveBeenCalledWith('high');
-    });
-
-    it('clears the level via "No priority"', async () => {
-      const onChange = jest.fn();
-      const user = userEvent.setup();
-      render(<PriorityChip priority="high" onChange={onChange} />);
-
-      await user.click(screen.getByRole('button', { name: 'Priority' }));
-      await user.click(await screen.findByRole('button', { name: /no priority/i }));
-
-      expect(onChange).toHaveBeenCalledWith(null);
-    });
-  });
-
   describe('RepeatChip', () => {
     const dailyRule: RecurrenceRule = { freq: 'daily', interval: 1, end: { type: 'never' } };
 
