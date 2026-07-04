@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 
+import { isPlainLeftClick } from '@/lib/ui/plain-click';
+
 type ViewLinkProperties = React.ComponentPropsWithoutRef<'a'> & {
   /** The destination path, e.g. `/folders/abc` or `/?view=inbox`. */
   href: string;
@@ -21,19 +23,9 @@ type ViewLinkProperties = React.ComponentPropsWithoutRef<'a'> & {
 export function ViewLink({ href, onClick, children, ...rest }: ViewLinkProperties) {
   const handleClick = (event_: React.MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event_);
-    // Let the browser handle anything that isn't a plain primary click: a consumer
-    // that already prevented default, a non-left button, or a modifier (open in a
-    // new tab/window).
-    if (
-      event_.defaultPrevented ||
-      event_.button !== 0 ||
-      event_.metaKey ||
-      event_.ctrlKey ||
-      event_.shiftKey ||
-      event_.altKey
-    ) {
-      return;
-    }
+    // Let the browser handle anything that isn't a plain primary click: a consumer that already
+    // prevented default, a non-left button, or a modifier (open in a new tab/window).
+    if (!isPlainLeftClick(event_)) return;
     event_.preventDefault();
     globalThis.history.pushState(null, '', href);
   };
