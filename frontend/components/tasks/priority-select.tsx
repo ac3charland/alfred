@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { PRIORITY_OPTIONS, type TaskPriority } from '@/lib/priority';
+import { cn } from '@/lib/utils';
 
 interface PriorityMenuProperties {
   /** The current level, or `null` for unprioritised. */
@@ -56,7 +57,7 @@ export function PriorityMenu({
             className="justify-between"
           >
             <span className="flex items-center gap-2">
-              <option.icon size={12} className="shrink-0" />
+              <option.icon size={12} className={cn('shrink-0', option.iconClass)} />
               {option.label}
             </span>
             {value === option.value && <Check size={12} className="text-accent-teal" />}
