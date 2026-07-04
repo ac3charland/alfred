@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { ViewLink } from '@/components/tasks/view-link';
+import { isPlainLeftClick } from '@/lib/ui/plain-click';
 
 export const ALFRED_CAPTURE_FOCUS_EVENT = 'alfred-capture-focus';
 
@@ -22,14 +23,7 @@ type AlfredLinkProperties = Omit<React.ComponentPropsWithoutRef<'a'>, 'href'>;
 export function AlfredLink({ onClick, children, ...rest }: AlfredLinkProperties) {
   const handleClick = (event_: React.MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event_);
-    if (
-      !event_.defaultPrevented &&
-      event_.button === 0 &&
-      !event_.metaKey &&
-      !event_.ctrlKey &&
-      !event_.shiftKey &&
-      !event_.altKey
-    ) {
+    if (isPlainLeftClick(event_)) {
       globalThis.dispatchEvent(new CustomEvent(ALFRED_CAPTURE_FOCUS_EVENT));
     }
   };

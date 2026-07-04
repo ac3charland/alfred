@@ -1,11 +1,12 @@
 import { FACTORY_STATE_LABELS } from '@/lib/stores/code-store';
+import { resolveRoot, taskDestination } from '@/lib/tasks/task-location';
 import type { CodeStory, Folder, Item } from '@/lib/types';
 
 /**
  * Global search — the pure filter/rank/cap layer, kept free of React and the DOM so the
  * matching rules are exhaustively unit-testable on their own. The combobox just renders
- * whatever `buildResults` returns; everything below (`buildResults`, `taskDestination`) is a
- * plain function over the seeded store snapshots.
+ * whatever `buildResults` returns; everything below is a plain function over the seeded store
+ * snapshots. A task's destination view comes from the shared `taskDestination` helper.
  */
 
 /** Each group shows at most this many matches; the rest are surfaced as a "+N more" line. */
@@ -65,35 +66,6 @@ function rankTitleNotes(query: string, title: string, notes: string): number | n
 /** Sort by rank ascending, breaking ties by recency (created_at descending). */
 function byRankThenRecency(a: { rank: number; createdAt: string }, b: typeof a): number {
   return a.rank - b.rank || b.createdAt.localeCompare(a.createdAt);
-}
-
-/**
- * Resolve a task's top-level ancestor, so a subtask routes to the view that actually shows it.
- * Guards against a broken parent chain (a missing or cyclic `parent_id`) by bailing on a repeat.
- */
-function resolveRoot(item: Item, byId: Map<string, Item>): Item {
-  let root = item;
-  const seen = new Set<string>();
-  while (root.parent_id !== null && !seen.has(root.id)) {
-    seen.add(root.id);
-    const parent = byId.get(root.parent_id);
-    if (parent === undefined) break;
-    root = parent;
-  }
-  return root;
-}
-
-/**
- * The client-side destination for a task: its containing view, derived from the top-level
- * ancestor's own fields. Completed → the Completed view; in a folder → that folder; otherwise
- * the Inbox (revealed via `?view=inbox`). Exported for direct unit coverage.
- */
-export function taskDestination(item: Item, tasks: readonly Item[]): string {
-  const byId = new Map(tasks.map((task) => [task.id, task] as const));
-  const root = resolveRoot(item, byId);
-  if (root.status === 'completed') return '/completed';
-  if (root.folder_id !== null) return `/folders/${root.folder_id}`;
-  return '/?view=inbox';
 }
 
 /** The location label shown under a task result (folder name / Inbox / Completed). */

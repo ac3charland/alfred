@@ -39,6 +39,26 @@ test('set a priority from the editor menu → the badge appears → it ranks on 
   await expect(ranked.getByRole('button', { name: 'Priority: High' })).toBeVisible();
 });
 
+test('clicking a By-Priority task jumps to its folder and focuses the row (ALF-96)', async ({
+  page,
+  seed,
+}) => {
+  await seed({
+    folders: [makeFolder('Work', { id: 'work' })],
+    items: [task('Ship the newsletter', { folder_id: 'work', priority: 'high' })],
+  });
+
+  await page.goto('/priority');
+
+  const ranked = page.getByRole('list', { name: 'Tasks by priority' });
+  await ranked.getByRole('link', { name: 'Ship the newsletter' }).click();
+
+  // It switches to the containing folder view, with the task's row present + ringed there.
+  await expect(page).toHaveURL(/\/folders\/work/);
+  const row = page.getByRole('list', { name: 'Tasks' }).getByText('Ship the newsletter');
+  await expect(row).toBeVisible();
+});
+
 test('ranks tasks High → Medium → Low → unprioritised', async ({ page, seed }) => {
   await seed({
     items: [

@@ -1,4 +1,4 @@
-import { buildResults, flattenResults, taskDestination } from '@/components/shell/search-results';
+import { buildResults, flattenResults } from '@/components/shell/search-results';
 import type { CodeStory, Folder, Item } from '@/lib/types';
 
 function makeItem(overrides: Partial<Item> = {}): Item {
@@ -126,30 +126,6 @@ describe('flattenResults', () => {
     );
     const flat = flattenResults(results);
     expect(flat.map((result) => result.kind)).toEqual(['task', 'story']);
-  });
-});
-
-describe('taskDestination', () => {
-  it('routes a completed task to the Completed view', () => {
-    const item = makeItem({ status: 'completed', folder_id: 'f1' });
-    expect(taskDestination(item, [item])).toBe('/completed');
-  });
-
-  it('routes a foldered task to its folder', () => {
-    const item = makeItem({ folder_id: 'f1' });
-    expect(taskDestination(item, [item])).toBe('/folders/f1');
-  });
-
-  it('routes an inbox task to the revealed inbox', () => {
-    const item = makeItem({ folder_id: null });
-    expect(taskDestination(item, [item])).toBe('/?view=inbox');
-  });
-
-  it('resolves a subtask to its top-level ancestor view', () => {
-    const root = makeItem({ id: 'root', folder_id: 'f9' });
-    const child = makeItem({ id: 'child', parent_id: 'root', folder_id: 'f9' });
-    const grandchild = makeItem({ id: 'gc', parent_id: 'child', folder_id: 'f9' });
-    expect(taskDestination(grandchild, [root, child, grandchild])).toBe('/folders/f9');
   });
 });
 
