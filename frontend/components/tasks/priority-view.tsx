@@ -7,20 +7,28 @@ import { Badge } from '@/components/atoms/badge';
 import { PriorityChip } from '@/components/atoms/priority-chip';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
+import { navigateToTaskAndFocus } from '@/components/tasks/navigate-to-task';
 import { PriorityMenu } from '@/components/tasks/priority-select';
 import { type TaskPriority, isPriorityLevel } from '@/lib/priority';
 import { useFolders } from '@/lib/stores/folders-store';
-import { useTaskActions, useTasksByPriority } from '@/lib/stores/tasks-store';
+import { useTaskActions, useTasks, useTasksByPriority } from '@/lib/stores/tasks-store';
+import { taskDestination } from '@/lib/tasks/task-location';
 import type { Item } from '@/lib/types';
+import { isPlainLeftClick } from '@/lib/ui/plain-click';
 import { cn } from '@/lib/utils';
 
 /**
- * One By-Priority row: title, the folder it lives in (or "Inbox"), a due-date chip when present,
- * and the priority affordance — the {@link PriorityChip} when a level is set, or a muted "Set
- * priority" trigger otherwise. Both open the shared {@link PriorityMenu} so the owner can
- * re-prioritise in place, writing through the optimistic `updateTask` path.
+ * One By-Priority row: a title that links to the task in context, the folder it lives in (or
+ * "Inbox"), a due-date chip when present, and the priority affordance — the {@link PriorityChip}
+ * when a level is set, or a muted "Set priority" trigger otherwise. Both open the shared
+ * {@link PriorityMenu} so the owner can re-prioritise in place, writing through the optimistic
+ * `updateTask` path.
+ *
+ * Clicking the title switches to the task's containing view (`href`) and rings the row there
+ * (ALF-96) — the same navigate-then-focus jump global search performs, via
+ * {@link navigateToTaskAndFocus}. It stays a real `<a href>`, so ⌘/middle-clicks open a new tab.
  */
-function PriorityRow({ task, folderName }: { task: Item; folderName: string }) {
+function PriorityRow({ task, folderName, href }: { task: Item; folderName: string; href: string }) {
   const { updateTask } = useTaskActions();
   const isCompleted = task.status === 'completed';
 
@@ -36,14 +44,22 @@ function PriorityRow({ task, folderName }: { task: Item; folderName: string }) {
 
   return (
     <li className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 transition-colors duration-100 hover:border-accent-teal/50 motion-reduce:transition-none">
-      <span
+      <a
+        href={href}
+        onClick={(event_) => {
+          // Let the browser handle a modified/middle click (new tab); hijack only a plain click.
+          if (!isPlainLeftClick(event_)) return;
+          event_.preventDefault();
+          navigateToTaskAndFocus(task.id, href);
+        }}
         className={cn(
-          'min-w-0 flex-1 truncate text-sm',
+          'min-w-0 flex-1 truncate rounded-sm text-sm transition-colors duration-100',
+          'hover:text-accent-teal focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal motion-reduce:transition-none',
           isCompleted ? 'text-muted-foreground line-through' : 'text-foreground',
         )}
       >
         {task.title}
-      </span>
+      </a>
 
       {task.due_date && <DueDateChip dueDate={task.due_date} />}
 
@@ -75,6 +91,7 @@ function PriorityRow({ task, folderName }: { task: Item; folderName: string }) {
 export function PriorityView() {
   const [showCompleted, setShowCompleted] = React.useState(false);
   const tasks = useTasksByPriority({ showCompleted });
+  const allTasks = useTasks();
   const folders = useFolders();
 
   const folderName = (folderId: string | null): string =>
@@ -109,7 +126,12 @@ export function PriorityView() {
       {tasks.length > 0 ? (
         <ul aria-label="Tasks by priority" className="flex flex-col gap-2">
           {tasks.map((task) => (
-            <PriorityRow key={task.id} task={task} folderName={folderName(task.folder_id)} />
+            <PriorityRow
+              key={task.id}
+              task={task}
+              folderName={folderName(task.folder_id)}
+              href={taskDestination(task, allTasks)}
+            />
           ))}
         </ul>
       ) : (

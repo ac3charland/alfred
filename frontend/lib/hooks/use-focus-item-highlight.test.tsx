@@ -2,6 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import * as React from 'react';
 
 import { ALFRED_FOCUS_ITEM_EVENT } from '@/components/tasks/alfred-link';
+import { navigateToTaskAndFocus } from '@/components/tasks/navigate-to-task';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 
 function Probe({ id }: { id: string }) {
@@ -39,6 +40,24 @@ describe('useFocusItemHighlight', () => {
       expect(probe).toHaveAttribute('data-highlighted', 'false');
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  it('highlights a row that MOUNTS after the jump (a cross-view navigation)', () => {
+    // The By-Priority → folder jump records the target, switches the view, and only then does the
+    // destination row mount — after the event has already fired. The row must claim the pending
+    // target on mount and still ring.
+    const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+    try {
+      // No probe is mounted yet, so the live event lands on nothing — only the pending id survives.
+      act(() => {
+        navigateToTaskAndFocus('later', '/folders/f1');
+      });
+
+      render(<Probe id="later" />);
+      expect(screen.getByTestId('probe')).toHaveAttribute('data-highlighted', 'true');
+    } finally {
+      pushState.mockRestore();
     }
   });
 });

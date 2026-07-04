@@ -1,9 +1,10 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { renderWithProviders } from '@/lib/test-utils';
 import type { Folder, Item } from '@/lib/types';
 
+import { ALFRED_FOCUS_ITEM_EVENT } from './alfred-link';
 import { PriorityView } from './priority-view';
 
 let nextCreated = 0;
@@ -158,6 +159,90 @@ describe('PriorityView', () => {
   it('shows an empty state when there are no tasks', () => {
     renderWithProviders(<PriorityView />, { tasks: [] });
     expect(screen.getByText(/No tasks yet/)).toBeInTheDocument();
+  });
+
+  describe('clicking a row navigates to the task and focuses it (ALF-96)', () => {
+    it('links each row to its containing view — folder, or the inbox when unfiled', () => {
+      const folders: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z' }];
+      renderWithProviders(<PriorityView />, {
+        folders,
+        tasks: [
+          makeItem('Filed', { priority: 'high', folder_id: 'f1' }),
+          makeItem('Unfiled', { priority: 'low', folder_id: null }),
+        ],
+      });
+
+      expect(screen.getByRole('link', { name: 'Filed' })).toHaveAttribute('href', '/folders/f1');
+      expect(screen.getByRole('link', { name: 'Unfiled' })).toHaveAttribute('href', '/?view=inbox');
+    });
+
+    it('on a plain click, switches to the folder view and fires the row-focus event', () => {
+      const folders: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z' }];
+      const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+      const focusIds: string[] = [];
+      const listener = (event_: Event) => {
+        focusIds.push((event_ as CustomEvent<{ id: string }>).detail.id);
+      };
+      globalThis.addEventListener(ALFRED_FOCUS_ITEM_EVENT, listener);
+
+      try {
+        renderWithProviders(<PriorityView />, {
+          folders,
+          tasks: [makeItem('Filed', { id: 'filed', priority: 'high', folder_id: 'f1' })],
+        });
+
+        fireEvent.click(screen.getByRole('link', { name: 'Filed' }), { button: 0 });
+
+        expect(pushState).toHaveBeenCalledWith(null, '', '/folders/f1');
+        expect(focusIds).toEqual(['filed']);
+      } finally {
+        globalThis.removeEventListener(ALFRED_FOCUS_ITEM_EVENT, listener);
+        pushState.mockRestore();
+      }
+    });
+
+    it('leaves a modified click (⌘) to the browser — no client-side navigation', () => {
+      const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+      const focusIds: string[] = [];
+      const listener = (event_: Event) => {
+        focusIds.push((event_ as CustomEvent<{ id: string }>).detail.id);
+      };
+      globalThis.addEventListener(ALFRED_FOCUS_ITEM_EVENT, listener);
+
+      try {
+        renderWithProviders(<PriorityView />, {
+          tasks: [makeItem('Filed', { id: 'filed', priority: 'high' })],
+        });
+
+        fireEvent.click(screen.getByRole('link', { name: 'Filed' }), {
+          button: 0,
+          metaKey: true,
+        });
+
+        expect(pushState).not.toHaveBeenCalled();
+        expect(focusIds).toEqual([]);
+      } finally {
+        globalThis.removeEventListener(ALFRED_FOCUS_ITEM_EVENT, listener);
+        pushState.mockRestore();
+      }
+    });
+
+    it('re-prioritising from the row menu does not navigate', async () => {
+      const user = userEvent.setup();
+      const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+
+      try {
+        renderWithProviders(<PriorityView />, {
+          tasks: [makeItem('Filed', { id: 'filed', priority: 'high' })],
+        });
+
+        await user.click(screen.getByRole('button', { name: /priority/i }));
+
+        expect(pushState).not.toHaveBeenCalled();
+      } finally {
+        pushState.mockRestore();
+      }
+    });
   });
 
   it('treats a task whose priority is missing (undefined) as unprioritised, without crashing', () => {

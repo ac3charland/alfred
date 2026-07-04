@@ -13,7 +13,7 @@ import {
 } from '@/components/shell/search-results';
 import { SearchResultsPopover } from '@/components/shell/search-results-popover';
 import { useGlobalSearchShortcut } from '@/components/shell/use-global-search-shortcut';
-import { ALFRED_FOCUS_ITEM_EVENT } from '@/components/tasks/alfred-link';
+import { navigateToTaskAndFocus } from '@/components/tasks/navigate-to-task';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useCodeStories } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
@@ -80,15 +80,14 @@ export function SearchBox({ placement = 'desktop', className, onNavigate }: Sear
 
   const select = React.useCallback(
     (result: SearchResult) => {
-      // Client-side view switch (ViewLink convention), then clear + close the dropdown.
-      globalThis.history.pushState(null, '', result.href);
-      closeDropdown();
+      // Client-side view switch (ViewLink convention). A task additionally scrolls its destination
+      // row in + highlights it; a story just routes to the board with `?story=`.
       if (result.kind === 'task') {
-        // The destination view's row scrolls itself in + highlights on this event.
-        globalThis.dispatchEvent(
-          new CustomEvent(ALFRED_FOCUS_ITEM_EVENT, { detail: { id: result.id } }),
-        );
+        navigateToTaskAndFocus(result.id, result.href);
+      } else {
+        globalThis.history.pushState(null, '', result.href);
       }
+      closeDropdown();
       inputRef.current?.blur();
       onNavigate?.();
     },
