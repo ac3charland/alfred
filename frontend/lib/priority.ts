@@ -21,12 +21,36 @@ export interface PriorityOption {
   label: string;
   icon: LucideIcon;
   badgeVariant: NonNullable<BadgeProperties['variant']>;
+  /**
+   * The level's accent text colour, for an icon shown against a neutral surface — the picker
+   * menu's level glyphs and the detail chip. (Distinct from `badgeVariant`, whose Low is a muted
+   * grey pill; here Low reads blue.)
+   */
+  iconClass: string;
 }
 
 const OPTIONS: Record<TaskPriority, PriorityOption> = {
-  high: { value: 'high', label: 'High', icon: ChevronsUp, badgeVariant: 'destructive' },
-  medium: { value: 'medium', label: 'Medium', icon: Equal, badgeVariant: 'alert' },
-  low: { value: 'low', label: 'Low', icon: ChevronsDown, badgeVariant: 'muted' },
+  high: {
+    value: 'high',
+    label: 'High',
+    icon: ChevronsUp,
+    badgeVariant: 'destructive',
+    iconClass: 'text-accent-red',
+  },
+  medium: {
+    value: 'medium',
+    label: 'Medium',
+    icon: Equal,
+    badgeVariant: 'alert',
+    iconClass: 'text-accent-amber',
+  },
+  low: {
+    value: 'low',
+    label: 'Low',
+    icon: ChevronsDown,
+    badgeVariant: 'muted',
+    iconClass: 'text-accent-blue',
+  },
 };
 
 /** The levels in rank order (High → Medium → Low) — the menu / select order. */

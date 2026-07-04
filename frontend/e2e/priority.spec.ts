@@ -27,7 +27,7 @@ test('set a priority from the editor menu → the badge appears → it ranks on 
   await page.getByRole('menuitem', { name: 'Open details' }).click();
 
   await page.getByRole('button', { name: 'Priority', exact: true }).click();
-  await page.getByRole('button', { name: 'High', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'High', exact: true }).click();
 
   // The colour-coded (symbol-only) badge now shows on the row.
   await expect(page.getByRole('button', { name: 'Priority: High' })).toBeVisible();

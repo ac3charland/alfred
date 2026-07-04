@@ -3,13 +3,11 @@
 import { ListOrdered } from 'lucide-react';
 import * as React from 'react';
 
-import { Badge } from '@/components/atoms/badge';
-import { PriorityChip } from '@/components/atoms/priority-chip';
 import { ToggleButton } from '@/components/atoms/toggle-button';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { navigateToTaskAndFocus } from '@/components/tasks/navigate-to-task';
-import { PriorityMenu } from '@/components/tasks/priority-select';
-import { type TaskPriority, isPriorityLevel } from '@/lib/priority';
+import { PriorityChip } from '@/components/tasks/priority-chip';
+import type { TaskPriority } from '@/lib/priority';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks, useTasksByPriority } from '@/lib/stores/tasks-store';
 import { taskDestination } from '@/lib/tasks/task-location';
@@ -19,10 +17,9 @@ import { cn } from '@/lib/utils';
 
 /**
  * One By-Priority row: a title that links to the task in context, the folder it lives in (or
- * "Inbox"), a due-date chip when present, and the priority affordance — the {@link PriorityChip}
- * when a level is set, or a muted "Set priority" trigger otherwise. Both open the shared
- * {@link PriorityMenu} so the owner can re-prioritise in place, writing through the optimistic
- * `updateTask` path.
+ * "Inbox"), a due-date chip when present, and the {@link PriorityChip} — showing the level when set,
+ * or a muted "Set priority" prompt otherwise. The chip opens its own picker so the owner can
+ * re-prioritise in place, writing through the optimistic `updateTask` path.
  *
  * Clicking the title switches to the task's containing view (`href`) and rings the row there
  * (ALF-96) — the same navigate-then-focus jump global search performs, via
@@ -63,15 +60,12 @@ function PriorityRow({ task, folderName, href }: { task: Item; folderName: strin
 
       {task.due_date && <DueDateChip dueDate={task.due_date} />}
 
-      <PriorityMenu value={task.priority} onChange={handleChange} align="end">
-        {isPriorityLevel(task.priority) ? (
-          <PriorityChip priority={task.priority} />
-        ) : (
-          <Badge asButton variant="muted" interactive className="font-medium hover:text-foreground">
-            Set priority
-          </Badge>
-        )}
-      </PriorityMenu>
+      <PriorityChip
+        priority={task.priority}
+        emptyLabel="Set priority"
+        menuAlign="end"
+        onChange={handleChange}
+      />
 
       <span className="w-20 shrink-0 truncate text-right text-xs text-muted-foreground">
         {folderName}

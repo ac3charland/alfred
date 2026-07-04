@@ -2623,7 +2623,7 @@ describe('TaskRow — detail panel (ALF-67)', () => {
     await openDetails(user);
 
     await user.click(screen.getByRole('button', { name: 'Priority' }));
-    await user.click(await screen.findByRole('button', { name: 'High' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'High' }));
 
     await waitFor(() => {
       expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { priority: 'high' });
@@ -2770,12 +2770,12 @@ describe('TaskRow — dismissing the detail panel (ALF-78)', () => {
     await openDetails(user);
 
     await user.click(screen.getByRole('button', { name: 'Priority' }));
-    await screen.findByRole('button', { name: 'High' });
-    // First Escape closes the popover; the panel stays open.
+    await screen.findByRole('menuitem', { name: 'High' });
+    // First Escape closes the picker menu; the panel stays open.
     await user.keyboard('{Escape}');
     expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'High' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'High' })).not.toBeInTheDocument();
     });
     // A second Escape (no popover open) now closes the panel.
     await user.keyboard('{Escape}');
@@ -2789,9 +2789,9 @@ describe('TaskRow — dismissing the detail panel (ALF-78)', () => {
     await openDetails(user);
 
     await user.click(screen.getByRole('button', { name: 'Priority' }));
-    await user.click(await screen.findByRole('button', { name: 'High' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'High' }));
 
-    // Selecting auto-saves and closes the popover, but the detail panel remains open.
+    // Selecting auto-saves and closes the menu, but the detail panel remains open.
     expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
   });
 });
