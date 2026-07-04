@@ -4,7 +4,8 @@ import * as React from 'react';
 
 import { Textarea } from '@/components/atoms/textarea';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
-import { PriorityChip, RepeatChip } from '@/components/tasks/task-row/detail-chips';
+import { PriorityChip } from '@/components/tasks/priority-chip';
+import { RepeatChip } from '@/components/tasks/task-row/detail-chips';
 import type { TaskPriority } from '@/lib/priority';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import type { ItemNode } from '@/lib/tree';
@@ -90,7 +91,14 @@ export function TaskDetailPanel({
           {showRepeat && (
             <RepeatChip rule={recurrence} dueDate={node.due_date} onChange={onChangeRecurrence} />
           )}
-          {isTask && <PriorityChip priority={node.priority} onChange={onChangePriority} />}
+          {isTask && (
+            <PriorityChip
+              priority={node.priority}
+              size="comfortable"
+              emptyLabel="No priority"
+              onChange={onChangePriority}
+            />
+          )}
         </div>
       )}
 

@@ -13,12 +13,12 @@ import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
-import { PriorityChip } from '@/components/atoms/priority-chip';
 import { RecurrenceChip } from '@/components/atoms/recurrence-chip';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
+import { PriorityChip } from '@/components/tasks/priority-chip';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
@@ -725,10 +725,18 @@ export function TaskRow({
                     )}
 
                     {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
-                    the row. Subtasks carry their own priority (set on the detail panel, ranked in
-                    the Folder view), so their level must show on the row too (ALF-63). */}
+                    the row. Clickable: opens the picker to change or clear the level (same chip +
+                    auto-save as the detail panel; ALF-94). Subtasks carry their own priority (set
+                    on the detail panel, ranked in the Folder view), so their level shows here too
+                    (ALF-63). */}
                     {isTask && isPriorityLevel(node.priority) && (
-                      <PriorityChip priority={node.priority} symbolOnly />
+                      <PriorityChip
+                        priority={node.priority}
+                        symbolOnly
+                        onChange={(next) => {
+                          void handleSavePriority(next);
+                        }}
+                      />
                     )}
 
                     {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
