@@ -9,12 +9,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/atoms/popo
 import { RecurrenceEditor } from '@/components/tasks/recurrence/recurrence-editor';
 import { todayISODate } from '@/lib/date-utils';
 import {
-  PRIORITY_OPTIONS,
-  type TaskPriority,
-  isPriorityLevel,
-  priorityOption,
-} from '@/lib/priority';
-import {
   REPEAT_PRESETS,
   type RecurrenceRule,
   presetForRule,
@@ -28,8 +22,8 @@ const chipNeutral = 'border-[#25324a] text-[#8A96A8] hover:border-[#34415a]';
 
 /**
  * A row in a picker popover's list: a left-aligned option with an optional leading icon and a
- * trailing teal check when it's the current value. One styling source (the shared `OptionButton`
- * list-row atom) for the Repeat and Priority lists — the Due chip uses the calendar instead.
+ * trailing teal check when it's the current value. Styles the Repeat preset list off the shared
+ * `OptionButton` list-row atom (Due uses the calendar; Priority uses the shared dropdown menu).
  */
 function PickerListItem({
   active,
@@ -123,76 +117,3 @@ export function RepeatChip({ rule, dueDate, onChange }: RepeatChipProperties) {
     </>
   );
 }
-
-interface PriorityChipProperties {
-  /** The current level, or null when unprioritised. */
-  priority: TaskPriority | null;
-  /** Persist a level, or null to clear (auto-save). */
-  onChange: (next: TaskPriority | null) => void;
-}
-
-/**
- * The **Priority** detail chip: a level-coloured icon + label (High / Medium / Low), or a neutral
- * "No priority". Opens a list of "No priority" + the three levels, each with its icon and a
- * trailing teal check on the active one. A pick applies immediately and closes.
- */
-export function PriorityChip({ priority, onChange }: PriorityChipProperties) {
-  const [open, setOpen] = React.useState(false);
-  const option = priorityOption(priority);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Chip
-          aria-label="Priority"
-          className={cn(option ? priorityChipTone[option.value] : chipNeutral)}
-        >
-          {option && <option.icon size={13} strokeWidth={2.6} className="shrink-0" />}
-          {option?.label ?? 'No priority'}
-        </Chip>
-      </PopoverTrigger>
-      <PopoverContent className="w-[186px]">
-        <PickerListItem
-          active={!isPriorityLevel(priority)}
-          onSelect={() => {
-            onChange(null);
-            setOpen(false);
-          }}
-        >
-          <span className="text-[#8A96A8]">No priority</span>
-        </PickerListItem>
-        {PRIORITY_OPTIONS.map((opt) => (
-          <PickerListItem
-            key={opt.value}
-            active={priority === opt.value}
-            onSelect={() => {
-              onChange(opt.value);
-              setOpen(false);
-            }}
-          >
-            <opt.icon
-              size={14}
-              strokeWidth={2.4}
-              className={cn('shrink-0', priorityIconTone[opt.value])}
-            />
-            {opt.label}
-          </PickerListItem>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** Chip tint per priority level (text + faint bg + border), keyed off the level value. */
-const priorityChipTone: Record<TaskPriority, string> = {
-  high: 'border-accent-red/30 bg-accent-red/[0.12] text-accent-red',
-  medium: 'border-accent-amber/30 bg-accent-amber/10 text-accent-amber',
-  low: 'border-accent-blue/30 bg-accent-blue/10 text-accent-blue',
-};
-
-/** The list-item icon colour per priority level. */
-const priorityIconTone: Record<TaskPriority, string> = {
-  high: 'text-accent-red',
-  medium: 'text-accent-amber',
-  low: 'text-accent-blue',
-};
