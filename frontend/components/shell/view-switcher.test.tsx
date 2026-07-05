@@ -24,10 +24,10 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Code' })).toBeInTheDocument();
   });
 
-  it('points Tasks at / and Code at /code', () => {
+  it('points Tasks at the By-Priority default view and Code at /code', () => {
     render(<ViewSwitcher />);
 
-    expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('href', '/priority');
     expect(screen.getByRole('link', { name: 'Code' })).toHaveAttribute('href', '/code');
   });
 
@@ -39,9 +39,13 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Code' })).not.toHaveAttribute('aria-current');
   });
 
-  it('keeps Tasks active on a folder and the completed route', () => {
-    mockPathname.mockReturnValue('/folders/f1');
+  it('keeps Tasks active on the priority, a folder, and the completed route', () => {
+    mockPathname.mockReturnValue('/priority');
     const { rerender } = render(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('aria-current', 'page');
+
+    mockPathname.mockReturnValue('/folders/f1');
+    rerender(<ViewSwitcher />);
     expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('aria-current', 'page');
 
     mockPathname.mockReturnValue('/completed');

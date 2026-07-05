@@ -9,9 +9,12 @@ import { cn } from '@/lib/utils';
 
 /**
  * The Tasks ⇄ Code module switcher — a two-button segmented control styled after the
- * Claude desktop app. Each segment navigates between the two modules (Tasks → `/`,
+ * Claude desktop app. Each segment navigates between the two modules (Tasks → `/priority`,
  * Code → `/code`); the active segment is derived from the route via the shared `isCodePath`
  * rule, so URL, content, sidebar, and switcher highlight never disagree.
+ *
+ * Tasks lands on the By-Priority list — the module's default view — rather than the `/`
+ * capture screen; capture stays reachable via the `alfred` wordmark (see the app shell).
  *
  * Since ALF-27 both modules are seeded under one shared shell layout, so switching modules no
  * longer needs an RSC navigation: this uses `ViewLink` (the History-API switch the in-module
@@ -49,7 +52,7 @@ export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
       className="flex w-fit items-center gap-1 rounded-lg border border-border bg-background/60 p-1"
     >
       <ViewLink
-        href="/"
+        href="/priority"
         aria-current={tasksActive ? 'page' : undefined}
         className={segmentClass(tasksActive)}
         {...navigateProperty}
