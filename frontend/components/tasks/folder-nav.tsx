@@ -28,7 +28,8 @@ interface FolderNavProperties {
 }
 
 /**
- * Sidebar navigation: folder list with CRUD, plus a Completed link.
+ * Sidebar navigation: the Priority view (the tasks module's default view) pinned at the top,
+ * then the folder list with CRUD, then a Completed link.
  *
  * No Inbox link (removed): the `alfred` wordmark is the way into the inbox/capture
  * screen (it navigates to `/`), and the inbox list still opens via `?view=inbox`. Folders
@@ -109,8 +110,20 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
+      {/* Priority — the tasks module's default view, pinned above the folders. */}
+      <div className="flex flex-col gap-0.5">
+        <ViewLink
+          href="/priority"
+          className={navLinkClass(isActive('/priority'))}
+          {...closeProperty}
+        >
+          <ListOrdered size={15} className="shrink-0" />
+          <span>Priority</span>
+        </ViewLink>
+      </div>
+
       {/* Folders section */}
-      <div>
+      <div className="mt-4 border-t border-border/50 pt-2">
         <div className="flex items-center justify-between px-3 py-1">
           <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
             Folders
@@ -227,16 +240,8 @@ export function FolderNav({ onClose }: FolderNavProperties) {
         </div>
       </div>
 
-      {/* Cross-cutting views — By Priority + Completed */}
+      {/* Completed — the archive view, kept below the folders. */}
       <div className="mt-4 flex flex-col gap-0.5 border-t border-border/50 pt-2">
-        <ViewLink
-          href="/priority"
-          className={navLinkClass(isActive('/priority'))}
-          {...closeProperty}
-        >
-          <ListOrdered size={15} className="shrink-0" />
-          <span>Priority</span>
-        </ViewLink>
         <ViewLink
           href="/completed"
           className={navLinkClass(isActive('/completed'))}
