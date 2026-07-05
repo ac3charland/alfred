@@ -121,9 +121,9 @@ test('switches Tasks ⇄ Code client-side, with no document reload or RSC round-
   // The Tasks-only sidebar link is gone.
   await expect(page.getByRole('link', { name: 'Completed' })).toBeHidden();
 
-  // Code → Tasks: back to the tasks landing, tasks nav, Tasks highlighted.
+  // Code → Tasks: back to the module's default By-Priority view, tasks nav, Tasks highlighted.
   await page.getByRole('link', { name: 'Tasks' }).click();
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/priority');
   await expect(page.getByRole('link', { name: 'Completed' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Tasks' })).toHaveAttribute('aria-current', 'page');
 
