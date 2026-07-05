@@ -430,6 +430,36 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /personal/i })).toHaveAttribute('href', '/folders/f2');
   });
 
+  it('renders a Priority link pointing to /priority', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /priority/i })).toHaveAttribute('href', '/priority');
+  });
+
+  it('renders the Priority link above the folders', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    const priorityIndex = hrefs.indexOf('/priority');
+    const firstFolderIndex = hrefs.indexOf('/folders/f1');
+    expect(priorityIndex).toBeGreaterThanOrEqual(0);
+    expect(priorityIndex).toBeLessThan(firstFolderIndex);
+  });
+
+  it('renders the Priority link above the Completed link', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    expect(hrefs.indexOf('/priority')).toBeLessThan(hrefs.indexOf('/completed'));
+  });
+
+  it('highlights the priority link when on /priority route', () => {
+    mockPathname.mockReturnValue('/priority');
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /priority/i })).toHaveClass('bg-secondary');
+  });
+
   it('does not highlight Completed on the / route, and shows it muted', () => {
     mockPathname.mockReturnValue('/');
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
