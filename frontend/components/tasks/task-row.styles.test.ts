@@ -5,12 +5,14 @@ import {
   chevronButtonClass,
   chevronIconClass,
   collapseClass,
+  collapseInnerClass,
   confirmTitleClass,
   deleteCollapseClass,
   deleteFadeClass,
   dropPlusClass,
   metaFooterClass,
   mobileTapClass,
+  notesPreviewClass,
   rowActionsClass,
   rowBaseClass,
   rowContentColClass,
@@ -37,6 +39,16 @@ describe('task-row styles', () => {
     expect(deleteCollapseClass).toContain('motion-reduce:transition-none');
     // No checkbox pop to hold the collapse behind, so it starts immediately.
     expect(deleteCollapseClass).not.toContain('delay-200');
+  });
+
+  it('collapse inner grid item can shrink below its content so the notes preview truncates', () => {
+    // The grid item's automatic minimum is min-content; min-w-0 lets it shrink below the
+    // nowrap notes width so the card stays viewport-bounded and the preview ellipsizes (ALF-99).
+    expect(collapseInnerClass).toContain('min-w-0');
+  });
+
+  it('notes preview clips to a single line with an ellipsis', () => {
+    expect(notesPreviewClass).toContain('truncate');
   });
 
   it('delete fade transitions opacity and is disabled under reduced motion', () => {

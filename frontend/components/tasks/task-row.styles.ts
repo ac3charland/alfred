@@ -25,6 +25,25 @@ export const deleteFadeClass =
   'transition-opacity duration-200 ease-out motion-reduce:transition-none';
 
 /**
+ * The collapse wrapper's inner child — the single grid item inside the `display:grid`
+ * collapse track (it also carries the mobile card chrome at depth 0). A grid item's automatic
+ * minimum size is `min-content`, so without `min-w-0` the `nowrap` notes preview (see
+ * `notesPreviewClass`) forces the grid column to grow to the note's full width, blowing the
+ * card past the viewport and leaving nothing for `truncate` to clip — the mobile "description
+ * doesn't truncate" bug (ALF-99). `min-w-0` lets the item shrink below that min-content so the
+ * track stays at the card width and the notes ellipsize.
+ */
+export const collapseInnerClass = 'min-w-0';
+
+/**
+ * The one-line notes/description preview beneath the title: `truncate` clips it to a single line
+ * with an ellipsis so a long note never spills the row. Relies on `collapseInnerClass` keeping
+ * every ancestor width-bounded (a `truncate` element only ellipsizes when it has a width to
+ * overflow).
+ */
+export const notesPreviewClass = 'truncate text-[12.5px] leading-snug text-[#6b7689]';
+
+/**
  * Main row layout + colour transition. On mobile the row is a single, non-wrapping flex line:
  * chevron / checkbox / a title-and-meta column (see `rowContentColClass`) / actions. The title
  * and its metadata footer stack *inside that column*, so the leading controls (chevron /
