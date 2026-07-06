@@ -54,12 +54,14 @@ import {
   chevronButtonClass,
   chevronIconClass,
   collapseClass,
+  collapseInnerClass,
   confirmTitleClass,
   deleteCollapseClass,
   deleteFadeClass,
   dropPlusClass,
   metaFooterClass,
   mobileTapClass,
+  notesPreviewClass,
   rowActionsClass,
   rowBaseClass,
   rowContentColClass,
@@ -521,6 +523,10 @@ export function TaskRow({
         >
           <div
             className={cn(
+              // The grid item inside the collapse track must be able to shrink below its
+              // content's min-content, otherwise the nowrap notes preview forces the card past
+              // the viewport and the preview never truncates on mobile (ALF-99).
+              collapseInnerClass,
               // At depth 0 this wrapper — which encloses both the row body and the subtree
               // <ul> — carries the mobile card chrome, so the whole subtree lives inside one
               // card (md+ dissolves it back into the shared divide-y list).
@@ -678,9 +684,11 @@ export function TaskRow({
                       {node.title}
                     </span>
                     {/* Notes preview — a single muted line beneath the title when notes exist,
-                    so the row stays scannable without opening the detail (ALF-67 §2). */}
+                    so the row stays scannable without opening the detail (ALF-67 §2). Clipped to
+                    one line with an ellipsis (see notesPreviewClass); the ancestor min-w-0 chain
+                    keeps it bounded so it truncates on mobile too (ALF-99). */}
                     {node.notes !== null && node.notes !== '' && (
-                      <span className="truncate text-[12.5px] leading-snug text-[#6b7689]">
+                      <span data-testid="task-notes-preview" className={notesPreviewClass}>
                         {node.notes}
                       </span>
                     )}

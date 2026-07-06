@@ -414,6 +414,34 @@ export const MobileColumnCollapse: Story = {
   },
 };
 
+// A long notes/description preview on a phone-width card clips to a single line with an
+// ellipsis rather than spilling the card horizontally (ALF-99). The mobile viewport makes the
+// `md:`-gated card layout take effect, where the fix (min-w-0 on the collapse grid item) is
+// what keeps the nowrap preview bounded so `truncate` can ellipsize it.
+export const MobileNotesTruncate: Story = {
+  // `render` composes its own node below; this arg only satisfies the required `node` prop.
+  args: { node: BASE_NODE },
+  render: () => (
+    <ul aria-label="Tasks" data-testid="tasks-mobile-frame" className={taskListContainerClass}>
+      <TaskRow
+        node={{
+          ...BASE_NODE,
+          id: 'm-notes',
+          title: 'Research daycare options',
+          notes:
+            'Call the three centres near the office and compare their waitlists, hours, and monthly rates before the tour on Thursday afternoon.',
+        }}
+      />
+    </ul>
+  ),
+  parameters: {
+    visualTest: {
+      target: '[data-testid="tasks-mobile-frame"]',
+      viewport: { width: 390, height: 844 },
+    },
+  },
+};
+
 // A deeply nested completed item shows every ancestor, oldest → youngest, joined by " > ".
 export const CompletedNested: Story = {
   args: {
