@@ -80,10 +80,10 @@ fine, so it looks like it worked.
 
 GitHub resolves a leading-`/` href against `github.com`, so `/ac3charland/alfred/blob/<branch>/…`
 is a real clickable link to the blob on the head branch — and contains no `https://`, so the
-wrapper leaves it alone. (`npm run demo -- pr-link` emits an *absolute* `https://` blob URL,
-which is correct for `gh`; when posting through the MCP server, convert it to the root-relative
-form first.) Verify with a WebFetch of the PR page (cache-bust with `?cb=N` — WebFetch caches a
-URL for 15 min) and confirm the demo text is an anchor, not inline code.
+wrapper leaves it alone. **`npm run demo -- pr-link` already emits exactly this root-relative
+form**, so its output pastes verbatim into an MCP-posted body — no conversion. Only a hand-written
+`https://` link needs converting. Verify with a WebFetch of the PR page (cache-bust with `?cb=N` —
+WebFetch caches a URL for 15 min) and confirm the demo text is an anchor, not inline code.
 
 ## What still works fine (don't over-correct)
 
