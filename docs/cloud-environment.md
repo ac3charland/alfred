@@ -53,6 +53,14 @@ it ever expires:
   Ubuntu mirrors (`archive`/`security.ubuntu.com`) and Docker that Chromium's actual libraries
   come from.
 
+  **Reachable isn't the same as accepted:** even once `ppa.launchpadcontent.net` is allowlisted,
+  `apt-get update` can still fail with `E: Repository '...' changed its 'Label' value from '...'
+  to '...'` (exit 100) — those PPAs occasionally rotate their Release file's Origin/Label/Suite
+  (e.g. `ondrej/php` repointing to `packages.sury.org/php`), and apt treats an unacknowledged
+  metadata change as a possible repo-swap attack. `scripts/cloud-setup.sh` runs
+  `apt-get update --allow-releaseinfo-change -qq` before invoking Playwright to pre-accept it, so
+  Playwright's own flagless `apt-get update` doesn't hit the same wall.
+
   > **Simplest alternative:** set **Network access** to **Full** instead — then every apt repo is
   > reachable and you don't have to enumerate hosts.
 - **Environment variables:** none. `frontend/playwright.config.ts` runs the Next test server

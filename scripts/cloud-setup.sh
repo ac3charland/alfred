@@ -12,6 +12,15 @@ set -euo pipefail
 
 npm ci
 
+# `playwright install --with-deps` runs `apt-get update` across every configured apt
+# source, including the deadsnakes / ondrej-php PPAs baked into the base image. Those
+# PPAs occasionally rotate their Release file's Origin/Label/Suite (e.g. ondrej/php
+# repointing to packages.sury.org) — apt treats that as a possible repo-swap attack and
+# aborts with "Repository ... changed its 'Label' value" (exit 100) unless the change is
+# acknowledged. Pre-accept it here so Playwright's own (flagless) `apt-get update`
+# doesn't hit the same wall.
+apt-get update --allow-releaseinfo-change -qq
+
 # Real Playwright-managed Chromium + its system libraries. Idempotent: a warm
 # cache re-uses the already-downloaded browser.
 npm exec -w frontend -- playwright install --with-deps chromium
