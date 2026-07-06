@@ -492,13 +492,20 @@ describe('extract', () => {
 });
 
 describe('formatDemoLink', () => {
-  const link =
-    '📝 **Demo:** [docs/demos/x.md](https://github.com/ac3charland/alfred/blob/main/docs/demos/x.md)';
+  const link = '📝 **Demo:** [docs/demos/x.md](/ac3charland/alfred/blob/main/docs/demos/x.md)';
 
   it('builds a github blob link from an SSH remote', () => {
     expect(formatDemoLink('git@github.com:ac3charland/alfred.git', 'main', 'docs/demos/x.md')).toBe(
       link,
     );
+  });
+
+  it('emits a root-relative href with no `https://` token (survives the MCP backtick-wrap)', () => {
+    // The GitHub MCP PR-body writer double-backtick-wraps any `https://…` in the body, breaking the
+    // link. A leading-slash href carries no such token, so it's posted verbatim and stays clickable.
+    const out = formatDemoLink('git@github.com:o/r.git', 'main', 'docs/demos/x.md');
+    expect(out).not.toContain('https://');
+    expect(out).toContain('](/o/r/blob/main/docs/demos/x.md)');
   });
 
   it('handles an HTTPS remote with and without the .git suffix', () => {
@@ -528,13 +535,13 @@ describe('formatDemoLink', () => {
 
   it('keeps slashes in a branch name (github resolves the ref)', () => {
     expect(formatDemoLink('https://github.com/o/r', 'claude/foo-bar', 'docs/demos/x.md')).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/claude/foo-bar/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/o/r/blob/claude/foo-bar/docs/demos/x.md)',
     );
   });
 
   it('normalizes a leading ./ and backslashes in the doc path', () => {
     expect(formatDemoLink('https://github.com/o/r', 'main', String.raw`./docs\demos\x.md`)).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/o/r/blob/main/docs/demos/x.md)',
     );
   });
 
@@ -545,7 +552,7 @@ describe('formatDemoLink', () => {
   it('trims surrounding whitespace off the remote before parsing', () => {
     // Without .trim(), trailing whitespace defeats the `\.git$` strip and leaks into the repo name.
     expect(formatDemoLink('  git@github.com:o/r.git  ', 'main', 'docs/demos/x.md')).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/o/r/blob/main/docs/demos/x.md)',
     );
   });
 
@@ -553,20 +560,20 @@ describe('formatDemoLink', () => {
     // The `$` anchor on `\.git$` matters: an unanchored `\.git` would chew a ".git" out of the
     // org name and leave the real ".git" suffix on the repo.
     expect(formatDemoLink('git@github.com:my.git-org/repo.git', 'main', 'docs/demos/x.md')).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/my.git-org/repo/blob/main/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/my.git-org/repo/blob/main/docs/demos/x.md)',
     );
   });
 
   it('drops empty path segments from a remote with a trailing slash', () => {
     // Without filter(Boolean), a trailing slash makes the last segment '' → repo is empty → throw.
     expect(formatDemoLink('git@github.com:o/r/', 'main', 'docs/demos/x.md')).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/o/r/blob/main/docs/demos/x.md)',
     );
   });
 
   it('trims surrounding whitespace off the doc path', () => {
     expect(formatDemoLink('https://github.com/o/r', 'main', '  docs/demos/x.md  ')).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/o/r/blob/main/docs/demos/x.md)',
     );
   });
 
@@ -574,7 +581,7 @@ describe('formatDemoLink', () => {
     // `^\.?\/+` must strip ALL leading slashes and tolerate a missing dot — a single-slash or
     // dot-required variant leaves a stray leading slash in the path.
     expect(formatDemoLink('https://github.com/o/r', 'main', '//docs/demos/x.md')).toBe(
-      '📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/main/docs/demos/x.md)',
+      '📝 **Demo:** [docs/demos/x.md](/o/r/blob/main/docs/demos/x.md)',
     );
   });
 });
@@ -583,6 +590,6 @@ describe('prLink', () => {
   it('formats the link from an injected git context (no real repo needed)', () => {
     expect(
       prLink('docs/demos/x.md', { remoteUrl: 'git@github.com:o/r.git', branch: 'feat/x' }),
-    ).toBe('📝 **Demo:** [docs/demos/x.md](https://github.com/o/r/blob/feat/x/docs/demos/x.md)');
+    ).toBe('📝 **Demo:** [docs/demos/x.md](/o/r/blob/feat/x/docs/demos/x.md)');
   });
 });
