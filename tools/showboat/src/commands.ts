@@ -227,17 +227,25 @@ function parseOwnerRepo(remoteUrl: string): string {
 }
 
 /**
- * Build the Markdown for the live, clickable PR demo link: a GitHub **blob** URL on
- * `branch` (which renders the doc — images and all — instead of raw source). `docPath`
+ * Build the Markdown for the live, clickable PR demo link: a **root-relative** GitHub blob
+ * href on `branch` (which renders the doc — images and all — instead of raw source). `docPath`
  * is repo-root-relative, exactly as passed to the other showboat commands.
+ *
+ * The href is deliberately root-relative (`/<owner>/<repo>/blob/<branch>/…`), NOT an absolute
+ * `https://github.com/…` URL. GitHub resolves a leading-slash href against github.com, so it's a
+ * real clickable link in both a `gh`-posted body and an MCP-posted one — and, crucially, it
+ * survives the GitHub MCP PR-body writer, which double-backtick-wraps any `https://…` in the body
+ * (storing `[text](``https://…``)`, rendered as inline code, not an anchor). Emitting the relative
+ * form means pr-link output can be pasted verbatim in either environment, no hand-conversion. See
+ * the gh-cli skill.
  */
 export function formatDemoLink(remoteUrl: string, branch: string, docPath: string): string {
   const cleanPath = docPath
     .trim()
     .replaceAll('\\', '/')
     .replace(/^\.?\/+/, '');
-  const url = `https://github.com/${parseOwnerRepo(remoteUrl)}/blob/${branch}/${cleanPath}`;
-  return `📝 **Demo:** [${cleanPath}](${url})`;
+  const href = `/${parseOwnerRepo(remoteUrl)}/blob/${branch}/${cleanPath}`;
+  return `📝 **Demo:** [${cleanPath}](${href})`;
 }
 
 /** Git context for {@link prLink}; injectable so tests don't need a real repo/remote. */
