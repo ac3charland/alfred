@@ -79,6 +79,45 @@ test('ranks tasks High → Medium → Low → unprioritised', async ({ page, see
   await expect(rows.nth(3)).toContainText('Unprioritised thing');
 });
 
+test('completes a task straight from the By-Priority checkbox (ALF-101)', async ({
+  page,
+  seed,
+}) => {
+  // Real UUID id: completing PATCHes it by id via /api/tasks/:id/complete, which validates a UUID.
+  await seed({ items: [task('Pay the invoice', { priority: 'high' })] });
+  await page.goto('/priority');
+
+  const ranked = page.getByRole('list', { name: 'Tasks by priority' });
+  await expect(ranked.getByText('Pay the invoice')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Mark "Pay the invoice" complete' }).click();
+
+  // A completed top-level task drops out of the active-only default list.
+  await expect(ranked.getByText('Pay the invoice')).toBeHidden();
+});
+
+test('expands a task to reveal its subtasks in the By-Priority view (ALF-101)', async ({
+  page,
+  seed,
+}) => {
+  const parent = task('Launch the site', { priority: 'high' });
+  await seed({
+    items: [parent, task('Write the copy', { parent_id: parent.id, priority: 'low' })],
+  });
+  await page.goto('/priority');
+
+  // getByRole respects aria-hidden: while collapsed the Subtasks list has 0 AT matches, and the
+  // subtask is not its own ranked row.
+  const subtasks = page.getByRole('list', { name: 'Subtasks' });
+  await expect(subtasks).toBeHidden();
+
+  await page.getByRole('button', { name: 'Expand subtasks' }).click();
+  await expect(subtasks.getByText('Write the copy')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Collapse subtasks' }).click();
+  await expect(subtasks).toBeHidden();
+});
+
 test('orders tasks within a folder by priority', async ({ page, seed }) => {
   await seed({
     folders: [makeFolder('Work', { id: 'work' })],

@@ -648,9 +648,11 @@ export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
 }
 
 /**
- * The flat, cross-cutting **By-Priority** list (ALF-37): every top-level (parentless) task
- * across Inbox and every folder, ranked by how much it needs attention. Derived entirely from
- * the seeded store — no extra fetch — exactly as `useBacklog` derives the Code backlog.
+ * The cross-cutting **By-Priority** forest (ALF-37 / ALF-101): every top-level (parentless) task
+ * across Inbox and every folder, ranked by how much it needs attention, each returned as a full
+ * `ItemNode` with its subtree so the By-Priority rows are normal task components — checkbox +
+ * expandable subtasks (ALF-101), not a flat read-only index. Derived entirely from the seeded
+ * store — no extra fetch — exactly as `useBacklog` derives the Code backlog.
  *
  * Each top-level task is ranked by its **effective key**: the best (most important, then most
  * urgent) of the task itself AND its *active* descendants (a completed subtask's urgency is
@@ -659,11 +661,21 @@ export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
  *
  * Order: rank ascending (High → Medium → Low → unprioritised), then due ascending (earliest /
  * most overdue first; no due date sorts last), then `created_at` as the stable final tiebreak.
- * Completed tasks are hidden unless `showCompleted`.
+ * Completed top-level tasks are hidden unless `showCompleted`; a task's own subtree (built from
+ * the whole list) always travels with it, so a completed subtask still renders in context when its
+ * parent is expanded.
  */
-export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }): Item[] {
+export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }): ItemNode[] {
   const items = useTasks();
-  return React.useMemo(() => rankByPriority(items, showCompleted), [items, showCompleted]);
+  return React.useMemo(() => {
+    // Rank the top-level tasks (flat), then re-attach each one's built subtree so the row can
+    // render it. buildTree assembles every root; we keep only the ranked ones, in rank order.
+    const ranked = rankByPriority(items, showCompleted);
+    const byId = new Map(buildTree(items).map((node) => [node.id, node] as const));
+    return ranked
+      .map((task) => byId.get(task.id))
+      .filter((node): node is ItemNode => node !== undefined);
+  }, [items, showCompleted]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */

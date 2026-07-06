@@ -1,11 +1,17 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import * as apiClient from '@/lib/api-client';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { Folder, Item } from '@/lib/types';
 
 import { ALFRED_FOCUS_ITEM_EVENT } from './alfred-link';
 import { PriorityView } from './priority-view';
+
+// api-client is the seam the store calls; mock it so tests never hit the network.
+jest.mock('@/lib/api-client');
+const mockCompleteTask = jest.mocked(apiClient.completeTask);
+const mockUpdateItem = jest.mocked(apiClient.updateItem);
 
 let nextCreated = 0;
 function makeItem(title: string, overrides: Partial<Item> = {}): Item {
@@ -30,7 +36,7 @@ function makeItem(title: string, overrides: Partial<Item> = {}): Item {
   };
 }
 
-/** The rendered row titles, in order, from the By-Priority list. */
+/** The rendered top-level row titles, in order, from the By-Priority list. */
 function rowOrder(): string[] {
   const list = screen.getByRole('list', { name: 'Tasks by priority' });
   return within(list)
@@ -72,7 +78,8 @@ describe('PriorityView', () => {
     expect(indexOf('Later')).toBeLessThan(indexOf('No due'));
   });
 
-  it('lists top-level tasks only (a prioritised subtask is not its own row)', () => {
+  it('renders subtasks under their parent (revealed by the chevron), not as their own ranked rows', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<PriorityView />, {
       tasks: [
         makeItem('Parent', { id: 'p', priority: 'low' }),
@@ -80,8 +87,13 @@ describe('PriorityView', () => {
       ],
     });
 
-    expect(screen.getByText('Parent')).toBeInTheDocument();
-    expect(screen.queryByText('Child high')).not.toBeInTheDocument();
+    // The child is not its own ranked row and stays hidden until the parent is expanded.
+    expect(screen.getByRole('link', { name: 'Parent' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Child high' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Expand subtasks' }));
+
+    expect(screen.getByRole('link', { name: 'Child high' })).toBeInTheDocument();
   });
 
   it('rolls a High/overdue active subtask up so its Low parent outranks a Medium task', () => {
@@ -161,6 +173,111 @@ describe('PriorityView', () => {
     expect(screen.getByText(/No tasks yet/)).toBeInTheDocument();
   });
 
+  describe('completion (ALF-101)', () => {
+    it('completes a top-level task from its checkbox, dropping it from the default list', async () => {
+      mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
+      const user = userEvent.setup();
+      renderWithProviders(<PriorityView />, {
+        tasks: [makeItem('Ship it', { id: 'ship', priority: 'high' })],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Mark "Ship it" complete' }));
+
+      await waitFor(() => {
+        expect(mockCompleteTask).toHaveBeenCalledWith('ship');
+      });
+      // A completed top-level task leaves the active-only default view.
+      expect(screen.queryByText('Ship it')).not.toBeInTheDocument();
+    });
+
+    it('reactivates a completed task from its checkbox (Show completed on)', async () => {
+      mockUpdateItem.mockResolvedValue(
+        makeItem('Done', { id: 'done', status: 'active', priority: 'high' }),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<PriorityView />, {
+        tasks: [
+          makeItem('Done', {
+            id: 'done',
+            priority: 'high',
+            status: 'completed',
+            completed_at: '2026-06-02T00:00:00Z',
+          }),
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Show completed' }));
+      await user.click(screen.getByRole('button', { name: 'Mark "Done" active' }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('done', { status: 'active' });
+      });
+    });
+
+    it('warns with the cascade modal before completing a task that hides active subtasks', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<PriorityView />, {
+        tasks: [
+          makeItem('Parent', { id: 'p', priority: 'high' }),
+          makeItem('Child', { id: 'c', parent_id: 'p' }),
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Mark "Parent" complete' }));
+
+      expect(await screen.findByText(/complete with subtasks/i)).toBeInTheDocument();
+      expect(mockCompleteTask).not.toHaveBeenCalled();
+    });
+
+    it('completes the subtree once the cascade modal is confirmed', async () => {
+      mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
+      const user = userEvent.setup();
+      renderWithProviders(<PriorityView />, {
+        tasks: [
+          makeItem('Parent', { id: 'p', priority: 'high' }),
+          makeItem('Child', { id: 'c', parent_id: 'p' }),
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Mark "Parent" complete' }));
+      await user.click(await screen.findByRole('button', { name: 'Complete all' }));
+
+      await waitFor(() => {
+        expect(mockCompleteTask).toHaveBeenCalledWith('p');
+      });
+    });
+
+    it('lets a subtask be completed from its own checkbox once expanded', async () => {
+      mockCompleteTask.mockResolvedValue({ completed: [], spawned: null });
+      const user = userEvent.setup();
+      renderWithProviders(<PriorityView />, {
+        tasks: [
+          makeItem('Parent', { id: 'p', priority: 'low' }),
+          makeItem('Child', { id: 'c', parent_id: 'p', priority: 'high' }),
+        ],
+      });
+
+      await user.click(screen.getByRole('button', { name: 'Expand subtasks' }));
+      await user.click(screen.getByRole('button', { name: 'Mark "Child" complete' }));
+
+      await waitFor(() => {
+        expect(mockCompleteTask).toHaveBeenCalledWith('c');
+      });
+    });
+  });
+
+  it('exposes neither the add-subtask nor the More actions affordance', () => {
+    renderWithProviders(<PriorityView />, {
+      tasks: [
+        makeItem('Parent', { id: 'p', priority: 'high' }),
+        makeItem('Child', { id: 'c', parent_id: 'p' }),
+      ],
+    });
+
+    expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+
   describe('clicking a row navigates to the task and focuses it (ALF-96)', () => {
     it('links each row to its containing view — folder, or the inbox when unfiled', () => {
       const folders: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z' }];
@@ -227,7 +344,7 @@ describe('PriorityView', () => {
       }
     });
 
-    it('re-prioritising from the row menu does not navigate', async () => {
+    it('re-prioritising from the row chip does not navigate', async () => {
       const user = userEvent.setup();
       const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
 
