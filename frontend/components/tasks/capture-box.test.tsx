@@ -625,4 +625,37 @@ describe('CaptureBox', () => {
 
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  it('compact: tapping Add on touch (button never focuses) still submits and does not dismiss', async () => {
+    // On touch devices a <button> does not take focus on tap, so tapping "Add" blurs the
+    // input with a null relatedTarget. Without the pointer-press guard, onBlur reads that as
+    // "focus left the box", clears the value and dismisses before the submit lands — so the
+    // subtask is never created. This reproduces that exact mobile sequence.
+    mockCreateItem.mockResolvedValue({ id: '1', title: 'Subtask' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+
+    const onDismiss = jest.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<CaptureBox compact onDismiss={onDismiss} />);
+
+    const input = screen.getByPlaceholderText(/add subtask/i);
+    await user.type(input, 'Subtask');
+
+    const addButton = screen.getByRole('button', { name: /add/i });
+    const form = addButton.closest('form');
+    if (form === null) throw new Error('compact capture form not found');
+
+    // Pointer-down fires before the focus change on a real tap.
+    fireEvent.pointerDown(addButton);
+    // The tap blurs the input; on touch the button never becomes the related target.
+    fireEvent.blur(input, { relatedTarget: null });
+    // The tap then completes and submits the form.
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ text: 'Subtask' }));
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
 });

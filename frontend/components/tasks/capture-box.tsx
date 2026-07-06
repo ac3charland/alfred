@@ -59,6 +59,11 @@ export function CaptureBox({
   // Number of saves still in flight. A ref, not state, because the count itself never
   // drives the UI — only the derived "did the user get ahead of the network?" flag does.
   const inFlightReference = React.useRef(0);
+  // True while the compact "Add" button is being pressed. On touch devices a button doesn't
+  // take focus on tap, so tapping "Add" blurs the input with a null relatedTarget — which the
+  // form's onBlur would read as "focus left the box" and dismiss before the submit lands. The
+  // button's onPointerDown fires before that blur, so this flag lets onBlur skip the dismiss.
+  const pressingSubmitReference = React.useRef(false);
 
   React.useEffect(() => {
     if (compact) {
@@ -148,6 +153,10 @@ export function CaptureBox({
           void handleSubmit(event_);
         }}
         onBlur={(e) => {
+          // Skip the dismiss when the blur is caused by pressing "Add": on touch devices that
+          // blur carries a null relatedTarget (the button never takes focus), so the
+          // contains-check alone would wrongly tear the box down before the submit fires.
+          if (pressingSubmitReference.current) return;
           if (!e.currentTarget.contains(e.relatedTarget)) {
             setValue('');
             onDismiss?.();
@@ -171,6 +180,12 @@ export function CaptureBox({
           variant="ghost"
           aria-label="Add"
           disabled={!value.trim()}
+          onPointerDown={() => {
+            pressingSubmitReference.current = true;
+          }}
+          onClick={() => {
+            pressingSubmitReference.current = false;
+          }}
           className="shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal"
         >
           {isSaving ? <Spinner label="Saving" /> : 'Add'}
