@@ -371,18 +371,20 @@ width at 640px and thins it to 15fps.)
 ## Linking the demo in the PR (a live, clickable link)
 
 A demo doc only helps a reviewer if they can **open it from the PR and see the embedded
-screenshots/diffs rendered**. A bare path or relative link isn't clickable on the PR page,
-so the PR **body must contain a live, absolute GitHub blob link** to the doc. Don't build
-that URL by hand — generate it:
+screenshots/diffs rendered** — so the PR **body must contain a live, clickable blob link** to the
+doc, not a bare path to the file. Don't build that link by hand — generate it:
 
 ```bash
 npm run demo -- pr-link docs/demos/<name>.md
-# → 📝 **Demo:** [docs/demos/<name>.md](https://github.com/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md)
+# → 📝 **Demo:** [docs/demos/<name>.md](/<owner>/<repo>/blob/<branch>/docs/demos/<name>.md)
 ```
 
 The `pr-link` command derives `<owner>/<repo>` from `origin` and `<branch>` from `HEAD`
-(no hardcoding), and emits a **blob** URL on the current branch — which renders the doc
-(images, diffs and all) rather than raw source. Paste its output into the PR body.
+(no hardcoding), and emits a **root-relative** blob link on the current branch — which renders the
+doc (images, diffs and all) rather than raw source. GitHub resolves the leading-slash href against
+github.com, so it's clickable, and because it carries no `https://` token it survives the GitHub
+MCP PR-body writer's backtick-wrap (see the `gh-cli` skill). Paste its output into the PR body
+verbatim.
 
 **Always include it when you open the PR.** If a PR for the branch **already exists** (e.g.
 opened from the Claude Code UI), **edit the body** to add the link if it's missing — pass
