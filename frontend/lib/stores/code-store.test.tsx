@@ -7,6 +7,7 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   ALL_FACTORY_STATES,
+  type CodeActions,
   CodeProvider,
   DEFAULT_BACKLOG_STATUSES,
   HAPPY_PATH_STATES,
@@ -252,6 +253,12 @@ function prioritiesById(backlog: CodeStory[]): Record<string, number | null> {
     if (story.item_id !== null) out[story.item_id] = story.priority;
   }
   return out;
+}
+
+/** Narrow a possibly-null `apply*Optimistic` return for a test that expects it to resolve. */
+function unwrap<T>(value: T | null): T {
+  if (value === null) throw new Error('expected a non-null value');
+  return value;
 }
 
 describe('code-store', () => {
@@ -1161,13 +1168,54 @@ describe('code-store', () => {
       });
     });
 
-    describe('reorderStory (Backlog priority swap)', () => {
+    describe('applyReorderOptimistic + commitReorderBatch (Backlog priority swap)', () => {
       const epic = makeEpic('e1', 'p1');
       const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
       const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
 
-      it('optimistically swaps the pair then reconciles from the returned rows', async () => {
-        // The RPC returns both rows with their swapped priorities.
+      it('applyReorderOptimistic swaps the pair instantly, with no network call', () => {
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
+        );
+
+        let step: ReturnType<CodeActions['applyReorderOptimistic']> = null;
+        act(() => {
+          step = result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2');
+        });
+
+        expect(mockReorderCode).not.toHaveBeenCalled();
+        expect(step).toEqual({
+          ref: 'ALF-1',
+          neighbourRef: 'ALF-2',
+          aItemId: 'i1',
+          bItemId: 'i2',
+          aPriorityBefore: 1,
+          bPriorityBefore: 2,
+        });
+        // ALF-2 now outranks ALF-1, so the backlog order flips — instantly, before any network.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1']);
+      });
+
+      it('applyReorderOptimistic returns null (and swaps nothing) when a ref is unknown', () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high] }),
+        });
+
+        let step: ReturnType<CodeActions['applyReorderOptimistic']> = null;
+        act(() => {
+          step = result.current.applyReorderOptimistic('ALF-1', 'ALF-404');
+        });
+
+        expect(step).toBeNull();
+        expect(mockReorderCode).not.toHaveBeenCalled();
+      });
+
+      it('commitReorderBatch sends one call per step, in order, and reconciles from each response', async () => {
         mockReorderCode.mockResolvedValue([
           makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
           makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
@@ -1180,57 +1228,126 @@ describe('code-store', () => {
           { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
         );
 
+        let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          step = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+
         await act(async () => {
-          await result.current.actions.reorderStory('ALF-1', 'ALF-2');
+          await result.current.actions.commitReorderBatch([step]);
         });
 
         expect(mockReorderCode).toHaveBeenCalledWith('ALF-1', 'ALF-2');
-        // ALF-2 now outranks ALF-1, so the backlog order flips.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1 });
-        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-1']);
       });
 
-      it('rolls the priorities back on API failure', async () => {
-        mockReorderCode.mockRejectedValue(new Error('swap failed'));
+      it('on a failed step, rolls back that step and everything queued behind it — earlier steps stay committed', async () => {
+        const third = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 3 });
+        mockReorderCode
+          .mockResolvedValueOnce([
+            makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 2 }),
+            makeSavedSidecar({ item_id: 'i2', ref: 'ALF-2', priority: 1 }),
+          ])
+          .mockRejectedValueOnce(new Error('swap failed'));
         const { result } = renderHook(
           () => ({
             actions: useCodeActions(),
             backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
           }),
-          { wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }) },
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A],
+              epics: [epic],
+              stories: [high, low, third],
+            }),
+          },
         );
 
-        await act(async () => {
-          await expect(result.current.actions.reorderStory('ALF-1', 'ALF-2')).rejects.toThrow(
-            'swap failed',
-          );
+        // Two clicks in one burst, each its own `act` (so the second reads the FIRST swap's
+        // committed local state — exactly like two separate real clicks, re-rendered between):
+        // ALF-1 swaps up past ALF-2, then past ALF-3.
+        let stepOne!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        let stepTwo!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          stepOne = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-2'));
         });
-
-        // Restored to the original ranking.
-        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 1, i2: 2 });
-      });
-
-      it('throws (and does not call the api) when a ref is unknown', async () => {
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high] }),
+        act(() => {
+          stepTwo = unwrap(result.current.actions.applyReorderOptimistic('ALF-1', 'ALF-3'));
         });
 
         await act(async () => {
-          await expect(result.current.reorderStory('ALF-1', 'ALF-404')).rejects.toThrow(
-            /not found/i,
-          );
+          await result.current.actions.commitReorderBatch([stepOne, stepTwo]);
         });
-        expect(mockReorderCode).not.toHaveBeenCalled();
+
+        expect(mockReorderCode).toHaveBeenNthCalledWith(1, 'ALF-1', 'ALF-2');
+        expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-1', 'ALF-3');
+        // The first swap already committed server-side (i1↔i2 stays applied); the second (failed)
+        // swap rolls back, so ALF-3 is restored to its original priority.
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 2, i2: 1, i3: 3 });
       });
     });
 
-    describe('moveStory (Backlog jump to top/bottom)', () => {
+    describe('applyMoveOptimistic + commitMove (Backlog jump to top/bottom)', () => {
       const epic = makeEpic('e1', 'p1');
       const a = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 10 });
       const b = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 20 });
       const c = makeStory('i3', 'e1', 'p1', { ref: 'ALF-3', priority: 30 });
 
-      it('jumps the last story to the top: optimistic min-1 then reconcile', async () => {
+      it('applyMoveOptimistic jumps the last story to the top instantly (min-1), with no network call', () => {
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
+          },
+        );
+
+        let applied: ReturnType<CodeActions['applyMoveOptimistic']> = null;
+        act(() => {
+          applied = result.current.actions.applyMoveOptimistic('ALF-3', true);
+        });
+
+        expect(mockMoveCode).not.toHaveBeenCalled();
+        expect(applied).toEqual({ priorityBefore: 30 });
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
+      });
+
+      it('applyMoveOptimistic jumps the first story to the bottom instantly (max+1)', () => {
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
+          },
+        );
+
+        act(() => {
+          result.current.actions.applyMoveOptimistic('ALF-1', false);
+        });
+
+        expect(mockMoveCode).not.toHaveBeenCalled();
+        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
+      });
+
+      it('applyMoveOptimistic returns null when the ref is unknown', () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a] }),
+        });
+
+        let applied: ReturnType<CodeActions['applyMoveOptimistic']> = null;
+        act(() => {
+          applied = result.current.applyMoveOptimistic('ALF-404', true);
+        });
+
+        expect(applied).toBeNull();
+        expect(mockMoveCode).not.toHaveBeenCalled();
+      });
+
+      it('commitMove sends the call and reconciles from the returned row', async () => {
         mockMoveCode.mockResolvedValue([
           makeSavedSidecar({ item_id: 'i3', ref: 'ALF-3', priority: -1 }),
         ]);
@@ -1244,38 +1361,20 @@ describe('code-store', () => {
           },
         );
 
+        let applied!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
+        act(() => {
+          applied = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+        });
+
         await act(async () => {
-          await result.current.actions.moveStory('ALF-3', true);
+          await result.current.actions.commitMove('ALF-3', true, applied.priorityBefore);
         });
 
         expect(mockMoveCode).toHaveBeenCalledWith('ALF-3', true);
-        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-3', 'ALF-1', 'ALF-2']);
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: -1 });
       });
 
-      it('jumps the first story to the bottom: optimistic max+1 then reconcile', async () => {
-        mockMoveCode.mockResolvedValue([
-          makeSavedSidecar({ item_id: 'i1', ref: 'ALF-1', priority: 31 }),
-        ]);
-        const { result } = renderHook(
-          () => ({
-            actions: useCodeActions(),
-            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
-          }),
-          {
-            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a, b, c] }),
-          },
-        );
-
-        await act(async () => {
-          await result.current.actions.moveStory('ALF-1', false);
-        });
-
-        expect(mockMoveCode).toHaveBeenCalledWith('ALF-1', false);
-        expect(result.current.backlog.map((s) => s.ref)).toEqual(['ALF-2', 'ALF-3', 'ALF-1']);
-      });
-
-      it('rolls the priority back on API failure', async () => {
+      it('commitMove rolls the priority back to priorityBefore on API failure', async () => {
         mockMoveCode.mockRejectedValue(new Error('move failed'));
         const { result } = renderHook(
           () => ({
@@ -1287,25 +1386,17 @@ describe('code-store', () => {
           },
         );
 
+        let applied!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
+        act(() => {
+          applied = unwrap(result.current.actions.applyMoveOptimistic('ALF-3', true));
+        });
+
         await act(async () => {
-          await expect(result.current.actions.moveStory('ALF-3', true)).rejects.toThrow(
-            'move failed',
-          );
+          await result.current.actions.commitMove('ALF-3', true, applied.priorityBefore);
         });
 
         // Restored to the original ranking.
         expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 20, i3: 30 });
-      });
-
-      it('throws (and does not call the api) when the ref is unknown', async () => {
-        const { result } = renderHook(() => useCodeActions(), {
-          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [a] }),
-        });
-
-        await act(async () => {
-          await expect(result.current.moveStory('ALF-404', true)).rejects.toThrow(/not found/i);
-        });
-        expect(mockMoveCode).not.toHaveBeenCalled();
       });
     });
 
@@ -1811,7 +1902,7 @@ describe('code-store', () => {
         expect(mockShowToast).toHaveBeenCalledWith("Couldn't start session");
       });
 
-      it('reorderStory toasts "Couldn\'t reorder story"', async () => {
+      it('commitReorderBatch toasts "Couldn\'t reorder story"', async () => {
         mockReorderCode.mockRejectedValue(new Error('swap failed'));
         const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
         const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
@@ -1819,16 +1910,19 @@ describe('code-store', () => {
           wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
         });
 
+        let step!: NonNullable<ReturnType<CodeActions['applyReorderOptimistic']>>;
+        act(() => {
+          step = unwrap(result.current.applyReorderOptimistic('ALF-1', 'ALF-2'));
+        });
+
         await act(async () => {
-          await expect(result.current.reorderStory('ALF-1', 'ALF-2')).rejects.toThrow(
-            'swap failed',
-          );
+          await result.current.commitReorderBatch([step]);
         });
 
         expect(mockShowToast).toHaveBeenCalledWith("Couldn't reorder story");
       });
 
-      it('moveStory toasts "Couldn\'t move story"', async () => {
+      it('commitMove toasts "Couldn\'t move story"', async () => {
         mockMoveCode.mockRejectedValue(new Error('move failed'));
         const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
         const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
@@ -1836,8 +1930,13 @@ describe('code-store', () => {
           wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
         });
 
+        let applied!: NonNullable<ReturnType<CodeActions['applyMoveOptimistic']>>;
+        act(() => {
+          applied = unwrap(result.current.applyMoveOptimistic('ALF-1', true));
+        });
+
         await act(async () => {
-          await expect(result.current.moveStory('ALF-1', true)).rejects.toThrow('move failed');
+          await result.current.commitMove('ALF-1', true, applied.priorityBefore);
         });
 
         expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
