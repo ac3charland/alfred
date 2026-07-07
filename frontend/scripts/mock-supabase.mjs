@@ -176,6 +176,7 @@ function newItem(input) {
     completed_at: input.completed_at ?? null,
     folder_id: input.folder_id ?? null,
     parent_id: input.parent_id ?? null,
+    intended_project_id: input.intended_project_id ?? null,
     priority: input.priority ?? null,
   };
 }

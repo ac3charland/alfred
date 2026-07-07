@@ -535,6 +535,82 @@ describe('POST /api/items', () => {
     );
   });
 
+  it('passes through intended_project_id on a top-level code capture (ALF-62)', async () => {
+    const chain = makeQueryChain({ data: TEST_ITEM, error: undefined });
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const projectId = 'e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8';
+
+    await POST(
+      makeRequest('http://localhost/api/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Add dark mode',
+          item_type: 'code',
+          intended_project_id: projectId,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ item_type: 'code', intended_project_id: projectId }),
+    );
+  });
+
+  it('nulls intended_project_id when a parent_id is present (subtask is forced to task) (ALF-62)', async () => {
+    const chain = makeQueryChain({ data: TEST_ITEM, error: undefined });
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const parentId = 'e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8';
+    const projectId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+    await POST(
+      makeRequest('http://localhost/api/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Subtask',
+          parent_id: parentId,
+          intended_project_id: projectId,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ item_type: 'task', intended_project_id: null }),
+    );
+  });
+
+  it('defaults intended_project_id to null when omitted (ALF-62)', async () => {
+    const chain = makeQueryChain({ data: TEST_ITEM, error: undefined });
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(
+      makeRequest('http://localhost/api/items', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'Plain capture' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ intended_project_id: null }),
+    );
+  });
+
   it('returns 500 on Supabase insert error', async () => {
     const chain = makeQueryChain({ data: undefined, error: { message: 'Insert error' } });
     const mockSupabase = {

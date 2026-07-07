@@ -52,6 +52,9 @@ export async function POST(request: Request): Promise<Response> {
       due_date: input.due_date ?? null,
       folder_id: input.folder_id ?? null,
       parent_id: input.parent_id ?? null,
+      // A row with a parent_id is forced to `task`, which may never carry an intended project
+      // (the DB CHECK is code-only) — null it out when a parent is present (belt-and-braces).
+      intended_project_id: input.parent_id == null ? (input.intended_project_id ?? null) : null,
       status: 'active',
     })
     .select()

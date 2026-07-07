@@ -75,6 +75,27 @@ describe('createItemSchema', () => {
   it('rejects empty string as item_type', () => {
     expect(createItemSchema.safeParse({ title: 'x', item_type: '' }).success).toBe(false);
   });
+
+  it('accepts a uuid intended_project_id (ALF-62)', () => {
+    const result = createItemSchema.safeParse({
+      title: 'Add dark mode',
+      item_type: 'code',
+      intended_project_id: 'e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts null intended_project_id (ALF-62)', () => {
+    expect(createItemSchema.safeParse({ title: 'x', intended_project_id: null }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects a non-uuid intended_project_id (ALF-62)', () => {
+    expect(
+      createItemSchema.safeParse({ title: 'x', intended_project_id: 'not-a-uuid' }).success,
+    ).toBe(false);
+  });
 });
 
 describe('updateItemSchema', () => {
