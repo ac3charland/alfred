@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -186,6 +191,7 @@ export type Database = {
           due_date: string | null
           folder_id: string | null
           id: string
+          intended_project_id: string | null
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string | null
           occurrence_index: number | null
@@ -204,6 +210,7 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string
+          intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"]
           notes?: string | null
           occurrence_index?: number | null
@@ -222,6 +229,7 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string
+          intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"]
           notes?: string | null
           occurrence_index?: number | null
@@ -240,6 +248,13 @@ export type Database = {
             columns: ["folder_id"]
             isOneToOne: false
             referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_intended_project_id_fkey"
+            columns: ["intended_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -300,10 +315,15 @@ export type Database = {
           due_date: string | null
           folder_id: string | null
           id: string | null
+          intended_project_id: string | null
           item_type: Database["public"]["Enums"]["item_type"] | null
           notes: string | null
+          occurrence_index: number | null
           parent_id: string | null
+          priority: Database["public"]["Enums"]["task_priority"] | null
           raw_capture: string | null
+          recurrence: Json | null
+          recurrence_series_id: string | null
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"] | null
           title: string | null
@@ -314,10 +334,15 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string | null
+          intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"] | null
           notes?: string | null
+          occurrence_index?: number | null
           parent_id?: string | null
+          priority?: Database["public"]["Enums"]["task_priority"] | null
           raw_capture?: string | null
+          recurrence?: Json | null
+          recurrence_series_id?: string | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
           title?: string | null
@@ -328,10 +353,15 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string | null
+          intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"] | null
           notes?: string | null
+          occurrence_index?: number | null
           parent_id?: string | null
+          priority?: Database["public"]["Enums"]["task_priority"] | null
           raw_capture?: string | null
+          recurrence?: Json | null
+          recurrence_series_id?: string | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
           title?: string | null
@@ -342,6 +372,13 @@ export type Database = {
             columns: ["folder_id"]
             isOneToOne: false
             referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_intended_project_id_fkey"
+            columns: ["intended_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -437,6 +474,7 @@ export type Database = {
           due_date: string | null
           folder_id: string | null
           id: string
+          intended_project_id: string | null
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string | null
           occurrence_index: number | null
@@ -772,4 +810,3 @@ export const Constants = {
     },
   },
 } as const
-
