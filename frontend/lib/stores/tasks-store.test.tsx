@@ -51,6 +51,7 @@ const BASE: Item = {
   recurrence: null,
   priority: null,
   recurrence_series_id: null,
+  intended_project_id: null,
 };
 
 function item(overrides: Partial<Item>): Item {
@@ -227,6 +228,69 @@ describe('addTask', () => {
     });
 
     expect(result.current.tasks[0]?.item_type).toBe('task');
+  });
+
+  it('threads a matched prefix (title, code type, intended project) into the API call (ALF-62)', async () => {
+    const saved = item({ id: 'server-1', item_type: 'code' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({
+        text: 'ALF: add dark mode',
+        itemType: 'code',
+        title: 'Add dark mode',
+        intendedProjectId: 'p-alf',
+      });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'ALF: add dark mode',
+        raw_capture: 'ALF: add dark mode',
+        title: 'Add dark mode',
+        item_type: 'code',
+        intended_project_id: 'p-alf',
+      }),
+    );
+  });
+
+  it('reflects the matched title, code type, and intended project on the optimistic row (ALF-62)', () => {
+    mockCreateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    act(() => {
+      void result.current.actions.addTask({
+        text: 'ALF: add dark mode',
+        itemType: 'code',
+        title: 'Add dark mode',
+        intendedProjectId: 'p-alf',
+      });
+    });
+
+    const optimistic = result.current.tasks[0];
+    expect(optimistic?.title).toBe('Add dark mode');
+    expect(optimistic?.item_type).toBe('code');
+    expect(optimistic?.intended_project_id).toBe('p-alf');
+    expect(optimistic?.raw_capture).toBe('ALF: add dark mode');
+  });
+
+  it('does NOT attach an intended project to a subtask capture (parent forces a task) (ALF-62)', async () => {
+    const saved = item({ id: 'server-1', parent_id: 'parent-1', item_type: 'task' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({
+        text: 'Subtask',
+        parentId: 'parent-1',
+        intendedProjectId: 'p-alf',
+      });
+    });
+
+    const callArg = mockCreateItem.mock.calls[0]?.[0];
+    expect(callArg).not.toHaveProperty('intended_project_id');
+    expect(callArg?.item_type).toBe('task');
   });
 });
 

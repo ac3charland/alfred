@@ -122,6 +122,9 @@ export const createItemSchema = z
     due_date: dueDate.optional(),
     folder_id: nullableUuid.optional(),
     parent_id: nullableUuid.optional(),
+    // The Inbox capture box's project-prefix match assigns a pre-factory, epic-free project
+    // to a code-classified inbox item (mirrors folder_id/parent_id — nullable, optional).
+    intended_project_id: nullableUuid.optional(),
     // Nullable so a create can omit it (one-shot task) or send null explicitly.
     recurrence: recurrenceSchema.nullable().optional(),
   })
