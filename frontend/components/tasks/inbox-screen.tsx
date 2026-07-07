@@ -69,9 +69,10 @@ export function InboxScreen({ open }: InboxScreenProperties) {
       {/* Top spacer: collapses when inbox opens, pushing capture box up */}
       <div className={spacerClass} data-testid="center-spacer-top" aria-hidden />
 
-      {/* Capture box — the hero, always present on the landing/inbox screen */}
+      {/* Capture box — the hero, always present on the landing/inbox screen. The Inbox box is
+          the one place project-prefix parsing runs (folder / subtask boxes leave it off). */}
       <div className="mb-6">
-        <CaptureBox />
+        <CaptureBox parseProjectPrefix />
       </div>
 
       {/* Subtle affordance: reveal the inbox list, or close it back to the landing */}
