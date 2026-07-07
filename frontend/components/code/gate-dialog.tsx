@@ -20,6 +20,8 @@ export interface GateItem {
   title: string;
   notes: string | null;
   source_url: string | null;
+  /** The project pre-assigned at capture via a prefix, if any — pre-selects (and, in bulk, locks) the gate. */
+  intendedProjectId: string | null;
 }
 
 interface GateDialogProperties {
@@ -95,7 +97,18 @@ function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties
   const projects = useProjects();
   const epics = useEpics();
   const { createProject, createEpic, convertTaskToCode } = useCodeActions();
-  const [projectId, setProjectId] = React.useState<string | null>(null);
+  // The project every selected item already carries, when they unanimously share one non-null
+  // intended project (set at capture via a prefix). Pre-selects the picker; in bulk it also locks
+  // it. A single item is just the one-element case, so this pre-selects its intended project too.
+  const firstIntended = items[0]?.intendedProjectId ?? null;
+  const unanimousProjectId =
+    items.length > 0 && items.every((it) => it.intendedProjectId === firstIntended)
+      ? firstIntended
+      : null;
+  // Lock only a BULK send whose whole selection shares one project — render it as a read-only
+  // chip and let the user pick only the epic. A single item stays user-changeable.
+  const projectLocked = items.length > 1 && unanimousProjectId !== null;
+  const [projectId, setProjectId] = React.useState<string | null>(unanimousProjectId);
   const [epicId, setEpicId] = React.useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
@@ -162,33 +175,46 @@ function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties
       </DialogDescription>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
-        {/* Project selector */}
+        {/* Project selector — a read-only chip when the bulk selection unanimously shares one
+            assigned project (the user only picks the epic); otherwise the interactive list. */}
         <div className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="gate-project-list">Project</FieldLabel>
-          <div
-            id="gate-project-list"
-            role="listbox"
-            aria-label="Project"
-            className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-sm border border-border bg-input/40 p-1"
-          >
-            {projects.map((project) => (
-              <OptionRow
-                key={project.id}
-                selected={project.id === projectId}
-                label={project.name}
-                hint={project.key}
-                onSelect={() => {
-                  selectProject(project.id);
+          {projectLocked && selectedProject !== null ? (
+            <div
+              data-testid="gate-project-locked"
+              className="flex items-center gap-2 rounded-sm border border-border bg-input/40 px-3 py-2 text-sm text-foreground"
+            >
+              <span className="truncate">{selectedProject.name}</span>
+              <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground/70">
+                {selectedProject.key}
+              </span>
+            </div>
+          ) : (
+            <div
+              id="gate-project-list"
+              role="listbox"
+              aria-label="Project"
+              className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-sm border border-border bg-input/40 p-1"
+            >
+              {projects.map((project) => (
+                <OptionRow
+                  key={project.id}
+                  selected={project.id === projectId}
+                  label={project.name}
+                  hint={project.key}
+                  onSelect={() => {
+                    selectProject(project.id);
+                  }}
+                />
+              ))}
+              <AddNewRow
+                label="New project…"
+                onClick={() => {
+                  setNewProjectOpen(true);
                 }}
               />
-            ))}
-            <AddNewRow
-              label="New project…"
-              onClick={() => {
-                setNewProjectOpen(true);
-              }}
-            />
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Epic selector — only meaningful once a project is chosen. */}

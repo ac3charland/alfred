@@ -19,6 +19,7 @@ import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { PriorityChip } from '@/components/tasks/priority-chip';
+import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
@@ -713,6 +714,13 @@ export function TaskRow({
                     in ALF-67 / ALF-65); an unclassified row shows none. */}
                     {showTypeBadge && <TypeBadge itemType={node.item_type} />}
 
+                    {/* Assigned-project chip — a code inbox item that carries an intended project
+                    (assigned at capture via a `<project>:` prefix) shows the project's key beside
+                    the badge. Read-only; the project is chosen/changed through the gate. */}
+                    {node.intended_project_id !== null && (
+                      <ProjectKeyChip projectId={node.intended_project_id} />
+                    )}
+
                     {/* Due date — `task`-only. Clickable: opens the calendar to change or clear
                     the date (same chip + auto-save as the detail panel; ALF-94). */}
                     {isTask && node.due_date && (
@@ -965,6 +973,7 @@ export function TaskRow({
             title: node.title,
             notes: node.notes,
             source_url: node.source_url,
+            intendedProjectId: node.intended_project_id,
           },
         ]}
         onComplete={(stories) => {
