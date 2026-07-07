@@ -1,6 +1,13 @@
 'use client';
 
-import { ChevronDown, ChevronUp, ChevronsDown, ChevronsUp } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowUpToLine,
+  ChevronDown,
+  ChevronUp,
+  ChevronsDown,
+  ChevronsUp,
+} from 'lucide-react';
 import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
@@ -19,9 +26,21 @@ export interface BacklogRowProperties {
   prevRef: string | null;
   /** The visible neighbour below (the Down swap target), or null at the bottom — Down disabled. */
   nextRef: string | null;
+  /** True when this story already ranks best within its own project — disables "to top of project". */
+  isProjectTop: boolean;
+  /** True when this story already ranks worst within its own project — disables "to bottom of project". */
+  isProjectBottom: boolean;
   /** Swap this story's priority with the given neighbour ref (the store's `reorderStory`). */
   onReorder: (ref: string, neighbourRef: string) => void;
-  /** Jump this story to the top (`toTop`) or bottom of the Backlog (the store's `moveStory`). */
+  /**
+   * Jump this story to the top/bottom of ITS OWN PROJECT (ALF-110, the store's
+   * `moveStoryInProject`) — the repurposed double-chevron.
+   */
+  onMoveProject: (ref: string, toTop: boolean) => void;
+  /**
+   * Jump this story to the top/bottom of the WHOLE Backlog (the store's `moveStory`) — the new
+   * arrow-to-line buttons.
+   */
   onMove: (ref: string, toTop: boolean) => void;
 }
 
@@ -29,15 +48,27 @@ export interface BacklogRowProperties {
  * One Backlog row, single column: a link body to the story's detail modal in its project board
  * (`/code/<projectId>?story=<ref>` — see board.tsx's deep-link seam) showing the ref, title,
  * a project badge, an epic badge, and a **status badge for every factory state** (the shared
- * `StateChip`, not `story-card`'s blocked/abandoned-only chip); plus a chevron cluster — single
- * chevrons for the neighbour-swap reorder and double chevrons to jump straight to the top/bottom
- * of the Backlog — kept OUTSIDE the link so there are no nested interactive elements (mirroring
- * how `story-card` separates its clickable body from its launch buttons).
+ * `StateChip`, not `story-card`'s blocked/abandoned-only chip); plus three button PAIRS (ALF-110),
+ * each with hover text explaining what it does — single chevrons to swap with the visible
+ * neighbour, double chevrons to jump to the top/bottom of the story's own PROJECT, and
+ * arrow-to-line icons to jump to the top/bottom of the WHOLE Backlog — kept OUTSIDE the link so
+ * there are no nested interactive elements (mirroring how `story-card` separates its clickable
+ * body from its launch buttons).
  *
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
-  { story, projectColor, prevRef, nextRef, onReorder, onMove },
+  {
+    story,
+    projectColor,
+    prevRef,
+    nextRef,
+    isProjectTop,
+    isProjectBottom,
+    onReorder,
+    onMoveProject,
+    onMove,
+  },
   ref,
 ) {
   const storyRef = story.ref;
@@ -88,6 +119,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             size="sm"
             className={reorderButtonClass}
             aria-label={`Move ${storyRef ?? ''} up`}
+            title="Swap with the story above"
             disabled={prevRef === null}
             onClick={() => {
               if (prevRef !== null && storyRef !== null) onReorder(storyRef, prevRef);
@@ -99,6 +131,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             size="sm"
             className={reorderButtonClass}
             aria-label={`Move ${storyRef ?? ''} down`}
+            title="Swap with the story below"
             disabled={nextRef === null}
             onClick={() => {
               if (nextRef !== null && storyRef !== null) onReorder(storyRef, nextRef);
@@ -111,10 +144,11 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
           <IconButton
             size="sm"
             className={reorderButtonClass}
-            aria-label={`Move ${storyRef ?? ''} to top`}
-            disabled={prevRef === null}
+            aria-label={`Move ${storyRef ?? ''} to top of project`}
+            title="Move to the top of this story's project"
+            disabled={isProjectTop}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) onMove(storyRef, true);
+              if (storyRef !== null) onMoveProject(storyRef, true);
             }}
           >
             <ChevronsUp size={14} className={reorderIconClass} />
@@ -122,13 +156,40 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
           <IconButton
             size="sm"
             className={reorderButtonClass}
-            aria-label={`Move ${storyRef ?? ''} to bottom`}
+            aria-label={`Move ${storyRef ?? ''} to bottom of project`}
+            title="Move to the bottom of this story's project"
+            disabled={isProjectBottom}
+            onClick={() => {
+              if (storyRef !== null) onMoveProject(storyRef, false);
+            }}
+          >
+            <ChevronsDown size={14} className={reorderIconClass} />
+          </IconButton>
+        </div>
+        <div className="flex flex-col">
+          <IconButton
+            size="sm"
+            className={reorderButtonClass}
+            aria-label={`Move ${storyRef ?? ''} to top of list`}
+            title="Move to the top of the whole Backlog"
+            disabled={prevRef === null}
+            onClick={() => {
+              if (prevRef !== null && storyRef !== null) onMove(storyRef, true);
+            }}
+          >
+            <ArrowUpToLine size={14} className={reorderIconClass} />
+          </IconButton>
+          <IconButton
+            size="sm"
+            className={reorderButtonClass}
+            aria-label={`Move ${storyRef ?? ''} to bottom of list`}
+            title="Move to the bottom of the whole Backlog"
             disabled={nextRef === null}
             onClick={() => {
               if (nextRef !== null && storyRef !== null) onMove(storyRef, false);
             }}
           >
-            <ChevronsDown size={14} className={reorderIconClass} />
+            <ArrowDownToLine size={14} className={reorderIconClass} />
           </IconButton>
         </div>
       </div>

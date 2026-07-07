@@ -21,7 +21,8 @@
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
- *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,swap_code_priority}
+ *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,swap_code_priority,
+ *                         move_code_priority,move_code_priority_in_project}
  *                                                             → Software Factory RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
@@ -525,6 +526,40 @@ function handleRpc(req, res, fn, body) {
     target.priority = body?.p_to_top
       ? (others.length === 0 ? 0 : Math.min(...others)) - 1
       : (others.length === 0 ? 0 : Math.max(...others)) + 1;
+    sendJson(res, 200, [target]);
+    return;
+  }
+
+  // Jump a story to the top/bottom of ITS OWN PROJECT (ALF-110 — the repurposed double-chevron).
+  // Mirrors `move_code_priority_in_project`'s midpoint math: insert between the project's current
+  // best/worst OTHER story and whichever OTHER project's row sits just past it, so no other
+  // project's ranks ever change.
+  if (fn === 'move_code_priority_in_project' && req.method === 'POST') {
+    const target = codeItems.find((row) => row.ref === body?.p_ref);
+    if (target === undefined) {
+      sendJson(res, 400, {
+        message: `move_code_priority_in_project: unknown ref (${body?.p_ref})`,
+      });
+      return;
+    }
+    const others = codeItems.filter((row) => row !== target);
+    const projectOthers = others
+      .filter((row) => row.project_id === target.project_id)
+      .map((row) => row.priority);
+    const allOthers = others.map((row) => row.priority);
+    if (projectOthers.length === 0) {
+      target.priority = body?.p_to_top
+        ? (allOthers.length === 0 ? 0 : Math.min(...allOthers)) - 1
+        : (allOthers.length === 0 ? 0 : Math.max(...allOthers)) + 1;
+    } else if (body?.p_to_top) {
+      const extreme = Math.min(...projectOthers);
+      const above = allOthers.filter((p) => p < extreme);
+      target.priority = above.length === 0 ? extreme - 1 : (Math.max(...above) + extreme) / 2;
+    } else {
+      const extreme = Math.max(...projectOthers);
+      const below = allOthers.filter((p) => p > extreme);
+      target.priority = below.length === 0 ? extreme + 1 : (Math.min(...below) + extreme) / 2;
+    }
     sendJson(res, 200, [target]);
     return;
   }
