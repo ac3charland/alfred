@@ -4,43 +4,40 @@ branch: claude/alf-62-project-parsing-60p370
 
 # ALF-62 — Project parsing in the Inbox capture box
 
-*2026-07-07T04:25:00.161Z*
+*2026-07-07T21:31:32.392Z*
 
-Prefixing an Inbox capture with a recognized `<project name|key>:` (case-insensitive) classifies it as **Code**, assigns that project, strips the prefix, and capitalizes the first letter of the remainder. Anything else is captured verbatim as an `unclassified` item, exactly as before. This walks the full journey: the parsing matrix, the gate pre-population (single + bulk), and the opt-in boundary.
+Prefixing an Inbox capture with a recognized `<project name|key>:` (case-insensitive) classifies it as **Code**, assigns that project, strips the prefix, and capitalizes the first letter of the remainder. Anything else is captured verbatim as an `unclassified` item, exactly as before. Every clip below is the live app driven end-to-end — you can watch the text being typed and the app respond.
 
-### 1 · The parsing matrix — one Inbox, six captures
+### 1 · Typing into the Inbox box
 
-Typed top-to-bottom, newest lands on top:
+Watch each capture typed in and submitted: `ALF: add dark mode` → **Code** "Add dark mode" (**ALF** chip); `alfred: refactor the auth flow` → **Code** (name match, case-insensitive); `Note: buy milk` → **unclassified**, captured verbatim (no such project).
 
-- `ALF: add dark mode` → **Code**, project **ALF**, title "Add dark mode" (key match).
-- `alfred: refactor THE auth flow` → **Code**, **ALF**, "Refactor THE auth flow" (name match, case-insensitive; only the first letter is capitalized, the rest is left as typed).
-- `RLY: fix the login page` → **Code**, project **RLY** (a second project, its own chip colour).
-- `ALF: rename the : separator` → **Code**, **ALF**, "Rename the : separator" (only the first colon splits; later colons stay in the title).
-- `Note: buy milk` → **unclassified**, captured verbatim (unrecognized prefix — no classification, no stripping).
-- `pick up groceries` → **unclassified**, verbatim (no colon).
+![typing captures into the Inbox box](alf-62-inbox-project-parsing-video-1.gif)
 
-![](alf-62-inbox-project-parsing-image-1.png)
-
-### 2 · Gate pre-population — single item
-
-Opening _Send to Code module…_ on a code inbox row pre-selects its assigned project (**Alfred**). The selection stays user-changeable; the epic still has to be picked.
+The resulting Inbox after the full matrix — key match, name match (case-insensitive, rest-of-title case kept), a second project (**RLY**) with its own chip colour, first-colon-only splitting (`ALF: rename the : separator` → "Rename the : separator"), and the two verbatim non-matches:
 
 ![](alf-62-inbox-project-parsing-image-2.png)
 
-### 3 · Gate pre-population — bulk, unanimous project (locked)
+### 2 · Gate pre-population — single item
 
-Selecting two code items that both carry **Alfred** and sending them together pre-selects **and locks** the project: it renders as a read-only chip (no interactive listbox), so the user only picks the epic.
+Opening _Send to Code module…_ on a code inbox row pre-selects its assigned project (**Alfred**); the user only has to pick the epic.
 
-![](alf-62-inbox-project-parsing-image-3.png)
+![single-item gate pre-selects the project](alf-62-inbox-project-parsing-video-3.gif)
 
-### 4 · Gate pre-population — bulk, mixed projects (interactive)
+### 3 · Gate pre-population — bulk, unanimous project
 
-When the selection's projects differ (one **Alfred**, one **Relay**), the gate falls back to today's interactive picker with nothing pre-selected — no lock.
+Selecting two items that both carry **Alfred** and sending them together pre-selects **and locks** the project to a read-only chip (no listbox).
 
-![](alf-62-inbox-project-parsing-image-4.png)
+![bulk gate locks the unanimous project](alf-62-inbox-project-parsing-video-4.gif)
+
+### 4 · Gate pre-population — bulk, mixed projects
+
+A selection whose projects differ (**Alfred** + **Relay**) falls back to the interactive picker with nothing pre-selected — no lock.
+
+![mixed selection stays interactive](alf-62-inbox-project-parsing-video-5.gif)
 
 ### 5 · Parsing is Inbox-only
 
-The prefix grammar is opt-in to the main Inbox capture box. The inline **subtask** capture box (and the Siri `POST /api/items` path) never parse: typing `ALF: write the changelog` as a subtask captures it verbatim as a plain task — prefix intact, no Code badge, no project chip.
+The prefix grammar is opt-in to the main Inbox box. Typing `ALF: write the changelog` into the inline **subtask** box captures it verbatim as a plain task — prefix intact, no Code badge, no chip. (The Siri `POST /api/items` path is likewise untouched.)
 
-![](alf-62-inbox-project-parsing-image-5.png)
+![subtask capture does not parse the prefix](alf-62-inbox-project-parsing-video-6.gif)
