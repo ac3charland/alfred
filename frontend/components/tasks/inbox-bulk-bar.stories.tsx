@@ -23,6 +23,7 @@ const BASE: Item = {
   recurrence: null,
   priority: null,
   recurrence_series_id: null,
+  intended_project_id: null,
 };
 
 function makeItem(id: string, overrides: Partial<Item> = {}): Item {

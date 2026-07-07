@@ -60,6 +60,7 @@ const taskItem = (overrides: Partial<Item>): Item => ({
   recurrence: null,
   priority: null,
   recurrence_series_id: null,
+  intended_project_id: null,
   ...overrides,
 });
 
