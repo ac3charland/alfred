@@ -13,8 +13,8 @@ const EPIC = '22222222-2222-2222-2222-222222222222';
 
 // A second project (ALF-110), so the project-scoped assertions have another project's stories
 // that must NOT move when this one is re-ranked.
-const PROJECT_2 = '33333333-3333-3333-3333-333333333333';
-const EPIC_2 = '44444444-4444-4444-4444-444444444444';
+const PROJECT_2 = '55555555-5555-5555-5555-555555555555';
+const EPIC_2 = '66666666-6666-6666-6666-666666666666';
 
 /**
  * Run `fn` with the connection's role temporarily switched, then restore it. RLS and table
