@@ -33,6 +33,7 @@ function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     priority: overrides.priority ?? null,
     recurrence: null,
     recurrence_series_id: null,
+    intended_project_id: null,
   };
 }
 
