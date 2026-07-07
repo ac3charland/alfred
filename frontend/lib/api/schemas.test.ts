@@ -3,6 +3,7 @@ import {
   createItemSchema,
   createProjectSchema,
   listItemsQuerySchema,
+  moveCodeInProjectSchema,
   moveCodeSchema,
   recurrenceSchema,
   reorderCodeSchema,
@@ -478,5 +479,24 @@ describe('moveCodeSchema (the Backlog jump to top/bottom)', () => {
 
   it('rejects a non-boolean to_top', () => {
     expect(moveCodeSchema.safeParse({ ref: 'ALF-1', to_top: 'top' }).success).toBe(false);
+  });
+});
+
+describe('moveCodeInProjectSchema (the Backlog jump to top/bottom of project)', () => {
+  it('accepts a ref with to_top true or false', () => {
+    expect(moveCodeInProjectSchema.safeParse({ ref: 'ALF-1', to_top: true }).success).toBe(true);
+    expect(moveCodeInProjectSchema.safeParse({ ref: 'ALF-1', to_top: false }).success).toBe(true);
+  });
+
+  it('rejects an empty ref', () => {
+    expect(moveCodeInProjectSchema.safeParse({ ref: '', to_top: true }).success).toBe(false);
+  });
+
+  it('rejects a missing to_top', () => {
+    expect(moveCodeInProjectSchema.safeParse({ ref: 'ALF-1' }).success).toBe(false);
+  });
+
+  it('rejects a non-boolean to_top', () => {
+    expect(moveCodeInProjectSchema.safeParse({ ref: 'ALF-1', to_top: 'top' }).success).toBe(false);
   });
 });
