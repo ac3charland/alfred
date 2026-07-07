@@ -71,15 +71,22 @@ test('reorders a story up with the chevron and persists the new order', async ({
   const rows = page.getByRole('listitem');
   await expect(rows.nth(0)).toContainText('ALF-3');
 
-  // Move ALF-4 up: it swaps priority with ALF-3 and leads the list. The swap exchanges two
-  // ADJACENT priorities (2 ↔ 1) through the `swap_code_priority` RPC under a unique(priority)
+  // Move ALF-4 up: it swaps priority with ALF-3 and leads the list, INSTANTLY (the on-screen
+  // reorder isn't debounced, only the network sync is — see backlog-row.tsx). The swap exchanges
+  // two ADJACENT priorities (2 ↔ 1) through the `swap_code_priority` RPC under a unique(priority)
   // index — the exact case that 409'd before 0006. A failed swap would roll the optimistic move
   // back, leaving ALF-3 on top; asserting the new order proves the swap actually committed.
+  const reorderSynced = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/code/reorder') && response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Move ALF-4 up' }).click();
   await expect(rows.nth(0)).toContainText('ALF-4');
   await expect(rows.nth(1)).toContainText('ALF-3');
 
-  // The swap persisted: a reload (re-seeded read) keeps the new order.
+  // The swap persisted: wait for the debounced network sync to land, then a reload (re-seeded
+  // read) keeps the new order.
+  await reorderSynced;
   await page.reload();
   await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-4');
 
@@ -100,10 +107,17 @@ test('jumps a story to the top and the bottom with the double chevrons', async (
 
   // Bump the LAST row to the top: move_code_priority re-ranks it below every live priority in one
   // shot (min-1), unlike the adjacent swap. It should leap over BOTH rows above it, not just one.
+  // The on-screen jump is instant; only the network sync debounces (see backlog-row.tsx).
+  const moveSynced = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/code/move') && response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Move ALF-5 to top' }).click();
   await expect(rows.nth(0)).toContainText('ALF-5');
 
-  // It persists across a reload (re-seeded read), then send it back to the bottom (max+1).
+  // It persists across a reload once the debounced sync lands (re-seeded read), then send it
+  // back to the bottom (max+1).
+  await moveSynced;
   await page.reload();
   await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-5');
   await page.getByRole('button', { name: 'Move ALF-5 to bottom' }).click();
