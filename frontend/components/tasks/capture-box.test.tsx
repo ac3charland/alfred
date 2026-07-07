@@ -4,12 +4,24 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { renderWithProviders } from '@/lib/test-utils';
+import type { Project } from '@/lib/types';
 
 import { CaptureBox } from './capture-box';
 
 // The store calls api-client under the hood; mock it so tests never hit the network.
 jest.mock('@/lib/api-client');
 const mockCreateItem = jest.mocked(apiClient.createItem);
+
+const ALFRED: Project = {
+  id: 'p-alf',
+  name: 'Alfred',
+  key: 'ALF',
+  repo_owner: 'ac3charland',
+  repo_name: 'alfred',
+  github_url: null,
+  ref_seq: 0,
+  created_at: '2025-01-01T00:00:00Z',
+};
 
 describe('CaptureBox', () => {
   beforeEach(() => {
@@ -302,6 +314,73 @@ describe('CaptureBox', () => {
       if (argument !== undefined) {
         expect(Object.keys(argument)).not.toContain('folder_id');
       }
+    });
+  });
+
+  describe('project-prefix parsing (Inbox capture box)', () => {
+    it('classifies a matching <project>: prefix as Code, assigns the project, and cleans the title', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'Add dark mode' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox parseProjectPrefix />, { projects: [ALFRED] });
+
+      await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'ALF: add dark mode');
+      await user.click(screen.getByRole('button', { name: /capture/i }));
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: 'ALF: add dark mode',
+            raw_capture: 'ALF: add dark mode',
+            title: 'Add dark mode',
+            item_type: 'code',
+            intended_project_id: 'p-alf',
+          }),
+        );
+      });
+    });
+
+    it('captures a non-matching prefix verbatim as unclassified (no project, no stripping)', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'Note: buy milk' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox parseProjectPrefix />, { projects: [ALFRED] });
+
+      await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Note: buy milk');
+      await user.click(screen.getByRole('button', { name: /capture/i }));
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledTimes(1);
+      });
+      const argument = mockCreateItem.mock.calls[0]?.[0];
+      expect(argument).toEqual(
+        expect.objectContaining({ text: 'Note: buy milk', item_type: 'unclassified' }),
+      );
+      expect(argument?.intended_project_id).toBeUndefined();
+    });
+
+    it('does NOT parse a prefix when parseProjectPrefix is off (folder/subtask box)', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'ALF: add dark mode' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+
+      const user = userEvent.setup();
+      // No parseProjectPrefix prop → the shared capture box used by folders / subtasks.
+      renderWithProviders(<CaptureBox />, { projects: [ALFRED] });
+
+      await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'ALF: add dark mode');
+      await user.click(screen.getByRole('button', { name: /capture/i }));
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledTimes(1);
+      });
+      const argument = mockCreateItem.mock.calls[0]?.[0];
+      expect(argument?.item_type).toBe('unclassified');
+      expect(argument?.intended_project_id).toBeUndefined();
     });
   });
 
