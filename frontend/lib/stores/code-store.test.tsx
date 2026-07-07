@@ -31,6 +31,7 @@ const mockUpdateItem = jest.mocked(api.updateItem);
 const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
 const mockReorderCode = jest.mocked(api.reorderCode);
 const mockMoveCode = jest.mocked(api.moveCode);
+const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
 const mockListCode = jest.mocked(api.listCode);
 
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so tests can drive a
@@ -825,6 +826,46 @@ describe('code-store', () => {
         // The gated story outranks every pre-existing one (lower number = higher rank).
         expect(result.current.backlog[0]?.priority).toBeLessThan(5);
       });
+
+      it('lands at the top of its project, but does not leapfrog a better-ranked story from another project (ALF-110)', async () => {
+        mockEnterCodeModule.mockImplementation(() => new Promise(() => {}));
+        const otherProjectBest = makeStory('other-1', 'e2', 'p2', { ref: 'RLP-1', priority: 1 });
+        const existing = [
+          otherProjectBest,
+          makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 }),
+          makeStory('old-2', 'e1', 'p1', { ref: 'ALF-8', priority: 8 }),
+        ];
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epic, makeEpic('e2', 'p2')],
+              stories: existing,
+            }),
+          },
+        );
+
+        act(() => {
+          void result.current.actions.convertTaskToCode(
+            { id: 'task-1', title: 'Gated', notes: null, source_url: null },
+            'p1',
+            'e1',
+          );
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog.some((s) => s.title === 'Gated')).toBe(true);
+        });
+        const gated = result.current.backlog.find((s) => s.title === 'Gated');
+        // Outranks its own project's stories (below 5)…
+        expect(gated?.priority).toBeLessThan(5);
+        // …but does NOT outrank the other project's story (1) — the whole Backlog is undisturbed.
+        expect(gated?.priority).toBeGreaterThan(1);
+      });
     });
 
     describe('createStory (new story from the board)', () => {
@@ -943,6 +984,42 @@ describe('code-store', () => {
           '5',
           '8',
         ]);
+      });
+
+      it('lands at the top of its project, but does not leapfrog a better-ranked story from another project (ALF-110)', async () => {
+        mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+        const otherProjectBest = makeStory('other-1', 'e2', 'p2', { ref: 'RLP-1', priority: 1 });
+        const existing = [
+          otherProjectBest,
+          makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 }),
+          makeStory('old-2', 'e1', 'p1', { ref: 'ALF-8', priority: 8 }),
+        ];
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epic, makeEpic('e2', 'p2')],
+              stories: existing,
+            }),
+          },
+        );
+
+        act(() => {
+          void result.current.actions.createStory('e1', 'Newest story', null);
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog.some((s) => s.title === 'Newest story')).toBe(true);
+        });
+        const created = result.current.backlog.find((s) => s.title === 'Newest story');
+        // Outranks its own project's stories (below 5)…
+        expect(created?.priority).toBeLessThan(5);
+        // …but does NOT outrank the other project's story (1) — the whole Backlog is undisturbed.
+        expect(created?.priority).toBeGreaterThan(1);
       });
 
       it('throws (and does not call the api) when the epic is not in the store', async () => {
@@ -1306,6 +1383,121 @@ describe('code-store', () => {
           await expect(result.current.moveStory('ALF-404', true)).rejects.toThrow(/not found/i);
         });
         expect(mockMoveCode).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('moveStoryInProject (Backlog jump to top/bottom of project, ALF-110)', () => {
+      // p1 has two stories (a, b); p2 has one story ranked better than both (otherBetter) and one
+      // ranked worse than both (otherWorse), so a project-scoped jump must land next to a/b
+      // without crossing either of the other project's ranks.
+      const epicA = makeEpic('e1', 'p1');
+      const epicB = makeEpic('e2', 'p2');
+      const a = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 10 });
+      const b = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 30 });
+      const otherBetter = makeStory('i3', 'e2', 'p2', { ref: 'RLP-1', priority: 5 });
+      const otherWorse = makeStory('i4', 'e2', 'p2', { ref: 'RLP-2', priority: 40 });
+      const allStories = [a, b, otherBetter, otherWorse];
+
+      it('jumps to the top of its project, stopping short of another project’s better rank', async () => {
+        mockMoveCodeInProject.mockResolvedValue([
+          makeSavedSidecar({ item_id: 'i2', project_id: 'p1', ref: 'ALF-2', priority: 7.5 }),
+        ]);
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epicA, epicB],
+              stories: allStories,
+            }),
+          },
+        );
+
+        await act(async () => {
+          await result.current.actions.moveStoryInProject('ALF-2', true);
+        });
+
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-2', true);
+        // b now outranks a (top of p1) but stays behind otherBetter's rank of 5 — the optimistic
+        // midpoint between otherBetter (5) and a (10) is 7.5, never leapfrogging otherBetter.
+        const priorities = prioritiesById(result.current.backlog);
+        expect(priorities['i2']).toBeLessThan(priorities['i1'] ?? Number.POSITIVE_INFINITY);
+        expect(priorities['i2']).toBeGreaterThan(5);
+        expect(priorities['i3']).toBe(5);
+        expect(priorities['i4']).toBe(40);
+      });
+
+      it('jumps to the bottom of its project, stopping short of another project’s worse rank', async () => {
+        mockMoveCodeInProject.mockResolvedValue([
+          makeSavedSidecar({ item_id: 'i1', project_id: 'p1', ref: 'ALF-1', priority: 35 }),
+        ]);
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epicA, epicB],
+              stories: allStories,
+            }),
+          },
+        );
+
+        await act(async () => {
+          await result.current.actions.moveStoryInProject('ALF-1', false);
+        });
+
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-1', false);
+        // a now ranks worse than b (bottom of p1) but stays ahead of otherWorse's rank of 40 —
+        // the optimistic midpoint between b (30) and otherWorse (40) is 35.
+        const priorities = prioritiesById(result.current.backlog);
+        expect(priorities['i1']).toBeGreaterThan(priorities['i2'] ?? Number.NEGATIVE_INFINITY);
+        expect(priorities['i1']).toBeLessThan(40);
+        expect(priorities['i3']).toBe(5);
+        expect(priorities['i4']).toBe(40);
+      });
+
+      it('rolls the priority back on API failure', async () => {
+        mockMoveCodeInProject.mockRejectedValue(new Error('move failed'));
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epicA, epicB],
+              stories: allStories,
+            }),
+          },
+        );
+
+        await act(async () => {
+          await expect(result.current.actions.moveStoryInProject('ALF-2', true)).rejects.toThrow(
+            'move failed',
+          );
+        });
+
+        expect(prioritiesById(result.current.backlog)).toEqual({ i1: 10, i2: 30, i3: 5, i4: 40 });
+      });
+
+      it('throws (and does not call the api) when the ref is unknown', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epicA], stories: [a] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStoryInProject('ALF-404', true)).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockMoveCodeInProject).not.toHaveBeenCalled();
       });
     });
 
@@ -1838,6 +2030,23 @@ describe('code-store', () => {
 
         await act(async () => {
           await expect(result.current.moveStory('ALF-1', true)).rejects.toThrow('move failed');
+        });
+
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
+      });
+
+      it('moveStoryInProject toasts "Couldn\'t move story"', async () => {
+        mockMoveCodeInProject.mockRejectedValue(new Error('move failed'));
+        const high = makeStory('i1', 'e1', 'p1', { ref: 'ALF-1', priority: 1 });
+        const low = makeStory('i2', 'e1', 'p1', { ref: 'ALF-2', priority: 2 });
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [high, low] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.moveStoryInProject('ALF-1', true)).rejects.toThrow(
+            'move failed',
+          );
         });
 
         expect(mockShowToast).toHaveBeenCalledWith("Couldn't move story");
