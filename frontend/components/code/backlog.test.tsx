@@ -280,7 +280,10 @@ describe('Backlog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-b up' }));
 
-    expect(mockReorderCode).toHaveBeenCalledWith('ALF-b', 'ALF-a');
+    // The chevron debounces (backlog-row.tsx), so the call lands after a short delay.
+    await waitFor(() => {
+      expect(mockReorderCode).toHaveBeenCalledWith('ALF-b', 'ALF-a');
+    });
     await waitFor(() => {
       expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
     });
@@ -306,7 +309,10 @@ describe('Backlog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-c to top' }));
 
-    expect(mockMoveCode).toHaveBeenCalledWith('ALF-c', true);
+    // The chevron debounces (backlog-row.tsx), so the call lands after a short delay.
+    await waitFor(() => {
+      expect(mockMoveCode).toHaveBeenCalledWith('ALF-c', true);
+    });
     await waitFor(() => {
       expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
     });
@@ -323,7 +329,10 @@ describe('Backlog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-a to bottom' }));
 
-    expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
+    // The chevron debounces (backlog-row.tsx), so the call lands after a short delay.
+    await waitFor(() => {
+      expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
+    });
     await waitFor(() => {
       expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
     });

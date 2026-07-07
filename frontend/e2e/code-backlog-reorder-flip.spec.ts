@@ -78,7 +78,10 @@ test('reordering a story animates smoothly with no mid-flight jump', async ({ pa
     {
       selector: 'li:has(a[aria-label^="Open ALF-4"])',
       read: { kind: 'rect', props: ['top'] },
-      durationMs: 450,
+      // The click's reorder call is debounced (200ms) before the optimistic swap dispatches and
+      // the 200ms FLIP transition starts, so the window must bracket debounce + transition, not
+      // just the transition.
+      durationMs: 700,
     },
     () => page.getByRole('button', { name: 'Move ALF-4 up' }).click(),
   );

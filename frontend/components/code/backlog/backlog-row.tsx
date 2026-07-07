@@ -8,7 +8,11 @@ import { IconButton } from '@/components/atoms/icon-button';
 import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
+import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
 import type { CodeStory } from '@/lib/types';
+
+/** Rapid repeat clicks on a chevron collapse into one reorder/move call for the last click. */
+const CHEVRON_DEBOUNCE_MS = 200;
 
 export interface BacklogRowProperties {
   /** The ranked story to render. */
@@ -35,6 +39,10 @@ export interface BacklogRowProperties {
  * how `story-card` separates its clickable body from its launch buttons).
  *
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
+ *
+ * Every chevron click is debounced (`useDebouncedCallback`) so a rapid burst — fast repeat taps,
+ * or up/down mashed together — fires exactly one `onReorder`/`onMove` call for the last click,
+ * instead of one overlapping request per click.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
   { story, projectColor, prevRef, nextRef, onReorder, onMove },
@@ -42,6 +50,11 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
 ) {
   const storyRef = story.ref;
   const href = `/code/${story.project_id ?? ''}?story=${storyRef ?? ''}`;
+
+  // A burst of clicks on this row's chevrons (fast repeat taps, or up/down mashed together)
+  // collapses into one call reflecting the last click, instead of one request per click.
+  const debouncedReorder = useDebouncedCallback(onReorder, CHEVRON_DEBOUNCE_MS);
+  const debouncedMove = useDebouncedCallback(onMove, CHEVRON_DEBOUNCE_MS);
 
   // The reorder chevrons enlarge to a real ≥44px tap target on mobile (their own box, not an
   // invisible overlay — stacked up/down would otherwise collide), back to today's 20px at md+.
@@ -90,7 +103,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} up`}
             disabled={prevRef === null}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) onReorder(storyRef, prevRef);
+              if (prevRef !== null && storyRef !== null) debouncedReorder(storyRef, prevRef);
             }}
           >
             <ChevronUp size={14} className={reorderIconClass} />
@@ -101,7 +114,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} down`}
             disabled={nextRef === null}
             onClick={() => {
-              if (nextRef !== null && storyRef !== null) onReorder(storyRef, nextRef);
+              if (nextRef !== null && storyRef !== null) debouncedReorder(storyRef, nextRef);
             }}
           >
             <ChevronDown size={14} className={reorderIconClass} />
@@ -114,7 +127,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} to top`}
             disabled={prevRef === null}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) onMove(storyRef, true);
+              if (prevRef !== null && storyRef !== null) debouncedMove(storyRef, true);
             }}
           >
             <ChevronsUp size={14} className={reorderIconClass} />
@@ -125,7 +138,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} to bottom`}
             disabled={nextRef === null}
             onClick={() => {
-              if (nextRef !== null && storyRef !== null) onMove(storyRef, false);
+              if (nextRef !== null && storyRef !== null) debouncedMove(storyRef, false);
             }}
           >
             <ChevronsDown size={14} className={reorderIconClass} />

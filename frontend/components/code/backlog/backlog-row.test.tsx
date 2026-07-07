@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -91,26 +91,88 @@ describe('BacklogRow', () => {
     expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom' })).toBeEnabled();
   });
 
-  it('swaps with the previous neighbour on Up and the next on Down', async () => {
-    const user = userEvent.setup();
-    const { onReorder } = renderRow();
+  it('swaps with the previous neighbour on Up and the next on Down, after the debounce settles', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { onReorder } = renderRow();
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
-    expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-0');
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
+      expect(onReorder).not.toHaveBeenCalled();
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-0');
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
-    expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-2');
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-2');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it('jumps to the top on the double-up chevron and the bottom on the double-down', async () => {
-    const user = userEvent.setup();
-    const { onMove } = renderRow();
+  it('jumps to the top on the double-up chevron and the bottom on the double-down, after the debounce settles', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { onMove } = renderRow();
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
-    expect(onMove).toHaveBeenCalledWith('ALF-1', true);
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(onMove).toHaveBeenCalledWith('ALF-1', true);
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
-    expect(onMove).toHaveBeenCalledWith('ALF-1', false);
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(onMove).toHaveBeenCalledWith('ALF-1', false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('collapses a rapid burst of Up/Down clicks into a single reorder call for the last click', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { onReorder } = renderRow();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 up' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 down' }));
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(onReorder).toHaveBeenCalledTimes(1);
+      expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-2');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('collapses a rapid burst of top/bottom clicks into a single move call for the last click', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { onMove } = renderRow();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(onMove).toHaveBeenCalledTimes(1);
+      expect(onMove).toHaveBeenCalledWith('ALF-1', false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   // ── Mobile card layout (ALF-86): full-width wrapping title + badge footer + big tap targets ──
