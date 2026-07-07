@@ -335,6 +335,18 @@ export const moveCodeSchema = z.object({
 
 export type MoveCodeInput = z.infer<typeof moveCodeSchema>;
 
+/**
+ * Body for POST /api/code/move-project — the Backlog's project-scoped jump (ALF-110), which
+ * repurposes the double-chevron button. Same shape as `moveCodeSchema`, but the story lands at
+ * the top/bottom of its own project instead of the whole Backlog (`move_code_priority_in_project`).
+ */
+export const moveCodeInProjectSchema = z.object({
+  ref: z.string().min(1),
+  to_top: z.boolean(),
+});
+
+export type MoveCodeInProjectInput = z.infer<typeof moveCodeInProjectSchema>;
+
 // ---------------------------------------------------------------------------
 // Query params
 // ---------------------------------------------------------------------------

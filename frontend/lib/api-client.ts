@@ -298,6 +298,21 @@ export async function moveCode(ref: string, toTop: boolean): Promise<CodeItem[]>
   return rows;
 }
 
+/**
+ * Jump within a project (ALF-110): re-rank one story to the top (`toTop`) or bottom of ITS OWN
+ * PROJECT's slice of the `priority` order, without disturbing any other project's stories. POSTs
+ * the ref + direction to the atomic `move_code_priority_in_project` RPC behind
+ * `/api/code/move-project` and returns the updated `code_items` row, reconciled the same way as
+ * `moveCode`.
+ */
+export async function moveCodeInProject(ref: string, toTop: boolean): Promise<CodeItem[]> {
+  const { rows } = await apiRequest<{ rows: CodeItem[] }>('/api/code/move-project', {
+    method: 'POST',
+    body: JSON.stringify({ ref, to_top: toTop }),
+  });
+  return rows;
+}
+
 export {
   type CreateItemInput,
   type CreateProjectInput,
