@@ -28,9 +28,10 @@ import {
  *   Human Review macro) that controls which statuses are listed. It defaults to the outstanding
  *   states, so `done`/`abandoned` are hidden until the owner checks them.
  * - **List:** one `BacklogRow` per story, ranked by global `priority`. The single chevrons swap a
- *   story with its visible neighbour (`reorderStory`); the double chevrons jump it to the top or
- *   bottom of the Backlog (`moveStory`). Both are animated via `useFlipList` (FLIP), honouring
- *   `prefers-reduced-motion`.
+ *   story with its visible neighbour (`applyReorderOptimistic` + `commitReorderBatch`); the
+ *   double chevrons jump it to the top or bottom of the Backlog (`applyMoveOptimistic` +
+ *   `commitMove`) — see `BacklogRow` for the instant-reorder / debounced-network split. Both are
+ *   animated via `useFlipList` (FLIP), honouring `prefers-reduced-motion`.
  *
  * Must be mounted under a `CodeProvider` (reads `useBacklog` / `useCodeActions`).
  */
@@ -43,7 +44,8 @@ export function Backlog() {
   );
   const stories = useBacklog({ statuses });
   const projects = useProjects();
-  const { reorderStory, moveStory } = useCodeActions();
+  const { applyReorderOptimistic, commitReorderBatch, applyMoveOptimistic, commitMove } =
+    useCodeActions();
   // Animate the reorder: FLIP keyed by item_id over the currently rendered order.
   const registerRow = useFlipList(stories.map((story) => story.item_id ?? ''));
 
@@ -63,32 +65,6 @@ export function Backlog() {
       return active ? DEFAULT_BACKLOG_STATUSES : HUMAN_REVIEW_STATUSES;
     });
   }, [setStatuses]);
-
-  const handleReorder = React.useCallback(
-    (ref: string, neighbourRef: string) => {
-      void (async () => {
-        try {
-          await reorderStory(ref, neighbourRef);
-        } catch {
-          // The store rolled the swap back; nothing extra to undo here.
-        }
-      })();
-    },
-    [reorderStory],
-  );
-
-  const handleMove = React.useCallback(
-    (ref: string, toTop: boolean) => {
-      void (async () => {
-        try {
-          await moveStory(ref, toTop);
-        } catch {
-          // The store rolled the move back; nothing extra to undo here.
-        }
-      })();
-    },
-    [moveStory],
-  );
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -123,8 +99,10 @@ export function Backlog() {
               projectColor={projectColorFor(projects, story.project_id)}
               prevRef={index === 0 ? null : (stories[index - 1]?.ref ?? null)}
               nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
-              onReorder={handleReorder}
-              onMove={handleMove}
+              applyReorder={applyReorderOptimistic}
+              commitReorder={commitReorderBatch}
+              applyMove={applyMoveOptimistic}
+              commitMove={commitMove}
             />
           ))}
         </ul>

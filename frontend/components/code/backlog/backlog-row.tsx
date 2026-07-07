@@ -9,9 +9,10 @@ import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
 import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
+import type { ReorderStep } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
-/** Rapid repeat clicks on a chevron collapse into one reorder/move call for the last click. */
+/** A chevron burst reorders on screen instantly; only the network sync waits this long. */
 const CHEVRON_DEBOUNCE_MS = 200;
 
 export interface BacklogRowProperties {
@@ -23,10 +24,14 @@ export interface BacklogRowProperties {
   prevRef: string | null;
   /** The visible neighbour below (the Down swap target), or null at the bottom — Down disabled. */
   nextRef: string | null;
-  /** Swap this story's priority with the given neighbour ref (the store's `reorderStory`). */
-  onReorder: (ref: string, neighbourRef: string) => void;
-  /** Jump this story to the top (`toTop`) or bottom of the Backlog (the store's `moveStory`). */
-  onMove: (ref: string, toTop: boolean) => void;
+  /** Apply one chevron swap's optimistic half instantly (the store's `applyReorderOptimistic`). */
+  applyReorder: (ref: string, neighbourRef: string) => ReorderStep | null;
+  /** Sync a burst of applied swaps to the server, in order (the store's `commitReorderBatch`). */
+  commitReorder: (steps: ReorderStep[]) => Promise<void>;
+  /** Apply one top/bottom jump's optimistic half instantly (the store's `applyMoveOptimistic`). */
+  applyMove: (ref: string, toTop: boolean) => { priorityBefore: number | null } | null;
+  /** Sync the latest jump to the server (the store's `commitMove`). */
+  commitMove: (ref: string, toTop: boolean, priorityBefore: number | null) => Promise<void>;
 }
 
 /**
@@ -40,21 +45,56 @@ export interface BacklogRowProperties {
  *
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
  *
- * Every chevron click is debounced (`useDebouncedCallback`) so a rapid burst — fast repeat taps,
- * or up/down mashed together — fires exactly one `onReorder`/`onMove` call for the last click,
- * instead of one overlapping request per click.
+ * Every chevron click reorders the list INSTANTLY — the row steps through each swap live, even
+ * across a rapid burst. Only the NETWORK sync is debounced (`useDebouncedCallback`): a burst of
+ * clicks queues its swaps locally, and the queue flushes to the server as one batch once the
+ * clicks settle, instead of one overlapping request per click.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
-  { story, projectColor, prevRef, nextRef, onReorder, onMove },
+  { story, projectColor, prevRef, nextRef, applyReorder, commitReorder, applyMove, commitMove },
   ref,
 ) {
   const storyRef = story.ref;
   const href = `/code/${story.project_id ?? ''}?story=${storyRef ?? ''}`;
 
-  // A burst of clicks on this row's chevrons (fast repeat taps, or up/down mashed together)
-  // collapses into one call reflecting the last click, instead of one request per click.
-  const debouncedReorder = useDebouncedCallback(onReorder, CHEVRON_DEBOUNCE_MS);
-  const debouncedMove = useDebouncedCallback(onMove, CHEVRON_DEBOUNCE_MS);
+  // The reorder steps queued (in click order) and the latest move for the burst currently in
+  // flight — flushed to the server once the debounce settles, then cleared.
+  const reorderStepsRef = React.useRef<ReorderStep[]>([]);
+  const moveBurstRef = React.useRef<{ toTop: boolean; priorityBefore: number | null } | null>(null);
+
+  const flushReorder = useDebouncedCallback(() => {
+    const steps = reorderStepsRef.current;
+    reorderStepsRef.current = [];
+    if (steps.length > 0) void commitReorder(steps);
+  }, CHEVRON_DEBOUNCE_MS);
+
+  const flushMove = useDebouncedCallback(() => {
+    const burst = moveBurstRef.current;
+    moveBurstRef.current = null;
+    if (burst !== null && storyRef !== null)
+      void commitMove(storyRef, burst.toTop, burst.priorityBefore);
+  }, CHEVRON_DEBOUNCE_MS);
+
+  const reorder = (neighbourRef: string) => {
+    if (storyRef === null) return;
+    const step = applyReorder(storyRef, neighbourRef);
+    if (step !== null) reorderStepsRef.current.push(step);
+    flushReorder();
+  };
+
+  const move = (toTop: boolean) => {
+    if (storyRef === null) return;
+    const applied = applyMove(storyRef, toTop);
+    if (applied !== null) {
+      // Keep the FIRST move's prior priority for the whole burst — later moves in the same
+      // burst never reach the server, so that original is what a failed commit rolls back to.
+      moveBurstRef.current = {
+        toTop,
+        priorityBefore: moveBurstRef.current?.priorityBefore ?? applied.priorityBefore,
+      };
+    }
+    flushMove();
+  };
 
   // The reorder chevrons enlarge to a real ≥44px tap target on mobile (their own box, not an
   // invisible overlay — stacked up/down would otherwise collide), back to today's 20px at md+.
@@ -103,7 +143,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} up`}
             disabled={prevRef === null}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) debouncedReorder(storyRef, prevRef);
+              if (prevRef !== null) reorder(prevRef);
             }}
           >
             <ChevronUp size={14} className={reorderIconClass} />
@@ -114,7 +154,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} down`}
             disabled={nextRef === null}
             onClick={() => {
-              if (nextRef !== null && storyRef !== null) debouncedReorder(storyRef, nextRef);
+              if (nextRef !== null) reorder(nextRef);
             }}
           >
             <ChevronDown size={14} className={reorderIconClass} />
@@ -127,7 +167,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} to top`}
             disabled={prevRef === null}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) debouncedMove(storyRef, true);
+              if (prevRef !== null) move(true);
             }}
           >
             <ChevronsUp size={14} className={reorderIconClass} />
@@ -138,7 +178,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             aria-label={`Move ${storyRef ?? ''} to bottom`}
             disabled={nextRef === null}
             onClick={() => {
-              if (nextRef !== null && storyRef !== null) debouncedMove(storyRef, false);
+              if (nextRef !== null) move(false);
             }}
           >
             <ChevronsDown size={14} className={reorderIconClass} />

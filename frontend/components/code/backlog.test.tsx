@@ -272,7 +272,7 @@ describe('Backlog', () => {
     expect(screen.getByRole('button', { name: 'Move ALF-b up' })).toBeEnabled();
   });
 
-  it('reorders via the chevron: Up on the 2nd row swaps with the 1st and re-sorts', async () => {
+  it('reorders via the chevron: Up on the 2nd row swaps with the 1st and re-sorts INSTANTLY', async () => {
     const user = userEvent.setup();
     mockReorderCode.mockResolvedValue([makeSidecar('a', 2), makeSidecar('b', 1)]);
     renderBacklog([makeStory('a', { priority: 1 }), makeStory('b', { priority: 2 })]);
@@ -280,13 +280,42 @@ describe('Backlog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-b up' }));
 
-    // The chevron debounces (backlog-row.tsx), so the call lands after a short delay.
+    // The row re-sorts on screen instantly — no waiting on the network for this.
+    expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
+
+    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
     await waitFor(() => {
       expect(mockReorderCode).toHaveBeenCalledWith('ALF-b', 'ALF-a');
     });
+  });
+
+  it('a rapid Up+Down burst on the middle row reorders instantly on every click, using the LIVE neighbour each time', async () => {
+    const user = userEvent.setup();
+    mockReorderCode.mockResolvedValue([makeSidecar('a', 1), makeSidecar('b', 2)]);
+    renderBacklog([
+      makeStory('a', { priority: 1 }),
+      makeStory('b', { priority: 2 }),
+      makeStory('c', { priority: 3 }),
+    ]);
+    expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-b up' }));
+    // Instant: b swaps with its neighbour above, a.
+    expect(rowOrder()).toEqual(['ALF-b', 'ALF-a', 'ALF-c']);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-b down' }));
+    // Instant again: b's neighbour below is now a (NOT the original c), so this swap undoes
+    // the first one exactly, back to the starting order — proving each click reorders against
+    // the CURRENT on-screen order, not a stale snapshot from before the burst.
+    expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
+
+    // The network sync still debounces and flushes BOTH queued swaps, in order, once the burst
+    // settles — even though their net visual effect cancelled out.
     await waitFor(() => {
-      expect(rowOrder()).toEqual(['ALF-b', 'ALF-a']);
+      expect(mockReorderCode).toHaveBeenCalledTimes(2);
     });
+    expect(mockReorderCode).toHaveBeenNthCalledWith(1, 'ALF-b', 'ALF-a');
+    expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-b', 'ALF-a');
   });
 
   it('disables to-top on the first row and to-bottom on the last', () => {
@@ -297,7 +326,7 @@ describe('Backlog', () => {
     expect(screen.getByRole('button', { name: 'Move ALF-b to top' })).toBeEnabled();
   });
 
-  it('jumps to the top via the double chevron: last row moves above the rest and re-sorts', async () => {
+  it('jumps to the top via the double chevron: last row moves above the rest and re-sorts INSTANTLY', async () => {
     const user = userEvent.setup();
     mockMoveCode.mockResolvedValue([makeSidecar('c', -1)]);
     renderBacklog([
@@ -309,16 +338,16 @@ describe('Backlog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-c to top' }));
 
-    // The chevron debounces (backlog-row.tsx), so the call lands after a short delay.
+    // The row re-sorts on screen instantly — no waiting on the network for this.
+    expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
+
+    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-c', true);
     });
-    await waitFor(() => {
-      expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
-    });
   });
 
-  it('jumps to the bottom via the double chevron: first row moves below the rest and re-sorts', async () => {
+  it('jumps to the bottom via the double chevron: first row moves below the rest and re-sorts INSTANTLY', async () => {
     const user = userEvent.setup();
     mockMoveCode.mockResolvedValue([makeSidecar('a', 31)]);
     renderBacklog([
@@ -329,12 +358,12 @@ describe('Backlog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Move ALF-a to bottom' }));
 
-    // The chevron debounces (backlog-row.tsx), so the call lands after a short delay.
+    // The row re-sorts on screen instantly — no waiting on the network for this.
+    expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
+
+    // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
-    });
-    await waitFor(() => {
-      expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
     });
   });
 
