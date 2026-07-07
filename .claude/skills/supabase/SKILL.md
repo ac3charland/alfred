@@ -259,6 +259,25 @@ for relevant `breaking-change` tags and fetch the specific docs page (append `.m
 docs URL for the markdown version). Discover CLI commands with `--help` rather than guessing,
 and always **verify a change with a follow-up query** — a fix without verification is incomplete.
 
+### In the Claude Code web/remote sandbox, apply migrations via the Management API
+
+The remote sandbox allows outbound **HTTPS only** (through the agent proxy); raw Postgres TCP
+to the pooler (5432 **and** 6543) is blocked, so `npm run migrate`, `psql`, and `pg.Client`
+all hang and fail with a bare `timeout expired`. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
+the environment, run migrations — and any ad-hoc SQL — over the **Management API** instead:
+
+```bash
+curl -sS -X POST "https://api.supabase.com/v1/projects/<ref>/database/query" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  --data @body.json   # body.json = {"query":"<the migration SQL>"}
+```
+
+A multi-statement migration body applies in one call; success returns the last statement's
+rows (`[]` for DDL), HTTP 201. Build `body.json` with `JSON.stringify` from the `.sql` file
+rather than escaping by hand. The **project ref** is the `postgres.<ref>` username in
+`DATABASE_URL`. This same endpoint is the way to verify a change afterwards (query
+`information_schema` / `pg_constraint`), since no Postgres client can reach the DB directly.
+
 ### Applying migrations / generating types without a personal access token
 
 Plain SQL migrations can be applied over the **session pooler** connection string (port
