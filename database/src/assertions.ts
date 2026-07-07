@@ -217,6 +217,78 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const intendedProjectResult = await attempt(
+    'items.intended_project_id: code-only CHECK, task_items surfacing, on-delete-set-null (ALF-62)',
+    async () => {
+      // The CHECK (intended_project_id is null or item_type = 'code') must reject a non-code item.
+      let rejected = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(
+            `insert into items (title, item_type, intended_project_id) values ('bad', 'task', $1)`,
+            [PROJECT],
+          ),
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('a non-code item was allowed to carry an intended project');
+
+      // A code inbox item may carry it, and the task_items view (select i.*) must surface the
+      // column — recreated in the migration so the late-added column isn't frozen out (see 0011).
+      const inserted = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id)
+             values ('project hint', 'code', $1) returning id`,
+          [PROJECT],
+        ),
+      );
+      const id = inserted.rows[0]?.id;
+      if (!id) throw new Error('code item insert returned no id');
+      const surfaced = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_project_id: string | null }>(
+          `select intended_project_id from task_items where id = $1`,
+          [id],
+        ),
+      );
+      if (surfaced.rows[0]?.intended_project_id !== PROJECT)
+        throw new Error(
+          `task_items did not surface intended_project_id (got ${String(surfaced.rows[0]?.intended_project_id)})`,
+        );
+
+      // on delete set null: deleting the assigned project clears the hint but keeps the row. Use a
+      // throwaway project so the shared seed PROJECT (its code stories) is untouched.
+      const tempProject = '33333333-3333-3333-3333-333333333333';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'TMP', 'Temp', 'ac3charland', 'temp')`,
+        [tempProject],
+      );
+      const tempItem = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id)
+             values ('temp hint', 'code', $1) returning id`,
+          [tempProject],
+        ),
+      );
+      const tempItemId = tempItem.rows[0]?.id;
+      if (!tempItemId) throw new Error('temp code item insert returned no id');
+      await client.query(`delete from projects where id = $1`, [tempProject]);
+      const afterDelete = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_project_id: string | null }>(
+          `select intended_project_id from items where id = $1`,
+          [tempItemId],
+        ),
+      );
+      if (afterDelete.rows.length !== 1)
+        throw new Error('deleting the project deleted the inbox row (should only null the hint)');
+      if (afterDelete.rows[0]?.intended_project_id !== null)
+        throw new Error('intended_project_id was not nulled when the project was deleted');
+
+      return 'CHECK enforced, view surfaces the column, on-delete nulls the hint';
+    },
+  );
+
   const anonInsertResult = await attempt('anon cannot insert (RLS write denial)', async () => {
     let denied = false;
     try {
@@ -252,6 +324,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     swapResult,
     moveResult,
     taskItemsColumnsResult,
+    intendedProjectResult,
     anonInsertResult,
     anonReadResult,
   ];
