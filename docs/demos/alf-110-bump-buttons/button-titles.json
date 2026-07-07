@@ -1,0 +1,8 @@
+{
+  "Move ALF-4 up": "Swap with the story above",
+  "Move ALF-4 down": "Swap with the story below",
+  "Move ALF-4 to top of project": "Move to the top of this story's project",
+  "Move ALF-4 to bottom of project": "Move to the bottom of this story's project",
+  "Move ALF-4 to top of list": "Move to the top of the whole Backlog",
+  "Move ALF-4 to bottom of list": "Move to the bottom of the whole Backlog"
+}
