@@ -29,8 +29,9 @@ import {
  *   states, so `done`/`abandoned` are hidden until the owner checks them.
  * - **List:** one `BacklogRow` per story, ranked by global `priority`. The single chevrons swap a
  *   story with its visible neighbour (`reorderStory`); the double chevrons jump it to the top or
- *   bottom of the Backlog (`moveStory`). Both are animated via `useFlipList` (FLIP), honouring
- *   `prefers-reduced-motion`.
+ *   bottom of ITS OWN PROJECT (`moveStoryInProject`, ALF-110); the arrow-to-line icons jump it to
+ *   the top or bottom of the WHOLE Backlog (`moveStory`). All three are animated via `useFlipList`
+ *   (FLIP), honouring `prefers-reduced-motion`.
  *
  * Must be mounted under a `CodeProvider` (reads `useBacklog` / `useCodeActions`).
  */
@@ -43,7 +44,21 @@ export function Backlog() {
   );
   const stories = useBacklog({ statuses });
   const projects = useProjects();
-  const { reorderStory, moveStory } = useCodeActions();
+  const { reorderStory, moveStory, moveStoryInProject } = useCodeActions();
+  // Each project's best/worst priority among the CURRENTLY LISTED stories (ALF-110), so the
+  // double-chevron "to top/bottom of project" disables once a story already holds that slot.
+  const projectBounds = React.useMemo(() => {
+    const bounds = new Map<string, { min: number; max: number }>();
+    for (const story of stories) {
+      if (story.project_id === null || story.priority === null) continue;
+      const current = bounds.get(story.project_id);
+      bounds.set(story.project_id, {
+        min: current === undefined ? story.priority : Math.min(current.min, story.priority),
+        max: current === undefined ? story.priority : Math.max(current.max, story.priority),
+      });
+    }
+    return bounds;
+  }, [stories]);
   // Animate the reorder: FLIP keyed by item_id over the currently rendered order.
   const registerRow = useFlipList(stories.map((story) => story.item_id ?? ''));
 
@@ -90,6 +105,19 @@ export function Backlog() {
     [moveStory],
   );
 
+  const handleMoveProject = React.useCallback(
+    (ref: string, toTop: boolean) => {
+      void (async () => {
+        try {
+          await moveStoryInProject(ref, toTop);
+        } catch {
+          // The store rolled the move back; nothing extra to undo here.
+        }
+      })();
+    },
+    [moveStoryInProject],
+  );
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -115,18 +143,25 @@ export function Backlog() {
 
       {stories.length > 0 ? (
         <ul className="flex flex-col gap-2">
-          {stories.map((story, index) => (
-            <BacklogRow
-              key={story.item_id}
-              ref={registerRow(story.item_id ?? '')}
-              story={story}
-              projectColor={projectColorFor(projects, story.project_id)}
-              prevRef={index === 0 ? null : (stories[index - 1]?.ref ?? null)}
-              nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
-              onReorder={handleReorder}
-              onMove={handleMove}
-            />
-          ))}
+          {stories.map((story, index) => {
+            const bounds =
+              story.project_id === null ? undefined : projectBounds.get(story.project_id);
+            return (
+              <BacklogRow
+                key={story.item_id}
+                ref={registerRow(story.item_id ?? '')}
+                story={story}
+                projectColor={projectColorFor(projects, story.project_id)}
+                prevRef={index === 0 ? null : (stories[index - 1]?.ref ?? null)}
+                nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
+                isProjectTop={bounds === undefined || story.priority === bounds.min}
+                isProjectBottom={bounds === undefined || story.priority === bounds.max}
+                onReorder={handleReorder}
+                onMoveProject={handleMoveProject}
+                onMove={handleMove}
+              />
+            );
+          })}
         </ul>
       ) : (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border p-10">

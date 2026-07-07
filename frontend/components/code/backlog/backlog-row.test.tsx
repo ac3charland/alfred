@@ -41,6 +41,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 
 function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {}) {
   const onReorder = jest.fn();
+  const onMoveProject = jest.fn();
   const onMove = jest.fn();
   render(
     <ul>
@@ -49,13 +50,16 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
         projectColor="blue"
         prevRef="ALF-0"
         nextRef="ALF-2"
+        isProjectTop={false}
+        isProjectBottom={false}
         onReorder={onReorder}
+        onMoveProject={onMoveProject}
         onMove={onMove}
         {...props}
       />
     </ul>,
   );
-  return { onReorder, onMove };
+  return { onReorder, onMoveProject, onMove };
 }
 
 describe('BacklogRow', () => {
@@ -83,12 +87,18 @@ describe('BacklogRow', () => {
     );
   });
 
-  it('disables Up and to-top at the top, Down and to-bottom at the bottom', () => {
+  it('disables Up and to-top-of-list at the top, Down and to-bottom-of-list at the bottom', () => {
     renderRow({ prevRef: null });
     expect(screen.getByRole('button', { name: 'Move ALF-1 up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-1 to top' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of list' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Move ALF-1 down' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' })).toBeEnabled();
+  });
+
+  it('disables to-top/bottom-of-project once the story already holds that project slot (ALF-110)', () => {
+    renderRow({ isProjectTop: true, isProjectBottom: true });
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of project' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' })).toBeDisabled();
   });
 
   it('swaps with the previous neighbour on Up and the next on Down', async () => {
@@ -102,15 +112,54 @@ describe('BacklogRow', () => {
     expect(onReorder).toHaveBeenCalledWith('ALF-1', 'ALF-2');
   });
 
-  it('jumps to the top on the double-up chevron and the bottom on the double-down', async () => {
+  it('jumps to the top/bottom of ITS PROJECT on the double chevrons (ALF-110)', async () => {
+    const user = userEvent.setup();
+    const { onMoveProject } = renderRow();
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of project' }));
+    expect(onMoveProject).toHaveBeenCalledWith('ALF-1', true);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' }));
+    expect(onMoveProject).toHaveBeenCalledWith('ALF-1', false);
+  });
+
+  it('jumps to the top/bottom of the WHOLE Backlog on the arrow-to-line icons (ALF-110)', async () => {
     const user = userEvent.setup();
     const { onMove } = renderRow();
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of list' }));
     expect(onMove).toHaveBeenCalledWith('ALF-1', true);
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' }));
     expect(onMove).toHaveBeenCalledWith('ALF-1', false);
+  });
+
+  it('gives every button hover text explaining what it does (ALF-110)', () => {
+    renderRow();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 up' })).toHaveAttribute(
+      'title',
+      'Swap with the story above',
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 down' })).toHaveAttribute(
+      'title',
+      'Swap with the story below',
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of project' })).toHaveAttribute(
+      'title',
+      "Move to the top of this story's project",
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' })).toHaveAttribute(
+      'title',
+      "Move to the bottom of this story's project",
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of list' })).toHaveAttribute(
+      'title',
+      'Move to the top of the whole Backlog',
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' })).toHaveAttribute(
+      'title',
+      'Move to the bottom of the whole Backlog',
+    );
   });
 
   // ── Mobile card layout (ALF-86): full-width wrapping title + badge footer + big tap targets ──
@@ -138,8 +187,10 @@ describe('BacklogRow', () => {
     for (const name of [
       'Move ALF-1 up',
       'Move ALF-1 down',
-      'Move ALF-1 to top',
-      'Move ALF-1 to bottom',
+      'Move ALF-1 to top of project',
+      'Move ALF-1 to bottom of project',
+      'Move ALF-1 to top of list',
+      'Move ALF-1 to bottom of list',
     ]) {
       // h-11/w-11 = 44px on mobile; md:h-5/md:w-5 = 20px on desktop.
       expect(screen.getByRole('button', { name })).toHaveClass('h-11', 'w-11', 'md:h-5', 'md:w-5');
