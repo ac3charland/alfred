@@ -7,6 +7,8 @@ import { Spinner } from '@/components/atoms/spinner';
 import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
 import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
+import { parseProjectPrefix as matchProjectPrefix } from '@/lib/code/project-prefix';
+import { useProjects } from '@/lib/stores/code-store';
 import { useTaskActions } from '@/lib/stores/tasks-store';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
@@ -19,6 +21,12 @@ interface CaptureBoxProperties {
   parentId?: string | null;
   /** Compact mode for inline "add subtask" affordance (no serif prompt). */
   compact?: boolean;
+  /**
+   * Opt-in project-prefix parsing (Inbox capture box only). When true, a recognized
+   * `<project name|key>:` prefix classifies the capture as Code, assigns that project, and
+   * strips the prefix. Off (the default) for folder and subtask capture boxes.
+   */
+  parseProjectPrefix?: boolean;
   /** Called after a successful capture. */
   onCapture?: () => void;
   /** Called when the user dismisses the compact input (Escape key). */
@@ -37,6 +45,7 @@ export function CaptureBox({
   folderId,
   parentId,
   compact = false,
+  parseProjectPrefix = false,
   onCapture,
   onDismiss,
 }: CaptureBoxProperties) {
@@ -54,6 +63,9 @@ export function CaptureBox({
   const ghostIdReference = React.useRef(0);
   const prefersReducedMotion = usePrefersReducedMotion();
   const { addTask } = useTaskActions();
+  // The project list backs prefix parsing; read unconditionally (hook rules) but only consulted
+  // when `parseProjectPrefix` is on. The shell seeds CodeProvider around the Tasks view (ALF-27).
+  const projects = useProjects();
   const textareaReference = React.useRef<HTMLTextAreaElement>(null);
   const inputReference = React.useRef<HTMLInputElement>(null);
   // Number of saves still in flight. A ref, not state, because the count itself never
@@ -109,7 +121,17 @@ export function CaptureBox({
     inFlightReference.current += 1;
 
     try {
-      await addTask({ text: trimmed, folderId, parentId });
+      // A recognized `<project>:` prefix (Inbox box only) classifies the capture as Code,
+      // assigns the project, and strips the prefix; otherwise capture verbatim as today.
+      const match = parseProjectPrefix ? matchProjectPrefix(trimmed, projects) : null;
+      await (match
+        ? addTask({
+            text: trimmed,
+            itemType: 'code',
+            title: match.title,
+            intendedProjectId: match.project.id,
+          })
+        : addTask({ text: trimmed, folderId, parentId }));
       onCapture?.();
     } catch {
       setErrorMessage('Failed to save. Try again.');

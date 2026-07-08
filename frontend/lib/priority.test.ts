@@ -32,6 +32,7 @@ function item(priority: TaskPriority | null, due_date: string | null): Item {
     priority,
     recurrence: null,
     recurrence_series_id: null,
+    intended_project_id: null,
   };
 }
 

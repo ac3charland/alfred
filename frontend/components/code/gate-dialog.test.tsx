@@ -17,7 +17,13 @@ const mockCreateProject = jest.mocked(api.createProject);
 const mockCreateEpic = jest.mocked(api.createEpic);
 const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
 
-const ITEM: GateItem = { id: 'item-1', title: 'Ship the webhook', notes: null, source_url: null };
+const ITEM: GateItem = {
+  id: 'item-1',
+  title: 'Ship the webhook',
+  notes: null,
+  source_url: null,
+  intendedProjectId: null,
+};
 
 const PROJECT: Project = {
   id: 'p1',
@@ -28,6 +34,17 @@ const PROJECT: Project = {
   github_url: null,
   ref_seq: 0,
   created_at: '2025-01-01T00:00:00Z',
+};
+
+const PROJECT_2: Project = {
+  id: 'p2',
+  name: 'Relay',
+  key: 'RLY',
+  repo_owner: 'ac3charland',
+  repo_name: 'relay',
+  github_url: null,
+  ref_seq: 0,
+  created_at: '2025-01-03T00:00:00Z',
 };
 
 const EPIC: Epic = {
@@ -147,8 +164,20 @@ describe('GateDialog', () => {
     const user = userEvent.setup();
     const { onComplete } = renderGate({
       items: [
-        { id: 'i1', title: 'First capture', notes: null, source_url: null },
-        { id: 'i2', title: 'Second capture', notes: null, source_url: null },
+        {
+          id: 'i1',
+          title: 'First capture',
+          notes: null,
+          source_url: null,
+          intendedProjectId: null,
+        },
+        {
+          id: 'i2',
+          title: 'Second capture',
+          notes: null,
+          source_url: null,
+          intendedProjectId: null,
+        },
       ],
     });
 
@@ -167,6 +196,77 @@ describe('GateDialog', () => {
       expect.objectContaining({ item_id: 'i1' }),
       expect.objectContaining({ item_id: 'i2' }),
     ]);
+  });
+
+  describe('Intended-project pre-population (ALF-62)', () => {
+    it('pre-selects a single item’s intended project (still user-changeable)', async () => {
+      const user = userEvent.setup();
+      renderGate(
+        { items: [{ ...ITEM, intendedProjectId: 'p1' }] },
+        { projects: [PROJECT, PROJECT_2] },
+      );
+
+      // The assigned project is pre-selected on open…
+      const alfred = await screen.findByRole('option', { name: /alfred/i });
+      expect(alfred).toHaveAttribute('aria-selected', 'true');
+      // …its epics are already listed, and the picker stays interactive (not locked).
+      expect(await screen.findByRole('option', { name: /communication firewall/i })).toBeVisible();
+
+      // The user can still switch to another project.
+      await user.click(screen.getByRole('option', { name: /relay/i }));
+      expect(screen.getByRole('option', { name: /relay/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByRole('option', { name: /alfred/i })).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+    });
+
+    it('locks the project on a bulk selection that unanimously shares one project', async () => {
+      renderGate(
+        {
+          items: [
+            { ...ITEM, id: 'i1', intendedProjectId: 'p1' },
+            { ...ITEM, id: 'i2', intendedProjectId: 'p1' },
+          ],
+        },
+        { projects: [PROJECT, PROJECT_2] },
+      );
+
+      // Locked: a read-only chip naming the project, no interactive project listbox.
+      const chip = await screen.findByTestId('gate-project-locked');
+      expect(chip).toHaveTextContent('Alfred');
+      expect(chip).toHaveTextContent('ALF');
+      expect(screen.queryByRole('listbox', { name: 'Project' })).not.toBeInTheDocument();
+      // The epic picker is still shown for the locked project.
+      expect(await screen.findByRole('option', { name: /communication firewall/i })).toBeVisible();
+    });
+
+    it('stays interactive for a bulk selection with mixed projects', async () => {
+      renderGate(
+        {
+          items: [
+            { ...ITEM, id: 'i1', intendedProjectId: 'p1' },
+            { ...ITEM, id: 'i2', intendedProjectId: 'p2' },
+          ],
+        },
+        { projects: [PROJECT, PROJECT_2] },
+      );
+
+      // No lock: the interactive project list is present with nothing pre-selected.
+      expect(await screen.findByRole('listbox', { name: 'Project' })).toBeInTheDocument();
+      expect(screen.queryByTestId('gate-project-locked')).not.toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /alfred/i })).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+      expect(screen.getByRole('option', { name: /relay/i })).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+    });
   });
 
   describe('New project sub-dialog', () => {

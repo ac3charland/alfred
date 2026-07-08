@@ -122,6 +122,9 @@ export const createItemSchema = z
     due_date: dueDate.optional(),
     folder_id: nullableUuid.optional(),
     parent_id: nullableUuid.optional(),
+    // The Inbox capture box's project-prefix match assigns a pre-factory, epic-free project
+    // to a code-classified inbox item (mirrors folder_id/parent_id — nullable, optional).
+    intended_project_id: nullableUuid.optional(),
     // Nullable so a create can omit it (one-shot task) or send null explicitly.
     recurrence: recurrenceSchema.nullable().optional(),
   })
@@ -331,6 +334,18 @@ export const moveCodeSchema = z.object({
 });
 
 export type MoveCodeInput = z.infer<typeof moveCodeSchema>;
+
+/**
+ * Body for POST /api/code/move-project — the Backlog's project-scoped jump (ALF-110), which
+ * repurposes the double-chevron button. Same shape as `moveCodeSchema`, but the story lands at
+ * the top/bottom of its own project instead of the whole Backlog (`move_code_priority_in_project`).
+ */
+export const moveCodeInProjectSchema = z.object({
+  ref: z.string().min(1),
+  to_top: z.boolean(),
+});
+
+export type MoveCodeInProjectInput = z.infer<typeof moveCodeInProjectSchema>;
 
 // ---------------------------------------------------------------------------
 // Query params

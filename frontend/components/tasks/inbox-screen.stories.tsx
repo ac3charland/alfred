@@ -1,8 +1,30 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 
+import { CodeProvider } from '@/lib/stores/code-store';
 import type { ItemNode } from '@/lib/tree';
+import type { Project } from '@/lib/types';
 
 import { InboxScreen } from './inbox-screen';
+
+const PROJECTS: Project[] = [
+  {
+    id: 'p-alf',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 0,
+    created_at: '2025-01-01T00:00:00Z',
+  },
+];
+
+/** The Inbox capture box parses project prefixes, so it needs the code store's project list. */
+const withCodeProvider: Decorator = (Story) => (
+  <CodeProvider initialProjects={PROJECTS} initialEpics={[]} initialStories={[]}>
+    <Story />
+  </CodeProvider>
+);
 
 /**
  * Wrap the screen in a fixed-width, auto-height frame so the visual snapshot is a tight,
@@ -35,6 +57,7 @@ const BASE_NODE: ItemNode = {
   recurrence: null,
   priority: null,
   recurrence_series_id: null,
+  intended_project_id: null,
   children: [],
 };
 
@@ -52,6 +75,7 @@ const meta = {
   title: 'Tasks/InboxScreen',
   component: InboxScreen,
   tags: ['autodocs'],
+  decorators: [withCodeProvider],
   parameters: {
     layout: 'fullscreen',
     // The inbox list is read from the TasksProvider store (seeded by the page);

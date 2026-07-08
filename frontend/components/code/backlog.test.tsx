@@ -12,6 +12,7 @@ import { Backlog } from './backlog';
 jest.mock('@/lib/api-client');
 const mockReorderCode = jest.mocked(api.reorderCode);
 const mockMoveCode = jest.mocked(api.moveCode);
+const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
 
 // The realtime channel the CodeProvider subscribes — stub it so the provider mounts.
 jest.mock('@/lib/supabase/client', () => ({
@@ -41,6 +42,21 @@ const EPIC: Epic = {
   ref: 'ALF-3',
   archived_at: null,
   created_at: '2025-01-01T00:00:00Z',
+};
+
+const PROJECT_2: Project = {
+  ...PROJECT,
+  id: 'p2',
+  key: 'RLP',
+  name: 'Relay',
+  repo_name: 'relay',
+};
+
+const EPIC_2: Epic = {
+  ...EPIC,
+  id: 'e2',
+  project_id: 'p2',
+  ref: 'RLP-1',
 };
 
 function makeStory(itemId: string, overrides: Partial<CodeStory> = {}): CodeStory {
@@ -104,14 +120,34 @@ function rowOrder(): string[] {
     .map((button) => /Move (\S+) up/.exec(button.getAttribute('aria-label') ?? '')?.[1] ?? '');
 }
 
-function renderBacklog(stories: CodeStory[]) {
-  return renderWithProviders(<Backlog />, { projects: [PROJECT], epics: [EPIC], stories });
+function renderBacklog(stories: CodeStory[], seed: { projects?: Project[]; epics?: Epic[] } = {}) {
+  return renderWithProviders(<Backlog />, {
+    projects: seed.projects ?? [PROJECT],
+    epics: seed.epics ?? [EPIC],
+    stories,
+  });
+}
+
+/**
+ * p1 has two stories (a, c); p2 has one (other) ranked between them, so the project-scoped
+ * chevron must not disturb — or be blocked by — the other project's story.
+ */
+function seedTwoProjects() {
+  return renderBacklog(
+    [
+      makeStory('a', { priority: 10 }),
+      makeStory('other', { priority: 20, project_id: 'p2', epic_id: 'e2', ref: 'RLP-1' }),
+      makeStory('c', { priority: 30 }),
+    ],
+    { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+  );
 }
 
 describe('Backlog', () => {
   beforeEach(() => {
     mockReorderCode.mockReset();
     mockMoveCode.mockReset();
+    mockMoveCodeInProject.mockReset();
   });
 
   it('renders the header hero and a Filter by status control', () => {
@@ -318,15 +354,15 @@ describe('Backlog', () => {
     expect(mockReorderCode).toHaveBeenNthCalledWith(2, 'ALF-b', 'ALF-a');
   });
 
-  it('disables to-top on the first row and to-bottom on the last', () => {
+  it('disables to-top-of-list on the first row and to-bottom-of-list on the last', () => {
     renderBacklog([makeStory('a', { priority: 1 }), makeStory('b', { priority: 2 })]);
-    expect(screen.getByRole('button', { name: 'Move ALF-a to top' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-b to bottom' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-a to bottom' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-b to top' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-a to top of list' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-b to bottom of list' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-a to bottom of list' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-b to top of list' })).toBeEnabled();
   });
 
-  it('jumps to the top via the double chevron: last row moves above the rest and re-sorts INSTANTLY', async () => {
+  it('jumps to the top of the whole Backlog via the arrow-to-line icon, INSTANTLY: last row moves above the rest', async () => {
     const user = userEvent.setup();
     mockMoveCode.mockResolvedValue([makeSidecar('c', -1)]);
     renderBacklog([
@@ -336,7 +372,7 @@ describe('Backlog', () => {
     ]);
     expect(rowOrder()).toEqual(['ALF-a', 'ALF-b', 'ALF-c']);
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-c to top' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-c to top of list' }));
 
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'ALF-b']);
@@ -347,7 +383,7 @@ describe('Backlog', () => {
     });
   });
 
-  it('jumps to the bottom via the double chevron: first row moves below the rest and re-sorts INSTANTLY', async () => {
+  it('jumps to the bottom of the whole Backlog via the arrow-to-line icon, INSTANTLY: first row moves below the rest', async () => {
     const user = userEvent.setup();
     mockMoveCode.mockResolvedValue([makeSidecar('a', 31)]);
     renderBacklog([
@@ -356,7 +392,7 @@ describe('Backlog', () => {
       makeStory('c', { priority: 30 }),
     ]);
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-a to bottom' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-a to bottom of list' }));
 
     // The row re-sorts on screen instantly — no waiting on the network for this.
     expect(rowOrder()).toEqual(['ALF-b', 'ALF-c', 'ALF-a']);
@@ -364,6 +400,60 @@ describe('Backlog', () => {
     // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a short delay.
     await waitFor(() => {
       expect(mockMoveCode).toHaveBeenCalledWith('ALF-a', false);
+    });
+  });
+
+  describe('to top/bottom of project (ALF-110, the repurposed double chevron)', () => {
+    it('disables to-top-of-project/to-bottom-of-project once a story already holds that slot', () => {
+      seedTwoProjects();
+      // a is p1's only-better story, c is p1's only-worse story — each already holds its slot.
+      expect(screen.getByRole('button', { name: 'Move ALF-a to top of project' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Move ALF-c to bottom of project' }),
+      ).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move ALF-c to top of project' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Move ALF-a to bottom of project' })).toBeEnabled();
+    });
+
+    it('jumps to the top of its project via the double-up chevron, INSTANTLY, calling moveCodeInProject', async () => {
+      const user = userEvent.setup();
+      mockMoveCodeInProject.mockResolvedValue([makeSidecar('c', 5)]);
+      seedTwoProjects();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-c to top of project' }));
+
+      // c outranks a (top of p1) but the other project's story stays put — instantly, no
+      // waiting on the network for this.
+      expect(rowOrder()).toEqual(['ALF-c', 'ALF-a', 'RLP-1']);
+      expect(mockMoveCode).not.toHaveBeenCalled();
+
+      // Only the network SYNC is debounced (backlog-row.tsx), so the call lands after a delay.
+      await waitFor(() => {
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-c', true);
+      });
+    });
+
+    it('jumps to the bottom of its project via the double-down chevron, INSTANTLY, calling moveCodeInProject', async () => {
+      const user = userEvent.setup();
+      mockMoveCodeInProject.mockResolvedValue([makeSidecar('a', 25)]);
+      seedTwoProjects();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-a to bottom of project' }));
+
+      // Instantly, no waiting on the network: the optimistic guess (max+1 over p1 = 31) ranks a
+      // BEHIND c, since it doesn't yet know the server will land it at 25 (between c and other).
+      expect(rowOrder()).toEqual(['RLP-1', 'ALF-c', 'ALF-a']);
+      expect(mockMoveCode).not.toHaveBeenCalled();
+
+      // Only the network SYNC is debounced (backlog-row.tsx). Once it lands, the reconciled
+      // priority (25) corrects the order — a moves back ahead of c, still behind the other
+      // project's story, which never moved.
+      await waitFor(() => {
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-a', false);
+      });
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['RLP-1', 'ALF-a', 'ALF-c']);
+      });
     });
   });
 

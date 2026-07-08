@@ -12,7 +12,7 @@ import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
 import { buildTree, collectSubtree, makeOptimisticItem, tempId } from '@/lib/tree';
-import type { Item } from '@/lib/types';
+import type { Item, ItemType } from '@/lib/types';
 
 /**
  * The optimistic next occurrence of a recurring task, or `null` when none should spawn
@@ -54,11 +54,15 @@ function computeOptimisticSpawn(root: Item): Item | null {
  */
 
 interface AddTaskInput {
-  text: string;
+  text: string; // raw captured text → raw_capture (unchanged)
   // Explicit `| undefined` so callers may pass through an absent folder/parent prop
   // directly under exactOptionalPropertyTypes.
   folderId?: string | null | undefined;
   parentId?: string | null | undefined;
+  // Supplied only by the Inbox capture box on a project-prefix match:
+  title?: string | undefined; // cleaned title (prefix stripped + first letter capitalized)
+  itemType?: ItemType | undefined; // 'code' on a match
+  intendedProjectId?: string | null | undefined;
 }
 
 /** The inline-editable scalar fields of a task (title, due date, notes, recurrence, priority). */
@@ -211,9 +215,15 @@ export function TasksProvider({
         const createInput: api.CreateItemInput = {
           text: input.text,
           raw_capture: input.text,
-          item_type: parentId === undefined ? 'unclassified' : 'task',
+          title: input.title ?? input.text,
+          // Existing precedence (a subtask is always a task), extended to honor an explicit type.
+          item_type: parentId === undefined ? (input.itemType ?? 'unclassified') : 'task',
           ...(folderId !== undefined && { folder_id: folderId }),
           ...(parentId !== undefined && { parent_id: parentId }),
+          // A project hint only rides on a top-level (parentless) capture — a subtask is a task,
+          // which may never carry one (the DB CHECK is code-only).
+          ...(input.intendedProjectId != null &&
+            parentId === undefined && { intended_project_id: input.intendedProjectId }),
         };
         const optimistic = makeOptimisticItem(createInput);
         await runOptimisticMutation({

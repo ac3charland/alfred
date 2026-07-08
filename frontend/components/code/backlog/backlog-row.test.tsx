@@ -40,6 +40,15 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
   };
 }
 
+/** A jump `apply*` stub: distinct `priorityBefore` per call, recorded in the given array. */
+function makeApplyMoveStub(returns: { priorityBefore: number | null }[]) {
+  return jest.fn((): { priorityBefore: number | null } => {
+    const applied = { priorityBefore: returns.length + 1 };
+    returns.push(applied);
+    return applied;
+  });
+}
+
 function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {}) {
   // Distinct return values per call (rather than one fixed stub), recorded here so a test can
   // tell WHICH call's result reached commitReorder/commitMove, and in what order.
@@ -58,12 +67,12 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
   });
   const commitReorder = jest.fn().mockResolvedValue(undefined);
 
+  const moveInProjectReturns: { priorityBefore: number | null }[] = [];
+  const applyMoveInProject = makeApplyMoveStub(moveInProjectReturns);
+  const commitMoveInProject = jest.fn().mockResolvedValue(undefined);
+
   const moveReturns: { priorityBefore: number | null }[] = [];
-  const applyMove = jest.fn((): { priorityBefore: number | null } => {
-    const applied = { priorityBefore: moveReturns.length + 1 };
-    moveReturns.push(applied);
-    return applied;
-  });
+  const applyMove = makeApplyMoveStub(moveReturns);
   const commitMove = jest.fn().mockResolvedValue(undefined);
 
   render(
@@ -73,15 +82,29 @@ function renderRow(props: Partial<React.ComponentProps<typeof BacklogRow>> = {})
         projectColor="blue"
         prevRef="ALF-0"
         nextRef="ALF-2"
+        isProjectTop={false}
+        isProjectBottom={false}
         applyReorder={applyReorder}
         commitReorder={commitReorder}
+        applyMoveInProject={applyMoveInProject}
+        commitMoveInProject={commitMoveInProject}
         applyMove={applyMove}
         commitMove={commitMove}
         {...props}
       />
     </ul>,
   );
-  return { applyReorder, commitReorder, reorderReturns, applyMove, commitMove, moveReturns };
+  return {
+    applyReorder,
+    commitReorder,
+    reorderReturns,
+    applyMoveInProject,
+    commitMoveInProject,
+    moveInProjectReturns,
+    applyMove,
+    commitMove,
+    moveReturns,
+  };
 }
 
 describe('BacklogRow', () => {
@@ -109,12 +132,46 @@ describe('BacklogRow', () => {
     );
   });
 
-  it('disables Up and to-top at the top, Down and to-bottom at the bottom', () => {
+  it('disables Up and to-top-of-list at the top, Down and to-bottom-of-list at the bottom', () => {
     renderRow({ prevRef: null });
     expect(screen.getByRole('button', { name: 'Move ALF-1 up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-1 to top' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of list' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Move ALF-1 down' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' })).toBeEnabled();
+  });
+
+  it('disables to-top/bottom-of-project once the story already holds that project slot (ALF-110)', () => {
+    renderRow({ isProjectTop: true, isProjectBottom: true });
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of project' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' })).toBeDisabled();
+  });
+
+  it('gives every button hover text explaining what it does (ALF-110)', () => {
+    renderRow();
+    expect(screen.getByRole('button', { name: 'Move ALF-1 up' })).toHaveAttribute(
+      'title',
+      'Swap with the story above',
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 down' })).toHaveAttribute(
+      'title',
+      'Swap with the story below',
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of project' })).toHaveAttribute(
+      'title',
+      "Move to the top of this story's project",
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' })).toHaveAttribute(
+      'title',
+      "Move to the bottom of this story's project",
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to top of list' })).toHaveAttribute(
+      'title',
+      'Move to the top of the whole Backlog',
+    );
+    expect(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' })).toHaveAttribute(
+      'title',
+      'Move to the bottom of the whole Backlog',
+    );
   });
 
   it('swaps with the previous neighbour on Up and the next on Down, INSTANTLY (no debounce delay)', async () => {
@@ -131,14 +188,27 @@ describe('BacklogRow', () => {
     expect(commitReorder).not.toHaveBeenCalled();
   });
 
-  it('jumps to the top on the double-up chevron and the bottom on the double-down, INSTANTLY', async () => {
+  it('jumps to the top/bottom of ITS PROJECT on the double chevrons, INSTANTLY (ALF-110)', async () => {
+    const user = userEvent.setup();
+    const { applyMoveInProject, commitMoveInProject } = renderRow();
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of project' }));
+    expect(applyMoveInProject).toHaveBeenCalledWith('ALF-1', true);
+
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' }));
+    expect(applyMoveInProject).toHaveBeenCalledWith('ALF-1', false);
+
+    expect(commitMoveInProject).not.toHaveBeenCalled();
+  });
+
+  it('jumps to the top/bottom of the WHOLE Backlog on the arrow-to-line icons, INSTANTLY (ALF-110)', async () => {
     const user = userEvent.setup();
     const { applyMove, commitMove } = renderRow();
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of list' }));
     expect(applyMove).toHaveBeenCalledWith('ALF-1', true);
 
-    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
+    await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' }));
     expect(applyMove).toHaveBeenCalledWith('ALF-1', false);
 
     expect(commitMove).not.toHaveBeenCalled();
@@ -188,14 +258,39 @@ describe('BacklogRow', () => {
     }
   });
 
+  it("a rapid burst of project-scope jump clicks flushes ONE commitMoveInProject call with the LATEST direction but the FIRST click's prior priority (ALF-110)", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    jest.useFakeTimers();
+    try {
+      const { applyMoveInProject, commitMoveInProject, moveInProjectReturns } = renderRow();
+
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of project' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of project' }));
+
+      expect(applyMoveInProject).toHaveBeenCalledTimes(2);
+      expect(commitMoveInProject).not.toHaveBeenCalled();
+
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(commitMoveInProject).toHaveBeenCalledTimes(1);
+      const [firstApplied] = moveInProjectReturns;
+      if (firstApplied === undefined) throw new Error('expected a move to have been applied');
+      expect(commitMoveInProject).toHaveBeenCalledWith('ALF-1', false, firstApplied.priorityBefore);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("a rapid burst of top/bottom clicks flushes ONE commitMove call with the LATEST direction but the FIRST click's prior priority", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     jest.useFakeTimers();
     try {
       const { applyMove, commitMove, moveReturns } = renderRow();
 
-      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top' }));
-      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to top of list' }));
+      await user.click(screen.getByRole('button', { name: 'Move ALF-1 to bottom of list' }));
 
       expect(applyMove).toHaveBeenCalledTimes(2);
       expect(commitMove).not.toHaveBeenCalled();
@@ -240,8 +335,10 @@ describe('BacklogRow', () => {
     for (const name of [
       'Move ALF-1 up',
       'Move ALF-1 down',
-      'Move ALF-1 to top',
-      'Move ALF-1 to bottom',
+      'Move ALF-1 to top of project',
+      'Move ALF-1 to bottom of project',
+      'Move ALF-1 to top of list',
+      'Move ALF-1 to bottom of list',
     ]) {
       // h-11/w-11 = 44px on mobile; md:h-5/md:w-5 = 20px on desktop.
       expect(screen.getByRole('button', { name })).toHaveClass('h-11', 'w-11', 'md:h-5', 'md:w-5');

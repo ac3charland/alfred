@@ -271,6 +271,29 @@ export interface CodeActions {
    */
   commitMove: (ref: string, toTop: boolean, priorityBefore: number | null) => Promise<void>;
   /**
+   * Apply ONE project-scoped jump's optimistic half only (ALF-110, the repurposed
+   * double-chevron move) — re-rank `ref`'s `priority` to the midpoint between its project's
+   * current best/worst story and whichever OTHER project's story sits just past it, so no other
+   * project's stories are disturbed — no network call. Returns the prior priority (for
+   * `commitMoveInProject`'s rollback), or null if `ref` can't be resolved. Idempotent in its
+   * direction like `applyMoveOptimistic`, so it never needs more than the LATEST call's `toTop`.
+   */
+  applyMoveInProjectOptimistic: (
+    ref: string,
+    toTop: boolean,
+  ) => { priorityBefore: number | null } | null;
+  /**
+   * Commit the latest `applyMoveInProjectOptimistic` call to the server: call
+   * `moveCodeInProject`, then reconcile from the returned `code_items` row via
+   * `codeItemToStoryPatch`. On failure, roll `ref` back to `priorityBefore` (the priority
+   * captured before the FIRST optimistic move of the burst).
+   */
+  commitMoveInProject: (
+    ref: string,
+    toTop: boolean,
+    priorityBefore: number | null,
+  ) => Promise<void>;
+  /**
    * Refetch every code story from the server and reconcile the STATUS fields (`factory_state`
    * plus its companions `lane` / `blocked_reason`) onto the stories already held, keyed by
    * `item_id`. Fired on navigation to a project board or the Backlog (ALF-69) so a status that
@@ -530,10 +553,10 @@ export function CodeProvider({
         // from the Code view, where both are seeded. Surface as an error.
         throw new Error('Project or epic missing from the code store');
       }
-      // Land the optimistic card at the top of the Backlog (ALF-71), matching the server.
+      // Land the optimistic card at the top of its PROJECT (ALF-110), matching the server.
       const optimistic = {
         ...makeOptimisticStory(item, project, epic),
-        priority: topStoryPriority(stateRef.current.stories),
+        priority: topOfProjectPriority(stateRef.current.stories, projectId),
       };
       let reconciled: CodeStory = optimistic;
       await runOptimisticMutation({
@@ -661,10 +684,10 @@ export function CodeProvider({
         // The item is server-allocated, so the optimistic card carries a TEMP item id that
         // the reconcile swaps for the real uuid (unlike the gate, where the item exists).
         const tempItemId = tempId();
-        // Land the optimistic card at the top of the Backlog (ALF-71), matching the server.
+        // Land the optimistic card at the top of its PROJECT (ALF-110), matching the server.
         const optimistic = {
           ...makeOptimisticStory({ id: tempItemId, title, notes, source_url: null }, project, epic),
-          priority: topStoryPriority(stateRef.current.stories),
+          priority: topOfProjectPriority(stateRef.current.stories, epic.project_id),
         };
         let reconciled: CodeStory = optimistic;
         await runOptimisticMutation({
@@ -945,6 +968,34 @@ export function CodeProvider({
           showToastRef.current("Couldn't move story");
         }
       },
+      applyMoveInProjectOptimistic(ref, toTop) {
+        const { stories } = stateRef.current;
+        const target = stories.find((s) => s.ref === ref);
+        if (target === undefined) return null;
+        const itemId = target.item_id;
+        if (itemId === null) return null;
+        const projectId = target.project_id;
+        if (projectId === null) return null;
+        const priorityBefore = target.priority;
+        const nextPriority = projectMovePriority(stories, itemId, projectId, toTop);
+        dispatch({ type: 'patchStory', itemId, patch: { priority: nextPriority } });
+        return { priorityBefore };
+      },
+      async commitMoveInProject(ref, toTop, priorityBefore) {
+        const { stories } = stateRef.current;
+        const target = stories.find((s) => s.ref === ref);
+        const itemId = target?.item_id ?? null;
+        if (itemId === null) return;
+        try {
+          const rows = await api.moveCodeInProject(ref, toTop);
+          for (const row of rows) {
+            dispatch({ type: 'patchStory', itemId: row.item_id, patch: codeItemToStoryPatch(row) });
+          }
+        } catch {
+          dispatch({ type: 'patchStory', itemId, patch: { priority: priorityBefore } });
+          showToastRef.current("Couldn't move story");
+        }
+      },
       async refreshStatuses() {
         let stories: CodeStory[];
         try {
@@ -1060,14 +1111,55 @@ function byRecentlyUpdatedDesc(a: CodeStory, b: CodeStory): number {
 }
 
 /**
- * The priority a brand-new story takes so it lands at the TOP of the Backlog (ALF-71): one step
- * below every live priority (lower = higher rank). Mirrors `create_code_story` / `enter_code_module`
- * and `moveStory`'s to-top math — `coalesce(min, 0) - 1` — so the optimistic card sorts to the top
- * immediately and matches the server priority it reconciles to.
+ * The priority that lands a story at the top of `projectId` (ALF-110) WITHOUT displacing any
+ * other project's stories that already rank better: the midpoint between the project's current
+ * best priority and whichever OTHER project's story sits just above it. Mirrors
+ * `top_of_project_priority`'s SQL exactly, so the optimistic card sorts to the same slot the
+ * server reconciles to. A project with no stories yet has no project-relative position to
+ * preserve, so it falls back to the top of the whole Backlog — one step below every live priority.
  */
-function topStoryPriority(stories: CodeStory[]): number {
-  const priorities = stories.map((s) => s.priority ?? 0);
-  return (priorities.length === 0 ? 0 : Math.min(...priorities)) - 1;
+function topOfProjectPriority(stories: CodeStory[], projectId: string): number {
+  const projectPriorities = stories
+    .filter((s) => s.project_id === projectId)
+    .map((s) => s.priority ?? 0);
+  if (projectPriorities.length === 0) {
+    const priorities = stories.map((s) => s.priority ?? 0);
+    return (priorities.length === 0 ? 0 : Math.min(...priorities)) - 1;
+  }
+  const best = Math.min(...projectPriorities);
+  const above = stories.map((s) => s.priority ?? 0).filter((p) => p < best);
+  return above.length === 0 ? best - 1 : (Math.max(...above) + best) / 2;
+}
+
+/**
+ * The priority that jumps `itemId` to the top (`toTop`) or bottom of ITS OWN PROJECT (ALF-110),
+ * mirroring `move_code_priority_in_project`'s midpoint math exactly, over every OTHER story
+ * (excluding the moved one, like the RPC's `ref <> p_ref`).
+ */
+function projectMovePriority(
+  stories: CodeStory[],
+  itemId: string,
+  projectId: string,
+  toTop: boolean,
+): number {
+  const others = stories.filter((s) => s.item_id !== itemId);
+  const projectOthers = others
+    .filter((s) => s.project_id === projectId)
+    .map((s) => s.priority ?? 0);
+  const allOthers = others.map((s) => s.priority ?? 0);
+  if (projectOthers.length === 0) {
+    return toTop
+      ? (allOthers.length === 0 ? 0 : Math.min(...allOthers)) - 1
+      : (allOthers.length === 0 ? 0 : Math.max(...allOthers)) + 1;
+  }
+  if (toTop) {
+    const extreme = Math.min(...projectOthers);
+    const above = allOthers.filter((p) => p < extreme);
+    return above.length === 0 ? extreme - 1 : (Math.max(...above) + extreme) / 2;
+  }
+  const extreme = Math.max(...projectOthers);
+  const below = allOthers.filter((p) => p > extreme);
+  return below.length === 0 ? extreme + 1 : (Math.min(...below) + extreme) / 2;
 }
 
 /** The outstanding factory states the Backlog shows by default — everything but done/abandoned. */

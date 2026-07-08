@@ -11,6 +11,11 @@ export interface AssertionResult {
 const PROJECT = '11111111-1111-1111-1111-111111111111';
 const EPIC = '22222222-2222-2222-2222-222222222222';
 
+// A second project (ALF-110), so the project-scoped assertions have another project's stories
+// that must NOT move when this one is re-ranked.
+const PROJECT_2 = '55555555-5555-5555-5555-555555555555';
+const EPIC_2 = '66666666-6666-6666-6666-666666666666';
+
 /**
  * Run `fn` with the connection's role temporarily switched, then restore it. RLS and table
  * GRANTs apply as `role` (not the superuser session), so this is what exercises the real
@@ -52,16 +57,43 @@ async function seed(client: Client): Promise<void> {
 async function createStory(
   client: Client,
   title: string,
+  project: string = PROJECT,
+  epic: string = EPIC,
 ): Promise<{ ref: string; priority: string }> {
   const { rows } = await asRole(client, 'authenticated', () =>
     client.query<{ ref: string; priority: string }>(
       `select ref, priority from create_code_story($1, $2, $3)`,
-      [PROJECT, EPIC, title],
+      [project, epic, title],
     ),
   );
   const row = rows[0];
   if (!row) throw new Error('create_code_story returned no row');
   return row;
+}
+
+/** Read one story's current priority by ref, as a number (the fractional ALF-110 rank). */
+async function priorityOf(client: Client, ref: string): Promise<number> {
+  const { rows } = await client.query<{ priority: number }>(
+    `select priority from code_items where ref = $1`,
+    [ref],
+  );
+  const priority = rows[0]?.priority;
+  if (priority === undefined) throw new Error(`no such story: ${ref}`);
+  return priority;
+}
+
+/** Seed the second project (ALF-110) used to prove project-scoped moves leave it undisturbed. */
+async function seedSecondProject(client: Client): Promise<void> {
+  await client.query(
+    `insert into projects (id, key, name, repo_owner, repo_name)
+       values ($1, 'OTH', 'Other', 'ac3charland', 'other')`,
+    [PROJECT_2],
+  );
+  await client.query(
+    `insert into epics (id, project_id, name, ref_number, ref)
+       values ($1, $2, 'Other Epic', 1, 'OTH-1')`,
+    [EPIC_2, PROJECT_2],
+  );
 }
 
 /**
@@ -185,6 +217,85 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  await seedSecondProject(client);
+
+  const projectScopedMoveResult = await attempt(
+    'move_code_priority_in_project reorders within a project without crossing a ' +
+      'better-ranked story from another project (ALF-110)',
+    async () => {
+      // A story in the OTHER project, ranked better than anything created below (the very first
+      // story in a fresh project lands at the global top — ALF-110's no-anchor fallback).
+      const other = await createStory(client, 'other project story', PROJECT_2, EPIC_2);
+      // Two stories in the seeded project; p2 is created after p1 so p1 starts as the project's
+      // current top.
+      const p1 = await createStory(client, 'own project story one');
+      const p2 = await createStory(client, 'own project story two');
+      const otherBefore = await priorityOf(client, other.ref);
+      const p1Before = await priorityOf(client, p1.ref);
+
+      await asRole(client, 'authenticated', () =>
+        client.query(`select move_code_priority_in_project($1, $2)`, [p2.ref, true]),
+      );
+
+      const otherAfter = await priorityOf(client, other.ref);
+      const p1After = await priorityOf(client, p1.ref);
+      const p2After = await priorityOf(client, p2.ref);
+
+      if (otherAfter !== otherBefore)
+        throw new Error(
+          `other project's story moved (before ${String(otherBefore)}, after ${String(otherAfter)})`,
+        );
+      if (p1After !== p1Before)
+        throw new Error(
+          `p1 moved when only p2 should (before ${String(p1Before)}, after ${String(p1After)})`,
+        );
+      if (!(p2After < p1After))
+        throw new Error(
+          `p2 (${String(p2After)}) not above p1 (${String(p1After)}) — not top of project`,
+        );
+      if (!(p2After > otherBefore))
+        throw new Error(
+          `p2 (${String(p2After)}) crossed the other project's better-ranked story (${String(otherBefore)})`,
+        );
+
+      return `other=${String(otherBefore)} (unmoved), p1=${String(p1After)}, p2=${String(p2After)} (now top of project, still behind other)`;
+    },
+  );
+
+  const projectDefaultResult = await attempt(
+    'create_code_story lands a new story at the top of its PROJECT, not the whole ' +
+      'Backlog (ALF-110)',
+    async () => {
+      // The other project's best story from the previous check outranks everything in the
+      // seeded project — prove a fresh story here lands ahead of its own project's stories but
+      // does NOT leapfrog the other project's better rank.
+      const otherBest = await client.query<{ min: string }>(
+        `select min(priority) as min from code_items where project_id = $1`,
+        [PROJECT_2],
+      );
+      const otherBestBefore = Number(otherBest.rows[0]?.min);
+      const projectBefore = await client.query<{ min: string }>(
+        `select min(priority) as min from code_items where project_id = $1`,
+        [PROJECT],
+      );
+      const projectMinBefore = Number(projectBefore.rows[0]?.min);
+
+      const fresh = await createStory(client, 'freshly captured story');
+      const freshPriority = await priorityOf(client, fresh.ref);
+
+      if (!(freshPriority < projectMinBefore))
+        throw new Error(
+          `new story (${String(freshPriority)}) not above its project's prior top (${String(projectMinBefore)})`,
+        );
+      if (!(freshPriority > otherBestBefore))
+        throw new Error(
+          `new story (${String(freshPriority)}) leapfrogged the other project's best rank (${String(otherBestBefore)})`,
+        );
+
+      return `other project best=${String(otherBestBefore)}, project top before=${String(projectMinBefore)}, new=${String(freshPriority)}`;
+    },
+  );
+
   const taskItemsColumnsResult = await attempt(
     'task_items view surfaces late-added items columns (priority, recurrence) (0011)',
     async () => {
@@ -214,6 +325,78 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       if (row.recurrence === null || row.recurrence === undefined)
         throw new Error('recurrence not surfaced by the view');
       return `priority=${row.priority}, recurrence carried`;
+    },
+  );
+
+  const intendedProjectResult = await attempt(
+    'items.intended_project_id: code-only CHECK, task_items surfacing, on-delete-set-null (ALF-62)',
+    async () => {
+      // The CHECK (intended_project_id is null or item_type = 'code') must reject a non-code item.
+      let rejected = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(
+            `insert into items (title, item_type, intended_project_id) values ('bad', 'task', $1)`,
+            [PROJECT],
+          ),
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('a non-code item was allowed to carry an intended project');
+
+      // A code inbox item may carry it, and the task_items view (select i.*) must surface the
+      // column — recreated in the migration so the late-added column isn't frozen out (see 0011).
+      const inserted = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id)
+             values ('project hint', 'code', $1) returning id`,
+          [PROJECT],
+        ),
+      );
+      const id = inserted.rows[0]?.id;
+      if (!id) throw new Error('code item insert returned no id');
+      const surfaced = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_project_id: string | null }>(
+          `select intended_project_id from task_items where id = $1`,
+          [id],
+        ),
+      );
+      if (surfaced.rows[0]?.intended_project_id !== PROJECT)
+        throw new Error(
+          `task_items did not surface intended_project_id (got ${String(surfaced.rows[0]?.intended_project_id)})`,
+        );
+
+      // on delete set null: deleting the assigned project clears the hint but keeps the row. Use a
+      // throwaway project so the shared seed PROJECT (its code stories) is untouched.
+      const tempProject = '33333333-3333-3333-3333-333333333333';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'TMP', 'Temp', 'ac3charland', 'temp')`,
+        [tempProject],
+      );
+      const tempItem = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id)
+             values ('temp hint', 'code', $1) returning id`,
+          [tempProject],
+        ),
+      );
+      const tempItemId = tempItem.rows[0]?.id;
+      if (!tempItemId) throw new Error('temp code item insert returned no id');
+      await client.query(`delete from projects where id = $1`, [tempProject]);
+      const afterDelete = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_project_id: string | null }>(
+          `select intended_project_id from items where id = $1`,
+          [tempItemId],
+        ),
+      );
+      if (afterDelete.rows.length !== 1)
+        throw new Error('deleting the project deleted the inbox row (should only null the hint)');
+      if (afterDelete.rows[0]?.intended_project_id !== null)
+        throw new Error('intended_project_id was not nulled when the project was deleted');
+
+      return 'CHECK enforced, view surfaces the column, on-delete nulls the hint';
     },
   );
 
@@ -251,7 +434,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     enterModuleResult,
     swapResult,
     moveResult,
+    projectScopedMoveResult,
+    projectDefaultResult,
     taskItemsColumnsResult,
+    intendedProjectResult,
     anonInsertResult,
     anonReadResult,
   ];

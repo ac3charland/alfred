@@ -113,6 +113,7 @@ export function InboxBulkBar() {
     title: item.title,
     notes: item.notes,
     source_url: item.source_url,
+    intendedProjectId: item.intended_project_id,
   }));
 
   const handleGateComplete = () => {

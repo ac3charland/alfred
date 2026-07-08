@@ -39,6 +39,7 @@ const BASE_ITEM: Item = {
   recurrence: null,
   priority: null,
   recurrence_series_id: null,
+  intended_project_id: null,
 };
 
 const CHILD_ITEM: Item = {

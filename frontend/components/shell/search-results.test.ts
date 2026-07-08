@@ -13,6 +13,7 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     due_date: null,
     recurrence: null,
     recurrence_series_id: null,
+    intended_project_id: null,
     occurrence_index: null,
     source_url: null,
     completed_at: null,

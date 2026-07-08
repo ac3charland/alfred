@@ -97,7 +97,10 @@ test('reorders a story up with the chevron and persists the new order', async ({
   await expect(rows.nth(1)).toContainText('ALF-4');
 });
 
-test('jumps a story to the top and the bottom with the double chevrons', async ({ page, seed }) => {
+test('jumps a story to the top and the bottom of the whole Backlog with the arrow-to-line icons', async ({
+  page,
+  seed,
+}) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.goto('/code/backlog');
 
@@ -112,7 +115,7 @@ test('jumps a story to the top and the bottom with the double chevrons', async (
     (response) =>
       response.url().includes('/api/code/move') && response.request().method() === 'POST',
   );
-  await page.getByRole('button', { name: 'Move ALF-5 to top' }).click();
+  await page.getByRole('button', { name: 'Move ALF-5 to top of list' }).click();
   await expect(rows.nth(0)).toContainText('ALF-5');
 
   // It persists across a reload once the debounced sync lands (re-seeded read), then send it
@@ -120,8 +123,57 @@ test('jumps a story to the top and the bottom with the double chevrons', async (
   await moveSynced;
   await page.reload();
   await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-5');
-  await page.getByRole('button', { name: 'Move ALF-5 to bottom' }).click();
+  await page.getByRole('button', { name: 'Move ALF-5 to bottom of list' }).click();
   await expect(rows.nth(2)).toContainText('ALF-5');
+});
+
+test('jumps a story to the top/bottom of its own PROJECT without disturbing another project (ALF-110)', async ({
+  page,
+  seed,
+}) => {
+  const project2 = makeProject('Relay', { id: 'p2', key: 'RLP' });
+  const epic2 = makeEpic('Routing', { id: 'e2', project_id: 'p2', ref_number: 1, ref: 'RLP-1' });
+  const otherItem = makeItem('Other project story', { id: 'i4', item_type: 'code' });
+  // Ranked BETTER than every p1 story, so a project-scoped jump must stop short of it.
+  const otherStory = makeCodeStory({
+    item_id: 'i4',
+    project_id: 'p2',
+    epic_id: 'e2',
+    ref_number: 1,
+    ref: 'RLP-1',
+    priority: 0.5,
+  });
+
+  await seed({
+    projects: [project, project2],
+    epics: [epic, epic2],
+    items: [...items, otherItem],
+    codeItems: [...codeItems, otherStory],
+  });
+  await page.goto('/code/backlog');
+
+  const rows = page.getByRole('listitem');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText('RLP-1');
+  await expect(rows.nth(1)).toContainText('ALF-3');
+  await expect(rows.nth(2)).toContainText('ALF-4');
+  await expect(rows.nth(3)).toContainText('ALF-5');
+
+  // Bump ALF-5 to the top of ITS PROJECT: it must outrank ALF-3/ALF-4 (its own project) but stay
+  // BEHIND RLP-1 (the other project), which never moves. The on-screen jump is instant; only the
+  // network sync debounces (see backlog-row.tsx).
+  const moveInProjectSynced = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/code/move-project') && response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Move ALF-5 to top of project' }).click();
+  await expect(rows.nth(0)).toContainText('RLP-1');
+  await expect(rows.nth(1)).toContainText('ALF-5');
+
+  await moveInProjectSynced;
+  await page.reload();
+  await expect(page.getByRole('listitem').nth(0)).toContainText('RLP-1');
+  await expect(page.getByRole('listitem').nth(1)).toContainText('ALF-5');
 });
 
 test('filters the Backlog by status via the Filter by status dropdown', async ({ page, seed }) => {
