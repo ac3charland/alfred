@@ -28,10 +28,12 @@ import {
  *   Human Review macro) that controls which statuses are listed. It defaults to the outstanding
  *   states, so `done`/`abandoned` are hidden until the owner checks them.
  * - **List:** one `BacklogRow` per story, ranked by global `priority`. The single chevrons swap a
- *   story with its visible neighbour (`reorderStory`); the double chevrons jump it to the top or
- *   bottom of ITS OWN PROJECT (`moveStoryInProject`, ALF-110); the arrow-to-line icons jump it to
- *   the top or bottom of the WHOLE Backlog (`moveStory`). All three are animated via `useFlipList`
- *   (FLIP), honouring `prefers-reduced-motion`.
+ *   story with its visible neighbour (`applyReorderOptimistic` + `commitReorderBatch`); the
+ *   double chevrons jump it to the top or bottom of ITS OWN PROJECT (`applyMoveInProjectOptimistic`
+ *   + `commitMoveInProject`, ALF-110); the arrow-to-line icons jump it to the top or bottom of the
+ *   WHOLE Backlog (`applyMoveOptimistic` + `commitMove`) — see `BacklogRow` for the
+ *   instant-reorder / debounced-network split every button shares. All three are animated via
+ *   `useFlipList` (FLIP), honouring `prefers-reduced-motion`.
  *
  * Must be mounted under a `CodeProvider` (reads `useBacklog` / `useCodeActions`).
  */
@@ -44,7 +46,14 @@ export function Backlog() {
   );
   const stories = useBacklog({ statuses });
   const projects = useProjects();
-  const { reorderStory, moveStory, moveStoryInProject } = useCodeActions();
+  const {
+    applyReorderOptimistic,
+    commitReorderBatch,
+    applyMoveInProjectOptimistic,
+    commitMoveInProject,
+    applyMoveOptimistic,
+    commitMove,
+  } = useCodeActions();
   // Each project's best/worst priority among the CURRENTLY LISTED stories (ALF-110), so the
   // double-chevron "to top/bottom of project" disables once a story already holds that slot.
   const projectBounds = React.useMemo(() => {
@@ -78,45 +87,6 @@ export function Backlog() {
       return active ? DEFAULT_BACKLOG_STATUSES : HUMAN_REVIEW_STATUSES;
     });
   }, [setStatuses]);
-
-  const handleReorder = React.useCallback(
-    (ref: string, neighbourRef: string) => {
-      void (async () => {
-        try {
-          await reorderStory(ref, neighbourRef);
-        } catch {
-          // The store rolled the swap back; nothing extra to undo here.
-        }
-      })();
-    },
-    [reorderStory],
-  );
-
-  const handleMove = React.useCallback(
-    (ref: string, toTop: boolean) => {
-      void (async () => {
-        try {
-          await moveStory(ref, toTop);
-        } catch {
-          // The store rolled the move back; nothing extra to undo here.
-        }
-      })();
-    },
-    [moveStory],
-  );
-
-  const handleMoveProject = React.useCallback(
-    (ref: string, toTop: boolean) => {
-      void (async () => {
-        try {
-          await moveStoryInProject(ref, toTop);
-        } catch {
-          // The store rolled the move back; nothing extra to undo here.
-        }
-      })();
-    },
-    [moveStoryInProject],
-  );
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -156,9 +126,12 @@ export function Backlog() {
                 nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
                 isProjectTop={bounds === undefined || story.priority === bounds.min}
                 isProjectBottom={bounds === undefined || story.priority === bounds.max}
-                onReorder={handleReorder}
-                onMoveProject={handleMoveProject}
-                onMove={handleMove}
+                applyReorder={applyReorderOptimistic}
+                commitReorder={commitReorderBatch}
+                applyMoveInProject={applyMoveInProjectOptimistic}
+                commitMoveInProject={commitMoveInProject}
+                applyMove={applyMoveOptimistic}
+                commitMove={commitMove}
               />
             );
           })}

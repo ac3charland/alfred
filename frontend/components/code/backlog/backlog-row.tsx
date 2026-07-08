@@ -15,7 +15,12 @@ import { IconButton } from '@/components/atoms/icon-button';
 import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
+import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
+import type { ReorderStep } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
+
+/** A chevron burst reorders on screen instantly; only the network sync waits this long. */
+const CHEVRON_DEBOUNCE_MS = 200;
 
 export interface BacklogRowProperties {
   /** The ranked story to render. */
@@ -30,18 +35,64 @@ export interface BacklogRowProperties {
   isProjectTop: boolean;
   /** True when this story already ranks worst within its own project — disables "to bottom of project". */
   isProjectBottom: boolean;
-  /** Swap this story's priority with the given neighbour ref (the store's `reorderStory`). */
-  onReorder: (ref: string, neighbourRef: string) => void;
+  /** Apply one chevron swap's optimistic half instantly (the store's `applyReorderOptimistic`). */
+  applyReorder: (ref: string, neighbourRef: string) => ReorderStep | null;
+  /** Sync a burst of applied swaps to the server, in order (the store's `commitReorderBatch`). */
+  commitReorder: (steps: ReorderStep[]) => Promise<void>;
   /**
-   * Jump this story to the top/bottom of ITS OWN PROJECT (ALF-110, the store's
-   * `moveStoryInProject`) — the repurposed double-chevron.
+   * Apply one project-scoped jump's optimistic half instantly (ALF-110, the store's
+   * `applyMoveInProjectOptimistic`).
    */
-  onMoveProject: (ref: string, toTop: boolean) => void;
+  applyMoveInProject: (ref: string, toTop: boolean) => { priorityBefore: number | null } | null;
+  /** Sync the latest project-scoped jump to the server (the store's `commitMoveInProject`). */
+  commitMoveInProject: (
+    ref: string,
+    toTop: boolean,
+    priorityBefore: number | null,
+  ) => Promise<void>;
   /**
-   * Jump this story to the top/bottom of the WHOLE Backlog (the store's `moveStory`) — the new
-   * arrow-to-line buttons.
+   * Apply one whole-Backlog jump's optimistic half instantly (the store's
+   * `applyMoveOptimistic`).
    */
-  onMove: (ref: string, toTop: boolean) => void;
+  applyMove: (ref: string, toTop: boolean) => { priorityBefore: number | null } | null;
+  /** Sync the latest whole-Backlog jump to the server (the store's `commitMove`). */
+  commitMove: (ref: string, toTop: boolean, priorityBefore: number | null) => Promise<void>;
+}
+
+/**
+ * The instant-apply + debounced-commit pattern shared by the project-scope and whole-Backlog
+ * jump buttons: every click re-ranks the story on screen immediately, but only ONE network call
+ * — the LATEST click's direction, rolling back to the burst's ORIGINAL prior priority on failure
+ * — goes out once the clicks settle. A jump is idempotent in its direction, so (unlike the
+ * neighbour-swap reorder) it never needs to replay earlier clicks in the burst.
+ */
+function useMoveBurst(
+  storyRef: string | null,
+  apply: (ref: string, toTop: boolean) => { priorityBefore: number | null } | null,
+  commit: (ref: string, toTop: boolean, priorityBefore: number | null) => Promise<void>,
+): (toTop: boolean) => void {
+  const burstRef = React.useRef<{ toTop: boolean; priorityBefore: number | null } | null>(null);
+
+  const flush = useDebouncedCallback(() => {
+    const burst = burstRef.current;
+    burstRef.current = null;
+    if (burst !== null && storyRef !== null)
+      void commit(storyRef, burst.toTop, burst.priorityBefore);
+  }, CHEVRON_DEBOUNCE_MS);
+
+  return (toTop: boolean) => {
+    if (storyRef === null) return;
+    const applied = apply(storyRef, toTop);
+    if (applied !== null) {
+      // Keep the FIRST click's prior priority for the whole burst — later clicks never reach
+      // the server, so that original is what a failed commit rolls back to.
+      burstRef.current = {
+        toTop,
+        priorityBefore: burstRef.current?.priorityBefore ?? applied.priorityBefore,
+      };
+    }
+    flush();
+  };
 }
 
 /**
@@ -56,6 +107,11 @@ export interface BacklogRowProperties {
  * body from its launch buttons).
  *
  * Forwards a ref to the root `<li>` so the Backlog's `useFlipList` can animate the reorder.
+ *
+ * Every button reorders the list INSTANTLY — the row steps through each swap/jump live, even
+ * across a rapid burst. Only the NETWORK sync is debounced (`useDebouncedCallback`): a burst of
+ * clicks queues (reorder) or coalesces (the two jump kinds) locally, and flushes to the server
+ * once the clicks settle, instead of one overlapping request per click.
  */
 export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(function BacklogRow(
   {
@@ -65,14 +121,37 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
     nextRef,
     isProjectTop,
     isProjectBottom,
-    onReorder,
-    onMoveProject,
-    onMove,
+    applyReorder,
+    commitReorder,
+    applyMoveInProject,
+    commitMoveInProject,
+    applyMove,
+    commitMove,
   },
   ref,
 ) {
   const storyRef = story.ref;
   const href = `/code/${story.project_id ?? ''}?story=${storyRef ?? ''}`;
+
+  // The reorder steps queued (in click order) for the burst currently in flight — flushed to the
+  // server once the debounce settles, then cleared.
+  const reorderStepsRef = React.useRef<ReorderStep[]>([]);
+
+  const flushReorder = useDebouncedCallback(() => {
+    const steps = reorderStepsRef.current;
+    reorderStepsRef.current = [];
+    if (steps.length > 0) void commitReorder(steps);
+  }, CHEVRON_DEBOUNCE_MS);
+
+  const reorder = (neighbourRef: string) => {
+    if (storyRef === null) return;
+    const step = applyReorder(storyRef, neighbourRef);
+    if (step !== null) reorderStepsRef.current.push(step);
+    flushReorder();
+  };
+
+  const moveInProject = useMoveBurst(storyRef, applyMoveInProject, commitMoveInProject);
+  const move = useMoveBurst(storyRef, applyMove, commitMove);
 
   // The reorder chevrons enlarge to a real ≥44px tap target on mobile (their own box, not an
   // invisible overlay — stacked up/down would otherwise collide), back to today's 20px at md+.
@@ -122,7 +201,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             title="Swap with the story above"
             disabled={prevRef === null}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) onReorder(storyRef, prevRef);
+              if (prevRef !== null) reorder(prevRef);
             }}
           >
             <ChevronUp size={14} className={reorderIconClass} />
@@ -134,7 +213,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             title="Swap with the story below"
             disabled={nextRef === null}
             onClick={() => {
-              if (nextRef !== null && storyRef !== null) onReorder(storyRef, nextRef);
+              if (nextRef !== null) reorder(nextRef);
             }}
           >
             <ChevronDown size={14} className={reorderIconClass} />
@@ -148,7 +227,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             title="Move to the top of this story's project"
             disabled={isProjectTop}
             onClick={() => {
-              if (storyRef !== null) onMoveProject(storyRef, true);
+              moveInProject(true);
             }}
           >
             <ChevronsUp size={14} className={reorderIconClass} />
@@ -160,7 +239,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             title="Move to the bottom of this story's project"
             disabled={isProjectBottom}
             onClick={() => {
-              if (storyRef !== null) onMoveProject(storyRef, false);
+              moveInProject(false);
             }}
           >
             <ChevronsDown size={14} className={reorderIconClass} />
@@ -174,7 +253,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             title="Move to the top of the whole Backlog"
             disabled={prevRef === null}
             onClick={() => {
-              if (prevRef !== null && storyRef !== null) onMove(storyRef, true);
+              if (prevRef !== null) move(true);
             }}
           >
             <ArrowUpToLine size={14} className={reorderIconClass} />
@@ -186,7 +265,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
             title="Move to the bottom of the whole Backlog"
             disabled={nextRef === null}
             onClick={() => {
-              if (nextRef !== null && storyRef !== null) onMove(storyRef, false);
+              if (nextRef !== null) move(false);
             }}
           >
             <ArrowDownToLine size={14} className={reorderIconClass} />
