@@ -1,4 +1,5 @@
 import {
+  addSubtaskRevealClass,
   cardChromeClass,
   checkboxIncompleteClass,
   checkboxSizeClass,
@@ -108,6 +109,14 @@ describe('task-row styles', () => {
     expect(metaFooterClass).not.toContain('order-last');
     // display:contents dissolves the wrapper at md+, so the badges are inline row children again.
     expect(metaFooterClass).toContain('md:contents');
+  });
+
+  it('add-subtask reveal pads both axes so the field focus ring is not clipped (ALF-112)', () => {
+    // The teal focus ring reaches ~3px past the field's border box; the reveal's
+    // overflow-hidden height clip shaves the left edge unless the inner layer has horizontal
+    // room. px-1 (4px) clears it, py-1 keeps the existing vertical room.
+    expect(addSubtaskRevealClass).toContain('px-1');
+    expect(addSubtaskRevealClass).toContain('py-1');
   });
 
   it('mobile card subtree is hairline-set-off + hairline-separated, flush at md+', () => {
