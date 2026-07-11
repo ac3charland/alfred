@@ -49,6 +49,7 @@ import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
 import {
+  addSubtaskRevealClass,
   cardChromeClass,
   checkboxIncompleteClass,
   checkboxSizeClass,
@@ -876,7 +877,7 @@ export function TaskRow({
                         onExited={() => {
                           setAddSubtaskRendered(false);
                         }}
-                        className="py-1"
+                        className={addSubtaskRevealClass}
                       >
                         <CaptureBox
                           parentId={node.id}

@@ -89,6 +89,15 @@ export const cardChromeClass = cn(
 export const metaFooterClass = cn('flex flex-wrap items-center gap-2', 'md:contents');
 
 /**
+ * Padding on the add-subtask reveal's inner (fading) layer. `py-1` gives the field's teal
+ * `focus-visible` ring vertical room; `px-1` does the same horizontally, so the ring's left
+ * edge isn't shaved off where the `flex-1` field sits flush against the reveal's
+ * `overflow-hidden` height-animation clip. The ring reaches ~3px past the border box
+ * (`ring-2` + `ring-offset-1`), which the 4px `px-1` clears (ALF-112).
+ */
+export const addSubtaskRevealClass = 'px-1 py-1';
+
+/**
  * Inside a mobile card the subtask subtree is set off from the parent by a hairline and its
  * rows are hairline-separated (indented, never their own cards). At `md`+ every rule zeroes out,
  * restoring today's flush, undivided nested list.
