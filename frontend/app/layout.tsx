@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 
+import { appleStartupImages } from '@/lib/apple-splash-screens';
+
 import './globals.css';
 
 // Use locally-bundled Geist fonts so the build works in air-gapped environments.
@@ -22,6 +24,14 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: 'Alfred',
   description: 'A capture-first personal task system',
+  // Standalone ("Add to Home Screen") web-app support: `capable` opts into the
+  // full-screen chrome, and each startup image is the navy centered-"a" splash
+  // shown while the app launches, matched per iPhone by media query.
+  appleWebApp: {
+    capable: true,
+    title: 'Alfred',
+    startupImage: appleStartupImages(),
+  },
 };
 
 export default function RootLayout({
