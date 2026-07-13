@@ -226,6 +226,8 @@ To keep real URLs but make switching instant, drive navigation with the **native
   restricted APIs (no Node.js builtins, no file system). Use it only for early redirects,
   header injection, and A/B routing. Real auth logic belongs in Server Components.
 
+- **`metadata.appleWebApp.capable: true` emits the standard `mobile-web-app-capable` meta, NOT `apple-mobile-web-app-capable`.** Next dropped the `apple-`-prefixed name (Apple honors the standard one now), so assert/query the un-prefixed name. `appleWebApp.startupImage` entries render `<link rel="apple-touch-startup-image">`, but iOS only shows one when a `media` query matches the device's exact points + pixel ratio — and a metadata-generated image route (e.g. an `ImageResponse` handler the startup image points at) is gated by `middleware.ts` like any path, so add it to `isPublicPath` (iOS fetches it at launch, maybe without a session).
+
 - **A route-handler test that imports a `server-only` module needs `jest.mock('server-only',
   () => ({}))`.** `import 'server-only'` throws outside an RSC context, so the moment a route
   handler's GET reads through a `lib/data/*` reader (which is `server-only`), the route test
