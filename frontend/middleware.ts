@@ -16,6 +16,9 @@ function isPublicPath(pathname: string): boolean {
     pathname === '/favicon.svg' ||
     // Next.js metadata routes serve icons without a file extension (e.g. /apple-icon?hash).
     pathname === '/apple-icon' ||
+    // iOS fetches the standalone launch image at app start, possibly without a live
+    // session; it carries no user data, so serve the navy splash brand-image publicly.
+    pathname === '/splash' ||
     STATIC_ASSET.test(pathname)
   );
 }
