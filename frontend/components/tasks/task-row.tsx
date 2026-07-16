@@ -49,6 +49,7 @@ import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
 import {
+  addSubtaskButtonClass,
   addSubtaskRevealClass,
   cardChromeClass,
   checkboxIncompleteClass,
@@ -458,6 +459,15 @@ export function TaskRow({
     }
   };
 
+  // Open the inline add-subtask field: mark this row's subtask editor active (closing any other
+  // row's open input) and expand the subtree, since the form renders inside it. Shared by the
+  // desktop "+" button and the mobile ⋯-menu "Add subtask" item (ALF-118). Unlike the "+" button
+  // this only opens (never toggles) — the menu closes on select, so there's nothing to toggle off.
+  const handleOpenAddSubtask = () => {
+    openEditor({ itemId: node.id, kind: 'subtask' });
+    expandSubtasks(node.id);
+  };
+
   // Select mode: the whole row is one toggle button — its leading control becomes a selection
   // checkbox and clicking anywhere flips membership. Inline edit, expand, the drag handle and
   // the "More actions" menu are all suppressed so the row has exactly one meaning, and the
@@ -778,6 +788,9 @@ export function TaskRow({
                   <IconButton
                     size="md"
                     tone="accent"
+                    // Desktop-only: on mobile the "+" collapses into the ⋯ menu's "Add subtask"
+                    // item (ALF-118), so hide it below `md` and keep only the dot menu there.
+                    className={addSubtaskButtonClass}
                     onMouseDown={(e) => {
                       // Prevent the browser from moving focus away from the CaptureBox input
                       // when the toggle is pressed while the box is open. Without this, `blur`
@@ -789,9 +802,7 @@ export function TaskRow({
                       if (showAddSubtask) {
                         closeEditor({ itemId: node.id, kind: 'subtask' });
                       } else {
-                        openEditor({ itemId: node.id, kind: 'subtask' });
-                        // The inline add-subtask form renders inside the subtree, so expand it.
-                        expandSubtasks(node.id);
+                        handleOpenAddSubtask();
                       }
                     }}
                     aria-label="Add subtask"
@@ -804,10 +815,12 @@ export function TaskRow({
 
                 {/* More actions dropdown — all visibility conditionals live inside it. */}
                 <TaskRowMenu
+                  isTask={isTask}
                   isUnclassified={isUnclassified}
                   isCode={isCode}
                   canConvert={canConvert}
                   folders={folders}
+                  onAddSubtask={handleOpenAddSubtask}
                   onOpenDetails={() => {
                     toggleDetails(node.id);
                   }}

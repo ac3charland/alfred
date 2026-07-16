@@ -1,4 +1,5 @@
 import {
+  addSubtaskButtonClass,
   addSubtaskRevealClass,
   cardChromeClass,
   checkboxIncompleteClass,
@@ -117,6 +118,13 @@ describe('task-row styles', () => {
     // room. px-1 (4px) clears it, py-1 keeps the existing vertical room.
     expect(addSubtaskRevealClass).toContain('px-1');
     expect(addSubtaskRevealClass).toContain('py-1');
+  });
+
+  it('add-subtask "+" is hidden on mobile, inline at md+ (collapsed into the ⋯ menu — ALF-118)', () => {
+    // On mobile the "+" is dropped entirely (its affordance moves into the dot menu); md+ brings
+    // it back as an inline-flex button beside the menu.
+    expect(addSubtaskButtonClass).toContain('hidden');
+    expect(addSubtaskButtonClass).toContain('md:inline-flex');
   });
 
   it('mobile card subtree is hairline-set-off + hairline-separated, flush at md+', () => {

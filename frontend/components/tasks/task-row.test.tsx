@@ -1360,6 +1360,43 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Add subtask from the ⋯ menu (mobile) — on mobile the inline "+" is hidden and its
+  // affordance collapses into the dot menu's leading "Add subtask" item (ALF-118). The item
+  // is `md:hidden` (desktop keeps the visible "+", so the menu never doubles up), task-rows
+  // only, and opens the same inline capture box the "+" does.
+  // ---------------------------------------------------------------------------
+
+  describe('add subtask from the ⋯ menu (mobile)', () => {
+    it('opens the capture box and expands the subtree from the menu "Add subtask" item', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      // Collapsed to start — the subtree isn't in the accessibility tree yet.
+      expect(screen.queryByRole('list', { name: 'Subtasks' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      await activateMenuItem(user, /^add subtask$/i);
+
+      // Same result as the "+" button: the inline capture box opens and the subtree expands
+      // so the field is visible inside it.
+      expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
+    });
+
+    it('renders the menu "Add subtask" item as mobile-only (md:hidden)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      // Desktop keeps the visible "+", so this menu entry is hidden at md+ to avoid doubling up.
+      expect(screen.getByRole('menuitem', { name: 'Add subtask' })).toHaveClass('md:hidden');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Add-subtask field entry/exit animation (ALF-66) — the field grows in with a
   // fade when opened and shrinks back out, staying mounted through its exit so the
   // collapse can play, then unmounting on the animation's end.
@@ -2262,6 +2299,33 @@ describe('TaskRow — classification & type-gating', () => {
 
       expect(screen.getByRole('button', { name: 'Add subtask' })).toBeInTheDocument();
     });
+
+    it('offers no ⋯-menu "Add subtask" item on an unclassified row', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      expect(screen.queryByRole('menuitem', { name: 'Add subtask' })).not.toBeInTheDocument();
+    });
+
+    it('offers no ⋯-menu "Add subtask" item on a code row', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      expect(screen.queryByRole('menuitem', { name: 'Add subtask' })).not.toBeInTheDocument();
+    });
+
+    it('offers the ⋯-menu "Add subtask" item on a task row (mobile affordance)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      expect(screen.getByRole('menuitem', { name: 'Add subtask' })).toBeInTheDocument();
+    });
   });
 
   // The mobile meta footer now stacks under the title inside the shared content column
@@ -2535,9 +2599,24 @@ describe('TaskRow — row badges (ALF-67)', () => {
 });
 
 describe('TaskRow — ⋯ menu (ALF-67)', () => {
-  it('offers "Open details" as the first menu item', async () => {
+  it('leads a task menu with the mobile-only "Add subtask", then "Open details"', async () => {
+    // On a task row the menu now opens with the `md:hidden` "Add subtask" affordance (ALF-118),
+    // then "Open details" as the primary action. In jsdom the `md:hidden` item is still present
+    // (media queries don't apply), so it's index 0 and "Open details" follows at index 1.
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    const items = screen.getAllByRole('menuitem');
+    expect(items[0]).toHaveAccessibleName(/add subtask/i);
+    expect(items[1]).toHaveAccessibleName(/open details/i);
+  });
+
+  it('leads a non-task menu with "Open details" (no Add subtask item)', async () => {
+    // A code/unclassified row nests no subtasks, so it has no "Add subtask" item — "Open
+    // details" is the first entry, exactly as before ALF-118.
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, item_type: 'code' }]);
     await user.click(screen.getByRole('button', { name: /more actions/i }));
     await screen.findByRole('menu');
     expect(screen.getAllByRole('menuitem')[0]).toHaveAccessibleName(/open details/i);
