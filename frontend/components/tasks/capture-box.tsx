@@ -10,7 +10,9 @@ import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
 import { parseProjectPrefix as matchProjectPrefix } from '@/lib/code/project-prefix';
 import { useProjects } from '@/lib/stores/code-store';
 import { useTaskActions } from '@/lib/stores/tasks-store';
+import { mobileTapClass } from '@/lib/ui/mobile-tap-class';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
+import { cn } from '@/lib/utils';
 
 import { captureGhostClass, captureSurfaceClass, captureTextareaClass } from './capture-box.styles';
 
@@ -208,7 +210,10 @@ export function CaptureBox({
           onClick={() => {
             pressingSubmitReference.current = false;
           }}
-          className="shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal"
+          className={cn(
+            mobileTapClass,
+            'shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal',
+          )}
         >
           {isSaving ? <Spinner label="Saving" /> : 'Add'}
         </Button>

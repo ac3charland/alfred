@@ -705,6 +705,15 @@ describe('CaptureBox', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it('compact: Add button carries an enlarged mobile touch target, removed at md+ (ALF-98)', () => {
+    // The ≥44px hit area comes from an invisible overlay on mobile, so a near-miss tap lands on
+    // Add (submitting) instead of falling outside it and blurring the input — which tears the
+    // box down and makes subtask creation feel broken. The overlay is gone at md+.
+    renderWithProviders(<CaptureBox compact />);
+    const addButton = screen.getByRole('button', { name: /add/i });
+    expect(addButton).toHaveClass('relative', 'after:-inset-3', 'md:after:hidden');
+  });
+
   it('compact: tapping Add on touch (button never focuses) still submits and does not dismiss', async () => {
     // On touch devices a <button> does not take focus on tap, so tapping "Add" blurs the
     // input with a null relatedTarget. Without the pointer-press guard, onBlur reads that as

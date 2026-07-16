@@ -107,15 +107,6 @@ export const subtreeClass = cn(
   'md:mt-0 md:border-t-0 md:pt-0 md:divide-y-0',
 );
 
-/**
- * Expands a control's touch target to ≥44px on mobile via an invisible overlay that doesn't
- * change layout (the drawn box stays its small visual size); removed at `md`+ where pointer
- * devices don't need it. Applied to the enlarged checkbox and expand chevron, which sit apart
- * enough that their overlays don't collide (unlike the backlog's stacked reorder chevrons, which
- * enlarge their real box instead).
- */
-export const mobileTapClass =
-  "relative after:absolute after:-inset-3 after:content-[''] md:after:hidden";
 /** Valid drop-target highlight (teal wash + ring). */
 export const rowDropTargetClass = 'bg-accent-teal/15 ring-1 ring-accent-teal/50';
 /** Default hover wash when the row is not a drop target. */
