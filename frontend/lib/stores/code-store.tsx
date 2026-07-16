@@ -1113,14 +1113,18 @@ function byRecentlyUpdatedDesc(a: CodeStory, b: CodeStory): number {
 /**
  * The priority that lands a story at the top of `projectId` (ALF-110) WITHOUT displacing any
  * other project's stories that already rank better: the midpoint between the project's current
- * best priority and whichever OTHER project's story sits just above it. Mirrors
+ * best OUTSTANDING priority and whichever OTHER story sits just above it. Mirrors
  * `top_of_project_priority`'s SQL exactly, so the optimistic card sorts to the same slot the
- * server reconciles to. A project with no stories yet has no project-relative position to
+ * server reconciles to. Only outstanding stories count toward the project's top (ALF-120) — a
+ * done/abandoned story keeps its priority but is hidden from the Backlog, so counting it would
+ * drag a new story past other projects' visible work up to the global top (the ALF-120 bug). The
+ * midpoint anchor still ranges over ALL stories so the inserted priority never collides with a
+ * hidden row between. A project with no outstanding story has no project-relative position to
  * preserve, so it falls back to the top of the whole Backlog — one step below every live priority.
  */
 function topOfProjectPriority(stories: CodeStory[], projectId: string): number {
   const projectPriorities = stories
-    .filter((s) => s.project_id === projectId)
+    .filter((s) => s.project_id === projectId && isBacklogOutstanding(s.factory_state))
     .map((s) => s.priority ?? 0);
   if (projectPriorities.length === 0) {
     const priorities = stories.map((s) => s.priority ?? 0);
@@ -1134,7 +1138,9 @@ function topOfProjectPriority(stories: CodeStory[], projectId: string): number {
 /**
  * The priority that jumps `itemId` to the top (`toTop`) or bottom of ITS OWN PROJECT (ALF-110),
  * mirroring `move_code_priority_in_project`'s midpoint math exactly, over every OTHER story
- * (excluding the moved one, like the RPC's `ref <> p_ref`).
+ * (excluding the moved one, like the RPC's `ref <> p_ref`). The project extreme is taken over
+ * OUTSTANDING stories only (ALF-120) — a hidden done/abandoned story must not define the top/
+ * bottom of the project — while the midpoint anchor still ranges over all other stories.
  */
 function projectMovePriority(
   stories: CodeStory[],
@@ -1144,7 +1150,7 @@ function projectMovePriority(
 ): number {
   const others = stories.filter((s) => s.item_id !== itemId);
   const projectOthers = others
-    .filter((s) => s.project_id === projectId)
+    .filter((s) => s.project_id === projectId && isBacklogOutstanding(s.factory_state))
     .map((s) => s.priority ?? 0);
   const allOthers = others.map((s) => s.priority ?? 0);
   if (projectOthers.length === 0) {

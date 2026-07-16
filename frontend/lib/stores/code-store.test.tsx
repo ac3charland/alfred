@@ -1029,6 +1029,47 @@ describe('code-store', () => {
         expect(created?.priority).toBeGreaterThan(1);
       });
 
+      it('lands above the project’s top OUTSTANDING story, ignoring a completed story ranked better (ALF-120)', async () => {
+        mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+        // p1's best-ranked row is a DONE story at the global top (1) — completed but still holding
+        // its priority. Its outstanding stories start at 5. Another project has an outstanding
+        // story at 3. A new p1 story must land above p1's top OUTSTANDING (5), NOT above the hidden
+        // done story at the global top — the ALF-120 bug landed it at ~0 (top of the whole Backlog).
+        const existing = [
+          makeStory('done-1', 'e1', 'p1', { ref: 'ALF-1', priority: 1, factory_state: 'done' }),
+          makeStory('other-1', 'e2', 'p2', { ref: 'RLP-1', priority: 3 }),
+          makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 }),
+          makeStory('old-2', 'e1', 'p1', { ref: 'ALF-8', priority: 8 }),
+        ];
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epic, makeEpic('e2', 'p2')],
+              stories: existing,
+            }),
+          },
+        );
+
+        act(() => {
+          void result.current.actions.createStory('e1', 'Newest story', null);
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog.some((s) => s.title === 'Newest story')).toBe(true);
+        });
+        const created = result.current.backlog.find((s) => s.title === 'Newest story');
+        // Above its project's top OUTSTANDING story (5)…
+        expect(created?.priority).toBeLessThan(5);
+        // …but does NOT leapfrog the other project's outstanding story (3) — so it is NOT dragged
+        // to the global top by the completed story that outranks everything.
+        expect(created?.priority).toBeGreaterThan(3);
+      });
+
       it('throws (and does not call the api) when the epic is not in the store', async () => {
         const { result } = renderHook(() => useCodeActions(), {
           wrapper: makeWrapper({ projects: [PROJECT_A], epics: [] }),
@@ -1547,6 +1588,44 @@ describe('code-store', () => {
         expect(priorities['i1']).toBeLessThan(40);
         expect(priorities['i3']).toBe(5);
         expect(priorities['i4']).toBe(40);
+      });
+
+      it('applyMoveInProjectOptimistic ignores a completed story when finding the top of the project (ALF-120)', () => {
+        // p1 also holds a DONE story ranked better (2) than every VISIBLE row — hidden from the
+        // Backlog but still in the table. Jumping b to the top of p1 must land above p1's top
+        // OUTSTANDING story (a, 10), NOT above the completed story: the pre-ALF-120 math counted
+        // the done story as the project's top and sent b to ~1 (past otherBetter, near the global
+        // top). The correct midpoint is between otherBetter (5) and a (10) → 7.5.
+        const doneTop = makeStory('i5', 'e1', 'p1', {
+          ref: 'ALF-9',
+          priority: 2,
+          factory_state: 'done',
+        });
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [epicA, epicB],
+              stories: [...allStories, doneTop],
+            }),
+          },
+        );
+
+        act(() => {
+          result.current.actions.applyMoveInProjectOptimistic('ALF-2', true);
+        });
+
+        const priorities = prioritiesById(result.current.backlog);
+        // Above p1's top OUTSTANDING story (a, 10)…
+        expect(priorities['i2']).toBeLessThan(priorities['i1'] ?? Number.POSITIVE_INFINITY);
+        // …but NOT past the other project's better rank (5), and NOT past the hidden done story (2).
+        expect(priorities['i2']).toBeGreaterThan(5);
+        expect(priorities['i5']).toBe(2);
+        expect(priorities['i3']).toBe(5);
       });
 
       it('applyMoveInProjectOptimistic returns null when the ref is unknown', () => {

@@ -532,8 +532,9 @@ function handleRpc(req, res, fn, body) {
 
   // Jump a story to the top/bottom of ITS OWN PROJECT (ALF-110 — the repurposed double-chevron).
   // Mirrors `move_code_priority_in_project`'s midpoint math: insert between the project's current
-  // best/worst OTHER story and whichever OTHER project's row sits just past it, so no other
-  // project's ranks ever change.
+  // best/worst OUTSTANDING OTHER story and whichever OTHER row sits just past it, so no other
+  // project's ranks ever change. The project extreme excludes done/abandoned (ALF-120) — a hidden
+  // completed story must not define the top/bottom of the project.
   if (fn === 'move_code_priority_in_project' && req.method === 'POST') {
     const target = codeItems.find((row) => row.ref === body?.p_ref);
     if (target === undefined) {
@@ -544,7 +545,12 @@ function handleRpc(req, res, fn, body) {
     }
     const others = codeItems.filter((row) => row !== target);
     const projectOthers = others
-      .filter((row) => row.project_id === target.project_id)
+      .filter(
+        (row) =>
+          row.project_id === target.project_id &&
+          row.factory_state !== 'done' &&
+          row.factory_state !== 'abandoned',
+      )
       .map((row) => row.priority);
     const allOthers = others.map((row) => row.priority);
     if (projectOthers.length === 0) {
