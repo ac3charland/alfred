@@ -69,33 +69,7 @@ describe('StatusFilterMenu', () => {
     );
   });
 
-  it('renders macro shortcuts above the status list, split by a separator', async () => {
-    const user = userEvent.setup();
-    const onMacro = jest.fn();
-    render(
-      <StatusFilterMenu
-        options={OPTIONS}
-        selected={OPTIONS}
-        onToggle={jest.fn()}
-        isFiltering={false}
-        macros={[{ label: 'Human Review', checked: false, onToggle: onMacro }]}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: /filter by status/i }));
-    await screen.findByRole('menu');
-
-    // The macro is the first menu item; a separator sits between it and the status options.
-    const items = screen.getAllByRole('menuitemcheckbox');
-    expect(items[0]).toHaveAccessibleName('Human Review');
-    expect(screen.getByRole('separator')).toBeInTheDocument();
-
-    // Checking it fires the macro's onToggle (keyboard-driven; Radix disables pointer events).
-    await user.keyboard('[ArrowDown][Enter]');
-    expect(onMacro).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders no macro row or separator when no macros are given', async () => {
+  it('renders exactly one checkbox per option and no separator', async () => {
     const user = userEvent.setup();
     render(
       <StatusFilterMenu

@@ -69,7 +69,15 @@ describe('CommandPalette', () => {
 
     const listbox = screen.getByRole('listbox');
     // Static go-to destinations + the seeded folder and project.
-    for (const label of ['Tasks', 'Inbox', 'Priority', 'Completed', 'Code', 'Backlog']) {
+    for (const label of [
+      'Tasks',
+      'Inbox',
+      'Priority',
+      'Completed',
+      'Code',
+      'Backlog',
+      'Needs human action',
+    ]) {
       expect(within(listbox).getByText(label)).toBeInTheDocument();
     }
     expect(within(listbox).getByText('Software')).toBeInTheDocument();
