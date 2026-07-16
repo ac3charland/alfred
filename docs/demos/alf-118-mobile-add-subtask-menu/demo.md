@@ -11,7 +11,7 @@ branch: claude/task-plus-icon-dot-menu-pz6i0k
 On a phone the task-row action cluster used to show **two** always-visible controls: a `+` (add subtask) and the `⋯` dot menu. ALF-118 collapses the `+` into the dot menu on mobile:
 
 - The inline `+` button is now **desktop-only** (`hidden md:inline-flex`) — unchanged (hover-revealed) at `md`+.
-- A leading **"Add subtask"** item (with a `+` glyph) now sits at the **top** of the `⋯` menu on mobile. It's `md:hidden` so desktop — where the visible `+` remains — never doubles up, and it's rendered for **task rows only** (code/unclassified rows nest no subtasks).
+- An **"Add subtask"** item (with a `+` glyph) now sits **directly below "Open details"** in the `⋯` menu on mobile. It's `md:hidden` so desktop — where the visible `+` remains — never doubles up, and it's rendered for **task rows only** (code/unclassified rows nest no subtasks).
 - Both affordances open the same inline capture box + expand the subtree.
 
 ## Behaviour is pinned by unit tests
@@ -40,7 +40,7 @@ Resting mobile cards: each row's action cluster now shows **only** the `⋯` —
 
 ![](demo-image-2.png)
 
-Opening a task row's `⋯` menu on mobile — **"+ Add subtask" leads**, above "Open details":
+Opening a task row's `⋯` menu on mobile — **"+ Add subtask" sits directly below "Open details"**:
 
 ![](demo-image-3.png)
 
