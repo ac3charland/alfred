@@ -184,3 +184,20 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* ── Prevent iOS Safari focus zoom on form controls ──────────────────────── */
+/* Mobile Safari auto-zooms into any focused input/textarea/select whose
+   font-size is below 16px, then leaves the viewport zoomed. Our dense UI renders
+   most fields at text-sm (14px) — even the Notes editor at 13.5px — so tapping
+   them on a phone triggers that jarring zoom. Force a 16px minimum on
+   coarse-pointer (touch) devices, which suppresses the zoom while desktop keeps
+   its dense sizing. Left UNLAYERED (outside every @layer) on purpose: unlayered
+   rules win over Tailwind's layered utilities, so this beats `text-sm` /
+   `text-[13.5px]` regardless of their specificity. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
