@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-117 — Add ability to reorder subtasks</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 130px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "☐"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-117 — Add ability to reorder subtasks</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Tasks module</span>
+    <span class="pill">DnD · DB · store</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    Subtasks in alfred are an arbitrary-depth adjacency tree (<code>items.parent_id</code>). Today a
+    parent's children have <strong>no user-controllable order</strong>: <code>buildTree</code>'s
+    <code>sortForest</code> sorts every subtask group by <code>created_at</code> <em>ascending</em>
+    (oldest-first, chronological), and the Folder view additionally re-ranks every level by
+    priority&nbsp;→&nbsp;due&nbsp;→&nbsp;<code>created_at</code> via <code>sortNodesByPriority</code>.
+  </p>
+  <p>
+    When you decompose a task into steps, you want to arrange those steps into the order you'll do
+    them — not the order you happened to type them, and not an urgency ranking imposed by the Folder
+    view. ALF-117 gives subtasks a <strong>manual order</strong> you set by dragging, persisted so it
+    survives reloads and shows the same everywhere.
+  </p>
+
+  <h2>2 · Decisions (locked during refinement)</h2>
+  <dl class="decision">
+    <dt>Scope</dt>
+    <dd><strong>Subtasks only.</strong> Any row with a <code>parent_id</code> (at any depth) becomes
+      manually orderable among its siblings. <strong>Top-level (root) order is unchanged</strong> —
+      Inbox stays newest-first, the Folder view stays priority-ranked. Roots get no reorder affordance.</dd>
+    <dt>Gesture</dt>
+    <dd><strong>Drop in the gap between siblings.</strong> Thin, layout-neutral drop strips sit at each
+      subtask boundary. Dropping <em>onto a row body</em> keeps its current meaning (re-parent);
+      dropping <em>in a gap</em> positions the subtask at that slot. Reuses the promote-zone +
+      fractional-rank patterns already in the repo.</dd>
+    <dt>Order model</dt>
+    <dd><strong>Manual primary, priority as signal (Model&nbsp;C).</strong> In every active view, sibling
+      subtasks order by their manual position — a drag always sticks. Priority/due don't disappear:
+      they still render as row chips, still drive the folder <strong>badge counts</strong>, and still
+      rank the dedicated <strong>By-Priority</strong> view. The Folder list simply no longer re-sorts
+      <em>subtasks</em> by priority (roots there are still priority-ranked).</dd>
+  </dl>
+
+  <h2>3 · How ordering behaves, per view</h2>
+  <table>
+    <thead><tr><th>View</th><th>Root order</th><th>Subtask (sibling) order</th><th>Change?</th></tr></thead>
+    <tbody>
+      <tr><td>Inbox</td><td>Newest-first (<code>created_at</code> desc)</td><td><strong>Manual</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
+      <tr><td>Folder</td><td>Priority → due → <code>created_at</code></td><td><strong>Manual</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
+      <tr><td>By-Priority</td><td>Effective-key rank (unchanged)</td><td><strong>Manual</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
+      <tr><td>Completed</td><td><code>buildTree</code> order</td><td><code>sort_order</code> asc (read-only; no reorder here)</td><td class="small">order follows the column</td></tr>
+    </tbody>
+  </table>
+  <p class="small">
+    Reorder <em>gestures</em> (drag gaps + menu actions) appear only in the three <strong>active</strong>
+    views, and only on active subtask rows. The Completed view renders in <code>sort_order</code> but
+    offers no reordering (you don't rearrange finished work).
+  </p>
+
+  <h2>4 · Proposed change</h2>
+
+  <h3>4.1 · The fractional-rank column</h3>
+  <p>
+    Add one ordering column to <code>items</code>, following the exact pattern already proven for
+    code-story Backlog ranking (migrations 0005 → 0014): a <strong>fractional</strong> rank so a single
+    reorder is one <code>UPDATE</code> at the midpoint of two neighbours — never a renumber of the list.
+  </p>
+  <div class="card">
+    <span class="filelabel">database/migrations/0015_subtask_sort_order.sql (new)</span>
+<pre><code>-- ALF-117: manual subtask ordering. Fractional rank (double precision) so a reorder
+-- inserts at the midpoint of two neighbours — one row UPDATE, no renumber (as ALF-110
+-- did for code_items.priority). Lower = earlier (top of the sibling group).
+
+create sequence item_sort_order_seq;
+
+alter table items
+  add column sort_order double precision not null default nextval('item_sort_order_seq');
+
+comment on column items.sort_order is
+  'Manual sibling order for subtasks (ALF-117). Lower = earlier. Only meaningful WITHIN a '
+  'parent_id group; roots ignore it (Inbox=created_at desc, Folder=priority). Fractional: a '
+  'reorder inserts at the midpoint of two neighbours so no sibling is renumbered.';
+
+-- Preserve today's order: seed from created_at so existing subtasks keep their chronological
+-- (oldest-first) sequence. Only the RELATIVE order within each parent matters, so a global
+-- row_number is sufficient.
+with ranked as (
+  select id, row_number() over (order by created_at) as rn from items
+)
+update items i set sort_order = ranked.rn from ranked where ranked.id = i.id;
+
+-- Park the sequence above every backfilled value so fresh inserts land at the bottom.
+select setval('item_sort_order_seq',
+              coalesce((select max(sort_order) from items), 0)::bigint + 1, false);
+
+-- security_invoker inserts run the column default's nextval() as `authenticated`, which
+-- needs USAGE on the sequence (see 0008 — the bug code_priority_seq hit). Grant it.
+grant usage on sequence item_sort_order_seq to anon, authenticated, service_role;
+
+-- task_items is `select i.*`; PostgreSQL freezes the column list at CREATE, so recreate the
+-- view to re-expand it and surface sort_order (the 0011 freeze gotcha).
+create or replace view task_items with (security_invoker = true) as
+  select i.* from items i
+  where not exists (select 1 from code_items c where c.item_id = i.id);</code></pre>
+  </div>
+  <p class="small">
+    <strong>No global unique index</strong> (unlike <code>code_items.priority</code>): ordering is scoped
+    per parent, so global collisions are harmless and no atomic-swap RPC is needed. A brand-new subtask
+    gets the next (largest) sequence value → it appends at the bottom of its sibling group, matching
+    today's created-order default with zero route changes.
+  </p>
+  <div class="callout">
+    <strong>Generated types.</strong> <code>Item</code> is derived from
+    <code>frontend/lib/database.types.ts</code>. After the migration, <strong>regenerate</strong> that
+    file (<code>supabase gen types</code>) and commit the raw output — never hand-edit it (see CLAUDE.md
+    “Generated files”). TypeScript will then flag every <code>Item</code> literal (factories, fixtures,
+    stories) that must add <code>sort_order</code>.
+  </div>
+
+  <h3>4.2 · Sort layer — make subtasks honour <code>sort_order</code></h3>
+  <p>Two pure changes in the read layer; roots are deliberately left alone.</p>
+  <table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>frontend/lib/tree.ts</code><br><span class="small">buildTree / sortForest</span></td>
+        <td>Roots keep <code>created_at</code> <strong>desc</strong> (unchanged). Sort each
+          <strong>children</strong> group by <code>sort_order</code> <strong>ascending</strong> instead of
+          <code>created_at</code>. (Restructure <code>sortForest</code> so the root call and the recursive
+          child calls use different comparators.)</td>
+      </tr>
+      <tr>
+        <td><code>frontend/lib/priority.ts</code><br><span class="small">sortNodesByPriority</span></td>
+        <td>Rank only the <strong>top-level</strong> nodes it's handed; <strong>stop re-sorting children by
+          priority</strong> — preserve the <code>sort_order</code> order <code>buildTree</code> already
+          applied. (Model&nbsp;C: the Folder view no longer reorders subtasks by priority.) The By-Priority
+          view and folder badge counts are untouched — they read priority, not child order.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="small">
+    <code>useTasksByPriority</code> and the Completed view already derive subtrees from
+    <code>buildTree</code>, so they inherit the new <code>sort_order</code> child ordering for free.
+  </p>
+
+  <h3>4.3 · API &amp; store</h3>
+  <table>
+    <thead><tr><th>Layer</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>lib/api/schemas.ts</code></td>
+        <td>Add <code>sort_order: z.number().optional()</code> to <code>updateItemSchema</code>
+          (a bare positive/negative double is fine — it's a rank, not a bounded value).</td>
+      </tr>
+      <tr>
+        <td><code>app/api/items/[id]/route.ts</code></td>
+        <td>Add <code>'sort_order'</code> to the <code>toUpdatePayload</code> allow-list so a PATCH forwards
+          it. <strong>POST needs no change</strong> — the column default handles new rows.</td>
+      </tr>
+      <tr>
+        <td><code>lib/api-client.ts</code></td>
+        <td>No new function — reorder is a plain <code>updateItem(id, { sort_order, parent_id?, folder_id? })</code>.</td>
+      </tr>
+      <tr>
+        <td><code>lib/tree.ts</code> · <code>makeOptimisticItem</code></td>
+        <td>Set an optimistic <code>sort_order</code>. <code>addTask</code> passes “bottom of the parent's
+          current children” = <code>max(sibling sort_order) + 1</code> (or a large sentinel when no siblings);
+          the server's real value replaces it on reconcile. Roots set it too (harmless — roots ignore it).</td>
+      </tr>
+      <tr>
+        <td><code>lib/stores/tasks-store.tsx</code></td>
+        <td>New action <code>reorderSubtask(id, { parentId, sortOrder })</code> — see below.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card">
+    <span class="filelabel">new action — tasks-store.tsx</span>
+<pre><code>reorderSubtask(id, { parentId, sortOrder }): Promise&lt;void&gt;
+  // Optimistic: patch { sort_order: sortOrder } on `id`.
+  //   If parentId differs from the row's current parent_id, ALSO set parent_id (+ adopt the
+  //   new parent's folder_id, cascading folder_id to the subtree) — i.e. reuse reparentTask's
+  //   folder-cascade + cycle guard. Same parent → pure { sort_order } patch, no descendant writes.
+  // apiCall: updateItem(id, { sort_order, ...(parent changed && { parent_id, folder_id }) })
+  //          + per-descendant folder PATCHes when the folder changed (as reparentTask does).
+  // reconcile: upsert saved rows.  rollback: upsert the captured subtree.  onError: toast "Couldn't move task".</code></pre>
+  </div>
+  <p class="small">
+    The cross-parent case is a natural consequence of gaps existing under every expanded parent: dropping
+    subtask A into a gap under a <em>different</em> parent B both re-parents A into B and places it at that
+    exact slot. It shares reparentTask's cycle guard (a subtask may never land in a gap among its own
+    descendants) and folder cascade. Consider factoring the shared cascade helper rather than duplicating it.
+  </p>
+
+  <h3>4.4 · DnD wiring — gap strips + resolver</h3>
+  <p>
+    A new pure module mirrors <code>lib/dnd/reparent.ts</code> and <code>promote-to-root.ts</code>, plus a
+    thin gap-strip component rendered inside each subtask <code>&lt;ul&gt;</code>.
+  </p>
+
+  <svg viewBox="0 0 720 320" role="img" aria-label="Gap drop strips around sibling subtasks with midpoint sort_order computation">
+    <style>
+      .rowbox{fill:var(--card);stroke:var(--line);stroke-width:1.5;rx:6}
+      .lbl{fill:var(--fg);font:13px sans-serif}
+      .ord{fill:var(--muted);font:11px ui-monospace,monospace}
+      .gap{fill:var(--accent);opacity:.16}
+      .gapline{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:5 4}
+      .cap{fill:var(--muted);font:11px sans-serif}
+      .drag{fill:var(--accent-bg);stroke:var(--accent);stroke-width:2;rx:6}
+      .dragt{fill:var(--accent);font:12px sans-serif}
+      .arrow{stroke:var(--accent);stroke-width:2;fill:none;marker-end:url(#ah)}
+    </style>
+    <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 Z" fill="var(--accent)"/></marker></defs>
+
+    <text x="20" y="24" class="lbl" style="font-weight:600">Parent “Ship release”</text>
+
+    <!-- top gap -->
+    <rect x="40" y="38" width="360" height="10" class="gap"/>
+    <text x="410" y="47" class="cap">top gap → sort_order = 10 − 1 = 9</text>
+
+    <rect x="40" y="52" width="360" height="34" class="rowbox"/>
+    <text x="58" y="74" class="lbl">◻ Draft changelog</text>
+    <text x="360" y="74" class="ord">10</text>
+
+    <!-- middle gap (hovered) -->
+    <rect x="40" y="90" width="360" height="12" class="gap"/>
+    <line x1="40" y1="96" x2="400" y2="96" class="gapline"/>
+    <text x="410" y="100" class="cap">between → (10 + 20) / 2 = 15</text>
+
+    <rect x="40" y="106" width="360" height="34" class="rowbox"/>
+    <text x="58" y="128" class="lbl">◻ Tag the commit</text>
+    <text x="360" y="128" class="ord">20</text>
+
+    <rect x="40" y="144" width="360" height="10" class="gap"/>
+    <text x="410" y="153" class="cap">between → (20 + 30) / 2 = 25</text>
+
+    <rect x="40" y="158" width="360" height="34" class="rowbox"/>
+    <text x="58" y="180" class="lbl">◻ Publish notes</text>
+    <text x="360" y="180" class="ord">30</text>
+
+    <!-- bottom gap -->
+    <rect x="40" y="196" width="360" height="10" class="gap"/>
+    <text x="410" y="205" class="cap">bottom gap → 30 + 1 = 31</text>
+
+    <!-- dragged card -->
+    <rect x="150" y="238" width="230" height="34" class="drag"/>
+    <text x="168" y="260" class="dragt">⠿ Publish notes (dragging)</text>
+    <path d="M265,238 C265,180 200,150 130,110 L120,100" class="arrow"/>
+    <text x="20" y="300" class="cap">Drop in the hovered gap → PATCH sort_order = 15; row moves between “Draft changelog” and “Tag the commit”.</text>
+  </svg>
+  <p class="diagram-cap">Row body = re-parent target (unchanged). Thin gap strips = reorder targets; the drop lands at the midpoint of its neighbours' <code>sort_order</code>.</p>
+
+  <div class="card">
+    <span class="filelabel">lib/dnd/reorder-subtask.ts (new) — pure &amp; unit-tested</span>
+<pre><code>export const REORDER_GAP_PREFIX = '__reorder-gap__';
+
+// Encode which slot a gap represents. The handler reads neighbour sort_order values from the
+// store by id, so the id only has to locate the slot: parent + the insertion index.
+export function reorderGapId(parentId: string, index: number): string { ... }
+export function isReorderGap(overId: string | null): boolean { ... }
+
+// The fractional midpoint — THE unit-test target (jsdom can't drive a real drag).
+export function computeInsertOrder(prev: number | null, next: number | null): number {
+  if (prev === null &amp;&amp; next === null) return 0;   // empty group
+  if (prev === null) return next - 1;              // top gap
+  if (next === null) return prev + 1;              // bottom gap
+  return (prev + next) / 2;                          // between
+}
+
+// Turn (dragged id, gap slot, the parent's ordered siblings) into the reorder to run, or null.
+// orderedSiblings EXCLUDES the dragged row. Guards → null:
+//   • not a gap; • dropping back into the dragged row's own current slot (no-op);
+//   • cross-parent into the dragged row's own subtree (cycle — caller supplies subtreeIds).
+export function resolveReorder({ draggedId, gapParentId, orderedSiblings, insertIndex,
+  draggedParentId, subtreeIds }): { itemId, parentId, sortOrder } | null { ... }</code></pre>
+  </div>
+
+  <h4 style="margin:1rem 0 .3rem">Component changes</h4>
+  <ul>
+    <li><strong><code>task-list.tsx</code> / <code>task-row.tsx</code>:</strong> render a
+      <code>SubtaskGap</code> droppable at the top of, between, and at the bottom of each rendered
+      <em>active</em> subtask group (one more gap than rows). Strips are <strong>layout-neutral</strong> —
+      zero flow height, positioned over each boundary (absolute / negative-margin) so revealing the teal
+      insertion line <strong>never reflows the list</strong> (the reflow pitfall the dnd-kit skill calls out).
+      A strip only lights up while a <em>subtask</em> is being dragged.</li>
+    <li><strong><code>task-dnd-provider.tsx</code>:</strong> in <code>handleDragEnd</code>, branch on
+      <code>isReorderGap(overId)</code> <em>before</em> the folder / promote / reparent branches; resolve
+      via <code>resolveReorder</code> and call <code>reorderSubtask</code>. The collision function should
+      test reorder-gap strips <strong>before</strong> row bodies so a boundary hover reliably reads as
+      reorder rather than re-parent.</li>
+    <li><strong>Keyboard / a11y — <code>TaskRowMenu</code>:</strong> add <strong>“Move up”</strong> and
+      <strong>“Move down”</strong> items on active subtask rows (hidden on roots, and on the first/last
+      sibling respectively). Each computes <code>computeInsertOrder</code> against the sibling it swaps
+      past and calls <code>reorderSubtask</code>. This is the deterministic, screen-reader-friendly path
+      (the gap strips aren't in a SortableContext, so keyboard DnD across them is unreliable) — and it's the
+      stable handle for E2E.</li>
+  </ul>
+
+  <h2>5 · Out of scope / open questions</h2>
+  <ul>
+    <li><strong>Reordering top-level tasks</strong> — roots keep automatic order (decided). If wanted later,
+      it's a separate ticket that must decide how manual order coexists with newest-first / priority-rank roots.</li>
+    <li><strong>Reordering completed subtasks</strong> — the Completed view renders in <code>sort_order</code>
+      but offers no reorder gesture.</li>
+    <li><strong>Fractional-precision rebalance</strong> — <code>double precision</code> exhausts after
+      ~50 consecutive midpoint halvings of the same interval. Matching the existing
+      <code>code_items.priority</code> approach, no periodic re-spacing job is included; acceptable at
+      single-user scale. Note it if it ever bites.</li>
+    <li><strong>Recurring-task reset</strong> — <code>computeOptimisticSpawn</code> copies a root (which
+      ignores <code>sort_order</code>); the server owns the reset subtree's ordering on the next load. No
+      special handling needed, but the implementer should confirm the reset subtree reads back in a sensible
+      order.</li>
+  </ul>
+
+  <h2>6 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li>Migration <code>0015</code> adds <code>items.sort_order</code> (double precision, not-null,
+      sequence default), backfills from <code>created_at</code>, grants sequence USAGE, and recreates
+      <code>task_items</code>; <code>database.types.ts</code> is regenerated (not hand-edited).</li>
+    <li>Existing subtasks render in the <strong>same order as before</strong> the migration (backfill
+      preserves chronological order); no visible change until a user reorders.</li>
+    <li>Dragging a subtask into a gap between two siblings moves it there; the new order <strong>persists
+      across reload</strong> and shows identically in Inbox, Folder, and By-Priority.</li>
+    <li>In the <strong>Folder view</strong>, sibling subtasks follow the manual order (not priority); root
+      rows there are still priority-ranked, priority chips still render, and folder badge counts are unchanged.</li>
+    <li>Dropping a subtask <strong>onto a row body</strong> still re-parents (existing behaviour intact);
+      dropping on a <strong>list edge</strong> still promotes to root.</li>
+    <li>A new subtask appends at the <strong>bottom</strong> of its parent's current children.</li>
+    <li>Dropping a subtask into a gap under a <strong>different</strong> parent re-parents <em>and</em>
+      positions it at that slot; a drop into the dragged row's own subtree is a no-op (no cycle).</li>
+    <li>“Move up” / “Move down” menu items reorder an active subtask by one slot and are hidden on roots
+      and at the ends of a sibling group.</li>
+    <li>Gap strips are invisible until a subtask drag and <strong>never reflow</strong> the list when
+      revealed; reduced-motion is respected.</li>
+    <li>A failed reorder PATCH rolls the row(s) back and toasts, like every other optimistic mutation.</li>
+  </ul>
+
+  <h2>7 · Testing &amp; demo</h2>
+  <p>Mirror the dnd-kit skill's testing guidance (jsdom can't measure layout, so drag <em>outcomes</em> live in the slow tier):</p>
+  <ul>
+    <li><strong>Unit (fast):</strong> <code>computeInsertOrder</code> (empty / top / bottom / between) and
+      <code>resolveReorder</code> (no-op back-into-own-slot, cross-parent cycle rejection, correct slot math);
+      the <code>sortForest</code> child-ordering and <code>sortNodesByPriority</code> root-only change.</li>
+    <li><strong>E2E (slow, Playwright):</strong> the deterministic path is the <strong>“Move up/Move down”</strong>
+      menu actions (assert the reordered <code>aria-label="Subtasks"</code> sequence). Add one
+      <strong>pointer</strong> drag-into-gap spec using the shared <code>pickUp</code> helper (retry the press
+      until the row shows its dragging state), waiting on a gap's <code>data-drop-over</code> marker before asserting.</li>
+    <li><strong>Demo doc</strong> (<code>docs/demos/ALF-117-subtask-reorder/…</code>, showboat skill):
+      screenshots of a subtask group before → mid-drag (gap insertion line) → reordered, driven through the
+      Playwright mock backend. Cross-reference showboat's evidence rules; don't restate them.</li>
+  </ul>
+
+  <hr style="border:none;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+  <p class="small">
+    Grounded in: <code>lib/tree.ts</code>, <code>lib/priority.ts</code>,
+    <code>lib/stores/tasks-store.tsx</code>, <code>components/tasks/task-dnd-provider.tsx</code>,
+    <code>lib/dnd/{reparent,promote-to-root,drag-to-folder}.ts</code>, and the code-story fractional-rank
+    migrations <code>0005</code>/<code>0007</code>/<code>0008</code>/<code>0014</code>. Follows the dnd-kit,
+    data-flow, supabase, and showboat skills.
+  </p>
+
+</div>
+</body>
+</html>
