@@ -347,6 +347,119 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const outstandingProjectDefaultResult = await attempt(
+    'create_code_story lands above the project’s top OUTSTANDING story, ignoring a ' +
+      'completed story ranked better (ALF-120)',
+    async () => {
+      // Two throwaway projects with hand-set priorities so the math is deterministic regardless of
+      // the state prior checks left. DUN holds a DONE story ranked BEST in its project (1000) plus
+      // an outstanding story at 3000; LEF (another project) has an outstanding story at 2000,
+      // sitting BETWEEN them. A fresh DUN story must land above DUN's top OUTSTANDING (3000) but
+      // must NOT be dragged past LEF's 2000 by the hidden completed story — the ALF-120 bug counted
+      // the done story as the project top and inserted near the global top instead.
+      const projectDun = '77777777-7777-7777-7777-777777777777';
+      const epicDun = '88888888-8888-8888-8888-888888888888';
+      const projectLef = '99999999-9999-9999-9999-999999999999';
+      const epicLef = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'DUN', 'Dunder', 'ac3charland', 'dunder'),
+                  ($2, 'LEF', 'Leftpad', 'ac3charland', 'leftpad')`,
+        [projectDun, projectLef],
+      );
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Dun Epic', 1, 'DUN-1'), ($3, $4, 'Lef Epic', 1, 'LEF-1')`,
+        [epicDun, projectDun, epicLef, projectLef],
+      );
+
+      const doneStory = await createStory(client, 'completed dun story', projectDun, epicDun);
+      const openStory = await createStory(client, 'outstanding dun story', projectDun, epicDun);
+      const otherStory = await createStory(client, 'leftpad story', projectLef, epicLef);
+      // Pin exact ranks (unique index holds): done=1000, other=2000, open=3000.
+      await client.query(
+        `update code_items set priority = 1000, factory_state = 'done' where ref = $1`,
+        [doneStory.ref],
+      );
+      await client.query(`update code_items set priority = 2000 where ref = $1`, [otherStory.ref]);
+      await client.query(`update code_items set priority = 3000 where ref = $1`, [openStory.ref]);
+
+      const fresh = await createStory(client, 'fresh dun story', projectDun, epicDun);
+      const freshPriority = await priorityOf(client, fresh.ref);
+
+      if (!(freshPriority < 3000))
+        throw new Error(
+          `new story (${String(freshPriority)}) not above its project's top OUTSTANDING story (3000)`,
+        );
+      if (!(freshPriority > 2000))
+        throw new Error(
+          `new story (${String(freshPriority)}) leapfrogged the other project (2000) — the ` +
+            `completed story at 1000 was wrongly treated as the project top`,
+        );
+
+      return `done=1000 (ignored), other project=2000, project top outstanding=3000, new=${String(freshPriority)}`;
+    },
+  );
+
+  const outstandingProjectMoveResult = await attempt(
+    'move_code_priority_in_project bumps above the project’s top OUTSTANDING story, ignoring a ' +
+      'completed story ranked better (ALF-120)',
+    async () => {
+      // Same shape as the creation check, for the double-chevron "bump to top of project". BOR
+      // holds a DONE story ranked best (11000) plus two outstanding stories (13000, 14000); QUX
+      // (another project) has an outstanding story at 12000, between the done story and BOR's
+      // outstanding top. Bumping BOR's 14000 story to the top of its project must land it above
+      // BOR's top OUTSTANDING peer (13000) yet stay behind QUX's 12000 and the hidden done story —
+      // the ALF-120 bug counted the done story as the project top and sent it near the global top.
+      // (High, distinct ranks so they never collide with the rows the creation check left behind —
+      // the integration suite shares one connection's DB state across checks.)
+      const projectBor = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+      const epicBor = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+      const projectQux = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+      const epicQux = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'BOR', 'Borges', 'ac3charland', 'borges'),
+                  ($2, 'QUX', 'Quux', 'ac3charland', 'quux')`,
+        [projectBor, projectQux],
+      );
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Bor Epic', 1, 'BOR-1'), ($3, $4, 'Qux Epic', 1, 'QUX-1')`,
+        [epicBor, projectBor, epicQux, projectQux],
+      );
+
+      const doneStory = await createStory(client, 'completed bor story', projectBor, epicBor);
+      const openTop = await createStory(client, 'outstanding bor top', projectBor, epicBor);
+      const openLow = await createStory(client, 'outstanding bor low', projectBor, epicBor);
+      const otherStory = await createStory(client, 'quux story', projectQux, epicQux);
+      await client.query(
+        `update code_items set priority = 11000, factory_state = 'done' where ref = $1`,
+        [doneStory.ref],
+      );
+      await client.query(`update code_items set priority = 12000 where ref = $1`, [otherStory.ref]);
+      await client.query(`update code_items set priority = 13000 where ref = $1`, [openTop.ref]);
+      await client.query(`update code_items set priority = 14000 where ref = $1`, [openLow.ref]);
+
+      await asRole(client, 'authenticated', () =>
+        client.query(`select move_code_priority_in_project($1, $2)`, [openLow.ref, true]),
+      );
+      const moved = await priorityOf(client, openLow.ref);
+
+      if (!(moved < 13_000))
+        throw new Error(
+          `bumped story (${String(moved)}) not above its project's top OUTSTANDING peer (13000)`,
+        );
+      if (!(moved > 12_000))
+        throw new Error(
+          `bumped story (${String(moved)}) crossed the other project (12000) — the completed ` +
+            `story at 11000 was wrongly treated as the project top`,
+        );
+
+      return `done=11000 (ignored), other project=12000, top outstanding peer=13000, was 14000 → now ${String(moved)}`;
+    },
+  );
+
   const taskItemsColumnsResult = await attempt(
     'task_items view surfaces late-added items columns (priority, recurrence) (0011)',
     async () => {
@@ -488,6 +601,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     projectScopedMoveResult,
     projectDefaultResult,
     inProjectRpcContractResult,
+    outstandingProjectDefaultResult,
+    outstandingProjectMoveResult,
     taskItemsColumnsResult,
     intendedProjectResult,
     anonInsertResult,
