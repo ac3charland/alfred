@@ -3,19 +3,10 @@
 import { GitBranch } from 'lucide-react';
 import * as React from 'react';
 
-import { BacklogRow } from '@/components/code/backlog/backlog-row';
+import { BacklogList } from '@/components/code/backlog/backlog-list';
 import { StatusFilterMenu } from '@/components/code/status-filter-menu';
-import { projectColorFor } from '@/lib/code/project-color';
-import { useFlipList } from '@/lib/hooks/use-flip-list';
 import { useStatusFilter } from '@/lib/hooks/use-status-filter';
-import {
-  ALL_FACTORY_STATES,
-  DEFAULT_BACKLOG_STATUSES,
-  HUMAN_REVIEW_STATUSES,
-  useBacklog,
-  useCodeActions,
-  useProjects,
-} from '@/lib/stores/code-store';
+import { ALL_FACTORY_STATES, DEFAULT_BACKLOG_STATUSES, useBacklog } from '@/lib/stores/code-store';
 
 /**
  * The Backlog — the default Code view (bare `/code` and `/code/backlog`). A single global,
@@ -24,69 +15,19 @@ import {
  *
  * - **Header (the repurposed hero):** the old `CodeLanding` treatment — the `GitBranch` badge and
  *   the `font-serif` "The Software Factory" title — re-copied to describe the Backlog, with a
- *   **Filter by status** dropdown (multi-select checkboxes, one per factory state, led by the
- *   Human Review macro) that controls which statuses are listed. It defaults to the outstanding
- *   states, so `done`/`abandoned` are hidden until the owner checks them.
- * - **List:** one `BacklogRow` per story, ranked by global `priority`. The single chevrons swap a
- *   story with its visible neighbour (`applyReorderOptimistic` + `commitReorderBatch`); the
- *   double chevrons jump it to the top or bottom of ITS OWN PROJECT (`applyMoveInProjectOptimistic`
- *   + `commitMoveInProject`, ALF-110); the arrow-to-line icons jump it to the top or bottom of the
- *   WHOLE Backlog (`applyMoveOptimistic` + `commitMove`) — see `BacklogRow` for the
- *   instant-reorder / debounced-network split every button shares. All three are animated via
- *   `useFlipList` (FLIP), honouring `prefers-reduced-motion`.
+ *   **Filter by status** dropdown (multi-select checkboxes, one per factory state) that controls
+ *   which statuses are listed. It defaults to the outstanding states, so `done`/`abandoned` are
+ *   hidden until the owner checks them.
+ * - **List:** the shared `BacklogList` renders one `BacklogRow` per story, ranked by global
+ *   `priority`, with the chevron reorder/move controls (see `BacklogList` / `BacklogRow`).
  *
- * Must be mounted under a `CodeProvider` (reads `useBacklog` / `useCodeActions`).
+ * Must be mounted under a `CodeProvider` (reads `useBacklog`; `BacklogList` reads the actions).
  */
 export function Backlog() {
   // Defaults to the outstanding states (`done`/`abandoned` hidden until checked). Keyed
   // `'backlog'` so the selection persists across SPA navigation to a board and back.
-  const { statuses, setStatuses, toggle, isFiltering } = useStatusFilter(
-    'backlog',
-    DEFAULT_BACKLOG_STATUSES,
-  );
+  const { statuses, toggle, isFiltering } = useStatusFilter('backlog', DEFAULT_BACKLOG_STATUSES);
   const stories = useBacklog({ statuses });
-  const projects = useProjects();
-  const {
-    applyReorderOptimistic,
-    commitReorderBatch,
-    applyMoveInProjectOptimistic,
-    commitMoveInProject,
-    applyMoveOptimistic,
-    commitMove,
-  } = useCodeActions();
-  // Each project's best/worst priority among the CURRENTLY LISTED stories (ALF-110), so the
-  // double-chevron "to top/bottom of project" disables once a story already holds that slot.
-  const projectBounds = React.useMemo(() => {
-    const bounds = new Map<string, { min: number; max: number }>();
-    for (const story of stories) {
-      if (story.project_id === null || story.priority === null) continue;
-      const current = bounds.get(story.project_id);
-      bounds.set(story.project_id, {
-        min: current === undefined ? story.priority : Math.min(current.min, story.priority),
-        max: current === undefined ? story.priority : Math.max(current.max, story.priority),
-      });
-    }
-    return bounds;
-  }, [stories]);
-  // Animate the reorder: FLIP keyed by item_id over the currently rendered order.
-  const registerRow = useFlipList(stories.map((story) => story.item_id ?? ''));
-
-  // The "Human Review" macro is checked only when the selection is EXACTLY its preset. Because it's
-  // derived from `statuses`, checking or unchecking any individual status below auto-unchecks it the
-  // moment the selection stops matching — no extra bookkeeping needed.
-  const isHumanReview =
-    statuses.length === HUMAN_REVIEW_STATUSES.length &&
-    HUMAN_REVIEW_STATUSES.every((state) => statuses.includes(state));
-
-  const toggleHumanReview = React.useCallback(() => {
-    // Apply the preset when off; fall back to the default selection when toggled off again.
-    setStatuses((current) => {
-      const active =
-        current.length === HUMAN_REVIEW_STATUSES.length &&
-        HUMAN_REVIEW_STATUSES.every((state) => current.includes(state));
-      return active ? DEFAULT_BACKLOG_STATUSES : HUMAN_REVIEW_STATUSES;
-    });
-  }, [setStatuses]);
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -107,43 +48,13 @@ export function Backlog() {
           selected={statuses}
           onToggle={toggle}
           isFiltering={isFiltering}
-          macros={[{ label: 'Human Review', checked: isHumanReview, onToggle: toggleHumanReview }]}
         />
       </div>
 
-      {stories.length > 0 ? (
-        <ul className="flex flex-col gap-2">
-          {stories.map((story, index) => {
-            const bounds =
-              story.project_id === null ? undefined : projectBounds.get(story.project_id);
-            return (
-              <BacklogRow
-                key={story.item_id}
-                ref={registerRow(story.item_id ?? '')}
-                story={story}
-                projectColor={projectColorFor(projects, story.project_id)}
-                prevRef={index === 0 ? null : (stories[index - 1]?.ref ?? null)}
-                nextRef={index === stories.length - 1 ? null : (stories[index + 1]?.ref ?? null)}
-                isProjectTop={bounds === undefined || story.priority === bounds.min}
-                isProjectBottom={bounds === undefined || story.priority === bounds.max}
-                applyReorder={applyReorderOptimistic}
-                commitReorder={commitReorderBatch}
-                applyMoveInProject={applyMoveInProjectOptimistic}
-                commitMoveInProject={commitMoveInProject}
-                applyMove={applyMoveOptimistic}
-                commitMove={commitMove}
-              />
-            );
-          })}
-        </ul>
-      ) : (
-        <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border p-10">
-          <p className="max-w-sm text-center text-sm text-muted-foreground">
-            No stories yet. Send a story to the Code module from your inbox to start ranking your
-            backlog.
-          </p>
-        </div>
-      )}
+      <BacklogList
+        stories={stories}
+        emptyMessage="No stories yet. Send a story to the Code module from your inbox to start ranking your backlog."
+      />
     </div>
   );
 }

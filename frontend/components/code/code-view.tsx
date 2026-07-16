@@ -5,10 +5,12 @@ import * as React from 'react';
 
 import { Backlog } from '@/components/code/backlog';
 import { Board } from '@/components/code/board';
+import { NeedsHumanAction } from '@/components/code/needs-human-action';
 import { useCodeActions } from '@/lib/stores/code-store';
 
 const CODE_PREFIX = '/code/';
 const BACKLOG_SEGMENT = 'backlog';
+const NEEDS_HUMAN_ACTION_SEGMENT = 'needs-human-action';
 
 /**
  * Client-side view router for the Code module — the board's counterpart to `TaskViews`.
@@ -36,6 +38,10 @@ export function CodeView() {
 
   if (pathname.startsWith(CODE_PREFIX)) {
     const segment = pathname.slice(CODE_PREFIX.length);
+    // The literal `needs-human-action` segment (ALF-103) is its own view, not a project id.
+    if (segment === NEEDS_HUMAN_ACTION_SEGMENT) {
+      return <NeedsHumanAction />;
+    }
     // Guard the literal `backlog` segment so it is NOT treated as a project id — it isn't a
     // UUID, so <Board> would render "This project could not be found". An empty tail
     // (trailing slash) likewise falls through to the Backlog.

@@ -24,6 +24,7 @@ export type DestinationIcon =
   | 'completed'
   | 'code'
   | 'backlog'
+  | 'needs-human-action'
   | 'folder'
   | 'project';
 
@@ -58,6 +59,13 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
   { id: 'go-completed', group: 'go', label: 'Completed', href: '/completed', icon: 'completed' },
   { id: 'go-code', group: 'go', label: 'Code', href: '/code', icon: 'code' },
   { id: 'go-backlog', group: 'go', label: 'Backlog', href: '/code/backlog', icon: 'backlog' },
+  {
+    id: 'go-needs-human-action',
+    group: 'go',
+    label: 'Needs human action',
+    href: '/code/needs-human-action',
+    icon: 'needs-human-action',
+  },
 ];
 
 /** Trim + lowercase so matching is whitespace- and case-insensitive. */
