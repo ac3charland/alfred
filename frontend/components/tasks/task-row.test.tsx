@@ -2599,17 +2599,17 @@ describe('TaskRow — row badges (ALF-67)', () => {
 });
 
 describe('TaskRow — ⋯ menu (ALF-67)', () => {
-  it('leads a task menu with the mobile-only "Add subtask", then "Open details"', async () => {
-    // On a task row the menu now opens with the `md:hidden` "Add subtask" affordance (ALF-118),
-    // then "Open details" as the primary action. In jsdom the `md:hidden` item is still present
-    // (media queries don't apply), so it's index 0 and "Open details" follows at index 1.
+  it('leads a task menu with "Open details", then the mobile-only "Add subtask"', async () => {
+    // On a task row "Open details" leads (the primary action), with the `md:hidden` "Add
+    // subtask" affordance directly beneath it (ALF-118). In jsdom the `md:hidden` item is still
+    // present (media queries don't apply), so it's index 1 right after "Open details" at index 0.
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
     await user.click(screen.getByRole('button', { name: /more actions/i }));
     await screen.findByRole('menu');
     const items = screen.getAllByRole('menuitem');
-    expect(items[0]).toHaveAccessibleName(/add subtask/i);
-    expect(items[1]).toHaveAccessibleName(/open details/i);
+    expect(items[0]).toHaveAccessibleName(/open details/i);
+    expect(items[1]).toHaveAccessibleName(/add subtask/i);
   });
 
   it('leads a non-task menu with "Open details" (no Add subtask item)', async () => {
