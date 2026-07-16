@@ -1,4 +1,4 @@
-import { waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
@@ -16,6 +16,9 @@ jest.mock('next/navigation', () => ({
 // what the board/backlog render (and it keeps their ESM-only deps out of the test).
 jest.mock('./board', () => ({ Board: () => <div>board</div> }));
 jest.mock('./backlog', () => ({ Backlog: () => <div>backlog</div> }));
+jest.mock('./needs-human-action', () => ({
+  NeedsHumanAction: () => <div>needs-human-action</div>,
+}));
 
 // The navigation refetch goes through the store → api-client.listCode; mock the seam.
 jest.mock('@/lib/api-client');
@@ -75,5 +78,31 @@ describe('CodeView navigation refetch (ALF-69)', () => {
     // Give any stray effect a chance to fire before asserting it did not.
     await Promise.resolve();
     expect(mockListCode).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CodeView view routing', () => {
+  it('renders the Backlog for the bare /code and /code/backlog paths', () => {
+    mockPathname = '/code';
+    const { rerender } = renderWithProviders(<CodeView />);
+    expect(screen.getByText('backlog')).toBeInTheDocument();
+
+    mockPathname = '/code/backlog';
+    rerender(<CodeView />);
+    expect(screen.getByText('backlog')).toBeInTheDocument();
+  });
+
+  it('renders the Needs human action view for the /code/needs-human-action segment (ALF-103)', () => {
+    mockPathname = '/code/needs-human-action';
+    renderWithProviders(<CodeView />);
+    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
+    expect(screen.queryByText('backlog')).not.toBeInTheDocument();
+    expect(screen.queryByText('board')).not.toBeInTheDocument();
+  });
+
+  it('renders a project Board for a project-id segment', () => {
+    mockPathname = '/code/p1';
+    renderWithProviders(<CodeView />);
+    expect(screen.getByText('board')).toBeInTheDocument();
   });
 });

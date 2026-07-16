@@ -131,6 +131,25 @@ describe('ProjectNav', () => {
     expect(screen.getByText('Projects')).toBeInTheDocument();
   });
 
+  it('links the Backlog and Needs human action destinations at the top of the nav', () => {
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /backlog/i })).toHaveAttribute('href', '/code/backlog');
+    expect(screen.getByRole('link', { name: /needs human action/i })).toHaveAttribute(
+      'href',
+      '/code/needs-human-action',
+    );
+  });
+
+  it('highlights the Needs human action link only on its own route (ALF-103)', () => {
+    mockPathname.mockReturnValue('/code/needs-human-action');
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /needs human action/i })).toHaveClass('bg-secondary');
+    // The Backlog link (active for /code and /code/backlog) is not highlighted here.
+    expect(screen.getByRole('link', { name: /^backlog$/i })).not.toHaveClass('bg-secondary');
+  });
+
   it('lists each project as a link with its key', () => {
     renderNav(PROJECTS);
 
