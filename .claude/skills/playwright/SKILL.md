@@ -237,6 +237,8 @@ test.beforeEach(async ({ page }) => {
 
 **Never use `first()`, `last()`, or `nth()` unless the element genuinely has no better discriminator.** These are position-dependent and break when the list order changes. Prefer filtering: `page.getByRole('listitem').filter({ hasText: 'Buy milk' })`.
 
+**`page.touchscreen.tap(x, y)` hits a small control from well outside its box — Chromium adds generous touch-target slop.** A 32px button here stayed tappable ~14px past its edge with no enlarged hit area. So a demo/spec meant to prove an *enlarged* touch target (e.g. an `::after` overlay) must place the "near-miss" tap **past that built-in slop** — ~18–20px beyond the edge, not ~6px — or before-and-after both "hit" and the demo shows nothing. The overlay also only gains area where there's free space: an edge occluded by an adjacent element (a card boundary, a neighboring row) doesn't become tappable, so pick the near-miss direction (below/beside into empty space) accordingly.
+
 **The `setup` project must appear before test projects in the `projects` array and must be listed in `dependencies`.** If `dependencies` is omitted, Playwright runs the setup project but test projects will not wait for it — they start immediately.
 
 **Never commit `playwright/.auth/*.json` files.** They contain session cookies. Add `playwright/.auth/` to `.gitignore`.
