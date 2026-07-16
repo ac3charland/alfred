@@ -33,3 +33,23 @@ Ran all test suites matching task-row.test|task-row.styles.test with tests match
 The `Tasks/TaskRow` **MobileCards** baseline moved: with the `+` gone from the head line, the long-title leaf ("Update monthly transfer amounts…") reclaims that width and wraps to fewer lines, so the card frame is shorter (294×503 → 294×452). The 3-panel diff below is **baseline | changed pixels (red) | new render**. The other fixed-height mobile snapshots stay within the 1% tolerance, so only this baseline is re-approved.
 
 ![](demo-image-1.png)
+
+## Mobile — the `+` collapses into the `⋯` menu
+
+Resting mobile cards: each row's action cluster now shows **only** the `⋯` — the inline `+` is gone.
+
+![](demo-image-2.png)
+
+Opening a task row's `⋯` menu on mobile — **"+ Add subtask" leads**, above "Open details":
+
+![](demo-image-3.png)
+
+## Desktop — no regression
+
+The desktop row is unchanged: hovering it still reveals **both** the inline `+` (add subtask) and the `⋯` menu.
+
+![](demo-image-4.png)
+
+And the desktop `⋯` menu is unchanged too — **no "Add subtask" item** (it's `md:hidden`); "Open details" still leads, since the visible `+` already covers add-subtask here:
+
+![](demo-image-5.png)
