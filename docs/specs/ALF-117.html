@@ -97,9 +97,10 @@
   </p>
   <p>
     When you decompose a task into steps, you want to arrange those steps into the order you'll do
-    them — not the order you happened to type them, and not an urgency ranking imposed by the Folder
-    view. ALF-117 gives subtasks a <strong>manual order</strong> you set by dragging, persisted so it
-    survives reloads and shows the same everywhere.
+    them. ALF-117 keeps the current default — a subtask group is shown <strong>in the order the
+    subtasks were created</strong> — and lets you <strong>override it with a manual sort</strong> by
+    dragging. Once applied, the manual order persists across reloads and shows the same in every view;
+    priority stops reordering subtasks and becomes a display signal only.
   </p>
 
   <h2>2 · Decisions (locked during refinement)</h2>
@@ -114,20 +115,30 @@
       dropping <em>in a gap</em> positions the subtask at that slot. Reuses the promote-zone +
       fractional-rank patterns already in the repo.</dd>
     <dt>Order model</dt>
-    <dd><strong>Manual primary, priority as signal (Model&nbsp;C).</strong> In every active view, sibling
-      subtasks order by their manual position — a drag always sticks. Priority/due don't disappear:
-      they still render as row chips, still drive the folder <strong>badge counts</strong>, and still
-      rank the dedicated <strong>By-Priority</strong> view. The Folder list simply no longer re-sorts
-      <em>subtasks</em> by priority (roots there are still priority-ranked).</dd>
+    <dd><strong>Creation order by default; a manual sort overrides it.</strong> A non-primary (subtask)
+      row is displayed in the order it was created — in <em>every</em> active view — until the user drags
+      it; from then on that group keeps the manual order, and new subtasks append at the bottom. Priority
+      never reorders subtasks: it stays a <strong>signal</strong> only — row chips, folder
+      <strong>badge counts</strong>, and the dedicated <strong>By-Priority</strong> view are all
+      unchanged. (Roots are still priority-ranked in the Folder view; only <em>subtasks</em> drop the
+      priority sort.)</dd>
   </dl>
+  <div class="callout">
+    <strong>One storage, two states, no flag.</strong> The fractional <code>sort_order</code> column
+    (§4.1) is <em>seeded from</em> <code>created_at</code>, so "creation order" and "manual order" are the
+    same total order per group — the default simply <em>is</em> creation order, and a drag is the only
+    thing that diverges it. No separate "has-been-sorted" boolean is needed, and because
+    <code>created_at</code> is still on the row, a future "reset to creation order" action stays cheap
+    (see §5).
+  </div>
 
   <h2>3 · How ordering behaves, per view</h2>
   <table>
     <thead><tr><th>View</th><th>Root order</th><th>Subtask (sibling) order</th><th>Change?</th></tr></thead>
     <tbody>
-      <tr><td>Inbox</td><td>Newest-first (<code>created_at</code> desc)</td><td><strong>Manual</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
-      <tr><td>Folder</td><td>Priority → due → <code>created_at</code></td><td><strong>Manual</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
-      <tr><td>By-Priority</td><td>Effective-key rank (unchanged)</td><td><strong>Manual</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
+      <tr><td>Inbox</td><td>Newest-first (<code>created_at</code> desc)</td><td><strong>Creation order → manual once sorted</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
+      <tr><td>Folder</td><td>Priority → due → <code>created_at</code></td><td><strong>Creation order → manual once sorted</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
+      <tr><td>By-Priority</td><td>Effective-key rank (unchanged)</td><td><strong>Creation order → manual once sorted</strong> (<code>sort_order</code> asc)</td><td class="add">subtasks</td></tr>
       <tr><td>Completed</td><td><code>buildTree</code> order</td><td><code>sort_order</code> asc (read-only; no reorder here)</td><td class="small">order follows the column</td></tr>
     </tbody>
   </table>
@@ -383,6 +394,9 @@ export function resolveReorder({ draggedId, gapParentId, orderedSiblings, insert
       it's a separate ticket that must decide how manual order coexists with newest-first / priority-rank roots.</li>
     <li><strong>Reordering completed subtasks</strong> — the Completed view renders in <code>sort_order</code>
       but offers no reorder gesture.</li>
+    <li><strong>“Reset to creation order”</strong> — since <code>created_at</code> is still on every row, a
+      per-parent action that re-seeds <code>sort_order</code> from <code>created_at</code> (undoing a manual
+      sort) is cheap to add later. Not in this ticket unless you want it — flag during implementation.</li>
     <li><strong>Fractional-precision rebalance</strong> — <code>double precision</code> exhausts after
       ~50 consecutive midpoint halvings of the same interval. Matching the existing
       <code>code_items.priority</code> approach, no periodic re-spacing job is included; acceptable at
@@ -402,8 +416,9 @@ export function resolveReorder({ draggedId, gapParentId, orderedSiblings, insert
       preserves chronological order); no visible change until a user reorders.</li>
     <li>Dragging a subtask into a gap between two siblings moves it there; the new order <strong>persists
       across reload</strong> and shows identically in Inbox, Folder, and By-Priority.</li>
-    <li>In the <strong>Folder view</strong>, sibling subtasks follow the manual order (not priority); root
-      rows there are still priority-ranked, priority chips still render, and folder badge counts are unchanged.</li>
+    <li>In the <strong>Folder view</strong>, sibling subtasks follow creation order by default and the
+      manual order once sorted — <strong>never</strong> priority; root rows there are still priority-ranked,
+      priority chips still render, and folder badge counts are unchanged.</li>
     <li>Dropping a subtask <strong>onto a row body</strong> still re-parents (existing behaviour intact);
       dropping on a <strong>list edge</strong> still promotes to root.</li>
     <li>A new subtask appends at the <strong>bottom</strong> of its parent's current children.</li>
