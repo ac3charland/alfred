@@ -37,11 +37,11 @@ interface TaskRowMenuProperties {
 }
 
 /**
- * The task row's "More actions" dropdown. On mobile a task row's **"Add subtask" leads** — the
- * inline "+" button is desktop-only now, so the affordance collapses into this menu below `md`
- * (ALF-118); it and its divider are `md:hidden` so desktop, where the "+" is still shown, never
- * doubles up. Then **"Open details"** (teal, the primary action — it's how the detail is reached
- * now), the item-type entries (Classify-as while unclassified, Send/Convert for code vs task),
+ * The task row's "More actions" dropdown. **"Open details" leads** (teal, the primary action —
+ * it's how the detail is reached now). On mobile a task row follows it with **"Add subtask"** —
+ * the inline "+" button is desktop-only now, so the affordance collapses into this menu below
+ * `md` (ALF-118); the item is `md:hidden` so desktop, where the "+" is still shown, never doubles
+ * up. Then the item-type entries (Classify-as while unclassified, Send/Convert for code vs task),
  * Move-to (when folders exist), and finally a destructive Delete below a divider. The per-field
  * "Set due date / Set priority / Add notes" entries are gone — those edits live on the detail
  * panel's auto-saving chips and notes. Every conditional stays encapsulated here so the row body
@@ -70,20 +70,6 @@ export function TaskRowMenu({
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {/* Add subtask — mobile-only (`md:hidden`): the inline "+" button is hidden below `md`,
-            so its affordance lives here at the top of the menu (ALF-118). Task rows only, since
-            subtasks nest only under tasks. The divider is `md:hidden` too so desktop — where the
-            "+" is shown and this item isn't — never renders a stray leading separator. */}
-        {isTask && (
-          <>
-            <DropdownMenuItem className="md:hidden" onSelect={onAddSubtask}>
-              <Plus size={16} className="text-muted-foreground" />
-              Add subtask
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="md:hidden" />
-          </>
-        )}
-
         {/* Open details — the primary action, highlighted teal. Opens the inline detail panel
             with the auto-saving Due / Repeat / Priority chips and the notes editor. */}
         <DropdownMenuItem
@@ -92,6 +78,17 @@ export function TaskRowMenu({
         >
           Open details
         </DropdownMenuItem>
+
+        {/* Add subtask — mobile-only (`md:hidden`): the inline "+" button is hidden below `md`,
+            so its affordance lives here, directly beneath "Open details" (ALF-118). Task rows
+            only, since subtasks nest only under tasks. No separator of its own — it joins the
+            leading group, and on desktop (`md:hidden`) it simply vanishes, leaving today's menu. */}
+        {isTask && (
+          <DropdownMenuItem className="md:hidden" onSelect={onAddSubtask}>
+            <Plus size={16} className="text-muted-foreground" />
+            Add subtask
+          </DropdownMenuItem>
+        )}
 
         <DropdownMenuSeparator />
 
