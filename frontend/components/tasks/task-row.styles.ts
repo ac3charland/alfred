@@ -121,6 +121,14 @@ export const rowDropTargetClass = 'bg-accent-teal/15 ring-1 ring-accent-teal/50'
 /** Default hover wash when the row is not a drop target. */
 export const rowHoverClass = 'hover:bg-secondary/30';
 
+/**
+ * The add-subtask "+" button is desktop-only (ALF-118): on mobile the affordance collapses into
+ * the row's ⋯ menu ("Add subtask" item), so the "+" is dropped from layout below `md` and only
+ * the dot menu shows there; at `md`+ it reappears inline (`inline-flex`, hover-revealed) beside
+ * the menu, exactly as today.
+ */
+export const addSubtaskButtonClass = 'hidden md:inline-flex';
+
 /** Expand/collapse chevron button — keeps it from shrinking in the row flex. */
 export const chevronButtonClass = 'shrink-0';
 /** Chevron icon rotation transition. */

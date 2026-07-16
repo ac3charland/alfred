@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, MoreHorizontal } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
 
 import {
   DropdownMenu,
@@ -16,6 +16,8 @@ import { IconButton } from '@/components/atoms/icon-button';
 import type { Folder } from '@/lib/types';
 
 interface TaskRowMenuProperties {
+  /** True for a `task` row, which alone nests subtasks (offers the mobile "Add subtask" item). */
+  isTask: boolean;
   /** True when the row still has no classification (offers the Classify-as submenu). */
   isUnclassified: boolean;
   /** True for a code-classified inbox item (offers "Send to Code module…"). */
@@ -24,6 +26,8 @@ interface TaskRowMenuProperties {
   canConvert: boolean;
   /** The folders the row can be moved into (the "Move to…" submenu; hidden when empty). */
   folders: readonly Folder[];
+  /** Open the row's inline add-subtask field (the leading, mobile-only entry — see ALF-118). */
+  onAddSubtask: () => void;
   /** Open the row's inline detail panel (the primary, leading entry). */
   onOpenDetails: () => void;
   onClassify: (itemType: 'task' | 'code') => void;
@@ -33,18 +37,23 @@ interface TaskRowMenuProperties {
 }
 
 /**
- * The task row's "More actions" dropdown. **"Open details" leads** (teal, the primary action —
- * it's how the detail is reached now), then the item-type entries (Classify-as while
- * unclassified, Send/Convert for code vs task), Move-to (when folders exist), and finally a
- * destructive Delete below a divider. The per-field "Set due date / Set priority / Add notes"
- * entries are gone — those edits live on the detail panel's auto-saving chips and notes. Every
- * conditional stays encapsulated here so the row body composes the menu without restating them.
+ * The task row's "More actions" dropdown. On mobile a task row's **"Add subtask" leads** — the
+ * inline "+" button is desktop-only now, so the affordance collapses into this menu below `md`
+ * (ALF-118); it and its divider are `md:hidden` so desktop, where the "+" is still shown, never
+ * doubles up. Then **"Open details"** (teal, the primary action — it's how the detail is reached
+ * now), the item-type entries (Classify-as while unclassified, Send/Convert for code vs task),
+ * Move-to (when folders exist), and finally a destructive Delete below a divider. The per-field
+ * "Set due date / Set priority / Add notes" entries are gone — those edits live on the detail
+ * panel's auto-saving chips and notes. Every conditional stays encapsulated here so the row body
+ * composes the menu without restating them.
  */
 export function TaskRowMenu({
+  isTask,
   isUnclassified,
   isCode,
   canConvert,
   folders,
+  onAddSubtask,
   onOpenDetails,
   onClassify,
   onOpenGate,
@@ -61,6 +70,20 @@ export function TaskRowMenu({
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {/* Add subtask — mobile-only (`md:hidden`): the inline "+" button is hidden below `md`,
+            so its affordance lives here at the top of the menu (ALF-118). Task rows only, since
+            subtasks nest only under tasks. The divider is `md:hidden` too so desktop — where the
+            "+" is shown and this item isn't — never renders a stray leading separator. */}
+        {isTask && (
+          <>
+            <DropdownMenuItem className="md:hidden" onSelect={onAddSubtask}>
+              <Plus size={16} className="text-muted-foreground" />
+              Add subtask
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="md:hidden" />
+          </>
+        )}
+
         {/* Open details — the primary action, highlighted teal. Opens the inline detail panel
             with the auto-saving Due / Repeat / Priority chips and the notes editor. */}
         <DropdownMenuItem
