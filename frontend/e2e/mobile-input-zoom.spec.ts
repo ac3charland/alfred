@@ -10,8 +10,10 @@ import { expect, test } from './support/fixtures';
  * flagged now render at ≥16px on a touch phone.
  *
  * `hasTouch: true` flips the `@media (pointer: coarse)` match that gates the rule; the
- * phone-width viewport keeps the row actions permanently visible (they're hover-revealed only
- * at md+), so the Notes and subtask fields are reachable without a hover the touch device can't do.
+ * phone-width viewport keeps the row's ⋯ menu permanently visible (the actions are hover-revealed
+ * only at md+), so the Notes and subtask fields are reachable through it without a hover the touch
+ * device can't do. On mobile the inline "+" collapses into that ⋯ menu's "Add subtask" item
+ * (ALF-118), so the subtask field is opened from the menu here too.
  */
 test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
 
@@ -51,7 +53,10 @@ test('the subtask creation field renders at ≥16px on a touch phone (no focus z
   await seed({ items: [task('Plan the trip')] });
   await page.goto('/?view=inbox');
 
-  await page.getByRole('button', { name: 'Add subtask' }).click();
+  // The inline "+" is desktop-only now (ALF-118); on this touch phone the add-subtask affordance
+  // lives in the row's ⋯ menu, directly beneath "Open details".
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Add subtask' }).click();
 
   const subtaskBox = page.getByPlaceholder('Add subtask…');
   await expect(subtaskBox).toBeVisible();
