@@ -1,6 +1,6 @@
 'use client';
 
-import { GitBranch, ListOrdered, Plus } from 'lucide-react';
+import { GitBranch, ListOrdered, Plus, UserCheck } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 
@@ -53,6 +53,8 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
   // The Backlog is the default Code view (bare `/code` renders it too), so highlight the link
   // for both `/code` and `/code/backlog`.
   const backlogActive = pathname === '/code' || pathname === '/code/backlog';
+  // The Needs-human-action queue (ALF-103) is its own destination, highlighted on its exact route.
+  const needsHumanActionActive = pathname === '/code/needs-human-action';
 
   return (
     <nav aria-label="Projects" className="flex flex-col gap-1 py-2">
@@ -63,6 +65,15 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
       >
         <ListOrdered size={14} className="shrink-0" />
         <span className="truncate">Backlog</span>
+      </ViewLink>
+
+      <ViewLink
+        href="/code/needs-human-action"
+        className={cn(navLinkClass(needsHumanActionActive), 'min-w-0')}
+        {...closeProperty}
+      >
+        <UserCheck size={14} className="shrink-0" />
+        <span className="truncate">Needs human action</span>
       </ViewLink>
 
       <div className="flex items-center justify-between px-3 py-1">

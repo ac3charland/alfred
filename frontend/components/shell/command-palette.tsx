@@ -10,6 +10,7 @@ import {
   ListTodo,
   type LucideIcon,
   Search,
+  UserCheck,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -38,6 +39,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   completed: Check,
   code: Code2,
   backlog: ListOrdered,
+  'needs-human-action': UserCheck,
   folder: FolderOpen,
   project: GitBranch,
 };

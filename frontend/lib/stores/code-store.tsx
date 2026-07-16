@@ -97,10 +97,10 @@ export const DEFAULT_BACKLOG_STATUSES: readonly CodeFactoryState[] = ALL_FACTORY
 );
 
 /**
- * The "Human Review" macro selection — the states where a story sits awaiting the owner's eyes:
- * a spec being reviewed (`in_refinement`) and the two ready-for gates (`ready_for_dev`,
- * `ready_for_review`). The Backlog's status filter offers this as a one-click shortcut that
- * narrows the list to exactly these three, deselecting every other status.
+ * The states where a story sits awaiting the owner's eyes: a spec being reviewed (`in_refinement`)
+ * and the two ready-for gates (`ready_for_dev`, `ready_for_review`). These back the "Needs human
+ * action" view (ALF-103), a dedicated sidebar destination listing exactly these three states —
+ * promoted from the Backlog's old one-click filter macro into its own navigable view.
  */
 export const HUMAN_REVIEW_STATUSES = [
   'in_refinement',
