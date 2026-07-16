@@ -296,6 +296,57 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const inProjectRpcContractResult = await attempt(
+    'move_code_priority_in_project is exposed to the PostgREST RPC contract — present, security ' +
+      'invoker, granted to the API roles, with the (p_ref, p_to_top) args the double-chevron ' +
+      'move resolves it by (ALF-119)',
+    async () => {
+      // The prod 500 — "Could not find the function public.move_code_priority_in_project(p_ref,
+      // p_to_top) in the schema cache" — was PostgREST failing to resolve this RPC because migration
+      // 0014 never reached the database. PostgREST matches an rpc() call by the function NAME and its
+      // argument NAMES, and needs EXECUTE granted to the calling API role, so pin exactly that
+      // contract. The ALF-119 comment also proves the 0015 remediation migration is in the chain
+      // (its schema-cache reload leaves no other queryable trace).
+      const { rows } = await client.query<{
+        args: string;
+        secdef: boolean;
+        anon_exec: boolean;
+        auth_exec: boolean;
+        sr_exec: boolean;
+        description: string | null;
+      }>(
+        `select pg_get_function_identity_arguments(p.oid) as args,
+                p.prosecdef as secdef,
+                has_function_privilege('anon', p.oid, 'EXECUTE') as anon_exec,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth_exec,
+                has_function_privilege('service_role', p.oid, 'EXECUTE') as sr_exec,
+                obj_description(p.oid, 'pg_proc') as description
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'move_code_priority_in_project'`,
+      );
+      if (rows.length !== 1)
+        throw new Error(
+          `expected exactly one move_code_priority_in_project, found ${String(rows.length)}`,
+        );
+      const fn = rows[0];
+      if (!fn) throw new Error('no function row returned');
+      if (fn.args !== 'p_ref text, p_to_top boolean')
+        throw new Error(`args are "${fn.args}", not the (p_ref, p_to_top) PostgREST resolves by`);
+      if (fn.secdef)
+        throw new Error('function is security definer; must be security invoker so RLS applies');
+      if (!fn.anon_exec || !fn.auth_exec || !fn.sr_exec)
+        throw new Error(
+          `EXECUTE not granted to all API roles (anon=${String(fn.anon_exec)}, authenticated=${String(fn.auth_exec)}, service_role=${String(fn.sr_exec)})`,
+        );
+      if (!fn.description?.includes('ALF-119'))
+        throw new Error(
+          'move_code_priority_in_project lacks the ALF-119 schema-cache remediation comment (migration 0015 not applied)',
+        );
+      return `args=(${fn.args}), security invoker, granted to anon/authenticated/service_role`;
+    },
+  );
+
   const taskItemsColumnsResult = await attempt(
     'task_items view surfaces late-added items columns (priority, recurrence) (0011)',
     async () => {
@@ -436,6 +487,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     moveResult,
     projectScopedMoveResult,
     projectDefaultResult,
+    inProjectRpcContractResult,
     taskItemsColumnsResult,
     intendedProjectResult,
     anonInsertResult,
