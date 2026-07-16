@@ -2,22 +2,18 @@
 branch: claude/subtask-add-button-touch-frge9t
 ---
 
-# Enlarged touch target for the inline add-subtask 'Add' button (mobile)
+# ≥44px touch target for the inline add-subtask 'Add' button (mobile)
 
-*2026-07-16T21:10:48.318Z*
+*2026-07-16T21:44:27.456Z*
 
-ALF-98 — on mobile, adding a subtask often felt broken: you'd type a subtask, reach for the small 'Add' button, and a slightly-off tap would dismiss the field with nothing created. The compact 'Add' button was a `size="sm"` button (32px tall). A near-miss lands just outside its hit area, which blurs the input — and the compact capture box tears itself down on blur, so the half-typed subtask vanishes.
+ALF-98 — on mobile, adding a subtask often felt broken: you'd type a subtask, reach for the small 'Add' button, and a slightly-off tap would dismiss the field with nothing created. The compact 'Add' button was a `size="sm"` button — only **32px** tall, below the ~44px minimum comfortable touch target. A near-miss lands just outside its hit area, which blurs the input — and the compact capture box tears itself down on blur, so the half-typed subtask vanishes.
 
-Fix: give the compact 'Add' button the project's `mobileTapClass` — an invisible ::after overlay that expands the touch target to ≥44px on mobile without changing the drawn button, removed at md+ where pointer devices don't need it (the same pattern the task-row checkbox and expand chevron already use). Extracted `mobileTapClass` to `lib/ui/mobile-tap-class.ts` so both call sites share one definition.
+Fix: enlarge the button's **real box** to **44px** tall on mobile (`min-h-11`), back to the compact 32px at `md+` where pointer devices don't need it. It's a real-box change, not an invisible overlay: the button sits flush beside the `flex-1` text field, so an overlay would extend over the field and clip its focus ring. (Measured with a touch viewport: the 'Add' button reports `height=44` on mobile, `height=32` at md+.)
 
-The demo drives a real 390×844 touch viewport. It types a subtask, then TAPS ~20px below the visible 'Add' button — a natural thumb near-miss that falls outside even the button's built-in touch slop. Same tap, same coordinate, with and without the fix:
+Below, on a 390×844 touch viewport: the inline add-subtask field with 'Book flights' typed and the taller 'Add' target beside it — the field's teal focus ring is intact (the enlargement doesn't disturb the layout).
 
-![Phone viewport: 'Book flights' typed into the inline Add-subtask field under 'Plan the trip', the small teal 'Add' button beside it](subtask-add-button-touch-target-image-1.png)
+![Phone viewport: 'Book flights' typed into the inline add-subtask field under 'Plan the trip', its focus ring intact, the teal 'Add' button beside it](subtask-add-button-touch-target-image-1.png)
 
-**Before (small button):** the near-miss tap below 'Add' blurs the input, tearing the field down. The subtask is gone and 'Plan the trip' has no children — the bug users hit.
+Tapping 'Add' creates the subtask: 'Book flights' appears nested under 'Plan the trip' (0/1), and the field stays open for the next one.
 
-![After the same tap without the fix: the field is dismissed and no subtask was created under 'Plan the trip'](subtask-add-button-touch-target-image-2.png)
-
-**After (enlarged ≥44px target):** the identical tap now lands on 'Add' and submits — 'Book flights' is created nested under 'Plan the trip' (0/1), and the field stays open for the next one.
-
-![After the same tap with the fix: 'Book flights' now appears as a subtask nested under 'Plan the trip' (0/1)](subtask-add-button-touch-target-image-3.png)
+![After tapping Add: 'Book flights' is nested under 'Plan the trip' (0/1), with the add-subtask field still open below](subtask-add-button-touch-target-image-2.png)
