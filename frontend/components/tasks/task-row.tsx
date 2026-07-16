@@ -45,7 +45,6 @@ import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
 import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
-import { mobileTapClass } from '@/lib/ui/mobile-tap-class';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -63,6 +62,7 @@ import {
   deleteFadeClass,
   dropPlusClass,
   metaFooterClass,
+  mobileTapClass,
   notesPreviewClass,
   rowActionsClass,
   rowBaseClass,

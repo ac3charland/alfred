@@ -10,9 +10,7 @@ import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
 import { parseProjectPrefix as matchProjectPrefix } from '@/lib/code/project-prefix';
 import { useProjects } from '@/lib/stores/code-store';
 import { useTaskActions } from '@/lib/stores/tasks-store';
-import { mobileTapClass } from '@/lib/ui/mobile-tap-class';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
-import { cn } from '@/lib/utils';
 
 import { captureGhostClass, captureSurfaceClass, captureTextareaClass } from './capture-box.styles';
 
@@ -210,10 +208,12 @@ export function CaptureBox({
           onClick={() => {
             pressingSubmitReference.current = false;
           }}
-          className={cn(
-            mobileTapClass,
-            'shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal',
-          )}
+          // A ≥44px tap target on mobile so a near-miss lands on "Add" and submits, rather than
+          // falling just outside it and blurring the input (which tears the compact box down
+          // before the submit fires). The button sits flush beside the flex-1 field, so this
+          // enlarges its REAL box (min-h-11) — an invisible overlay would collide with the
+          // field's focus ring. Back to the compact size at md+ where pointer devices don't need it.
+          className="min-h-11 shrink-0 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal md:min-h-0"
         >
           {isSaving ? <Spinner label="Saving" /> : 'Add'}
         </Button>

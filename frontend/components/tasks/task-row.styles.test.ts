@@ -12,6 +12,7 @@ import {
   deleteFadeClass,
   dropPlusClass,
   metaFooterClass,
+  mobileTapClass,
   notesPreviewClass,
   rowActionsClass,
   rowBaseClass,
@@ -123,6 +124,13 @@ describe('task-row styles', () => {
     expect(subtreeClass).toContain('divide-y');
     expect(subtreeClass).toContain('md:border-t-0');
     expect(subtreeClass).toContain('md:divide-y-0');
+  });
+
+  it('mobile tap class expands the hit area via an overlay, removed at md+', () => {
+    expect(mobileTapClass).toContain('relative');
+    expect(mobileTapClass).toContain('after:absolute');
+    expect(mobileTapClass).toContain('after:-inset-3');
+    expect(mobileTapClass).toContain('md:after:hidden');
   });
 
   it('actions ride the head line on mobile, reset at md+', () => {

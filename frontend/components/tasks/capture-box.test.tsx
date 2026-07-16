@@ -705,13 +705,13 @@ describe('CaptureBox', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
-  it('compact: Add button carries an enlarged mobile touch target, removed at md+ (ALF-98)', () => {
-    // The ≥44px hit area comes from an invisible overlay on mobile, so a near-miss tap lands on
-    // Add (submitting) instead of falling outside it and blurring the input — which tears the
-    // box down and makes subtask creation feel broken. The overlay is gone at md+.
+  it('compact: Add button has a ≥44px tap target on mobile, back to compact at md+ (ALF-98)', () => {
+    // A near-miss tap must land on "Add" (submitting) rather than fall just outside it and blur
+    // the input — which tears the compact box down before the submit fires. The button enlarges
+    // its REAL box (min-h-11 = 44px) because it sits flush beside the field; an overlay would
+    // collide with the field's focus ring. md:min-h-0 restores the compact size on pointer devices.
     renderWithProviders(<CaptureBox compact />);
-    const addButton = screen.getByRole('button', { name: /add/i });
-    expect(addButton).toHaveClass('relative', 'after:-inset-3', 'md:after:hidden');
+    expect(screen.getByRole('button', { name: /add/i })).toHaveClass('min-h-11', 'md:min-h-0');
   });
 
   it('compact: tapping Add on touch (button never focuses) still submits and does not dismiss', async () => {
