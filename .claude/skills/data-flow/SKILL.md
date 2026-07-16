@@ -97,6 +97,15 @@ second ordering source — the board *reflects* priority, it doesn't set it:
   It's one `swap_code_priority` RPC (not two PATCHes), which swaps via a negative-sentinel
   sequence so the `unique(priority)` index never sees a transient duplicate — see the supabase
   skill (a one-statement CASE swap 409s under a non-deferrable unique index).
+- **A new/bumped story's "top/bottom of project" is measured over OUTSTANDING stories only**
+  (`isBacklogOutstanding` → not `done`/`abandoned`), even though the global rank spans every
+  status. A completed story keeps its `priority`, and since new stories stamp ever-lower ranks it
+  often holds the project's *numeric* extreme — counting it drags a new/bumped story to the
+  whole-Backlog top past other projects' visible work (ALF-120). The midpoint *anchor* still
+  ranges over all statuses so the inserted value can't collide with a hidden row. Keep the store
+  (`topOfProjectPriority` / `projectMovePriority`) and SQL (`top_of_project_priority` /
+  `move_code_priority_in_project`) in lockstep — the optimistic card must sort to the slot the RPC
+  reconciles to.
 - `codeItemToStoryPatch` carries `priority`, so the realtime `code_items` path patches a
   cross-device reorder into an open tab for free (idempotent echo, as for `factory_state`).
 - Reorder is a DOM sibling reorder, so it's animated with the FLIP `useFlipList` hook — motion skill.
