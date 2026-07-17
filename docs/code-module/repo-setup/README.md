@@ -75,3 +75,29 @@ Run once per project repo, in a local session (needs GitHub admin + the Worker s
 
 > The Worker itself (HMAC verify, frontmatter parse, transition table, spec snapshot) is built in
 > **M7**; this checklist is the repo side that pairs with it.
+
+## Troubleshooting: a whole repo's tickets never advance
+
+**Symptom:** every Software-Factory ticket for one project sits in place — PRs open with a
+valid `alfred` block and green checks, yet the story never moves (e.g. an implementation PR
+that never reaches `ready_for_review`). It affects the *whole repo*, not one PR.
+
+**Cause (in order of likelihood):**
+
+1. **No webhook — step 3 above was never done.** The Worker is purely event-driven: with no
+   webhook, GitHub never POSTs the `pull_request` event, so the transition never runs. It fails
+   **silently** — nothing errors anywhere, which is exactly why it reads like a code bug.
+2. **The webhook exists but deliveries fail.** A wrong/blank secret (HMAC mismatch → the Worker
+   returns 401), the wrong Payload URL, or `Pull requests` not selected under Events.
+
+**Diagnose it** (needs repo admin) — list the repo's hooks and check `config.url` +
+`last_response`, per the `gh-cli` skill's "Inspecting & copying repo webhooks" section:
+
+```bash
+gh api repos/<owner>/<repo>/hooks --jq '.[] | {url: .config.url, events, active, last_response}'
+```
+
+No hook pointing at the Worker's `/github/webhook` → run step 3. A hook whose `last_response.code`
+is 401 → the secret doesn't match the Worker's `GITHUB_WEBHOOK_SECRET`. Because the secret is
+write-only (the API never returns it), fix a mismatch by re-setting it on the hook, not by copying
+it from another repo.
