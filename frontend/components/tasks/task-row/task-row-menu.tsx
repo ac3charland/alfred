@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
 
 import {
   DropdownMenu,
@@ -26,6 +26,14 @@ interface TaskRowMenuProperties {
   canConvert: boolean;
   /** The folders the row can be moved into (the "Move to…" submenu; hidden when empty). */
   folders: readonly Folder[];
+  /** True for an active subtask not already at the top of its sibling group (offers "Move up"). */
+  canMoveUp: boolean;
+  /** True for an active subtask not already at the bottom of its sibling group (offers "Move down"). */
+  canMoveDown: boolean;
+  /** Reorder the subtask up one slot among its siblings (ALF-117). */
+  onMoveUp: () => void;
+  /** Reorder the subtask down one slot among its siblings (ALF-117). */
+  onMoveDown: () => void;
   /** Open the row's inline add-subtask field (the leading, mobile-only entry — see ALF-118). */
   onAddSubtask: () => void;
   /** Open the row's inline detail panel (the primary, leading entry). */
@@ -54,6 +62,10 @@ export function TaskRowMenu({
   isCode,
   canConvert,
   folders,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onAddSubtask,
   onOpenDetails,
   onClassify,
@@ -91,6 +103,27 @@ export function TaskRowMenu({
             <Plus size={16} className="text-muted-foreground" />
             Add subtask
           </DropdownMenuItem>
+        )}
+
+        {/* Move up / Move down — reorder an active subtask among its siblings (ALF-117). The
+            deterministic, keyboard/screen-reader-friendly path (the gap-drop gesture is
+            pointer-only). Each item is hidden at the end of the group it can't move toward, and
+            the whole group is absent on roots and in the Completed view (both flags false). */}
+        {(canMoveUp || canMoveDown) && (
+          <>
+            {canMoveUp && (
+              <DropdownMenuItem onSelect={onMoveUp}>
+                <ArrowUp size={16} className="text-muted-foreground" />
+                Move up
+              </DropdownMenuItem>
+            )}
+            {canMoveDown && (
+              <DropdownMenuItem onSelect={onMoveDown}>
+                <ArrowDown size={16} className="text-muted-foreground" />
+                Move down
+              </DropdownMenuItem>
+            )}
+          </>
         )}
 
         {/* Classify as ▸ — inbox triage, offered only while the row is still unclassified.

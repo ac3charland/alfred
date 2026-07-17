@@ -20,10 +20,12 @@ import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { PriorityChip } from '@/components/tasks/priority-chip';
 import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
+import { SubtaskGap } from '@/components/tasks/subtask-gap';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
+import { computeInsertOrder } from '@/lib/dnd/reorder-subtask';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
@@ -33,6 +35,7 @@ import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
 import { isPriorityLevel } from '@/lib/priority';
 import { parseRecurrenceRule } from '@/lib/recurrence';
 import type { RecurrenceRule } from '@/lib/recurrence';
+import { stableSorted } from '@/lib/sort';
 import {
   sameEditor,
   useActiveEditor,
@@ -122,6 +125,7 @@ export function TaskRow({
     deleteTask,
     classifyItem,
     removeGatedItem,
+    reorderSubtask,
   } = useTaskActions();
   const { showToast } = useToastActions();
   const activeEditor = useActiveEditor();
@@ -466,6 +470,53 @@ export function TaskRow({
   const handleOpenAddSubtask = () => {
     openEditor({ itemId: node.id, kind: 'subtask' });
     expandSubtasks(node.id);
+  };
+
+  // "Move up" / "Move down" (ALF-117) — the keyboard/screen-reader-friendly reorder path, offered
+  // on active subtask rows only (roots aren't reorderable; the Completed view has no reorder
+  // gesture). Each computes the fractional sort_order of the slot it swaps past — mirroring the
+  // gap-drop math — and calls reorderSubtask. Hidden at the ends of the sibling group.
+  const isActiveSubtask = node.parent_id !== null && !isCompleted && !isCompletedView;
+  const orderedActiveSiblings = React.useMemo(
+    () =>
+      isActiveSubtask && node.parent_id !== null
+        ? stableSorted(
+            allTasks.filter(
+              (task) => task.parent_id === node.parent_id && task.status === 'active',
+            ),
+            (a, b) => a.sort_order - b.sort_order,
+          )
+        : [],
+    [isActiveSubtask, node.parent_id, allTasks],
+  );
+  const siblingIndex = orderedActiveSiblings.findIndex((sibling) => sibling.id === node.id);
+  const canMoveUp = siblingIndex > 0;
+  const canMoveDown = siblingIndex >= 0 && siblingIndex < orderedActiveSiblings.length - 1;
+
+  const reorderTo = (sortOrder: number) => {
+    if (node.parent_id === null) return;
+    const parentId = node.parent_id;
+    void (async () => {
+      try {
+        await reorderSubtask(node.id, { parentId, sortOrder });
+      } catch {
+        // The store already rolled the row back.
+      }
+    })();
+  };
+  const handleMoveUp = () => {
+    // Land between the sibling two above (or the top edge) and the sibling one above.
+    const prev = orderedActiveSiblings[siblingIndex - 2]?.sort_order ?? null;
+    const next = orderedActiveSiblings[siblingIndex - 1]?.sort_order ?? null;
+    if (next === null) return;
+    reorderTo(computeInsertOrder(prev, next));
+  };
+  const handleMoveDown = () => {
+    // Land between the sibling one below and the sibling two below (or the bottom edge).
+    const prev = orderedActiveSiblings[siblingIndex + 1]?.sort_order ?? null;
+    const next = orderedActiveSiblings[siblingIndex + 2]?.sort_order ?? null;
+    if (prev === null) return;
+    reorderTo(computeInsertOrder(prev, next));
   };
 
   // Select mode: the whole row is one toggle button — its leading control becomes a selection
@@ -820,6 +871,10 @@ export function TaskRow({
                   isCode={isCode}
                   canConvert={canConvert}
                   folders={folders}
+                  canMoveUp={isActiveSubtask && canMoveUp}
+                  canMoveDown={isActiveSubtask && canMoveDown}
+                  onMoveUp={handleMoveUp}
+                  onMoveDown={handleMoveDown}
                   onAddSubtask={handleOpenAddSubtask}
                   onOpenDetails={() => {
                     toggleDetails(node.id);
@@ -904,15 +959,24 @@ export function TaskRow({
                     </li>
                   )}
 
-                  {/* Active child rows */}
-                  {activeChildren.map((child) => (
-                    <TaskRow
-                      key={child.id}
-                      node={child}
-                      depth={depth + 1}
-                      isCompletedView={isCompletedView}
-                    />
-                  ))}
+                  {/* Active child rows. In an active view they're bracketed by reorder gap
+                    strips (ALF-117) — one at the top, between each pair, and at the bottom (one
+                    more gap than rows) — so a subtask can be dragged into the slot between
+                    siblings. The Completed view renders in sort_order but offers no reordering, so
+                    it skips the gaps. */}
+                  {isCompletedView
+                    ? activeChildren.map((child) => (
+                        <TaskRow key={child.id} node={child} depth={depth + 1} isCompletedView />
+                      ))
+                    : activeChildren.map((child, index) => (
+                        <React.Fragment key={child.id}>
+                          {index === 0 && (
+                            <SubtaskGap parentId={node.id} index={0} depth={depth + 1} />
+                          )}
+                          <TaskRow node={child} depth={depth + 1} />
+                          <SubtaskGap parentId={node.id} index={index + 1} depth={depth + 1} />
+                        </React.Fragment>
+                      ))}
 
                   {/* Completed children — revealed by the toggle with the same grid-rows
                     animation as the parent's own expand. The toggle sits at the bottom. */}

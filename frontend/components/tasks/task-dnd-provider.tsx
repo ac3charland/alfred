@@ -16,7 +16,9 @@ import { INBOX_DROP_ID, resolveFolderDrop } from '@/lib/dnd/drag-to-folder';
 import { RowKeyboardSensor } from '@/lib/dnd/keyboard-sensor';
 import { RowMouseSensor, RowTouchSensor } from '@/lib/dnd/pointer-sensor';
 import { isPromoteZone, resolvePromoteToRoot } from '@/lib/dnd/promote-to-root';
+import { isReorderGap, parseReorderGapId, resolveReorder } from '@/lib/dnd/reorder-subtask';
 import { resolveReparent } from '@/lib/dnd/reparent';
+import { stableSorted } from '@/lib/sort';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { collectSubtree, getItemDepth, isTempId } from '@/lib/tree';
@@ -69,6 +71,14 @@ const pointerWithinVisible: CollisionDetection = (args) => {
     }
     return true;
   });
+  // Test the reorder-gap strips FIRST (ALF-117): a gap straddles a row boundary, so a hover near
+  // the edge overlaps both the gap and the row body. Preferring the gap makes a boundary hover
+  // read as "reorder into this slot" rather than "re-parent onto this row"; the ~24px of row body
+  // left uncovered between gaps still resolves to the row for re-parenting. (Gaps are `disabled`
+  // unless a subtask is being dragged, so they don't intercept a root drag or a folder drop.)
+  const gapContainers = visibleContainers.filter((container) => isReorderGap(String(container.id)));
+  const gapHits = pointerWithin({ ...args, droppableContainers: gapContainers });
+  if (gapHits.length > 0) return gapHits;
   return pointerWithin({ ...args, droppableContainers: visibleContainers });
 };
 
@@ -90,7 +100,7 @@ const pointerWithinVisible: CollisionDetection = (args) => {
 export function TaskDndProvider({ children }: { children: React.ReactNode }) {
   const tasks = useTasks();
   const folders = useFolders();
-  const { moveTask, reparentTask } = useTaskActions();
+  const { moveTask, reparentTask, reorderSubtask } = useTaskActions();
   const [activeId, setActiveId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
@@ -136,6 +146,48 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
     if (dragged === undefined) return;
     const draggedId = String(active.id);
     const overId = String(over.id);
+
+    // A reorder-gap strip places the dragged subtask at that slot (ALF-117) — tested before the
+    // folder / promote / reparent branches so a boundary hover reorders rather than re-parents.
+    if (isReorderGap(overId)) {
+      const gap = parseReorderGapId(overId);
+      if (gap === null) return;
+      const subtreeIds = new Set(collectSubtree(tasks, draggedId).map((item) => item.id));
+      // The gap parent's active children in display order (sort_order asc) — the rendered
+      // siblings. resolveReorder wants them EXCLUDING the dragged row, and an insertIndex in that
+      // excluded space; the rendered gap index counts the dragged row, so drop one when the gap
+      // sits below the dragged row's current position.
+      const fullSiblings = stableSorted(
+        tasks.filter((item) => item.parent_id === gap.parentId && item.status === 'active'),
+        (a, b) => a.sort_order - b.sort_order,
+      );
+      const draggedPos = fullSiblings.findIndex((item) => item.id === draggedId);
+      const orderedSiblings = fullSiblings
+        .filter((item) => item.id !== draggedId)
+        .map((item) => ({ id: item.id, sortOrder: item.sort_order }));
+      const insertIndex = draggedPos !== -1 && gap.index > draggedPos ? gap.index - 1 : gap.index;
+      const reorder = resolveReorder({
+        draggedId,
+        draggedParentId: dragged.parent_id,
+        draggedSortOrder: dragged.sort_order,
+        gapParentId: gap.parentId,
+        orderedSiblings,
+        insertIndex,
+        subtreeIds,
+      });
+      if (reorder === null) return;
+      void (async () => {
+        try {
+          await reorderSubtask(reorder.itemId, {
+            parentId: reorder.parentId,
+            sortOrder: reorder.sortOrder,
+          });
+        } catch {
+          // The optimistic store already rolled the row(s) back.
+        }
+      })();
+      return;
+    }
 
     // A folder/Inbox target files the subtree; a list edge promotes the child to a
     // top-level task; any other id is a task → re-parent.
