@@ -14,7 +14,7 @@ The "Ship release" task holds three subtasks in creation order: Draft changelog 
 
 ![](subtask-reorder-image-1.png)
 
-Dragging "Publish notes" up: thin, layout-neutral drop strips sit at each sibling boundary. Hovering the gap above the first row reveals a teal insertion line (the row body would instead re-parent). A DragOverlay clone floats under the cursor while the in-place row dims.
+Dragging "Publish notes" up: thin, layout-neutral drop strips sit at each sibling boundary. Hovering the gap above the first row reveals a teal insertion line marking the target slot (dropping on the row body would instead re-parent). The dragged row lifts as a translucent, neutral ghost under the cursor — teal is reserved for the drop indicator — while the in-place row dims and stays visible beneath.
 
 ![](subtask-reorder-image-2.png)
 

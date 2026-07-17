@@ -57,7 +57,10 @@ export function SubtaskGap({
     >
       <div
         className={cn(
-          'absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-accent-teal',
+          'absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent-teal',
+          // A soft teal glow so the line reads clearly even where the translucent drag ghost
+          // overlaps it (the drop slot must be legible under the dragged row).
+          'shadow-[0_0_8px_1px_var(--color-accent-teal)]',
           'transition-opacity motion-reduce:transition-none',
           active ? 'opacity-100' : 'opacity-0',
         )}
