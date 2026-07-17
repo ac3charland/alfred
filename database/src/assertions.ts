@@ -564,6 +564,31 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const codeStoryListReadResult = await attempt(
+    'authenticated can select from v_code_stories — the GET /api/code list read (ALF-124)',
+    async () => {
+      // The exact read the Code view hits: `select * from v_code_stories` as the browser's
+      // `authenticated` role. `v_code_stories` is `security_invoker`, so it runs as the caller and
+      // needs a table GRANT — but `drop view` (0014, to widen `priority`) also dropped the select
+      // grant 0002 gave it, and 0014 recreated the view with `create view` (not `create or replace`,
+      // which would preserve grants) without re-granting. The result: `permission denied for view
+      // v_code_stories` → PostgrestError 42501 → the route's `mapSupabaseError` returns 500, so the
+      // Code view 500'd on every device. Earlier checks already seeded stories, so a working grant
+      // must return rows here.
+      const total = await client.query<{ count: string }>(
+        `select count(*)::text as count from v_code_stories`,
+      );
+      if ((total.rows[0]?.count ?? '0') === '0')
+        throw new Error('precondition failed: no code stories seeded to read');
+      const rows = await asRole(client, 'authenticated', () =>
+        client.query<{ ref: string }>(`select ref from v_code_stories order by ref_number`),
+      );
+      if (rows.rows.length === 0)
+        throw new Error('authenticated saw zero rows — select grant on v_code_stories is missing');
+      return `authenticated read ${String(rows.rows.length)} stories from v_code_stories`;
+    },
+  );
+
   const anonInsertResult = await attempt('anon cannot insert (RLS write denial)', async () => {
     let denied = false;
     try {
@@ -605,6 +630,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     outstandingProjectMoveResult,
     taskItemsColumnsResult,
     intendedProjectResult,
+    codeStoryListReadResult,
     anonInsertResult,
     anonReadResult,
   ];
