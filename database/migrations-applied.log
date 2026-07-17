@@ -2,3 +2,4 @@
 # `npm run migrate -w database <N>` appends one line per successful apply; commit the change.
 # Format (tab-separated): <ISO-8601 timestamp>	<db host>	<migration filename>
 # Entries before this ledger existed are not recorded here — it starts empty from ALF-124 onward.
+2026-07-17T15:49:44.508Z	aws-1-us-east-2.pooler.supabase.com:5432	0017_grant_v_code_stories.sql
