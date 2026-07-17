@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-123 — Back up database daily</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 130px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "☐"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-123 — Back up database daily</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Ops · CI</span>
+    <span class="pill">GitHub Actions · R2</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    alfred runs on the Supabase <strong>free tier</strong>, which has <strong>no automated
+    backups</strong>. The database (<code>items</code>, <code>folders</code>, <code>projects</code>,
+    <code>epics</code>, <code>code_items</code>, …) is the single-user's whole task &amp; code-factory
+    state — losing it is unrecoverable. Our schema lives in git
+    (<code>database/migrations/</code>), so it can always be rebuilt; the <strong>data cannot</strong>.
+  </p>
+  <p>
+    The spike <a href="../scheduled-cloud-backups.md"><code>docs/scheduled-cloud-backups.md</code></a>
+    already investigated this and <strong>landed the architecture</strong>: a scheduled GitHub Actions
+    workflow takes a daily logical dump with <code>supabase db dump</code> (a hardened
+    <code>pg_dump</code> wrapper), gzips it, and uploads it to a <strong>Cloudflare R2</strong> bucket
+    with lifecycle-based retention — effectively <strong>$0</strong>, using only providers already in
+    our stack. This spec turns that decision into a buildable change. Read the spike first; this spec
+    does not re-argue provider choices already settled there (R2 vs Glacier, Actions vs a Cron Worker,
+    R2 vs AWS/CDK).
+  </p>
+
+  <h2>2 · Decisions (locked during refinement)</h2>
+  <p>The spike left five open questions “for the spec.” They are resolved here:</p>
+  <dl class="decision">
+    <dt>Dump type</dt>
+    <dd><strong>Full logical dump</strong> (schema + data), not data-only. Each artifact is then
+      self-contained and restorable without replaying migrations. Migrations remain the
+      <em>authoritative</em> schema; the dump is a self-sufficient recovery artifact, not a schema source.</dd>
+    <dt>Retention</dt>
+    <dd><strong>Keep 30 daily dumps</strong>, enforced by an <strong>R2 object-lifecycle rule</strong>
+      (delete objects older than 30 days) — <em>not</em> scripted deletion. No weekly/monthly rollups in
+      v1 (deferred, §6).</dd>
+    <dt>Encryption</dt>
+    <dd><strong>R2 server-side encryption at rest</strong> (default, automatic) + TLS in transit. No
+      client-side <code>gpg</code> in v1 — deferred as defense-in-depth (§6). Credentials never leave
+      GitHub Actions secrets.</dd>
+    <dt>Verification</dt>
+    <dd><strong>Every nightly self-verifies</strong>: the same job restores its fresh dump into a
+      throwaway Postgres and asserts core tables load with rows, <em>before</em> the run is considered
+      green. A backup unverified against a restore is a hope, not a backup (spike). Reuses the
+      throwaway-cluster technique the <code>database/</code> slow suite already relies on.</dd>
+    <dt>Failure alerting</dt>
+    <dd><strong>GitHub's built-in failed-scheduled-run email</strong> to the repo owner is the v1 alert.
+      Telegram wiring (from the notifications spike) stays a <em>separate, later, optional</em> feature —
+      the seam is noted but not built here (§6).</dd>
+  </dl>
+  <div class="callout">
+    <strong>Not covered by the back-pressure gates.</strong> A workflow under <code>.github/</code> is
+    <em>not</em> linted or type-checked by <code>check:fast</code>/<code>check:slow</code> (spike
+    “Operational notes”). So the rule for this ticket: <strong>keep the YAML thin and push every scrap
+    of real logic into a committed, testable script under <code>database/</code></strong> (§4.2) — a
+    unit test <em>can</em> cover that script; untested inline bash accretes into a silently-broken
+    nightly.
+  </div>
+
+  <h2>3 · How it works</h2>
+  <svg viewBox="0 0 760 300" role="img" aria-label="Daily backup data flow from GitHub Actions through supabase db dump to Cloudflare R2, with an in-job restore verification">
+    <style>
+      .box{fill:var(--card);stroke:var(--line);stroke-width:1.5;rx:8}
+      .accentbox{fill:var(--accent-bg);stroke:var(--accent);stroke-width:1.5;rx:8}
+      .lbl{fill:var(--fg);font:13px sans-serif}
+      .sub2{fill:var(--muted);font:11px sans-serif}
+      .mono{fill:var(--muted);font:11px ui-monospace,monospace}
+      .flow{stroke:var(--accent);stroke-width:2;fill:none;marker-end:url(#a2)}
+      .cap{fill:var(--muted);font:11px sans-serif}
+    </style>
+    <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 Z" fill="var(--accent)"/></marker></defs>
+
+    <rect x="20" y="30" width="150" height="60" class="accentbox"/>
+    <text x="34" y="55" class="lbl" style="font-weight:600">cron 17 9 * * *</text>
+    <text x="34" y="73" class="sub2">GitHub Actions</text>
+    <text x="34" y="86" class="mono">backup.yml</text>
+
+    <rect x="215" y="30" width="170" height="60" class="box"/>
+    <text x="229" y="52" class="lbl" style="font-weight:600">supabase db dump</text>
+    <text x="229" y="70" class="sub2">session-mode pooler</text>
+    <text x="229" y="84" class="mono">| gzip → backup.sql.gz</text>
+
+    <rect x="430" y="30" width="150" height="60" class="box"/>
+    <text x="444" y="52" class="lbl" style="font-weight:600">verify restore</text>
+    <text x="444" y="70" class="sub2">throwaway Postgres</text>
+    <text x="444" y="84" class="mono">gunzip | psql; assert</text>
+
+    <rect x="610" y="30" width="130" height="60" class="accentbox"/>
+    <text x="624" y="52" class="lbl" style="font-weight:600">Cloudflare R2</text>
+    <text x="624" y="70" class="sub2">aws s3 cp</text>
+    <text x="624" y="84" class="mono">YYYY-MM-DD.sql.gz</text>
+
+    <path d="M170,60 L212,60" class="flow"/>
+    <path d="M385,60 L427,60" class="flow"/>
+    <path d="M580,60 L607,60" class="flow"/>
+
+    <rect x="610" y="140" width="130" height="52" class="box"/>
+    <text x="624" y="162" class="lbl">lifecycle rule</text>
+    <text x="624" y="180" class="sub2">delete &gt; 30 days</text>
+    <path d="M675,90 L675,138" class="flow"/>
+
+    <text x="20" y="150" class="cap" style="font-weight:600">Secrets (GitHub → Actions):</text>
+    <text x="20" y="170" class="mono">SUPABASE_DB_URL (session pooler, :5432)</text>
+    <text x="20" y="188" class="mono">R2_ACCOUNT_ID · R2_ACCESS_KEY_ID</text>
+    <text x="20" y="206" class="mono">R2_SECRET_ACCESS_KEY · R2_BUCKET · R2_ENDPOINT</text>
+
+    <text x="20" y="252" class="cap">Order matters: <tspan style="font-weight:600">verify BEFORE upload</tspan> — a dump that won't restore
+      must never overwrite the day's slot or count as a green run.</text>
+    <text x="20" y="272" class="cap">Restore drill is in-job (nightly), so a broken dump surfaces the same day, not at recovery time.</text>
+  </svg>
+
+  <h2>4 · Proposed change</h2>
+  <p>Three committed pieces — the workflow, a testable dump/verify script, and its unit test.</p>
+
+  <h3>4.1 · The scheduled workflow</h3>
+  <p>
+    New file <code>.github/workflows/backup.yml</code>, sibling to
+    <a href="../../.github/workflows/ci.yml"><code>ci.yml</code></a>. It mirrors ci.yml's shape
+    (<code>actions/checkout@v4</code> → <code>actions/setup-node@v4</code> with
+    <code>node-version-file: '.nvmrc'</code> → <code>npm ci</code>) and then runs the committed script.
+    The YAML stays thin: scheduling, a Postgres service for the verify step, secret wiring, and one
+    <code>run:</code> that calls the script.
+  </p>
+  <div class="card">
+    <span class="filelabel">.github/workflows/backup.yml (new) — shape, fleshed out at build time</span>
+<pre><code>name: Backup
+
+on:
+  schedule:
+    - cron: '17 9 * * *'   # daily; off-the-hour to dodge scheduler contention (spike)
+  workflow_dispatch: {}     # manual runs / restore drills
+
+# Only one backup at a time; a slow run must not overlap the next day's.
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    services:
+      verify-db:                     # throwaway Postgres for the in-job restore check
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: &gt;-
+          --health-cmd "pg_isready" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: 'npm' }
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+      - name: Dump, verify-restore, upload
+        run: node database/src/backup.ts
+        env:
+          SUPABASE_DB_URL:       ${{ secrets.SUPABASE_DB_URL }}
+          VERIFY_DB_URL:         postgres://postgres:postgres@localhost:5432/postgres
+          AWS_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET:             ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT:           ${{ secrets.R2_ENDPOINT }}</code></pre>
+  </div>
+  <div class="callout">
+    <strong>Connection string — the non-obvious one (spike gotcha).</strong> <code>SUPABASE_DB_URL</code>
+    MUST be the Supabase <strong>session-mode pooler</strong> (IPv4, port <strong>5432</strong>).
+    <em>Not</em> the direct connection (IPv6-only on free tier → Actions runners are IPv4-only, it just
+    won't connect) and <em>not</em> the transaction pooler (port 6543 → doesn't support
+    <code>pg_dump</code>). This belongs in the secret's value and the setup runbook (§4.4).
+  </div>
+
+  <h3>4.2 · The dump / verify / upload script</h3>
+  <p>
+    All real logic lives here so it's testable — the spike's explicit instruction. A small Node script
+    under <code>database/src/</code> (TypeScript, matching <code>run.ts</code>/<code>apply.ts</code>),
+    run with <code>node database/src/backup.ts</code>. It orchestrates three shell steps and
+    <strong>fails hard</strong> if any step or assertion fails.
+  </p>
+  <div class="card">
+    <span class="filelabel">database/src/backup.ts (new) — responsibilities</span>
+<pre><code>// 1. DUMP:   supabase db dump --db-url $SUPABASE_DB_URL -f - | gzip &gt; backup.sql.gz
+//            (full logical dump; assert the gzip is non-empty / above a floor size).
+// 2. VERIFY: gunzip -c backup.sql.gz | psql $VERIFY_DB_URL   (restore into the throwaway),
+//            then query the restored DB and assert CORE TABLES EXIST and the dump is
+//            structurally sane — e.g. `items`, `folders`, `projects` are present. This catches a
+//            silently-truncated / unrestorable dump the same night.
+// 3. NAME +  object key = `$(date -u +%Y-%m-%d).sql.gz`  (UTC; one slot per day, idempotent —
+//    UPLOAD:  a same-day re-run overwrites, so a manual re-run never accumulates dupes).
+//            aws s3 cp backup.sql.gz "s3://$R2_BUCKET/&lt;key&gt;" --endpoint-url "$R2_ENDPOINT"
+//
+// Ordering is load-bearing: VERIFY must pass BEFORE UPLOAD. Any failure → non-zero exit → red run
+// → GitHub emails the owner. The date is read at runtime (Actions clock), not committed.</code></pre>
+  </div>
+  <p class="small">
+    <strong>Why a script, not inline bash:</strong> §4.3 can unit-test the pure parts (object-key
+    formatting, the min-size floor, the “which tables must exist” list, argument assembly) without
+    hitting the network — turning the one part of this feature that <em>can</em> regress silently into
+    something the fast suite covers. Shelling out to <code>supabase</code>/<code>psql</code>/<code>aws</code>
+    is fine; the <em>decisions</em> around them are what get tested.
+  </p>
+
+  <h3>4.3 · Tests</h3>
+  <table>
+    <thead><tr><th>Layer</th><th>What it covers</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>database/src/backup.test.ts</code><br><span class="small">unit (fast tier)</span></td>
+        <td>Pure helpers extracted from <code>backup.ts</code>: the UTC object-key formatter
+          (<code>2026-07-17.sql.gz</code> for a given date), the empty/undersized-dump guard, and the
+          core-table assertion list. No network, no real Postgres — mirrors how
+          <code>migrate.test.ts</code> unit-tests pure logic while the integration harness owns the
+          live-DB path.</td>
+      </tr>
+      <tr>
+        <td><span class="small">Manual acceptance</span></td>
+        <td>A <code>workflow_dispatch</code> run against real secrets, asserted via the demo doc (§7):
+          the run is green, the verify step passes, and the dated object appears in R2.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="small">
+    Every requirement must live in a test (CLAUDE.md TDD rule). The behavioral core here — “name the
+    object correctly, reject an empty dump, require the right tables” — is unit-tested; the end-to-end
+    ‘it actually uploads’ is proven by the demo doc's real dispatched run, which is the only place real
+    R2/Supabase credentials exist.
+  </p>
+
+  <h3>4.4 · One-time setup (runbook, committed as docs)</h3>
+  <p>
+    None of this is code, but the feature is inert without it, so the implementation PR records the
+    steps (extend <a href="../../database/README.md"><code>database/README.md</code></a> or a short
+    <code>docs/ops/</code> note):
+  </p>
+  <ol>
+    <li>Create the R2 bucket; add a <strong>lifecycle rule</strong>: delete objects older than 30 days.</li>
+    <li>Create an R2 API token (S3 credentials) scoped to that bucket.</li>
+    <li>Add GitHub Actions secrets: <code>SUPABASE_DB_URL</code> (<strong>session pooler</strong>,
+      §4.1 callout), <code>R2_ACCESS_KEY_ID</code>, <code>R2_SECRET_ACCESS_KEY</code>,
+      <code>R2_BUCKET</code>, <code>R2_ENDPOINT</code>.</li>
+    <li>Trigger <code>workflow_dispatch</code> once to prove the path end-to-end (this is the demo run).</li>
+  </ol>
+
+  <h2>5 · Restore procedure (documented, for a real recovery)</h2>
+  <p>
+    A backup nobody knows how to restore is worthless. The runbook (§4.4 doc) states the recovery path
+    explicitly: download the chosen dated object from R2, then
+    <code>gunzip -c &lt;date&gt;.sql.gz | psql "&lt;target-db-url&gt;"</code>. Because the dump is
+    <em>full</em> (§2), this reconstructs schema + data with no migration replay. The nightly verify
+    step (§4.2) exercises exactly this restore path every day, so the documented procedure is
+    continuously proven, not aspirational.
+  </p>
+
+  <h2>6 · Out of scope / open questions</h2>
+  <ul>
+    <li><strong>Weekly / monthly rollups</strong> — v1 keeps 30 rolling dailies only. Longer-horizon
+      retention (e.g. keep 1/week for a year) is a later lifecycle-rule addition.</li>
+    <li><strong>Client-side encryption (<code>gpg</code> before upload)</strong> — deferred
+      defense-in-depth. R2 server-side encryption covers at-rest in v1.</li>
+    <li><strong>Telegram failure alerting</strong> — the notifications-spike Telegram channel is the
+      obvious richer sink, but stays independent and optional. v1 relies on GitHub's failed-run email.</li>
+    <li><strong>Supabase Storage buckets</strong> — none are in use today, so file-storage backup is
+      explicitly out of scope until a bucket exists.</li>
+    <li><strong>Point-in-time recovery / more-than-daily cadence</strong> — daily logical dumps only;
+      PITR is a paid-tier Supabase feature, out of scope at the free-tier constraint that motivates this.</li>
+    <li><strong>Scheduled-cron caveats (accepted, not solved)</strong> — GitHub may delay a scheduled
+      run under load (fine for a daily), and 60 days of repo inactivity auto-disables scheduled
+      workflows (a non-issue for an active repo). No mitigation built.</li>
+  </ul>
+
+  <h2>7 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li><code>.github/workflows/backup.yml</code> exists: scheduled daily
+      (<code>cron: '17 9 * * *'</code>) plus <code>workflow_dispatch</code>, with a
+      <code>concurrency</code> group so runs don't overlap.</li>
+    <li>All dump/verify/upload logic lives in a committed <code>database/src/backup.ts</code> (thin
+      YAML, testable script) — <strong>not</strong> inline bash in the workflow.</li>
+    <li>The job produces a <strong>full logical</strong> gzipped dump via <code>supabase db dump</code>
+      using the <strong>session-mode pooler</strong> connection string.</li>
+    <li>Before upload, the dump is <strong>restored into a throwaway Postgres</strong> and asserted to
+      contain the core tables (<code>items</code>, <code>folders</code>, <code>projects</code>); a dump
+      that fails to restore <strong>fails the run</strong> and is <strong>not</strong> uploaded.</li>
+    <li>On success the object lands in R2 keyed <code>YYYY-MM-DD.sql.gz</code> (UTC); a same-day re-run
+      overwrites rather than duplicates.</li>
+    <li>Retention is an <strong>R2 lifecycle rule</strong> (delete &gt; 30 days), documented in the
+      runbook — no deletion scripting in the workflow.</li>
+    <li>Credentials are read <strong>only</strong> from GitHub Actions secrets; none are committed or
+      echoed to logs.</li>
+    <li><code>database/src/backup.test.ts</code> unit-tests the pure helpers (object-key formatting,
+      empty-dump guard, core-table list) and passes in <code>check:fast</code>.</li>
+    <li>A one-time setup + restore runbook is committed (in <code>database/README.md</code> or
+      <code>docs/ops/</code>), including the exact restore command.</li>
+    <li>A <code>workflow_dispatch</code> run against real secrets is green and the dated object is
+      visible in R2 (captured in the demo doc).</li>
+  </ul>
+
+  <h2>8 · Testing &amp; demo</h2>
+  <ul>
+    <li><strong>Unit (fast):</strong> <code>backup.test.ts</code> as in §4.3 — the deterministic core.</li>
+    <li><strong>Demo doc</strong> (<code>docs/demos/ALF-123-daily-database-backup/…</code>, showboat
+      skill): capture a real <code>workflow_dispatch</code> run — the green job log showing dump →
+      verify-restore → upload, and the resulting dated object in R2. Cross-reference showboat's
+      evidence rules; don't restate them. (A workflow-only change with no in-app UI still warrants a
+      demo doc proving the nightly actually runs and uploads.)</li>
+  </ul>
+
+  <hr style="border:none;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+  <p class="small">
+    Grounded in: the spike <code>docs/scheduled-cloud-backups.md</code>,
+    <code>.github/workflows/ci.yml</code> (workflow shape), the <code>database/</code> package
+    (<code>src/run.ts</code>, <code>src/cluster.ts</code>, <code>src/migrate.test.ts</code> — the
+    throwaway-Postgres + testable-script patterns), and <code>database/README.md</code>. Follows the
+    supabase and showboat skills; honors CLAUDE.md's TDD, back-pressure, and demo-doc rules.
+  </p>
+
+</div>
+</body>
+</html>
