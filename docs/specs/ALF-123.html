@@ -159,7 +159,7 @@
       <path d="M0,0 L9,4.5 L0,9 Z" fill="var(--accent)"/></marker></defs>
 
     <rect x="20" y="30" width="150" height="60" class="accentbox"/>
-    <text x="34" y="55" class="lbl" style="font-weight:600">cron 17 9 * * *</text>
+    <text x="34" y="55" class="lbl" style="font-weight:600">cron 17 8 * * *</text>
     <text x="34" y="73" class="sub2">GitHub Actions</text>
     <text x="34" y="86" class="mono">backup.yml</text>
 
@@ -216,7 +216,9 @@
 
 on:
   schedule:
-    - cron: '17 9 * * *'   # daily; off-the-hour to dodge scheduler contention (spike)
+    - cron: '17 8 * * *'   # daily, 08:17 UTC ≈ 03:17 CDT (overnight for the user); the :17
+                           # minute dodges top-of-hour scheduler contention (spike). Cron is
+                           # fixed UTC → 02:17 local during CST; both are middle-of-night.
   workflow_dispatch: {}     # manual runs / restore drills
 
 # Only one backup at a time; a slow run must not overlap the next day's.
@@ -368,8 +370,8 @@ jobs:
 
   <h2>7 · Acceptance criteria</h2>
   <ul class="ac">
-    <li><code>.github/workflows/backup.yml</code> exists: scheduled daily
-      (<code>cron: '17 9 * * *'</code>) plus <code>workflow_dispatch</code>, with a
+    <li><code>.github/workflows/backup.yml</code> exists: scheduled daily overnight
+      (<code>cron: '17 8 * * *'</code> — 08:17 UTC, ≈3am CDT) plus <code>workflow_dispatch</code>, with a
       <code>concurrency</code> group so runs don't overlap.</li>
     <li>All dump/verify/upload logic lives in a committed <code>database/src/backup.ts</code> (thin
       YAML, testable script) — <strong>not</strong> inline bash in the workflow.</li>
