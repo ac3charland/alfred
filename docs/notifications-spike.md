@@ -25,10 +25,13 @@ The cost saving alone would be marginal at single-user volume; Telegram earns it
 the same integration buys four things the walled-garden alternatives buy none of:
 
 1. **Cheap/zero-cost, zero-infra outbound.** A single `fetch` from a Worker we already run.
-2. **A clean inbound tap for the future Communication Firewall** (SPEC §13.2). That module is an
-   *inbound* problem — something must read incoming messages programmatically. Telegram's Bot API
-   is one of the very few consumer channels that permits that cleanly and free (webhook or
-   long-poll, structured JSON, no vendor review). See the sidebar on inbound scope below.
+2. **Alfred's notifications become first-class in the future Communication Firewall** (SPEC §13.2).
+   That module aggregates the owner's communications (email, iMessage, …) into one triage/display
+   surface. Because Alfred's notifications live in their **own** Telegram channel, the firewall can
+   surface them there **alongside** emails and iMessages — as a distinct, clearly-labeled source
+   rather than commingled with personal messages. Direction matters: this is the firewall
+   **consuming Alfred's Telegram channel** (Alfred reading Telegram), **not** the bot reading the
+   owner's other conversations. See the forward-compatibility note below.
 3. **Per-device notification isolation.** Telegram supports per-chat notification settings (mute,
    custom sound, DND exceptions) on each device independently. A dedicated alfred bot gets its own
    alerting profile — silent on the laptop, custom tone on the phone — without touching how any
@@ -60,23 +63,21 @@ the same integration buys four things the walled-garden alternatives buy none of
 
 ### Forward-compatibility with the Communication Firewall
 
-Structure the outbound work so the **inbound** side slots in without rework:
+The firewall integration is a **display** concern: Alfred's notifications should appear in the
+firewall's unified view (SPEC §13.2), alongside email and iMessage, as their own labeled stream.
+Structure the notification work so that's possible later without rework:
 
-- Register a `/telegram/webhook` route in the Worker (a sibling to `/github/webhook`), pointed at
-  by Telegram's `setWebhook`. HMAC/secret-token verify it the way `/github/webhook` verifies its
-  signature.
-- Inbound messages (and Hermes-style **voice memos → transcription**) map naturally onto alfred's
-  single ingest seam, `POST /api/items` (SPEC §4.2, [`docs/siri-capture.md`](./siri-capture.md)):
-  a Telegram message becomes an Inbox item. This is the concrete bridge from "notifications" to
-  the firewall's triage queue — but it is **out of scope for this spike**; captured here only so
-  the outbound design doesn't foreclose it.
-
-> **Sidebar — inbound scope, so we're not misled.** A Telegram *bot* can only read messages
-> **addressed to it** (DMs to the bot, or groups it's in with privacy mode off). It **cannot**
-> read the owner's existing personal DMs with other people. Tapping the real account stream would
-> need a *userbot* (MTProto), which is heavier and carries account-flagging risk. The firewall's
-> realistic model is therefore "things get routed *to* the bot / in via email," not "the bot
-> silently reads everything." Telegram is the best *available* consumer tap, not a skeleton key.
+- **Keep the notification stream identifiable.** Alfred authors these messages, so their content is
+  inherently available to it — persist/record each notification (or its Telegram message id) at
+  send time so the firewall can render the stream as a discrete source. Whether the firewall reads
+  it back from Telegram or from Alfred's own record is a spec-time detail (note the Bot API can't
+  fetch a bot's own message history, so recording at send time is the natural path).
+- **Mind the direction.** This is **Alfred reading Telegram** — surfacing its own channel in the
+  firewall — **not** the Telegram bot tapping the owner's personal conversations. A bot only ever
+  sees messages addressed to it; it is not, and this spike does not make it, a reader of the
+  owner's other chats.
+- Out of scope for this spike; captured only so the notification design keeps notifications
+  identifiable as a discrete stream the firewall can later display.
 
 ## Sidebars: appealing alternatives we're not taking
 
@@ -84,8 +85,10 @@ Structure the outbound work so the **inbound** side slots in without rework:
 > app is a real SMS/iMessage — iMessage is a closed Apple system with no server-side send API
 > short of running a Mac as a relay. That forces an SMS provider, which brings: a per-message cost
 > (pennies at our volume, but nonzero), US A2P (10DLC / toll-free) carrier registration that is
-> **identical across SNS and Twilio**, and — critically — **no inbound tap** for the firewall and
-> **no per-device isolation** (it's one Messages firehose). The cost win of SNS over Twilio is
+> **identical across SNS and Twilio**, and — critically — Alfred's notifications would land
+> **commingled in the personal iMessage stream**. That defeats **per-device isolation** (it's one
+> Messages firehose) and, in the firewall's unified view, leaves Alfred's messages indistinguishable
+> from personal iMessages rather than their own labeled source. The cost win of SNS over Twilio is
 > marginal at single-user volume (Twilio's cost is dominated by number rental, not messages). If
 > native-Messages delivery ever becomes a hard requirement, the minimal path is a direct SNS
 > `Publish` to a verified number from the Worker (SNS's sandbox, which restricts sends to verified
@@ -93,8 +96,9 @@ Structure the outbound work so the **inbound** side slots in without rework:
 
 > **Why not Pushover?** It is **not** SMS and does **not** land in iMessage — it's push to its own
 > app. So it costs a separate app install (the same "another app" price as Telegram) while
-> delivering **none** of Telegram's other three benefits: no firewall inbound API, and it's not
-> the agent-ecosystem transport. On our own criteria it's strictly dominated by Telegram.
+> delivering **none** of Telegram's other three benefits: it's a closed push silo the firewall
+> can't read to surface Alfred's stream, and it's not the agent-ecosystem transport. On our own
+> criteria it's strictly dominated by Telegram.
 
 > **Why a dedicated bot rather than reusing a channel the owner already uses?** Deliberate. A
 > bot that exists only for alfred is what makes per-device notification tuning meaningful and
@@ -104,7 +108,8 @@ Structure the outbound work so the **inbound** side slots in without rework:
 
 - **Cost:** $0 outbound.
 - **Open questions:** which events trigger a notification (and at what tier); message formatting /
-  escaping choice; whether to build the inbound webhook now or defer to the firewall module;
+  escaping choice; how notifications are persisted so the firewall can later surface them as a
+  discrete source (record at send time vs. read back from Telegram);
   Telegram Bot API rate limits (~30 msg/s, ~1 msg/s per chat — irrelevant at our volume but worth
   a line); whether notifications should also cover **operational alerts** (e.g. a failed nightly
   backup — see [`scheduled-cloud-backups.md`](./scheduled-cloud-backups.md); the two features stay
