@@ -35,6 +35,7 @@ export const PATCH = withSession(
       'status',
       'recurrence',
       'priority',
+      'sort_order',
     ]);
 
     const { data, error } = await supabase

@@ -52,6 +52,7 @@ const BASE: Item = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  sort_order: 0,
 };
 
 function item(overrides: Partial<Item>): Item {
@@ -138,6 +139,23 @@ describe('addTask', () => {
 
     expect(result.current.tasks).toHaveLength(1);
     expect(result.current.tasks[0]?.id.startsWith('temp-')).toBe(true);
+  });
+
+  it('gives a new subtask an optimistic sort_order below its current siblings (ALF-117)', () => {
+    // A parent with two existing subtasks (sort_order 10, 30). A third appends at the bottom:
+    // max(sibling sort_order) + 1 = 31, so buildTree keeps it last until the server reconciles.
+    mockCreateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const parent = item({ id: 'p1' });
+    const a = item({ id: 'a', parent_id: 'p1', sort_order: 10 });
+    const b = item({ id: 'b', parent_id: 'p1', sort_order: 30 });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, a, b]) });
+
+    act(() => {
+      void result.current.actions.addTask({ text: 'third', parentId: 'p1' });
+    });
+
+    const fresh = result.current.tasks.find((t) => t.id.startsWith('temp-'));
+    expect(fresh?.sort_order).toBe(31);
   });
 
   it('rolls back the optimistic item when creation fails', async () => {
@@ -1266,6 +1284,90 @@ describe('reparentTask', () => {
   });
 });
 
+describe('reorderSubtask', () => {
+  it('patches only sort_order (no folder/descendant writes) for a same-parent reorder', async () => {
+    const parent = item({ id: 'p1', folder_id: 'folder-1' });
+    const a = item({ id: 'a', parent_id: 'p1', folder_id: 'folder-1', sort_order: 10 });
+    const b = item({ id: 'b', parent_id: 'p1', folder_id: 'folder-1', sort_order: 20 });
+    mockUpdateItem.mockResolvedValue(item({ id: 'b', parent_id: 'p1', sort_order: 5 }));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, a, b]) });
+
+    await act(async () => {
+      // Move b above a (sort_order 5).
+      await result.current.actions.reorderSubtask('b', { parentId: 'p1', sortOrder: 5 });
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledTimes(1);
+    expect(mockUpdateItem).toHaveBeenCalledWith('b', { sort_order: 5 });
+    expect(result.current.tasks.find((t) => t.id === 'b')?.sort_order).toBe(5);
+  });
+
+  it('re-parents, cascades the folder to the subtree, AND sets sort_order for a cross-parent drop', async () => {
+    const dragged = item({ id: 'd', parent_id: 'p1', folder_id: null, sort_order: 10 });
+    const child = item({ id: 'd-c', parent_id: 'd', folder_id: null });
+    const target = item({ id: 'p2', folder_id: 'folder-9' });
+    mockUpdateItem.mockImplementation((id: string) =>
+      Promise.resolve(
+        item({ id, parent_id: id === 'd' ? 'p2' : 'd', folder_id: 'folder-9', sort_order: 15 }),
+      ),
+    );
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([dragged, child, target]),
+    });
+
+    await act(async () => {
+      await result.current.actions.reorderSubtask('d', { parentId: 'p2', sortOrder: 15 });
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('d', {
+      parent_id: 'p2',
+      folder_id: 'folder-9',
+      sort_order: 15,
+    });
+    // The subtree adopts the new parent's folder.
+    expect(mockUpdateItem).toHaveBeenCalledWith('d-c', { folder_id: 'folder-9' });
+    const draggedAfter = result.current.tasks.find((t) => t.id === 'd');
+    expect(draggedAfter?.parent_id).toBe('p2');
+  });
+
+  it('is a no-op when the target parent is one of the dragged row’s own descendants (cycle)', async () => {
+    const dragged = item({ id: 'd', parent_id: 'p1' });
+    const child = item({ id: 'd-c', parent_id: 'd' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([dragged, child]) });
+
+    await act(async () => {
+      await result.current.actions.reorderSubtask('d', { parentId: 'd-c', sortOrder: 1 });
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when the dragged task is not in the store', async () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([item({ id: 'p1' })]) });
+
+    await act(async () => {
+      await result.current.actions.reorderSubtask('missing', { parentId: 'p1', sortOrder: 1 });
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('rolls the row back and restores its sort_order when the reorder fails', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const parent = item({ id: 'p1' });
+    const a = item({ id: 'a', parent_id: 'p1', sort_order: 10 });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, a]) });
+
+    await act(async () => {
+      await result.current.actions
+        .reorderSubtask('a', { parentId: 'p1', sortOrder: 99 })
+        .catch(() => {});
+    });
+
+    expect(result.current.tasks.find((t) => t.id === 'a')?.sort_order).toBe(10);
+  });
+});
+
 describe('deleteTask', () => {
   const parent = item({ id: 'item-1' });
   const child = item({ id: 'c-1', parent_id: 'item-1' });
@@ -1385,16 +1487,31 @@ describe('useScopedTasks', () => {
     expect(result.current.map((n) => n.id)).toStrictEqual(['f-high', 'f-med', 'f-low', 'f-none']);
   });
 
-  it('folder ranks subtasks by priority too (all levels)', () => {
+  it('folder orders subtasks by sort_order, NOT priority (ALF-117)', () => {
+    // The Folder view ranks its ROOTS by priority but a subtask group follows sort_order — a
+    // high-priority subtask does NOT float above a low-priority sibling that sorts earlier.
     const nested: Item[] = [
       item({ id: 'parent', folder_id: 'work' }),
-      item({ id: 'c-low', folder_id: 'work', parent_id: 'parent', priority: 'low' }),
-      item({ id: 'c-high', folder_id: 'work', parent_id: 'parent', priority: 'high' }),
+      item({
+        id: 'c-low',
+        folder_id: 'work',
+        parent_id: 'parent',
+        priority: 'low',
+        sort_order: 10,
+      }),
+      item({
+        id: 'c-high',
+        folder_id: 'work',
+        parent_id: 'parent',
+        priority: 'high',
+        sort_order: 20,
+      }),
     ];
     const { result } = renderHook(() => useScopedTasks({ type: 'folder', folderId: 'work' }), {
       wrapper: makeWrapper(nested),
     });
-    expect(result.current[0]?.children.map((c) => c.id)).toStrictEqual(['c-high', 'c-low']);
+    // sort_order asc (c-low=10 before c-high=20) — priority is a display signal only.
+    expect(result.current[0]?.children.map((c) => c.id)).toStrictEqual(['c-low', 'c-high']);
   });
 
   it('inbox keeps capture-first order — priority does not reorder the inbox', () => {
