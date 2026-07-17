@@ -71,6 +71,9 @@ let codeItems = [];
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
+// The subtask sort_order sequence (migration 0018's `item_sort_order_seq`): parked high so an
+// item created without an explicit sort_order (a new subtask) appends below every seeded row.
+let nextSortOrder = 1_000_000;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -179,6 +182,9 @@ function newItem(input) {
     parent_id: input.parent_id ?? null,
     intended_project_id: input.intended_project_id ?? null,
     priority: input.priority ?? null,
+    // Manual subtask rank (migration 0018): explicit when seeded, else the next sequence value —
+    // parked high so a POST-created row (e.g. a new subtask) appends at the bottom of its group.
+    sort_order: input.sort_order ?? nextSortOrder++,
   };
 }
 

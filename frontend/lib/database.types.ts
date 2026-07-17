@@ -200,6 +200,7 @@ export type Database = {
           raw_capture: string | null
           recurrence: Json | null
           recurrence_series_id: string | null
+          sort_order: number
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"]
           title: string
@@ -219,6 +220,7 @@ export type Database = {
           raw_capture?: string | null
           recurrence?: Json | null
           recurrence_series_id?: string | null
+          sort_order?: number
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"]
           title: string
@@ -238,6 +240,7 @@ export type Database = {
           raw_capture?: string | null
           recurrence?: Json | null
           recurrence_series_id?: string | null
+          sort_order?: number
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"]
           title?: string
@@ -324,6 +327,7 @@ export type Database = {
           raw_capture: string | null
           recurrence: Json | null
           recurrence_series_id: string | null
+          sort_order: number | null
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"] | null
           title: string | null
@@ -343,6 +347,7 @@ export type Database = {
           raw_capture?: string | null
           recurrence?: Json | null
           recurrence_series_id?: string | null
+          sort_order?: number | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
           title?: string | null
@@ -362,6 +367,7 @@ export type Database = {
           raw_capture?: string | null
           recurrence?: Json | null
           recurrence_series_id?: string | null
+          sort_order?: number | null
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
           title?: string | null
