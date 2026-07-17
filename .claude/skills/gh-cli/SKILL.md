@@ -1,14 +1,11 @@
 ---
 name: gh-cli
 description: >
-  Covers the GitHub CLI (`gh`) and `gh api`: opening or editing pull requests and issues (body,
-  title, comments) and scripting REST calls. Use for `gh pr create`/`edit`/`comment`, `gh issue
-  edit`, or `gh api` — "update the PR description", "edit the PR body", or a `gh` command erroring
-  with a "Projects (classic)" GraphQL message. Also covers editing PRs via the GitHub MCP server in
-  the web/remote environment (no `gh`) — e.g. a body link rendering as inline code from a
-  backtick-wrapped URL — and inspecting or copying a repo's webhooks and deliveries via `gh api
-  .../hooks`, e.g. diagnosing why a repo's Software Factory tickets never advance (a missing or
-  failing per-repo webhook).
+  Using the GitHub CLI (`gh`) and `gh api`: creating, editing, and commenting on pull requests and
+  issues, updating a PR or issue body or title, scripting GitHub over REST, and inspecting a repo's
+  webhooks. Use when running `gh pr`, `gh issue`, or `gh api`; when a `gh` body/title edit fails
+  with a "Projects (classic)" GraphQL error; when editing a PR through the GitHub MCP server in the
+  web/remote environment (no `gh`); or when diagnosing a repo's failing webhook deliveries.
 ---
 
 # gh CLI skill (alfred)
