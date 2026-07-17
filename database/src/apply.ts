@@ -5,7 +5,13 @@ import { createInterface } from 'node:readline/promises';
 
 import pg from 'pg';
 
-import { ENV_LOCAL_PATH, parseEnvValue, resolveMigration } from './migrate.ts';
+import {
+  APPLIED_LOG_PATH,
+  ENV_LOCAL_PATH,
+  parseEnvValue,
+  recordApplied,
+  resolveMigration,
+} from './migrate.ts';
 
 const { Client } = pg;
 
@@ -63,6 +69,12 @@ async function main(): Promise<number> {
   try {
     await client.query(readFileSync(file, 'utf8'));
     process.stdout.write(`✓ applied ${path.basename(file)}\n`);
+    // Append to the committed ledger so the branch records what actually reached this host, then
+    // nudge the operator to commit it — the paper trail only helps if it lands in git.
+    recordApplied(new Date(), host, file);
+    process.stdout.write(
+      `✎ logged to ${path.relative(process.cwd(), APPLIED_LOG_PATH)} — commit it to record the apply.\n`,
+    );
     return 0;
   } finally {
     await client.end();

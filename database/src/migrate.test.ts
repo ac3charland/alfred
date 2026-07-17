@@ -1,11 +1,13 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
   MIGRATIONS_DIR,
+  formatAppliedLine,
   migrationFiles,
   parseEnvValue,
+  recordApplied,
   resolveMigration,
   sorted,
 } from './migrate.ts';
@@ -96,5 +98,37 @@ describe('parseEnvValue', () => {
 
   it('returns undefined for a missing key', () => {
     expect(parseEnvValue('FOO=bar', 'DATABASE_URL')).toBeUndefined();
+  });
+});
+
+describe('formatAppliedLine', () => {
+  it('emits an ISO timestamp, host, and basename, tab-separated and newline-terminated', () => {
+    const line = formatAppliedLine(
+      new Date('2026-07-17T12:00:00.000Z'),
+      'db.example.supabase.co',
+      '/repo/database/migrations/0017_grant_v_code_stories.sql',
+    );
+    expect(line).toBe(
+      '2026-07-17T12:00:00.000Z\tdb.example.supabase.co\t0017_grant_v_code_stories.sql\n',
+    );
+  });
+});
+
+describe('recordApplied', () => {
+  it('appends a ledger line, preserving prior entries', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'alfred-ledger-'));
+    const logPath = path.join(dir, 'migrations-applied.log');
+    try {
+      writeFileSync(logPath, '# header\n');
+      recordApplied(new Date('2026-07-17T12:00:00.000Z'), 'host-a', '0016_x.sql', logPath);
+      recordApplied(new Date('2026-07-18T09:30:00.000Z'), 'host-a', '0017_y.sql', logPath);
+      expect(readFileSync(logPath, 'utf8')).toBe(
+        '# header\n' +
+          '2026-07-17T12:00:00.000Z\thost-a\t0016_x.sql\n' +
+          '2026-07-18T09:30:00.000Z\thost-a\t0017_y.sql\n',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
