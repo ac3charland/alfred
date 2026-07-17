@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/auth/require-user';
 import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { getFolders } from '@/lib/data/folders';
 import { getAllItems } from '@/lib/data/items';
+import { getInstanceConfig } from '@/lib/instance';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
@@ -34,8 +35,9 @@ import { ToastProvider } from '@/lib/stores/toast-store';
  * in both modules survives a switch.
  */
 export default async function ShellLayout({ children }: { children: React.ReactNode }) {
-  // Real auth gate — redirects to /login if no session.
-  await requireUser();
+  // Real auth gate — redirects to /login if no session. The user (its email) feeds the
+  // instance menu header, so keep the return rather than discarding it.
+  const user = await requireUser();
 
   const [folders, items, projects, epics, stories] = await Promise.all([
     getFolders(),
@@ -63,7 +65,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                   >
                     <CodeFilterProvider>
                       <SearchProvider>
-                        <AppShell>{children}</AppShell>
+                        <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
+                          {children}
+                        </AppShell>
                       </SearchProvider>
                     </CodeFilterProvider>
                   </CodeProvider>

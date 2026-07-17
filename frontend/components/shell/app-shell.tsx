@@ -1,14 +1,14 @@
 import * as React from 'react';
 
-import { Button } from '@/components/atoms/button';
 import { CommandPalette } from '@/components/shell/command-palette';
+import { InstanceMenu } from '@/components/shell/instance-menu';
 import { SearchBox } from '@/components/shell/search-box';
 import { ShellMobileNav } from '@/components/shell/shell-mobile-nav';
 import { ShellNav } from '@/components/shell/shell-nav';
 import { ToastViewport } from '@/components/shell/toast-viewport';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
-import { signOut } from '@/lib/auth/actions';
+import type { InstanceConfig } from '@/lib/instance';
 
 import { shellRootClass } from './app-shell.styles';
 
@@ -16,7 +16,7 @@ import { shellRootClass } from './app-shell.styles';
  * Shared application shell (Server Component) mounted once by the `(shell)` layout that
  * seeds every module's providers. It owns the chrome that's identical across modules: the
  * `alfred` wordmark (links to `/` capture, unchanged), the Tasks ⇄ Code switcher, the
- * sign-out form, and the desktop sidebar / mobile header frame.
+ * top-right instance/account menu, and the desktop sidebar / mobile header frame.
  *
  * `ToastProvider` is mounted by the `(shell)` layout (it must wrap `CodeProvider`), so this
  * shell only renders the `ToastViewport` — both live under that provider.
@@ -28,7 +28,17 @@ import { shellRootClass } from './app-shell.styles';
  * The switcher sits beneath the wordmark in the desktop sidebar's top-left square; on
  * mobile it moves into the hamburger, so the header bar there is just hamburger + wordmark.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  email,
+  instance,
+}: {
+  children: React.ReactNode;
+  /** The signed-in user's email, shown in the instance menu header. */
+  email: string | null;
+  /** This deployment's instance identity, driving the top-right switcher. */
+  instance: InstanceConfig;
+}) {
   return (
     <>
       <div className={shellRootClass}>
@@ -78,17 +88,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SearchBox placement="desktop" className="w-full max-w-md" />
             </div>
 
-            {/* Sign out */}
-            <form action={signOut}>
-              <Button
-                type="submit"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                Sign out
-              </Button>
-            </form>
+            {/* Instance / account menu (label + Open-other + Sign out) */}
+            <InstanceMenu email={email} instance={instance} />
           </header>
 
           {/* Page content */}

@@ -1,14 +1,11 @@
 ---
 name: gh-cli
 description: >
-  Covers using the GitHub CLI (`gh`): opening or editing pull requests and
-  issues, setting/updating a PR or issue body or title, commenting, and scripting GitHub via
-  `gh api`. Use when running `gh pr create`, `gh pr edit`, `gh pr comment`, `gh issue edit`, or `gh api` —
-  "update the PR description", "edit the PR body", or a `gh` command that errors with a
-  GraphQL / "Projects (classic)" message. Also covers editing PRs through the GitHub MCP
-  server in the web/remote environment (no `gh`) — e.g. a demo/body link rendering as inline
-  code because the URL got backtick-wrapped. This is where the project's commit → push → PR
-  workflow (see CLAUDE.md) meets the GitHub CLI.
+  Using the GitHub CLI (`gh`) and `gh api`: creating, editing, and commenting on pull requests and
+  issues, updating a PR or issue body or title, scripting GitHub over REST, and inspecting a repo's
+  webhooks. Use when running `gh pr`, `gh issue`, or `gh api`; when a `gh` body/title edit fails
+  with a "Projects (classic)" GraphQL error; when editing a PR through the GitHub MCP server in the
+  web/remote environment (no `gh`); or when diagnosing a repo's failing webhook deliveries.
 ---
 
 # gh CLI skill (alfred)
@@ -93,6 +90,39 @@ without issue: `gh pr create`, `gh pr comment`, `gh pr view --json <fields>`,
 of a PR/issue body or title trips the Projects-classic GraphQL error — there's no need to
 abandon `gh` porcelain everywhere.
 
+## Inspecting & copying repo webhooks (`gh api .../hooks`)
+
+The Software-Factory Worker turns `pull_request` webhooks into ticket-state transitions, so
+**a repo with no (or a failing) webhook is silent — its tickets never advance and nothing
+errors.** That's the first thing to check when a whole repo's factory tickets are stuck (see
+the repo-setup README's troubleshooting note for the factory framing). Reading hooks needs
+**repo admin** (an `admin:repo_hook`-scoped token):
+
+```bash
+# Does one point at the Worker's /github/webhook? `last_response.code` 401 = wrong secret/HMAC;
+# a 2xx with no recent delivery = the event type isn't subscribed.
+gh api repos/<owner>/<repo>/hooks \
+  --jq '.[] | {id, url: .config.url, events, active, last_response}'
+
+# Per-delivery history for one hook (id from above) — action, status, timing.
+gh api repos/<owner>/<repo>/hooks/<hook_id>/deliveries \
+  --jq '.[] | {id, event, action, status_code, delivered_at}'
+```
+
+**Copying a hook to another repo — the secret does NOT come with it.** The API never returns
+`config.secret` (write-only), so you can't read it off the source; recreate on the destination
+and **re-supply the shared secret yourself**, or every delivery fails HMAC (a 401 at the
+Worker). Send the body as JSON to sidestep nested-field quoting:
+
+```bash
+gh api -X POST repos/<dest-owner>/<dest-repo>/hooks --input - <<'JSON'
+{ "name": "web", "active": true, "events": ["pull_request"],
+  "config": { "url": "https://<worker-host>/github/webhook",
+              "content_type": "json",
+              "secret": "<the shared GITHUB_WEBHOOK_SECRET>" } }
+JSON
+```
+
 ## Quick reference
 
 | Task | Reliable command |
@@ -103,3 +133,4 @@ abandon `gh` porcelain everywhere.
 | Add a PR comment | `gh pr comment <n> --body-file note.md` (porcelain OK) |
 | Read a PR body back | `gh pr view <n> --json body --jq '.body'` |
 | Get owner/repo for a path | `gh repo view --json nameWithOwner --jq '.nameWithOwner'` |
+| List a repo's webhooks | `gh api repos/<o>/<r>/hooks --jq '.[] \| {url: .config.url, events, last_response}'` |
