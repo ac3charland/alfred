@@ -96,3 +96,71 @@ package closes it with two checks:
   static linter; its `sequence-grant` rule fails the build if a `create sequence` lacks a
   `grant usage … to anon, authenticated, service_role`. Cheap, no container; catches the
   grant class at commit time. See the `migration-lint` skill.
+
+## Daily backups
+
+The Supabase **free tier** has **no automated backups**, and the migrations only rebuild the
+*schema* — the **data** is unrecoverable if lost. A scheduled GitHub Actions workflow
+(`.github/workflows/backup.yml`) closes that gap: nightly it takes a full logical dump, proves the
+dump restores, and uploads it to a Cloudflare **R2** bucket. All the real logic lives in the
+testable `src/backup.ts` (the YAML is not linted or type-checked, so it stays thin); its pure
+helpers are unit-tested in `src/backup.test.ts`.
+
+What the nightly does, in this fixed order (a dump that fails to restore never uploads or counts as
+green — a red run triggers GitHub's failed-scheduled-run email to the repo owner):
+
+1. **Dump** — `supabase db dump` writes schema only by default, so the script takes a schema dump
+   plus a `--data-only` dump and concatenates them into one gzip: a **full logical dump** that
+   restores standalone with no migration replay. A size floor rejects an empty/truncated dump.
+2. **Verify** — restores the fresh dump into a throwaway Postgres (an Actions service container),
+   seeding the Supabase-provided roles/publication first (as the integration suite does), and
+   asserts the core tables (`items`, `folders`, `projects`) are present.
+3. **Upload** — copies the SAME verified gzip to two keys: `daily/YYYY-MM-DD.sql.gz` (one slot per
+   UTC day; a same-day re-run overwrites) and `monthly/YYYY-MM.sql.gz` (one slot per month; each
+   daily run overwrites it, so it settles to the month's last good backup and freezes when the month
+   rolls over).
+
+Run it locally / as a restore drill with `npm run backup -w database` (needs the same env vars).
+
+### One-time setup (do this once; the workflow is inert until it's done)
+
+1. **Create the R2 bucket** and add **two object-lifecycle rules**:
+   - expire objects under the **`daily/`** prefix after **~35 days** (holds ~30 rolling dailies);
+   - **no expiry** rule for the **`monthly/`** prefix (monthly snapshots kept indefinitely).
+2. **Create an R2 API token** (S3 credentials) scoped to that bucket → gives an access key id, a
+   secret access key, and the S3 endpoint URL (`https://<account-id>.r2.cloudflarestorage.com`).
+3. **Add these GitHub Actions secrets** (repo → Settings → Secrets and variables → Actions — never
+   commit or echo them):
+
+   | Secret | Value |
+   | --- | --- |
+   | `SUPABASE_DB_URL` | Supabase **Session pooler** URI (IPv4, port **5432**) — see the callout below |
+   | `R2_ACCESS_KEY_ID` | R2 token's access key id |
+   | `R2_SECRET_ACCESS_KEY` | R2 token's secret access key |
+   | `R2_BUCKET` | the bucket name |
+   | `R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
+
+4. **Trigger the workflow once** (Actions → Backup → *Run workflow*) to prove the path end-to-end.
+
+> **`SUPABASE_DB_URL` — the non-obvious one.** It MUST be the **Session pooler** connection (IPv4,
+> port **5432**). NOT the Direct connection (IPv6-only on the free tier → the IPv4-only Actions
+> runner can't reach it) and NOT the Transaction pooler (port 6543 → doesn't support `pg_dump`).
+> Session mode is the one that is both reachable and `pg_dump`-compatible.
+
+### Restoring from a backup
+
+Download the object you want from R2 — a recent day from `daily/`, or an older month from
+`monthly/` — then load it into the target database. Because the dump is **full** (schema + data),
+this reconstructs everything with no migration replay:
+
+```bash
+# List what's available, then pull one object (uses the R2 S3 credentials + endpoint):
+aws s3 ls "s3://$R2_BUCKET/daily/" --endpoint-url "$R2_ENDPOINT"
+aws s3 cp "s3://$R2_BUCKET/daily/2026-07-17.sql.gz" ./restore.sql.gz --endpoint-url "$R2_ENDPOINT"
+
+# Restore into the target database (a fresh Supabase project, or a local cluster):
+gunzip -c ./restore.sql.gz | psql "<target-db-url>"
+```
+
+The nightly verify step exercises exactly this restore path every day, so the procedure is
+continuously proven, not aspirational.
