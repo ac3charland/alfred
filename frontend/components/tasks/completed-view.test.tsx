@@ -40,6 +40,7 @@ const makeItem = (id: string, status: Item['status']): Item => ({
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  sort_order: 0,
 });
 
 describe('CompletedView', () => {

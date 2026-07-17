@@ -58,6 +58,7 @@ const BASE_NODE: ItemNode = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  sort_order: 0,
   children: [],
 };
 

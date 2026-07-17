@@ -15,6 +15,7 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     recurrence_series_id: null,
     intended_project_id: null,
     occurrence_index: null,
+    sort_order: 0,
     source_url: null,
     completed_at: null,
     created_at: '2025-01-01T00:00:00Z',
