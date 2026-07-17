@@ -28,6 +28,19 @@ discipline. The notes below are the human side of that contract.
 - Each instance also has its own Supabase URL, keys, and single auth user — provisioned per
   instance, never shared.
 
+## Shared engineering — apply every schema change to both
+
+Both instances run **identical code** from `main` (a push deploys both Vercel projects) and share
+**one** `database/migrations/` set — but each has its **own** Supabase database. So a schema change
+is only half-done when it lands in git: **every new migration must be applied to _both_ Supabase
+projects**, or the two instances drift and one will 500 on the un-migrated path. Call this out in
+any migration's rollout notes, and apply it to Personal and Work as part of shipping it.
+
+There is a single committed migration ledger (`database/migrations-applied.log`); it tracks the
+shared schema history, not per-instance applies (both pooler hosts are regional and
+indistinguishable in the log). Provisioning a brand-new instance replays the whole set out of band
+and is not recorded there.
+
 ## Offline / cached data
 
 - There is **no service worker or PWA offline cache today**, so nothing sensitive is persisted
