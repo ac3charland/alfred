@@ -37,6 +37,22 @@ create sequence real_seq;`;
     const stripped = stripNonCode("select 'it''s create sequence fake'; create sequence real_seq;");
     expect(parseSql(stripped).createdSequences).toEqual(['real_seq']);
   });
+
+  it('does not let an apostrophe in a line comment open a phantom string that swallows real SQL', () => {
+    // The ALF-124 detection miss: a `--` prose comment with an odd apostrophe count (here "story's")
+    // must not be read as an unterminated string that eats the following statement. Line comments
+    // are stripped in-context, so the create view after it is still seen.
+    const stripped = stripNonCode("-- bump the story's rank\ncreate view v_x as select 1;");
+    expect(parseSql(stripped).viewEvents.filter((event) => event.kind === 'create')).toEqual([
+      { kind: 'create', name: 'v_x', roles: [], offset: expect.any(Number) as number },
+    ]);
+  });
+
+  it('keeps a -- inside a string literal from being treated as a comment', () => {
+    // The mirror hazard the single-pass scanner also gets right: `--` inside a string is data.
+    const stripped = stripNonCode("select 'a -- b'; create sequence real_seq;");
+    expect(parseSql(stripped).createdSequences).toEqual(['real_seq']);
+  });
 });
 
 describe('normalizeName', () => {
@@ -90,6 +106,33 @@ describe('parseSql', () => {
     const { usageGrants } = parseSql('grant usage on sequence public."foo_seq" to authenticated;');
     expect(usageGrants.get('foo_seq')).toEqual(new Set(['authenticated']));
   });
+
+  it('records a bare create view as a create event', () => {
+    const { viewEvents } = parseSql('create view v_x with (security_invoker = true) as select 1;');
+    expect(viewEvents).toEqual([{ kind: 'create', name: 'v_x', roles: [], offset: 0 }]);
+  });
+
+  it('does not record a create-or-replace view as a create event', () => {
+    const { viewEvents } = parseSql('create or replace view v_x as select 1;');
+    expect(viewEvents.filter((event) => event.kind === 'create')).toEqual([]);
+  });
+
+  it('records a SELECT grant on a view, one grant event per listed object', () => {
+    const { viewEvents } = parseSql('grant select on task_items, v_code_stories to authenticated;');
+    const grants = viewEvents.filter((event) => event.kind === 'grant');
+    expect(grants.map((event) => event.name)).toEqual(['task_items', 'v_code_stories']);
+    expect(grants[0]?.roles).toEqual(['authenticated']);
+  });
+
+  it('does not treat a sequence grant as a view grant', () => {
+    const { viewEvents } = parseSql('grant usage on sequence foo_seq to anon;');
+    expect(viewEvents.filter((event) => event.kind === 'grant')).toEqual([]);
+  });
+
+  it('orders create and grant events by source offset', () => {
+    const { viewEvents } = parseSql('create view v_x as select 1; grant select on v_x to anon;');
+    expect(viewEvents.map((event) => event.kind)).toEqual(['create', 'grant']);
+  });
 });
 
 describe('gatherMigrations against the real migrations', () => {
@@ -98,6 +141,12 @@ describe('gatherMigrations against the real migrations', () => {
     const findings = lintMigrations(migrations).filter(
       (finding) => finding.rule === 'sequence-grant',
     );
+    expect(findings).toEqual([]);
+  });
+
+  it('returns no view-grant findings — every recreated view re-grants SELECT (0017 fixes 0014)', () => {
+    const migrations = gatherMigrations(DEFAULT_MIGRATIONS_DIR);
+    const findings = lintMigrations(migrations).filter((finding) => finding.rule === 'view-grant');
     expect(findings).toEqual([]);
   });
 });

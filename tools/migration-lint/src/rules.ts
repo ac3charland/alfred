@@ -55,7 +55,37 @@ const sequenceGrant: Rule = {
 };
 
 /**
+ * Every view brought back by a bare `create view` must (re-)grant SELECT to all the API roles.
+ * A `drop view` drops the view's privileges, and a bare `create view` (unlike `create or replace`,
+ * which preserves them) starts from none — so a widen-a-column drop/recreate that forgets to
+ * re-grant leaves a `security_invoker` view unreadable by `authenticated`, and every read fails
+ * with `permission denied for view …` → a 500. That is exactly the ALF-124 code-story 500 (0014
+ * dropped/recreated `v_code_stories` without re-granting; fixed in 0017). The grant must land at or
+ * after the recreate — {@link MigrationsContext.viewSelectGrants} already discards earlier grants —
+ * so a stale pre-drop grant can't mask the gap.
+ */
+const viewGrant: Rule = {
+  name: 'view-grant',
+  description:
+    'Every bare `create view` must re-grant SELECT to anon, authenticated, service_role.',
+  check(migrations) {
+    return migrations.createdViews.flatMap(({ name, file }) => {
+      const granted = migrations.viewSelectGrants.get(name);
+      const missing = REQUIRED_ROLES.filter((role) => !(granted?.has(role) ?? false));
+      if (missing.length === 0) return [];
+      return [
+        {
+          rule: 'view-grant',
+          severity: 'error' as const,
+          message: `view ${name} (created in ${file}) is missing SELECT grants for: ${missing.join(', ')}. A bare "create view" (and the "drop view" before it) drops the view's privileges; a security-invoker view then can't be read by the calling role and every query fails with "permission denied for view ${name}" (a 500). A prior grant from before the recreate does NOT count — Postgres dropped it. Fix: grant select on ${name} to anon, authenticated, service_role;`,
+        },
+      ];
+    });
+  },
+};
+
+/**
  * The active rule set, applied to the migrations directory in registration order.
  * This array is the extension point: append a {@link Rule} to lint something new.
  */
-export const rules: readonly Rule[] = [sequenceGrant];
+export const rules: readonly Rule[] = [sequenceGrant, viewGrant];
