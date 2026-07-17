@@ -115,9 +115,12 @@
       self-contained and restorable without replaying migrations. Migrations remain the
       <em>authoritative</em> schema; the dump is a self-sufficient recovery artifact, not a schema source.</dd>
     <dt>Retention</dt>
-    <dd><strong>Keep 30 daily dumps</strong>, enforced by an <strong>R2 object-lifecycle rule</strong>
-      (delete objects older than 30 days) — <em>not</em> scripted deletion. No weekly/monthly rollups in
-      v1 (deferred, §6).</dd>
+    <dd><strong>Two tiers, both by R2 object-lifecycle rule</strong> (not scripted deletion):
+      <strong>30 rolling dailies</strong> under a <code>daily/</code> prefix (expire after ~35 days),
+      plus <strong>monthly snapshots kept indefinitely</strong> under a <code>monthly/</code> prefix (no
+      expiry). Each run writes its dump to <em>both</em> a dated daily key and a year-month monthly key;
+      the monthly key overwrites within the month, so it settles to that month's <strong>last good
+      backup</strong> and freezes once the month rolls over (§4.2). No weekly rollups in v1 (deferred, §6).</dd>
     <dt>Encryption</dt>
     <dd><strong>R2 server-side encryption at rest</strong> (default, automatic) + TLS in transit. No
       client-side <code>gpg</code> in v1 — deferred as defense-in-depth (§6). Credentials never leave
@@ -179,10 +182,11 @@
     <path d="M385,60 L427,60" class="flow"/>
     <path d="M580,60 L607,60" class="flow"/>
 
-    <rect x="610" y="140" width="130" height="52" class="box"/>
-    <text x="624" y="162" class="lbl">lifecycle rule</text>
-    <text x="624" y="180" class="sub2">delete &gt; 30 days</text>
-    <path d="M675,90 L675,138" class="flow"/>
+    <rect x="600" y="130" width="150" height="70" class="box"/>
+    <text x="614" y="150" class="lbl">two prefixes:</text>
+    <text x="614" y="168" class="mono">daily/  → expire 35d</text>
+    <text x="614" y="186" class="mono">monthly/ → keep ∞</text>
+    <path d="M675,90 L675,128" class="flow"/>
 
     <text x="20" y="150" class="cap" style="font-weight:600">Secrets (GitHub → Actions):</text>
     <text x="20" y="170" class="mono">SUPABASE_DB_URL (session pooler, :5432)</text>
@@ -270,12 +274,16 @@ jobs:
 //            then query the restored DB and assert CORE TABLES EXIST and the dump is
 //            structurally sane — e.g. `items`, `folders`, `projects` are present. This catches a
 //            silently-truncated / unrestorable dump the same night.
-// 3. NAME +  object key = `$(date -u +%Y-%m-%d).sql.gz`  (UTC; one slot per day, idempotent —
-//    UPLOAD:  a same-day re-run overwrites, so a manual re-run never accumulates dupes).
-//            aws s3 cp backup.sql.gz "s3://$R2_BUCKET/&lt;key&gt;" --endpoint-url "$R2_ENDPOINT"
+// 3. NAME +  Upload the SAME verified gzip to TWO keys (UTC dates, read at runtime — not committed):
+//    UPLOAD:    • daily/$(date -u +%Y-%m-%d).sql.gz    — one slot per day; a same-day re-run
+//                 overwrites, so re-runs never accumulate dupes.
+//               • monthly/$(date -u +%Y-%m).sql.gz     — one slot per month; every daily run
+//                 overwrites it, so it settles to the month's LAST good backup, then freezes when
+//                 the month rolls over. Retention diverges purely by prefix lifecycle rule (§4.4).
+//            aws s3 cp backup.sql.gz "s3://$R2_BUCKET/&lt;key&gt;" --endpoint-url "$R2_ENDPOINT"  (×2)
 //
-// Ordering is load-bearing: VERIFY must pass BEFORE UPLOAD. Any failure → non-zero exit → red run
-// → GitHub emails the owner. The date is read at runtime (Actions clock), not committed.</code></pre>
+// Ordering is load-bearing: VERIFY must pass BEFORE either UPLOAD. Any failure → non-zero exit →
+// red run → GitHub emails the owner. Dates are read at runtime (Actions clock), not committed.</code></pre>
   </div>
   <p class="small">
     <strong>Why a script, not inline bash:</strong> §4.3 can unit-test the pure parts (object-key
@@ -291,9 +299,10 @@ jobs:
     <tbody>
       <tr>
         <td><code>database/src/backup.test.ts</code><br><span class="small">unit (fast tier)</span></td>
-        <td>Pure helpers extracted from <code>backup.ts</code>: the UTC object-key formatter
-          (<code>2026-07-17.sql.gz</code> for a given date), the empty/undersized-dump guard, and the
-          core-table assertion list. No network, no real Postgres — mirrors how
+        <td>Pure helpers extracted from <code>backup.ts</code>: the UTC object-key formatters — daily
+          (<code>daily/2026-07-17.sql.gz</code>) and monthly (<code>monthly/2026-07.sql.gz</code>) for a
+          given date — the empty/undersized-dump guard, and the core-table assertion list. No network,
+          no real Postgres — mirrors how
           <code>migrate.test.ts</code> unit-tests pure logic while the integration harness owns the
           live-DB path.</td>
       </tr>
@@ -318,7 +327,9 @@ jobs:
     <code>docs/ops/</code> note):
   </p>
   <ol>
-    <li>Create the R2 bucket; add a <strong>lifecycle rule</strong>: delete objects older than 30 days.</li>
+    <li>Create the R2 bucket; add <strong>two lifecycle rules</strong>: expire objects under the
+      <code>daily/</code> prefix after ~35 days; add <strong>no expiry rule</strong> for the
+      <code>monthly/</code> prefix (kept indefinitely).</li>
     <li>Create an R2 API token (S3 credentials) scoped to that bucket.</li>
     <li>Add GitHub Actions secrets: <code>SUPABASE_DB_URL</code> (<strong>session pooler</strong>,
       §4.1 callout), <code>R2_ACCESS_KEY_ID</code>, <code>R2_SECRET_ACCESS_KEY</code>,
@@ -329,7 +340,8 @@ jobs:
   <h2>5 · Restore procedure (documented, for a real recovery)</h2>
   <p>
     A backup nobody knows how to restore is worthless. The runbook (§4.4 doc) states the recovery path
-    explicitly: download the chosen dated object from R2, then
+    explicitly: download the chosen object from R2 — a recent day from <code>daily/</code>, or an older
+    month from <code>monthly/</code> — then
     <code>gunzip -c &lt;date&gt;.sql.gz | psql "&lt;target-db-url&gt;"</code>. Because the dump is
     <em>full</em> (§2), this reconstructs schema + data with no migration replay. The nightly verify
     step (§4.2) exercises exactly this restore path every day, so the documented procedure is
@@ -338,8 +350,9 @@ jobs:
 
   <h2>6 · Out of scope / open questions</h2>
   <ul>
-    <li><strong>Weekly / monthly rollups</strong> — v1 keeps 30 rolling dailies only. Longer-horizon
-      retention (e.g. keep 1/week for a year) is a later lifecycle-rule addition.</li>
+    <li><strong>Weekly rollups</strong> — v1 keeps 30 rolling dailies plus indefinite monthlies (§2).
+      An intermediate weekly tier (e.g. keep 1/week for a year) is a later lifecycle-rule addition if
+      the daily→monthly granularity gap ever matters.</li>
     <li><strong>Client-side encryption (<code>gpg</code> before upload)</strong> — deferred
       defense-in-depth. R2 server-side encryption covers at-rest in v1.</li>
     <li><strong>Telegram failure alerting</strong> — the notifications-spike Telegram channel is the
@@ -365,14 +378,16 @@ jobs:
     <li>Before upload, the dump is <strong>restored into a throwaway Postgres</strong> and asserted to
       contain the core tables (<code>items</code>, <code>folders</code>, <code>projects</code>); a dump
       that fails to restore <strong>fails the run</strong> and is <strong>not</strong> uploaded.</li>
-    <li>On success the object lands in R2 keyed <code>YYYY-MM-DD.sql.gz</code> (UTC); a same-day re-run
-      overwrites rather than duplicates.</li>
-    <li>Retention is an <strong>R2 lifecycle rule</strong> (delete &gt; 30 days), documented in the
-      runbook — no deletion scripting in the workflow.</li>
+    <li>On success the verified dump lands in R2 under <strong>two keys</strong>:
+      <code>daily/YYYY-MM-DD.sql.gz</code> and <code>monthly/YYYY-MM.sql.gz</code> (UTC); a same-day
+      re-run overwrites rather than duplicates, and the monthly key overwrites within its month.</li>
+    <li>Retention is <strong>two R2 lifecycle rules</strong> — <code>daily/</code> expires after ~35
+      days, <code>monthly/</code> has no expiry (kept indefinitely) — documented in the runbook, with no
+      deletion scripting in the workflow.</li>
     <li>Credentials are read <strong>only</strong> from GitHub Actions secrets; none are committed or
       echoed to logs.</li>
-    <li><code>database/src/backup.test.ts</code> unit-tests the pure helpers (object-key formatting,
-      empty-dump guard, core-table list) and passes in <code>check:fast</code>.</li>
+    <li><code>database/src/backup.test.ts</code> unit-tests the pure helpers (daily <em>and</em> monthly
+      object-key formatting, empty-dump guard, core-table list) and passes in <code>check:fast</code>.</li>
     <li>A one-time setup + restore runbook is committed (in <code>database/README.md</code> or
       <code>docs/ops/</code>), including the exact restore command.</li>
     <li>A <code>workflow_dispatch</code> run against real secrets is green and the dated object is
