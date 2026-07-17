@@ -8,6 +8,8 @@ function makeMigrations(overrides: Partial<MigrationsContext> = {}): MigrationsC
     displayPath: 'database/migrations',
     createdSequences: [],
     sequenceUsageGrants: new Map(),
+    createdViews: [],
+    viewSelectGrants: new Map(),
     ...overrides,
   };
 }
@@ -15,10 +17,14 @@ function makeMigrations(overrides: Partial<MigrationsContext> = {}): MigrationsC
 /**
  * Build a {@link MigrationsContext} from inline SQL strings (one per "file"), running the
  * real {@link parseSql} over each so tests exercise the parser end-to-end without touching disk.
+ * Object insertion order stands in for filename order — the same order-aware view replay that
+ * {@link gatherMigrations} performs, so a grant before a recreate is correctly discarded.
  */
 function migrationsFromSql(files: Record<string, string>): MigrationsContext {
   const createdSequences: { name: string; file: string }[] = [];
   const sequenceUsageGrants = new Map<string, Set<string>>();
+  const viewCreateFile = new Map<string, string>();
+  const viewSelectGrants = new Map<string, Set<string>>();
   for (const [file, sql] of Object.entries(files)) {
     const parsed = parseSql(sql);
     for (const name of parsed.createdSequences) createdSequences.push({ name, file });
@@ -27,8 +33,19 @@ function migrationsFromSql(files: Record<string, string>): MigrationsContext {
       for (const role of roles) existing.add(role);
       sequenceUsageGrants.set(sequence, existing);
     }
+    for (const event of parsed.viewEvents) {
+      if (event.kind === 'create') {
+        viewCreateFile.set(event.name, file);
+        viewSelectGrants.set(event.name, new Set());
+      } else {
+        const existing = viewSelectGrants.get(event.name) ?? new Set<string>();
+        for (const role of event.roles) existing.add(role);
+        viewSelectGrants.set(event.name, existing);
+      }
+    }
   }
-  return makeMigrations({ createdSequences, sequenceUsageGrants });
+  const createdViews = [...viewCreateFile].map(([name, file]) => ({ name, file }));
+  return makeMigrations({ createdSequences, sequenceUsageGrants, createdViews, viewSelectGrants });
 }
 
 function findingsFor(
@@ -108,9 +125,106 @@ describe('sequence-grant', () => {
   });
 });
 
+describe('view-grant', () => {
+  it('passes when there are no created views', () => {
+    expect(findingsFor('view-grant', makeMigrations())).toHaveLength(0);
+  });
+
+  it('passes when a bare create view is granted SELECT to all three roles in the same file', () => {
+    expect(
+      findingsFor(
+        'view-grant',
+        migrationsFromSql({
+          '0001.sql':
+            'create view v_x as select 1; grant select on v_x to anon, authenticated, service_role;',
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('errors when a bare create view is never granted SELECT', () => {
+    const [finding] = findingsFor(
+      'view-grant',
+      migrationsFromSql({ '0001.sql': 'create view v_x as select 1;' }),
+    );
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('v_x');
+    expect(finding?.message).toContain('0001.sql');
+    expect(finding?.message).toContain('permission denied for view v_x');
+    expect(finding?.message).toContain('grant select on v_x to anon, authenticated, service_role;');
+  });
+
+  it('does NOT count a grant from before a drop/recreate — Postgres dropped it (the ALF-124 bug)', () => {
+    // 0001 creates and grants; 0002 drops and bare-recreates without re-granting. The recreated
+    // view has no privileges even though a grant appears earlier in the migration chain.
+    const [finding] = findingsFor(
+      'view-grant',
+      migrationsFromSql({
+        '0001.sql':
+          'create view v_x as select 1; grant select on v_x to anon, authenticated, service_role;',
+        '0002.sql': 'drop view v_x; create view v_x as select 2;',
+      }),
+    );
+    expect(finding?.severity).toBe('error');
+    expect(finding?.message).toContain('v_x');
+    expect(finding?.message).toContain('0002.sql');
+    expect(finding?.message).toContain('anon, authenticated, service_role');
+  });
+
+  it('passes when a drop/recreate re-grants SELECT to all three roles', () => {
+    expect(
+      findingsFor(
+        'view-grant',
+        migrationsFromSql({
+          '0001.sql':
+            'create view v_x as select 1; grant select on v_x to anon, authenticated, service_role;',
+          '0002.sql':
+            'drop view v_x; create view v_x as select 2; grant select on v_x to anon, authenticated, service_role;',
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('ignores a create or replace view (it preserves the existing grants)', () => {
+    // Only a bare `create view` resets privileges; a replace keeps them, so the original grant holds.
+    expect(
+      findingsFor(
+        'view-grant',
+        migrationsFromSql({
+          '0001.sql':
+            'create view v_x as select 1; grant select on v_x to anon, authenticated, service_role;',
+          '0002.sql': 'create or replace view v_x as select 2;',
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('reports only the roles still missing after a partial grant', () => {
+    const [finding] = findingsFor(
+      'view-grant',
+      migrationsFromSql({
+        '0001.sql': 'create view v_x as select 1; grant select on v_x to authenticated;',
+      }),
+    );
+    expect(finding?.message).toContain('missing SELECT grants for: anon, service_role.');
+  });
+
+  it('treats an ALL grant as covering SELECT for every role', () => {
+    expect(
+      findingsFor(
+        'view-grant',
+        migrationsFromSql({
+          '0001.sql':
+            'create view v_x as select 1; grant all on v_x to anon, authenticated, service_role;',
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+});
+
 describe('lint orchestration', () => {
-  it('registers the one rule', () => {
-    expect(rules.map((rule) => rule.name)).toEqual(['sequence-grant']);
+  it('registers the rules', () => {
+    expect(rules.map((rule) => rule.name)).toEqual(['sequence-grant', 'view-grant']);
   });
 
   it('tallies errors and warnings', () => {
