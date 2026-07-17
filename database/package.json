@@ -7,6 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "migrate": "node src/apply.ts",
+    "backup": "node src/backup.ts",
     "lint": "eslint --fix --cache --cache-location .eslintcache .",
     "format": "prettier --write --cache .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
