@@ -1,0 +1,60 @@
+name: Backup
+
+on:
+  schedule:
+    # Daily at 08:17 UTC ≈ 03:17 CDT / 02:17 CST — overnight for the single user. The :17 minute
+    # dodges top-of-hour scheduler contention; GitHub may still delay a scheduled run under load,
+    # which is fine for a daily backup.
+    - cron: '17 8 * * *'
+  workflow_dispatch: {} # manual runs / restore drills
+
+# The job only reads the repo; everything external goes through secrets.
+permissions:
+  contents: read
+
+# Only one backup at a time; a slow run must not overlap the next day's.
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    services:
+      # Throwaway Postgres for the in-job restore check (VERIFY_DB_URL points here).
+      verify-db:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - uses: supabase/setup-cli@v1
+        # Pin the same token-free `--db-url` CLI the database README relies on; the latest CLI
+        # requires an access token for `--db-url`, which the scheduled job has no way to supply.
+        with:
+          version: 2.95.0
+      - name: Dump, verify-restore, and upload to R2
+        run: node database/src/backup.ts
+        env:
+          # Session-mode pooler (IPv4, port 5432) — NOT the direct connection (IPv6-only on the free
+          # tier, unreachable from IPv4 runners) and NOT the transaction pooler (6543, no pg_dump).
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          VERIFY_DB_URL: postgres://postgres:postgres@localhost:5432/postgres
+          # R2's S3-compatible credentials, read by the aws CLI from the standard AWS_* names.
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
