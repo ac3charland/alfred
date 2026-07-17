@@ -20,6 +20,7 @@ import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { PriorityChip } from '@/components/tasks/priority-chip';
 import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
+import { SubtaskGap } from '@/components/tasks/subtask-gap';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
@@ -29,6 +30,7 @@ import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
+import { useSubtaskReorder } from '@/lib/hooks/use-subtask-reorder';
 import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
 import { isPriorityLevel } from '@/lib/priority';
 import { parseRecurrenceRule } from '@/lib/recurrence';
@@ -86,6 +88,14 @@ interface TaskRowProperties {
    * the row becomes a selection checkbox. Children are never selectable, so they pass false.
    */
   selectable?: boolean;
+  /**
+   * ALF-117: the reorder gap that sits ABOVE this row (straddling its top edge). Set by a parent
+   * for each of its active subtask rows in an active view; absent on roots and in the Completed
+   * view (no reorder gesture there).
+   */
+  reorderGap?: { parentId: string; index: number } | undefined;
+  /** ALF-117: the reorder gap BELOW this row — set only on the LAST active sibling of a group. */
+  reorderGapBelow?: { parentId: string; index: number } | undefined;
 }
 
 /**
@@ -111,6 +121,8 @@ export function TaskRow({
   depth = 0,
   isCompletedView = false,
   selectable = false,
+  reorderGap,
+  reorderGapBelow,
 }: TaskRowProperties) {
   const folders = useFolders();
   const allTasks = useTasks();
@@ -468,6 +480,15 @@ export function TaskRow({
     expandSubtasks(node.id);
   };
 
+  // "Move up" / "Move down" (ALF-117) — the keyboard/screen-reader-friendly reorder path.
+  const {
+    isActiveSubtask,
+    canMoveUp,
+    canMoveDown,
+    moveUp: handleMoveUp,
+    moveDown: handleMoveDown,
+  } = useSubtaskReorder(node, isCompleted, isCompletedView);
+
   // Select mode: the whole row is one toggle button — its leading control becomes a selection
   // checkbox and clicking anywhere flips membership. Inline edit, expand, the drag handle and
   // the "More actions" menu are all suppressed so the row has exactly one meaning, and the
@@ -507,7 +528,32 @@ export function TaskRow({
   }
 
   return (
-    <li ref={rowContainerRef} className="group/row list-none">
+    <li
+      ref={rowContainerRef}
+      className={cn(
+        'group/row list-none',
+        (reorderGap !== undefined || reorderGapBelow !== undefined) && 'relative',
+      )}
+    >
+      {/* Reorder gap strips (ALF-117) — absolutely positioned over this row's top edge (and the
+        bottom edge, on the last active sibling), so they add no flow height and never reflow the
+        list. Only present on active subtask rows in an active view. */}
+      {reorderGap && (
+        <SubtaskGap
+          parentId={reorderGap.parentId}
+          index={reorderGap.index}
+          depth={depth}
+          edge="top"
+        />
+      )}
+      {reorderGapBelow && (
+        <SubtaskGap
+          parentId={reorderGapBelow.parentId}
+          index={reorderGapBelow.index}
+          depth={depth}
+          edge="bottom"
+        />
+      )}
       {/* A freshly-captured row grows in from 0 height and slides down from above, pushing
           the rows below it down (ALF-20). For an existing row this wrapper is a no-op
           passthrough. */}
@@ -820,6 +866,10 @@ export function TaskRow({
                   isCode={isCode}
                   canConvert={canConvert}
                   folders={folders}
+                  canMoveUp={isActiveSubtask && canMoveUp}
+                  canMoveDown={isActiveSubtask && canMoveDown}
+                  onMoveUp={handleMoveUp}
+                  onMoveDown={handleMoveDown}
                   onAddSubtask={handleOpenAddSubtask}
                   onOpenDetails={() => {
                     toggleDetails(node.id);
@@ -904,15 +954,29 @@ export function TaskRow({
                     </li>
                   )}
 
-                  {/* Active child rows */}
-                  {activeChildren.map((child) => (
-                    <TaskRow
-                      key={child.id}
-                      node={child}
-                      depth={depth + 1}
-                      isCompletedView={isCompletedView}
-                    />
-                  ))}
+                  {/* Active child rows. In an active view each row hosts reorder gap strips
+                    (ALF-117): one above every row and one below the last (one more gap than rows),
+                    so a subtask can be dragged into the slot between siblings. The gaps live inside
+                    each row's <li> (see reorderGap below), NOT as list items here, so they don't
+                    disturb the mobile divide-y separators. The Completed view offers no reordering,
+                    so it passes no gaps. */}
+                  {activeChildren.map((child, index) =>
+                    isCompletedView ? (
+                      <TaskRow key={child.id} node={child} depth={depth + 1} isCompletedView />
+                    ) : (
+                      <TaskRow
+                        key={child.id}
+                        node={child}
+                        depth={depth + 1}
+                        reorderGap={{ parentId: node.id, index }}
+                        reorderGapBelow={
+                          index === activeChildren.length - 1
+                            ? { parentId: node.id, index: index + 1 }
+                            : undefined
+                        }
+                      />
+                    ),
+                  )}
 
                   {/* Completed children — revealed by the toggle with the same grid-rows
                     animation as the parent's own expand. The toggle sits at the bottom. */}

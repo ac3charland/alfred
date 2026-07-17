@@ -150,6 +150,9 @@ export const updateItemSchema = z.object({
   // Nullable so a PATCH can clear the rule (`{ recurrence: null }`).
   recurrence: recurrenceSchema.nullable().optional(),
   priority: taskPriority.optional(),
+  // Manual subtask rank (ALF-117): a bare double is fine — it's a fractional position, not a
+  // bounded value. The reorder gesture PATCHes it (often alongside a re-parent's parent_id).
+  sort_order: z.number().optional(),
 });
 
 export type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>;

@@ -38,9 +38,18 @@ function nextCreatedAt(): string {
   return new Date(Date.UTC(2024, 0, 1, 0, 0, sequence)).toISOString();
 }
 
-/** Reset the timestamp sequence — call before building a fresh seed. */
+let sortSequence = 0;
+/** Increasing `sort_order` so a subtask group defaults to creation order (ALF-117), matching the
+ *  DB backfill (row_number over created_at). Deterministic and overridable per item. */
+function nextSortOrder(): number {
+  sortSequence += 1;
+  return sortSequence;
+}
+
+/** Reset the timestamp + sort_order sequences — call before building a fresh seed. */
 export function resetSeedClock(): void {
   sequence = 0;
+  sortSequence = 0;
 }
 
 export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folder {
@@ -70,6 +79,7 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     priority: overrides.priority ?? null,
     recurrence: overrides.recurrence ?? null,
     recurrence_series_id: overrides.recurrence_series_id ?? null,
+    sort_order: overrides.sort_order ?? nextSortOrder(),
   };
 }
 
