@@ -15,10 +15,15 @@ discipline. The notes below are the human side of that contract.
   Logging into an instance on a device fetches, renders, and caches that instance's data on it —
   so opening the Work instance on a personal machine puts work data on a personal machine, the
   exact thing the two-deployment model exists to prevent.
-- **The Open-other link is a convenience, not a bypass of that rule.** It exists so that, on a
-  device where you legitimately use both, moving between brains is one click. It does not carry a
-  session across — you log in to the other instance separately — and it does not make it safe to
-  open the work brain on a personal device.
+- **The Open-other link is a convenience, not a bypass of that rule.** It does not carry a session
+  across — you log in to the other instance separately — and it does not make it safe to open the
+  work brain on a personal device.
+- **The switch link is configured one-directional, on purpose.** Only the **Work** instance sets
+  `NEXT_PUBLIC_OTHER_INSTANCE_URL` (→ it shows *Open Personal*); the **Personal** instance leaves it
+  unset, so it never offers an *Open Work* link on any device. The app can't detect a cross-origin
+  Work login without reintroducing the coupling this model avoids, so this deployment-config choice
+  is how "no path to Work from a personal device" is enforced — the Work URL simply never appears on
+  the Personal site.
 
 ## Per-instance secrets
 
