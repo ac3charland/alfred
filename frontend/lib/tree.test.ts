@@ -1,6 +1,7 @@
 import type { Item } from '@/lib/types';
 
 import {
+  OPTIMISTIC_APPEND_SORT_ORDER,
   TEMP_ID_PREFIX,
   buildTree,
   collectSubtree,
@@ -46,19 +47,24 @@ const BASE: Item = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  sort_order: 0,
 };
 
 function item(overrides: Partial<Item>): Item {
   return { ...BASE, ...overrides };
 }
 
-/** A flat list: two roots; root-1 has two children, the first with a grandchild. */
+/**
+ * A flat list: two roots; root-1 has two children, the first with a grandchild. Children carry
+ * explicit sort_order (c-2 before c-1) — buildTree orders a subtask group by sort_order asc now,
+ * not created_at (ALF-117).
+ */
 function flatItems(): Item[] {
   return [
     item({ id: 'item-1', created_at: '2025-01-05T00:00:00Z' }),
-    item({ id: 'c-1', parent_id: 'item-1', created_at: '2025-01-03T00:00:00Z' }),
-    item({ id: 'c-2', parent_id: 'item-1', created_at: '2025-01-02T00:00:00Z' }),
-    item({ id: 'g-1', parent_id: 'c-1', created_at: '2025-01-04T00:00:00Z' }),
+    item({ id: 'c-1', parent_id: 'item-1', created_at: '2025-01-03T00:00:00Z', sort_order: 20 }),
+    item({ id: 'c-2', parent_id: 'item-1', created_at: '2025-01-02T00:00:00Z', sort_order: 10 }),
+    item({ id: 'g-1', parent_id: 'c-1', created_at: '2025-01-04T00:00:00Z', sort_order: 30 }),
     item({ id: 'item-2', created_at: '2025-01-01T00:00:00Z' }),
   ];
 }
@@ -69,7 +75,7 @@ describe('buildTree', () => {
     // Roots are newest-first: item-1 (01-05) before item-2 (01-01).
     expect(forest.map((n) => n.id)).toStrictEqual(['item-1', 'item-2']);
     const root = forest[0];
-    // Subtasks render oldest-first (chronological): c-2 (01-02) before c-1 (01-03).
+    // Subtasks render by sort_order ascending: c-2 (10) before c-1 (20).
     expect(root?.children.map((c) => c.id)).toStrictEqual(['c-2', 'c-1']);
     const childWithGrandchild = root?.children.find((c) => c.id === 'c-1');
     expect(childWithGrandchild?.children.map((g) => g.id)).toStrictEqual(['g-1']);
@@ -83,15 +89,26 @@ describe('buildTree', () => {
     expect(forest.map((n) => n.id)).toStrictEqual(['new', 'old']);
   });
 
-  it('sorts subtask siblings by created_at ascending (chronological)', () => {
-    // A single parent with two subtasks captured out of order — the children sort
-    // oldest-first regardless of input order (ALF-43).
+  it('sorts subtask siblings by sort_order ascending (lower = earlier)', () => {
+    // A single parent with two subtasks whose sort_order disagrees with input order — the
+    // children sort by sort_order regardless of the array order (ALF-117). created_at no longer
+    // orders a subtask group, so the lower-sort_order child leads even when captured later.
     const forest = buildTree([
       item({ id: 'parent', created_at: '2025-01-10T00:00:00Z' }),
-      item({ id: 'newer-child', parent_id: 'parent', created_at: '2025-06-01T00:00:00Z' }),
-      item({ id: 'older-child', parent_id: 'parent', created_at: '2025-01-01T00:00:00Z' }),
+      item({
+        id: 'later-slot',
+        parent_id: 'parent',
+        created_at: '2025-01-01T00:00:00Z',
+        sort_order: 20,
+      }),
+      item({
+        id: 'earlier-slot',
+        parent_id: 'parent',
+        created_at: '2025-06-01T00:00:00Z',
+        sort_order: 10,
+      }),
     ]);
-    expect(forest[0]?.children.map((c) => c.id)).toStrictEqual(['older-child', 'newer-child']);
+    expect(forest[0]?.children.map((c) => c.id)).toStrictEqual(['earlier-slot', 'later-slot']);
   });
 
   it('keeps stable order when two root items share the same created_at', () => {
@@ -108,13 +125,13 @@ describe('buildTree', () => {
     expect(forest.map((n) => n.id)).toStrictEqual(['first', 'second']);
   });
 
-  it('keeps stable order when two subtasks share the same created_at', () => {
-    // The ascending child path uses a `>` (strict) comparison, so equal-timestamp
-    // siblings keep insertion order; a `>=` mutant would swap them.
+  it('keeps stable order when two subtasks share the same sort_order', () => {
+    // Equal ranks never displace an earlier sibling (stableSorted), so insertion order holds —
+    // a subtraction comparator returning 0 for equal ranks must not reorder them.
     const forest = buildTree([
       item({ id: 'parent', created_at: '2025-01-10T00:00:00Z' }),
-      item({ id: 'child-a', parent_id: 'parent', created_at: '2025-03-01T00:00:00Z' }),
-      item({ id: 'child-b', parent_id: 'parent', created_at: '2025-03-01T00:00:00Z' }),
+      item({ id: 'child-a', parent_id: 'parent', sort_order: 5 }),
+      item({ id: 'child-b', parent_id: 'parent', sort_order: 5 }),
     ]);
     expect(forest[0]?.children.map((c) => c.id)).toStrictEqual(['child-a', 'child-b']);
   });
@@ -294,6 +311,13 @@ describe('makeOptimisticItem', () => {
     expect(it.folder_id).toBe('f-1');
     expect(it.parent_id).toBe('p-1');
     expect(it.due_date).toBe('2026-01-01');
+  });
+
+  it('defaults sort_order to the large append value, and carries an explicit one through', () => {
+    // No sortOrder arg → a large value so a lone optimistic row lands at the bottom of its group.
+    expect(makeOptimisticItem({ text: 't' }).sort_order).toBe(OPTIMISTIC_APPEND_SORT_ORDER);
+    // The caller passes "bottom of the parent's current children"; it rides straight through.
+    expect(makeOptimisticItem({ text: 't' }, 42).sort_order).toBe(42);
   });
 
   it('preserves notes and source_url when provided', () => {

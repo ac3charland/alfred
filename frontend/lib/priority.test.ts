@@ -33,6 +33,7 @@ function item(priority: TaskPriority | null, due_date: string | null): Item {
     recurrence: null,
     recurrence_series_id: null,
     intended_project_id: null,
+    sort_order: 0,
   };
 }
 
@@ -195,7 +196,7 @@ function node(id: string, overrides: Partial<Item> = {}, children: ItemNode[] = 
 }
 
 describe('sortNodesByPriority', () => {
-  it('ranks each sibling group by priority → due → created_at at every level', () => {
+  it('ranks the top-level nodes by priority → due → created_at, leaving each subtree untouched', () => {
     const tree = [
       node('none'),
       node('low', { priority: 'low' }),
@@ -205,8 +206,11 @@ describe('sortNodesByPriority', () => {
       ]),
     ];
     const sorted = sortNodesByPriority(tree);
+    // Roots ranked high → low → none.
     expect(sorted.map((n) => n.id)).toStrictEqual(['high', 'low', 'none']);
-    expect(sorted[0]?.children.map((c) => c.id)).toStrictEqual(['c-high', 'c-low']);
+    // Children keep the order buildTree gave them (their sort_order) — priority no longer reorders
+    // a subtask group (ALF-117), so the higher-priority child does NOT float to the top here.
+    expect(sorted[0]?.children.map((c) => c.id)).toStrictEqual(['c-low', 'c-high']);
   });
 
   it('ranks by each node OWN priority (no subtree rollup) — a Low parent stays below Medium', () => {
