@@ -44,28 +44,37 @@ export function buildTree(items: Item[]): ItemNode[] {
     }
   }
 
-  // Roots are newest-first (the capture-first inbox); subtasks read chronologically.
-  return sortForest(roots, false);
+  // Roots stay newest-first (the capture-first inbox, created_at desc); a subtask group follows
+  // its manual sort_order, which is seeded from created_at so it reads unchanged until a user
+  // reorders (a root and its subtree use different comparators — see below).
+  return sortRoots(roots);
 }
 
 /**
- * Sort a copy of `nodes` by created_at, then recursively sort their children.
- *
- * Roots sort **descending** (newest first — the capture-first list shows the latest
- * thing you captured at the top). Subtasks sort **ascending** (chronological, oldest
- * first) at every depth, so a decomposed task reads top-to-bottom in the order its
- * steps were added (ALF-43) — hence children always recurse with `ascending = true`.
+ * Sort root nodes **descending** by created_at (newest first — the capture-first list shows the
+ * latest thing you captured at the top), then order each root's subtree by its subtasks'
+ * `sort_order`.
  */
-function sortForest(nodes: ItemNode[], ascending: boolean): ItemNode[] {
-  // Stable sort by created_at (see lib/sort `stableSorted`): unicorn/no-array-sort forbids the
-  // mutating .sort() and toSorted() needs ES2023 while tsconfig targets ES2022. Equal timestamps
-  // never displace an earlier sibling. ISO timestamps compare lexicographically, so a raw string
-  // compare gives the chronological order — negated for the descending (newest-first) roots.
-  const sorted = stableSorted(nodes, (a, b) => {
-    const order = a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
-    return ascending ? order : -order;
-  });
-  return sorted.map((node): ItemNode => ({ ...node, children: sortForest(node.children, true) }));
+function sortRoots(nodes: ItemNode[]): ItemNode[] {
+  // Stable sort (see lib/sort `stableSorted`): unicorn/no-array-sort forbids the mutating .sort()
+  // and toSorted() needs ES2023 while tsconfig targets ES2022. Equal timestamps never displace an
+  // earlier sibling. ISO timestamps compare lexicographically — negated here for newest-first.
+  const sorted = stableSorted(nodes, (a, b) =>
+    a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
+  );
+  return sorted.map((node): ItemNode => ({ ...node, children: sortChildren(node.children) }));
+}
+
+/**
+ * Sort a subtask group **ascending** by `sort_order` (lower = earlier), recursing at every depth.
+ * `sort_order` is seeded from created_at (ALF-117), so an un-reordered group still reads oldest-
+ * first — the same order as before manual ordering existed; a drag is the only thing that
+ * diverges it. Equal ranks keep insertion order (stableSorted), never displacing an earlier
+ * sibling.
+ */
+function sortChildren(nodes: ItemNode[]): ItemNode[] {
+  const sorted = stableSorted(nodes, (a, b) => a.sort_order - b.sort_order);
+  return sorted.map((node): ItemNode => ({ ...node, children: sortChildren(node.children) }));
 }
 
 /**
@@ -177,11 +186,27 @@ export function isTempId(id: string): boolean {
 }
 
 /**
+ * Optimistic `sort_order` for a new row whose sibling group is empty: a large value so the row
+ * lands at the bottom of its group until the server's real (sequence) value reconciles in. The
+ * server appends every fresh row at the bottom by allocating the next sequence value, so a lone
+ * placeholder sorts the same way. Callers with siblings pass `max(sibling sort_order) + 1`.
+ */
+export const OPTIMISTIC_APPEND_SORT_ORDER = Number.MAX_SAFE_INTEGER;
+
+/**
  * Build a complete optimistic Item from a capture input, mirroring the server's
  * POST /api/items defaults (title falls back to text, raw_capture to text, status
  * active). The id is a temp id (see isTempId) until reconciled with the server row.
+ *
+ * `sortOrder` places the row within its parent's current children — the caller passes
+ * "bottom of the group" (`max(sibling sort_order) + 1`); it defaults to a large append value for
+ * a group with no siblings. The server's real sequence value replaces it on reconcile. Roots set
+ * it too (harmless — roots ignore sort_order; they order by created_at / priority).
  */
-export function makeOptimisticItem(input: CreateItemInput): Item {
+export function makeOptimisticItem(
+  input: CreateItemInput,
+  sortOrder: number = OPTIMISTIC_APPEND_SORT_ORDER,
+): Item {
   return {
     id: `${TEMP_ID_PREFIX}${crypto.randomUUID()}`,
     title: input.title ?? input.text ?? '',
@@ -200,6 +225,7 @@ export function makeOptimisticItem(input: CreateItemInput): Item {
     priority: null,
     recurrence: null,
     recurrence_series_id: null,
+    sort_order: sortOrder,
   };
 }
 
