@@ -5,6 +5,8 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 ## Layout
 
 - `migrations/` — ordered SQL migrations (`NNNN_name.sql`). Applied in filename order.
+- `migrations-applied.log` — committed paper trail of which migrations reached a live DB (appended
+  by `npm run migrate`; commit it). Guards against the migration-drift class that caused ALF-119/124.
 - `seed.sql` — tiny development dataset (folders + a nested subtask tree).
 
 ## Schema summary
@@ -58,6 +60,8 @@ is unreliable for multi-statement DDL.
 # Apply ONE migration to the live DB by number — reads DATABASE_URL from frontend/.env.local,
 # prints the target host, and confirms before writing (add --yes to skip the prompt):
 npm run migrate -w database 11           # accepts 11, 0011, or 0011_task_items_view_columns.sql
+# On success it appends a line to database/migrations-applied.log (the paper trail of what reached
+# a live DB) — COMMIT that change so the branch records the apply.
 
 # Or drive any file directly with psql (schema bootstrap, seed, a hand-picked migration):
 psql "$DATABASE_URL" -f database/migrations/0001_initial_schema.sql

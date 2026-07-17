@@ -1,0 +1,4 @@
+# alfred — applied-migrations ledger. Paper trail of migrations that reached a live database.
+# `npm run migrate -w database <N>` appends one line per successful apply; commit the change.
+# Format (tab-separated): <ISO-8601 timestamp>	<db host>	<migration filename>
+# Entries before this ledger existed are not recorded here — it starts empty from ALF-124 onward.

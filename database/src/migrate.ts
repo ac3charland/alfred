@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +9,38 @@ export const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../migrations',
 );
+
+/**
+ * The committed, append-only ledger of migrations applied to a live database. `npm run migrate`
+ * appends one line here after each successful apply, and the applier reminds you to commit it — so
+ * the branch carries a paper trail of what actually reached production. This is the human-facing
+ * counterpart to querying the DB: it exists precisely because "0014 was never applied to prod"
+ * (ALF-119) and the ALF-124 grant drift were both invisible until they 500'd. Reviewed in git, it
+ * makes "which migrations has this database seen?" answerable from the repo.
+ */
+export const APPLIED_LOG_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../migrations-applied.log',
+);
+
+/**
+ * Format one ledger line: an ISO timestamp, the target host, and the migration filename, tab-
+ * separated (so it greps and sorts cleanly). Only the host is recorded from the connection string —
+ * never the user or password.
+ */
+export function formatAppliedLine(when: Date, host: string, migrationFile: string): string {
+  return `${when.toISOString()}\t${host}\t${path.basename(migrationFile)}\n`;
+}
+
+/** Append a formatted ledger line to the applied-migrations log (creating it if absent). */
+export function recordApplied(
+  when: Date,
+  host: string,
+  migrationFile: string,
+  logPath: string = APPLIED_LOG_PATH,
+): void {
+  appendFileSync(logPath, formatAppliedLine(when, host, migrationFile));
+}
 
 /**
  * Lexicographic sort returning a copy. `unicorn/no-array-sort` forbids the mutating
