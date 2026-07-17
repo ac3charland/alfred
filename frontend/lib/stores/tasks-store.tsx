@@ -113,6 +113,15 @@ interface TaskActions {
    * No-ops on any move that would create a cycle (onto itself or one of its descendants).
    */
   reparentTask: (id: string, newParentId: string | null) => Promise<void>;
+  /**
+   * Reorder a subtask within its parent, or move it into another parent's slot (ALF-117).
+   * `sortOrder` is the fractional rank of the target gap (the midpoint of its neighbours). When
+   * `parentId` differs from the row's current parent it ALSO re-parents — adopting the new parent's
+   * folder and cascading `folder_id` to the subtree, reusing reparentTask's cycle guard + folder
+   * cascade. A same-parent reorder is a pure `sort_order` patch with no descendant writes. Rolls
+   * the row(s) back and toasts on failure, like every other optimistic mutation.
+   */
+  reorderSubtask: (id: string, args: { parentId: string; sortOrder: number }) => Promise<void>;
   /** Delete a task and its subtree (the DB cascades the children). */
   deleteTask: (id: string) => Promise<void>;
   /**
@@ -173,6 +182,31 @@ async function applyBulkSettled(
   return failedIds;
 }
 
+/** The folder cascade for nesting a dragged row (and its subtree) under a new parent. */
+interface FolderCascade {
+  /** The folder bucket the subtree adopts (the new parent's `folder_id`). */
+  newFolderId: string | null;
+  /** Whether the folder actually changed — a same-folder move writes no descendant rows. */
+  folderChanged: boolean;
+  /** The dragged row's descendant ids (excludes the row itself) — the rows to re-file. */
+  descendantIds: string[];
+}
+
+/**
+ * Compute the folder cascade for nesting `dragged` (with its subtree `affected`) under
+ * `newParent`. A subtree shares one folder bucket, so a cross-folder move drags the whole subtree
+ * along; a same-folder move is a pure parent/order change with no descendant writes. Shared by
+ * `reparentTask` and `reorderSubtask` so the cascade logic lives in one place.
+ */
+function folderCascade(dragged: Item, affected: Item[], newParent: Item): FolderCascade {
+  const newFolderId = newParent.folder_id;
+  return {
+    newFolderId,
+    folderChanged: dragged.folder_id !== newFolderId,
+    descendantIds: affected.filter((item) => item.id !== dragged.id).map((item) => item.id),
+  };
+}
+
 const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
   Item[],
   TaskActions
@@ -225,7 +259,15 @@ export function TasksProvider({
           ...(input.intendedProjectId != null &&
             parentId === undefined && { intended_project_id: input.intendedProjectId }),
         };
-        const optimistic = makeOptimisticItem(createInput);
+        // Append at the bottom of the parent's current children (ALF-117): one past the largest
+        // sibling sort_order — or the largest across all rows when the group is empty, so it still
+        // lands last. The server's real (sequence) value replaces this on reconcile.
+        const siblingParentId = createInput.parent_id ?? null;
+        const siblings = tasksRef.current.filter((item) => item.parent_id === siblingParentId);
+        const pool = siblings.length > 0 ? siblings : tasksRef.current;
+        const sortOrder =
+          pool.length > 0 ? Math.max(...pool.map((item) => item.sort_order)) + 1 : 1;
+        const optimistic = makeOptimisticItem(createInput, sortOrder);
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({ type: 'insert', item: optimistic });
@@ -494,11 +536,13 @@ export function TasksProvider({
         const newParent = current.find((item) => item.id === newParentId);
         // The target may have just been deleted/reconciled away.
         if (newParent === undefined) return;
-        const newFolderId = newParent.folder_id;
         // Moving under a parent in a different folder drags the whole subtree's folder
         // along; staying in the same folder is a pure parent change (no descendant writes).
-        const folderChanged = dragged.folder_id !== newFolderId;
-        const descendantIds = affected.filter((item) => item.id !== id).map((item) => item.id);
+        const { newFolderId, folderChanged, descendantIds } = folderCascade(
+          dragged,
+          affected,
+          newParent,
+        );
 
         await runOptimisticMutation({
           optimistic: () => {
@@ -514,6 +558,82 @@ export function TasksProvider({
           apiCall: () => {
             const requests = [
               api.updateItem(id, { parent_id: newParentId, folder_id: newFolderId }),
+            ];
+            if (folderChanged) {
+              for (const descId of descendantIds) {
+                requests.push(api.updateItem(descId, { folder_id: newFolderId }));
+              }
+            }
+            return Promise.all(requests);
+          },
+          reconcile: (rows) => {
+            dispatch({ type: 'upsert', items: rows });
+          },
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't move task");
+          },
+        });
+      },
+      async reorderSubtask(id, { parentId, sortOrder }) {
+        const current = tasksRef.current;
+        const dragged = current.find((item) => item.id === id);
+        if (dragged === undefined) return;
+        const affected = collectSubtree(current, id);
+        // A subtask may never land in a gap among its own descendants (nor "under itself") — the
+        // same cycle guard reparentTask uses. `affected` is the row plus every descendant, so one
+        // membership check rejects both.
+        if (affected.some((item) => item.id === parentId)) return;
+
+        // Same parent → a pure fractional-rank patch, no folder/descendant writes.
+        if (dragged.parent_id === parentId) {
+          await runOptimisticMutation({
+            optimistic: () => {
+              dispatch({ type: 'patch', ids: [id], patch: { sort_order: sortOrder } });
+            },
+            apiCall: () => api.updateItem(id, { sort_order: sortOrder }),
+            reconcile: (saved) => {
+              dispatch({ type: 'upsert', items: [saved] });
+            },
+            rollback: () => {
+              dispatch({ type: 'upsert', items: [dragged] });
+            },
+            onError: () => {
+              showToastRef.current("Couldn't move task");
+            },
+          });
+          return;
+        }
+
+        // Cross-parent → re-parent + folder cascade (as reparentTask) AND set the new slot's rank.
+        const newParent = current.find((item) => item.id === parentId);
+        if (newParent === undefined) return;
+        const { newFolderId, folderChanged, descendantIds } = folderCascade(
+          dragged,
+          affected,
+          newParent,
+        );
+
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({
+              type: 'patch',
+              ids: [id],
+              patch: { parent_id: parentId, folder_id: newFolderId, sort_order: sortOrder },
+            });
+            if (folderChanged && descendantIds.length > 0) {
+              dispatch({ type: 'patch', ids: descendantIds, patch: { folder_id: newFolderId } });
+            }
+          },
+          apiCall: () => {
+            const requests = [
+              api.updateItem(id, {
+                parent_id: parentId,
+                folder_id: newFolderId,
+                sort_order: sortOrder,
+              }),
             ];
             if (folderChanged) {
               for (const descId of descendantIds) {
