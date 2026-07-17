@@ -252,9 +252,13 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
         {children}
         <DragOverlay>
           {activeTask ? (
-            // Mirror the row's layout so title text aligns with the dimmed in-place row, eliminating the jump on drag cancel.
+            // Mirror the row's layout so title text aligns with the dimmed in-place row,
+            // eliminating the jump on drag cancel. A translucent, NEUTRAL-outlined ghost (backdrop
+            // blur keeps its own text legible): teal is reserved for the drop signal — the reorder
+            // insertion line and the re-parent target highlight — so it isn't lost against a teal
+            // ghost, and the rows the ghost passes over stay visible through it.
             <div
-              className="flex items-center gap-2 rounded-sm bg-surface py-2 pr-2 text-sm ring-1 ring-accent-teal shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]"
+              className="flex items-center gap-2 rounded-sm bg-surface/70 py-2 pr-2 text-sm ring-1 ring-inset ring-border backdrop-blur-sm shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]"
               style={{ paddingLeft: `${String(activeDragDepth * 1.25 + 0.75)}rem` }}
             >
               <div aria-hidden="true" className="h-5 w-5 shrink-0" />
