@@ -38,11 +38,12 @@ interface TaskRowMenuProperties {
 
 /**
  * The task row's "More actions" dropdown. **"Open details" leads** (teal, the primary action —
- * it's how the detail is reached now). On mobile a task row follows it with **"Add subtask"** —
- * the inline "+" button is desktop-only now, so the affordance collapses into this menu below
- * `md` (ALF-118); the item is `md:hidden` so desktop, where the "+" is still shown, never doubles
- * up. Then the item-type entries (Classify-as while unclassified, Send/Convert for code vs task),
- * Move-to (when folders exist), and finally a destructive Delete below a divider. The per-field
+ * it's how the detail is reached now), then a divider. On mobile a task row shows **"Add
+ * subtask"** just below that divider — the inline "+" button is desktop-only now, so the
+ * affordance collapses into this menu below `md` (ALF-118); the item is `md:hidden` so desktop,
+ * where the "+" is still shown, never doubles up. Then the item-type entries (Classify-as while
+ * unclassified, Send/Convert for code vs task), Move-to (when folders exist), and finally a
+ * destructive Delete below a divider. The per-field
  * "Set due date / Set priority / Add notes" entries are gone — those edits live on the detail
  * panel's auto-saving chips and notes. Every conditional stays encapsulated here so the row body
  * composes the menu without restating them.
@@ -79,18 +80,18 @@ export function TaskRowMenu({
           Open details
         </DropdownMenuItem>
 
+        <DropdownMenuSeparator />
+
         {/* Add subtask — mobile-only (`md:hidden`): the inline "+" button is hidden below `md`,
-            so its affordance lives here, directly beneath "Open details" (ALF-118). Task rows
-            only, since subtasks nest only under tasks. No separator of its own — it joins the
-            leading group, and on desktop (`md:hidden`) it simply vanishes, leaving today's menu. */}
+            so its affordance lives here, below the divider under "Open details" (ALF-118). Task
+            rows only, since subtasks nest only under tasks. On desktop (`md:hidden`) it simply
+            vanishes, leaving today's menu (Open details → divider → the item-type / move group). */}
         {isTask && (
           <DropdownMenuItem className="md:hidden" onSelect={onAddSubtask}>
             <Plus size={16} className="text-muted-foreground" />
             Add subtask
           </DropdownMenuItem>
         )}
-
-        <DropdownMenuSeparator />
 
         {/* Classify as ▸ — inbox triage, offered only while the row is still unclassified.
             Picking a type flips item_type (the optimistic classifyItem action). */}

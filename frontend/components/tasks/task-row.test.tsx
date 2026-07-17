@@ -2600,9 +2600,10 @@ describe('TaskRow — row badges (ALF-67)', () => {
 
 describe('TaskRow — ⋯ menu (ALF-67)', () => {
   it('leads a task menu with "Open details", then the mobile-only "Add subtask"', async () => {
-    // On a task row "Open details" leads (the primary action), with the `md:hidden` "Add
-    // subtask" affordance directly beneath it (ALF-118). In jsdom the `md:hidden` item is still
-    // present (media queries don't apply), so it's index 1 right after "Open details" at index 0.
+    // On a task row "Open details" leads (the primary action); below the divider the `md:hidden`
+    // "Add subtask" affordance is the next item (ALF-118). Separators aren't menuitems, so among
+    // the menuitems "Add subtask" is index 1 right after "Open details" at index 0 (jsdom keeps
+    // the `md:hidden` item present since media queries don't apply).
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
     await user.click(screen.getByRole('button', { name: /more actions/i }));
