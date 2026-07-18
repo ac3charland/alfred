@@ -40,23 +40,45 @@ export function utcMonthStamp(date: Date): string {
   return `${String(date.getUTCFullYear())}-${pad2(date.getUTCMonth() + 1)}`;
 }
 
-/** R2 object key for the day's rolling slot; a same-day re-run overwrites rather than duplicates. */
-export function dailyKey(date: Date): string {
-  return `daily/${utcDateStamp(date)}.sql.gz`;
+/**
+ * Validate the instance name that partitions the R2 keys (e.g. `personal`, `work`). alfred runs as
+ * two physically-isolated instances, each its own Supabase database, so every key carries the
+ * instance it came from. The name lands inside an object-key path, so it's held to a strict lowercase
+ * token — no slashes, dots, or surprises that could reshape the key.
+ */
+export function assertInstanceName(instance: string): void {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(instance)) {
+    throw new Error(
+      `invalid INSTANCE name "${instance}" — expected a lowercase token like "personal" or "work"`,
+    );
+  }
 }
 
 /**
- * R2 object key for the month's snapshot slot. Every daily run overwrites it, so it settles to the
- * month's last good backup and freezes once the month rolls over — the retention split is purely by
- * prefix lifecycle rule (daily/ expires, monthly/ is kept), not by scripted deletion here.
+ * R2 object key for an instance's daily rolling slot; a same-day re-run overwrites rather than
+ * duplicates. The instance sits UNDER the `daily/` tier so the one lifecycle rule that expires
+ * `daily/` covers every instance at once.
  */
-export function monthlyKey(date: Date): string {
-  return `monthly/${utcMonthStamp(date)}.sql.gz`;
+export function dailyKey(instance: string, date: Date): string {
+  return `daily/${instance}/${utcDateStamp(date)}.sql.gz`;
 }
 
-/** Both keys the one verified dump is uploaded to for a given run. */
-export function backupKeys(date: Date): { readonly daily: string; readonly monthly: string } {
-  return { daily: dailyKey(date), monthly: monthlyKey(date) };
+/**
+ * R2 object key for an instance's monthly snapshot slot. Every daily run overwrites it, so it settles
+ * to the month's last good backup and freezes once the month rolls over — the retention split is
+ * purely by the top-level prefix lifecycle rule (daily/ expires, monthly/ is kept), not by scripted
+ * deletion here, and the instance segment leaves that rule instance-agnostic.
+ */
+export function monthlyKey(instance: string, date: Date): string {
+  return `monthly/${instance}/${utcMonthStamp(date)}.sql.gz`;
+}
+
+/** Both keys the one verified dump is uploaded to for a given instance's run. */
+export function backupKeys(
+  instance: string,
+  date: Date,
+): { readonly daily: string; readonly monthly: string } {
+  return { daily: dailyKey(instance, date), monthly: monthlyKey(instance, date) };
 }
 
 /** Throw if a dump file is implausibly small (empty or truncated) — never verify or upload it. */
@@ -130,16 +152,20 @@ async function presentPublicTables(client: InstanceType<typeof Client>): Promise
  *  2. VERIFY: restore into a throwaway Postgres (the Actions service container) — seeding the
  *             Supabase-provided roles/publication first, exactly as the integration suite does, so the
  *             dump's GRANTs and policies apply — then assert the core tables are present.
- *  3. UPLOAD: copy the SAME verified gzip to both the daily and monthly keys.
+ *  3. UPLOAD: copy the SAME verified gzip to both the instance's daily and monthly keys.
  *
- * Any failed step or assertion exits non-zero → red run → GitHub emails the repo owner.
+ * Runs for ONE instance (`INSTANCE`, e.g. `personal` / `work`); the workflow fans out over the
+ * instances so each isolated Supabase database is dumped in its own job. Any failed step or
+ * assertion exits non-zero → red run → GitHub emails the repo owner.
  */
 async function main(): Promise<number> {
-  const keys = backupKeys(new Date());
+  const instance = requireEnv('INSTANCE');
+  assertInstanceName(instance);
   requireEnv('SUPABASE_DB_URL');
   const verifyUrl = requireEnv('VERIFY_DB_URL');
   requireEnv('R2_BUCKET');
   requireEnv('R2_ENDPOINT');
+  const keys = backupKeys(instance, new Date());
 
   const work = mkdtempSync(path.join(tmpdir(), 'alfred-backup-'));
   const schemaPath = path.join(work, 'schema.sql');
@@ -147,7 +173,7 @@ async function main(): Promise<number> {
   const gzPath = path.join(work, 'backup.sql.gz');
 
   try {
-    log('› dumping database (full logical dump: schema + data)…');
+    log(`› [${instance}] dumping database (full logical dump: schema + data)…`);
     run(`supabase db dump --db-url "$SUPABASE_DB_URL" -f ${schemaPath}`);
     run(`supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f ${dataPath}`);
     run(`cat ${schemaPath} ${dataPath} | gzip -c > ${gzPath}`);
@@ -155,7 +181,7 @@ async function main(): Promise<number> {
     assertDumpSize(size);
     log(`  dump ok — ${String(size)} bytes gzipped`);
 
-    log('› verifying restore into throwaway Postgres…');
+    log(`› [${instance}] verifying restore into throwaway Postgres…`);
     const client = new Client({ connectionString: verifyUrl });
     await client.connect();
     try {
@@ -178,7 +204,7 @@ async function main(): Promise<number> {
     }
     log('  verify ok — core tables present');
 
-    log('› uploading verified dump to R2…');
+    log(`› [${instance}] uploading verified dump to R2…`);
     for (const key of [keys.daily, keys.monthly]) {
       run(`aws s3 cp ${gzPath} "s3://$R2_BUCKET/${key}" --endpoint-url "$R2_ENDPOINT"`);
       log(`  uploaded ${key}`);

@@ -3,6 +3,7 @@ import {
   MIN_DUMP_BYTES,
   assertCoreTables,
   assertDumpSize,
+  assertInstanceName,
   backupKeys,
   dailyKey,
   missingCoreTables,
@@ -33,19 +34,47 @@ describe('utcMonthStamp', () => {
 describe('dailyKey / monthlyKey / backupKeys', () => {
   const when = new Date('2026-07-17T08:17:00.000Z');
 
-  it('builds the daily rolling-slot key under the daily/ prefix', () => {
-    expect(dailyKey(when)).toBe('daily/2026-07-17.sql.gz');
+  it('nests the instance under the daily/ tier so one lifecycle rule covers every instance', () => {
+    expect(dailyKey('personal', when)).toBe('daily/personal/2026-07-17.sql.gz');
+    expect(dailyKey('work', when)).toBe('daily/work/2026-07-17.sql.gz');
   });
 
-  it('builds the monthly snapshot key under the monthly/ prefix', () => {
-    expect(monthlyKey(when)).toBe('monthly/2026-07.sql.gz');
+  it('nests the instance under the monthly/ tier', () => {
+    expect(monthlyKey('personal', when)).toBe('monthly/personal/2026-07.sql.gz');
+    expect(monthlyKey('work', when)).toBe('monthly/work/2026-07.sql.gz');
   });
 
-  it('returns both keys for a run so one verified dump lands in two slots', () => {
-    expect(backupKeys(when)).toStrictEqual({
-      daily: 'daily/2026-07-17.sql.gz',
-      monthly: 'monthly/2026-07.sql.gz',
+  it('returns both keys for an instance so one verified dump lands in two slots', () => {
+    expect(backupKeys('work', when)).toStrictEqual({
+      daily: 'daily/work/2026-07-17.sql.gz',
+      monthly: 'monthly/work/2026-07.sql.gz',
     });
+  });
+});
+
+describe('assertInstanceName', () => {
+  it('accepts lowercase instance tokens', () => {
+    expect(() => {
+      assertInstanceName('personal');
+    }).not.toThrow();
+    expect(() => {
+      assertInstanceName('work');
+    }).not.toThrow();
+    expect(() => {
+      assertInstanceName('staging-2');
+    }).not.toThrow();
+  });
+
+  it('rejects a name that could reshape the object key or is empty', () => {
+    expect(() => {
+      assertInstanceName('');
+    }).toThrow(/invalid INSTANCE/);
+    expect(() => {
+      assertInstanceName('work/../personal');
+    }).toThrow(/invalid INSTANCE/);
+    expect(() => {
+      assertInstanceName('Personal');
+    }).toThrow(/invalid INSTANCE/);
   });
 });
 
