@@ -55,6 +55,8 @@ describe('resolveReorder', () => {
     const result = resolveReorder({
       draggedId: 'd',
       draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'task',
       draggedSortOrder: 5, // currently the first child
       gapParentId: 'p',
       orderedSiblings: [
@@ -73,6 +75,8 @@ describe('resolveReorder', () => {
     const result = resolveReorder({
       draggedId: 'd',
       draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'task',
       draggedSortOrder: 15,
       gapParentId: 'p',
       orderedSiblings: [
@@ -89,6 +93,8 @@ describe('resolveReorder', () => {
     const result = resolveReorder({
       draggedId: 'd',
       draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'task',
       draggedSortOrder: 15,
       gapParentId: 'p',
       orderedSiblings: [
@@ -105,6 +111,8 @@ describe('resolveReorder', () => {
     const result = resolveReorder({
       draggedId: 'd',
       draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'task',
       draggedSortOrder: 5,
       gapParentId: 'other',
       orderedSiblings: [
@@ -121,6 +129,8 @@ describe('resolveReorder', () => {
     const result = resolveReorder({
       draggedId: 'd',
       draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'task',
       draggedSortOrder: 5,
       gapParentId: 'grandchild', // a descendant of d
       orderedSiblings: [],
@@ -130,10 +140,60 @@ describe('resolveReorder', () => {
     expect(result).toBeNull();
   });
 
+  it('rejects a task dropped into a code group (the families never mix)', () => {
+    const result = resolveReorder({
+      draggedId: 'd',
+      draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'code',
+      draggedSortOrder: 5,
+      gapParentId: 'code-parent',
+      orderedSiblings: [{ id: 'x', sortOrder: 10 }],
+      insertIndex: 0,
+      subtreeIds: subtree(['d']),
+    });
+    expect(result).toBeNull();
+  });
+
+  it('rejects a code child dropped into a task group', () => {
+    const result = resolveReorder({
+      draggedId: 'd',
+      draggedParentId: 'code-parent',
+      draggedItemType: 'code',
+      gapParentItemType: 'task',
+      draggedSortOrder: 5,
+      gapParentId: 'task-parent',
+      orderedSiblings: [{ id: 'x', sortOrder: 10 }],
+      insertIndex: 0,
+      subtreeIds: subtree(['d']),
+    });
+    expect(result).toBeNull();
+  });
+
+  it('allows a code child to reorder among code siblings (including another code root)', () => {
+    const result = resolveReorder({
+      draggedId: 'd',
+      draggedParentId: 'code-parent',
+      draggedItemType: 'code',
+      gapParentItemType: 'code',
+      draggedSortOrder: 5,
+      gapParentId: 'other-code-parent',
+      orderedSiblings: [
+        { id: 'x', sortOrder: 100 },
+        { id: 'y', sortOrder: 200 },
+      ],
+      insertIndex: 1,
+      subtreeIds: subtree(['d']),
+    });
+    expect(result).toStrictEqual({ itemId: 'd', parentId: 'other-code-parent', sortOrder: 150 });
+  });
+
   it('places into an empty target group at sort_order 0', () => {
     const result = resolveReorder({
       draggedId: 'd',
       draggedParentId: 'p',
+      draggedItemType: 'task',
+      gapParentItemType: 'task',
       draggedSortOrder: 5,
       gapParentId: 'empty',
       orderedSiblings: [],

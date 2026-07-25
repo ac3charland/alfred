@@ -22,6 +22,7 @@ import { stableSorted } from '@/lib/sort';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { collectSubtree, getItemDepth, isTempId } from '@/lib/tree';
+import type { Item } from '@/lib/types';
 
 /**
  * Shared state about the in-progress drag, read by every TaskRow so it can light up as a
@@ -34,6 +35,11 @@ interface TaskDragState {
   draggedSubtreeIds: ReadonlySet<string>;
   /** True while the dragged task is itself a child — only then can it be promoted to root. */
   activeDragIsChild: boolean;
+  /**
+   * The dragged item's type, or null when nothing is dragged — rows read it so the drop
+   * highlight refuses a cross-family re-parent (a code item never nests under a task).
+   */
+  activeDragItemType: Item['item_type'] | null;
 }
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
@@ -42,6 +48,7 @@ const TaskDragContext = React.createContext<TaskDragState>({
   activeDragId: null,
   draggedSubtreeIds: EMPTY_IDS,
   activeDragIsChild: false,
+  activeDragItemType: null,
 });
 
 /** Read the in-progress drag state. Safe outside a provider (unit tests, stories). */
@@ -166,9 +173,13 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
         .filter((item) => item.id !== draggedId)
         .map((item) => ({ id: item.id, sortOrder: item.sort_order }));
       const insertIndex = draggedPos !== -1 && gap.index > draggedPos ? gap.index - 1 : gap.index;
+      const gapParent = tasks.find((item) => item.id === gap.parentId);
+      if (gapParent === undefined) return;
       const reorder = resolveReorder({
         draggedId,
         draggedParentId: dragged.parent_id,
+        draggedItemType: dragged.item_type,
+        gapParentItemType: gapParent.item_type,
         draggedSortOrder: dragged.sort_order,
         gapParentId: gap.parentId,
         orderedSiblings,
@@ -220,9 +231,13 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
 
     // Every row is a registered droppable now (so `over` is never a stale target), which
     // means `over` may be a row that can't actually receive a child: a completed or temp
-    // (unreconciled) task. Bail on those before resolving the re-parent.
+    // (unreconciled) task, a non-task row (only tasks parent by drag — this also closes the
+    // hole where a task dropped on a code inbox row was silently re-parented under it, since
+    // only the drop highlight checked the type), or a dragged code item (the families never
+    // mix, and a code item never re-nests by drag). Bail before resolving the re-parent.
     const target = tasks.find((item) => item.id === overId);
     if (target === undefined || target.status === 'completed' || isTempId(target.id)) return;
+    if (target.item_type !== 'task' || dragged.item_type === 'code') return;
 
     const subtreeIds = new Set(collectSubtree(tasks, draggedId).map((item) => item.id));
     const reparent = resolveReparent(draggedId, overId, dragged.parent_id, subtreeIds);
@@ -238,7 +253,12 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <TaskDragContext.Provider
-      value={{ activeDragId: activeId, draggedSubtreeIds, activeDragIsChild }}
+      value={{
+        activeDragId: activeId,
+        draggedSubtreeIds,
+        activeDragIsChild,
+        activeDragItemType: activeTask?.item_type ?? null,
+      }}
     >
       <DndContext
         sensors={sensors}

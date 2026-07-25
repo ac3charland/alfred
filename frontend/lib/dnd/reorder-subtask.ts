@@ -9,6 +9,7 @@
  * siblings) into the reorder to run, or a no-op. Keeping it pure makes it unit-testable, since
  * jsdom can't measure layout to drive a real drag.
  */
+import type { Item } from '@/lib/types';
 
 /** Marks a droppable id as a reorder-gap strip (vs a row body or a folder/promote zone). */
 export const REORDER_GAP_PREFIX = '__reorder-gap__';
@@ -75,6 +76,10 @@ export interface ReorderSubtaskArgs {
   draggedId: string;
   /** The dragged subtask's current `parent_id` (null when it's currently a root). */
   draggedParentId: string | null;
+  /** The dragged subtask's item type — a drop never mixes the code and task families. */
+  draggedItemType: Item['item_type'];
+  /** The gap parent's item type — the family the slot belongs to. */
+  gapParentItemType: Item['item_type'];
   /** The dragged subtask's current `sort_order` — used to detect a no-op drop into its own slot. */
   draggedSortOrder: number;
   /** The parent whose gap was dropped into (a gap always sits under a real parent). */
@@ -104,6 +109,9 @@ export interface Reorder {
  * Resolve a drop into a reorder-gap into the reorder it should trigger, or `null` for a no-op.
  *
  * No-ops (return `null`):
+ * - a drop that would **mix the families** — a task (or unclassified) row into a code group,
+ *   or a code child into a task group (cross-parent reorder WITHIN the code family stays
+ *   allowed — dragging a story between two epics-in-progress is useful);
  * - a cross-parent drop into the dragged row's **own subtree** (`subtreeIds` — would create a
  *   cycle, mirroring `resolveReparent`);
  * - dropping back into the slot the row **already occupies** (same parent, same position).
@@ -112,12 +120,18 @@ export function resolveReorder(args: ReorderSubtaskArgs): Reorder | null {
   const {
     draggedId,
     draggedParentId,
+    draggedItemType,
+    gapParentItemType,
     draggedSortOrder,
     gapParentId,
     orderedSiblings,
     insertIndex,
     subtreeIds,
   } = args;
+
+  // The two subtask families never mix: a code child reorders only among code siblings, and
+  // nothing else may land in a code group.
+  if ((draggedItemType === 'code') !== (gapParentItemType === 'code')) return null;
 
   // A subtask may never land in a gap among its own descendants (cycle) — nor "under itself".
   if (subtreeIds.has(gapParentId)) return null;
