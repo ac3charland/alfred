@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { Textarea } from '@/components/atoms/textarea';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { PriorityChip } from '@/components/tasks/priority-chip';
@@ -9,6 +10,7 @@ import { RepeatChip } from '@/components/tasks/task-row/detail-chips';
 import type { TaskPriority } from '@/lib/priority';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import type { ItemNode } from '@/lib/tree';
+import { isSaveShortcut } from '@/lib/ui/save-shortcut';
 
 interface TaskDetailPanelProperties {
   node: ItemNode;
@@ -30,17 +32,17 @@ interface TaskDetailPanelProperties {
   /** Persist a priority level, or null to clear (auto-save). */
   onChangePriority: (next: TaskPriority | null) => void;
 
-  /** Persist edited notes (auto-save on blur); the value is the raw textarea text. */
+  /** Persist edited notes (Save / ⌘↵ / auto-save on blur); the value is the raw textarea text. */
   onCommitNotes: (value: string) => void;
 }
 
 /**
  * The decluttered inline detail (the ⋯ menu's "Open details"). One horizontal chip row — Due ·
  * Repeat · Priority, each opening its own auto-saving picker popover — over a focused Notes area
- * that saves on blur. There is no Save / Cancel / Close: every edit persists immediately, and the
- * panel is dismissed by toggling "Open details" again. Replaces the old stacked, per-field meta
- * panel; the chips and notes editor own their own state, so the row just wires the optimistic
- * mutations.
+ * with an explicit Save button and a ⌘↵ / Ctrl+↵ shortcut, backed by the same auto-save on blur.
+ * There is no Cancel / Close: every edit persists, and the panel is dismissed by toggling "Open
+ * details" again. Replaces the old stacked, per-field meta panel; the chips and notes editor own
+ * their own state, so the row just wires the optimistic mutations.
  */
 export function TaskDetailPanel({
   node,
@@ -64,8 +66,12 @@ export function TaskDetailPanel({
     setDraftNotes(node.notes ?? '');
   }
 
+  // Drives both the no-op guard and the Save button's disabled state, so the button greys out
+  // whenever there's nothing to persist — including right after a commit re-seeds the draft.
+  const isNotesDirty = draftNotes.trim() !== (node.notes ?? '');
+
   const commitNotes = () => {
-    if (draftNotes.trim() === (node.notes ?? '')) return;
+    if (!isNotesDirty) return;
     onCommitNotes(draftNotes);
   };
 
@@ -134,11 +140,29 @@ export function TaskDetailPanel({
           onChange={(event) => {
             setDraftNotes(event.target.value);
           }}
+          onKeyDown={(event) => {
+            // ⌘↵ / Ctrl+↵ saves in place — the field keeps focus, so typing can continue. A bare
+            // Enter stays a newline. preventDefault stops the chord inserting one.
+            if (!isSaveShortcut(event)) return;
+            event.preventDefault();
+            commitNotes();
+          }}
           onBlur={commitNotes}
           rows={3}
           placeholder="No notes yet."
           className="min-h-[60px] whitespace-pre-wrap text-[13.5px] leading-[1.65] text-[#c4cedd] placeholder:text-[#5A677C]"
         />
+        <div className="mt-2 flex justify-end">
+          <Button
+            variant="ghostAccent"
+            size="sm"
+            aria-label="Save notes"
+            disabled={!isNotesDirty}
+            onClick={commitNotes}
+          >
+            Save
+          </Button>
+        </div>
       </div>
     </div>
   );
