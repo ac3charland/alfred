@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-130 — Add ability to refine an epic in Claude Code</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll-x { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 165px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  @media (max-width: 560px) { .decision { grid-template-columns: 1fr; gap: .1rem; } }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "\2610"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  .mock {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8rem; line-height: 1.5; white-space: pre; overflow-x: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-130 — Add ability to refine an epic in Claude Code</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Code module</span>
+    <span class="pill">DB · Worker · store · UI · skill</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    An epic is currently a naked bucket: <code>name</code>, an optional one-line <code>notes</code>
+    field edited inline under the epic header, and an <code>archived_at</code> flag. Every
+    <em>decision</em> that spans an epic — the architecture it assumes, the constraints, the things
+    deliberately deferred, why the stories are cut the way they are — has nowhere to live. It gets
+    re-derived, story by story, inside each story's refinement session, which is both wasteful and
+    inconsistent: two stories in the same epic can be specced against two different mental models
+    of the same feature.
+  </p>
+  <p>
+    Stories already have the machinery for exactly this. A story's <strong>Refine in Claude
+    Code</strong> launch opens a prefilled <code>claude.ai/code</code> tab; the session writes a
+    self-contained HTML spec and opens a PR carrying the machine-readable <code>alfred</code> block;
+    the webhook Worker records <code>spec_path</code> on merge and snapshots the file into
+    <code>code_items.spec_markdown</code>, which the story detail modal renders. ALF-130 lends that
+    whole pipeline to <strong>epics</strong>:
+  </p>
+  <ul>
+    <li>a <strong>Refine epic in Claude Code</strong> action in the epic's 3-dot menu,</li>
+    <li>a new <strong>epic-refinement skill</strong> and launch prompt aimed at brainstorming and
+      recording high-level context rather than a buildable change,</li>
+    <li>the resulting epic spec <strong>snapshotted onto the <code>epics</code> row</strong>, exactly
+      like a story spec, and readable in a <strong>View spec</strong> modal,</li>
+    <li>and — the payoff — every story prompt in that epic (refine, implement, skip-to-dev)
+      <strong>pointing at the epic spec file</strong> so each story session starts from the epic's
+      settled context instead of re-inventing it.</li>
+  </ul>
+
+  <h2>2 · Decisions (locked during refinement)</h2>
+  <dl class="decision">
+    <dt>Epic spec home</dt>
+    <dd><code>docs/specs/epics/&lt;EPIC-REF&gt;.html</code> — its own folder, separate from the
+      active story specs.</dd>
+
+    <dt>Never archived</dt>
+    <dd>A story spec is scaffolding and is git-moved to <code>docs/specs/archive/</code> by its
+      implementation PR. An <strong>epic spec is long-lived context</strong> that story prompts keep
+      referencing, so it is <strong>never archived</strong> and never moves. Its own folder keeps it
+      structurally clear of the archive rule.</dd>
+
+    <dt>Format</dt>
+    <dd>A <strong>self-contained HTML plan</strong>, same authoring rules as story specs (inline CSS,
+      no external deps, htmlpreview link on the PR). The existing spec renderer already sniffs
+      HTML-vs-markdown, so it renders an epic spec with no new rendering code.</dd>
+
+    <dt>PR contract</dt>
+    <dd>A third phase: <code>phase: epic-refinement</code>. The <code>alfred-ticket</code> is the
+      <strong>epic's ref</strong>. Explicit routing beats "try <code>code_items</code>, fall back to
+      <code>epics</code>" — refs are drawn from one shared per-project counter, so a silent fallback
+      would make a typo'd story ref patch nothing while looking like it worked.</dd>
+
+    <dt>No epic lifecycle</dt>
+    <dd>Epics have no <code>factory_state</code> and gain none. An epic-refinement PR
+      <strong>opening</strong> records <code>refinement_pr_url</code>; <strong>merging</strong> records
+      <code>spec_path</code> and snapshots the file. A <strong>closed-unmerged</strong> epic-refinement
+      PR is a <strong>no-op</strong> — there is no state to revert.</dd>
+
+    <dt>Re-refinement</dt>
+    <dd>The menu action is <strong>always available</strong>. When the epic already has a
+      <code>spec_path</code>, the prompt tells the agent to <strong>update that file in place</strong>
+      rather than write a second one, so an epic has at most one spec, refined as often as you like.</dd>
+
+    <dt>Reading it</dt>
+    <dd>A <strong>View spec</strong> item in the same 3-dot menu opens an <strong>Epic spec
+      modal</strong> that reuses the story modal's spec rendering (sandboxed <code>&lt;iframe&gt;</code>
+      for HTML, markdown fallback, sha-pinned <em>View in repo</em> link). The item is rendered only
+      once a spec exists.</dd>
+
+    <dt>Column names</dt>
+    <dd><code>epics</code> gains <code>spec_path</code>, <code>spec_sha</code>,
+      <code>spec_markdown</code>, <code>refinement_pr_url</code> — the <em>same names</em> as
+      <code>code_items</code>, so the Worker's snapshot writer and the frontend's spec renderer are
+      shared, not forked. (<code>spec_markdown</code> holds HTML here exactly as it already does for
+      stories; the name is historical and stays for symmetry.)</dd>
+
+    <dt>Which story prompts</dt>
+    <dd><strong>All three</strong> — refinement, implementation, <em>and</em> skip-to-dev (bypass).
+      Bypass deliberately carries no <em>story</em> spec reference (ALF-75), but an epic spec is
+      background context for a build session, not a spec to consume or archive, so it belongs there
+      too.</dd>
+
+    <dt>Writes are Worker-only</dt>
+    <dd>The four new columns are written <strong>only</strong> by the Worker (service_role). No API
+      route, request schema, or store action lets the browser set them; <code>PATCH /api/epics/[id]</code>
+      keeps its <code>name</code> / <code>notes</code> / <code>archived_at</code> allow-list unchanged.</dd>
+  </dl>
+
+  <h2>3 · End-to-end flow</h2>
+
+  <svg viewBox="0 0 880 420" role="img" aria-label="Epic refinement data flow: epic menu launches a Claude Code session, whose PR the Worker turns into epic spec columns, which feed the spec modal and the story launch prompts.">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+      </marker>
+      <style>
+        .b { fill: var(--card); stroke: var(--line); stroke-width: 1.5; rx: 10; }
+        .bx { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; rx: 10; }
+        .t { font: 600 12.5px -apple-system, "Segoe UI", Roboto, sans-serif; fill: var(--fg); }
+        .s { font: 11px ui-monospace, Menlo, monospace; fill: var(--muted); }
+        .l { stroke: var(--accent); stroke-width: 1.6; fill: none; color: var(--accent); }
+        .lbl { font: 11px -apple-system, "Segoe UI", Roboto, sans-serif; fill: var(--muted); }
+      </style>
+    </defs>
+
+    <rect class="bx" x="20" y="24" width="210" height="66"/>
+    <text class="t" x="36" y="50">Epic 3-dot menu</text>
+    <text class="s" x="36" y="70">Refine epic in Claude Code</text>
+
+    <rect class="b" x="300" y="24" width="230" height="66"/>
+    <text class="t" x="316" y="50">claude.ai/code tab</text>
+    <text class="s" x="316" y="70">prefilled epic prompt (q=…)</text>
+
+    <rect class="b" x="600" y="24" width="256" height="66"/>
+    <text class="t" x="616" y="50">Epic-refinement session</text>
+    <text class="s" x="616" y="70">docs/specs/epics/ALF-12.html</text>
+
+    <rect class="b" x="600" y="140" width="256" height="76"/>
+    <text class="t" x="616" y="166">Pull request</text>
+    <text class="s" x="616" y="186">phase: epic-refinement</text>
+    <text class="s" x="616" y="204">spec-path: docs/specs/epics/…</text>
+
+    <rect class="b" x="300" y="140" width="230" height="76"/>
+    <text class="t" x="316" y="166">Worker /github/webhook</text>
+    <text class="s" x="316" y="186">parse → plan → patch epics</text>
+    <text class="s" x="316" y="204">merge → fetch + snapshot</text>
+
+    <rect class="bx" x="20" y="140" width="210" height="76"/>
+    <text class="t" x="36" y="166">epics row</text>
+    <text class="s" x="36" y="186">spec_path · spec_sha</text>
+    <text class="s" x="36" y="204">spec_markdown · pr_url</text>
+
+    <rect class="b" x="20" y="286" width="250" height="80"/>
+    <text class="t" x="36" y="312">Epic spec modal</text>
+    <text class="s" x="36" y="332">3-dot → View spec</text>
+    <text class="s" x="36" y="350">sandboxed iframe / markdown</text>
+
+    <rect class="b" x="330" y="286" width="250" height="80"/>
+    <text class="t" x="346" y="312">v_code_stories</text>
+    <text class="s" x="346" y="332">+ epic_spec_path</text>
+    <text class="s" x="346" y="350">(e.spec_path, joined)</text>
+
+    <rect class="b" x="620" y="286" width="236" height="80"/>
+    <text class="t" x="636" y="312">Story launch prompts</text>
+    <text class="s" x="636" y="332">refine · implement · bypass</text>
+    <text class="s" x="636" y="350">“read the epic spec first”</text>
+
+    <path class="l" d="M 230 57 L 296 57" marker-end="url(#arrow)"/>
+    <path class="l" d="M 530 57 L 596 57" marker-end="url(#arrow)"/>
+    <path class="l" d="M 728 90 L 728 136" marker-end="url(#arrow)"/>
+    <path class="l" d="M 600 178 L 534 178" marker-end="url(#arrow)"/>
+    <path class="l" d="M 300 178 L 234 178" marker-end="url(#arrow)"/>
+    <path class="l" d="M 125 216 L 125 282" marker-end="url(#arrow)"/>
+    <path class="l" d="M 180 216 L 400 282" marker-end="url(#arrow)"/>
+    <path class="l" d="M 580 326 L 616 326" marker-end="url(#arrow)"/>
+    <text class="lbl" x="243" y="48">launch</text>
+    <text class="lbl" x="543" y="48">writes spec</text>
+    <text class="lbl" x="736" y="118">opens PR</text>
+    <text class="lbl" x="540" y="170">webhook</text>
+    <text class="lbl" x="243" y="170">PATCH</text>
+    <text class="lbl" x="586" y="318">join</text>
+  </svg>
+  <p class="diagram-cap">The epic pipeline mirrors the story pipeline; the only new join is
+    <code>v_code_stories.epic_spec_path</code>, which feeds the story prompts.</p>
+
+  <h2>4 · UI</h2>
+
+  <h3>4.1 · The epic 3-dot menu</h3>
+  <p>
+    <code class="filelabel">frontend/components/code/board/epic-block.tsx</code> — the menu today is
+    <em>Edit title</em>, separator, <em>Archive / Unarchive</em>. It gains two items:
+  </p>
+  <div class="mock">  ▾ Communication Firewall   ALF-12                    [+]  [⋯]
+                                                             ├── ✎  Edit title
+                                                             ├── ✨ Refine epic in Claude Code
+                                                             ├── 🗎  View spec          ← only when a spec exists
+                                                             ├── ────────────────────
+                                                             └── 🗄  Archive</div>
+  <table>
+    <tr><th>Item</th><th>When shown</th><th>Behaviour</th></tr>
+    <tr>
+      <td><strong>Refine epic in Claude Code</strong></td>
+      <td>Always (archived or not)</td>
+      <td>Calls the store's <code>openEpicSession(epic.id)</code>: builds the prompt URL, copies the
+        prompt to the clipboard (mobile paste-fallback, same as the story launch), then
+        <code>window.open</code>. Shows the "Prompt copied to clipboard" toast on a successful copy.
+        <strong>No state write</strong> — epics have no lifecycle — so unlike the story launch there
+        is nothing to await before opening.</td>
+    </tr>
+    <tr>
+      <td><strong>View spec</strong></td>
+      <td><code>epic.spec_path !== null</code></td>
+      <td>Opens the epic spec modal (§4.2). Local component state in <code>EpicBlock</code>, exactly
+        like the existing <code>newStoryOpen</code> flag.</td>
+    </tr>
+  </table>
+  <p class="small">
+    Both items sit above the existing separator so <em>Archive</em> stays visually last, and both are
+    hidden while the title is being renamed (the whole menu already is).
+  </p>
+
+  <h3>4.2 · The epic spec modal</h3>
+  <p>
+    New <code class="filelabel">frontend/components/code/epic-spec-modal.tsx</code>: a
+    <code>FormDialog</code> (the same atom the story detail modal uses) titled
+    <code>&lt;EPIC-REF&gt; — &lt;epic name&gt;</code>, whose body is the shared spec view.
+  </p>
+  <p>
+    <strong>Extract before reusing</strong> (the frontend-architecture skill's shared-primitive rule):
+  </p>
+  <table>
+    <tr><th>Move</th><th>From → To</th><th>Why</th></tr>
+    <tr>
+      <td><code>SpecView({ spec, repoUrl })</code></td>
+      <td>the body of <code>story-detail/spec-body.tsx</code> → <code>code/spec-view.tsx</code></td>
+      <td>Presentational and story-free: the HTML-sniff, the sandboxed <code>&lt;iframe&gt;</code>, the
+        markdown branch, the empty-state copy. <code>SpecBody</code> becomes a thin wrapper that
+        derives <code>spec</code>/<code>repoUrl</code> from a <code>CodeStory</code>; the epic modal
+        derives them from an <code>Epic</code> + its <code>Project</code>.</td>
+    </tr>
+    <tr>
+      <td><code>specBlobUrl({ repoOwner, repoName, specPath, specSha })</code></td>
+      <td>new export in <code>lib/code/links.ts</code>; <code>viewInRepoUrl(story)</code> in
+        <code>story-detail/pr-link.tsx</code> delegates to it</td>
+      <td>Same <code>github.com/&lt;owner&gt;/&lt;name&gt;/blob/&lt;sha ?? HEAD&gt;/&lt;path&gt;</code>
+        rule for both; the epic's owner/name come from the project in the store, not from a joined
+        view row.</td>
+    </tr>
+  </table>
+  <p>
+    Empty-state copy differs by subject, so it stays a prop: the epic wording is
+    <em>"No epic spec yet. Refine the epic in Claude Code to write one."</em>
+  </p>
+
+  <h2>5 · Data model</h2>
+  <p><code class="filelabel">database/migrations/0019_epic_specs.sql</code></p>
+<pre><code>-- ALF-130 — Epic specs: an epic can carry its own refinement spec, snapshotted by the Worker
+-- exactly like a code story's (§4 of the code-module schema). Epics have NO lifecycle state, so
+-- there is no factory_state analogue here — only the spec columns and the PR url.
+
+alter table epics
+  add column spec_path         text,
+  add column spec_sha          text,
+  add column spec_markdown     text,
+  add column refinement_pr_url text;
+
+comment on column epics.spec_path is
+  'Path the epic-refinement PR DECLARED for the epic spec; never inferred. Long-lived — unlike a '
+  'story spec it is never archived, because story prompts keep referencing it.';
+comment on column epics.spec_markdown is
+  'Worker-written snapshot of the rendered epic spec; the epic spec modal reads this, not GitHub.';
+
+-- The board read gains the epic's spec path so the story launch prompts can point at it.
+-- `create or replace` (not drop/create) APPENDS the column and PRESERVES the view's grants —
+-- the 0017 lesson. New columns must go LAST in the select list for the replace to be legal.
+create or replace view v_code_stories with (security_invoker = true) as
+  select
+    c.item_id, c.project_id, c.epic_id, c.ref_number, c.ref, c.factory_state, c.lane,
+    c.spec_path, c.spec_sha, c.spec_markdown, c.refinement_pr_url, c.implementation_pr_url,
+    c.blocked_reason, c.created_at as code_created_at, c.updated_at as code_updated_at,
+    i.title, i.notes, i.source_url, i.created_at as item_created_at,
+    p.key as project_key, p.name as project_name, p.repo_owner, p.repo_name,
+    e.name as epic_name, e.ref as epic_ref, e.archived_at as epic_archived_at,
+    c.priority,
+    e.spec_path as epic_spec_path
+  from code_items c
+  join items i on i.id = c.item_id
+  join projects p on p.id = c.project_id
+  join epics e on e.id = c.epic_id;
+
+-- Idempotent re-assert (grants survive `create or replace`, but 0017 is the cautionary tale).
+grant select on v_code_stories to anon, authenticated, service_role;
+
+-- The Worker writes the snapshot out-of-band, so an open board needs a push channel to show it
+-- without a reload — the epics analogue of 0003's code_items stream. RLS still governs it: epics
+-- already has the `authenticated full access` policy from 0002.
+alter publication supabase_realtime add table epics;
+
+notify pgrst, 'reload schema';</code></pre>
+  <div class="callout">
+    <strong>Generated types.</strong> <code>frontend/lib/database.types.ts</code> is generated —
+    regenerate it with <code>supabase gen types</code> and commit the raw output. Never hand-edit it,
+    and never reformat it (it is excluded from ESLint/Prettier).
+  </div>
+  <p>
+    <code>Epic</code> and <code>CodeStory</code> pick the new columns up from the regenerated types
+    automatically. Two knock-on edits: <code>lib/tree.ts</code>'s <code>makeOptimisticEpic</code> seeds
+    the four new fields as <code>null</code>, and every hand-built <code>Epic</code> fixture (unit
+    tests, stories) gains them.
+  </p>
+
+  <h2>6 · The PR ↔ ticket contract</h2>
+  <p>The block an epic-refinement PR carries:</p>
+<pre><code>```alfred
+alfred-ticket: ALF-12
+phase: epic-refinement
+spec-path: docs/specs/epics/ALF-12.html
+```</code></pre>
+
+  <h3>6.1 · Transition table (the epic rows)</h3>
+  <div class="scroll-x">
+  <table>
+    <tr><th>phase</th><th>action</th><th>target</th><th>updates</th><th>snapshot?</th></tr>
+    <tr><td><code>epic-refinement</code></td><td><code>opened</code></td><td><code>epics</code></td><td><code>refinement_pr_url</code></td><td>no</td></tr>
+    <tr><td><code>epic-refinement</code></td><td><code>closed</code> &amp; merged</td><td><code>epics</code></td><td><code>spec_path</code></td><td><strong>yes</strong> → <code>spec_markdown</code>, <code>spec_sha</code></td></tr>
+    <tr><td><code>epic-refinement</code></td><td><code>closed</code> &amp; <em>not</em> merged</td><td>—</td><td colspan="2">no-op (nothing to revert)</td></tr>
+    <tr><td colspan="5" class="small">Every <code>refinement</code> / <code>implementation</code> row is unchanged, and every one of them targets <code>code_items</code>.</td></tr>
+  </table>
+  </div>
+
+  <h3>6.2 · Worker changes</h3>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr>
+      <td><code>workers/src/frontmatter.ts</code></td>
+      <td><code>CodePhase</code> gains <code>'epic-refinement'</code>, and
+        <code>PHASE_RE</code> becomes
+        <code>/phase:[ \t]*(epic-refinement|refinement|implementation)/</code>.
+        <strong>Alternation order matters</strong> — <code>epic-refinement</code> must come first or
+        the engine can never reach it. (Today's regex simply fails to match
+        <code>phase: epic-refinement</code>, so an old Worker ignores the PR rather than
+        mis-routing it — the rollout is safe in either order.)</td>
+    </tr>
+    <tr>
+      <td><code>workers/src/transitions.ts</code></td>
+      <td><code>TransitionPlan</code> gains <code>target: 'story' | 'epic'</code> (existing plans set
+        <code>'story'</code>). <code>planTransition</code> grows the <code>epic-refinement</code>
+        branch above. <code>TicketUpdate</code> is reused as-is: the epic branch only ever sets
+        <code>refinement_pr_url</code> / <code>spec_path</code>, both of which exist on
+        <code>epics</code>, so no new update type is needed.</td>
+    </tr>
+    <tr>
+      <td><code>workers/src/supabase.ts</code></td>
+      <td>Generalize the PATCH over the table: an internal
+        <code>patchByRef(env, table, ref, updates)</code> with <code>patchCodeItem</code> and a new
+        <code>patchEpic</code> as the two thin exported wrappers. Same headers, same
+        <code>return=representation</code> row count, same throw-on-non-2xx.</td>
+    </tr>
+    <tr>
+      <td><code>workers/src/index.ts</code></td>
+      <td>Pick the patch function from <code>plan.target</code>, for both the main PATCH loop and the
+        background <code>snapshotSpec</code> (which is otherwise unchanged — the snapshot columns are
+        named identically on both tables, so <code>SpecSnapshot</code> is shared). The response JSON
+        stays <code>{ ok, tickets, state }</code>; <code>state</code> is simply
+        <code>undefined</code> for an epic plan.</td>
+    </tr>
+  </table>
+
+  <h3>6.3 · The enforcing CI check</h3>
+  <p><code class="filelabel">docs/code-module/repo-setup/alfred-frontmatter.yml</code> — the
+    copy-ready artifact each project repo installs:</p>
+<pre><code>const phase = /phase:\s*(epic-refinement|refinement|implementation)/.exec(blk);   <span class="add">← accepts the new phase</span>
+…
+if ((phase[1] === "refinement" || phase[1] === "epic-refinement") &amp;&amp; !specPath) { <span class="add">← spec-path required for both</span>
+  console.error("refinement PRs need spec-path"); process.exit(1);
+}
+// Archive rule — implementation PRs only, and never an epic spec:
+if (phase[1] === "implementation" &amp;&amp; specPath
+    &amp;&amp; specPath.startsWith("docs/specs/")
+    &amp;&amp; !specPath.startsWith("docs/specs/archive/")
+    &amp;&amp; !specPath.startsWith("docs/specs/epics/")                                <span class="add">← epic specs are never archived</span>
+    &amp;&amp; fs.existsSync(specPath)) { … }</code></pre>
+  <p class="small">
+    The <code>epics/</code> exclusion is belt-and-braces: the rule already only fires on
+    <code>phase: implementation</code>, whose <code>spec-path</code> is the <em>story</em> spec. It
+    exists so that pointing an implementation block at an epic spec can never demand that a long-lived
+    document be archived. The <code>repo-setup/README.md</code> contract table and phase list are
+    updated to match, and its copy-checklist gains the epic-refinement skill.
+  </p>
+
+  <h2>7 · Prompts &amp; the epic-refinement skill</h2>
+
+  <h3>7.1 · <code>lib/code/links.ts</code> — the new builder</h3>
+  <p>
+    Two shared helpers generalize first: <code>frontmatterBlock</code> takes a <code>ref: string</code>
+    plus the widened phase union, and <code>notesContext</code> takes
+    <code>(notes: string | null, label: string)</code> so the epic prompt can say
+    <em>"Context (from the epic notes)"</em> while keeping the same 1000-character clip and the same
+    "TRUNCATED — the full notes live in the orchestrator" warning.
+  </p>
+<pre><code>/** The epic-refinement skill dropped into each project repo; an epic-refinement session auto-loads it. */
+const EPIC_REFINEMENT_SKILL_PATH = '.claude/skills/epic-refinement/SKILL.md';
+
+export function buildEpicRefinementUrl(project: Project, epic: Epic): string { … }</code></pre>
+  <p>The prompt it produces (an epic that already has a spec shown in <span class="add">green</span>):</p>
+<pre><code>ALF-12: Communication Firewall
+
+You are refining the EPIC ALF-12. Produce an EPIC SPEC ONLY — a high-level context and
+decisions document for the epic as a whole. Do NOT implement anything, and do NOT write
+per-story specs (individual stories are refined in their own sessions).
+
+1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING
+   or CLAUDE.md — and base the epic spec on the code that already exists.
+2. If the epic name and context below don't pin down the problem space and the decisions worth
+   recording, ASK ME HERE before writing — you don't need to guess, I'm in this tab.
+   Brainstorming the epic with me is the point of this session.
+3. Write the epic spec following the epic-refinement skill at
+   `.claude/skills/epic-refinement/SKILL.md` (it auto-loads in an epic-refinement session) — it
+   defines this repo's epic-spec format, structure, and where the spec lives. If the skill is
+   absent, write it as a single self-contained HTML document under the repo's specs directory.
+<span class="add">   This epic already has a spec committed at `docs/specs/epics/ALF-12.html` — UPDATE that file
+   in place rather than adding a second one.</span>
+4. Open a pull request whose description carries this machine-readable block — the orchestrator
+   (alfred) reads it to attach the spec to the epic and a CI check enforces it. Reproduce the
+   `alfred-ticket` and `phase` lines exactly, and set `spec-path` to where you saved the spec:
+
+```alfred
+alfred-ticket: ALF-12
+phase: epic-refinement
+spec-path: &lt;path-or-folder-of-the-spec&gt;
+```
+
+5. Before opening the PR, confirm the spec is saved, `spec-path` above names that spec (not the
+   placeholder), and the block is reproduced exactly.
+
+Context (from the epic notes):
+Everything about how alfred talks to me: notifications, Siri capture, the morning brief.</code></pre>
+  <p class="small">
+    Same shape as the story refinement prompt, deliberately: ref + name lead so the new browser tab is
+    scannable; the format/location stays the <em>skill's</em> job (a placeholder <code>spec-path</code>,
+    not a hardcoded path); the clarification gate and the verbatim-block self-check are kept.
+  </p>
+
+  <h3>7.2 · The epic-spec reference in the three story prompts</h3>
+  <p>
+    <code>buildRefinementUrl</code>, <code>buildImplementationUrl</code> and
+    <code>buildBypassUrl</code> each emit one extra paragraph when
+    <code>story.epic_spec_path</code> is non-null, placed <strong>immediately after the opening
+    "You are …" line and before the numbered steps</strong> — so the existing step numbering and the
+    block position are untouched:
+  </p>
+<pre><code>Epic context: this story belongs to epic ALF-12 (Communication Firewall), whose epic spec is
+committed at `docs/specs/epics/ALF-12.html`. Read it first — it carries the high-level decisions
+and constraints for the whole epic. It is background, NOT this story's spec: don't edit, archive,
+or move it.</code></pre>
+  <p>
+    No line at all when the epic has no spec — nothing is worse than pointing an agent at a file that
+    isn't there. The "don't archive it" clause matters because the implementation prompt in the very
+    same message tells the agent to git-move <em>its</em> spec into <code>docs/specs/archive/</code>.
+  </p>
+
+  <h3>7.3 · The new skill</h3>
+  <p><code class="filelabel">.claude/skills/epic-refinement/SKILL.md</code> — a sibling of
+    <code>refinement</code>, aimed one altitude higher. It must cover:</p>
+  <ul>
+    <li><strong>What an epic spec is</strong> — durable context and decisions for a body of work, not a
+      buildable change and not a story breakdown to implement from. It is read by every later story
+      session in the epic.</li>
+    <li><strong>Where it goes</strong> — <code>docs/specs/epics/&lt;EPIC-REF&gt;.html</code>, a
+      self-contained HTML document (inline CSS, no external deps, no JS required), same authoring
+      rules as the story-spec skill.</li>
+    <li><strong>Sections</strong> — problem space &amp; why now; the decisions taken, each with its
+      rationale; architecture / data model the epic assumes; constraints and non-goals; a sketch of
+      how the work splits into stories (a sketch, not specs); open questions.</li>
+    <li><strong>Refining again updates the same file</strong> — one spec per epic, revised in place;
+      record what changed and why rather than starting a second document.</li>
+    <li><strong>The PR</strong> — the <code>alfred</code> block with <code>phase: epic-refinement</code>
+      and the epic's ref, plus the <code>htmlpreview.github.io</code> link on the head branch (the same
+      rendering trick the refinement skill documents, and the same reason).</li>
+    <li><strong>Never archived</strong> — an implementation PR retires a <em>story</em> spec; the epic
+      spec stays put.</li>
+    <li><strong>No implementation</strong> and <strong>ask when context is thin</strong> — the same two
+      guardrails, since this session is even more open-ended.</li>
+  </ul>
+  <div class="callout">
+    <strong>Skill work is high-leverage.</strong> Read <code>skill-creator</code> before writing it,
+    walk its "Writing a description that triggers" checklist line by line against the draft, and run
+    <code>npm run lint:skills -w tools/skill-lint</code> <em>while drafting</em>. Cross-reference the
+    <code>refinement</code> skill for the shared HTML/PR conventions instead of restating them — the
+    two skills must not drift.
+  </div>
+
+  <h2>8 · Store &amp; client wiring</h2>
+  <table>
+    <tr><th>File</th><th>Change</th></tr>
+    <tr>
+      <td><code>lib/stores/code-store.tsx</code></td>
+      <td><strong>(a)</strong> New action <code>openEpicSession(epicId: string): Promise&lt;void&gt;</code>
+        — resolve the epic + its project from the store, build the URL, <code>copyToClipboard</code> the
+        decoded prompt, <code>window.open</code>, toast on a successful copy. Mirrors
+        <code>openClaudeSession</code> minus the state write.
+        <strong>(b)</strong> The realtime effect adds an <code>epics</code> UPDATE subscription that
+        dispatches <code>patchEpic</code> with the spec columns, so a merged epic-refinement PR lights
+        up an open board without a reload. Silent — no toast (a story's state-change toast exists
+        because a card visibly moves lanes; nothing moves here).</td>
+    </tr>
+    <tr>
+      <td><code>components/code/board/epic-block.tsx</code></td>
+      <td>The two menu items, the <code>specOpen</code> local state, and the modal mount (next to the
+        existing <code>NewStoryDialog</code> mount).</td>
+    </tr>
+    <tr>
+      <td><code>components/code/epic-spec-modal.tsx</code> <span class="add">(new)</span>,
+        <code>components/code/spec-view.tsx</code> <span class="add">(new)</span>,
+        <code>components/code/story-detail/spec-body.tsx</code>,
+        <code>components/code/story-detail/pr-link.tsx</code></td>
+      <td>The extraction in §4.2.</td>
+    </tr>
+  </table>
+  <p class="small">
+    Unchanged on purpose: <code>lib/api/schemas.ts</code>, <code>app/api/epics/**</code>,
+    <code>api-client.updateEpic</code>. The spec columns are Worker-written; the browser only reads
+    them.
+  </p>
+
+  <h2>9 · Testing</h2>
+  <p>
+    Red/green TDD, and every requirement below pinned by at least one test (CLAUDE.md's rule: a change
+    that breaks nothing is a testing failure).
+  </p>
+  <div class="scroll-x">
+  <table>
+    <tr><th>Suite</th><th>What it pins</th></tr>
+    <tr>
+      <td><code>workers/src/frontmatter.test.ts</code></td>
+      <td>A block with <code>phase: epic-refinement</code> parses to that phase (and is not
+        mis-parsed as <code>refinement</code>); the two existing phases still parse.</td>
+    </tr>
+    <tr>
+      <td><code>workers/src/transitions.test.ts</code></td>
+      <td>All three epic rows of §6.1, including <code>target: 'epic'</code>, and that no epic plan
+        ever sets <code>factory_state</code>. Existing rows keep <code>target: 'story'</code>.</td>
+    </tr>
+    <tr>
+      <td><code>workers/src/supabase.test.ts</code>, <code>index.test.ts</code></td>
+      <td><code>patchEpic</code> hits <code>/rest/v1/epics?ref=eq.…</code>; an epic-refinement merge
+        PATCHes <code>epics</code> (never <code>code_items</code>) and snapshots into the epics row; a
+        closed-unmerged epic PR is a 200 no-op.</td>
+    </tr>
+    <tr>
+      <td><code>frontend/lib/code/links.test.ts</code></td>
+      <td>The epic prompt: leads with ref + name; says spec-only / no implementation; names the
+        epic-refinement skill path; carries <code>phase: epic-refinement</code> and the
+        <code>spec-path</code> placeholder; adds the update-in-place line only when
+        <code>spec_path</code> is set; inlines and clips epic notes. Plus: each of the three story
+        prompts includes the epic-spec paragraph when <code>epic_spec_path</code> is set and omits it
+        entirely when it isn't.</td>
+    </tr>
+    <tr>
+      <td><code>frontend/lib/stores/code-store.test.tsx</code></td>
+      <td><code>openEpicSession</code> opens the built URL, copies the prompt, toasts, and writes no
+        state; an <code>epics</code> realtime UPDATE patches the spec columns into the store.</td>
+    </tr>
+    <tr>
+      <td>RTL — <code>epic-block.test.tsx</code>, <code>epic-spec-modal.test.tsx</code></td>
+      <td>Menu shows <em>Refine epic in Claude Code</em> always and <em>View spec</em> only with a
+        spec; selecting each does the right thing; the modal renders an HTML spec in the sandboxed
+        frame, a markdown spec in the prose branch, the empty state otherwise, and links
+        <em>View in repo</em> at the recorded sha.</td>
+    </tr>
+    <tr>
+      <td>Storybook</td>
+      <td>A story per epic-spec-modal state (HTML / markdown / empty), per the storybook skill. Any
+        moved image-snapshot baseline is captured as a diff image and approved with
+        <code>npm run test:storybook:update -w frontend</code>.</td>
+    </tr>
+    <tr>
+      <td>Playwright — <code>frontend/e2e/code-links.spec.ts</code></td>
+      <td>Using the existing <code>window.open</code> stub: the epic menu's refine action opens a
+        <code>claude.ai/code</code> URL whose <code>q</code> carries the epic ref and
+        <code>phase: epic-refinement</code>. A second seeded epic with a snapshotted spec opens the
+        View-spec modal.</td>
+    </tr>
+    <tr>
+      <td><code>database/src/assertions.ts</code> (check:slow)</td>
+      <td>The four new <code>epics</code> columns exist and are nullable;
+        <code>v_code_stories</code> exposes <code>epic_spec_path</code> and still selects for
+        <code>authenticated</code> (the 0017 regression class).</td>
+    </tr>
+  </table>
+  </div>
+  <p>
+    <strong>Demo doc</strong> at <code>docs/demos/alf-130-epic-refinement/</code> (folder-per-demo, per
+    demo-lint): the epic menu screenshot, the built prompt, a story prompt showing the epic-spec
+    paragraph, and the spec modal. Follow the <code>showboat</code> skill and confirm with
+    <code>npm run demo -- verify</code>.
+  </p>
+
+  <h2>10 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li>An epic's 3-dot menu has <strong>Refine epic in Claude Code</strong>; selecting it opens a
+      <code>claude.ai/code</code> tab prefilled with the epic-refinement prompt and copies that prompt
+      to the clipboard, changing no epic state.</li>
+    <li>The prompt leads with <code>&lt;EPIC-REF&gt;: &lt;name&gt;</code>, forbids implementation and
+      per-story specs, points at <code>.claude/skills/epic-refinement/SKILL.md</code>, inlines the epic
+      notes (clipped at 1000 chars with the truncation warning), and carries an
+      <code>alfred</code> block with <code>phase: epic-refinement</code> and a placeholder
+      <code>spec-path</code>.</li>
+    <li>When the epic already has a <code>spec_path</code>, the prompt tells the agent to update that
+      file in place; when it doesn't, no such line appears.</li>
+    <li><code>.claude/skills/epic-refinement/SKILL.md</code> exists, covers everything in §7.3, and
+      passes <code>npm run lint:skills -w tools/skill-lint</code>.</li>
+    <li><code>epics</code> has <code>spec_path</code>, <code>spec_sha</code>,
+      <code>spec_markdown</code>, <code>refinement_pr_url</code>; <code>v_code_stories</code> exposes
+      <code>epic_spec_path</code> and keeps its SELECT grant.</li>
+    <li>The Worker parses <code>phase: epic-refinement</code>, records
+      <code>refinement_pr_url</code> on open, records <code>spec_path</code> and snapshots the file
+      into the <strong><code>epics</code></strong> row on merge, and no-ops on close-without-merge —
+      never touching <code>code_items</code> for that phase.</li>
+    <li>Existing <code>refinement</code> / <code>implementation</code> transitions are byte-for-byte
+      unchanged.</li>
+    <li>The copy-ready <code>alfred-frontmatter.yml</code> accepts <code>epic-refinement</code>,
+      requires <code>spec-path</code> on it, and never applies the archive rule to a
+      <code>docs/specs/epics/</code> path; <code>repo-setup/README.md</code> documents the phase and
+      lists the new skill as a per-repo artifact.</li>
+    <li>Once a spec is snapshotted, the epic menu offers <strong>View spec</strong> and the modal
+      renders it (HTML in a sandboxed frame, markdown as prose) with a sha-pinned <em>View in repo</em>
+      link; with no spec, the item is absent.</li>
+    <li>The merged snapshot reaches an already-open board over realtime, without a reload.</li>
+    <li>A story whose epic has a spec gets the epic-context paragraph in <strong>all three</strong>
+      launch prompts, telling the agent to read it and not to edit, move, or archive it; a story whose
+      epic has no spec gets no such paragraph.</li>
+    <li>No API route, request schema, or store action lets the browser write the epic spec columns.</li>
+    <li><code>npm run check</code> is green; the demo doc at
+      <code>docs/demos/alf-130-epic-refinement/</code> reproduces via
+      <code>npm run demo -- verify</code>.</li>
+  </ul>
+
+  <h2>11 · Out of scope</h2>
+  <ul>
+    <li><strong>Any epic lifecycle state</strong> — no <code>in_refinement</code> equivalent, no state
+      chip on the epic header, no "needs refinement" nudge.</li>
+    <li><strong>Backfilling existing epics</strong> — the columns start null; an epic gets a spec the
+      first time you refine it.</li>
+    <li><strong>Feeding the epic's story list into the epic prompt.</strong> The prompt is built from
+      the epic's own fields; the session can read the repo, and the ~14k prompt cap makes inlining a
+      story list a bad trade.</li>
+    <li><strong>Editing the epic spec from alfred.</strong> The modal is read-only; edits go through a
+      new refinement session and its PR, exactly like story specs.</li>
+    <li><strong>An epic-spec indicator on the board</strong> (a badge, an icon on the epic header).
+      Worth revisiting once epic specs are common; the menu item is the discovery path for now.</li>
+    <li><strong>Installing <code>alfred-frontmatter.yml</code> into this repo's
+      <code>.github/workflows/</code></strong> — it stays a copy-ready artifact, as today.</li>
+  </ul>
+
+  <h2>12 · Open questions</h2>
+  <ul>
+    <li><strong>Refining an archived epic.</strong> The action is currently offered on archived epics
+      too (they're still visible under "Show archived"). If that reads as noise in practice, hiding it
+      when <code>archived_at !== null</code> is a one-line follow-up — not worth a decision before
+      there's an archived epic anyone wants to refine.</li>
+  </ul>
+
+</div>
+</body>
+</html>
