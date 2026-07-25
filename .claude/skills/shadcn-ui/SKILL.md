@@ -185,6 +185,11 @@ Use this when:
   variable tokens (`bg-surface`, `text-muted`, `border-border`, etc.) so the dark theme applies
   uniformly.
 
+- **A `className` colour override only wins for the modifiers it names** — `tailwind-merge` keys by
+  *modifier + class group*, so `<Button variant="ghost" className="text-accent-teal">` leaves ghost's
+  `hover:text-secondary-foreground` in place and the text flips off-teal on hover. Add a cva variant
+  carrying the full set (base **and** hover) instead of patching one state at the call site.
+
 - **Always** include `<DialogTitle>` (or `<SheetTitle>`, `<DrawerTitle>`) in every overlay
   component. If it should not be visible, use `className="sr-only"`. Omitting it fails the Radix
   accessibility check and breaks screen readers.
