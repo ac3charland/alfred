@@ -2970,11 +2970,11 @@ describe('TaskRow — detail panel (ALF-67)', () => {
     expect(screen.getByRole('textbox', { name: 'Notes' })).toBeInTheDocument();
   });
 
-  it('has no Save / Cancel / Close controls (edits auto-save)', async () => {
+  it('offers a notes Save action but still no Cancel / Close (chip edits auto-save)', async () => {
     const user = userEvent.setup();
     renderTasks([BASE_ITEM]);
     const panel = await openDetails(user);
-    expect(within(panel).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Save notes' })).toBeInTheDocument();
     expect(within(panel).queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
     expect(within(panel).queryByRole('button', { name: /^close$/i })).not.toBeInTheDocument();
   });
@@ -3057,6 +3057,69 @@ describe('TaskRow — detail panel (ALF-67)', () => {
     await waitFor(() => {
       expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
     });
+  });
+
+  it('saves notes from the Save button', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    const panel = await openDetails(user);
+
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Buy milk');
+    await user.click(within(panel).getByRole('button', { name: 'Save notes' }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+
+  it('disables the notes Save button until the draft differs from the stored notes', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Existing!' });
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, notes: 'Existing' }]);
+    const panel = await openDetails(user);
+    const save = within(panel).getByRole('button', { name: 'Save notes' });
+
+    expect(save).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), '!');
+    expect(save).toBeEnabled();
+
+    // Once the edit is committed the draft matches the stored notes again, so Save greys back out.
+    await user.click(save);
+    await waitFor(() => {
+      expect(save).toBeDisabled();
+    });
+  });
+
+  it.each([
+    ['⌘', '{Meta>}{Enter}{/Meta}'],
+    ['Ctrl', '{Control>}{Enter}{/Control}'],
+  ])('saves notes on %s+Enter without leaving the field', async (_label, chord) => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    const notes = screen.getByRole('textbox', { name: 'Notes' });
+    await user.type(notes, 'Buy milk');
+    await user.keyboard(chord);
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+    expect(notes).toHaveFocus();
+  });
+
+  it('leaves a bare Enter in the notes field to insert a newline', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    const notes = screen.getByRole('textbox', { name: 'Notes' });
+    await user.type(notes, 'one{Enter}two');
+
+    expect(notes).toHaveValue('one\ntwo');
+    expect(mockUpdateItem).not.toHaveBeenCalled();
   });
 
   it('does not save notes that are unchanged', async () => {
