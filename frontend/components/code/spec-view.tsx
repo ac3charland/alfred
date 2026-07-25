@@ -4,17 +4,10 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { PrLink } from '@/components/code/story-detail/pr-link';
-
-/**
- * Does the snapshot look like a full HTML document? Refinement now produces self-contained HTML
- * plans (see the refinement skill), but specs snapshotted before that are markdown — sniff the
- * head so each renders in the right mode. (`spec_markdown` is the snapshot column; it holds
- * whichever format the merged spec file was.)
- */
-function looksLikeHtmlDocument(spec: string): boolean {
-  const head = spec.trimStart().slice(0, 200).toLowerCase();
-  return head.startsWith('<!doctype html') || head.startsWith('<html');
-}
+// Refinement now produces self-contained HTML plans (see the refinement skill), but specs
+// snapshotted before that are markdown — sniff the head so each renders in the right mode.
+// (`spec_markdown` is the snapshot column; it holds whichever format the merged spec file was.)
+import { looksLikeHtmlDocument } from '@/lib/html-document';
 
 export interface SpecViewProperties {
   /** The snapshotted spec body (HTML or markdown), or `null` when nothing is snapshotted yet. */
