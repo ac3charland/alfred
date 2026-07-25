@@ -166,6 +166,9 @@ Does a deep subtree need shared data without prop drilling?
 - Never store in a ref something that should trigger a re-render when it changes. Refs are silent — the UI will not update.
 - Never pass `ref.current` as a prop to a child if you need the child to react to its changes — use state instead.
 
+**Blur-based auto-save**
+- A removed element never fires `blur`, so an `onBlur` auto-save silently drops the draft whenever the surface is dismissed by *unmounting* it (Escape, an outside pointer press, a "collapse all"). Pair the blur commit with an unmount commit: `const latest = useRef(commit); useEffect(() => { latest.current = commit; }); useEffect(() => () => { latest.current(); }, []);`. The commit must no-op when the draft matches the stored value, so the two paths can't both fire.
+
 ---
 
 ## Version Gotchas
