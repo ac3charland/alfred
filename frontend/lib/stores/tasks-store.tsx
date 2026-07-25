@@ -133,6 +133,18 @@ interface TaskActions {
    * reconcile and nothing to roll back.
    */
   removeGatedItem: (id: string) => void;
+  /**
+   * Reflect a completed epic conversion (ALF-129): the converted children have left
+   * `task_items` (they now have sidecars), and the parent is either completed (a task keeps
+   * its history + completed children) or removed (a code inbox row, which the RPC deletes).
+   * Like `removeGatedItem`, a pure client-side reconciliation — the rows already changed
+   * server-side, so there is no API call, nothing to reconcile and nothing to roll back.
+   */
+  settleEpicConversion: (input: {
+    parentId: string;
+    childIds: string[];
+    parentOutcome: 'completed' | 'removed';
+  }) => void;
 }
 
 type TaskAction = SimpleAction<Item>;
@@ -246,12 +258,22 @@ export function TasksProvider({
       async addTask(input) {
         const folderId = input.folderId ?? undefined;
         const parentId = input.parentId ?? undefined;
+        // A child inherits its parent's family (ALF-129): a child under a code row is a code
+        // story-to-be; a child under anything else stays a task, as before.
+        const parent =
+          parentId === undefined
+            ? undefined
+            : tasksRef.current.find((item) => item.id === parentId);
         const createInput: api.CreateItemInput = {
           text: input.text,
           raw_capture: input.text,
           title: input.title ?? input.text,
-          // Existing precedence (a subtask is always a task), extended to honor an explicit type.
-          item_type: parentId === undefined ? (input.itemType ?? 'unclassified') : 'task',
+          item_type:
+            parentId === undefined
+              ? (input.itemType ?? 'unclassified')
+              : parent?.item_type === 'code'
+                ? 'code'
+                : 'task',
           ...(folderId !== undefined && { folder_id: folderId }),
           ...(parentId !== undefined && { parent_id: parentId }),
           // A project hint only rides on a top-level (parentless) capture — a subtask is a task,
@@ -674,6 +696,18 @@ export function TasksProvider({
         // The gate's RPC clears parent_id, so a gated item is always a leaf here — drop
         // just that row (no subtree, no server call).
         dispatch({ type: 'remove', ids: [id] });
+      },
+      settleEpicConversion({ parentId, childIds, parentOutcome }) {
+        if (childIds.length > 0) dispatch({ type: 'remove', ids: childIds });
+        if (parentOutcome === 'removed') {
+          dispatch({ type: 'remove', ids: [parentId] });
+        } else {
+          dispatch({
+            type: 'patch',
+            ids: [parentId],
+            patch: { status: 'completed', completed_at: new Date().toISOString() },
+          });
+        }
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].

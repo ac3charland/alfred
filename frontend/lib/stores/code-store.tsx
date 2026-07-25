@@ -179,6 +179,18 @@ export interface CodeActions {
     epicId: string,
   ) => Promise<CodeStory>;
   /**
+   * The epic conversion (ALF-129): turn a 1-deep parent (a code inbox item or a decomposed
+   * task) into a NEW epic plus one story per child, in the children's display order. The
+   * caller passes the children already in display order; the optimistic cards mirror the
+   * server's bottom-up priority walk so they sort into the same slots the RPC reconciles to.
+   * The parent's tasks-store settlement (`settleEpicConversion`) is the caller's, on success.
+   */
+  convertToCodeEpic: (
+    parent: { id: string; title: string; notes: string | null },
+    children: { id: string; title: string; notes: string | null; source_url: string | null }[],
+    projectId: string,
+  ) => Promise<api.ConvertedEpic>;
+  /**
    * Create a brand-new story directly into an epic from the board's `+` (no inbox item).
    * Mints a temporary item id for the optimistic card (the real `item_id` is server-allocated,
    * unlike the gate where the item already exists), then reconciles by swapping the temp row
@@ -670,6 +682,77 @@ export function CodeProvider({
       },
       convertTaskToCode(item, projectId, epicId) {
         return admitToFactory(item, projectId, epicId);
+      },
+      async convertToCodeEpic(parent, children, projectId) {
+        const project = stateRef.current.projects.find((p) => p.id === projectId);
+        if (project === undefined) {
+          throw new Error(`Project ${projectId} not found in the code store`);
+        }
+        // The epic IS the parent: its title and notes carry over (the real ref reconciles in).
+        const optimisticEpic: Epic = {
+          ...makeOptimisticEpic(projectId, parent.title),
+          notes: parent.notes,
+        };
+        // Mirror the RPC's bottom-up walk: fold topOfProjectPriority over the children in
+        // REVERSE display order, appending each pseudo-story to the local list as it goes, so
+        // each lands above the one before it and the optimistic cards sort into the same slots
+        // the server reconciles to (first child highest).
+        const localStories = [...stateRef.current.stories];
+        const priorityByChildId = new Map<string, number>();
+        for (let index = children.length - 1; index >= 0; index -= 1) {
+          const child = children[index];
+          if (child === undefined) continue;
+          const priority = topOfProjectPriority(localStories, projectId);
+          priorityByChildId.set(child.id, priority);
+          localStories.push({
+            ...makeOptimisticStory(child, project, optimisticEpic),
+            priority,
+          });
+        }
+        const optimisticStories = children.map((child) => ({
+          ...makeOptimisticStory(child, project, optimisticEpic),
+          priority: priorityByChildId.get(child.id) ?? 0,
+        }));
+        let result: api.ConvertedEpic = { epic: optimisticEpic, stories: [] };
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'insertEpic', epic: optimisticEpic });
+            for (const story of optimisticStories) {
+              dispatch({ type: 'insertStory', story });
+            }
+          },
+          apiCall: () => api.convertToCodeEpic(parent.id, projectId),
+          reconcile: (saved) => {
+            dispatch({ type: 'replaceEpic', id: optimisticEpic.id, epic: saved.epic });
+            for (const sidecar of saved.stories) {
+              const optimistic = optimisticStories.find((s) => s.item_id === sidecar.item_id);
+              if (optimistic === undefined) continue;
+              // The optimistic card points at the TEMP epic id, so the sidecar projection
+              // alone isn't enough — re-home it onto the saved epic (id + the denormalised
+              // ref; name/notes/archived_at already mirror the parent).
+              dispatch({
+                type: 'replaceStory',
+                itemId: sidecar.item_id,
+                story: {
+                  ...reconcileStory(optimistic, sidecar),
+                  epic_id: saved.epic.id,
+                  epic_ref: saved.epic.ref,
+                },
+              });
+            }
+            result = saved;
+          },
+          rollback: () => {
+            dispatch({ type: 'removeEpic', id: optimisticEpic.id });
+            for (const child of children) {
+              dispatch({ type: 'removeStory', itemId: child.id });
+            }
+          },
+          onError: () => {
+            showToastRef.current("Couldn't create epic");
+          },
+        });
+        return result;
       },
       async createStory(epicId, title, notes) {
         const { projects, epics } = stateRef.current;

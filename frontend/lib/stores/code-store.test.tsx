@@ -25,6 +25,7 @@ jest.mock('@/lib/api-client');
 const mockCreateProject = jest.mocked(api.createProject);
 const mockCreateEpic = jest.mocked(api.createEpic);
 const mockEnterCodeModule = jest.mocked(api.enterCodeModule);
+const mockConvertToCodeEpic = jest.mocked(api.convertToCodeEpic);
 const mockCreateCodeStory = jest.mocked(api.createCodeStory);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockUpdateEpic = jest.mocked(api.updateEpic);
@@ -872,6 +873,188 @@ describe('code-store', () => {
         expect(gated?.priority).toBeLessThan(5);
         // …but does NOT outrank the other project's story (1) — the whole Backlog is undisturbed.
         expect(gated?.priority).toBeGreaterThan(1);
+      });
+    });
+
+    describe('convertToCodeEpic (the epic conversion)', () => {
+      const PARENT = { id: 'parent-1', title: 'Construction inbox', notes: 'epic notes' };
+      const CHILDREN = [
+        { id: 'ch-1', title: 'S1', notes: null, source_url: null },
+        { id: 'ch-2', title: 'S2', notes: null, source_url: null },
+        { id: 'ch-3', title: 'S3', notes: null, source_url: null },
+      ];
+
+      const SAVED_EPIC: Epic = {
+        id: 'server-epic',
+        project_id: 'p1',
+        name: 'Construction inbox',
+        notes: 'epic notes',
+        ref_number: 40,
+        ref: 'ALF-40',
+        archived_at: null,
+        created_at: '2025-01-06T00:00:00Z',
+      };
+      const SAVED_RESULT = {
+        epic: SAVED_EPIC,
+        stories: [
+          makeSavedSidecar({
+            item_id: 'ch-1',
+            epic_id: 'server-epic',
+            ref: 'ALF-43',
+            ref_number: 43,
+            factory_state: 'needs_refinement',
+            priority: -3,
+          }),
+          makeSavedSidecar({
+            item_id: 'ch-2',
+            epic_id: 'server-epic',
+            ref: 'ALF-42',
+            ref_number: 42,
+            factory_state: 'needs_refinement',
+            priority: -2,
+          }),
+          makeSavedSidecar({
+            item_id: 'ch-3',
+            epic_id: 'server-epic',
+            ref: 'ALF-41',
+            ref_number: 41,
+            factory_state: 'needs_refinement',
+            priority: -1,
+          }),
+        ],
+      };
+
+      it('inserts an optimistic epic (title + notes) with one card per child, in display order', async () => {
+        mockConvertToCodeEpic.mockImplementation(() => new Promise(() => {}));
+        const existing = makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 });
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            board: useProjectBoard('p1'),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A],
+              epics: [makeEpic('e1', 'p1')],
+              stories: [existing],
+            }),
+          },
+        );
+
+        act(() => {
+          void result.current.actions.convertToCodeEpic(PARENT, CHILDREN, 'p1');
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog.some((s) => s.title === 'S1')).toBe(true);
+        });
+        // The optimistic epic carries the parent's title AND notes.
+        const epicBoard = result.current.board.activeEpics.find(
+          (b) => b.epic.name === 'Construction inbox',
+        );
+        expect(epicBoard?.epic.notes).toBe('epic notes');
+        // Backlog order: S1 < S2 < S3 < the pre-existing story (the reverse fold).
+        expect(result.current.backlog.map((s) => s.title)).toEqual([
+          'S1',
+          'S2',
+          'S3',
+          'Story old-1',
+        ]);
+      });
+
+      it('does not displace a better-ranked story from another project (ALF-110)', async () => {
+        mockConvertToCodeEpic.mockImplementation(() => new Promise(() => {}));
+        const otherBest = makeStory('other-1', 'e2', 'p2', { ref: 'RLP-1', priority: 1 });
+        const mine = makeStory('old-1', 'e1', 'p1', { ref: 'ALF-5', priority: 5 });
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          {
+            wrapper: makeWrapper({
+              projects: [PROJECT_A, PROJECT_B],
+              epics: [makeEpic('e1', 'p1'), makeEpic('e2', 'p2')],
+              stories: [otherBest, mine],
+            }),
+          },
+        );
+
+        act(() => {
+          void result.current.actions.convertToCodeEpic(PARENT, CHILDREN, 'p1');
+        });
+
+        await waitFor(() => {
+          expect(result.current.backlog.some((s) => s.title === 'S1')).toBe(true);
+        });
+        // The other project's story keeps the whole-Backlog top; the group slots between it
+        // and this project's previous best.
+        expect(result.current.backlog.map((s) => s.title)).toEqual([
+          'Story other-1',
+          'S1',
+          'S2',
+          'S3',
+          'Story old-1',
+        ]);
+      });
+
+      it('reconciles the saved epic and re-homes each story onto it', async () => {
+        mockConvertToCodeEpic.mockResolvedValue(SAVED_RESULT);
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [] }),
+        });
+
+        let returned: api.ConvertedEpic | undefined;
+        await act(async () => {
+          returned = await result.current.actions.convertToCodeEpic(PARENT, CHILDREN, 'p1');
+        });
+
+        expect(mockConvertToCodeEpic).toHaveBeenCalledWith('parent-1', 'p1');
+        expect(returned?.epic.ref).toBe('ALF-40');
+        expect(returned?.stories).toHaveLength(3);
+        // The board shows the reconciled epic with all three stories under it at
+        // needs_refinement, carrying their allocated refs.
+        const epicBoard = result.current.board.activeEpics.find((b) => b.epic.id === 'server-epic');
+        expect(epicBoard?.epic.ref).toBe('ALF-40');
+        const lane = epicBoard?.lanes.find((l) => l.state === 'needs_refinement');
+        expect(lane?.stories.map((s) => s.ref)).toEqual(['ALF-43', 'ALF-42', 'ALF-41']);
+        expect(lane?.stories.map((s) => s.epic_ref)).toEqual(['ALF-40', 'ALF-40', 'ALF-40']);
+      });
+
+      it('rolls the optimistic epic and stories back out on failure', async () => {
+        mockConvertToCodeEpic.mockRejectedValue(new Error('conversion failed'));
+        const { result } = renderHook(
+          () => ({
+            actions: useCodeActions(),
+            board: useProjectBoard('p1'),
+            backlog: useBacklog({ statuses: ALL_FACTORY_STATES }),
+          }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A] }) },
+        );
+
+        await act(async () => {
+          await expect(
+            result.current.actions.convertToCodeEpic(PARENT, CHILDREN, 'p1'),
+          ).rejects.toThrow('conversion failed');
+        });
+
+        expect(result.current.board.activeEpics).toEqual([]);
+        expect(result.current.backlog).toEqual([]);
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't create epic");
+      });
+
+      it('throws (and never calls the API) when the project is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.convertToCodeEpic(PARENT, CHILDREN, 'missing'),
+          ).rejects.toThrow(/not found in the code store/i);
+        });
+        expect(mockConvertToCodeEpic).not.toHaveBeenCalled();
       });
     });
 
