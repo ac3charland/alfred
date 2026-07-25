@@ -336,7 +336,10 @@ into `database.types.ts`, burying the additive diff. The local cluster is built 
 2. Parity stub for the graphql section: `create schema graphql_public;` plus a
    `graphql_public.graphql("operationName" text default null, query text default null,
    variables jsonb default null, extensions jsonb default null) returns jsonb` stub function.
-3. `npm i @supabase/postgres-meta`, run `PG_META_DB_URL=<url> node
+3. **`npm i @supabase/postgres-meta@0.95.2`** — pin it, outside the repo (a scratch dir), so no
+   dependency lands in the lockfile. The version sets the *template*, not just the data: 0.96.x
+   emits `X extends (Y extends …)` parens and different union wrapping, so its output churns ~50
+   lines against the committed file even with no schema change. Run `PG_META_DB_URL=<url> node
    node_modules/@supabase/postgres-meta/dist/server/server.js`, then GET
    `/generators/typescript?included_schemas=public,graphql_public&detect_one_to_one_relationships=true&postgrest_version=14.5`
    (match `postgrest_version` to the committed file's `__InternalSupabase.PostgrestVersion`).
