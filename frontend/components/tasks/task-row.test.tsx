@@ -3256,3 +3256,73 @@ describe('TaskRow — notes survive dismissing the detail panel (ALF-126)', () =
     expect(mockUpdateItem).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ALF-128 — the detail panel and the add-subtask entry are mutually exclusive on a row.
+// Both render between the row body and its subtask list, so showing them together buries the
+// entry field under the panel. Opening either closes the other. Only the SAME row is affected:
+// another row's open panel is already dismissed by the outside pointer press (ALF-78).
+// ---------------------------------------------------------------------------
+
+describe('TaskRow — detail panel vs add-subtask entry (ALF-128)', () => {
+  it('closes the detail panel when the "+" opens the add-subtask entry', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('button', { name: 'Add subtask' }));
+
+    expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('closes the detail panel when the ⋯ menu opens the add-subtask entry', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    // The menu is a portaled layer, so opening it is not an outside press — the panel is
+    // still open when "Add subtask" is chosen.
+    await openMenuFor(user, 'Write tests');
+    expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
+    await activateMenuItem(user, /^add subtask$/i);
+
+    expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+  });
+
+  it('closes the add-subtask entry when "Open details" reveals the panel', async () => {
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await user.click(screen.getByRole('button', { name: 'Add subtask' }));
+    expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+
+    await openDetails(user);
+
+    // The other direction needs no code of its own: the entry field lives only as long as it
+    // holds focus (CaptureBox autofocuses and dismisses on focus leaving its form), so reaching
+    // for the ⋯ menu already closes it. This pins the invariant so a change to that lifetime
+    // can't quietly let both surfaces sit open at once.
+    //
+    // The field is animating out (ALF-66) — still mounted but aria-hidden — so query by role,
+    // which excludes the closing region: the panel's Notes box is the row's only live input.
+    const inputs = within(rowFor('Write tests')).getAllByRole('textbox');
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).toHaveAccessibleName('Notes');
+  });
+
+  it('saves in-progress notes when the add-subtask entry closes the panel', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Buy milk');
+    await user.click(screen.getByRole('button', { name: 'Add subtask' }));
+
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+});
