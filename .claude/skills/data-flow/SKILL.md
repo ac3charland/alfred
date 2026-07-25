@@ -123,7 +123,11 @@ split into state + actions contexts (so actions-only callers don't re-render on 
   open flag from it (`sameEditor(active, { itemId, kind })`) and call `openEditor` /
   `closeEditor`; opening one closes whatever was open. `closeEditor` only clears when it
   still owns the slot, so a stale close (an async title save resolving *after* another input
-  opened) no-ops instead of closing the new input.
+  opened) no-ops instead of closing the new input. The compact add-subtask box is additionally
+  **focus-scoped** — `CaptureBox` autofocuses on mount and dismisses on focus leaving its form
+  — so it can't stay open while the user reaches for anything else: a "close the entry when X
+  happens" requirement is usually already satisfied by that, and wants a test pinning the
+  invariant rather than a redundant `closeEditor` call.
 - **`ExpansionProvider`** (`lib/stores/expansion-store.tsx`) — a row's two child-disclosure
   flags (its subtask tree and its "Show completed" panel) live here, not per-row, because a
   header **"collapse all"** must close every open row at once — a cross-row command no single
