@@ -74,3 +74,14 @@ export interface PrRatioResponse {
   repos: PrRatioRepoCount[];
   other?: PrRatioOtherCount;
 }
+
+// ── Weekly plan archive — one uploaded HTML document per week. ──
+
+/** One archived weekly plan, document included. */
+export type WeeklyPlan = Database['public']['Tables']['weekly_plans']['Row'];
+
+/**
+ * A plan without its document — the picker index. The `html` column is deliberately absent:
+ * each plan is tens of KB, so only the selected one's document is ever in memory.
+ */
+export type WeeklyPlanSummary = Omit<WeeklyPlan, 'html'>;
