@@ -69,6 +69,22 @@ export function TaskDetailPanel({
     onCommitNotes(draftNotes);
   };
 
+  // Dismissing the panel (Escape, an outside pointer press, "Collapse all") UNMOUNTS it, and a
+  // removed element never fires blur — so a save that hangs off `onBlur` alone silently drops
+  // whatever was typed (ALF-126). Commit the pending draft on unmount as well. The cleanup runs
+  // once, at unmount, so it reads the draft through a ref kept current by a no-dep effect;
+  // committing on blur re-seeds the draft from the optimistic patch, which makes this a no-op.
+  const pendingCommit = React.useRef(commitNotes);
+  React.useEffect(() => {
+    pendingCommit.current = commitNotes;
+  });
+  React.useEffect(
+    () => () => {
+      pendingCommit.current();
+    },
+    [],
+  );
+
   const showChipRow = isTask || showRepeat;
 
   return (
