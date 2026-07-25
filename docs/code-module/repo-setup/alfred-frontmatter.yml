@@ -8,15 +8,20 @@
 # Contract:
 #   ```alfred
 #   alfred-ticket: ALF-42              # one ref, or a comma-separated list
-#   phase: refinement                  # refinement | implementation
-#   spec-path: docs/specs/ALF-42.html  # required on refinement PRs (a self-contained HTML plan)
+#   phase: refinement                  # epic-refinement | refinement | implementation
+#   spec-path: docs/specs/ALF-42.html  # required on both refinement phases (a self-contained HTML plan)
 #   ```
+#
+# An `epic-refinement` PR carries the EPIC's ref and writes the epic's own long-lived
+# context/decisions spec (conventionally `docs/specs/epics/<EPIC-REF>.html`).
 #
 # Archive rule (implementation PRs): a spec is scaffolding — once it's built, the
 # implementation PR retires it from the active specs directory by git-moving it into
 # `docs/specs/archive/`. The check fails the PR when the `spec-path` it carries still
 # resolves to a file in the active directory (i.e. the spec was left un-archived). A
 # skip-refinement (bypass) PR has no file at `spec-path`, so it passes unaffected.
+# An EPIC spec is never archived — it is long-lived context later story sessions keep
+# reading — so `docs/specs/epics/` is excluded from the rule outright.
 
 name: alfred-frontmatter
 on:
@@ -42,19 +47,24 @@ jobs:
             if (!m) { console.error("missing ```alfred block"); process.exit(1); }
             const blk = m[1];
             const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
-            const phase  = /phase:\s*(refinement|implementation)/.exec(blk);
+            // Alternation order matters: "epic-refinement" ends with "refinement", and the
+            // engine takes the first alternative that matches, so the longer phase leads.
+            const phase  = /phase:\s*(epic-refinement|refinement|implementation)/.exec(blk);
             if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
             const specPath = (/spec-path:\s*(\S+)/.exec(blk) || [])[1];
-            if (phase[1] === "refinement" && !specPath) {
+            if ((phase[1] === "refinement" || phase[1] === "epic-refinement") && !specPath) {
               console.error("refinement PRs need spec-path"); process.exit(1);
             }
             // An implementation PR must ARCHIVE its spec: git-move it out of the active
             // docs/specs/ directory into docs/specs/archive/. Fail when the recorded spec-path
             // still resolves to a file in the active directory. A bypass PR (no committed spec)
-            // has nothing at spec-path, so existsSync is false and it passes.
+            // has nothing at spec-path, so existsSync is false and it passes. Epic specs are
+            // never archived, so docs/specs/epics/ is excluded — belt and braces, since this
+            // only fires on phase: implementation, whose spec-path is the STORY spec.
             if (phase[1] === "implementation" && specPath
                 && specPath.startsWith("docs/specs/")
                 && !specPath.startsWith("docs/specs/archive/")
+                && !specPath.startsWith("docs/specs/epics/")
                 && fs.existsSync(specPath)) {
               const archived = "docs/specs/archive/" + specPath.split("/").pop();
               console.error("implementation PR must archive its spec: git-move " + specPath + " to " + archived);
