@@ -24,6 +24,7 @@ import type {
   Item,
   PrRatioResponse,
   Project,
+  WeeklyPlan,
 } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -358,6 +359,21 @@ export async function getPrRatio(tz?: string): Promise<PrRatioResponse | undefin
   }
 
   return response.json() as Promise<PrRatioResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// Weekly plans
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch one archived weekly plan with its document. Only the latest plan is seeded at the
+ * shell, so the picker pulls an older week through here (once — the store caches it).
+ *
+ * There is no client-side upload counterpart: plans are POSTed straight to
+ * `/api/weekly-plans` with the ingress API key, not from the app.
+ */
+export function fetchWeeklyPlan(id: string): Promise<WeeklyPlan> {
+  return apiRequest<WeeklyPlan>(`/api/weekly-plans/${id}`);
 }
 
 export {
