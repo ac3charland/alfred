@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-131 — Add tool to measure PR ratios</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll-x { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 165px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  @media (max-width: 560px) { .decision { grid-template-columns: 1fr; gap: .1rem; } }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "\2610"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  .mock {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8rem; line-height: 1.5; white-space: pre; overflow-x: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-131 — Add tool to measure PR ratios</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Code module</span>
+    <span class="pill">env · lib · API route · UI</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    Part of this quarter's goal-tracking is a simple weekly split: <strong>of the pull requests I
+    merged this week, what share went to RealPlay and what share went to alfred?</strong> Today that
+    question can only be answered by opening two GitHub tabs and counting by hand, which means it
+    doesn't get asked. The number is small, the cadence is weekly, and the natural place to see it
+    is the surface already used to decide what to work on next — the <strong>Backlog</strong>.
+  </p>
+  <p>
+    ALF-131 adds two things: a <strong>ratio component at the top of the Backlog view</strong>
+    showing a split bar with a percentage label per repo, and the
+    <strong>authenticated API endpoint</strong> that computes it, so the same number is reachable
+    from a script, a Shortcut, or a future weekly-review surface without going through the UI.
+  </p>
+
+  <div class="callout">
+    <strong>Why this can't come from alfred's own data.</strong> The webhook Worker only reacts to
+    PRs whose body carries an <code>alfred</code> frontmatter block, and
+    <code>code_items</code> stores <code>implementation_pr_url</code> with <em>no merge
+    timestamp</em>. So the existing tables can answer neither "was it merged this week" nor "what
+    about the PRs the factory never saw" — and most RealPlay PRs are in that second bucket. The
+    ratio is therefore computed from a <strong>live GitHub query</strong>, and reads nothing from
+    Supabase.
+  </div>
+
+  <h2>2 · Decisions (locked during refinement)</h2>
+  <dl class="decision">
+    <dt>Data source</dt>
+    <dd><strong>Live GitHub Search API</strong>, server-side, one request per configured repo. The
+      response's <code>total_count</code> <em>is</em> the count — no paging, no per-PR fetch.</dd>
+
+    <dt>Repo configuration</dt>
+    <dd>A server-side env var <code>PR_RATIO_REPOS</code> naming each repo and its display label.
+      Deliberately <strong>not</strong> the <code>projects</code> table: RealPlay does not run
+      through the Software Factory, and adding it as a project row would surface it in every
+      project nav, board, and epic picker in the Code module.</dd>
+
+    <dt>Which PRs count</dt>
+    <dd>Merged PRs authored by the owner <em>or</em> by Claude on the owner's behalf — expressed as
+      an <strong>author allowlist</strong> (<code>PR_RATIO_AUTHORS</code>). Verified against the
+      real repo: agent-opened PRs in <code>ac3charland/alfred</code> are authored by
+      <code>ac3charland</code> (opened via the Claude GitHub App), so one login covers both today,
+      and the allowlist accommodates a future bot identity without a code change. Dependency bots
+      are excluded by construction.</dd>
+
+    <dt>Week boundary</dt>
+    <dd><strong>ISO week</strong> — Monday 00:00:00 inclusive → the following Monday 00:00:00
+      exclusive — evaluated in an <strong>IANA timezone supplied by the caller</strong>
+      (<code>?tz=</code>). The in-app component sends the browser's resolved timezone; an external
+      caller that sends nothing gets UTC. No timezone is baked into config or code.</dd>
+
+    <dt>API auth</dt>
+    <dd><strong>Both</strong> — the browser session (cookie) for the in-app component, <em>and</em>
+      the existing <code>INGEST_API_KEY</code> via <code>x-api-key</code> /
+      <code>Authorization: Bearer</code> for scripts. Same dual posture as the capture ingress on
+      <code>POST /api/items</code>.</dd>
+
+    <dt>Failure posture</dt>
+    <dd>The ratio is an <strong>ornament on the Backlog, never a gate</strong>. Missing config, a
+      GitHub outage, a rate-limit, or an expired token must leave the Backlog fully usable — the
+      component renders nothing (or a one-line muted note), and nothing throws.</dd>
+  </dl>
+
+  <h2>3 · End-to-end flow</h2>
+
+  <svg viewBox="0 0 900 300" role="img" aria-label="Flow from the Backlog component through the API route to the GitHub search API and back">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+      </marker>
+      <style>
+        .box { fill: none; stroke: currentColor; stroke-width: 1.4; rx: 8; }
+        .lbl { font: 600 13px -apple-system, system-ui, sans-serif; fill: currentColor; }
+        .note { font: 11.5px ui-monospace, Menlo, monospace; fill: currentColor; opacity: .72; }
+        .ln { stroke: currentColor; stroke-width: 1.3; fill: none; marker-end: url(#arrow); }
+      </style>
+    </defs>
+    <g color="#6b7682">
+      <rect class="box" x="12" y="26" width="196" height="96"/>
+      <text class="lbl" x="26" y="52">PrRatio (client)</text>
+      <text class="note" x="26" y="74">components/code/</text>
+      <text class="note" x="26" y="90">pr-ratio.tsx</text>
+      <text class="note" x="26" y="110">sends browser tz</text>
+
+      <rect class="box" x="256" y="26" width="212" height="96"/>
+      <text class="lbl" x="270" y="52">GET /api/code/pr-ratio</text>
+      <text class="note" x="270" y="74">session OR x-api-key</text>
+      <text class="note" x="270" y="90">?tz=America/New_York</text>
+      <text class="note" x="270" y="110">401 when neither</text>
+
+      <rect class="box" x="516" y="26" width="180" height="96"/>
+      <text class="lbl" x="530" y="52">lib/github/</text>
+      <text class="lbl" x="530" y="70">pr-ratio.ts</text>
+      <text class="note" x="530" y="92">week window +</text>
+      <text class="note" x="530" y="108">query builder</text>
+
+      <rect class="box" x="742" y="26" width="146" height="96"/>
+      <text class="lbl" x="756" y="52">GitHub</text>
+      <text class="lbl" x="756" y="70">Search API</text>
+      <text class="note" x="756" y="92">1 req per repo</text>
+      <text class="note" x="756" y="108">total_count only</text>
+
+      <rect class="box" x="256" y="186" width="212" height="88"/>
+      <text class="lbl" x="270" y="212">PrRatioResponse</text>
+      <text class="note" x="270" y="234">counts + percentages</text>
+      <text class="note" x="270" y="250">(largest remainder)</text>
+      <text class="note" x="270" y="266">+ week window echo</text>
+
+      <rect class="box" x="12" y="186" width="196" height="88"/>
+      <text class="lbl" x="26" y="212">RatioBar (atom)</text>
+      <text class="note" x="26" y="234">stacked segments</text>
+      <text class="note" x="26" y="250">+ % labels</text>
+      <text class="note" x="26" y="266">skeleton → data</text>
+
+      <path class="ln" d="M 210 74 L 252 74"/>
+      <path class="ln" d="M 470 74 L 512 74"/>
+      <path class="ln" d="M 698 74 L 738 74"/>
+      <path class="ln" d="M 606 124 L 606 160 L 470 160 L 470 186"/>
+      <path class="ln" d="M 252 230 L 212 230"/>
+    </g>
+  </svg>
+  <p class="diagram-cap">
+    One read path, no writes, no Supabase. Every box below the fold is pure — the only I/O is the
+    fan-out to GitHub.
+  </p>
+
+  <ol>
+    <li>The Backlog mounts <code>&lt;PrRatio /&gt;</code>. On mount the hook calls
+      <code>GET /api/code/pr-ratio?tz=&lt;browser tz&gt;</code>; a skeleton renders meanwhile.</li>
+    <li>The route authenticates (session <em>or</em> API key), resolves the repo config, and
+      computes the ISO-week window in the requested timezone.</li>
+    <li>One GitHub search per configured repo runs <strong>in parallel</strong>; each response's
+      <code>total_count</code> is the repo's merged-PR count for the week.</li>
+    <li>Counts become percentages via largest-remainder rounding (so the labels sum to exactly
+      100%), and the route returns the JSON envelope in §6.</li>
+    <li>The component renders the split bar and its labels — or renders nothing at all if the
+      endpoint reported that the feature is unconfigured.</li>
+  </ol>
+
+  <h2>4 · Configuration</h2>
+
+  <p>
+    Three new server-side env vars, added to <code>frontend/.env.example</code> with the same
+    commented-template treatment the existing entries get. None are <code>NEXT_PUBLIC_</code> — the
+    token in particular must never reach the browser.
+  </p>
+
+  <div class="scroll-x">
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Required</th><th>Format</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>GITHUB_TOKEN</code></td>
+        <td>Yes</td>
+        <td>Fine-grained PAT</td>
+        <td>Needs only <strong>Pull requests: read</strong> (plus <strong>Metadata: read</strong>) on
+          the measured repos. Same name the Worker already uses for its own token, so the mental
+          model is shared, but this is the frontend's own value in the frontend's own env.</td>
+      </tr>
+      <tr>
+        <td><code>PR_RATIO_REPOS</code></td>
+        <td>Yes</td>
+        <td><code>owner/name:Label,owner/name:Label</code></td>
+        <td>Comma-separated, order preserved — that's the left-to-right order of the bar segments.
+          The <code>:Label</code> suffix is optional; a missing label falls back to the repo name.
+          e.g. <code>ac3charland/realplay:RealPlay,ac3charland/alfred:Alfred</code></td>
+      </tr>
+      <tr>
+        <td><code>PR_RATIO_AUTHORS</code></td>
+        <td>No</td>
+        <td><code>login,login</code></td>
+        <td>Comma-separated GitHub logins whose merged PRs count. Unset → no
+          <code>author:</code> qualifier, and the known dependency bots are excluded instead
+          (see §5.2).</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>
+    Parsing lives in <code>frontend/lib/github/config.ts</code> and mirrors
+    <code>lib/instance.ts</code> exactly: literal <code>process.env.X</code> reads (never a computed
+    key), a blank-collapses-to-unset helper, and a total function that returns a typed object.
+    <strong>Two or more</strong> repos must parse for the feature to be considered configured — a
+    one-repo "ratio" is meaningless.
+  </p>
+
+<pre><span class="filelabel">frontend/lib/github/config.ts</span><code>export interface RatioRepo {
+  /** GitHub owner, e.g. 'ac3charland'. */
+  owner: string;
+  /** GitHub repo name, e.g. 'realplay'. */
+  name: string;
+  /** Display label for the bar segment; defaults to `name` when the suffix is omitted. */
+  label: string;
+}
+
+export interface PrRatioConfig {
+  repos: RatioRepo[];
+  authors: string[];
+  token: string;
+}
+
+/**
+ * Returns the parsed config, or `undefined` when the feature is not configured
+ * (no token, or fewer than two well-formed repo entries). Never throws.
+ */
+export function getPrRatioConfig(): PrRatioConfig | undefined;</code></pre>
+
+  <p>
+    Malformed entries are <strong>skipped, not fatal</strong>: an entry that doesn't match
+    <code>owner/name</code> (optionally <code>:Label</code>) is dropped, and if fewer than two
+    survive, <code>getPrRatioConfig()</code> returns <code>undefined</code> and the feature is off.
+  </p>
+
+  <h2>5 · The computation</h2>
+
+  <h3>5.1 · The week window</h3>
+  <p>
+    <code>frontend/lib/github/week.ts</code> owns a single pure function. It is the one piece of
+    logic here with real edge cases (DST, negative-UTC offsets, Sunday), so it is pure, exported,
+    and directly unit-tested — no network, no clock reads beyond the injected <code>now</code>.
+  </p>
+
+<pre><span class="filelabel">frontend/lib/github/week.ts</span><code>export interface WeekWindow {
+  /** ISO 8601 with offset, e.g. '2026-07-20T00:00:00-04:00' — inclusive. */
+  start: string;
+  /** ISO 8601 with offset — EXCLUSIVE (the following Monday's midnight). */
+  end: string;
+  /** The IANA timezone the window was computed in. */
+  timezone: string;
+}
+
+/**
+ * The ISO week (Monday 00:00 → next Monday 00:00) containing `now`, expressed in `timezone`.
+ * Falls back to 'UTC' when `timezone` is not a valid IANA zone — never throws.
+ */
+export function isoWeekWindow(now: Date, timezone: string): WeekWindow;</code></pre>
+
+  <ul>
+    <li><strong>Monday-start</strong>, matching ISO-8601 — so a Sunday-evening merge lands in the
+      week that's ending, not the one about to begin.</li>
+    <li>Offsets are derived per-instant via <code>Intl.DateTimeFormat</code> with the target
+      timezone, so a week spanning a DST change still starts and ends at local midnight.</li>
+    <li>An unknown/garbage <code>tz</code> silently degrades to UTC rather than 400-ing — the
+      endpoint's job is a number, not timezone validation.</li>
+  </ul>
+
+  <h3>5.2 · The GitHub query</h3>
+  <p>
+    One <code>GET https://api.github.com/search/issues</code> per repo. GitHub's
+    <code>merged:</code> qualifier accepts ISO timestamps <em>with offset</em>, which is exactly
+    what §5.1 emits, so the window is enforced by GitHub rather than by post-filtering — important,
+    because the search response's issue objects do <strong>not</strong> carry
+    <code>merged_at</code> at the top level.
+  </p>
+
+<pre><code>repo:{owner}/{name} is:pr is:merged merged:{start}..{end}
+  + for each configured author:  author:{login}          // GitHub ORs repeated author: qualifiers
+  + when NO authors configured:  -author:app/dependabot -author:app/renovate -author:app/github-actions</code></pre>
+
+  <p>
+    Request shape, mirroring the Worker's existing GitHub call in
+    <code>workers/src/github.ts</code>:
+  </p>
+
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Aspect</th><th>Value</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Headers</td>
+        <td><code>Authorization: Bearer $GITHUB_TOKEN</code>,
+            <code>Accept: application/vnd.github+json</code>,
+            <code>X-GitHub-Api-Version: 2022-11-28</code>,
+            <code>User-Agent: alfred</code></td>
+        <td>GitHub rejects API requests with no <code>User-Agent</code> — the gotcha already
+            documented in the Worker's helper.</td></tr>
+      <tr><td>Query params</td>
+        <td><code>q=&lt;query&gt;&amp;per_page=1</code></td>
+        <td>Only <code>total_count</code> is read; asking for one item keeps the payload tiny.</td></tr>
+      <tr><td>Caching</td>
+        <td><code>next: { revalidate: 300 }</code></td>
+        <td>Search is capped at 30 req/min. A 5-minute revalidate makes repeated Backlog visits
+            free while keeping the number current enough for a weekly metric.</td></tr>
+      <tr><td>Concurrency</td>
+        <td><code>Promise.all</code> across repos</td>
+        <td>Two sequential round-trips would double the component's time-to-content for no
+            reason.</td></tr>
+      <tr><td>Non-2xx</td>
+        <td>Whole request fails (see §6)</td>
+        <td>A partial ratio is a <em>wrong</em> ratio — better to show nothing than a bar whose
+            segments were counted under different rules.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>5.3 · Percentages</h3>
+  <p>
+    Percentages are integers that <strong>sum to exactly 100</strong>, via largest-remainder
+    (Hamilton) rounding — floor each share, then hand the leftover points to the largest fractional
+    remainders, ties broken by config order. Naive per-segment rounding produces the classic
+    "33% / 66%" bar that visibly doesn't add up. Pure, exported, unit-tested:
+  </p>
+
+<pre><span class="filelabel">frontend/lib/github/pr-ratio.ts</span><code>/** Integer percentages summing to exactly 100. All-zero input yields all zeros. */
+export function toPercentages(counts: number[]): number[];</code></pre>
+
+  <p>When every count is zero the total is zero: every percentage is <code>0</code> (not
+    <code>NaN</code>, not an even split), and the UI shows its empty state (§7).</p>
+
+  <h2>6 · The API endpoint</h2>
+
+  <p><code>frontend/app/api/code/pr-ratio/route.ts</code> — <code>GET</code> only.</p>
+
+  <h3>6.1 · Auth</h3>
+  <p>
+    Neither <code>withSession</code> nor <code>validateApiKey</code> alone covers the dual posture,
+    and <code>resolveIngestClient</code> is the wrong shape here (it returns a Supabase client this
+    route has no use for). Add a small sibling to <code>lib/api/auth.ts</code> so the pattern is
+    named once rather than inlined:
+  </p>
+
+<pre><span class="filelabel">frontend/lib/api/auth.ts (addition)</span><code>/**
+ * Wraps a read-only Route Handler that accepts EITHER a browser session OR the
+ * ingest API key. Rejects with 401 before the handler runs when neither is present.
+ * Unlike `resolveIngestClient` it yields no Supabase client — for routes that read
+ * something other than the database.
+ */
+export function withSessionOrApiKey(
+  handler: (request: Request) => Promise&lt;Response&gt;,
+): (request: Request) =&gt; Promise&lt;Response&gt;;</code></pre>
+
+  <h3>6.2 · Request</h3>
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Param</th><th>Required</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>tz</code></td><td>No</td>
+        <td>IANA timezone the ISO week is evaluated in. Defaults to <code>UTC</code>; an
+          unrecognized value also degrades to <code>UTC</code>.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    Validated with a zod schema in <code>lib/api/schemas.ts</code> through the existing
+    <code>parseQueryParams</code> helper, like every other query-taking route — not a hand-rolled
+    <code>searchParams.get</code>.
+  </p>
+
+  <h3>6.3 · Responses</h3>
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+    <tbody>
+      <tr><td><code>200</code></td><td>Success</td><td>The envelope below</td></tr>
+      <tr><td><code>401</code></td><td>No session and no valid API key</td>
+        <td><code>{ "error": "Unauthorized" }</code></td></tr>
+      <tr><td><code>501</code></td><td>Feature not configured (<code>getPrRatioConfig()</code>
+        returned <code>undefined</code>)</td>
+        <td><code>{ "error": "PR ratio is not configured" }</code></td></tr>
+      <tr><td><code>502</code></td><td>Any repo's GitHub request failed or rate-limited</td>
+        <td><code>{ "error": "GitHub request failed" }</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The 200 envelope — <code>200 GET /api/code/pr-ratio?tz=America/New_York</code>:</p>
+
+<pre><code>{
+  "week": {
+    "start": "2026-07-20T00:00:00-04:00",
+    "end": "2026-07-27T00:00:00-04:00",
+    "timezone": "America/New_York"
+  },
+  "total": 9,
+  "repos": [
+    { "repo": "ac3charland/realplay", "label": "RealPlay", "count": 3, "percentage": 33 },
+    { "repo": "ac3charland/alfred",   "label": "Alfred",   "count": 6, "percentage": 67 }
+  ]
+}</code></pre>
+
+  <p>
+    <code>repos</code> preserves <code>PR_RATIO_REPOS</code> order. The response type
+    (<code>PrRatioResponse</code>) lives in <code>lib/types.ts</code> and is what
+    <code>lib/api-client.ts</code>'s new <code>getPrRatio(tz)</code> resolves to — the client never
+    re-declares the shape.
+  </p>
+
+  <div class="callout">
+    <strong>The distinction between 501 and 502 is load-bearing.</strong> 501 means "this deployment
+    doesn't do PR ratios" → the component renders <em>nothing</em>, so a deployment without a token
+    (or local dev) shows a clean Backlog. 502 means "configured but GitHub is unhappy right now" →
+    the component renders a one-line muted note, because silence there would look like "zero PRs
+    this week".
+  </div>
+
+  <h2>7 · UI</h2>
+
+  <h3>7.1 · Placement</h3>
+  <p>
+    Inside <code>frontend/components/code/backlog.tsx</code>, immediately <strong>below the "The
+    Software Factory" header row and above <code>&lt;BacklogList&gt;</code></strong> — the top of
+    the Backlog's content, visible without scrolling, and out of the way of the header's status
+    filter. It renders only in <code>Backlog</code>, so it appears on <code>/code</code> and
+    <code>/code/backlog</code> and not on the project boards.
+  </p>
+
+  <h3>7.2 · Mockup</h3>
+<div class="mock">┌──────────────────────────────────────────────────────────────────────┐
+│  ◉  The Software Factory                        [ Filter by status ▾ ]│
+│     Every story across your projects, ranked by priority.             │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │ PRs merged this week            Jul 20 – Jul 26  ·  9 total     │  │
+│  │                                                                 │  │
+│  │ ████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │  │
+│  │                                                                 │  │
+│  │ ● RealPlay  33%  (3)                        ● Alfred  67%  (6)  │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+│  ALF-131  Add tool to measure PR ratios              ready_for_dev  ▴▾│
+│  ALF-129  …                                                           │
+└──────────────────────────────────────────────────────────────────────┘</div>
+
+  <h3>7.3 · Components</h3>
+  <p>
+    Per the <code>frontend-architecture</code> skill: the reusable primitive goes in
+    <code>atoms/</code>, the compound is assembled in the feature directory, and the fetching
+    behavior is a hook.
+  </p>
+
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>File</th><th>Kind</th><th>Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td><code>components/atoms/ratio-bar.tsx</code></td><td>Atom</td>
+        <td>A stacked horizontal bar: takes <code>segments: { label, value, tone }[]</code> and
+          renders proportional flex children with rounded outer ends. Presentation only — no
+          fetching, no percentage math, no domain vocabulary. A genuine primitive (the kind reused
+          across an app like this), so a single call site today is fine.</td></tr>
+      <tr><td><code>components/code/pr-ratio.tsx</code></td><td>Compound</td>
+        <td><code>'use client'</code>. Calls the hook, renders the card: title, week range,
+          total, <code>&lt;RatioBar&gt;</code>, and the per-repo legend (tone dot, label, percent,
+          count).</td></tr>
+      <tr><td><code>lib/hooks/use-pr-ratio.ts</code></td><td>Hook</td>
+        <td>Fetches on mount via <code>getPrRatio()</code>, passing
+          <code>Intl.DateTimeFormat().resolvedOptions().timeZone</code>. Returns a discriminated
+          union — <code>{ status: 'loading' | 'ready' | 'unconfigured' | 'error' }</code> — so the
+          component's four states are exhaustive and type-checked rather than derived from three
+          loose booleans.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>7.4 · States</h3>
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>State</th><th>Render</th></tr></thead>
+    <tbody>
+      <tr><td>Loading</td><td>The card with a muted skeleton bar — reserves the same height, so
+        the Backlog list doesn't jump when data lands.</td></tr>
+      <tr><td>Ready, <code>total &gt; 0</code></td><td>The bar + legend as mocked above.</td></tr>
+      <tr><td>Ready, <code>total === 0</code></td><td>Card with the muted line
+        <em>"No PRs merged yet this week."</em> and no bar — a week genuinely starts at zero every
+        Monday, so this is a normal state, not an error.</td></tr>
+      <tr><td>Unconfigured (501)</td><td><strong>Renders nothing</strong> — no card, no gap.</td></tr>
+      <tr><td>Error (502 / network)</td><td>Card with the muted line <em>"Couldn't load PR
+        counts."</em> No toast, no retry loop, nothing thrown.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>7.5 · Styling</h3>
+  <ul>
+    <li>Segment tones come from the existing named-accent tokens in <code>globals.css</code>, cycled
+      by index: <code>accent-teal</code>, <code>accent-blue</code>, <code>accent-amber</code>,
+      <code>accent-green</code>. No new color tokens.</li>
+    <li>Card chrome matches the surrounding Code surfaces —
+      <code>rounded-lg border border-border bg-surface p-4</code> — so it reads as part of the
+      Backlog rather than a widget bolted on.</li>
+    <li>The legend wraps on narrow viewports (the header row above it already does).</li>
+    <li>Accessibility: the bar carries <code>role="img"</code> with an <code>aria-label</code>
+      spelling out the split ("RealPlay 33 percent, 3 pull requests; Alfred 67 percent, 6 pull
+      requests"), since the visual split alone conveys the information. Each segment is
+      <code>aria-hidden</code>; the legend text is the accessible detail.</li>
+    <li>Width transitions respect <code>prefers-reduced-motion</code> per the <code>motion</code>
+      skill if the segments animate in at all.</li>
+  </ul>
+
+  <h2>8 · Files touched</h2>
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Path</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>frontend/.env.example</code></td><td class="add">+ <code>GITHUB_TOKEN</code>, <code>PR_RATIO_REPOS</code>, <code>PR_RATIO_AUTHORS</code> with commented guidance</td></tr>
+      <tr><td><code>frontend/lib/github/config.ts</code></td><td class="add">new — env parsing (<code>getPrRatioConfig</code>)</td></tr>
+      <tr><td><code>frontend/lib/github/week.ts</code></td><td class="add">new — <code>isoWeekWindow</code></td></tr>
+      <tr><td><code>frontend/lib/github/pr-ratio.ts</code></td><td class="add">new — <code>server-only</code>; query builder, GitHub fan-out, <code>toPercentages</code></td></tr>
+      <tr><td><code>frontend/lib/api/auth.ts</code></td><td class="add">+ <code>withSessionOrApiKey</code></td></tr>
+      <tr><td><code>frontend/lib/api/schemas.ts</code></td><td class="add">+ <code>prRatioQuerySchema</code> (<code>tz</code>)</td></tr>
+      <tr><td><code>frontend/lib/types.ts</code></td><td class="add">+ <code>PrRatioResponse</code>, <code>PrRatioRepoCount</code></td></tr>
+      <tr><td><code>frontend/app/api/code/pr-ratio/route.ts</code></td><td class="add">new — the GET handler</td></tr>
+      <tr><td><code>frontend/lib/api-client.ts</code></td><td class="add">+ <code>getPrRatio(tz)</code></td></tr>
+      <tr><td><code>frontend/lib/hooks/use-pr-ratio.ts</code></td><td class="add">new</td></tr>
+      <tr><td><code>frontend/components/atoms/ratio-bar.tsx</code></td><td class="add">new</td></tr>
+      <tr><td><code>frontend/components/code/pr-ratio.tsx</code></td><td class="add">new</td></tr>
+      <tr><td><code>frontend/components/code/backlog.tsx</code></td><td>mount <code>&lt;PrRatio /&gt;</code> between the header row and <code>&lt;BacklogList&gt;</code></td></tr>
+      <tr><td><code>README.md</code></td><td>document the three env vars alongside the existing env documentation</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">
+    No migration, no Worker change, no <code>code-store</code> change — the ratio is read-only,
+    ephemeral, and owned by neither Supabase nor the optimistic stores. It deliberately does
+    <strong>not</strong> go through the shell layout's seed-once fetch (§ <code>data-flow</code>):
+    seeding it there would put a GitHub round-trip on the critical path of every page in both
+    modules, for a number only the Backlog shows.
+  </p>
+
+  <h2>9 · Testing</h2>
+  <p>
+    Red/Green TDD per <code>CLAUDE.md</code>. Every behavior below must be expressed in at least one
+    suite — the standard is 100% confidence from <code>check</code>, not 100% line coverage.
+  </p>
+
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Suite</th><th>File</th><th>Must cover</th></tr></thead>
+    <tbody>
+      <tr><td>Unit</td><td><code>lib/github/week.test.ts</code></td>
+        <td>Monday start / exclusive next-Monday end; a Sunday <code>now</code> lands in the
+          <em>ending</em> week; a Monday-00:00 <code>now</code> starts the new week; negative-UTC
+          offset (e.g. <code>America/New_York</code>) doesn't shift the boundary a day; a week
+          containing a DST change still starts and ends at local midnight; invalid tz → UTC.</td></tr>
+      <tr><td>Unit</td><td><code>lib/github/config.test.ts</code></td>
+        <td>Well-formed parse incl. optional label; label defaults to repo name; blank values treated
+          as unset; malformed entries skipped; fewer than two repos → <code>undefined</code>;
+          missing token → <code>undefined</code>; authors parsed and trimmed.</td></tr>
+      <tr><td>Unit</td><td><code>lib/github/pr-ratio.test.ts</code></td>
+        <td>Query string contains repo/is:pr/is:merged/the window; one <code>author:</code> per
+          configured login; bot exclusions only when no authors configured; percentages sum to 100
+          (incl. the 1/3 · 2/3 case); all-zero counts → all zeros; a non-2xx from any repo fails the
+          whole call; <code>fetch</code> mocked — no live network.</td></tr>
+      <tr><td>Unit</td><td><code>app/api/code/pr-ratio/route.test.ts</code></td>
+        <td>401 with neither session nor key; 200 with a session; 200 with <code>x-api-key</code>;
+          200 with <code>Authorization: Bearer</code>; 501 when unconfigured; 502 on GitHub failure;
+          <code>tz</code> flows into the window and is echoed; envelope shape and repo order.</td></tr>
+      <tr><td>Unit (RTL)</td><td><code>components/code/pr-ratio.test.tsx</code></td>
+        <td>Skeleton → data; percentage and count labels per repo; zero-total empty line; error
+          line; <strong>unconfigured renders nothing</strong>; the bar's <code>aria-label</code>
+          describes the split.</td></tr>
+      <tr><td>Unit (RTL)</td><td><code>components/atoms/ratio-bar.test.tsx</code></td>
+        <td>Segment widths proportional to values; zero-value segment not rendered (or rendered at
+          zero width without a visual sliver); single segment fills the bar.</td></tr>
+      <tr><td>Storybook</td><td><code>components/code/pr-ratio.stories.tsx</code></td>
+        <td>Stories for loading, ready, zero-total, and error — fetch stubbed at the story level so
+          the snapshot is deterministic. Picked up by the existing image-snapshot gate.</td></tr>
+      <tr><td>E2E</td><td><code>e2e/pr-ratio.spec.ts</code></td>
+        <td>On <code>/code/backlog</code> with <code>page.route</code> stubbing
+          <code>/api/code/pr-ratio</code>: the card renders above the backlog list with the right
+          percentages; and with a 501 stub, the backlog renders normally with no card — the
+          "never a gate" guarantee, verified end to end.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="small">
+    No test may call GitHub. The unit and route suites mock <code>fetch</code>; the E2E suite
+    intercepts the route. Read the <code>jest</code>, <code>react-testing-library</code>,
+    <code>storybook</code>, and <code>playwright</code> skills before writing each suite.
+  </p>
+
+  <h2>10 · Demo</h2>
+  <p>
+    This is a user-visible change, so it needs a demo doc. Follow the <code>showboat</code> skill for
+    the command set and evidence rules and the <code>demo-lint</code> skill for the folder-per-demo
+    structure — those stay the source of truth; this spec only fixes <em>what</em> the demo must
+    show:
+  </p>
+  <ul>
+    <li>a <strong>screenshot of the Backlog</strong> with the ratio card rendered at the top, and</li>
+    <li>a captured <strong>authenticated request to the endpoint</strong> showing the JSON envelope
+      (an <code>x-api-key</code> call, so it reproduces without a browser session).</li>
+  </ul>
+
+  <h2>11 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li>The Backlog (<code>/code</code> and <code>/code/backlog</code>) shows a PR-ratio card between
+      the "The Software Factory" header and the story list.</li>
+    <li>The card shows one segment per configured repo, in config order, with a percentage label and
+      raw count per repo; the percentages sum to exactly 100.</li>
+    <li>Counts cover PRs <strong>merged</strong> in the current ISO week (Monday 00:00 → next Monday
+      00:00) in the viewer's local timezone.</li>
+    <li>Only PRs by the configured author logins are counted; with no authors configured, dependency
+      bots are excluded.</li>
+    <li><code>GET /api/code/pr-ratio</code> returns the documented envelope for an authenticated
+      browser session.</li>
+    <li>The same endpoint returns the same envelope for a request bearing a valid
+      <code>INGEST_API_KEY</code> via <code>x-api-key</code> or
+      <code>Authorization: Bearer</code>.</li>
+    <li>The endpoint returns 401 when neither a session nor a valid API key is presented.</li>
+    <li><code>?tz=</code> changes which week is measured and is echoed in <code>week.timezone</code>;
+      an absent or invalid value yields UTC without erroring.</li>
+    <li>With no <code>GITHUB_TOKEN</code> / <code>PR_RATIO_REPOS</code>, the endpoint returns 501 and
+      the Backlog renders exactly as it does today, with no card and no error.</li>
+    <li>When GitHub fails or rate-limits, the endpoint returns 502 and the card shows a muted error
+      line; the Backlog and its list stay fully usable.</li>
+    <li>A week with no merged PRs shows "No PRs merged yet this week" rather than an empty or
+      <code>NaN</code> bar.</li>
+    <li>The <code>GITHUB_TOKEN</code> value never reaches the browser (no
+      <code>NEXT_PUBLIC_</code> prefix; no token in any client bundle or API response).</li>
+    <li>Every suite in §9 exists and passes; root <code>check</code> is green.</li>
+    <li>A demo doc per §10 exists and <code>npm run demo -- verify</code> passes.</li>
+  </ul>
+
+  <h2>12 · Out of scope</h2>
+  <ul>
+    <li><strong>History and trends.</strong> Current week only — no previous-week comparison, no
+      sparkline, no stored time series. (A future ticket wanting "vs last week" should add a
+      <code>?week=</code> offset param to this endpoint rather than a second one.)</li>
+    <li><strong>Persisting PR data.</strong> No new table, no Worker change, no widening of the
+      webhook beyond <code>alfred</code>-frontmatter PRs.</li>
+    <li><strong>Anything but merged PRs.</strong> Open, draft, and closed-unmerged PRs are not
+      counted; neither are commits, reviews, or lines changed.</li>
+    <li><strong>Managing the config from the UI.</strong> Repos and authors are env-configured; no
+      settings screen.</li>
+    <li><strong>Goal targets.</strong> No "target ratio" line, no red/green judgement — the
+      component reports, it doesn't grade.</li>
+    <li><strong>Other surfaces.</strong> Project boards, the Tasks module, and the weekly-review flow
+      don't show the ratio; the endpoint exists so a later ticket can add them cheaply.</li>
+  </ul>
+
+  <h2>13 · Open questions</h2>
+  <ul>
+    <li><strong>The RealPlay repo's exact <code>owner/name</code></strong> is not in this repo and
+      wasn't needed to spec the behavior — it's a config value, set at deploy time in
+      <code>PR_RATIO_REPOS</code>. The implementation session should use a placeholder in
+      <code>.env.example</code> and let the real value be filled in on Vercel.</li>
+    <li><strong>More than two repos.</strong> Everything above is written for N repos rather than
+      exactly two (config order drives segments, largest-remainder handles N shares), so a third
+      repo is a config change. Only the legend layout is designed against two; if a third is ever
+      configured, the legend may want to stack rather than sit end-to-end.</li>
+  </ul>
+
+  <hr style="border:none;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+  <p class="small">
+    ALF-131 · refinement spec · spec only — no implementation in this PR.
+  </p>
+
+</div>
+</body>
+</html>
