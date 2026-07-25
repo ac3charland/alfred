@@ -514,6 +514,29 @@ describe('POST /api/items', () => {
     );
   });
 
+  it('keeps item_type code when parent_id is present (a story under a code parent — ALF-129)', async () => {
+    const chain = makeQueryChain({ data: TEST_ITEM, error: undefined });
+    const mockSupabase = {
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: TEST_USER } }) },
+      from: jest.fn().mockReturnValue(chain),
+    };
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const parentId = 'e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8';
+
+    await POST(
+      makeRequest('http://localhost/api/items', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'A story', parent_id: parentId, item_type: 'code' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ item_type: 'code', parent_id: parentId }),
+    );
+  });
+
   it('keeps item_type unclassified when no parent_id is provided (top-level capture)', async () => {
     const chain = makeQueryChain({ data: TEST_ITEM, error: undefined });
     const mockSupabase = {
