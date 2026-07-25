@@ -54,6 +54,15 @@ Fill in `frontend/.env.local` (Supabase → Project Settings):
 
 `.env.local` is gitignored — never commit real secrets.
 
+Optional — the Backlog's weekly PR-ratio card and `GET /api/code/pr-ratio`. Leave them unset
+and the endpoint answers 501 and the card renders nothing; the Backlog is unaffected:
+
+| Var | Where | Notes |
+|---|---|---|
+| `GITHUB_TOKEN` | GitHub → fine-grained PAT | **server-only**; needs Pull requests: read (+ Metadata: read) on the measured repos |
+| `PR_RATIO_REPOS` | `owner/name:Label,owner/name:Label` | the measured repos; order is the bar's left-to-right order, `:Label` optional |
+| `PR_RATIO_AUTHORS` | `login,login` | optional allowlist of GitHub logins whose merged PRs count; unset excludes the known dependency bots instead |
+
 ### 3. Apply the database schema
 
 From your machine (the **Direct connection** is IPv6 and works from a normal network):
