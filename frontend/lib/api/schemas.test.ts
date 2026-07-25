@@ -1,4 +1,5 @@
 import {
+  convertCodeEpicSchema,
   createFolderSchema,
   createItemSchema,
   createProjectSchema,
@@ -479,6 +480,31 @@ describe('moveCodeSchema (the Backlog jump to top/bottom)', () => {
 
   it('rejects a non-boolean to_top', () => {
     expect(moveCodeSchema.safeParse({ ref: 'ALF-1', to_top: 'top' }).success).toBe(false);
+  });
+});
+
+describe('convertCodeEpicSchema (the epic conversion)', () => {
+  const ITEM = '11111111-1111-4111-8111-111111111111';
+  const PROJECT = '22222222-2222-4222-8222-222222222222';
+
+  it('accepts an item id and a project id', () => {
+    expect(convertCodeEpicSchema.safeParse({ item_id: ITEM, project_id: PROJECT }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects a missing project_id', () => {
+    expect(convertCodeEpicSchema.safeParse({ item_id: ITEM }).success).toBe(false);
+  });
+
+  it('rejects a missing item_id', () => {
+    expect(convertCodeEpicSchema.safeParse({ project_id: PROJECT }).success).toBe(false);
+  });
+
+  it('rejects a non-uuid id', () => {
+    expect(convertCodeEpicSchema.safeParse({ item_id: 'ALF-1', project_id: PROJECT }).success).toBe(
+      false,
+    );
   });
 });
 
