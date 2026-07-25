@@ -72,6 +72,24 @@ export function withSession<P = Record<string, string>>(
 }
 
 /**
+ * Wraps a read-only Route Handler that accepts EITHER a browser session OR the ingest API
+ * key, rejecting with 401 before the handler runs when neither is present.
+ *
+ * Unlike `resolveIngestClient` it yields no Supabase client: it is for routes that read
+ * something other than the database, so a client would be dead weight — and the API-key path
+ * short-circuits before any session lookup, keeping a scripted call free of cookie work.
+ */
+export function withSessionOrApiKey(handler: (request: Request) => Promise<Response>) {
+  return async (request: Request): Promise<Response> => {
+    if (validateApiKey(request)) return handler(request);
+
+    const session = await requireSession();
+    if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    return handler(request);
+  };
+}
+
+/**
  * Resolves the Supabase client to use for a POST /api/items request:
  *
  * - Valid API key present → `createAdminClient()` (bypasses RLS, trusted ingress)

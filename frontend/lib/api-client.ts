@@ -22,6 +22,7 @@ import type {
   Epic,
   Folder,
   Item,
+  PrRatioResponse,
   Project,
 } from '@/lib/types';
 
@@ -330,6 +331,33 @@ export async function moveCodeInProject(ref: string, toTop: boolean): Promise<Co
     body: JSON.stringify({ ref, to_top: toTop }),
   });
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// PR ratio
+// ---------------------------------------------------------------------------
+
+/**
+ * This week's merged-PR split across the configured repos, or `undefined` when the
+ * deployment reports the feature unconfigured (501) — which the Backlog card renders as
+ * nothing at all, so a deployment without a GitHub token shows a clean Backlog.
+ *
+ * Deliberately not routed through `apiRequest`: that helper collapses every non-2xx into a
+ * thrown Error, and this caller has to tell "not configured here" apart from "GitHub is
+ * unhappy", which stays a throw.
+ */
+export async function getPrRatio(tz?: string): Promise<PrRatioResponse | undefined> {
+  const qs = tz === undefined ? '' : `?tz=${encodeURIComponent(tz)}`;
+  const path = `/api/code/pr-ratio${qs}`;
+  const response = await fetch(path);
+
+  if (response.status === 501) return undefined;
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Unknown error');
+    throw new Error(`API GET ${path} failed: ${String(response.status)} ${text}`);
+  }
+
+  return response.json() as Promise<PrRatioResponse>;
 }
 
 export {
