@@ -51,6 +51,42 @@ describe('TextareaField', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
   });
 
+  it.each([
+    ['⌘', '{Meta>}{Enter}{/Meta}'],
+    ['Ctrl', '{Control>}{Enter}{/Control}'],
+  ])('saves on %s+Enter', async (_label, chord) => {
+    const user = userEvent.setup();
+    const { onSave } = setup();
+    await user.click(screen.getByLabelText('Edit notes'));
+    await user.keyboard(chord);
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a bare Enter to insert a newline instead of saving', async () => {
+    const user = userEvent.setup();
+    const { onSave } = setup();
+    await user.click(screen.getByLabelText('Edit notes'));
+    await user.keyboard('{Enter}');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('ignores the save shortcut while a save is already in flight', async () => {
+    const user = userEvent.setup();
+    const { onSave } = setup({ isPending: true });
+    await user.click(screen.getByLabelText('Edit notes'));
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('calls onEscape when Escape is pressed', async () => {
+    const user = userEvent.setup();
+    const onEscape = jest.fn();
+    setup({ onEscape });
+    await user.click(screen.getByLabelText('Edit notes'));
+    await user.keyboard('{Escape}');
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the warning variant with an amber confirm and a caption label', () => {
     setup({
       variant: 'warning',

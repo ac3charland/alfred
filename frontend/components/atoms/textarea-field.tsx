@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { isSaveShortcut } from '@/lib/ui/save-shortcut';
 
 interface TextareaFieldProperties {
   value: string;
@@ -65,6 +66,13 @@ export function TextareaField({
       }}
       onKeyDown={(event_) => {
         if (event_.key === 'Escape') onEscape?.();
+        // ⌘↵ / Ctrl+↵ commits without reaching for the Save button; preventDefault stops the
+        // newline the chord would otherwise insert. A save already in flight swallows it, exactly
+        // as the disabled buttons do.
+        if (isSaveShortcut(event_) && !isPending) {
+          event_.preventDefault();
+          void onSave();
+        }
       }}
       rows={rows}
       placeholder={placeholder}
@@ -120,13 +128,12 @@ export function TextareaField({
       {textarea}
       <div className="flex gap-2">
         <Button
-          variant="ghost"
+          variant="ghostAccent"
           size="sm"
           disabled={isPending}
           onClick={() => {
             void onSave();
           }}
-          className="text-accent-teal hover:bg-accent-teal/10"
         >
           {saveLabel}
         </Button>
