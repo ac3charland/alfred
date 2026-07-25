@@ -1,7 +1,8 @@
-import type { CodeStory, Project } from '@/lib/types';
+import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   buildBypassUrl,
+  buildEpicRefinementUrl,
   buildImplementationUrl,
   buildRefinementUrl,
   promptFromLaunchUrl,
@@ -53,7 +54,27 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     epic_name: 'Communication Firewall',
     epic_ref: 'ALF-1',
     epic_archived_at: null,
+    epic_spec_path: null,
     priority: 1,
+    ...overrides,
+  };
+}
+
+/** An epic row, the subject of the epic-refinement launch. */
+function makeEpic(overrides: Partial<Epic> = {}): Epic {
+  return {
+    id: 'e1',
+    project_id: 'p1',
+    name: 'Communication Firewall',
+    notes: null,
+    ref_number: 12,
+    ref: 'ALF-12',
+    archived_at: null,
+    created_at: '2025-01-01T00:00:00Z',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     ...overrides,
   };
 }
@@ -420,5 +441,171 @@ describe('promptFromLaunchUrl', () => {
 
   it('returns an empty string when the URL carries no `q`', () => {
     expect(promptFromLaunchUrl('https://claude.ai/code?repo=ac3charland/alfred')).toBe('');
+  });
+});
+
+describe('buildEpicRefinementUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const { base, repo } = parse(buildEpicRefinementUrl(makeProject(), makeEpic()));
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('leads the prompt with the epic ref and name so the browser tab is scannable', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt.split('\n', 1)[0]).toBe('ALF-12: Communication Firewall');
+  });
+
+  it('asks for an EPIC SPEC ONLY — no implementation and no per-story specs', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).toMatch(/EPIC SPEC ONLY/);
+    expect(prompt).toMatch(/do NOT implement anything/i);
+    // Individual stories are refined in their own sessions — this session must not pre-empt them.
+    expect(prompt).toMatch(/do NOT write\s+per-story specs|per-story specs/i);
+  });
+
+  it('points at the epic-refinement skill dropped into each repo', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).toContain('.claude/skills/epic-refinement/SKILL.md');
+    // The story refinement skill is a different altitude — it must not be the one named.
+    expect(prompt).not.toContain('.claude/skills/refinement/SKILL.md');
+  });
+
+  it('embeds the alfred block with the epic ref, the epic-refinement phase, and a placeholder spec-path', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-12');
+    expect(prompt).toContain('phase: epic-refinement');
+    expect(prompt).toContain('spec-path: <path-or-folder-of-the-spec>');
+  });
+
+  it('gates on context: brainstorming with the human is the point of the session', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/brainstorm/i);
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+  });
+
+  it('asks Claude to self-check the saved spec and verbatim block before the PR', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).toMatch(/open.*(pull request|pr)/i);
+    expect(prompt).toMatch(/reproduced exactly/i);
+  });
+
+  it('tells the agent to UPDATE an existing epic spec in place rather than write a second one', () => {
+    const prompt =
+      parse(
+        buildEpicRefinementUrl(
+          makeProject(),
+          makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html' }),
+        ),
+      ).prompt ?? '';
+    expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+    expect(prompt).toMatch(/UPDATE that file\s+in place|update that file in place/i);
+  });
+
+  it('says nothing about updating a file when the epic has no spec yet', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).not.toMatch(/in place/i);
+    expect(prompt).not.toContain('already has a spec');
+  });
+
+  it('inlines short epic notes, labelled as the epic notes', () => {
+    const prompt =
+      parse(
+        buildEpicRefinementUrl(
+          makeProject(),
+          makeEpic({ notes: 'Everything about how alfred talks to me.' }),
+        ),
+      ).prompt ?? '';
+    expect(prompt).toContain('Context (from the epic notes):');
+    expect(prompt).toContain('Everything about how alfred talks to me.');
+  });
+
+  it('clips long epic notes and flags them as truncated', () => {
+    const longNotes = 'X'.repeat(20_000);
+    const url = buildEpicRefinementUrl(makeProject(), makeEpic({ notes: longNotes }));
+    expect(url.length).toBeLessThan(14_000);
+    expect(parse(url).prompt ?? '').not.toContain(longNotes);
+    expect(parse(url).prompt ?? '').toMatch(/truncated/i);
+  });
+
+  it('url-encodes the prompt so spaces and newlines survive the query string', () => {
+    const rawQuery = buildEpicRefinementUrl(makeProject(), makeEpic()).split('?', 2)[1] ?? '';
+    expect(rawQuery).not.toMatch(/[ \n`]/);
+  });
+
+  it('derives the repo and ref from the passed project + epic', () => {
+    const { repo, prompt } = parse(
+      buildEpicRefinementUrl(
+        makeProject({ repo_owner: 'me', repo_name: 'relay' }),
+        makeEpic({ ref: 'RLP-3', name: 'Digest pipeline' }),
+      ),
+    );
+    expect(repo).toBe('me/relay');
+    expect((prompt ?? '').split('\n', 1)[0]).toBe('RLP-3: Digest pipeline');
+    expect(prompt).toContain('alfred-ticket: RLP-3');
+  });
+});
+
+/** A story whose epic carries a spec — the case that adds the epic-context paragraph. */
+function withEpicSpec(): CodeStory {
+  return makeStory({ epic_spec_path: 'docs/specs/epics/ALF-12.html', epic_ref: 'ALF-12' });
+}
+
+describe('the epic-spec reference in the story prompts', () => {
+  const builders = [
+    ['buildRefinementUrl', buildRefinementUrl],
+    ['buildImplementationUrl', buildImplementationUrl],
+    ['buildBypassUrl', buildBypassUrl],
+  ] as const;
+
+  it.each(builders)('%s points at the epic spec when the story’s epic has one', (_name, build) => {
+    const prompt = parse(build(makeProject(), withEpicSpec())).prompt ?? '';
+    expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+    expect(prompt).toContain('ALF-12');
+    expect(prompt).toContain('Communication Firewall');
+    expect(prompt).toMatch(/read it first/i);
+  });
+
+  it.each(builders)('%s tells the agent NOT to edit, move, or archive it', (_name, build) => {
+    const prompt = parse(build(makeProject(), withEpicSpec())).prompt ?? '';
+    // The implementation prompt in the same message tells the agent to git-move ITS spec into
+    // the archive — the epic spec is long-lived background and must be exempt from that.
+    expect(prompt).toMatch(/background/i);
+    expect(prompt).toMatch(/don't edit, archive, or move it/i);
+  });
+
+  it.each(builders)('%s omits the paragraph entirely when the epic has no spec', (_name, build) => {
+    const prompt = parse(build(makeProject(), makeStory({ epic_spec_path: null }))).prompt ?? '';
+    expect(prompt).not.toMatch(/Epic context:/);
+    expect(prompt).not.toContain('docs/specs/epics/');
+  });
+
+  it('places the epic paragraph after the opening line and before the numbered steps', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), withEpicSpec())).prompt ?? '';
+    const epicLine = prompt.indexOf('Epic context:');
+    const youAre = prompt.indexOf('You are refining');
+    const firstStep = prompt.indexOf('1. Ground yourself');
+    expect(youAre).toBeLessThan(epicLine);
+    expect(epicLine).toBeLessThan(firstStep);
+  });
+
+  it('does not disturb the story spec-path in the implementation block', () => {
+    const prompt =
+      parse(
+        buildImplementationUrl(
+          makeProject(),
+          makeStory({
+            spec_path: 'docs/specs/ALF-42.html',
+            epic_spec_path: 'docs/specs/epics/ALF-12.html',
+          }),
+        ),
+      ).prompt ?? '';
+    // The block still names the STORY spec, and the archive instruction still targets it.
+    expect(prompt).toContain('spec-path: docs/specs/ALF-42.html');
+    expect(prompt).toContain('docs/specs/archive/ALF-42.html');
+    expect(prompt).not.toContain('docs/specs/archive/ALF-12.html');
   });
 });

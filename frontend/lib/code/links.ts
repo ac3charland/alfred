@@ -20,12 +20,15 @@
  *   prompts REFERENCE the committed spec file and never inline the whole spec/notes.
  * - No branch/`ref` URL param is documented (the session UI has a branch selector instead).
  */
-import type { CodeStory, Project } from '@/lib/types';
+import type { CodeStory, Epic, Project } from '@/lib/types';
 
 const CLAUDE_CODE_WEB_URL = 'https://claude.ai/code';
 
 /** The refinement skill dropped into each project repo; a refinement session auto-loads it. */
 const REFINEMENT_SKILL_PATH = '.claude/skills/refinement/SKILL.md';
+
+/** The epic-refinement skill dropped into each project repo; an epic session auto-loads it. */
+const EPIC_REFINEMENT_SKILL_PATH = '.claude/skills/epic-refinement/SKILL.md';
 
 /** The implementation-guide skill; an implementation/bypass session loads it where present. */
 const IMPLEMENT_SKILL_PATH = '.claude/skills/implement-spec/SKILL.md';
@@ -74,6 +77,27 @@ function archivePathFor(specPath: string): string {
 }
 
 /**
+ * The GitHub blob URL for a recorded spec — the "View in repo" link behind both the story detail
+ * modal and the epic spec modal. Pinned to the recorded blob sha so the link shows the exact
+ * snapshotted revision; falls back to the default branch when no sha is recorded yet. Returns
+ * `undefined` when the repo coordinates or the path are missing, i.e. there is nothing to link to.
+ */
+export function specBlobUrl({
+  repoOwner,
+  repoName,
+  specPath,
+  specSha,
+}: {
+  repoOwner: string | null;
+  repoName: string | null;
+  specPath: string | null;
+  specSha: string | null;
+}): string | undefined {
+  if (repoOwner === null || repoName === null || specPath === null) return undefined;
+  return `https://github.com/${repoOwner}/${repoName}/blob/${specSha ?? 'HEAD'}/${specPath}`;
+}
+
+/**
  * The machine-readable PR ↔ ticket block every phase's PR must carry. Kept dead simple
  * so the Worker can regex it: a fenced ```alfred block with `alfred-ticket` + `phase`, plus a
  * `spec-path` line when there's a spec to name. Refinement and implementation PRs pass one (the
@@ -82,11 +106,11 @@ function archivePathFor(specPath: string): string {
  * refinement PRs only, so an implementation block is valid without it.
  */
 function frontmatterBlock(
-  story: CodeStory,
-  phase: 'refinement' | 'implementation',
+  ref: string,
+  phase: 'epic-refinement' | 'refinement' | 'implementation',
   specPath?: string,
 ): string {
-  const lines = ['```alfred', `alfred-ticket: ${refOf(story)}`, `phase: ${phase}`];
+  const lines = ['```alfred', `alfred-ticket: ${ref}`, `phase: ${phase}`];
   if (specPath !== undefined) lines.push(`spec-path: ${specPath}`);
   lines.push('```');
   return lines.join('\n');
@@ -100,18 +124,39 @@ function frontmatterBlock(
 const MAX_INLINE_NOTES = 1000;
 
 /**
- * A short, safe-to-inline context block from the story's notes, or '' when absent.
- * When the notes exceed the inline cap they're clipped, and the agent is TOLD they're clipped
- * (and that the full notes live in alfred, not the repo, so it can't fetch them) — otherwise a
- * model treats the partial context as complete and specs from it with false confidence.
+ * A short, safe-to-inline context block from a ticket's or epic's notes, or '' when absent.
+ * `label` names the source in the heading ('the ticket' / 'the epic notes') so the reader knows
+ * which record the context came from. When the notes exceed the inline cap they're clipped, and
+ * the agent is TOLD they're clipped (and that the full notes live in alfred, not the repo, so it
+ * can't fetch them) — otherwise a model treats the partial context as complete and specs from it
+ * with false confidence.
  */
-function notesContext(story: CodeStory): string {
-  const notes = story.notes?.trim();
-  if (notes === undefined || notes.length === 0) return '';
-  if (notes.length > MAX_INLINE_NOTES) {
-    return `\n\nContext (from the ticket — TRUNCATED; the full notes live in the orchestrator, not this repo, so ask me here if you need the rest):\n${notes.slice(0, MAX_INLINE_NOTES)}…`;
+function notesContext(notes: string | null, label: string): string {
+  const trimmed = notes?.trim();
+  if (trimmed === undefined || trimmed.length === 0) return '';
+  if (trimmed.length > MAX_INLINE_NOTES) {
+    return `\n\nContext (from ${label} — TRUNCATED; the full notes live in the orchestrator, not this repo, so ask me here if you need the rest):\n${trimmed.slice(0, MAX_INLINE_NOTES)}…`;
   }
-  return `\n\nContext (from the ticket):\n${notes}`;
+  return `\n\nContext (from ${label}):\n${trimmed}`;
+}
+
+/**
+ * The epic-context paragraph a story prompt carries when the story's epic has a spec: read the
+ * epic spec first for the settled high-level decisions, but treat it as BACKGROUND. The
+ * don't-archive clause matters because the implementation prompt in the very same message tells
+ * the agent to git-move *its own* spec into the archive — an epic spec is long-lived and must
+ * never be swept up in that. Returns [] when the epic has no spec: pointing an agent at a file
+ * that isn't there is worse than saying nothing.
+ */
+function epicContextLines(story: CodeStory): string[] {
+  const epicSpecPath = story.epic_spec_path;
+  if (epicSpecPath === null) return [];
+  const epicRef = story.epic_ref ?? '';
+  const epicName = story.epic_name ?? '';
+  return [
+    `Epic context: this story belongs to epic ${epicRef} (${epicName}), whose epic spec is committed at \`${epicSpecPath}\`. Read it first — it carries the high-level decisions and constraints for the whole epic. It is background, NOT this story's spec: don't edit, archive, or move it.`,
+    '',
+  ];
 }
 
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
@@ -161,15 +206,54 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     '',
     `You are refining the ticket ${ref}. Produce a SPEC ONLY — describe the concrete change in enough detail that a later session can build it, but do NOT implement anything yet (no app or source changes).`,
     '',
+    ...epicContextLines(story),
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base the spec on the code that already exists.`,
     `2. If the title and context below don't pin down the scope and acceptance criteria, ASK ME HERE before writing the spec — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
     `3. Write the spec following the refinement skill at \`${REFINEMENT_SKILL_PATH}\` (it auto-loads in a refinement session) — it defines this repo's spec format, structure, and where the spec lives. If the skill is absent, write the spec as a single self-contained HTML document and save it under the repo's specs directory.`,
     `4. Open a pull request whose description carries this machine-readable block — the orchestrator (alfred) reads it to advance the ticket and a CI check enforces it. Reproduce the \`alfred-ticket\` and \`phase\` lines exactly, and set \`spec-path\` to where you saved the spec (a file, or the folder for a multi-file spec):`,
     '',
-    frontmatterBlock(story, 'refinement', SPEC_PATH_PLACEHOLDER),
+    frontmatterBlock(ref, 'refinement', SPEC_PATH_PLACEHOLDER),
     '',
     `5. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), and the block is reproduced exactly.`,
-    notesContext(story),
+    notesContext(story.notes, 'the ticket'),
+  ].join('\n');
+  return buildUrl(project, prompt);
+}
+
+/**
+ * Build the EPIC-REFINEMENT link prompt (the epic 3-dot menu's "Refine epic in Claude Code"):
+ * brainstorm and record the epic's high-level context and decisions as ONE epic spec, then open a
+ * PR carrying `phase: epic-refinement`. Deliberately the same shape as the story refinement prompt
+ * — ref + name lead so the new tab is scannable, format/location stay the *skill's* job (hence the
+ * placeholder `spec-path`, not a hardcoded path), and the clarification gate + verbatim-block
+ * self-check are kept.
+ *
+ * Two things set it apart from the story prompt. It forbids per-story specs as well as
+ * implementation: individual stories are refined in their own sessions, and pre-empting them here
+ * would produce specs no story ever consumes. And an epic has at most ONE spec — when the epic
+ * already carries a `spec_path`, the prompt names it and says to update it in place, so refining
+ * an epic repeatedly revises one document instead of accumulating rival ones.
+ */
+export function buildEpicRefinementUrl(project: Project, epic: Epic): string {
+  const existingSpec = epic.spec_path;
+  const prompt = [
+    `${epic.ref}: ${epic.name}`,
+    '',
+    `You are refining the EPIC ${epic.ref}. Produce an EPIC SPEC ONLY — a high-level context and decisions document for the epic as a whole. Do NOT implement anything, and do NOT write per-story specs (individual stories are refined in their own sessions).`,
+    '',
+    `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base the epic spec on the code that already exists.`,
+    `2. If the epic name and context below don't pin down the problem space and the decisions worth recording, ASK ME HERE before writing — you don't need to guess, I'm in this tab. Brainstorming the epic with me is the point of this session.`,
+    `3. Write the epic spec following the epic-refinement skill at \`${EPIC_REFINEMENT_SKILL_PATH}\` (it auto-loads in an epic-refinement session) — it defines this repo's epic-spec format, structure, and where the spec lives. If the skill is absent, write it as a single self-contained HTML document under the repo's specs directory.${
+      existingSpec === null
+        ? ''
+        : ` This epic already has a spec committed at \`${existingSpec}\` — UPDATE that file in place rather than adding a second one.`
+    }`,
+    `4. Open a pull request whose description carries this machine-readable block — the orchestrator (alfred) reads it to attach the spec to the epic and a CI check enforces it. Reproduce the \`alfred-ticket\` and \`phase\` lines exactly, and set \`spec-path\` to where you saved the spec:`,
+    '',
+    frontmatterBlock(epic.ref, 'epic-refinement', SPEC_PATH_PLACEHOLDER),
+    '',
+    `5. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), and the block is reproduced exactly.`,
+    notesContext(epic.notes, 'the epic notes'),
   ].join('\n');
   return buildUrl(project, prompt);
 }
@@ -196,6 +280,7 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     '',
     `You are implementing the ticket ${ref}. Implement the merged spec committed at \`${specPath}\` in this repo — read it first, then build it.`,
     '',
+    ...epicContextLines(story),
     `Ground yourself first: skim the repo and honor its own conventions (read any CONTRIBUTING or CLAUDE.md). If the merged spec is ambiguous or has drifted from the current code, ASK ME HERE before building rather than guessing — I'm in this tab. Follow the implement-spec skill at \`${IMPLEMENT_SKILL_PATH}\` where present — it owns the conventions for building from a spec (archiving the consumed spec, pinning each requirement with a test).`,
     '',
     // The spec is scaffolding: once it's built, retire it from the active specs directory so
@@ -205,10 +290,10 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     '',
     `When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
-    frontmatterBlock(story, 'implementation', specPath),
+    frontmatterBlock(ref, 'implementation', specPath),
     '',
     `Before opening the PR, confirm your changes satisfy the spec's acceptance criteria, the spec is archived at \`${archivePath}\`, and the block above is reproduced exactly.`,
-    notesContext(story),
+    notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
 }
@@ -238,15 +323,16 @@ export function buildBypassUrl(project: Project, story: CodeStory): string {
     '',
     `You are implementing the ticket ${ref}. This is a SKIP-REFINEMENT session: there is NO committed spec to read — settle the plan here, then build it directly in this one session.`,
     '',
+    ...epicContextLines(story),
     `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your work on the code that already exists.`,
     `2. If the title and context below don't pin down the scope, ASK ME HERE before building rather than guessing — you don't need to guess, I'm in this tab. Once the plan is settled, go ahead.`,
     `3. Implement the change directly, following the repo's own conventions (tests/TDD included) — pin each requirement with a test.`,
     `4. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
     '',
-    frontmatterBlock(story, 'implementation'),
+    frontmatterBlock(ref, 'implementation'),
     '',
     `5. Before opening the PR, confirm your changes satisfy the agreed plan and the block above is reproduced exactly.`,
-    notesContext(story),
+    notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
 }
