@@ -62,12 +62,14 @@ gh pr view <n> --json body --jq '.body' | grep -q "Status: live and in use" \
 ## The gotcha in the web/remote environment: the GitHub MCP server backtick-wraps URLs
 
 In Claude Code on the web there is **no `gh`** — PRs are created/edited via the GitHub
-**MCP** tools (`mcp__github__create_pull_request` / `update_pull_request`). These silently
+**MCP** tools (`mcp__github__create_pull_request` / `update_pull_request`). These can silently
 wrap any `https://…` URL in the body in **double backticks**, so a Markdown link
 `[text](https://github.com/…)` is stored as `[text](``https://…``)` and GitHub renders the
 URL as **inline code, not a clickable link** (a bare URL and a reference-style `[id]: https://…`
 definition are wrapped too; an `<a href>` tag is stripped entirely). The body otherwise saves
-fine, so it looks like it worked.
+fine, so it looks like it worked. It is **not** applied on every call — a `create_pull_request`
+body with absolute links has come through untouched — so treat it as a risk to design around,
+never as a state you can infer from one green result.
 
 **Fix — link with a root-relative path (no `https://` token to wrap):**
 
