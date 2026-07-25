@@ -21,8 +21,8 @@
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
- *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,swap_code_priority,
- *                         move_code_priority,move_code_priority_in_project}
+ *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,convert_to_code_epic,
+ *                         swap_code_priority,move_code_priority,move_code_priority_in_project}
  *                                                             → Software Factory RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
@@ -248,6 +248,30 @@ function newCodeItem(input) {
     // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
     priority: input.priority ?? nextPriority++,
   };
+}
+
+/**
+ * The priority landing a new story at the top of `projectId` without displacing any other
+ * project's stories — mirrors migration 0016's `top_of_project_priority`: the midpoint between
+ * the project's best OUTSTANDING rank and whichever row (any project, any status) sits just
+ * above it; a project with no outstanding story falls back to one below the global minimum.
+ */
+function topOfProjectPriority(projectId) {
+  const outstanding = codeItems
+    .filter(
+      (row) =>
+        String(row.project_id) === String(projectId) &&
+        row.factory_state !== 'done' &&
+        row.factory_state !== 'abandoned',
+    )
+    .map((row) => Number(row.priority));
+  if (outstanding.length === 0) {
+    const all = codeItems.map((row) => Number(row.priority));
+    return (all.length === 0 ? 0 : Math.min(...all)) - 1;
+  }
+  const best = Math.min(...outstanding);
+  const above = codeItems.map((row) => Number(row.priority)).filter((p) => p < best);
+  return above.length === 0 ? best - 1 : (Math.max(...above) + best) / 2;
 }
 
 /** Park `nextPriority` past every existing rank so appends land at the bottom (mirrors setval). */
@@ -486,6 +510,61 @@ function handleRpc(req, res, fn, body) {
     });
     codeItems.push(code);
     sendJson(res, 200, code);
+    return;
+  }
+
+  // The epic conversion (migration 0019 / ALF-129): the parent becomes a NEW epic (its title
+  // + notes), each ACTIVE child becomes a story at the top of the project's Backlog in display
+  // order (the bottom-up walk — each top_of_project_priority call lands the next child above
+  // the previous one), and the parent is consumed (a task completes, anything else deletes).
+  if (fn === 'convert_to_code_epic' && req.method === 'POST') {
+    const parent = items.find((row) => String(row.id) === String(body?.p_item));
+    if (parent === undefined) {
+      sendJson(res, 400, { message: `convert_to_code_epic: item not found (${body?.p_item})` });
+      return;
+    }
+    const project = projects.find((row) => String(row.id) === String(body?.p_project));
+    const key = project?.key ?? null;
+    const epicN = allocateRef(body?.p_project);
+    const epic = newEpic({
+      project_id: body?.p_project,
+      name: parent.title,
+      notes: parent.notes,
+      ref_number: epicN,
+      ref: `${key}-${String(epicN)}`,
+    });
+    epics.push(epic);
+    const children = items
+      .filter((row) => row.parent_id === parent.id && row.status === 'active')
+      .toSorted((a, b) => Number(b.sort_order) - Number(a.sort_order));
+    const stories = [];
+    for (const child of children) {
+      const n = allocateRef(body?.p_project);
+      const priority = topOfProjectPriority(body?.p_project);
+      child.item_type = 'code';
+      child.due_date = null;
+      child.parent_id = null;
+      child.status = 'active';
+      child.completed_at = null;
+      const code = newCodeItem({
+        item_id: child.id,
+        project_id: body?.p_project,
+        epic_id: epic.id,
+        ref_number: n,
+        ref: `${key}-${String(n)}`,
+        priority,
+      });
+      codeItems.push(code);
+      // Prepend, so the array comes back in display order (first child highest).
+      stories.unshift(code);
+    }
+    if (parent.item_type === 'task') {
+      parent.status = 'completed';
+      parent.completed_at = new Date().toISOString();
+    } else {
+      items = items.filter((row) => row.id !== parent.id);
+    }
+    sendJson(res, 200, { epic, stories });
     return;
   }
 
