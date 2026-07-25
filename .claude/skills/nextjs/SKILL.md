@@ -228,6 +228,23 @@ To keep real URLs but make switching instant, drive navigation with the **native
 
 - **`metadata.appleWebApp.capable: true` emits the standard `mobile-web-app-capable` meta, NOT `apple-mobile-web-app-capable`.** Next dropped the `apple-`-prefixed name (Apple honors the standard one now), so assert/query the un-prefixed name. `appleWebApp.startupImage` entries render `<link rel="apple-touch-startup-image">`, but iOS only shows one when a `media` query matches the device's exact points + pixel ratio — and a metadata-generated image route (e.g. an `ImageResponse` handler the startup image points at) is gated by `middleware.ts` like any path, so add it to `isPublicPath` (iOS fetches it at launch, maybe without a session).
 
+- **A new env var must be declared in `frontend/types/env.d.ts` before you can read it.**
+  `@tsconfig/strictest` sets `noPropertyAccessFromIndexSignature`, so `process.env.MY_VAR`
+  is an error until `MY_VAR` is added to that file's `NodeJS.ProcessEnv` augmentation
+  (optional `?: string` for anything the app runs fine without). Dot access — not
+  `process.env['MY_VAR']` — is required for `NEXT_PUBLIC_*` build-time inlining, so the
+  augmentation is the only way through.
+
+- **Driving `next dev` from a script: launch it as `node ../node_modules/.bin/next dev`, and
+  clear `.next/cache/fetch-cache` if the run must actually hit the network.** Next 16 allows
+  one dev server per project dir and refuses the next one with "Another next dev server is
+  already running" — so an orphan holds the lock and every later server dies. Started via
+  `npx`, `$!` is the npx wrapper, and killing it leaves the real server orphaned; launching
+  the binary directly makes `$!` the server itself, so the trap actually reaps it.
+  Separately, `fetch(…, { next: { revalidate } })` responses persist in
+  `.next/cache/fetch-cache` **across restarts**, so a re-run is served from disk and never
+  reaches the network (or a stub standing in for it).
+
 - **A route-handler test that imports a `server-only` module needs `jest.mock('server-only',
   () => ({}))`.** `import 'server-only'` throws outside an RSC context, so the moment a route
   handler's GET reads through a `lib/data/*` reader (which is `server-only`), the route test
