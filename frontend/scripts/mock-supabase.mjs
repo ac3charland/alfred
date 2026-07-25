@@ -17,7 +17,7 @@
  *     GET  /auth/v1/user                                      → the single user
  *     POST /auth/v1/logout                                    → 204
  *   Data (PostgREST):
- *     GET|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items}
+ *     GET|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
@@ -68,6 +68,8 @@ let projects = [];
 let epics = [];
 /** @type {Record<string, unknown>[]} */
 let codeItems = [];
+/** @type {Record<string, unknown>[]} */
+let weeklyPlans = [];
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -143,6 +145,36 @@ function applyFilters(rows, searchParameters) {
   return result;
 }
 
+/**
+ * Project the columns named in `select`, the way PostgREST does — a handler that asks for
+ * `select=id,uploaded_at` must not get the other columns back (here that's the 40 KB `html`
+ * of a weekly plan). `*` (or an absent select) returns whole rows. alfred only ever selects
+ * plain column lists, so embedded resources aren't modelled.
+ */
+function applySelect(rows, searchParameters) {
+  const select = searchParameters.get('select');
+  if (select === null || select.trim() === '' || select.includes('*')) return rows;
+  const columns = select
+    .split(',')
+    .map((column) => column.trim())
+    .filter(Boolean);
+  return rows.map((row) => Object.fromEntries(columns.map((column) => [column, row[column]])));
+}
+
+/**
+ * Apply PostgREST's `limit` / `offset` window. Without this a `.limit(1)` read comes back as
+ * the whole table, which supabase-js's `.maybeSingle()` then rejects for returning multiple
+ * rows — the mock has to narrow the same way the real server does.
+ */
+function applyRange(rows, searchParameters) {
+  const offset = Number(searchParameters.get('offset') ?? '0');
+  const limit = searchParameters.get('limit');
+  const start = Number.isNaN(offset) ? 0 : offset;
+  if (limit === null) return rows.slice(start);
+  const count = Number(limit);
+  return Number.isNaN(count) ? rows.slice(start) : rows.slice(start, start + count);
+}
+
 function applyOrder(rows, searchParameters) {
   const order = searchParameters.get('order');
   if (!order) return rows;
@@ -161,6 +193,7 @@ function tableFor(name) {
   if (name === 'projects') return projects;
   if (name === 'epics') return epics;
   if (name === 'code_items') return codeItems;
+  if (name === 'weekly_plans') return weeklyPlans;
   return;
 }
 
@@ -193,6 +226,15 @@ function newFolder(input) {
     id: input.id ?? randomUUID(),
     created_at: input.created_at ?? new Date().toISOString(),
     name: input.name ?? '',
+  };
+}
+
+/** An archived week-plan document (migration 0022): the HTML plus when it was uploaded. */
+function newWeeklyPlan(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    html: input.html ?? '',
+    uploaded_at: input.uploaded_at ?? new Date().toISOString(),
   };
 }
 
@@ -308,6 +350,7 @@ function rowConstructorFor(name) {
   if (name === 'projects') return newProject;
   if (name === 'epics') return newEpic;
   if (name === 'code_items') return newCodeItem;
+  if (name === 'weekly_plans') return newWeeklyPlan;
   return;
 }
 
@@ -682,7 +725,13 @@ function handleRest(req, res, url, body) {
       sendJson(res, 405, { message: `View is read-only: ${rest}` });
       return;
     }
-    const rows = applyOrder(applyFilters(view, url.searchParams), url.searchParams);
+    const rows = applySelect(
+      applyRange(
+        applyOrder(applyFilters(view, url.searchParams), url.searchParams),
+        url.searchParams,
+      ),
+      url.searchParams,
+    );
     sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
     return;
   }
@@ -694,7 +743,13 @@ function handleRest(req, res, url, body) {
   }
 
   if (req.method === 'GET') {
-    const rows = applyOrder(applyFilters(table, url.searchParams), url.searchParams);
+    const rows = applySelect(
+      applyRange(
+        applyOrder(applyFilters(table, url.searchParams), url.searchParams),
+        url.searchParams,
+      ),
+      url.searchParams,
+    );
     sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
     return;
   }
@@ -711,7 +766,8 @@ function handleRest(req, res, url, body) {
       sendNoContent(res);
       return;
     }
-    sendJson(res, 201, wantsObject(req) ? created[0] : created);
+    const projected = applySelect(created, url.searchParams);
+    sendJson(res, 201, wantsObject(req) ? projected[0] : projected);
     return;
   }
 
@@ -727,7 +783,8 @@ function handleRest(req, res, url, body) {
       sendNoContent(res);
       return;
     }
-    sendJson(res, 200, wantsObject(req) ? (matched[0] ?? null) : matched);
+    const projected = applySelect(matched, url.searchParams);
+    sendJson(res, 200, wantsObject(req) ? (projected[0] ?? null) : projected);
     return;
   }
 
@@ -778,6 +835,11 @@ function deleteRows(rest, matched) {
   if (rest === 'code_items') {
     const removeRows = new Set(matched);
     codeItems = codeItems.filter((code) => !removeRows.has(code));
+    return;
+  }
+  if (rest === 'weekly_plans') {
+    const removeRows = new Set(matched);
+    weeklyPlans = weeklyPlans.filter((plan) => !removeRows.has(plan));
   }
 }
 
@@ -792,6 +854,7 @@ function handleControl(req, res, url, body) {
     projects = [];
     epics = [];
     codeItems = [];
+    weeklyPlans = [];
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -803,13 +866,16 @@ function handleControl(req, res, url, body) {
     projects = Array.isArray(body?.projects) ? body.projects.map((p) => newProject(p)) : [];
     epics = Array.isArray(body?.epics) ? body.epics.map((e) => newEpic(e)) : [];
     codeItems = Array.isArray(body?.codeItems) ? body.codeItems.map((c) => newCodeItem(c)) : [];
+    weeklyPlans = Array.isArray(body?.weeklyPlans)
+      ? body.weeklyPlans.map((w) => newWeeklyPlan(w))
+      : [];
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
-    sendJson(res, 200, { folders, items, projects, epics, codeItems });
+    sendJson(res, 200, { folders, items, projects, epics, codeItems, weeklyPlans });
     return;
   }
   if (url.pathname === '/__mock__/state' && req.method === 'GET') {
-    sendJson(res, 200, { folders, items, projects, epics, codeItems });
+    sendJson(res, 200, { folders, items, projects, epics, codeItems, weeklyPlans });
     return;
   }
   sendJson(res, 404, { message: `No control route: ${req.method} ${url.pathname}` });
