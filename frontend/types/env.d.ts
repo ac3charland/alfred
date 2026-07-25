@@ -22,5 +22,9 @@ declare namespace NodeJS {
     NEXT_PUBLIC_INSTANCE_ACCENT?: string;
     NEXT_PUBLIC_OTHER_INSTANCE_LABEL?: string;
     NEXT_PUBLIC_OTHER_INSTANCE_URL?: string;
+    // PR ratio — all optional and server-only; unset simply turns the feature off.
+    GITHUB_TOKEN?: string;
+    PR_RATIO_REPOS?: string;
+    PR_RATIO_AUTHORS?: string;
   }
 }

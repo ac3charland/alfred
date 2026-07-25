@@ -1,5 +1,6 @@
 // alfred — convenience aliases over the generated Supabase schema types.
 import type { Database } from '@/lib/database.types';
+import type { WeekWindow } from '@/lib/github/week';
 
 export type ItemType = Database['public']['Enums']['item_type'];
 export type ItemStatus = Database['public']['Enums']['item_status'];
@@ -35,3 +36,27 @@ export type CodeStory = Database['public']['Views']['v_code_stories']['Row'];
 
 /** A row returned by the `get_subtree` RPC: an item plus its depth in the tree. */
 export type SubtreeRow = Database['public']['Functions']['get_subtree']['Returns'][number];
+
+// ── PR ratio — the Backlog's weekly merged-PR split across repos. ────────────
+
+/** One repo's slice of the week: its merged-PR count and its share of the total. */
+export interface PrRatioRepoCount {
+  /** `owner/name`, e.g. 'ac3charland/realplay'. */
+  repo: string;
+  /** Display label for the bar segment and legend. */
+  label: string;
+  count: number;
+  /** Integer share of `total`; the percentages across all repos sum to exactly 100. */
+  percentage: number;
+}
+
+/**
+ * `GET /api/code/pr-ratio` — the merged-PR split for one ISO week. `repos` preserves the
+ * configured order, which is the bar's left-to-right order. Computed live from GitHub, so
+ * it is neither persisted nor reconciled into any store.
+ */
+export interface PrRatioResponse {
+  week: WeekWindow;
+  total: number;
+  repos: PrRatioRepoCount[];
+}
