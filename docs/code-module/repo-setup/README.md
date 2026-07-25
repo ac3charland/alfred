@@ -13,7 +13,7 @@ PRs machine-readable.
 
 ## The PR ↔ ticket contract
 
-Every Software-Factory PR (both phases) carries a **machine-readable fenced block** in its
+Every Software-Factory PR (all three phases) carries a **machine-readable fenced block** in its
 description, tagged `alfred`. The webhook Worker regexes this block to drive deterministic
 ticket-state transitions; there is no Anthropic session API, so **the PR is the only signal**.
 
@@ -27,10 +27,15 @@ spec-path: docs/specs/ALF-42.html
 
 | Field | Meaning | Rules |
 |---|---|---|
-| `alfred-ticket` | The story ref(s) this PR advances. | One ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR closing several stories. Always parsed as a list. |
-| `phase` | Which lifecycle phase the PR belongs to. | `refinement` \| `implementation`. |
-| `spec-path` | Where the spec (a self-contained HTML plan) lives in the repo. | **Required on refinement PRs** — declares the path so alfred renders from the *recorded* path, never an inferred one. **Implementation PRs carry it too** so the archive rule (below) knows which spec to retire. |
+| `alfred-ticket` | The ref(s) this PR advances — story refs, or the **epic's** ref on `epic-refinement`. | One ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR closing several stories. Always parsed as a list. |
+| `phase` | Which phase the PR belongs to. | `epic-refinement` \| `refinement` \| `implementation`. The phase alone decides what the Worker patches — `epic-refinement` targets the **epic**, the other two target the **story**; refs come from one shared per-project counter, so there is no fallback. |
+| `spec-path` | Where the spec (a self-contained HTML plan) lives in the repo. | **Required on both refinement phases** — declares the path so alfred renders from the *recorded* path, never an inferred one. **Implementation PRs carry it too** so the archive rule (below) knows which spec to retire. |
 
+- An **epic-refinement** PR writes the *epic's* long-lived context/decisions spec (conventionally
+  `docs/specs/epics/<EPIC-REF>.html`) and opens with `phase: epic-refinement` + the epic's ref.
+  Opening it records `refinement_pr_url` on the epic; merging it records `spec_path` and snapshots
+  the spec. Epics have **no lifecycle state**, so a closed-unmerged epic-refinement PR is a **no-op**
+  — there is nothing to revert.
 - A **refinement** PR writes the spec artifact and opens with `phase: refinement` +
   `spec-path: docs/specs/<REF>.html`. Merging it moves the story `in_refinement → ready_for_dev` and the
   Worker snapshots the spec.
@@ -55,6 +60,7 @@ A refinement PR *opening* is a **no-op** for the state machine — the Worker ju
 |---|---|---|
 | [`alfred-frontmatter.yml`](alfred-frontmatter.yml) | the project repo's `.github/workflows/alfred-frontmatter.yml` | The enforcing check: fails the PR when the `alfred` block is missing/malformed, when a refinement PR omits `spec-path`, or when an implementation PR leaves its spec un-archived (the archive rule above). Coding agents fix failing checks, so they self-correct. |
 | the refinement skill (`.claude/skills/refinement/SKILL.md`) | the project repo's `.claude/skills/refinement/SKILL.md` | The refinement-guide convention: how a refinement session must write the spec artifact and open its PR. The Claude Code refinement prompt references this committed skill. |
+| the epic-refinement skill (`.claude/skills/epic-refinement/SKILL.md`) | the project repo's `.claude/skills/epic-refinement/SKILL.md` | The same convention one altitude up: how an epic-refinement session writes the epic's context/decisions spec and opens its PR. The epic launch prompt references this committed skill. |
 
 ## One-time per-repo setup checklist (Phase C — credentialed)
 
@@ -62,7 +68,9 @@ Run once per project repo, in a local session (needs GitHub admin + the Worker s
 
 1. **Commit the enforcing Action.** Copy `alfred-frontmatter.yml` → `.github/workflows/` in the
    project repo and commit it.
-2. **Commit the refinement guide.** Drop the refinement skill into `.claude/skills/refinement/SKILL.md` and commit it.
+2. **Commit the refinement guides.** Drop the refinement skill into
+   `.claude/skills/refinement/SKILL.md` and the epic-refinement skill into
+   `.claude/skills/epic-refinement/SKILL.md`, and commit them.
 3. **Add the GitHub webhook.** Repo → Settings → Webhooks → Add webhook:
    - **Payload URL:** the deployed Worker's `POST /github/webhook` route.
    - **Content type:** `application/json`.
