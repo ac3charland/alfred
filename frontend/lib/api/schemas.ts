@@ -269,6 +269,19 @@ export type GateCodeInput = z.infer<typeof gateCodeSchema>;
 export type NewCodeStoryInput = ExactOptional<z.infer<typeof newCodeStorySchema>>;
 export type CreateCodeInput = z.infer<typeof createCodeSchema>;
 
+/**
+ * Body for POST /api/code/epic — the epic conversion: turn a 1-deep parent (a code inbox
+ * item or a decomposed task) into a NEW epic plus one story per active child via
+ * `convert_to_code_epic(item, project)`. Only a project is chosen — the epic is being
+ * created (named after the parent), so there is no `epic_id`.
+ */
+export const convertCodeEpicSchema = z.object({
+  item_id: uuid,
+  project_id: uuid,
+});
+
+export type ConvertCodeEpicInput = z.infer<typeof convertCodeEpicSchema>;
+
 /** Validated shape for GET /api/epics query string — optional `?project=` filter. */
 export const listEpicsQuerySchema = z.object({
   project: uuid.optional(),

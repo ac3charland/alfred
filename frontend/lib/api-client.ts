@@ -233,6 +233,25 @@ export function createCodeStory(
   });
 }
 
+/** The result of an epic conversion: the created epic plus its story sidecars in display order. */
+export interface ConvertedEpic {
+  epic: Epic;
+  stories: CodeItem[];
+}
+
+/**
+ * The epic conversion (ALF-129): turn a 1-deep parent (a code inbox item or a decomposed
+ * task) into a NEW epic plus one story per active child via `convert_to_code_epic`. The epic
+ * takes the parent's title and notes; the stories land at the top of the project's Backlog in
+ * the children's display order; the parent is consumed (a code row deleted, a task completed).
+ */
+export function convertToCodeEpic(itemId: string, projectId: string): Promise<ConvertedEpic> {
+  return apiRequest<ConvertedEpic>('/api/code/epic', {
+    method: 'POST',
+    body: JSON.stringify({ item_id: itemId, project_id: projectId }),
+  });
+}
+
 /** Optional extra fields a state transition may carry (e.g. Block sets `blocked_reason`). */
 export interface UpdateCodeStateExtra {
   blocked_reason?: string | null;
