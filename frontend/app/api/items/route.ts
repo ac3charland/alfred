@@ -48,7 +48,15 @@ export async function POST(request: Request): Promise<Response> {
       notes: input.notes ?? null,
       source_url: input.source_url ?? null,
       raw_capture: resolvedRawCapture,
-      item_type: input.parent_id == null ? (input.item_type ?? 'unclassified') : 'task',
+      // A child is forced to `task` — except a `code` child (a story under an epic being
+      // constructed in the inbox), which keeps its family. The DB trigger rejects any
+      // family-mixing this doesn't (a code child under a task, or vice versa).
+      item_type:
+        input.parent_id == null
+          ? (input.item_type ?? 'unclassified')
+          : input.item_type === 'code'
+            ? 'code'
+            : 'task',
       due_date: input.due_date ?? null,
       folder_id: input.folder_id ?? null,
       parent_id: input.parent_id ?? null,
