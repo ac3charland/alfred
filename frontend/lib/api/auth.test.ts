@@ -2,7 +2,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-import { resolveIngestClient, validateApiKey, withSession } from './auth';
+import { resolveIngestClient, validateApiKey, withSession, withSessionOrApiKey } from './auth';
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
@@ -130,6 +130,77 @@ describe('withSession', () => {
       expect.any(Request),
       STUB_CONTEXT,
     );
+  });
+});
+
+describe('withSessionOrApiKey', () => {
+  const CONFIGURED_KEY = 'ingest-key-xyz';
+
+  beforeEach(() => {
+    process.env.INGEST_API_KEY = CONFIGURED_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.INGEST_API_KEY;
+  });
+
+  it('returns 401 without calling the handler when neither a session nor a key is presented', async () => {
+    mockCreateClient.mockResolvedValue(makeSupabaseMock() as never);
+    const handler = jest.fn();
+
+    const response = await withSessionOrApiKey(handler)(new Request('http://localhost/'));
+
+    expect(response.status).toBe(401);
+    const body: unknown = await response.json();
+    expect(body).toStrictEqual({ error: 'Unauthorized' });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('calls the handler for an authenticated browser session', async () => {
+    mockCreateClient.mockResolvedValue(makeSupabaseMock({ id: 'user-123' }) as never);
+    const handler = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+
+    const request = new Request('http://localhost/');
+    const response = await withSessionOrApiKey(handler)(request);
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledWith(request);
+  });
+
+  it('calls the handler for a valid x-api-key WITHOUT touching Supabase', async () => {
+    const handler = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+
+    const response = await withSessionOrApiKey(handler)(
+      new Request('http://localhost/', { headers: { 'x-api-key': CONFIGURED_KEY } }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockCreateClient).not.toHaveBeenCalled();
+  });
+
+  it('calls the handler for a valid Authorization: Bearer key', async () => {
+    const handler = jest.fn().mockResolvedValue(new Response(null, { status: 200 }));
+
+    const response = await withSessionOrApiKey(handler)(
+      new Request('http://localhost/', {
+        headers: { authorization: `Bearer ${CONFIGURED_KEY}` },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalled();
+  });
+
+  it('falls back to the session check when the presented key is wrong', async () => {
+    mockCreateClient.mockResolvedValue(makeSupabaseMock() as never);
+    const handler = jest.fn();
+
+    const response = await withSessionOrApiKey(handler)(
+      new Request('http://localhost/', { headers: { 'x-api-key': 'wrong-key' } }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 
