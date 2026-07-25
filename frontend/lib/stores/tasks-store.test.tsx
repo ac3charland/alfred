@@ -237,6 +237,34 @@ describe('addTask', () => {
     );
   });
 
+  it('creates a code child when the parent is a code row (a child inherits its family)', async () => {
+    const codeParent = item({ id: 'code-parent', item_type: 'code' });
+    const saved = item({ id: 'server-1', parent_id: 'code-parent', item_type: 'code' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([codeParent]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'A story', parentId: 'code-parent' });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({ item_type: 'code', parent_id: 'code-parent' }),
+    );
+  });
+
+  it('creates a task child when the parent is a task row', async () => {
+    const taskParent = item({ id: 'task-parent', item_type: 'task' });
+    const saved = item({ id: 'server-1', parent_id: 'task-parent' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([taskParent]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'A subtask', parentId: 'task-parent' });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ item_type: 'task' }));
+  });
+
   it('optimistic subtask row has item_type task before the server responds', () => {
     mockCreateItem.mockReturnValue(new Promise<Item>(() => {}));
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
@@ -1408,6 +1436,70 @@ describe('deleteTask', () => {
     expect(mockDeleteItem).not.toHaveBeenCalled();
     // Store unchanged
     expect(result.current.tasks).toHaveLength(1);
+  });
+});
+
+describe('settleEpicConversion', () => {
+  it('drops the children and the parent for a converted code parent (removed)', () => {
+    const parent = item({ id: 'code-parent', item_type: 'code' });
+    const children = [
+      item({ id: 'c-1', item_type: 'code', parent_id: 'code-parent' }),
+      item({ id: 'c-2', item_type: 'code', parent_id: 'code-parent' }),
+    ];
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, ...children]) });
+
+    act(() => {
+      result.current.actions.settleEpicConversion({
+        parentId: 'code-parent',
+        childIds: ['c-1', 'c-2'],
+        parentOutcome: 'removed',
+      });
+    });
+
+    expect(result.current.tasks).toStrictEqual([]);
+  });
+
+  it('completes a task parent, dropping its converted children but keeping completed ones', () => {
+    const parent = item({ id: 'task-parent' });
+    const active = item({ id: 'c-1', parent_id: 'task-parent' });
+    const done = item({
+      id: 'c-done',
+      parent_id: 'task-parent',
+      status: 'completed',
+      completed_at: '2025-01-02T00:00:00Z',
+    });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, active, done]) });
+
+    act(() => {
+      result.current.actions.settleEpicConversion({
+        parentId: 'task-parent',
+        childIds: ['c-1'],
+        parentOutcome: 'completed',
+      });
+    });
+
+    const ids = result.current.tasks.map((t) => t.id);
+    expect(new Set(ids)).toStrictEqual(new Set(['task-parent', 'c-done']));
+    const settledParent = result.current.tasks.find((t) => t.id === 'task-parent');
+    expect(settledParent?.status).toBe('completed');
+    expect(settledParent?.completed_at).not.toBeNull();
+  });
+
+  it('never calls the API (a pure client-side settlement)', () => {
+    const parent = item({ id: 'code-parent', item_type: 'code' });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent]) });
+
+    act(() => {
+      result.current.actions.settleEpicConversion({
+        parentId: 'code-parent',
+        childIds: [],
+        parentOutcome: 'removed',
+      });
+    });
+
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(mockDeleteItem).not.toHaveBeenCalled();
+    expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 });
 
