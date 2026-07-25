@@ -264,6 +264,53 @@ test.describe('inline editing', () => {
     ).toBeVisible();
   });
 
+  test('saves notes from the panel Save button (disabled until the draft differs)', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeTask('Research options')] });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
+
+    // Nothing typed yet → nothing to save.
+    const save = page.getByRole('button', { name: 'Save notes' });
+    await expect(save).toBeDisabled();
+
+    await page.getByRole('textbox', { name: 'Notes' }).fill('Compare three vendors first');
+    await expect(save).toBeEnabled();
+    await save.click();
+
+    // Reload from the backend: the notes were persisted, not just held in the client store.
+    await page.reload();
+    await expect(page.getByTestId('task-notes-preview')).toHaveText('Compare three vendors first');
+  });
+
+  test('saves notes with ⌘/Ctrl+Enter, keeping focus and inserting no newline', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeTask('Research options')] });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
+
+    const notes = page.getByRole('textbox', { name: 'Notes' });
+    await notes.fill('Compare three vendors first');
+    await notes.press('ControlOrMeta+Enter');
+
+    // The chord commits in place: the field keeps focus, the newline is suppressed, and Save
+    // greys back out because the draft now matches what's stored.
+    await expect(notes).toBeFocused();
+    await expect(notes).toHaveValue('Compare three vendors first');
+    await expect(page.getByRole('button', { name: 'Save notes' })).toBeDisabled();
+
+    await page.reload();
+    await expect(page.getByTestId('task-notes-preview')).toHaveText('Compare three vendors first');
+  });
+
   test('saves in-progress notes when the detail panel is dismissed (ALF-126)', async ({
     page,
     seed,
