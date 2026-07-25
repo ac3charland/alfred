@@ -10,7 +10,16 @@ import { FoldersProvider } from '@/lib/stores/folders-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
+import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
+import type {
+  CodeStory,
+  Epic,
+  Folder,
+  Item,
+  Project,
+  WeeklyPlan,
+  WeeklyPlanSummary,
+} from '@/lib/types';
 
 /**
  * Render a component inside the alfred providers (FoldersProvider + TasksProvider +
@@ -27,6 +36,8 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   projects?: Project[];
   epics?: Epic[];
   stories?: CodeStory[];
+  /** The weekly plan archive: the picker index plus the latest plan's document. */
+  weeklyPlans?: { index: WeeklyPlanSummary[]; latest: WeeklyPlan | undefined };
 }
 
 export function renderWithProviders(
@@ -37,6 +48,7 @@ export function renderWithProviders(
     projects = [],
     epics = [],
     stories = [],
+    weeklyPlans = { index: [], latest: undefined },
     ...options
   }: ProviderRenderOptions = {},
 ) {
@@ -53,7 +65,14 @@ export function renderWithProviders(
                     initialEpics={epics}
                     initialStories={stories}
                   >
-                    <CodeFilterProvider>{children}</CodeFilterProvider>
+                    <CodeFilterProvider>
+                      <WeeklyPlanProvider
+                        initialIndex={weeklyPlans.index}
+                        initialLatest={weeklyPlans.latest}
+                      >
+                        {children}
+                      </WeeklyPlanProvider>
+                    </CodeFilterProvider>
                   </CodeProvider>
                 </InboxSelectionProvider>
               </ExpansionProvider>

@@ -9,12 +9,15 @@ import { FoldersProvider } from '../lib/stores/folders-store';
 import { InboxSelectionProvider } from '../lib/stores/inbox-selection-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
 import { ToastProvider } from '../lib/stores/toast-store';
-import type { Folder, Item } from '../lib/types';
+import { WeeklyPlanProvider } from '../lib/stores/weekly-plan-store';
+import type { Folder, Item, WeeklyPlan, WeeklyPlanSummary } from '../lib/types';
 
 /** Per-story seeds for the data providers, set via `parameters.store`. */
 interface StoreSeed {
   folders?: Folder[];
   tasks?: Item[];
+  /** The weekly plan archive: the picker index plus the latest plan's document. */
+  weeklyPlans?: { index: WeeklyPlanSummary[]; latest?: WeeklyPlan };
 }
 
 const preview: Preview = {
@@ -48,9 +51,16 @@ const preview: Preview = {
                     CodeFilterProvider,
                     null,
                     React.createElement(
-                      'div',
-                      { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                      React.createElement(Story),
+                      WeeklyPlanProvider,
+                      {
+                        initialIndex: seed.weeklyPlans?.index ?? [],
+                        initialLatest: seed.weeklyPlans?.latest,
+                      },
+                      React.createElement(
+                        'div',
+                        { className: 'dark min-h-screen bg-background text-foreground p-8' },
+                        React.createElement(Story),
+                      ),
                     ),
                   ),
                 ),
