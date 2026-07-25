@@ -311,6 +311,26 @@ npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > fronte
   (`SetofOptions`, `graphql_public`, `__InternalSupabase`). Omit `--schema` so all exposed
   schemas are included.
 
+**No live DB and no Docker-image pulls (a sandbox whose proxy 403s registry blobs)? Generate
+against a local Postgres with the `@supabase/postgres-meta` npm server** — it's the exact
+engine inside the CLI's typegen container, so the output is byte-identical to the committed
+format after the CLI's formatting step:
+
+1. Local cluster (server binaries ship in the sandbox): `initdb`/`pg_ctl` **as a non-root
+   user** (`useradd pguser` — initdb refuses root), then create the roles + publication the
+   migrations expect (`create role anon/authenticated/service_role nologin; create
+   publication supabase_realtime;`) and apply `database/migrations/0*.sql` in order with
+   `psql -v ON_ERROR_STOP=1` — which also *integration-tests a new migration for real*.
+2. Parity stub for the graphql section: `create schema graphql_public;` plus a
+   `graphql_public.graphql("operationName" text default null, query text default null,
+   variables jsonb default null, extensions jsonb default null) returns jsonb` stub function.
+3. `npm i @supabase/postgres-meta`, run `PG_META_DB_URL=<url> node
+   node_modules/@supabase/postgres-meta/dist/server/server.js`, then GET
+   `/generators/typescript?included_schemas=public,graphql_public&detect_one_to_one_relationships=true&postgrest_version=14.5`
+   (match `postgrest_version` to the committed file's `__InternalSupabase.PostgrestVersion`).
+4. Reproduce the CLI's formatting: `npx prettier --parser typescript --no-config --no-semi`.
+   Diff against the committed file — only your additive changes should remain.
+
 **Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
 `DATABASE_URL` from the dashboard's *Direct connection* tab points at
 `db.<ref>.supabase.co`, which publishes **only an AAAA (IPv6) record**. On an IPv4-only
