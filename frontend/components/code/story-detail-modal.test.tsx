@@ -421,6 +421,18 @@ describe('StoryDetailModal', () => {
       expect(mockUpdateItem).toHaveBeenCalledWith('i1', { notes: 'Check the logs' });
     });
 
+    it('⌘+Enter calls updateStoryNotes without reaching for the Save button', async () => {
+      mockUpdateItem.mockResolvedValue({ notes: 'Check the logs' } as never);
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ notes: null }));
+
+      await user.click(dialog.getByText('Add notes…'));
+      await user.type(dialog.getByRole('textbox', { name: /edit notes/i }), 'Check the logs');
+      await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+      expect(mockUpdateItem).toHaveBeenCalledWith('i1', { notes: 'Check the logs' });
+    });
+
     it('Save with empty text sends null (clearing notes)', async () => {
       mockUpdateItem.mockResolvedValue({ notes: null } as never);
       const user = userEvent.setup();
