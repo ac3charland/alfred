@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-132 — Add tasks view for weekly plan and endpoint to upload</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 150px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "\2610"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  .mock {
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    margin: 1rem 0; background: var(--card); font-size: .82rem;
+  }
+  .mock-bar {
+    display: flex; align-items: center; gap: .6rem; padding: .5rem .8rem;
+    border-bottom: 1px solid var(--line); background: var(--bg);
+  }
+  .mock-body { padding: .9rem; }
+  .mock-frame {
+    border: 1px dashed var(--accent); border-radius: 8px; padding: 1.2rem .9rem;
+    text-align: center; color: var(--muted); background: var(--bg);
+  }
+  .mock-select {
+    border: 1px solid var(--line); border-radius: 6px; padding: .2rem .55rem;
+    background: var(--card); font-family: ui-monospace, monospace; font-size: .78rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-132 — Add tasks view for weekly plan and endpoint to upload</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Tasks module</span>
+    <span class="pill">API · DB · UI</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    Every Friday the owner runs the <code>weekly-review</code> skill in Claude desktop. Its last
+    step pipes a JSON plan through
+    <code>scripts/generate_plan.py</code>, which emits a <strong>single self-contained HTML
+    document</strong> — <code>week-plan-&lt;N&gt;.html</code> — carrying the week's theme, win
+    conditions per rock, a day-by-day task breakdown, a timeline grid, success criteria, and open
+    items.
+  </p>
+  <p>
+    That document currently lives wherever the desktop session dropped it. It is the single most
+    referenced artifact of the week, and it is <em>not</em> in alfred — the app the owner actually
+    has open all day. This ticket closes that gap: an <strong>upload endpoint</strong> so the plan
+    can be posted into alfred the moment it's generated, and a <strong>tasks-module view</strong>
+    that renders it, alongside By-Priority in the sidebar.
+  </p>
+  <p>
+    The rendering half already has a proven precedent in this repo: the code module's
+    <code>SpecBody</code> (<code class="filelabel">frontend/components/code/story-detail/spec-body.tsx</code>)
+    renders a snapshotted spec HTML document in a sandboxed <code>&lt;iframe srcDoc&gt;</code> so
+    the document's own <code>&lt;style&gt;</code> can't leak into the app. This spec reuses that
+    approach, with <strong>one deliberate deviation</strong> (§7.2) — the weekly plan needs its
+    scripts to run, and the spec snapshot does not.
+  </p>
+
+  <h2>2 · Decisions locked during refinement</h2>
+  <p>Three scope forks were resolved with the owner before writing this spec:</p>
+  <dl class="decision">
+    <dt>History</dt>
+    <dd><strong>Archive + week picker.</strong> Every upload is kept as its own row; nothing is
+      overwritten. The view renders the most recent plan by default and offers a picker to read
+      earlier weeks.</dd>
+    <dt>Upload path</dt>
+    <dd><strong>API-key endpoint only.</strong> No in-app file picker / drag-drop. The plan is
+      POSTed with the existing <code>INGEST_API_KEY</code> ingress convention, the same shape
+      <code>POST /api/items</code> already uses for the Siri capture path.</dd>
+    <dt>Metadata</dt>
+    <dd><strong>None — store the HTML.</strong> No week number, no date range, no title parsing.
+      A row is <code>(id, html, uploaded_at)</code>. The picker labels entries by their upload
+      date. Deriving richer labels is deferred (§12).</dd>
+  </dl>
+
+  <h2>3 · What the uploaded artifact actually is</h2>
+  <p>
+    The implementation session should not have to guess at the payload. The generator emits, in
+    one file with no external dependencies:
+  </p>
+  <table>
+    <tr><th>Trait</th><th>Detail</th><th>Consequence for this change</th></tr>
+    <tr>
+      <td>Doctype</td>
+      <td>Starts <code>&lt;!DOCTYPE html&gt;</code></td>
+      <td>Passes the existing <code>looksLikeHtmlDocument()</code> sniff — reused as upload validation (§5.3).</td>
+    </tr>
+    <tr>
+      <td>Size</td>
+      <td>~30–50 KB (inline CSS + inline JS + content)</td>
+      <td>Comfortably inside a 1 MB request cap; fine as a <code>text</code> column.</td>
+    </tr>
+    <tr>
+      <td>Styling</td>
+      <td>Inline <code>&lt;style&gt;</code>, its own <code>:root</code> tokens and a
+        <code>prefers-color-scheme: dark</code> block; <code>body</code> is
+        <code>max-width: 780px; margin: 0 auto; padding: 2rem</code></td>
+      <td>Must render in an isolated frame (styles would otherwise collide with the app's).
+        It brings its own dark mode and its own centering.</td>
+    </tr>
+    <tr>
+      <td><strong>Scripts</strong></td>
+      <td>A trailing <code>&lt;script&gt;</code> block with <code>PLAN_DATES</code> and a
+        per-day task map. It highlights <em>today's</em> column in the timeline and fills the
+        “today” card.</td>
+      <td><strong>The frame must allow scripts</strong>, or the plan's most useful feature is
+        inert. This is the deviation from <code>SpecBody</code>'s <code>sandbox=""</code> (§7.2).</td>
+    </tr>
+    <tr>
+      <td>Interactivity</td>
+      <td>Success criteria are <code>&lt;input type="checkbox"&gt;</code> with no persistence</td>
+      <td>Ticks are frame-local and lost on reload/switch. Accepted — the plan is a read
+        artifact here, not a task store (§12).</td>
+    </tr>
+    <tr>
+      <td>Title</td>
+      <td><code>&lt;title&gt;Week 12: Jul 4 – Jul 11, 2026&lt;/title&gt;</code></td>
+      <td>Present, but deliberately <strong>not parsed</strong> per the locked metadata decision.</td>
+    </tr>
+  </table>
+
+  <h2>4 · Data flow</h2>
+
+  <svg viewBox="0 0 880 330" role="img" aria-label="Data flow from Claude desktop through the upload endpoint to the weekly plan view">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+      </marker>
+      <style>
+        .b { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+        .ba { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+        .t { fill: var(--fg); font: 13px -apple-system, sans-serif; }
+        .tm { fill: var(--muted); font: 11px ui-monospace, monospace; }
+        .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; color: var(--muted); }
+      </style>
+    </defs>
+
+    <!-- Row 1: write path -->
+    <text class="tm" x="10" y="18">WRITE — once a week</text>
+
+    <rect class="b" x="10" y="28" width="170" height="58" rx="8" />
+    <text class="t" x="26" y="52">Claude desktop</text>
+    <text class="tm" x="26" y="70">week-plan-N.html</text>
+
+    <line class="ln" x1="182" y1="57" x2="238" y2="57" marker-end="url(#ar)" />
+    <text class="tm" x="186" y="48">curl</text>
+
+    <rect class="ba" x="240" y="28" width="210" height="58" rx="8" />
+    <text class="t" x="256" y="50">POST /api/weekly-plans</text>
+    <text class="tm" x="256" y="70">x-api-key · text/html</text>
+
+    <line class="ln" x1="452" y1="57" x2="508" y2="57" marker-end="url(#ar)" />
+
+    <rect class="b" x="510" y="28" width="200" height="58" rx="8" />
+    <text class="t" x="526" y="50">resolveIngestClient</text>
+    <text class="tm" x="526" y="70">admin client (bypasses RLS)</text>
+
+    <line class="ln" x1="712" y1="57" x2="768" y2="57" marker-end="url(#ar)" />
+
+    <rect class="ba" x="770" y="28" width="100" height="58" rx="8" />
+    <text class="t" x="784" y="50">insert</text>
+    <text class="tm" x="784" y="70">weekly_plans</text>
+
+    <!-- DB -->
+    <rect class="ba" x="330" y="130" width="220" height="62" rx="8" />
+    <text class="t" x="346" y="153">weekly_plans</text>
+    <text class="tm" x="346" y="172">id · html · uploaded_at</text>
+
+    <line class="ln" x1="820" y1="88" x2="820" y2="161" />
+    <line class="ln" x1="820" y1="161" x2="554" y2="161" marker-end="url(#ar)" />
+
+    <!-- Row 2: read path -->
+    <text class="tm" x="10" y="238">READ — every page load</text>
+
+    <rect class="b" x="10" y="248" width="205" height="62" rx="8" />
+    <text class="t" x="26" y="271">(shell)/layout.tsx</text>
+    <text class="tm" x="26" y="290">index + latest html</text>
+
+    <line class="ln" x1="330" y1="176" x2="240" y2="176" />
+    <line class="ln" x1="240" y1="176" x2="240" y2="244" marker-end="url(#ar)" />
+
+    <line class="ln" x1="217" y1="279" x2="273" y2="279" marker-end="url(#ar)" />
+
+    <rect class="b" x="275" y="248" width="205" height="62" rx="8" />
+    <text class="t" x="291" y="271">WeeklyPlanProvider</text>
+    <text class="tm" x="291" y="290">seeded once, caches html</text>
+
+    <line class="ln" x1="482" y1="279" x2="538" y2="279" marker-end="url(#ar)" />
+
+    <rect class="ba" x="540" y="248" width="205" height="62" rx="8" />
+    <text class="t" x="556" y="271">WeeklyPlanView</text>
+    <text class="tm" x="556" y="290">iframe srcDoc, sandboxed</text>
+
+    <!-- on-demand fetch -->
+    <path class="ln" d="M 377 246 C 377 214 620 214 620 246" marker-end="url(#ar)" />
+    <text class="tm" x="418" y="222">GET /api/weekly-plans/[id] — older weeks, on demand</text>
+  </svg>
+  <p class="diagram-cap">
+    Write once a week through the keyed ingress; read from the shell-seeded store, with older
+    plans' HTML pulled on demand rather than shipped in every page load.
+  </p>
+
+  <h2>5 · The upload endpoint</h2>
+
+  <h3>5.1 Route and contract</h3>
+  <p>
+    New Route Handler at
+    <code class="filelabel">frontend/app/api/weekly-plans/route.ts</code>, plural to match
+    <code>/api/folders</code>, <code>/api/items</code>, <code>/api/epics</code>.
+  </p>
+  <table>
+    <tr><th>Method</th><th>Auth</th><th>Request</th><th>Response</th></tr>
+    <tr>
+      <td><code>POST</code></td>
+      <td><code>resolveIngestClient()</code></td>
+      <td><code>Content-Type: text/html</code>, raw body = the document</td>
+      <td><code>201 { id, uploaded_at }</code></td>
+    </tr>
+  </table>
+  <p>
+    <strong>Raw body, not JSON.</strong> Every other handler in the repo parses JSON via
+    <code>parseRequestBody</code>, but the payload here <em>is a file</em>: the ergonomic call is
+    <code>--data-binary @week-plan-12.html</code>, and JSON-escaping a 40 KB document from a shell
+    is hostile. The handler reads <code>await request.text()</code> and validates the string
+    (§5.3). Requests carrying any other <code>Content-Type</code> are rejected 415, so the
+    contract stays unambiguous.
+  </p>
+
+  <h3>5.2 Auth</h3>
+  <p>
+    Use the existing <code>resolveIngestClient(request)</code> from
+    <code class="filelabel">frontend/lib/api/auth.ts</code> — the same helper
+    <code>POST /api/items</code> uses. A valid <code>x-api-key</code> /
+    <code>Authorization: Bearer</code> matching <code>INGEST_API_KEY</code> resolves the
+    service-role admin client; otherwise it falls back to the logged-in session; neither → 401.
+    Nothing new is built here.
+  </p>
+  <p class="small">
+    <code>frontend/middleware.ts</code> needs no change — it already treats all of
+    <code>/api</code> as public so handlers self-authenticate with a JSON 401 rather than a 302
+    to <code>/login</code>.
+  </p>
+
+  <h3>5.3 Validation</h3>
+  <table>
+    <tr><th>Condition</th><th>Status</th><th>Body</th></tr>
+    <tr><td>No / wrong <code>Content-Type</code> (not <code>text/html</code>)</td><td>415</td><td><code>{ error: 'Expected Content-Type: text/html' }</code></td></tr>
+    <tr><td>Empty or whitespace-only body</td><td>400</td><td><code>{ error: 'Empty request body' }</code></td></tr>
+    <tr><td>Body &gt; 1 MB</td><td>413</td><td><code>{ error: 'Weekly plan exceeds 1MB' }</code></td></tr>
+    <tr><td>Body is not an HTML document</td><td>400</td><td><code>{ error: 'Body must be an HTML document' }</code></td></tr>
+    <tr><td>Supabase insert fails</td><td><code>mapSupabaseError</code></td><td>existing envelope</td></tr>
+    <tr><td>Otherwise</td><td>201</td><td><code>{ id, uploaded_at }</code></td></tr>
+  </table>
+  <p>
+    The document sniff is the predicate <code>SpecBody</code> already uses. <strong>Extract it</strong>
+    rather than copy it (see the <code>frontend-architecture</code> skill's shared-primitive rule):
+    move <code>looksLikeHtmlDocument</code> out of <code>spec-body.tsx</code> into a new
+    <code class="filelabel">frontend/lib/html-document.ts</code>, and import it from both
+    <code>spec-body.tsx</code> and the new handler. Its behaviour is unchanged, so
+    <code>story-detail-modal.test.tsx</code> must stay green untouched.
+  </p>
+  <p>
+    Error responses use the existing <code>jsonError</code> / <code>jsonOk</code> helpers from
+    <code class="filelabel">frontend/lib/api/responses.ts</code> so the envelope matches every
+    other route.
+  </p>
+
+  <h3>5.4 The call the owner will actually make</h3>
+  <pre><code>curl -sS -X POST https://&lt;alfred-host&gt;/api/weekly-plans \
+  -H "x-api-key: $INGEST_API_KEY" \
+  -H "Content-Type: text/html" \
+  --data-binary @week-plan-12.html
+# {"id":"7f3c…","uploaded_at":"2026-07-24T21:03:11.482Z"}</code></pre>
+
+  <h3>5.5 Reading one archived plan</h3>
+  <p>
+    New handler at
+    <code class="filelabel">frontend/app/api/weekly-plans/[id]/route.ts</code>:
+  </p>
+  <table>
+    <tr><th>Method</th><th>Auth</th><th>Request</th><th>Response</th></tr>
+    <tr>
+      <td><code>GET</code></td>
+      <td><code>withSession</code></td>
+      <td>UUID path param (validated like the other <code>[id]</code> routes)</td>
+      <td><code>200 { id, html, uploaded_at }</code>, <code>404</code> if unknown</td>
+    </tr>
+  </table>
+  <p>
+    This is the picker's on-demand fetch. <strong>It is deliberately session-only</strong> — the
+    API key is a write credential for the ingress, and there is no reason to widen it to reads.
+  </p>
+
+  <h2>6 · Data model</h2>
+  <p>New migration <code class="filelabel">database/migrations/0020_weekly_plans.sql</code>:</p>
+  <pre><code>-- alfred — weekly plan archive (ALF-132).
+--
+-- The Friday `weekly-review` skill emits one self-contained HTML document per week. This
+-- table is its archive: append-only, one row per upload, no derived metadata (that decision
+-- is locked in the spec — the picker labels rows by uploaded_at). `html` is the whole
+-- document verbatim, rendered in a sandboxed iframe by the /plan view.
+
+create table weekly_plans (
+  id          uuid primary key default gen_random_uuid(),
+  html        text not null,
+  uploaded_at timestamptz not null default now()
+);
+
+comment on column weekly_plans.html is
+  'The uploaded week-plan document verbatim (inline CSS + inline JS). Never sanitized; rendered
+   only inside a sandboxed iframe with an opaque origin (ALF-132 §7.2).';
+
+-- The only query shape: newest first (latest plan + picker index).
+create index weekly_plans_uploaded_at_idx on weekly_plans (uploaded_at desc);
+
+-- ── RLS + privileges ─────────────────────────────────────────────────────────
+-- Single-user: the authenticated owner gets full access; anon is denied (no policy).
+alter table weekly_plans enable row level security;
+
+create policy "authenticated full access" on weekly_plans
+  for all to authenticated using (true) with check (true);
+
+-- RLS gates which rows; GRANTs gate whether the role may touch the table at all. Raw `psql -f`
+-- doesn't get Supabase's auto-grants, so grant DML explicitly (see the supabase skill).
+grant select, insert, update, delete on weekly_plans
+  to anon, authenticated, service_role;</code></pre>
+  <div class="callout">
+    <strong>Guardrails to respect here.</strong>
+    (a) The explicit <code>grant</code> is not optional — this repo applies migrations with raw
+    <code>psql</code>, so a missing grant is a shipped 500 (the 0005→0008 and 0014→0017 bugs).
+    (b) After applying, <strong>regenerate</strong>
+    <code class="filelabel">frontend/lib/database.types.ts</code> with the token-free path in the
+    <code>supabase</code> skill (§“local typegen”) and commit the raw output — that file is
+    generator-owned and excluded from ESLint/Prettier; never hand-edit it.
+    (c) Append the apply line to
+    <code class="filelabel">database/migrations-applied.log</code> per the existing ledger.
+  </div>
+  <p class="small">
+    No sequence and no view is created, so <code>migration-lint</code>'s
+    <code>sequence-grant</code> / <code>view-grant</code> rules have nothing to fire on — but
+    run <code>npm run lint:migrations -w tools/migration-lint</code> anyway; it's in
+    <code>check:fast</code>.
+  </p>
+
+  <h2>7 · The view</h2>
+
+  <h3>7.1 Where it plugs in</h3>
+  <p>
+    The tasks module has <strong>four</strong> registration points for a view, all of which this
+    change touches:
+  </p>
+  <table>
+    <tr><th>#</th><th>File</th><th>Change</th></tr>
+    <tr>
+      <td>1</td>
+      <td><code class="filelabel">frontend/app/(shell)/(tasks)/plan/page.tsx</code></td>
+      <td><span class="add">new</span> — the three-line stub every shell page is:
+        <code>export default function PlanPage() { return &lt;ModuleRouter /&gt;; }</code></td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><code class="filelabel">frontend/components/tasks/task-views.tsx</code></td>
+      <td><code>if (pathname === '/plan') return &lt;WeeklyPlanView /&gt;;</code>, alongside the
+        existing <code>/priority</code> and <code>/completed</code> branches</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><code class="filelabel">frontend/components/tasks/folder-nav.tsx</code></td>
+      <td>A <code>&lt;ViewLink href="/plan"&gt;</code> with a <code>CalendarRange</code> lucide
+        icon, in the pinned block <strong>directly under Priority</strong>, above the Folders
+        section. It inherits <code>navLinkClass(isActive('/plan'))</code> and the existing
+        <code>closeProperty</code> so the mobile drawer closes on tap.</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><code class="filelabel">frontend/components/shell/command-destinations.ts</code>
+        + <code class="filelabel">command-palette.tsx</code></td>
+      <td>A <code>{ id: 'go-plan', group: 'go', label: 'Week Plan', href: '/plan', icon: 'plan' }</code>
+        entry in <code>STATIC_DESTINATIONS</code>; widen the <code>DestinationIcon</code> union
+        with <code>'plan'</code> and add the lucide mapping to the <code>ICONS</code> record.</td>
+    </tr>
+  </table>
+  <p>
+    <code>frontend/lib/modules.ts</code> needs <strong>no</strong> change: <code>isCodePath</code>
+    already routes everything outside <code>/code</code> to Tasks, so <code>/plan</code> lands in
+    the tasks module for free — sidebar, module router, and the Tasks ⇄ Code switcher all agree.
+    Use <code>ViewLink</code>, never <code>next/link</code>, so the switch is a
+    <code>pushState</code> with no RSC round-trip.
+  </p>
+
+  <h3>7.2 Rendering — and the one deviation from SpecBody</h3>
+  <p>
+    <code class="filelabel">frontend/components/tasks/weekly-plan-view.tsx</code> renders the
+    document exactly the way <code>SpecBody</code> renders a spec, with a single, deliberate
+    difference:
+  </p>
+  <table>
+    <tr><th>Attribute</th><th><code>SpecBody</code> (code module)</th><th><code>WeeklyPlanView</code> (this change)</th><th>Why</th></tr>
+    <tr>
+      <td><code>sandbox</code></td>
+      <td><code>""</code> — every restriction on</td>
+      <td><span class="add"><code>"allow-scripts"</code></span></td>
+      <td>The plan's own <code>&lt;script&gt;</code> is what highlights today and fills the
+        today card. Inert scripts would gut the feature.</td>
+    </tr>
+    <tr>
+      <td><code>allow-same-origin</code></td>
+      <td>off</td>
+      <td><strong>off</strong> — must stay off</td>
+      <td>Without it the frame gets an <strong>opaque origin</strong>: its script cannot read app
+        cookies, <code>localStorage</code>, or reach the parent DOM. Adding
+        <code>allow-scripts allow-same-origin</code> together would defeat the sandbox entirely.</td>
+    </tr>
+    <tr>
+      <td><code>srcDoc</code></td>
+      <td>raw, unsanitized</td>
+      <td>raw, unsanitized</td>
+      <td>Same trust model: the content reaches the DB only through a credential the single owner
+        holds. Sanitizing would strip the styling and scripting that <em>are</em> the artifact.</td>
+    </tr>
+    <tr>
+      <td>Height</td>
+      <td><code>h-[28rem]</code> (fits a modal)</td>
+      <td><code>flex-1 min-h-[40rem]</code></td>
+      <td>This is a full page, and <code>ModuleRouter</code>'s tasks branch is already
+        <code>flex-1 flex flex-col</code> — the frame fills the remaining viewport.</td>
+    </tr>
+    <tr>
+      <td>Background</td>
+      <td><code>bg-white</code></td>
+      <td>none — let the document paint</td>
+      <td>The plan ships its own <code>prefers-color-scheme: dark</code> block, so forcing white
+        would break its dark mode.</td>
+    </tr>
+  </table>
+  <p class="small">
+    Not granted: <code>allow-forms</code>, <code>allow-popups</code>,
+    <code>allow-top-navigation</code>, <code>allow-modals</code>. <code>allow-scripts</code> alone
+    still lets the frame make network requests — accepted, since the document is authored by the
+    owner's own tooling.
+  </p>
+  <p>
+    <strong>No layout change is needed.</strong> <code>ModuleRouter</code> wraps tasks views in
+    <code>mx-auto w-full max-w-3xl px-4 py-8</code> (≈736 px of usable width), and the plan
+    document is <code>max-width: 780px</code> with an <code>overflow-x: auto</code> timeline that
+    has a 600 px min-width. It fits and stays readable; leave the shared column alone.
+  </p>
+
+  <h3>7.3 Layout &amp; states</h3>
+  <div class="mock">
+    <div class="mock-bar">
+      <strong>Week Plan</strong>
+      <span style="flex:1"></span>
+      <span class="mock-select">Jul 25 ▾</span>
+    </div>
+    <div class="mock-body">
+      <div class="mock-frame">
+        &lt;iframe sandbox="allow-scripts" srcDoc={plan.html} /&gt;<br />
+        <span style="font-size:.75rem">the week-plan document, rendering itself</span>
+      </div>
+    </div>
+  </div>
+  <table>
+    <tr><th>State</th><th>Render</th></tr>
+    <tr>
+      <td>≥ 1 plan</td>
+      <td>Header row: an <code>h1</code>-scale “Week Plan” heading, and — only when there is more
+        than one plan — a picker on the trailing edge listing uploads newest-first. Below it, the
+        sandboxed frame.</td>
+    </tr>
+    <tr>
+      <td>Exactly 1 plan</td>
+      <td>Same, with the picker hidden (nothing to pick).</td>
+    </tr>
+    <tr>
+      <td>No plans</td>
+      <td>An empty state in the app's existing dashed-border card idiom (as <code>SpecBody</code>
+        uses for a missing spec): one line of explanation plus the <code>curl</code> snippet from
+        §5.4 with the host and key elided. No spinner, no error styling — “not uploaded yet” is a
+        normal state.</td>
+    </tr>
+    <tr>
+      <td>Switching to an older plan</td>
+      <td>Fetch its HTML through <code>GET /api/weekly-plans/[id]</code>, cache it in the store,
+        then swap <code>srcDoc</code>. While in flight, keep the current frame mounted rather
+        than blanking it. On failure, fire the existing error toast
+        (<code>useToastActions</code>) and stay on the current plan.</td>
+    </tr>
+  </table>
+  <p>
+    Picker labels come from <code>uploaded_at</code> alone (locked decision §2): use
+    <code>formatMonthDay</code> from <code class="filelabel">frontend/lib/date-utils.ts</code>,
+    e.g. <code>Jul 25</code>. It already handles a full timestamptz.
+  </p>
+
+  <h2>8 · Read path &amp; state</h2>
+
+  <h3>8.1 Server data module</h3>
+  <p>New <code class="filelabel">frontend/lib/data/weekly-plans.ts</code>, mirroring
+    <code>lib/data/items.ts</code> / <code>lib/data/code.ts</code>:</p>
+  <pre><code>/** Picker index — newest first. Deliberately excludes `html` (see §8.2). */
+export async function getWeeklyPlanIndex(): Promise&lt;WeeklyPlanSummary[]&gt;
+
+/** The most recent plan, html included, or undefined when none has been uploaded. */
+export async function getLatestWeeklyPlan(): Promise&lt;WeeklyPlan | undefined&gt;</code></pre>
+  <p>
+    Types <code>WeeklyPlan</code> (<code>id</code>, <code>html</code>, <code>uploaded_at</code>)
+    and <code>WeeklyPlanSummary</code> (<code>id</code>, <code>uploaded_at</code>) go in
+    <code class="filelabel">frontend/lib/types.ts</code>, derived from the regenerated
+    <code>database.types.ts</code> row type like the existing aliases.
+  </p>
+
+  <h3>8.2 A deliberate exception to “fetch-all, seed-once”</h3>
+  <div class="callout">
+    The <code>data-flow</code> skill's house default is <strong>fetch everything at the shell
+    layout and filter client-side</strong>. This change follows that for the
+    <em>index</em> and breaks it for the <em>documents</em>: each plan is ~40 KB of HTML and the
+    archive grows by one every week, so shipping all of them in the RSC payload would inflate
+    every page load in the app — including the ones that never open <code>/plan</code>. The
+    layout therefore seeds <code>{ index, latest }</code>, and an older plan's HTML is pulled on
+    demand and cached in the store. Record this exception in the <code>data-flow</code> skill
+    while implementing.
+  </div>
+
+  <h3>8.3 Store</h3>
+  <p>
+    New <code class="filelabel">frontend/lib/stores/weekly-plan-store.tsx</code> exposing
+    <code>WeeklyPlanProvider</code> (seeded with <code>initialIndex</code> +
+    <code>initialLatest</code>) and hooks <code>useWeeklyPlanIndex()</code>,
+    <code>useSelectedWeeklyPlan()</code>, <code>useWeeklyPlanActions()</code>
+    (<code>selectPlan(id)</code>).
+  </p>
+  <p>
+    Build it on <code class="filelabel">frontend/lib/stores/create-context-pair.ts</code> like the
+    other stores, but <strong>not</strong> on the optimistic-mutation machinery — there is no
+    optimistic write here, only seeded data plus a read-through cache keyed by plan id. Registering
+    the provider in <code class="filelabel">frontend/app/(shell)/layout.tsx</code> means adding the
+    two fetches to the existing <code>Promise.all</code> and nesting one more provider; put it
+    inside <code>ToastProvider</code> so a failed on-demand fetch can toast.
+  </p>
+
+  <h2>9 · Files touched</h2>
+  <table>
+    <tr><th>File</th><th></th><th>What</th></tr>
+    <tr><td><code class="filelabel">database/migrations/0020_weekly_plans.sql</code></td><td class="add">new</td><td>Table, index, RLS policy, grants</td></tr>
+    <tr><td><code class="filelabel">database/migrations-applied.log</code></td><td>edit</td><td>Apply ledger line</td></tr>
+    <tr><td><code class="filelabel">frontend/lib/database.types.ts</code></td><td>regen</td><td>Raw generator output — never hand-edited</td></tr>
+    <tr><td><code class="filelabel">frontend/lib/html-document.ts</code> (+ test)</td><td class="add">new</td><td><code>looksLikeHtmlDocument</code>, extracted from <code>spec-body.tsx</code></td></tr>
+    <tr><td><code class="filelabel">frontend/components/code/story-detail/spec-body.tsx</code></td><td>edit</td><td>Import the extracted predicate; behaviour unchanged</td></tr>
+    <tr><td><code class="filelabel">frontend/app/api/weekly-plans/route.ts</code> (+ test)</td><td class="add">new</td><td><code>POST</code> upload</td></tr>
+    <tr><td><code class="filelabel">frontend/app/api/weekly-plans/[id]/route.ts</code> (+ test)</td><td class="add">new</td><td><code>GET</code> one plan</td></tr>
+    <tr><td><code class="filelabel">frontend/lib/data/weekly-plans.ts</code></td><td class="add">new</td><td>Server reads</td></tr>
+    <tr><td><code class="filelabel">frontend/lib/stores/weekly-plan-store.tsx</code> (+ test)</td><td class="add">new</td><td>Provider + hooks + read-through cache</td></tr>
+    <tr><td><code class="filelabel">frontend/lib/types.ts</code></td><td>edit</td><td><code>WeeklyPlan</code>, <code>WeeklyPlanSummary</code></td></tr>
+    <tr><td><code class="filelabel">frontend/lib/api-client.ts</code></td><td>edit</td><td><code>fetchWeeklyPlan(id)</code></td></tr>
+    <tr><td><code class="filelabel">frontend/app/(shell)/layout.tsx</code></td><td>edit</td><td>Two fetches + one provider</td></tr>
+    <tr><td><code class="filelabel">frontend/app/(shell)/(tasks)/plan/page.tsx</code></td><td class="add">new</td><td>Route stub</td></tr>
+    <tr><td><code class="filelabel">frontend/components/tasks/weekly-plan-view.tsx</code> (+ test, + story)</td><td class="add">new</td><td>The view</td></tr>
+    <tr><td><code class="filelabel">frontend/components/tasks/task-views.tsx</code></td><td>edit</td><td><code>/plan</code> branch</td></tr>
+    <tr><td><code class="filelabel">frontend/components/tasks/folder-nav.tsx</code></td><td>edit</td><td>Sidebar link under Priority</td></tr>
+    <tr><td><code class="filelabel">frontend/components/shell/command-destinations.ts</code></td><td>edit</td><td><code>go-plan</code> destination + icon token</td></tr>
+    <tr><td><code class="filelabel">frontend/components/shell/command-palette.tsx</code></td><td>edit</td><td>Lucide mapping for <code>'plan'</code></td></tr>
+    <tr><td><code class="filelabel">frontend/e2e/weekly-plan.spec.ts</code></td><td class="add">new</td><td>End-to-end</td></tr>
+    <tr><td><code class="filelabel">docs/demos/weekly-plan-view/</code></td><td class="add">new</td><td>Demo doc (§11)</td></tr>
+  </table>
+
+  <h2>10 · Tests (red first)</h2>
+  <p>
+    Per <code>CLAUDE.md</code>, every behavioural requirement below must be expressed in a test
+    that fails before the code exists.
+  </p>
+  <table>
+    <tr><th>Layer</th><th>File</th><th>Must pin</th></tr>
+    <tr>
+      <td>Unit</td>
+      <td><code class="filelabel">frontend/lib/html-document.test.ts</code></td>
+      <td><code>looksLikeHtmlDocument</code>: true for <code>&lt;!DOCTYPE html&gt;</code> and
+        <code>&lt;html</code> (leading whitespace, any case); false for markdown, a bare
+        <code>&lt;div&gt;</code>, and the empty string.</td>
+    </tr>
+    <tr>
+      <td>Route</td>
+      <td><code class="filelabel">frontend/app/api/weekly-plans/route.test.ts</code></td>
+      <td>Each row of the §5.3 table: 415 / 400 empty / 413 oversize / 400 non-HTML / 401 with no
+        credential / 201 + inserted <code>html</code> with a valid <code>x-api-key</code>; and that
+        a valid key routes through the <strong>admin</strong> client.</td>
+    </tr>
+    <tr>
+      <td>Route</td>
+      <td><code class="filelabel">frontend/app/api/weekly-plans/[id]/route.test.ts</code></td>
+      <td>401 without a session; 400 on a non-UUID id; 404 on an unknown id; 200 with the html.</td>
+    </tr>
+    <tr>
+      <td>Component</td>
+      <td><code class="filelabel">frontend/components/tasks/weekly-plan-view.test.tsx</code></td>
+      <td>Renders an iframe whose <code>srcdoc</code> is the html verbatim and whose
+        <code>sandbox</code> is exactly <code>allow-scripts</code> (assert it does
+        <strong>not</strong> contain <code>allow-same-origin</code> — that's the regression that
+        would silently unseal the frame); empty state when the store has no plans; the picker is
+        hidden with one plan and lists newest-first with several; selecting an older plan swaps
+        <code>srcdoc</code> after the fetch resolves.</td>
+    </tr>
+    <tr>
+      <td>Store</td>
+      <td><code class="filelabel">frontend/lib/stores/weekly-plan-store.test.tsx</code></td>
+      <td>Seeded latest is selected initially; <code>selectPlan</code> fetches once and serves the
+        second call from cache; a rejected fetch leaves the selection unchanged.</td>
+    </tr>
+    <tr>
+      <td>Nav</td>
+      <td><code class="filelabel">frontend/components/tasks/folder-nav.test.tsx</code>,
+        <code class="filelabel">command-destinations.test.ts</code></td>
+      <td>The Week Plan link exists, points at <code>/plan</code>, and is marked active on that
+        path; the palette destination resolves.</td>
+    </tr>
+    <tr>
+      <td>Storybook</td>
+      <td><code class="filelabel">frontend/components/tasks/weekly-plan-view.stories.tsx</code></td>
+      <td>Three stories — populated, single-plan, empty — so the snapshot gate covers the states.</td>
+    </tr>
+    <tr>
+      <td>E2E</td>
+      <td><code class="filelabel">frontend/e2e/weekly-plan.spec.ts</code></td>
+      <td>Seed a plan, navigate from the sidebar (URL becomes <code>/plan</code> with no full
+        page load), and assert inside the frame with <code>frameLocator</code> that the plan's
+        own heading renders — the end-to-end proof that <code>srcDoc</code> + sandbox actually
+        paints. Also cover the empty state.</td>
+    </tr>
+  </table>
+  <p class="small">
+    Regression guard worth naming: <code>story-detail-modal.test.tsx</code> already asserts
+    <code>sandbox === ''</code> for the code module. Extracting the predicate must not disturb it,
+    and the two views must keep <em>different</em> sandbox values.
+  </p>
+
+  <h2>11 · Demo doc</h2>
+  <p>
+    This is a user-facing change, so it needs a demo doc — authored with the
+    <code>showboat</code> skill (<code>npm run demo -- init docs/demos/&lt;feature-name&gt;/&lt;name&gt;.md …</code>),
+    in its own folder so <code>demo-lint</code>'s <code>no-root-files</code> and
+    <code>branch-folder</code> rules are satisfied. What it must show, in order:
+  </p>
+  <ol>
+    <li>An <code>exec</code> of the <code>curl</code> upload against a locally-running app,
+      capturing the <code>201</code> response.</li>
+    <li>An <code>exec</code> of the rejection cases (empty body, non-HTML) so the validation is
+      visible, not merely asserted.</li>
+    <li>A <code>screenshot</code> of <code>/plan</code> rendering the uploaded document
+      (<code>npm run screenshot -w frontend</code>), embedded with <code>demo -- image</code> —
+      this is the whole point of the ticket and the reviewer should see it.</li>
+    <li>A second screenshot of the empty state.</li>
+  </ol>
+  <p>
+    Evidence rules follow <code>showboat</code>, not this document — keep <code>exec</code> blocks
+    deterministic and confirm with <code>npm run demo -- verify</code> before wrapping up. No test
+    invocations in the demo (<code>demo-lint</code>'s <code>no-test-in-demo</code>): the suites in
+    §10 are the non-regression proof, the demo is the new-behaviour proof. The PR description must
+    carry the live link from <code>npm run demo -- pr-link</code>.
+  </p>
+
+  <h2>12 · Out of scope / deferred</h2>
+  <ul>
+    <li><strong>Richer picker labels.</strong> The generator emits
+      <code>&lt;title&gt;Week 12: Jul 4 – Jul 11, 2026&lt;/title&gt;</code>, so a label like
+      “Week 12” is derivable. The metadata decision (§2) deliberately excludes it. It can be added
+      later with no breaking migration — either derived client-side from the stored html, or as
+      added columns.</li>
+    <li><strong>Persisting the plan's checkboxes.</strong> The success-criteria ticks live inside
+      the sandboxed frame and are lost on reload. Making them durable would mean parsing and
+      writing back into the document — a different, larger ticket.</li>
+    <li><strong>Turning plan lines into alfred tasks.</strong> No extraction of the day-by-day
+      tasks into <code>items</code>. The plan renders as a document; it does not sync.</li>
+    <li><strong>In-app upload UI.</strong> Explicitly declined (§2) — the endpoint is the
+      interface.</li>
+    <li><strong>Deleting or editing an archived plan.</strong> Append-only for now; a bad upload
+      is corrected by uploading again (the newest wins as the default view).</li>
+    <li><strong>Automating the upload from the <code>weekly-review</code> skill.</strong> That
+      skill lives outside this repo; wiring its final step to <code>curl</code> the new endpoint
+      is a follow-up there, not here.</li>
+  </ul>
+
+  <h3>Open questions</h3>
+  <p>
+    None blocking. The three that mattered — history, upload path, metadata — were resolved with
+    the owner during refinement and are recorded in §2.
+  </p>
+
+  <h2>13 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li><code>POST /api/weekly-plans</code> with a valid <code>x-api-key</code> and a
+      <code>text/html</code> body stores the document verbatim and returns <code>201</code> with
+      <code>{ id, uploaded_at }</code>.</li>
+    <li>The same request with no credential returns <code>401</code>; with a logged-in session
+      instead of a key it succeeds (same dual path as <code>POST /api/items</code>).</li>
+    <li>A non-<code>text/html</code> content type returns <code>415</code>; an empty body
+      <code>400</code>; a body over 1 MB <code>413</code>; a body that isn't an HTML document
+      <code>400</code>.</li>
+    <li><code>GET /api/weekly-plans/[id]</code> requires a session, returns the html for a known
+      id and <code>404</code> for an unknown one.</li>
+    <li>Migration <code>0020_weekly_plans.sql</code> creates the table with RLS enabled, the
+      <code>authenticated full access</code> policy, the explicit DML grants, and the
+      <code>uploaded_at desc</code> index; it is applied and logged in
+      <code>migrations-applied.log</code>.</li>
+    <li><code>frontend/lib/database.types.ts</code> is regenerated output, not hand-edited, and
+      includes <code>weekly_plans</code>.</li>
+    <li>A <strong>Week Plan</strong> link sits directly under Priority in the tasks sidebar (and
+      in the mobile drawer), navigates to <code>/plan</code> via <code>ViewLink</code> with no RSC
+      round-trip, and highlights as active on that path.</li>
+    <li><code>/plan</code> is reachable from the ⌘K palette and survives a hard reload / deep
+      link (server-rendered by the route stub).</li>
+    <li>The view renders the most recent uploaded plan in an
+      <code>&lt;iframe srcDoc&gt;</code> with <code>sandbox="allow-scripts"</code> and
+      <strong>without</strong> <code>allow-same-origin</code>; the document's own styling and dark
+      mode apply, and its today-highlighting script runs.</li>
+    <li>The plan's CSS does not leak into the app shell, and the app's CSS does not restyle the
+      plan.</li>
+    <li>With more than one plan uploaded, a picker lists them newest-first labelled by upload
+      date; choosing an older one fetches and renders it, and the choice is served from cache on a
+      second visit.</li>
+    <li>With no plan uploaded, the view shows the empty state with the upload instruction — no
+      error, no blank frame.</li>
+    <li><code>looksLikeHtmlDocument</code> lives in one place and is imported by both
+      <code>spec-body.tsx</code> and the upload handler; the code module's spec iframe still uses
+      <code>sandbox=""</code> and its existing tests pass untouched.</li>
+    <li>Root <code>npm run check</code> is green (type-check, lint/format, unit, migration-lint,
+      skill-lint, Storybook snapshots, Playwright, demo-lint).</li>
+    <li>A demo doc exists under <code>docs/demos/</code>, shows the upload and the rendered plan,
+      passes <code>npm run demo -- verify</code>, and is linked live from the PR description.</li>
+  </ul>
+
+</div>
+</body>
+</html>
