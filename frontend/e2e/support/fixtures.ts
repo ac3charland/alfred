@@ -32,6 +32,7 @@ export const test = base.extend<Fixtures>({
           projects: state.projects ?? [],
           epics: state.epics ?? [],
           codeItems: state.codeItems ?? [],
+          weeklyPlans: state.weeklyPlans ?? [],
         },
       });
       expect(response.ok()).toBeTruthy();

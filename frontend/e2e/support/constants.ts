@@ -8,7 +8,7 @@
 import path from 'node:path';
 import process from 'node:process';
 
-import type { CodeItem, Epic, Folder, Item, Project } from '@/lib/types';
+import type { CodeItem, Epic, Folder, Item, Project, WeeklyPlan } from '@/lib/types';
 
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;
@@ -29,6 +29,7 @@ export interface SeedState {
   projects?: Project[];
   epics?: Epic[];
   codeItems?: CodeItem[];
+  weeklyPlans?: WeeklyPlan[];
 }
 
 let sequence = 0;
@@ -57,6 +58,15 @@ export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folde
     id: overrides.id ?? crypto.randomUUID(),
     name,
     created_at: overrides.created_at ?? nextCreatedAt(),
+  };
+}
+
+/** An archived week-plan document. `html` is the whole self-contained page, verbatim. */
+export function makeWeeklyPlan(html: string, overrides: Partial<WeeklyPlan> = {}): WeeklyPlan {
+  return {
+    id: overrides.id ?? crypto.randomUUID(),
+    html,
+    uploaded_at: overrides.uploaded_at ?? nextCreatedAt(),
   };
 }
 
