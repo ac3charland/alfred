@@ -564,6 +564,183 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const subtaskShapeResult = await attempt(
+    'enforce_subtask_shape: 1-deep code children, no family mixing (ALF-129)',
+    async () => {
+      // A code root with one code child — the legal epic-under-construction shape.
+      const codeParent = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type) values ('shape parent', 'code') returning id`,
+        ),
+      );
+      const codeParentId = codeParent.rows[0]?.id;
+      if (!codeParentId) throw new Error('code parent insert returned no id');
+      const codeChild = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, parent_id)
+             values ('shape child', 'code', $1) returning id`,
+          [codeParentId],
+        ),
+      );
+      const codeChildId = codeChild.rows[0]?.id;
+      if (!codeChildId) throw new Error('legal code child was rejected');
+
+      const taskParent = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type) values ('shape task', 'task') returning id`,
+        ),
+      );
+      const taskParentId = taskParent.rows[0]?.id;
+      if (!taskParentId) throw new Error('task insert returned no id');
+
+      const mustReject = async (label: string, sql: string, params: unknown[]) => {
+        let rejected = false;
+        try {
+          await asRole(client, 'authenticated', () => client.query(sql, params));
+        } catch {
+          rejected = true;
+        }
+        if (!rejected) throw new Error(`${label} was NOT rejected`);
+      };
+      await mustReject(
+        'a code child under a task parent',
+        `insert into items (title, item_type, parent_id) values ('bad', 'code', $1)`,
+        [taskParentId],
+      );
+      await mustReject(
+        'a task child under a code parent',
+        `insert into items (title, item_type, parent_id) values ('bad', 'task', $1)`,
+        [codeParentId],
+      );
+      await mustReject(
+        'a code child two levels deep',
+        `insert into items (title, item_type, parent_id) values ('bad', 'code', $1)`,
+        [codeChildId],
+      );
+      await mustReject(
+        'nesting a code parent that has children',
+        `update items set parent_id = $1 where id = $2`,
+        [codeChildId, codeParentId],
+      );
+      // Clean up so later conversions aren't entangled with this fixture.
+      await client.query(`delete from items where id = any($1)`, [[codeParentId, taskParentId]]);
+      return 'legal 1-deep code child allowed; all four illegal shapes rejected';
+    },
+  );
+
+  const convertToEpicResult = await attempt(
+    'convert_to_code_epic: parent becomes the epic, children become top-of-project stories in display order (ALF-129)',
+    async () => {
+      // A code parent with three children in manual order, plus the project's current top
+      // outstanding story (from earlier checks) that the group must land above.
+      const topBefore = await client.query<{ priority: string }>(
+        `select min(priority) as priority from code_items
+          where project_id = $1 and factory_state not in ('done', 'abandoned')`,
+        [PROJECT],
+      );
+      const projectTopBefore = Number(topBefore.rows[0]?.priority);
+      const parent = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, notes, item_type)
+             values ('Construction inbox', 'epic notes', 'code') returning id`,
+        ),
+      );
+      const parentId = parent.rows[0]?.id;
+      if (!parentId) throw new Error('parent insert returned no id');
+      for (const [index, title] of ['S1', 'S2', 'S3'].entries()) {
+        await asRole(client, 'authenticated', () =>
+          client.query(
+            `insert into items (title, item_type, parent_id, sort_order)
+               values ($1, 'code', $2, $3)`,
+            [title, parentId, index + 1],
+          ),
+        );
+      }
+      const { rows } = await asRole(client, 'authenticated', () =>
+        client.query<{ result: { epic: { name: string; notes: string }; stories: unknown[] } }>(
+          `select convert_to_code_epic($1, $2) as result`,
+          [parentId, PROJECT],
+        ),
+      );
+      const result = rows[0]?.result;
+      if (!result) throw new Error('convert_to_code_epic returned no result');
+      if (result.epic.name !== 'Construction inbox' || result.epic.notes !== 'epic notes')
+        throw new Error(
+          `epic did not take the parent's title+notes (${JSON.stringify(result.epic)})`,
+        );
+      if (result.stories.length !== 3)
+        throw new Error(`expected 3 stories, got ${String(result.stories.length)}`);
+
+      // Display order === priority order, all above the project's previous top story.
+      const ordered = await client.query<{ title: string; priority: string }>(
+        `select i.title, c.priority from code_items c join items i on i.id = c.item_id
+          where i.title = any($1) order by c.priority`,
+        [['S1', 'S2', 'S3']],
+      );
+      const titles = ordered.rows.map((r) => r.title);
+      if (JSON.stringify(titles) !== JSON.stringify(['S1', 'S2', 'S3']))
+        throw new Error(`priority order is ${titles.join(',')}, expected S1,S2,S3`);
+      const worstNew = Math.max(...ordered.rows.map((r) => Number(r.priority)));
+      if (!(worstNew < projectTopBefore))
+        throw new Error(
+          `group did not land above the project's top (worst=${String(worstNew)}, top before=${String(projectTopBefore)})`,
+        );
+
+      // The code parent is deleted; the children have left task_items (they carry sidecars).
+      const parentRows = await client.query(`select 1 from items where id = $1`, [parentId]);
+      if (parentRows.rows.length > 0) throw new Error('code parent row was not deleted');
+      const inTaskItems = await asRole(client, 'authenticated', () =>
+        client.query(`select 1 from task_items where title = any($1)`, [['S1', 'S2', 'S3']]),
+      );
+      if (inTaskItems.rows.length > 0) throw new Error('children still visible in task_items');
+      return `epic carries title+notes; priorities S1<S2<S3, all above ${String(projectTopBefore)}; parent deleted`;
+    },
+  );
+
+  const convertTaskParentResult = await attempt(
+    'convert_to_code_epic: a task parent completes, keeping its completed children (ALF-129)',
+    async () => {
+      const parent = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type) values ('Decomposed task', 'task') returning id`,
+        ),
+      );
+      const parentId = parent.rows[0]?.id;
+      if (!parentId) throw new Error('parent insert returned no id');
+      await asRole(client, 'authenticated', () =>
+        client.query(
+          `insert into items (title, item_type, parent_id, sort_order) values ('T1', 'task', $1, 1)`,
+          [parentId],
+        ),
+      );
+      await asRole(client, 'authenticated', () =>
+        client.query(
+          `insert into items (title, item_type, parent_id, sort_order, status, completed_at)
+             values ('Done sub', 'task', $1, 2, 'completed', now())`,
+          [parentId],
+        ),
+      );
+      await asRole(client, 'authenticated', () =>
+        client.query(`select convert_to_code_epic($1, $2)`, [parentId, PROJECT]),
+      );
+      const after = await client.query<{ title: string; status: string; parent_id: string | null }>(
+        `select title, status, parent_id from items where id = $1 or parent_id = $1`,
+        [parentId],
+      );
+      const parentRow = after.rows.find((r) => r.title === 'Decomposed task');
+      const doneChild = after.rows.find((r) => r.title === 'Done sub');
+      if (parentRow?.status !== 'completed') throw new Error('task parent was not completed');
+      if (doneChild?.parent_id !== parentId)
+        throw new Error('completed child did not stay beneath the completed parent');
+      const t1 = await client.query<{ count: string }>(
+        `select count(*)::text as count from code_items c join items i on i.id = c.item_id
+          where i.title = 'T1'`,
+      );
+      if (t1.rows[0]?.count !== '1') throw new Error('active child T1 did not become a story');
+      return 'parent completed, completed child kept beneath it, active child converted';
+    },
+  );
+
   const codeStoryListReadResult = await attempt(
     'authenticated can select from v_code_stories — the GET /api/code list read (ALF-124)',
     async () => {
@@ -630,6 +807,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     outstandingProjectMoveResult,
     taskItemsColumnsResult,
     intendedProjectResult,
+    subtaskShapeResult,
+    convertToEpicResult,
+    convertTaskParentResult,
     codeStoryListReadResult,
     anonInsertResult,
     anonReadResult,

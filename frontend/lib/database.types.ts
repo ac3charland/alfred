@@ -489,6 +489,7 @@ export type Database = {
           raw_capture: string | null
           recurrence: Json | null
           recurrence_series_id: string | null
+          sort_order: number
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"]
           title: string
@@ -499,6 +500,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      convert_to_code_epic: {
+        Args: { p_item: string; p_project: string }
+        Returns: Json
       }
       create_code_story: {
         Args: {
