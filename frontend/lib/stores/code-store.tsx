@@ -8,6 +8,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import {
   buildBypassUrl,
+  buildEpicRefinementUrl,
   buildImplementationUrl,
   buildRefinementUrl,
   promptFromLaunchUrl,
@@ -235,9 +236,11 @@ export interface CodeActions {
    * Move a code story to a different epic in the same project, keyed by its `ref`. The board
    * re-homes the card the instant `epic_id` changes (`buildEpicBoard` filters on it).
    * Optimistically patches `epic_id` + the denormalised `epic_name`/`epic_ref`/
-   * `epic_archived_at` (the board read carries these but the saved sidecar does not, so they
-   * come from the target epic already in the store), then reconciles with the saved row,
-   * rolling all four fields back on error.
+   * `epic_archived_at`/`epic_spec_path` (the board read carries these but the saved sidecar does
+   * not, so they come from the target epic already in the store), then reconciles with the saved
+   * row, rolling all five fields back on error. `epic_spec_path` moves with the story because it
+   * is what puts the epic-context paragraph into that story's launch prompts — after a move the
+   * prompts must point at the NEW epic's spec, not the old one's.
    */
   moveStoryToEpic: (ref: string, epicId: string) => Promise<void>;
   /**
@@ -249,6 +252,14 @@ export interface CodeActions {
    * from the story + its project (`lib/code/links`), so the detail modal reuses this verbatim.
    */
   openClaudeSession: (ref: string, phase: LaunchPhase) => Promise<void>;
+  /**
+   * The epic launch (the epic 3-dot menu's "Refine epic in Claude Code"): build the
+   * epic-refinement URL from the epic + its project, copy the prompt to the clipboard (the same
+   * mobile paste-fallback, toasted on success), then open the prefilled tab. Mirrors
+   * `openClaudeSession` MINUS the state write — epics have no lifecycle, so there is nothing to
+   * await before opening.
+   */
+  openEpicSession: (epicId: string) => Promise<void>;
   /**
    * Apply ONE chevron swap's optimistic half only (patch `ref` and `neighbourRef` with each
    * other's `priority`) — no network call. The Backlog resolves which visible neighbour to
@@ -529,6 +540,25 @@ export function CodeProvider({
       }
     };
 
+    // The epic analogue: the Worker snapshots a merged epic-refinement spec onto the `epics` row
+    // out of band, so patch the spec columns in as they arrive. SILENT — a story's toast exists
+    // because a card visibly moves lanes; an epic spec landing moves nothing, it just makes the
+    // menu's "View spec" item appear. Only the Worker-written columns are patched, so a local
+    // rename/notes edit in flight is never clobbered by a stale value riding along on the payload.
+    const handleEpicUpdate = (payload: RealtimePostgresUpdatePayload<Epic>) => {
+      const row = payload.new;
+      dispatch({
+        type: 'patchEpic',
+        id: row.id,
+        patch: {
+          spec_path: row.spec_path,
+          spec_sha: row.spec_sha,
+          spec_markdown: row.spec_markdown,
+          refinement_pr_url: row.refinement_pr_url,
+        },
+      });
+    };
+
     const channel = supabase
       .channel('code_items')
       .on(
@@ -538,11 +568,21 @@ export function CodeProvider({
       )
       .subscribe();
 
+    const epicsChannel = supabase
+      .channel('epics')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'epics' },
+        handleEpicUpdate,
+      )
+      .subscribe();
+
     document.addEventListener('visibilitychange', handleVisible);
     window.addEventListener('focus', handleVisible);
 
     return () => {
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(epicsChannel);
       document.removeEventListener('visibilitychange', handleVisible);
       window.removeEventListener('focus', handleVisible);
       restoreTitle();
@@ -819,6 +859,7 @@ export function CodeProvider({
           epic_name: story.epic_name,
           epic_ref: story.epic_ref,
           epic_archived_at: story.epic_archived_at,
+          epic_spec_path: story.epic_spec_path,
         };
         await runOptimisticMutation({
           optimistic: () => {
@@ -830,13 +871,14 @@ export function CodeProvider({
                 epic_name: target.name,
                 epic_ref: target.ref,
                 epic_archived_at: target.archived_at,
+                epic_spec_path: target.spec_path,
               },
             });
           },
           apiCall: () => api.moveCodeEpic(ref, epicId),
           reconcile: (saved) => {
             // The saved sidecar confirms only epic_id (+ the timestamp); the denormalised
-            // name/ref/archived_at were already applied from the store's epic.
+            // name/ref/archived_at/spec_path were already applied from the store's epic.
             dispatch({
               type: 'patchStory',
               itemId,
@@ -961,6 +1003,22 @@ export function CodeProvider({
         // Start the copy before `window.open` so the write runs under the same user gesture, and
         // await it only to decide whether to confirm (a failed/absent clipboard shows no toast).
         const copied = copyToClipboard(prompt);
+        window.open(url, '_blank');
+        if (await copied) showToastRef.current('Prompt copied to clipboard');
+      },
+      async openEpicSession(epicId) {
+        const epic = stateRef.current.epics.find((e) => e.id === epicId);
+        if (epic === undefined) {
+          throw new Error(`Epic ${epicId} not found in the code store`);
+        }
+        const project = stateRef.current.projects.find((p) => p.id === epic.project_id);
+        if (project === undefined) {
+          throw new Error(`Project for epic ${epic.ref} missing from the code store`);
+        }
+        const url = buildEpicRefinementUrl(project, epic);
+        // Same clipboard paste-fallback as the story launch (the mobile app drops `q`), started
+        // before `window.open` so the write runs under the same user gesture.
+        const copied = copyToClipboard(promptFromLaunchUrl(url));
         window.open(url, '_blank');
         if (await copied) showToastRef.current('Prompt copied to clipboard');
       },
