@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  CalendarRange,
   Check,
   Code2,
   FolderOpen,
@@ -36,6 +37,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   tasks: ListTodo,
   inbox: Inbox,
   priority: ListOrdered,
+  plan: CalendarRange,
   completed: Check,
   code: Code2,
   backlog: ListOrdered,

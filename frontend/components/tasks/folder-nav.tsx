@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, FolderOpen, ListOrdered, MoreHorizontal, Plus } from 'lucide-react';
+import { CalendarRange, Check, FolderOpen, ListOrdered, MoreHorizontal, Plus } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
@@ -110,7 +110,8 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
-      {/* Priority — the tasks module's default view, pinned above the folders. */}
+      {/* Priority — the tasks module's default view — and the Week Plan document beneath it,
+          both pinned above the folders. */}
       <div className="flex flex-col gap-0.5">
         <ViewLink
           href="/priority"
@@ -119,6 +120,10 @@ export function FolderNav({ onClose }: FolderNavProperties) {
         >
           <ListOrdered size={15} className="shrink-0" />
           <span>Priority</span>
+        </ViewLink>
+        <ViewLink href="/plan" className={navLinkClass(isActive('/plan'))} {...closeProperty}>
+          <CalendarRange size={15} className="shrink-0" />
+          <span>Week Plan</span>
         </ViewLink>
       </div>
 
