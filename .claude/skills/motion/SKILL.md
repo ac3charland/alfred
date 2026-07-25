@@ -340,7 +340,7 @@ const register = useFlipList(items.map((i) => i.id)); // keys in CURRENT render 
 // each row: <li ref={register(item.id)}> … </li>    // forwardRef the root to the registrar
 ```
 
-In a `useLayoutEffect` it reads each tracked row's previous and new `getBoundingClientRect`
+In a `useLayoutEffect` it reads each tracked row's previous and new position *within the list*
 (First/Last), sets a no-transition `translateY(Δ)` so the row looks un-moved (Invert), then on the
 next `requestAnimationFrame` clears the offset under `transform 200ms ease-out` (Play) so the rows
 glide. Key things:
@@ -355,12 +355,20 @@ glide. Key things:
   **interrupts the in-flight transition** — the row freezes at its old slot, then jumps ¾ of the way
   in one frame, then eases the rest (classic mid-flight jank). Track the previous key order and
   **bail out when it's unchanged**; only run the FLIP when the order actually changed.
-- **Measure "Last" cleanly and store THOSE rects.** Read each new slot *after* clearing any leftover
-  `transform`/`transition`, and save that clean measurement as the next baseline. Snapshotting
-  *after* applying the invert records the inverted (old) positions, so alternating swaps compute
-  Δ=0 and snap. (This pairs with the bail-out above; both were found via the `debug-animations`
-  probe and pinned by `e2e/code-backlog-reorder-flip.spec.ts`, which asserts no frame covers >40%
-  of the journey.)
+- **Measure "Last" cleanly and store THOSE positions.** Read each new slot *after* clearing any
+  leftover `transform`/`transition`, and save that clean measurement as the next baseline.
+  Snapshotting *after* applying the invert records the inverted (old) positions, so alternating
+  swaps compute Δ=0 and snap.
+- **Measure LIST-LOCAL, never viewport-relative.** The baseline is captured on one reorder and has
+  to survive until the next, so `getBoundingClientRect().top` is the wrong unit: page scroll, or
+  anything above the list changing height (a card that resolves and appears/disappears), moves
+  every row without reordering anything, and the next swap then inverts by that stale distance —
+  the row leaps the full shift before easing. Subtract the list's own top
+  (`node.getBoundingClientRect().top - node.parentElement.getBoundingClientRect().top`) so the
+  shift cancels. `offsetTop` is NOT a substitute: it is relative to the nearest *positioned*
+  ancestor, usually the body, so it moves with the card too.
+  (These three pair up; all were found via the `debug-animations` probe and pinned by
+  `e2e/code-backlog-reorder-flip.spec.ts`, which asserts no frame covers >40% of the journey.)
 - **`react-hooks/immutability` (React Compiler):** an object passed as `useRef`'s initial argument
   is frozen, so the hook would be flagged for mutating tracked nodes' `.style`. Create the Maps
   **lazily** (`const m = (ref.current ??= new Map<…>())`) instead of `useRef(new Map())`, and type

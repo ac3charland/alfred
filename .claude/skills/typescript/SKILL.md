@@ -187,6 +187,12 @@ you need runtime iteration.
 **In `.tsx` files, `<T>` type parameters are parsed as JSX.**
 Write `<T,>` or `<T extends unknown>` to disambiguate. Prefer the comma form.
 
+**A green `tsc --noEmit` can be a stale `tsconfig.tsbuildinfo`, not a clean tree.**
+With `incremental: true`, adding a file whose inputs the cache thinks are unchanged lets
+`tsc` skip it — so `npm run typecheck` passes while `next build` (which type-checks from
+scratch) fails on the very same file. When a build reports a type error the typecheck script
+missed, delete `frontend/tsconfig.tsbuildinfo` and re-run before doubting the error.
+
 **`noImplicitOverride` requires the `override` keyword on subclass methods.**
 If you forget `override`, the compiler errors. This is always a useful signal — if the base method
 is renamed, your "override" silently becomes a new method without the keyword.
