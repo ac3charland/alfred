@@ -14,13 +14,13 @@
  * (`alfred-frontmatter.yml`) field-for-field so a PR that passes CI always parses here too.
  */
 
-export type CodePhase = 'refinement' | 'implementation';
+export type CodePhase = 'epic-refinement' | 'refinement' | 'implementation';
 
 export interface AlfredFrontmatter {
   /** Every ref the PR advances. `alfred-ticket` is always parsed as a list. */
   tickets: string[];
   phase: CodePhase;
-  /** Declared by refinement PRs only; `undefined` when absent. */
+  /** Declared by the two refinement phases (story + epic); `undefined` when absent. */
   specPath: string | undefined;
 }
 
@@ -33,13 +33,19 @@ export interface AlfredFrontmatter {
 // Stryker disable next-line Regex: AT_CEILING — \s+→\s match the same inputs (both need ≥1 whitespace); the only difference is how much leading whitespace lands in the captured block, which is invisible to the unanchored field regexes below.
 const BLOCK_RE = /```alfred\s+([\s\S]*?)```/;
 const TICKET_RE = /alfred-ticket:[ \t]*(.*)/;
-const PHASE_RE = /phase:[ \t]*(refinement|implementation)/;
+/**
+ * Alternation order matters: `epic-refinement` ENDS with `refinement`, and JS alternation is
+ * first-match-wins, so listing `refinement` first would match the tail of `phase:
+ * epic-refinement` (the `[ \t]*` separator doesn't anchor the value's start) and route an epic
+ * PR at a story. Keep the longer phase first.
+ */
+const PHASE_RE = /phase:[ \t]*(epic-refinement|refinement|implementation)/;
 const SPEC_PATH_RE = /spec-path:[ \t]*(\S+)/;
 
 /**
  * Extract the `alfred` block from a PR body. Returns `undefined` when the body has no block
  * (the PR isn't ours — ignore it) or the block is malformed (missing `alfred-ticket` or `phase`),
- * mirroring the `alfred-frontmatter.yml` enforcing check. A refinement block missing `spec-path` still parses — the
+ * mirroring the `alfred-frontmatter.yml` enforcing check. A refinement block (story or epic) missing `spec-path` still parses — the
  * transition layer decides what to do without one; CI is what rejects that case on the PR side.
  */
 export function parseFrontmatter(body?: string): AlfredFrontmatter | undefined {

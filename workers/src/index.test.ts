@@ -277,6 +277,98 @@ describe('worker.fetch', () => {
     expect(snapshotBody).toContain('# ALF-42 — Spec');
   });
 
+  it('records the PR url on the EPICS row when an epic-refinement PR opens', async () => {
+    const spy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json([{ ref: 'ALF-12' }], { status: 200 }));
+
+    const request = await webhookRequest(
+      prPayload({
+        action: 'opened',
+        body: alfredBlock(['alfred-ticket: ALF-12', 'phase: epic-refinement']),
+      }),
+    );
+    const { response } = await invoke(request);
+
+    expect(response.status).toBe(200);
+    // No `state` — epics have no factory_state, so the key is simply absent from the JSON.
+    expect(await response.json()).toEqual({ ok: true, tickets: ['ALF-12'] });
+    const [url, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://proj.supabase.co/rest/v1/epics?ref=eq.ALF-12');
+    expect(init.body).toContain('"refinement_pr_url"');
+    expect(init.body).not.toContain('factory_state');
+  });
+
+  it('patches and snapshots the EPICS row — never code_items — when an epic-refinement PR merges', async () => {
+    const spec = '<!doctype html><html><body>Epic plan</body></html>';
+    const contentsBody = JSON.stringify({
+      content: toBase64Utf8(spec),
+      encoding: 'base64',
+      sha: 'epicblobsha',
+    });
+    const spy = jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = input as string;
+      if (url.startsWith('https://api.github.com/')) {
+        return Promise.resolve(new Response(contentsBody, { status: 200 }));
+      }
+      return Promise.resolve(Response.json([{ ref: 'ALF-12' }], { status: 200 }));
+    });
+
+    const request = await webhookRequest(
+      prPayload({
+        action: 'closed',
+        merged: true,
+        mergeSha: 'mergesha456',
+        body: alfredBlock([
+          'alfred-ticket: ALF-12',
+          'phase: epic-refinement',
+          'spec-path: docs/specs/epics/ALF-12.html',
+        ]),
+      }),
+    );
+    const { response, background } = await invoke(request);
+    await background;
+
+    expect(await response.json()).toEqual({ ok: true, tickets: ['ALF-12'] });
+
+    const supabaseCalls = spy.mock.calls
+      .map(([input]) => input as string)
+      .filter((url) => url.startsWith('https://proj.supabase.co/'));
+    // Every write — the spec_path PATCH and the background snapshot — hit `epics`.
+    expect(supabaseCalls).toEqual([
+      'https://proj.supabase.co/rest/v1/epics?ref=eq.ALF-12',
+      'https://proj.supabase.co/rest/v1/epics?ref=eq.ALF-12',
+    ]);
+    const bodies = spy.mock.calls
+      .map(([, init]) => (init as RequestInit | undefined)?.body)
+      .filter((body): body is string => typeof body === 'string');
+    expect(bodies.some((body) => body.includes('docs/specs/epics/ALF-12.html'))).toBe(true);
+    const snapshotBody = bodies.find((body) => body.includes('spec_markdown'));
+    expect(snapshotBody).toContain('Epic plan');
+    expect(snapshotBody).toContain('epicblobsha');
+  });
+
+  it('no-ops a closed-unmerged epic-refinement PR — nothing to revert, nothing patched', async () => {
+    const spy = mockRoutedFetch();
+    const request = await webhookRequest(
+      prPayload({
+        action: 'closed',
+        merged: false,
+        body: alfredBlock([
+          'alfred-ticket: ALF-12',
+          'phase: epic-refinement',
+          'spec-path: docs/specs/epics/ALF-12.html',
+        ]),
+      }),
+    );
+    const { response, background } = await invoke(request);
+    await background;
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ignored: "no-op for action 'closed'" });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('reports only the tickets whose row actually matched (count > 0)', async () => {
     // Two tickets; Supabase matches ALF-1 but not ALF-2 (a ref we do not track). The response
     // must list only the matched ref — the `filter(count > 0)` is what does that.

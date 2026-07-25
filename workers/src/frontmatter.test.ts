@@ -33,6 +33,25 @@ describe('parseFrontmatter', () => {
     expect(result).toEqual({ tickets: ['ALF-42'], phase: 'implementation', specPath: undefined });
   });
 
+  it('parses an epic-refinement block as its own phase, not as refinement', () => {
+    // `epic-refinement` CONTAINS `refinement`, so an alternation that tries `refinement` first
+    // matches the tail of this value and the epic PR would be routed at story targets.
+    const result = parseFrontmatter(
+      block(
+        [
+          'alfred-ticket: ALF-12',
+          'phase: epic-refinement',
+          'spec-path: docs/specs/epics/ALF-12.html',
+        ].join('\n'),
+      ),
+    );
+    expect(result).toEqual({
+      tickets: ['ALF-12'],
+      phase: 'epic-refinement',
+      specPath: 'docs/specs/epics/ALF-12.html',
+    });
+  });
+
   it('returns undefined when there is no alfred block (PR is not ours)', () => {
     expect(parseFrontmatter('Just a normal PR description.')).toBeUndefined();
     expect(parseFrontmatter()).toBeUndefined();

@@ -1,5 +1,5 @@
 /**
- * Write `code_items` rows from the Worker via Supabase's PostgREST endpoint.
+ * Write `code_items` (story) and `epics` rows from the Worker via Supabase's PostgREST endpoint.
  *
  * We hit the REST API with raw `fetch` rather than bundling `@supabase/supabase-js` — it keeps the
  * Worker tiny and needs no `nodejs_compat`. The Worker authenticates with the
@@ -19,8 +19,8 @@ export interface SpecSnapshot {
   spec_sha: string;
 }
 
-function restUrl(env: SupabaseEnv, ref: string): string {
-  return `${env.SUPABASE_URL}/rest/v1/code_items?ref=eq.${encodeURIComponent(ref)}`;
+function restUrl(env: SupabaseEnv, table: string, ref: string): string {
+  return `${env.SUPABASE_URL}/rest/v1/${table}?ref=eq.${encodeURIComponent(ref)}`;
 }
 
 function headers(env: SupabaseEnv): Record<string, string> {
@@ -34,16 +34,20 @@ function headers(env: SupabaseEnv): Record<string, string> {
 }
 
 /**
- * PATCH a `code_items` row by its `ref`. Returns the number of rows updated — 0 means the ref
- * isn't a story we track (a PR for some other repo/ticket), which the caller treats as a benign
+ * PATCH one ref-keyed row of `table`. Returns the number of rows updated — 0 means the ref
+ * isn't a row we track (a PR for some other repo/ticket), which the caller treats as a benign
  * no-op. Throws on a non-2xx response so the handler can log a real failure.
+ *
+ * `code_items` and `epics` both key on `ref` (from one shared per-project counter) and name their
+ * spec/PR columns identically, so the two exported wrappers below differ only in the table.
  */
-export async function patchCodeItem(
+async function patchByRef(
   env: SupabaseEnv,
+  table: string,
   ref: string,
   updates: TicketUpdate | SpecSnapshot,
 ): Promise<number> {
-  const response = await fetch(restUrl(env, ref), {
+  const response = await fetch(restUrl(env, table, ref), {
     method: 'PATCH',
     headers: headers(env),
     body: JSON.stringify(updates),
@@ -52,10 +56,28 @@ export async function patchCodeItem(
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(
-      `Supabase PATCH code_items (${ref}) failed: ${String(response.status)} ${detail}`,
+      `Supabase PATCH ${table} (${ref}) failed: ${String(response.status)} ${detail}`,
     );
   }
 
   const rows = await response.json<unknown[]>();
   return rows.length;
+}
+
+/** PATCH a `code_items` (story) row by its `ref`. */
+export function patchCodeItem(
+  env: SupabaseEnv,
+  ref: string,
+  updates: TicketUpdate | SpecSnapshot,
+): Promise<number> {
+  return patchByRef(env, 'code_items', ref, updates);
+}
+
+/** PATCH an `epics` row by its `ref` — the epic-refinement phase's target. */
+export function patchEpic(
+  env: SupabaseEnv,
+  ref: string,
+  updates: TicketUpdate | SpecSnapshot,
+): Promise<number> {
+  return patchByRef(env, 'epics', ref, updates);
 }
