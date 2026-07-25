@@ -38,6 +38,7 @@ describe('buildDestinations', () => {
       'Tasks',
       'Inbox',
       'Priority',
+      'Week Plan',
       'Completed',
       'Code',
       'Backlog',
@@ -54,6 +55,7 @@ describe('buildDestinations', () => {
       Tasks: '/',
       Inbox: '/?view=inbox',
       Priority: '/priority',
+      'Week Plan': '/plan',
       Completed: '/completed',
       Code: '/code',
       Backlog: '/code/backlog',
@@ -102,6 +104,13 @@ describe('buildDestinations', () => {
     expect(grouped.projects.map((d) => d.id)).toEqual(['project-pa']);
   });
 
+  it('surfaces the Week Plan destination, with its own icon token', () => {
+    const grouped = buildDestinations('week', [], []);
+    expect(grouped.go.map((d) => d.id)).toEqual(['go-plan']);
+    expect(grouped.go[0]?.href).toBe('/plan');
+    expect(grouped.go[0]?.icon).toBe('plan');
+  });
+
   it('keeps a group header only for groups with at least one match', () => {
     const grouped = buildDestinations('priority', [makeFolder()], [makeProject()]);
     expect(grouped.go.map((d) => d.label)).toEqual(['Priority']);
@@ -119,13 +128,7 @@ describe('flattenDestinations', () => {
     );
     const flat = flattenDestinations(grouped);
     expect(flat.map((d) => d.group)).toEqual([
-      'go',
-      'go',
-      'go',
-      'go',
-      'go',
-      'go',
-      'go',
+      ...Array.from({ length: 8 }, () => 'go'),
       'folders',
       'projects',
     ]);

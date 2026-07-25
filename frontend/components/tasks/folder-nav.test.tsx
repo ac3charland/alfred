@@ -438,6 +438,24 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /priority/i })).toHaveAttribute('href', '/priority');
   });
 
+  it('renders a Week Plan link pointing to /plan, directly under Priority', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /week plan/i })).toHaveAttribute('href', '/plan');
+
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    expect(hrefs.indexOf('/plan')).toBe(hrefs.indexOf('/priority') + 1);
+    expect(hrefs.indexOf('/plan')).toBeLessThan(hrefs.indexOf('/folders/f1'));
+  });
+
+  it('highlights the Week Plan link when on /plan', () => {
+    mockPathname.mockReturnValue('/plan');
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /week plan/i })).toHaveClass('bg-secondary');
+    expect(screen.getByRole('link', { name: 'Priority' })).not.toHaveClass('bg-secondary');
+  });
+
   it('renders the Priority link above the folders', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
