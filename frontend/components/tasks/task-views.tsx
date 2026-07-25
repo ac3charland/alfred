@@ -7,6 +7,7 @@ import { CompletedView } from '@/components/tasks/completed-view';
 import { FolderView } from '@/components/tasks/folder-view';
 import { InboxScreen } from '@/components/tasks/inbox-screen';
 import { PriorityView } from '@/components/tasks/priority-view';
+import { WeeklyPlanView } from '@/components/tasks/weekly-plan-view';
 
 const FOLDER_PREFIX = '/folders/';
 
@@ -25,6 +26,10 @@ export function TaskViews() {
 
   if (pathname === '/priority') {
     return <PriorityView />;
+  }
+
+  if (pathname === '/plan') {
+    return <WeeklyPlanView />;
   }
 
   if (pathname === '/completed') {

@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/auth/require-user';
 import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { getFolders } from '@/lib/data/folders';
 import { getAllItems } from '@/lib/data/items';
+import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
 import { getInstanceConfig } from '@/lib/instance';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
@@ -16,6 +17,7 @@ import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
+import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
 
 /**
  * Shared shell layout (Server Component) — the single parent of BOTH modules' route groups
@@ -39,13 +41,16 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   // instance menu header, so keep the return rather than discarding it.
   const user = await requireUser();
 
-  const [folders, items, projects, epics, stories] = await Promise.all([
-    getFolders(),
-    getAllItems(),
-    getProjects(),
-    getEpics(),
-    getCodeStories(),
-  ]);
+  const [folders, items, projects, epics, stories, weeklyPlanIndex, latestWeeklyPlan] =
+    await Promise.all([
+      getFolders(),
+      getAllItems(),
+      getProjects(),
+      getEpics(),
+      getCodeStories(),
+      getWeeklyPlanIndex(),
+      getLatestWeeklyPlan(),
+    ]);
 
   return (
     // ToastProvider is the OUTERMOST provider so all three optimistic stores
@@ -65,9 +70,16 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                   >
                     <CodeFilterProvider>
                       <SearchProvider>
-                        <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
-                          {children}
-                        </AppShell>
+                        {/* Only the index + the latest document are seeded — an older week's
+                            HTML is pulled on demand (see the weekly plan store). */}
+                        <WeeklyPlanProvider
+                          initialIndex={weeklyPlanIndex}
+                          initialLatest={latestWeeklyPlan}
+                        >
+                          <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
+                            {children}
+                          </AppShell>
+                        </WeeklyPlanProvider>
                       </SearchProvider>
                     </CodeFilterProvider>
                   </CodeProvider>
