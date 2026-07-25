@@ -2877,3 +2877,101 @@ describe('TaskRow — dismissing the detail panel (ALF-78)', () => {
     expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
   });
 });
+
+describe('TaskRow — notes survive dismissing the detail panel (ALF-126)', () => {
+  it('saves in-progress notes when a pointer press outside the row closes the panel', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Buy milk');
+    // The dismiss unmounts the panel before the textarea can blur, so an onBlur-only
+    // auto-save would drop the text.
+    await user.click(document.body);
+
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+
+  it('saves in-progress notes when Escape closes the panel', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Buy milk');
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+
+  it('saves in-progress notes when the ⋯ menu toggles the panel closed', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Buy milk');
+    // The same "Open details" entry toggles the panel closed.
+    const [moreActions] = screen.getAllByRole('button', { name: /more actions/i });
+    if (!moreActions) throw new Error('no "More actions" button found');
+    await user.click(moreActions);
+    await screen.findByRole('menu');
+    await activateMenuItem(user, /open details/i);
+
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+
+  it('clears emptied notes when the dismiss closes the panel', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: null });
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, notes: 'Existing' }]);
+    await openDetails(user);
+
+    await user.clear(screen.getByRole('textbox', { name: 'Notes' }));
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: null });
+    });
+  });
+
+  it('saves nothing when the panel is dismissed with the notes untouched', async () => {
+    const user = userEvent.setup();
+    renderTasks([{ ...BASE_ITEM, notes: 'Existing' }]);
+    await openDetails(user);
+
+    await user.click(screen.getByRole('textbox', { name: 'Notes' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('saves the notes only once when the blur auto-save already ran', async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, notes: 'Buy milk' });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+    await openDetails(user);
+
+    await user.type(screen.getByRole('textbox', { name: 'Notes' }), 'Buy milk');
+    // Tab out first: the blur auto-save commits, and the store's optimistic patch re-seeds
+    // the draft — so the later dismiss has nothing left to save.
+    await user.tab();
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledTimes(1);
+    });
+    await user.keyboard('{Escape}');
+
+    expect(mockUpdateItem).toHaveBeenCalledTimes(1);
+  });
+});

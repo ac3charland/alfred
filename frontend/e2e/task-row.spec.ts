@@ -263,6 +263,27 @@ test.describe('inline editing', () => {
       page.locator('span').filter({ hasText: 'Compare three vendors first' }),
     ).toBeVisible();
   });
+
+  test('saves in-progress notes when the detail panel is dismissed (ALF-126)', async ({
+    page,
+    seed,
+  }) => {
+    await seed({ items: [makeTask('Research options')] });
+    await page.goto('/?view=inbox');
+
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Open details' }).click();
+
+    // Type and dismiss straight from the textarea: Escape unmounts the panel, so the browser
+    // never fires the blur the auto-save used to depend on.
+    await page.getByRole('textbox', { name: 'Notes' }).fill('Compare three vendors first');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('task-detail-panel')).toBeHidden();
+
+    // Reload from the backend: the notes were persisted, not just held in the client store.
+    await page.reload();
+    await expect(page.getByTestId('task-notes-preview')).toHaveText('Compare three vendors first');
+  });
 });
 
 test.describe('move and delete', () => {
