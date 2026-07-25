@@ -8,13 +8,24 @@ import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 const FLIP_TRANSITION = 'transform 200ms ease-out';
 
 /**
+ * A row's top **within its list**, so a baseline captured on one reorder survives until the next
+ * one. Measuring against the viewport would not: page scroll, or anything above the list changing
+ * height, shifts every row without reordering anything, and the stale delta would then leap the
+ * row that far before easing.
+ */
+function localTop(node: HTMLElement): number {
+  const listTop = node.parentElement?.getBoundingClientRect().top ?? 0;
+  return node.getBoundingClientRect().top - listTop;
+}
+
+/**
  * A minimal FLIP (First → Last → Invert → Play) hook for a list whose rows **reorder** — a DOM
  * sibling reorder CSS can't transition on its own (and there's no Framer Motion in the stack).
  * Track each row by a stable key and attach the returned `register(key)` ref-callback to its
- * element. In a `useLayoutEffect` the hook reads each tracked row's previous and new
- * `getBoundingClientRect` (First/Last), sets a no-transition `translateY(Δ)` so the row appears
- * un-moved (Invert), then on the next frame clears the offset under `FLIP_TRANSITION` (Play), so
- * the rows glide to their new slots.
+ * element. In a `useLayoutEffect` the hook reads each tracked row's previous and new position
+ * within the list (First/Last), sets a no-transition `translateY(Δ)` so the row appears un-moved (Invert), then
+ * on the next frame clears the offset under `FLIP_TRANSITION` (Play), so the rows glide to their
+ * new slots.
  *
  * Honours `prefers-reduced-motion`: when reduced it skips the transform entirely (rows snap).
  * See the motion skill — the first list-reorder FLIP in the library.
@@ -26,8 +37,10 @@ const FLIP_TRANSITION = 'transform 200ms ease-out';
  *     the SAME order; re-measuring/re-inverting then would interrupt the in-flight transition and
  *     jump the row. So bail out when the key sequence is unchanged.
  *   - **Measure "Last" cleanly.** Read each new slot AFTER clearing any leftover transform, and
- *     store THOSE rects as the next baseline — snapshotting after applying the invert would record
- *     the inverted (old) positions and make alternating swaps mis-animate.
+ *     store THOSE offsets as the next baseline — snapshotting after applying the invert would
+ *     record the inverted (old) positions and make alternating swaps mis-animate.
+ *   - **Measure in list-local coordinates** (see `localTop`). The baseline is captured on the
+ *     previous reorder and has to survive everything that happens in between.
  */
 export function useFlipList(
   keys: readonly string[],
@@ -37,7 +50,7 @@ export function useFlipList(
   // initial argument — that would freeze their contents under react-hooks/immutability, and the
   // hook legitimately mutates the tracked DOM nodes' styles below.
   const nodesRef = React.useRef<Map<string, HTMLElement> | undefined>(undefined);
-  const prevRectsRef = React.useRef<Map<string, DOMRect> | undefined>(undefined);
+  const prevOffsetsRef = React.useRef<Map<string, number> | undefined>(undefined);
   const prevKeysRef = React.useRef<readonly string[] | undefined>(undefined);
   const registrarsRef = React.useRef<Map<string, React.RefCallback<HTMLElement>> | undefined>(
     undefined,
@@ -72,27 +85,27 @@ export function useFlipList(
     prevKeysRef.current = keys;
     if (sameOrder) return;
 
-    const prevRects = prevRectsRef.current ?? new Map<string, DOMRect>();
+    const prevOffsets = prevOffsetsRef.current ?? new Map<string, number>();
 
-    // Last: clear any leftover transform/transition so each rect is the true new slot (not a
-    // mid-flight position), measure, and store these clean rects as the next baseline.
-    const newRects = new Map<string, DOMRect>();
+    // Last: clear any leftover transform/transition so each row is at its true new slot (not a
+    // mid-flight position), measure, and store these clean offsets as the next baseline.
+    const newOffsets = new Map<string, number>();
     for (const [key, node] of nodes) {
       node.style.transition = '';
       node.style.transform = '';
-      newRects.set(key, node.getBoundingClientRect());
+      newOffsets.set(key, localTop(node));
     }
-    prevRectsRef.current = newRects;
+    prevOffsetsRef.current = newOffsets;
 
     if (prefersReducedMotion) return;
 
     // Invert: offset each persisting row by how far it moved (old slot − new slot), no transition.
     let moved = false;
     for (const [key, node] of nodes) {
-      const previous = prevRects.get(key);
-      const next = newRects.get(key);
+      const previous = prevOffsets.get(key);
+      const next = newOffsets.get(key);
       if (previous === undefined || next === undefined) continue;
-      const deltaY = previous.top - next.top;
+      const deltaY = previous - next;
       if (deltaY !== 0) {
         node.style.transition = 'none';
         node.style.transform = `translateY(${String(deltaY)}px)`;

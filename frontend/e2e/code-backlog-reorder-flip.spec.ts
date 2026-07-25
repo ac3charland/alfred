@@ -68,11 +68,8 @@ function maxStep(series: number[]): number {
   return max;
 }
 
-test('reordering a story animates smoothly with no mid-flight jump', async ({ page, seed }) => {
-  await seed({ projects: [project], epics: [epic], items, codeItems });
-  await page.goto('/code/backlog');
-  await expect(page.getByRole('listitem').nth(1)).toContainText('ALF-4');
-
+/** Sample the moved row across one chevron swap and assert the glide is smooth. */
+async function expectSmoothSwap(page: Parameters<typeof sampleDuring>[0]): Promise<void> {
   const frames = await sampleDuring(
     page,
     {
@@ -83,7 +80,8 @@ test('reordering a story animates smoothly with no mid-flight jump', async ({ pa
     () => page.getByRole('button', { name: 'Move ALF-4 up' }).click(),
   );
 
-  await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-4');
+  // Scoped to story rows: the ratio card's legend is a list too, and it sits above this one.
+  await expect(page.locator('li:has(a[aria-label^="Open "])').nth(0)).toContainText('ALF-4');
 
   const tops = topsOf(frames);
   const first = tops.at(0);
@@ -98,4 +96,62 @@ test('reordering a story animates smoothly with no mid-flight jump', async ({ pa
   // Smooth: no single frame jumps more than 40% of the journey. The pre-fix reconcile interrupt
   // jumped ~70%+ in one frame; the eased motion stays well under (~15%).
   expect(maxStep(tops)).toBeLessThan(distance * 0.4);
+}
+
+test('reordering a story animates smoothly with no mid-flight jump', async ({ page, seed }) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+  // The PR-ratio card above the list shows a skeleton, then unmounts once the endpoint reports
+  // the feature unconfigured (it is, in this suite). That unmount moves every row at once — real,
+  // but a page-load transient rather than reorder jank — so let it land before sampling.
+  // Asserting hidden alone would pass on the not-yet-mounted card.
+  const ratioAnswered = page.waitForResponse((response) =>
+    response.url().includes('/api/code/pr-ratio'),
+  );
+  await page.goto('/code/backlog');
+  await ratioAnswered;
+  await expect(page.getByText('PRs merged this week')).toBeHidden();
+  await expect(page.getByRole('listitem').nth(1)).toContainText('ALF-4');
+
+  await expectSmoothSwap(page);
+});
+
+/**
+ * The second staleness trap: the FLIP baseline is captured on the previous reorder, so anything
+ * that moves the whole list between then and the next swap — here the PR-ratio card above it
+ * appearing, as it does once its counts land — must not leak into the delta. With a
+ * viewport-relative baseline the row leapt the card's full height before easing; measuring in
+ * list-local coordinates makes the shift cancel out.
+ */
+test('a layout shift above the list does not make the next reorder jump', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+
+  // Hold the ratio card's answer back so the card lands AFTER the list's first layout pass.
+  await page.route('**/api/code/pr-ratio*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.fulfill({
+      status: 200,
+      json: {
+        week: {
+          start: '2026-07-20T00:00:00+00:00',
+          end: '2026-07-27T00:00:00+00:00',
+          timezone: 'UTC',
+        },
+        total: 9,
+        repos: [
+          { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 33 },
+          { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 67 },
+        ],
+      },
+    });
+  });
+
+  await page.goto('/code/backlog');
+  await expect(page.getByRole('listitem').nth(1)).toContainText('ALF-4');
+  // The card's arrival pushes every row down — the shift the baseline must not absorb.
+  await expect(page.getByRole('img', { name: /RealPlay 33 percent/ })).toBeVisible();
+
+  await expectSmoothSwap(page);
 });
