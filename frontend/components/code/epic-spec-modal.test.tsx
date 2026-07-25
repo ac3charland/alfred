@@ -8,7 +8,7 @@ import { EpicSpecModal } from './epic-spec-modal';
 
 // react-markdown / remark-gfm are pure ESM and jest's transform ignores node_modules — mock the
 // seam so the markdown branch is assertable here. The faithful markdown→HTML rendering is covered
-// by the Storybook snapshot and the e2e, which run a real bundler/browser.
+// by the Storybook stories and the e2e, which run a real bundler/browser.
 jest.mock('react-markdown', () => ({
   __esModule: true,
   default: ({ children }: { children?: string }) => <div data-testid="markdown">{children}</div>,
