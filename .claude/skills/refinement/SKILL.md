@@ -39,6 +39,10 @@ once the scope is clear do you write the spec below.
      annotated snippets of the key code a reviewer would want to see, and a small mockup where a UI
      is involved.
    - **Acceptance criteria:** a checklist a reviewer (and the implementation session) can verify.
+   - **Never pin a sequence-allocated number** — a **migration number** above all. Other work
+     merges while the spec waits, so the number you pick is stale by the time it's built: write
+     "the next available migration number" / `<next>_<name>.sql` and let the implementation
+     session take whatever is free.
    - **Out of scope / open questions:** anything deliberately deferred. Resolve the questions you
      *can* answer with the human up front (see above) and list only the genuinely-open ones here
      — this section is for deferred decisions, not for guesses you didn't check.

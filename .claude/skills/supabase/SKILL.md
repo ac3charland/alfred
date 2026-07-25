@@ -109,7 +109,7 @@ Server Components cannot write cookies, which means they cannot refresh expired 
 | Sign out | `supabase.auth.signOut()` | Clears local session and broadcasts `SIGNED_OUT` to `onAuthStateChange` listeners. |
 | Create an RLS policy (SQL migration) | `ALTER TABLE items ENABLE ROW LEVEL SECURITY; CREATE POLICY "owner access" ON items FOR ALL TO authenticated USING ((select auth.uid()) = user_id);` | Wrap `auth.uid()` in a `SELECT` subexpression — Postgres caches the result per statement (significant perf win). See `references/rls-policies.md` for full policy patterns. |
 | Generate TypeScript types from schema | `npx supabase gen types typescript --project-id "$PROJECT_REF" --schema public > src/database.types.ts` then `createClient<Database>(url, key)` | Run after every migration. Use `Tables<'items'>`, `Enums<'item_type'>` helpers from the generated file rather than accessing the nested `Database['public']['Tables']['items']['Row']` type directly. |
-| Push live row changes to an open browser (code module only) | `supabase.channel('code_items').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'code_items' }, handler).subscribe()`; tear down with `removeChannel(channel)` | The **only** realtime use in alfred — the webhook Worker is a second, non-browser writer of `factory_state`. **Subscribe to the base `code_items` table, not the `v_code_stories` view** (you can't subscribe to a view). Add the table to the `supabase_realtime` publication in a migration (`0003`); the existing `using (true)` policy governs the stream. Re-applying an echo of your own optimistic write is idempotent — no self-write filter. |
+| Push live row changes to an open browser (code module only) | `supabase.channel('code_items').on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'code_items' }, handler).subscribe()`; tear down with `removeChannel(channel)` | Realtime exists in alfred wherever the **webhook Worker is a second, non-browser writer**: `code_items` (`factory_state`) and `epics` (the epic-spec snapshot). **Subscribe to the base table, not the `v_code_stories` view** (you can't subscribe to a view). Add each table to the `supabase_realtime` publication in a migration; the existing `using (true)` policy governs the stream. Re-applying an echo of your own optimistic write is idempotent — no self-write filter. **One channel per table** — and the jest double for `createClient` must key its captured handler by `filter.table`, or the second subscription silently overwrites the first and the earlier table's tests emit into the wrong handler. |
 | Reorder rows by a single global rank (the Backlog, ALF-35) | A `bigint priority` column defaulted from a **global** `create sequence code_priority_seq` under a `unique(priority)` index; swap two rows in a `security invoker` RPC (`swap_code_priority`) via a **negative-sentinel sequence** — `set priority = -a_pri where ref=p_a; set priority = a_pri where ref=p_b; set priority = b_pri where ref=p_a` — so every per-row write is unique. | A *global* order needs **one** sequence, **not** the per-project `next_code_ref` (which would collide across projects). New rows append at the bottom via the column default (`nextval`). `security invoker` keeps RLS applying, matching the 0002/0004 RPCs. **Do NOT swap in one `update … case … end` statement under a plain unique index** — see the pitfall below; it 409s. |
 
 ---
@@ -213,7 +213,7 @@ The `@supabase/ssr` cookie API changed from the single-method `get/set/remove` s
 
 ## What Was Deliberately Left Out
 
-- **Realtime beyond the code module.** Only `code_items` is subscribed (see the realtime row in the Plain-English table above — the Worker is its second, non-browser writer). Tasks/folders and `epics`/`projects` stay seed-once, and live cross-device INSERT/DELETE sync is not built.
+- **Realtime beyond the code module.** Only `code_items` and `epics` are subscribed (see the realtime row in the Plain-English table above — the Worker is their second, non-browser writer). Tasks/folders and `projects` stay seed-once, and live cross-device INSERT/DELETE sync is not built.
 
 - **Supabase Storage** (file uploads, buckets): not used in alfred's schema. Don't reach for `supabase.storage` unless a future feature explicitly requires it.
 
@@ -328,7 +328,10 @@ format after the CLI's formatting step:
    node_modules/@supabase/postgres-meta/dist/server/server.js`, then GET
    `/generators/typescript?included_schemas=public,graphql_public&detect_one_to_one_relationships=true&postgrest_version=14.5`
    (match `postgrest_version` to the committed file's `__InternalSupabase.PostgrestVersion`).
-4. Reproduce the CLI's formatting: `npx prettier --parser typescript --no-config --no-semi`.
+4. Reproduce the CLI's formatting with **the repo's own Prettier**, not `npx prettier` (which
+   fetches the latest and rewraps unions/generics across the whole file, burying your additive
+   diff in churn):
+   `node node_modules/prettier/bin/prettier.cjs --parser typescript --no-config --no-semi`.
    Diff against the committed file — only your additive changes should remain.
 
 **Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
