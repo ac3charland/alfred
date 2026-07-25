@@ -13,6 +13,9 @@ jest.mock('@/lib/api-client');
 const mockReorderCode = jest.mocked(api.reorderCode);
 const mockMoveCode = jest.mocked(api.moveCode);
 const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
+// The PR-ratio card fetches through the same seam. These cases are about the story list, so
+// answer "not configured here" — the card then renders nothing, as it does in local dev.
+const mockGetPrRatio = jest.mocked(api.getPrRatio);
 
 // The realtime channel the CodeProvider subscribes — stub it so the provider mounts.
 jest.mock('@/lib/supabase/client', () => ({
@@ -148,6 +151,7 @@ describe('Backlog', () => {
     mockReorderCode.mockReset();
     mockMoveCode.mockReset();
     mockMoveCodeInProject.mockReset();
+    mockGetPrRatio.mockResolvedValue(undefined);
   });
 
   it('renders the header hero and a Filter by status control', () => {

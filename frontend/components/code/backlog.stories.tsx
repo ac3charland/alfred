@@ -171,6 +171,23 @@ const PALETTE_PROJECTS = PALETTE.map((row) => row.project);
 const PALETTE_EPICS = PALETTE.map((row) => row.epic);
 const PALETTE_STORIES = PALETTE.map((row) => row.codeStory);
 
+/**
+ * The Backlog mounts the PR-ratio card, which fetches on mount. These stories are about the
+ * story list, so answer 501 ("not configured on this deployment") — the card then renders
+ * nothing at all, exactly as it does in local dev, and the snapshots stay about the list.
+ * `Code/PrRatio` owns the card's own states.
+ */
+function stubPrRatioUnconfigured(Story: React.ComponentType) {
+  globalThis.fetch = (() =>
+    Promise.resolve({
+      ok: false,
+      status: 501,
+      json: () => Promise.resolve({ error: 'PR ratio is not configured' }),
+      text: () => Promise.resolve('{"error":"PR ratio is not configured"}'),
+    })) as unknown as typeof fetch;
+  return <Story />;
+}
+
 const meta = {
   title: 'Code/Backlog',
   component: Backlog,
@@ -179,6 +196,7 @@ const meta = {
     visualTest: { target: '[data-testid="backlog-frame"]' },
   },
   decorators: [
+    stubPrRatioUnconfigured,
     (Story) => (
       <CodeProvider initialProjects={PROJECTS} initialEpics={EPICS} initialStories={STORIES}>
         <div data-testid="backlog-frame" className="w-[900px] bg-background">
