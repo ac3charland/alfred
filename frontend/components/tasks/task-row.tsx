@@ -494,6 +494,12 @@ export function TaskRow({
   const handleOpenAddSubtask = () => {
     openEditor({ itemId: node.id, kind: 'subtask' });
     expandSubtasks(node.id);
+    // The detail panel and the entry field both render between the row body and its subtask
+    // list, so leaving both open buries the field under the panel — they're mutually exclusive
+    // on a row (ALF-128). Only THIS row's panel: another row's is already gone, dismissed by
+    // the outside pointer press. Nothing typed is lost — the panel commits its pending notes on
+    // unmount.
+    closeDetails(node.id);
   };
 
   // The epic conversion (ALF-129). The parent's active children in display order become the
