@@ -269,6 +269,11 @@ export function makeOptimisticEpic(projectId: string, name: string): Epic {
     ref: '',
     archived_at: null,
     created_at: new Date().toISOString(),
+    // The epic-spec columns are Worker-written only; a brand-new epic has none.
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
   };
 }
 
@@ -310,6 +315,7 @@ export function makeOptimisticStory(
     epic_name: epic.name,
     epic_ref: epic.ref,
     epic_archived_at: epic.archived_at,
+    epic_spec_path: epic.spec_path,
     priority: 0,
   };
 }

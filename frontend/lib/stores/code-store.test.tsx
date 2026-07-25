@@ -15,6 +15,7 @@ import {
   isEscapeState,
   useBacklog,
   useCodeActions,
+  useEpics,
   useProjectBoard,
   useProjects,
   useRankedProjects,
@@ -39,13 +40,21 @@ const mockListCode = jest.mocked(api.listCode);
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so tests can drive a
 // simulated `code_items` change through it without a live Realtime channel. (Overrides the
 // no-op stub from jest.setup.ts — a file-level mock wins.)
+// The provider subscribes one channel per table (`code_items` and `epics`), so the stub keys the
+// captured handler by the filter's table — capturing a single handler would let the second
+// subscription silently overwrite the first.
 let mockRealtimeHandler: ((payload: { new: CodeItem }) => void) | undefined;
+let mockEpicRealtimeHandler: ((payload: { new: Epic }) => void) | undefined;
 const mockRemoveChannel = jest.fn();
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => {
     const channel = {
-      on: (_event: string, _filter: unknown, handler: (payload: { new: CodeItem }) => void) => {
-        mockRealtimeHandler = handler;
+      on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
+        if (filter.table === 'epics') {
+          mockEpicRealtimeHandler = handler as (payload: { new: Epic }) => void;
+        } else {
+          mockRealtimeHandler = handler as (payload: { new: CodeItem }) => void;
+        }
         return channel;
       },
       subscribe: () => channel,
@@ -70,6 +79,7 @@ jest.mock('@/lib/clipboard', () => ({
 
 beforeEach(() => {
   mockRealtimeHandler = undefined;
+  mockEpicRealtimeHandler = undefined;
   // Default the paste-fallback copy to success; a test that exercises the no-clipboard path
   // overrides this with `mockResolvedValue(false)`.
   mockCopyToClipboard.mockResolvedValue(true);
@@ -105,6 +115,10 @@ function makeEpic(id: string, projectId: string, overrides: Partial<Epic> = {}):
     ref: 'ALF-1',
     archived_at: null,
     created_at: '2025-01-01T00:00:00Z',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     ...overrides,
   };
 }
@@ -120,6 +134,10 @@ function makeSavedEpic(overrides: Partial<Epic> = {}): Epic {
     ref: 'ALF-1',
     archived_at: null,
     created_at: '2025-01-01T00:00:00Z',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     ...overrides,
   };
 }
@@ -157,6 +175,7 @@ function makeStory(
     epic_name: `Epic ${epicId}`,
     epic_ref: 'ALF-1',
     epic_archived_at: null,
+    epic_spec_path: null,
     priority: 1,
     ...overrides,
   };
@@ -201,6 +220,13 @@ function findStoryState(board: ReturnType<typeof useProjectBoard>): string | und
 function emitUpdate(row: CodeItem) {
   act(() => {
     mockRealtimeHandler?.({ new: row });
+  });
+}
+
+/** Drive a simulated `epics` UPDATE (the Worker's epic-spec snapshot) through its handler. */
+function emitEpicUpdate(row: Epic) {
+  act(() => {
+    mockEpicRealtimeHandler?.({ new: row });
   });
 }
 
@@ -670,6 +696,10 @@ describe('code-store', () => {
           ref_number: 7,
           ref: 'ALF-7',
           archived_at: null,
+          spec_path: null,
+          spec_sha: null,
+          spec_markdown: null,
+          refinement_pr_url: null,
           created_at: '2025-01-03T00:00:00Z',
         };
         mockCreateEpic.mockResolvedValue(saved);
@@ -892,6 +922,10 @@ describe('code-store', () => {
         ref_number: 40,
         ref: 'ALF-40',
         archived_at: null,
+        spec_path: null,
+        spec_sha: null,
+        spec_markdown: null,
+        refinement_pr_url: null,
         created_at: '2025-01-06T00:00:00Z',
       };
       const SAVED_RESULT = {
@@ -1423,6 +1457,7 @@ describe('code-store', () => {
           epic_name: 'Epic One',
           epic_ref: 'ALF-1',
           epic_archived_at: null,
+          epic_spec_path: null,
         });
         const { result } = renderHook(() => useStore('p1'), {
           wrapper: makeWrapper({ projects: [PROJECT_A], epics: [e1, e2], stories: [story] }),
@@ -2224,6 +2259,105 @@ describe('code-store', () => {
       });
     });
 
+    describe('openEpicSession (the epic launch — no state write)', () => {
+      let openSpy: jest.SpiedFunction<typeof globalThis.open>;
+      beforeEach(() => {
+        openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      });
+      afterEach(() => {
+        openSpy.mockRestore();
+      });
+
+      const epic = makeEpic('e1', 'p1', {
+        ref: 'ALF-12',
+        ref_number: 12,
+        name: 'Communication Firewall',
+      });
+
+      it('opens the epic-refinement url built from the epic and its project', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1');
+        });
+
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const [url, target] = openSpy.mock.calls[0] ?? [];
+        const opened = typeof url === 'string' ? url : (url?.toString() ?? '');
+        expect(opened).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
+        const prompt = new URL(opened).searchParams.get('q') ?? '';
+        expect(prompt).toContain('ALF-12: Communication Firewall');
+        expect(prompt).toContain('phase: epic-refinement');
+        expect(target).toBe('_blank');
+      });
+
+      it('writes NO state — an epic has no lifecycle to advance', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1');
+        });
+
+        expect(mockUpdateCodeState).not.toHaveBeenCalled();
+        expect(mockUpdateEpic).not.toHaveBeenCalled();
+      });
+
+      it('copies the prompt to the clipboard and confirms it with a toast', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1');
+        });
+
+        const copied = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(copied).toContain('ALF-12: Communication Firewall');
+        expect(copied).not.toContain('https://claude.ai/code');
+        expect(mockShowToast).toHaveBeenCalledWith('Prompt copied to clipboard');
+      });
+
+      it('opens the tab but shows NO copied toast when the clipboard write fails', async () => {
+        mockCopyToClipboard.mockResolvedValue(false);
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1');
+        });
+
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        expect(mockShowToast).not.toHaveBeenCalledWith('Prompt copied to clipboard');
+      });
+
+      it('throws (and opens nothing) when the epic is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [], stories: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.openEpicSession('gone')).rejects.toThrow(/not found/i);
+        });
+        expect(openSpy).not.toHaveBeenCalled();
+      });
+
+      it('throws when the epic’s project is missing from the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.openEpicSession('e1')).rejects.toThrow(/not found|missing/i);
+        });
+        expect(openSpy).not.toHaveBeenCalled();
+      });
+    });
+
     // ALF-33 — every write action surfaces a human-readable toast (never the raw error) when
     // its API call rejects, in addition to rolling the optimistic change back and re-throwing.
     describe('error toasts', () => {
@@ -2669,12 +2803,12 @@ describe('code-store', () => {
       expect(findStory(result.current)?.spec_markdown).toBe('# fresh spec');
     });
 
-    it('tears the channel down on unmount', () => {
+    it('tears BOTH channels down on unmount (code_items and epics)', () => {
       const { unmount } = renderHook(() => useProjectBoard('p1'), {
         wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
       });
       unmount();
-      expect(mockRemoveChannel).toHaveBeenCalledTimes(1);
+      expect(mockRemoveChannel).toHaveBeenCalledTimes(2);
     });
 
     describe('notifications', () => {
@@ -2814,6 +2948,72 @@ describe('code-store', () => {
 
       const link = screen.getByRole('link', { name: /review pr/i });
       expect(link).toHaveAttribute('href', prUrl);
+    });
+  });
+
+  // The Worker snapshots a merged epic spec onto the `epics` row out of band, so an open board
+  // needs the push channel to show it without a reload.
+  describe('realtime epics subscription', () => {
+    const epic = makeEpic('e1', 'p1', { ref: 'ALF-12', ref_number: 12 });
+
+    it('patches the spec columns onto the epic on a simulated UPDATE', () => {
+      const { result } = renderHook(() => useEpics(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+      });
+      expect(result.current[0]?.spec_path).toBeNull();
+
+      emitEpicUpdate({
+        ...epic,
+        spec_path: 'docs/specs/epics/ALF-12.html',
+        spec_sha: 'blobsha',
+        spec_markdown: '<!doctype html><html><body>Epic plan</body></html>',
+        refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',
+      });
+
+      expect(result.current[0]).toMatchObject({
+        spec_path: 'docs/specs/epics/ALF-12.html',
+        spec_sha: 'blobsha',
+        spec_markdown: '<!doctype html><html><body>Epic plan</body></html>',
+        refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/12',
+      });
+    });
+
+    it('fires no toast — nothing visibly moves on the board for an epic spec', () => {
+      renderHook(() => useEpics(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+      });
+
+      emitEpicUpdate({ ...epic, spec_path: 'docs/specs/epics/ALF-12.html' });
+
+      expect(mockShowToast).not.toHaveBeenCalled();
+    });
+
+    it('ignores an UPDATE for an epic id not in the store (no resurrection)', () => {
+      const { result } = renderHook(() => useEpics(), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+      });
+
+      emitEpicUpdate({ ...epic, id: 'gone', spec_path: 'docs/specs/epics/ALF-99.html' });
+
+      expect(result.current).toHaveLength(1);
+      expect(result.current[0]?.spec_path).toBeNull();
+    });
+
+    it('leaves the epic’s own editable fields alone (only spec columns are patched)', () => {
+      // The realtime row is the Worker's write; a local rename in flight must not be clobbered
+      // by a stale name riding along on the payload.
+      const { result } = renderHook(() => useEpics(), {
+        wrapper: makeWrapper({
+          projects: [PROJECT_A],
+          epics: [makeEpic('e1', 'p1', { ref: 'ALF-12', name: 'Renamed locally' })],
+          stories: [],
+        }),
+      });
+
+      emitEpicUpdate({ ...epic, name: 'Stale name', spec_path: 'docs/specs/epics/ALF-12.html' });
+
+      expect(result.current[0]?.name).toBe('Renamed locally');
+      expect(result.current[0]?.spec_path).toBe('docs/specs/epics/ALF-12.html');
     });
   });
 });
