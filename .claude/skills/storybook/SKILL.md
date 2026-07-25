@@ -321,10 +321,15 @@ ESLint's `storybook/no-uninstalled-addons` rule will catch missing addons at lin
   Desktop — there's no `dockerd` to launch). In the cloud, pre-pull the image in the setup
   script (`docs/cloud-environment.md`) so the auto-started run isn't waiting on a ~3 GB pull.
   **Auto-start fails with a stale pidfile?** On a reused cloud container the wrapper aborts with
-  `Could not start a Docker daemon` and `dockerd` logs `process with PID <n> is still running`
-  even though that PID is dead — a leftover `/var/run/docker.pid` from a prior session. Confirm
-  the PID is gone (`ps -p <n>`), then `rm -f /var/run/docker.pid && dockerd &` and re-run the
-  gate (or the `git push` whose pre-push hook invokes it).
+  `Could not start a Docker daemon` over a leftover pidfile from a prior session naming a PID
+  that is already dead — either the daemon's own (`dockerd` logs `process with PID <n> is still
+  running`, from `/var/run/docker.pid`) or **containerd's** (`containerd is still running …
+  pid=<n>` followed 15s later by `failed to start containerd: timeout waiting for containerd to
+  start`, from `/var/run/docker/containerd/`). Confirm the PID is gone (`ps -p <n>`), `rm -f` the
+  matching pidfile — for containerd also its stale `containerd.sock.ttrpc` /
+  `containerd-debug.sock` — then start the daemon **detached** (`setsid nohup dockerd
+  >/tmp/dockerd.log 2>&1 </dev/null &`; a plain `&` from an agent shell dies with the tool call)
+  and re-run the gate, or the `git push` whose pre-push hook invokes it.
 
 **When an intentional change moves a baseline — capture the diff, then approve (don't
 make me do it manually).** A failing visual snapshot is not automatically a bug: if *you*
