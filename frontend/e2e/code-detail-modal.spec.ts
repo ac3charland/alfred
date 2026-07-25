@@ -185,6 +185,50 @@ test('moves a story to a different epic via the breadcrumb dropdown', async ({ p
   await expect(epicOneSection.getByText('ALF-5')).toBeHidden();
 });
 
+test('saves story notes with ⌘/Ctrl+Enter from the modal editor', async ({ page, seed }) => {
+  const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Draft the inbound filter spec', {
+    id: STORY_ITEM_ID,
+    item_type: 'code',
+  });
+  const story = makeCodeStory({
+    item_id: STORY_ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  await page.getByRole('button', { name: /open ALF-3/i }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByText('Add notes…').click();
+
+  const notes = dialog.getByRole('textbox', { name: /edit notes/i });
+  await notes.fill('Default-deny; explain every rejection.');
+  await notes.press('ControlOrMeta+Enter');
+
+  // The chord commits and leaves edit mode, exactly as the Save button does.
+  await expect(notes).toBeHidden();
+  await expect(dialog.getByText('Default-deny; explain every rejection.')).toBeVisible();
+
+  // Reload from the backend: the notes were persisted, not just held in the client store.
+  await page.reload();
+  await page.getByRole('button', { name: /open ALF-3/i }).click();
+  await expect(
+    page.getByRole('dialog').getByText('Default-deny; explain every rejection.'),
+  ).toBeVisible();
+});
+
 test('archiving an epic from its header removes it from the active board', async ({
   page,
   seed,
