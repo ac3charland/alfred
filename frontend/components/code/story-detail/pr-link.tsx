@@ -1,15 +1,19 @@
 import { ExternalLink } from 'lucide-react';
 
+import { specBlobUrl } from '@/lib/code/links';
 import type { CodeStory } from '@/lib/types';
 
-/** The View-in-repo blob URL for the recorded spec: owner/name + spec_sha + spec_path. */
+/**
+ * The View-in-repo blob URL for a STORY's recorded spec. The URL rule itself is shared with the
+ * epic spec modal (`specBlobUrl`); this only sources the coordinates from a joined view row.
+ */
 export function viewInRepoUrl(story: CodeStory): string | undefined {
-  const { repo_owner, repo_name, spec_path } = story;
-  if (repo_owner === null || repo_name === null || spec_path === null) return undefined;
-  // Prefer the recorded blob sha so the link is pinned to the snapshotted spec; fall back to
-  // the default branch when the sha isn't recorded yet.
-  const sha = story.spec_sha ?? 'HEAD';
-  return `https://github.com/${repo_owner}/${repo_name}/blob/${sha}/${spec_path}`;
+  return specBlobUrl({
+    repoOwner: story.repo_owner,
+    repoName: story.repo_name,
+    specPath: story.spec_path,
+    specSha: story.spec_sha,
+  });
 }
 
 /** A PR / repo link row (refinement / implementation / View in repo), shown when present. */
