@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-129 — Construct epics in the inbox; convert 1-deep parents to code epics</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll-x { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 150px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  @media (max-width: 560px) { .decision { grid-template-columns: 1fr; gap: .1rem; } }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "\2610"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  .mock {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8rem; line-height: 1.5; white-space: pre; overflow-x: auto;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-129 — Support constructing epics like projects in the inbox, and converting 1-deep projects to code epics</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Inbox · Code module</span>
+    <span class="pill">DB · RPC · store · UI</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    Alfred has no way to <em>plan</em> a multi-step coding effort before it enters the factory. Today a
+    code-classified inbox item is a single flat thought: it carries a title, notes, and an optional
+    intended project, and the gate turns it into exactly <strong>one</strong> code story under an epic
+    you have to pick (or create) in the dialog. Anything bigger than one story has to be captured as
+    several unrelated inbox rows, sent one at a time, and re-ranked on the Backlog afterwards.
+  </p>
+  <p>
+    Meanwhile the tasks side already has the shape we want: a parent row with an inline
+    <code>+</code> (desktop) or a <strong>Add subtask</strong> menu item (mobile, ALF-118), children
+    that can be dragged into gaps or nudged with <strong>Move up / Move down</strong> (ALF-117), and a
+    persisted manual order (<code>items.sort_order</code>).
+  </p>
+  <p>
+    ALF-129 lends that shape to <strong>code</strong> items: build the epic in the inbox as a parent
+    plus an ordered list of children, then send the whole group across in one action. The parent
+    becomes the <strong>epic</strong>; each child becomes a <strong>story</strong>, created at the top
+    of its project's Backlog <em>in the order you arranged them</em>. The same conversion is offered
+    from the tasks module for a task that has already been decomposed into subtasks
+    (<strong>Convert to Code Epic</strong>).
+  </p>
+
+  <h2>2 · Decisions (locked during refinement)</h2>
+  <dl class="decision">
+    <dt>Depth</dt>
+    <dd><strong>Exactly one level.</strong> A <code>code</code> item may have children only if it is a
+      root; a code child may never have children of its own. Enforced in the UI (no <code>+</code> on a
+      code child) <em>and</em> in the database (a trigger — adjacency depth can't be a CHECK).</dd>
+
+    <dt>Child type</dt>
+    <dd><strong>A child inherits its parent's family.</strong> A child added under a <code>code</code>
+      row is created as <code>code</code>; a child under a task stays <code>task</code>, exactly as
+      today. Mixing is rejected by the same trigger.</dd>
+
+    <dt>Parent → epic</dt>
+    <dd>The parent <em>is</em> the epic: the epic takes the parent's <strong>title</strong> as its name
+      and the parent's <strong>notes</strong> as epic notes. Its ref comes from the shared per-project
+      counter, like every other epic (<code>create_epic</code>).</dd>
+
+    <dt>Parent's fate</dt>
+    <dd><strong>A code parent's item row is deleted</strong> — it has no completion concept (the
+      <code>items_task_only_fields</code> CHECK pins non-task rows to <code>status='active'</code>),
+      and nothing is lost because the epic carries its title and notes.
+      <strong>A task parent is marked completed</strong> instead, so it drops into the Completed view
+      <em>with its completed children still beneath it</em> — the decomposition history stays intact.</dd>
+
+    <dt>Which children convert</dt>
+    <dd><strong>Active children only</strong>, in <code>sort_order</code> order. Completed children are
+      finished work: they stay as children of the now-completed task parent. (A code parent can't have
+      completed children at all — non-task rows are always active.)</dd>
+
+    <dt>Story priority</dt>
+    <dd>The stories land <strong>at the top of their project's Backlog, in display order</strong>: the
+      first child ranks highest, the last child ranks lowest of the new group, and every other story in
+      that project sits below them. No other project's stories are displaced — the conversion reuses
+      <code>top_of_project_priority()</code>, so it inherits ALF-110/ALF-120 semantics exactly.</dd>
+
+    <dt>Send flow</dt>
+    <dd><strong>Skip the dialog when the project is already known.</strong> A code parent captured with
+      a <code>&lt;project&gt;:</code> prefix (so it carries <code>intended_project_id</code>) converts
+      immediately from the menu — no dialog. Without an intended project, a project-only gate dialog
+      opens (the epic is not picked; it is being created). The tasks-module <strong>Convert to Code
+      Epic…</strong> path always opens that dialog, since a task can never carry an intended project.</dd>
+
+    <dt>Menu shape</dt>
+    <dd><strong>Convert to Code Story…</strong> and <strong>Convert to Code Epic…</strong> sit adjacent
+      and are always <em>rendered</em> for a convertible row, each <strong>disabled</strong> (with a
+      hint) when it doesn't apply — so the epic path is discoverable rather than appearing only in the
+      one state that allows it.</dd>
+
+    <dt>Not draggable across families</dt>
+    <dd>Drag-and-drop never mixes the two trees: a code child reorders among code siblings (its own
+      parent, or another code root); a task can't be dropped onto a code row and a code child can't be
+      dropped onto a task row. This also closes a latent hole — today a task <em>can</em> be re-parented
+      onto a code inbox row, because the drop resolver never checked item types.</dd>
+
+    <dt>Bulk bar</dt>
+    <dd>The Inbox bulk <strong>Send to Code…</strong> stays story-per-item and is
+      <strong>disabled</strong> whenever any selected row has children (same disabled+hint pattern as
+      Classify&nbsp;as / Move&nbsp;to&nbsp;folder). Epic-shaped rows go through their own row menu.</dd>
+  </dl>
+
+  <h2>3 · How it behaves</h2>
+
+  <h3>3.1 · The inbox, before and after</h3>
+  <div class="mock">INBOX (before)                                 INBOX (after — an epic under construction)
+
+  ▸ ☐ Book the dentist                            ▾ Construction inbox        [Code] [ALF] 0/3
+  ▸ ☐ Reply to Sam                                     Add plus button
+    Construction inbox   [Code] [ALF]                  Only allow 1-deep
+                                                       Convert on send
+                                                  ▸ ☐ Book the dentist
+                                                  ▸ ☐ Reply to Sam
+
+  ↑ a flat code thought                            ↑ same row, now a 3-story epic:
+                                                     "+" on the parent, children reorderable,
+                                                     "Send to Code module" creates it all</div>
+
+  <h3>3.2 · Affordances by row shape</h3>
+  <div class="scroll-x">
+  <table>
+    <thead>
+      <tr>
+        <th>Row</th><th>“+” / Add&nbsp;subtask</th><th>Reorder (gap&nbsp;drop, Move&nbsp;up/down)</th>
+        <th>Send / Convert entry</th><th>Checkbox</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>code</code> root, no children</td><td>yes — “Add story”</td><td>—</td>
+        <td><strong>Send to Code module…</strong> → today's story gate (project + epic)</td><td>no</td>
+      </tr>
+      <tr>
+        <td><code>code</code> root, ≥1 child</td><td>yes — “Add story”</td><td>—</td>
+        <td><strong>Send to Code module</strong> → epic conversion (immediate when
+          <code>intended_project_id</code> is set, otherwise the project-only dialog)</td><td>no</td>
+      </tr>
+      <tr>
+        <td><code>code</code> child</td><td><strong>no</strong> (1-deep)</td>
+        <td>yes — among code siblings</td><td>none (it converts with its parent)</td><td>no</td>
+      </tr>
+      <tr>
+        <td><code>task</code>, no children</td><td>yes — “Add subtask”</td><td>—</td>
+        <td>Convert to Code Story… <em>enabled</em> · Convert to Code Epic… <em>disabled</em></td><td>yes</td>
+      </tr>
+      <tr>
+        <td><code>task</code>, ≥1 active child, no grandchildren</td><td>yes</td><td>yes (its children)</td>
+        <td>Convert to Code Story… <em>disabled</em> · <strong>Convert to Code Epic…</strong>
+          <em>enabled</em></td><td>yes</td>
+      </tr>
+      <tr>
+        <td><code>task</code> with grandchildren (or only completed children)</td><td>yes</td><td>yes</td>
+        <td>both <em>disabled</em></td><td>yes</td>
+      </tr>
+      <tr>
+        <td><code>unclassified</code></td><td>no (unchanged)</td><td>—</td>
+        <td>Convert to Code Story… <em>enabled</em> · Convert to Code Epic… <em>disabled</em></td><td>no</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">
+    “Disabled” means the <code>DropdownMenuItem</code> is rendered with <code>disabled</code> and a
+    <code>title</code> hint (“A story is a single item — this one has subtasks.” /
+    “An epic needs at least one subtask, and its subtasks must not have subtasks of their own.”).
+  </p>
+
+  <h3>3.3 · What the conversion does</h3>
+  <svg viewBox="0 0 860 300" role="img" aria-label="Conversion diagram: a code parent with three children becomes an epic with three stories ranked at the top of the project backlog">
+    <defs>
+      <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <g fill="none" stroke="currentColor" stroke-width="1.2" color="#8a94a0">
+      <rect x="10" y="20" width="300" height="180" rx="10"/>
+      <rect x="550" y="20" width="300" height="260" rx="10"/>
+    </g>
+    <g font-family="ui-monospace, monospace" font-size="12" fill="currentColor">
+      <text x="24" y="42" font-weight="700">INBOX (task_items)</text>
+      <text x="34" y="72">E1  “Construction inbox”   code</text>
+      <text x="52" y="94">└ S1  sort_order 1         code</text>
+      <text x="52" y="114">└ S2  sort_order 2         code</text>
+      <text x="52" y="134">└ S3  sort_order 3         code</text>
+      <text x="34" y="168" fill="#8a94a0">intended_project_id = ALF</text>
+
+      <text x="564" y="42" font-weight="700">CODE MODULE</text>
+      <text x="574" y="72">epic  ALF-40  “Construction inbox”</text>
+      <text x="574" y="102" font-weight="700">Backlog (project ALF)</text>
+      <text x="592" y="124">ALF-41  S1     priority  -3.0   ← top</text>
+      <text x="592" y="144">ALF-42  S2     priority  -2.0</text>
+      <text x="592" y="164">ALF-43  S3     priority  -1.0</text>
+      <text x="592" y="184" fill="#8a94a0">ALF-12  (existing)      0.0</text>
+      <text x="592" y="204" fill="#8a94a0">ALF-09  (existing)      1.0</text>
+      <text x="574" y="240">items row for E1: deleted (code)</text>
+      <text x="574" y="260">…or completed (task path)</text>
+    </g>
+    <g stroke="currentColor" color="#0d7d7d" stroke-width="1.6" marker-end="url(#arw)">
+      <path d="M320 110 L540 110"/>
+    </g>
+    <text x="330" y="100" font-family="ui-monospace, monospace" font-size="11" fill="#0d7d7d">convert_to_code_epic(item, project)</text>
+  </svg>
+  <p class="diagram-cap">
+    One RPC: allocate the epic, walk the active children bottom-up so each lands above the last, then
+    consume the parent.
+  </p>
+
+  <h3>3.4 · Why the children are walked bottom-up</h3>
+  <p>
+    <code>top_of_project_priority(p)</code> returns a priority that sits <em>just above the project's
+    current top outstanding story</em> and below whatever other project's story ranks nearest above it.
+    Calling it once per child, iterating the children in <strong>reverse</strong> display order
+    (S3&nbsp;→&nbsp;S2&nbsp;→&nbsp;S1), makes each new story land above the one created before it — so
+    the final ranking reads S1&nbsp;&lt;&nbsp;S2&nbsp;&lt;&nbsp;S3&nbsp;&lt;&nbsp;everything else in the
+    project. No new priority maths, and the group inherits the “don't displace other projects”
+    guarantee (ALF-110) and the “ignore done/abandoned” fix (ALF-120) for free.
+  </p>
+
+  <h2>4 · Proposed change</h2>
+
+  <h3>4.1 · Schema — let a code item nest, one level deep</h3>
+  <p class="filelabel">database/migrations/0019_code_epics.sql (new)</p>
+  <p>
+    <code>items_task_only_fields</code> currently makes every non-task row structurally incapable of
+    holding a <code>parent_id</code>. Relax it for <code>code</code> only — due dates and completion
+    stay task-only:
+  </p>
+<pre><code>alter table items drop constraint items_task_only_fields;
+alter table items add constraint items_task_only_fields check (
+  item_type = 'task'
+  or (due_date is null and status = 'active' and completed_at is null
+      and (parent_id is null or item_type = 'code'))
+);</code></pre>
+  <p>
+    Depth and family-matching are adjacency properties, so they need a trigger rather than a CHECK.
+    One <code>before insert or update</code> trigger enforces all three rules — a code child hangs only
+    off a code <em>root</em>, a code row with children may not itself be nested, and the two families
+    never mix:
+  </p>
+<pre><code>create or replace function enforce_subtask_shape() returns trigger
+language plpgsql security invoker as $$
+declare v_parent items;
+begin
+  if new.parent_id is null then return new; end if;
+  select * into v_parent from items where id = new.parent_id;
+  if v_parent is null then
+    raise exception 'parent % not found', new.parent_id;
+  end if;
+  if new.item_type = 'code' then
+    if v_parent.item_type &lt;&gt; 'code' then
+      raise exception 'a code item may only be nested under another code item';
+    end if;
+    if v_parent.parent_id is not null then
+      raise exception 'code subtasks are one level deep';
+    end if;
+    if exists (select 1 from items where parent_id = new.id) then
+      raise exception 'a code item with children may not itself be nested';
+    end if;
+  elsif v_parent.item_type = 'code' then
+    raise exception 'only a code item may be nested under a code item';
+  end if;
+  return new;
+end; $$;
+
+create trigger items_subtask_shape
+  before insert or update of parent_id, item_type on items
+  for each row execute function enforce_subtask_shape();</code></pre>
+  <div class="callout">
+    <strong>Order of operations inside the migration matters.</strong> Create the trigger
+    <em>after</em> the constraint swap, and note that <code>enter_code_module</code> already nulls
+    <code>parent_id</code> in the same UPDATE that flips <code>item_type</code>, so gating an item into
+    the factory takes the trigger's early-return path.
+  </div>
+  <p class="small">
+    No column is added to <code>items</code>, so the <code>task_items</code> “<code>select i.*</code>
+    freezes its column list” gotcha (0011/0013/0018) does <strong>not</strong> apply — the view is left
+    alone.
+  </p>
+
+  <h3>4.2 · The conversion RPC</h3>
+  <p>
+    One atomic RPC does the whole conversion. It returns <code>json</code> (the
+    <code>complete_and_spawn</code> precedent from 0006) because the client needs both the new epic row
+    and the created story sidecars:
+  </p>
+<pre><code>create or replace function convert_to_code_epic(p_item uuid, p_project uuid)
+returns json language plpgsql security invoker as $$
+declare
+  v_parent items; v_epic epics; v_child items; v_row code_items;
+  v_key text; v_n int; v_priority double precision;
+  v_stories code_items[] := '{}';
+begin
+  select * into v_parent from items where id = p_item;
+  if v_parent is null then raise exception 'item % not found', p_item; end if;
+  select key into v_key from projects where id = p_project;
+
+  -- The parent IS the epic: same title, same notes, ref from the shared project counter.
+  select * into v_epic from create_epic(p_project, v_parent.title);
+  if v_parent.notes is not null then
+    update epics set notes = v_parent.notes where id = v_epic.id returning * into v_epic;
+  end if;
+
+  -- Active children, BOTTOM-UP: each top_of_project_priority() call lands the next child
+  -- ABOVE the previous one, so display order comes out as priority order (§3.4).
+  for v_child in
+    select * from items
+     where parent_id = p_item and status = 'active'
+     order by sort_order desc, created_at desc
+  loop
+    v_n        := next_code_ref(p_project);
+    v_priority := top_of_project_priority(p_project);
+    update items set item_type = 'code', due_date = null, parent_id = null,
+                     status = 'active', completed_at = null
+      where id = v_child.id;
+    insert into code_items (item_id, project_id, epic_id, ref_number, ref, priority)
+    values (v_child.id, p_project, v_epic.id, v_n, v_key || '-' || v_n, v_priority)
+    returning * into v_row;
+    v_stories := v_row || v_stories;   -- prepend, so the array comes back in display order
+  end loop;
+
+  -- Consume the parent: a task keeps its history (completed, completed children still
+  -- beneath it); a code inbox row has no completion, so it is deleted.
+  if v_parent.item_type = 'task' then
+    update items set status = 'completed', completed_at = now() where id = p_item;
+  else
+    delete from items where id = p_item;
+  end if;
+
+  return json_build_object('epic', to_json(v_epic), 'stories', to_json(v_stories));
+end; $$;
+
+grant execute on function convert_to_code_epic(uuid, uuid)
+  to anon, authenticated, service_role;</code></pre>
+  <p class="small">
+    The <code>grant execute</code> line is not optional — see the <code>supabase</code> /
+    <code>migration-lint</code> skills. <code>frontend/lib/database.types.ts</code> must be
+    <strong>regenerated</strong> (<code>supabase gen types</code>) and committed verbatim so the new
+    function is typed; it is a generated file and must never be hand-edited.
+  </p>
+
+  <h3>4.3 · API route &amp; client</h3>
+  <p class="filelabel">frontend/app/api/code/epic/route.ts (new)</p>
+  <p>
+    A static segment beside the existing <code>/api/code/move</code>, <code>/api/code/reorder</code>,
+    <code>/api/code/move-project</code> siblings (static wins over <code>[ref]</code>, and a real ref is
+    always <code>KEY-N</code>). <code>POST</code> body <code>{ item_id, project_id }</code> validated by
+    a new <code>convertCodeEpicSchema</code> in <code>lib/api/schemas.ts</code>; the handler calls the
+    RPC through <code>withSession</code> and returns the JSON payload with <code>201</code>, mapping
+    errors via <code>mapSupabaseError</code> exactly like <code>/api/code</code>.
+  </p>
+  <p class="filelabel">frontend/lib/api-client.ts</p>
+<pre><code>export interface ConvertedEpic { epic: Epic; stories: CodeItem[] }
+
+/** Convert a 1-deep parent (code inbox item or task) into an epic + its ordered stories. */
+export function convertToCodeEpic(itemId: string, projectId: string): Promise&lt;ConvertedEpic&gt;</code></pre>
+
+  <h3>4.4 · Stores</h3>
+  <h4>code-store — <code>convertToCodeEpic</code></h4>
+  <p>
+    A new action beside <code>convertTaskToCode</code>, following the same optimistic recipe
+    (<code>runOptimisticMutation</code> → insert → reconcile → rollback → error toast; see the
+    <code>data-flow</code> skill):
+  </p>
+  <ul>
+    <li><strong>Optimistic:</strong> insert a <code>makeOptimisticEpic(projectId, parentTitle)</code>,
+      then one <code>makeOptimisticStory</code> per child. Priorities mirror the server by folding the
+      existing private <code>topOfProjectPriority(stories, projectId)</code> helper over the children in
+      reverse display order, appending each pseudo-story to the local list as it goes — so the
+      optimistic cards sort into the same slots the RPC will reconcile to.</li>
+    <li><strong>Reconcile:</strong> <code>replaceEpic</code> by the temp epic id, then
+      <code>replaceStory</code> per returned sidecar keyed by <code>item_id</code> (the child items
+      already have real ids, like the gate — no temp-id swap needed).</li>
+    <li><strong>Rollback:</strong> <code>removeEpic</code> + <code>removeStory</code> for everything it
+      inserted; toast “Couldn't create epic”.</li>
+    <li>Signature: <code>convertToCodeEpic(parent: { id; title; notes }, children: { id; title; notes;
+      source_url }[], projectId: string): Promise&lt;ConvertedEpic&gt;</code> — the caller passes the
+      children already in display order.</li>
+  </ul>
+
+  <h4>tasks-store — settle the conversion locally</h4>
+  <p>
+    The converted children have left <code>task_items</code> (they now have sidecars) and the parent is
+    either gone or completed. That is a pure client-side reconciliation, exactly like
+    <code>removeGatedItem</code> — no API call, nothing to roll back:
+  </p>
+<pre><code>/**
+ * Reflect a completed epic conversion: the converted children have left task_items, and the
+ * parent is either completed (a task keeps its history + completed children) or removed (a
+ * code inbox row, which the RPC deletes).
+ */
+settleEpicConversion: (input: {
+  parentId: string;
+  childIds: string[];
+  parentOutcome: 'completed' | 'removed';
+}) =&gt; void;</code></pre>
+  <h4>tasks-store — a child inherits its parent's family</h4>
+  <p>
+    <code>addTask</code> currently hard-codes <code>item_type: parentId === undefined ? … : 'task'</code>.
+    Derive it from the parent already held in the flat list instead, so the code-child case needs no
+    prop drilling through <code>CaptureBox</code>:
+  </p>
+<pre><code>const parent = parentId === undefined
+  ? undefined
+  : tasksRef.current.find((item) =&gt; item.id === parentId);
+item_type: parentId === undefined
+  ? (input.itemType ?? 'unclassified')
+  : (parent?.item_type === 'code' ? 'code' : 'task'),</code></pre>
+
+  <h3>4.5 · Inbox UI</h3>
+  <h4>The “+” and the mobile menu item</h4>
+  <ul>
+    <li><code>useTaskRowFlags</code> gains the shape flags the row and menu both need:
+      <code>canAddSubtask</code> (<code>isTask</code>, or a <code>code</code> row with
+      <code>parent_id === null</code>), <code>isCodeParent</code>, <code>isCodeChild</code>,
+      <code>canConvertToStory</code>, <code>canConvertToEpic</code>. Centralising them here keeps the
+      row and its menu in sync, which is the hook's stated job.</li>
+    <li><code>TaskRow</code> renders the desktop <code>+</code> and passes the mobile
+      <strong>Add subtask</strong> item when <code>canAddSubtask</code> (was <code>isTask</code>). On a
+      code row the label and <code>aria-label</code> read <strong>“Add story”</strong>, and the inline
+      <code>CaptureBox</code> takes a new optional <code>placeholder</code> prop
+      (<code>"Add story…"</code>), defaulting to today's <code>"Add subtask…"</code>.</li>
+    <li>A code child never shows the affordance, so the 1-deep rule has no UI path to violate.</li>
+  </ul>
+
+  <h4>Reordering code children</h4>
+  <p>
+    Gap strips, <code>useSubtaskReorder</code>, and <code>reorderSubtask</code> are all type-agnostic
+    already — they key off <code>parent_id</code> + <code>sort_order</code> — so code children reorder
+    with <strong>no change</strong> to those modules. What must change is the drop resolver, which
+    currently ignores item types:
+  </p>
+  <ul>
+    <li><code>lib/dnd/reorder-subtask.ts → resolveReorder</code> takes two new inputs,
+      <code>draggedItemType</code> and <code>gapParentItemType</code>, and returns <code>null</code>
+      when they don't match (a task into a code group, or a code child into a task group). Cross-parent
+      reorder <em>within</em> the code family stays allowed — dragging a story from one epic-in-progress
+      into another is useful and the resolver already handles the re-parent.</li>
+    <li><code>TaskDndProvider</code>'s re-parent branch bails when <code>dragged.item_type ===
+      'code'</code> or <code>target.item_type !== 'task'</code>, beside the existing completed/temp-id
+      bail. <strong>This also fixes a latent bug:</strong> today a task dropped on a code inbox row is
+      re-parented under it, because only the drop <em>highlight</em> (<code>isValidDropTarget</code>)
+      checked the type.</li>
+    <li>Promote-to-root is left as-is: pulling a code child out to the top level makes it a plain
+      code inbox row again, which is a legal state and a useful escape.</li>
+  </ul>
+
+  <h4>The row menu</h4>
+  <p class="filelabel">frontend/components/tasks/task-row/task-row-menu.tsx</p>
+  <ul>
+    <li><strong>Send to Code module</strong> — unchanged for a childless code row (with the “…”, it
+      opens the story gate). For a code <em>parent</em> the label drops the ellipsis when it will fire
+      immediately (an intended project is set) and keeps it when the project dialog will open.</li>
+    <li><strong>Convert to Code Story…</strong> / <strong>Convert to Code Epic…</strong> — rendered
+      adjacent for any convertible row, each with <code>disabled</code> + a <code>title</code> hint per
+      §3.2. New props: <code>canConvertToStory</code>, <code>canConvertToEpic</code>,
+      <code>onOpenEpicGate</code>.</li>
+  </ul>
+
+  <h4>Bulk bar</h4>
+  <p class="filelabel">frontend/components/tasks/inbox-bulk-bar.tsx</p>
+  <p>
+    <code>Send to Code…</code> gains <code>disabled={anySelectedHasChildren}</code> and a
+    <code>SEND_DISABLED_HINT</code>, matching the existing <code>CLASSIFY_DISABLED_HINT</code> /
+    <code>MOVE_DISABLED_HINT</code> pattern. <code>selectedItems</code> are already
+    <code>ItemNode</code>s, so the check is <code>node.children.length &gt; 0</code>.
+  </p>
+
+  <h3>4.6 · The epic gate</h3>
+  <p class="filelabel">frontend/components/code/project-picker.tsx (new, extracted)</p>
+  <p>
+    The project listbox — options, the “+ New project…” row, the locked read-only chip — is lifted out
+    of <code>GateForm</code> into a shared component so both dialogs use one implementation (the
+    <code>frontend-architecture</code> skill's extract-when-shared rule). <code>gate-dialog.tsx</code>
+    consumes it with no behavior change.
+  </p>
+  <p class="filelabel">frontend/components/code/epic-gate-dialog.tsx (new)</p>
+  <p>
+    A sibling of <code>GateDialog</code>: a project picker plus a <strong>read-only preview</strong> of
+    what will be created — the epic name (the parent's title) and the ordered story titles. There is no
+    epic picker, because the epic is being created. Confirm is disabled until a project is chosen; on
+    confirm it calls <code>convertToCodeEpic</code>, then hands the result back through
+    <code>onComplete</code>.
+  </p>
+  <div class="mock">┌ Send to Code module ─────────────────────────┐
+│ Creates a new epic and 3 stories at the top  │
+│ of the project's backlog.                    │
+│                                              │
+│ Project    ◉ alfred                    ALF   │
+│            ○ other-repo                OTH   │
+│            + New project…                    │
+│                                              │
+│ New epic   “Construction inbox”              │
+│              1.  Add plus button             │
+│              2.  Only allow 1-deep           │
+│              3.  Convert on send             │
+│                                              │
+│                    [Cancel]  [Send to Code]  │
+└──────────────────────────────────────────────┘</div>
+  <p>
+    <strong>Wiring in <code>TaskRow</code>:</strong> a code parent whose
+    <code>intended_project_id</code> is non-null converts straight from the menu with no dialog; every
+    other epic conversion (code parent without a project, or a task via <strong>Convert to Code
+    Epic…</strong>) opens this dialog. On success the row calls
+    <code>settleEpicConversion</code> and toasts <code>Created &lt;EPIC-REF&gt; · N stories</code>,
+    deep-linked to <code>/code/&lt;projectId&gt;</code> (the same toast-with-href seam the story gate
+    uses).
+  </p>
+  <p class="small">
+    The action is unavailable while any row in the group still carries a temp (unreconciled) id — the
+    RPC needs real ids, the same guard <code>canDrag</code> already applies.
+  </p>
+
+  <h2>5 · Out of scope / open questions</h2>
+  <ul>
+    <li><strong>No epic construction inside the Code module.</strong> Epics there are still created by
+      name via <code>NewEpicDialog</code>; this ticket only adds the inbox-side construction path.</li>
+    <li><strong>No bulk epic conversion.</strong> The bulk bar disables rather than converting several
+      parents at once (locked in §2).</li>
+    <li><strong>No re-nesting a code item by drag.</strong> A code child is created with the
+      <code>+</code> and can be reordered or promoted, but a code <em>root</em> can't be dragged into
+      another code root to become a story of it. If that turns out to be wanted, it's a follow-up: the
+      trigger already permits the shape, only the resolver would relax.</li>
+    <li><strong>Folder view.</strong> Code rows have never been folder-filed in practice
+      (<code>folder_id</code> stays null for inbox code items); this ticket doesn't change that, and a
+      code parent constructed in a folder is not a supported flow.</li>
+    <li><strong>Open:</strong> should an epic created this way carry the parent's <code>source_url</code>
+      anywhere? Epics have no such column today; the value is dropped for the code path (the task path
+      keeps it on the completed parent). Left as-is unless it proves annoying.</li>
+  </ul>
+
+  <h2>6 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li>A code-classified inbox row at the root shows the inline <code>+</code> on desktop and an
+      <strong>Add story</strong> item in the ⋯ menu on mobile; a code child shows neither.</li>
+    <li>Adding a child under a code row creates it as <code>item_type = 'code'</code>, appended at the
+      bottom of the group, and it renders under the parent with the Code badge and no checkbox.</li>
+    <li>Code children reorder by gap-drop <em>and</em> by <strong>Move up</strong> /
+      <strong>Move down</strong>, and the order survives a reload.</li>
+    <li>A task cannot be dropped into a code group and a code child cannot be dropped into a task group
+      (in either direction, including onto a row body); the database rejects it too.</li>
+    <li>The database rejects a code item nested more than one level deep, and rejects a code child whose
+      parent is not a code root.</li>
+    <li>A code parent with children shows <strong>Send to Code module</strong>. With an
+      <code>intended_project_id</code> it converts immediately with no dialog; without one it opens the
+      project-only epic gate.</li>
+    <li>Conversion creates one epic named after the parent (carrying its notes) and one story per active
+      child, all in the chosen project.</li>
+    <li>The new stories rank at the top of that project's Backlog in display order — first child
+      highest — with the project's pre-existing stories below them and <em>no other project's</em>
+      stories displaced.</li>
+    <li>After converting a <strong>code</strong> parent, the parent row is gone from the inbox and the
+      children are gone from <code>task_items</code>; the board shows the new epic with its stories at
+      Needs Refinement.</li>
+    <li>After <strong>Convert to Code Epic…</strong> on a task, the parent task is completed and appears
+      in the Completed view with its previously-completed children still beneath it; its active children
+      have become stories.</li>
+    <li><strong>Convert to Code Story…</strong> is disabled for a row with children;
+      <strong>Convert to Code Epic…</strong> is disabled for a row with no active children or with a
+      child that has children of its own. Both are visible (not hidden) with a hint.</li>
+    <li>The Inbox bulk <strong>Send to Code…</strong> is disabled with a hint when any selected row has
+      children.</li>
+    <li>A failed conversion rolls the optimistic epic and stories out of the code store, leaves the
+      inbox rows untouched, and toasts the failure.</li>
+    <li><code>npm run check</code> is green, and the change is captured in a demo doc.</li>
+  </ul>
+
+  <h2>7 · Testing &amp; demo</h2>
+  <p>Red/Green TDD per <code>CLAUDE.md</code>; every behavior above lands in at least one test.</p>
+  <div class="scroll-x">
+  <table>
+    <thead><tr><th>Layer</th><th>Covers</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Jest unit</td>
+        <td><code>resolveReorder</code>'s type-match guard; the reverse-fold priority mirror in
+          <code>code-store</code> (S1&nbsp;&lt;&nbsp;S2&nbsp;&lt;&nbsp;S3&nbsp;&lt;&nbsp;existing);
+          <code>convertToCodeEpic</code> optimistic / reconcile / rollback;
+          <code>settleEpicConversion</code>; <code>addTask</code>'s inherited child type;
+          <code>useTaskRowFlags</code>' new flags; the route's schema validation + error mapping.</td>
+      </tr>
+      <tr>
+        <td>RTL</td>
+        <td>The <code>+</code> / <strong>Add story</strong> affordance per row shape; the menu's
+          enabled/disabled matrix (§3.2) including hints; the epic gate dialog (preview contents, confirm
+          gating, submit payload); the bulk bar's disabled Send.</td>
+      </tr>
+      <tr>
+        <td>Storybook</td>
+        <td>A code parent row with children (collapsed + expanded) and the epic gate dialog. Any moved
+          image baseline follows the <code>storybook</code> skill's capture-then-approve flow — embed the
+          emitted diff, then regenerate and commit the PNG.</td>
+      </tr>
+      <tr>
+        <td>Playwright</td>
+        <td>End-to-end: capture a code item with a project prefix → add three children → reorder them →
+          Send to Code module → land on the project board and assert the epic plus its three stories in
+          Backlog order.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    <strong>Demo doc:</strong> a folder-per-demo under <code>docs/demos/&lt;branch&gt;/</code> built with
+    <code>npm run demo</code>, showing the inbox construction, the reorder, and the resulting Backlog
+    order (screenshots via <code>npm run screenshot -w frontend</code>). Evidence rules and the
+    <code>pr-link</code> step come from the <code>showboat</code> skill — that skill stays the source of
+    truth; don't restate it here.
+  </p>
+
+</div>
+</body>
+</html>
