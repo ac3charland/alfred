@@ -230,3 +230,123 @@ test('a ready_for_dev story launches an implementation session and advances to I
   expect(prompt).toContain('phase: implementation');
   expect(prompt).toContain('docs/specs/ALF-5.md');
 });
+
+test('an epic launches an epic-refinement session from its 3-dot menu, changing no state', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 12,
+    ref: 'ALF-12',
+    notes: 'Everything about how alfred talks to me.',
+  });
+  const item = makeItem('Draft the inbound filter spec', { id: ITEM_ID, item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+
+  await stubWindowOpen(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  await page.getByRole('button', { name: 'Epic actions' }).click();
+  await page.getByRole('menuitem', { name: /refine epic in claude code/i }).click();
+
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const opened = await getOpenedUrls(page);
+  const url = opened[0] ?? '';
+  expect(url).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
+  const prompt = new URL(url).searchParams.get('q') ?? '';
+  expect(prompt).toContain('ALF-12: Communication Firewall');
+  expect(prompt).toContain('phase: epic-refinement');
+  expect(prompt).toContain('.claude/skills/epic-refinement/SKILL.md');
+  expect(prompt).toContain('Everything about how alfred talks to me.');
+
+  // The prompt is copied for the mobile paste-fallback, exactly as the story launch does.
+  await expect(page.getByText('Prompt copied to clipboard')).toBeVisible();
+
+  // The story card has NOT moved — an epic launch writes no state at all.
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  await expect(needsRefinement.getByText('ALF-3')).toBeVisible();
+});
+
+test('an epic with a snapshotted spec offers View spec, and its stories’ prompts point at it', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 12,
+    ref: 'ALF-12',
+    spec_path: 'docs/specs/epics/ALF-12.html',
+    spec_sha: 'blobsha123',
+    spec_markdown:
+      '<!doctype html><html><body><h1>ALF-12 — Communication Firewall</h1><p>Default-deny.</p></body></html>',
+  });
+  const item = makeItem('Draft the inbound filter spec', { id: ITEM_ID, item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+
+  await stubWindowOpen(page);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  // The spec modal renders the snapshotted HTML in its sandboxed frame, with the sha-pinned link.
+  await page.getByRole('button', { name: 'Epic actions' }).click();
+  await page.getByRole('menuitem', { name: /view spec/i }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Communication Firewall')).toBeVisible();
+  await expect(dialog.getByRole('link', { name: /view in repo/i })).toHaveAttribute(
+    'href',
+    'https://github.com/ac3charland/alfred/blob/blobsha123/docs/specs/epics/ALF-12.html',
+  );
+  // The HTML plan renders inside the sandboxed frame (the branch jsdom can only assert on).
+  const frame = dialog.frameLocator('[data-testid="spec-html"]');
+  await expect(frame.getByRole('heading', { name: /Communication Firewall/ })).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  // A story under that epic carries the epic-context paragraph in its launch prompt.
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  await needsRefinement.getByRole('button', { name: /refine in claude code/i }).click();
+
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const launched = await getOpenedUrls(page);
+  const prompt = new URL(launched[0] ?? '').searchParams.get('q') ?? '';
+  expect(prompt).toContain('Epic context:');
+  expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+  expect(prompt).toContain("don't edit, archive, or move it");
+});
