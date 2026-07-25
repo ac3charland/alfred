@@ -14,6 +14,7 @@ import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { RecurrenceChip } from '@/components/atoms/recurrence-chip';
+import { EpicGateDialog } from '@/components/code/epic-gate-dialog';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
@@ -25,6 +26,7 @@ import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
+import type { ConvertedEpic } from '@/lib/api-client';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
@@ -40,6 +42,7 @@ import {
   useActiveEditor,
   useActiveEditorActions,
 } from '@/lib/stores/active-editor-store';
+import { useCodeActions } from '@/lib/stores/code-store';
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
@@ -134,6 +137,7 @@ export function TaskRow({
     deleteTask,
     classifyItem,
     removeGatedItem,
+    settleEpicConversion,
   } = useTaskActions();
   const { showToast } = useToastActions();
   const activeEditor = useActiveEditor();
@@ -177,14 +181,21 @@ export function TaskRow({
   // and inline input, so only a press-and-drag elsewhere lifts it). A task at ANY depth can
   // be dragged to re-parent it; an active task can also be filed into a folder. A completed
   // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
-  const { draggedSubtreeIds } = useTaskDrag();
+  const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
   // Item-type flags + drop-target validity (completion/due-date/subtask gating, classify vs
   // send-to-code, the drop highlight) all derive from the node — see useTaskRowFlags.
-  const { isTask, isUnclassified, isCode, canConvert, isValidDropTarget } = useTaskRowFlags(
-    node,
-    isCompleted,
-    draggedSubtreeIds,
-  );
+  const {
+    isTask,
+    isUnclassified,
+    isCode,
+    canConvert,
+    canAddSubtask,
+    isCodeParent,
+    isCodeChild,
+    canConvertToStory,
+    canConvertToEpic,
+    isValidDropTarget,
+  } = useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
   // Repeat control. A subtask or non-task row never recurs (the control is hidden there).
@@ -256,6 +267,11 @@ export function TaskRow({
   // shell-seeded CodeProvider. On confirm the item leaves task_items server-side, so we drop
   // it from the tasks store and toast the allocated ref.
   const [showGate, setShowGate] = React.useState(false);
+  // The epic gate (ALF-129): converts this 1-deep parent into a new epic + its ordered
+  // stories. Opens only when no intended project decides the target — otherwise the
+  // conversion fires straight from the menu (see handleConvertToEpic).
+  const [showEpicGate, setShowEpicGate] = React.useState(false);
+  const { convertToCodeEpic } = useCodeActions();
 
   const canDrag = !isCompleted && !isTempId(node.id);
   const {
@@ -478,6 +494,58 @@ export function TaskRow({
   const handleOpenAddSubtask = () => {
     openEditor({ itemId: node.id, kind: 'subtask' });
     expandSubtasks(node.id);
+  };
+
+  // The epic conversion (ALF-129). The parent's active children in display order become the
+  // stories; the epic gate's preview and the immediate path both consume this list.
+  const epicChildItems = activeChildren.map((child) => ({
+    id: child.id,
+    title: child.title,
+    notes: child.notes,
+    source_url: child.source_url,
+  }));
+  // The RPC needs real ids — disable the epic actions while any row in the group is still an
+  // unreconciled temp id (the same guard canDrag applies).
+  const groupHasTempIds = isTempId(node.id) || node.children.some((child) => isTempId(child.id));
+
+  // Settle the conversion: the children have left task_items and the parent is consumed —
+  // deleted for a code row, completed for a task (its history stays). Toast deep-links to the
+  // project board (the same toast-with-href seam the story gate uses).
+  const handleEpicComplete = (result: ConvertedEpic) => {
+    settleEpicConversion({
+      parentId: node.id,
+      childIds: result.stories.map((story) => story.item_id),
+      parentOutcome: isCode ? 'removed' : 'completed',
+    });
+    const count = result.stories.length;
+    showToast(
+      `Created ${result.epic.ref} · ${String(count)} ${count === 1 ? 'story' : 'stories'}`,
+      'default',
+      `/code/${result.epic.project_id}`,
+    );
+  };
+
+  // A code parent captured with a project prefix converts immediately — no dialog. Every
+  // other epic conversion (a code parent without a project, or a task via "Convert to Code
+  // Epic…") opens the project-only epic gate.
+  const handleConvertToEpic = () => {
+    const intendedProjectId = node.intended_project_id;
+    if (isCodeParent && intendedProjectId !== null) {
+      void (async () => {
+        try {
+          const result = await convertToCodeEpic(
+            { id: node.id, title: node.title, notes: node.notes },
+            epicChildItems,
+            intendedProjectId,
+          );
+          handleEpicComplete(result);
+        } catch {
+          // The code store already rolled the optimistic epic + stories back and toasted.
+        }
+      })();
+      return;
+    }
+    setShowEpicGate(true);
   };
 
   // "Move up" / "Move down" (ALF-117) — the keyboard/screen-reader-friendly reorder path.
@@ -828,9 +896,10 @@ export function TaskRow({
 
               {/* Row actions — always visible on mobile, hover-revealed on md+ (ALF-88). */}
               <div className={rowActionsClass}>
-                {/* Add subtask — `task`-only: subtasks nest only under tasks, so an
-                  unclassified/code row exposes no add-subtask affordance. */}
-                {isTask && (
+                {/* Add subtask / Add story — any task, or a code ROOT (an epic under
+                  construction adds its stories here). A code child shows no affordance, so
+                  the 1-deep rule has no UI path to violate. */}
+                {canAddSubtask && (
                   <IconButton
                     size="md"
                     tone="accent"
@@ -851,7 +920,7 @@ export function TaskRow({
                         handleOpenAddSubtask();
                       }
                     }}
-                    aria-label="Add subtask"
+                    aria-label={isCode ? 'Add story' : 'Add subtask'}
                   >
                     {/* Enlarged glyph on mobile (16px) for a comfier touch target; today's 12px
                       at md+. */}
@@ -861,10 +930,16 @@ export function TaskRow({
 
                 {/* More actions dropdown — all visibility conditionals live inside it. */}
                 <TaskRowMenu
-                  isTask={isTask}
                   isUnclassified={isUnclassified}
                   isCode={isCode}
+                  isCodeChild={isCodeChild}
+                  isCodeParent={isCodeParent}
+                  sendConvertsImmediately={isCodeParent && node.intended_project_id !== null}
                   canConvert={canConvert}
+                  canConvertToStory={canConvertToStory}
+                  canConvertToEpic={canConvertToEpic}
+                  groupHasTempIds={groupHasTempIds}
+                  canAddSubtask={canAddSubtask}
                   folders={folders}
                   canMoveUp={isActiveSubtask && canMoveUp}
                   canMoveDown={isActiveSubtask && canMoveDown}
@@ -880,6 +955,7 @@ export function TaskRow({
                   onOpenGate={() => {
                     setShowGate(true);
                   }}
+                  onConvertToEpic={handleConvertToEpic}
                   onMoveToFolder={(targetFolderId) => {
                     void handleMoveToFolder(targetFolderId);
                   }}
@@ -946,6 +1022,7 @@ export function TaskRow({
                           parentId={node.id}
                           folderId={node.folder_id}
                           compact
+                          placeholder={isCode ? 'Add story…' : 'Add subtask…'}
                           onDismiss={() => {
                             closeEditor({ itemId: node.id, kind: 'subtask' });
                           }}
@@ -1067,6 +1144,17 @@ export function TaskRow({
               : undefined;
           showToast(`Created ${ref}`, 'default', href);
         }}
+      />
+
+      {/* The epic gate (ALF-129) — a code parent without an intended project, or a task via
+          "Convert to Code Epic…", picks the target project here; the read-only preview shows
+          the epic (this row's title) and its ordered stories. */}
+      <EpicGateDialog
+        open={showEpicGate}
+        onOpenChange={setShowEpicGate}
+        parent={{ id: node.id, title: node.title, notes: node.notes }}
+        childItems={epicChildItems}
+        onComplete={handleEpicComplete}
       />
     </li>
   );

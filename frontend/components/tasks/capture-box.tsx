@@ -21,6 +21,8 @@ interface CaptureBoxProperties {
   parentId?: string | null;
   /** Compact mode for inline "add subtask" affordance (no serif prompt). */
   compact?: boolean;
+  /** Compact-mode placeholder — a code parent's box reads "Add story…" (ALF-129). */
+  placeholder?: string;
   /**
    * Opt-in project-prefix parsing (Inbox capture box only). When true, a recognized
    * `<project name|key>:` prefix classifies the capture as Code, assigns that project, and
@@ -45,6 +47,7 @@ export function CaptureBox({
   folderId,
   parentId,
   compact = false,
+  placeholder = 'Add subtask…',
   parseProjectPrefix = false,
   onCapture,
   onDismiss,
@@ -193,7 +196,7 @@ export function CaptureBox({
             setValue(event_.target.value);
           }}
           onKeyDown={handleCompactKeyDown}
-          placeholder="Add subtask…"
+          placeholder={placeholder}
           className="flex-1 px-3 py-1.5"
         />
         <Button
