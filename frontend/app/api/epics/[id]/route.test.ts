@@ -23,6 +23,10 @@ const TEST_EPIC = {
   ref_number: 1,
   ref: 'ALF-1',
   archived_at: null,
+  spec_path: null,
+  spec_sha: null,
+  spec_markdown: null,
+  refinement_pr_url: null,
   created_at: '2025-01-01T00:00:00Z',
 };
 

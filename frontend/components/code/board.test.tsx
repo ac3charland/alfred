@@ -33,12 +33,16 @@ const mockCreateEpic = jest.mocked(api.createEpic);
 
 // Capture the realtime UPDATE handler the CodeProvider subscribes, so a test can emit a
 // simulated `code_items` change and assert the card moves swimlanes with no user interaction.
+// The provider subscribes an `epics` channel too, so key the capture on the filter's table —
+// capturing whichever handler registered last would silently hand back the wrong one.
 let mockRealtimeHandler: ((payload: { new: CodeItem }) => void) | undefined;
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => {
     const channel = {
-      on: (_event: string, _filter: unknown, handler: (payload: { new: CodeItem }) => void) => {
-        mockRealtimeHandler = handler;
+      on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
+        if (filter.table === 'code_items') {
+          mockRealtimeHandler = handler as (payload: { new: CodeItem }) => void;
+        }
         return channel;
       },
       subscribe: () => channel,
@@ -95,6 +99,10 @@ function makeEpic(id: string, overrides: Partial<Epic> = {}): Epic {
     ref_number: 1,
     ref: `ALF-${id}`,
     archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     created_at: '2025-01-01T00:00:00Z',
     ...overrides,
   };
@@ -128,6 +136,7 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
     epic_name: `Epic ${epicId}`,
     epic_ref: `ALF-${epicId}`,
     epic_archived_at: null,
+    epic_spec_path: null,
     priority: 1,
     ...overrides,
   };

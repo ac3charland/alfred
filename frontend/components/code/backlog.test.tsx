@@ -41,6 +41,10 @@ const EPIC: Epic = {
   ref_number: 3,
   ref: 'ALF-3',
   archived_at: null,
+  spec_path: null,
+  spec_sha: null,
+  spec_markdown: null,
+  refinement_pr_url: null,
   created_at: '2025-01-01T00:00:00Z',
 };
 
@@ -87,6 +91,7 @@ function makeStory(itemId: string, overrides: Partial<CodeStory> = {}): CodeStor
     epic_name: 'Refinement',
     epic_ref: 'ALF-3',
     epic_archived_at: null,
+    epic_spec_path: null,
     priority: 1,
     ...overrides,
   };

@@ -25,6 +25,10 @@ const EPIC: Epic = {
   ref_number: 1,
   ref: 'ALF-1',
   archived_at: null,
+  spec_path: null,
+  spec_sha: null,
+  spec_markdown: null,
+  refinement_pr_url: null,
   created_at: '2025-01-01T00:00:00Z',
 };
 
@@ -71,6 +75,7 @@ const STORY: CodeStory = {
   epic_name: 'Communication Firewall',
   epic_ref: 'ALF-1',
   epic_archived_at: null,
+  epic_spec_path: null,
   priority: 1,
 };
 

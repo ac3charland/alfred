@@ -223,6 +223,12 @@ function newEpic(input) {
     ref_number: input.ref_number ?? 0,
     ref: input.ref ?? '',
     archived_at: input.archived_at ?? null,
+    // The epic-spec columns the webhook Worker writes (never the browser). Null until an
+    // epic-refinement PR merges.
+    spec_path: input.spec_path ?? null,
+    spec_sha: input.spec_sha ?? null,
+    spec_markdown: input.spec_markdown ?? null,
+    refinement_pr_url: input.refinement_pr_url ?? null,
   };
 }
 
@@ -379,6 +385,7 @@ function codeStoryRows() {
       epic_name: epic.name,
       epic_ref: epic.ref,
       epic_archived_at: epic.archived_at,
+      epic_spec_path: epic.spec_path ?? null,
     });
   }
   return rows;

@@ -2426,6 +2426,10 @@ describe('TaskRow — classification & type-gating', () => {
         ref_number: 1,
         ref: 'ALF-1',
         archived_at: null,
+        spec_path: null,
+        spec_sha: null,
+        spec_markdown: null,
+        refinement_pr_url: null,
         created_at: '2025-01-01T00:00:00Z',
       };
       mockEnterCodeModule.mockResolvedValue({
@@ -2527,6 +2531,10 @@ describe('TaskRow — epic construction (ALF-129)', () => {
       ref_number: 40,
       ref: 'ALF-40',
       archived_at: null,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
       created_at: '2025-01-02T00:00:00Z',
     },
     stories: [
