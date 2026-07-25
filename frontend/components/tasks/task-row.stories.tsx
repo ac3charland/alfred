@@ -1,10 +1,23 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { userEvent, within } from 'storybook/test';
 
+import { CodeProvider } from '@/lib/stores/code-store';
 import type { ItemNode } from '@/lib/tree';
+import type { Project } from '@/lib/types';
 
 import { TaskRow } from './task-row';
 import { taskListContainerClass } from './task-row.styles';
+
+const STORY_PROJECT: Project = {
+  id: 'project-alf',
+  name: 'Alfred',
+  key: 'ALF',
+  repo_owner: 'ac3charland',
+  repo_name: 'alfred',
+  github_url: null,
+  ref_seq: 0,
+  created_at: '2025-01-01T00:00:00Z',
+};
 
 const BASE_NODE: ItemNode = {
   id: 'item-1',
@@ -56,6 +69,15 @@ const meta = {
   args: {
     depth: 0,
   },
+  // The row reads the code store (the epic conversion + the assigned-project chip); wrap in a
+  // seeded CodeProvider, mirroring the shell layout that hosts the Tasks view.
+  decorators: [
+    (Story) => (
+      <CodeProvider initialProjects={[STORY_PROJECT]} initialEpics={[]} initialStories={[]}>
+        <Story />
+      </CodeProvider>
+    ),
+  ],
 } satisfies Meta<typeof TaskRow>;
 
 export default meta;
@@ -95,6 +117,71 @@ export const CodeClassified: Story = {
 };
 
 // A subtask row: title + affordances and NO "Task" pill (ALF-67 removed it everywhere).
+// ── ALF-129 — an epic under construction: a code parent with ordered code children. ──
+
+const CODE_CHILDREN: ItemNode[] = [
+  {
+    ...BASE_NODE,
+    id: 'story-1',
+    title: 'Add plus button',
+    item_type: 'code',
+    parent_id: 'epic-1',
+    sort_order: 1,
+    children: [],
+  },
+  {
+    ...BASE_NODE,
+    id: 'story-2',
+    title: 'Only allow 1-deep',
+    item_type: 'code',
+    parent_id: 'epic-1',
+    sort_order: 2,
+    children: [],
+  },
+  {
+    ...BASE_NODE,
+    id: 'story-3',
+    title: 'Convert on send',
+    item_type: 'code',
+    parent_id: 'epic-1',
+    sort_order: 3,
+    children: [],
+  },
+];
+
+const CODE_PARENT: ItemNode = {
+  ...BASE_NODE,
+  id: 'epic-1',
+  title: 'Construction inbox',
+  item_type: 'code',
+  intended_project_id: 'project-alf',
+  children: CODE_CHILDREN,
+};
+
+/**
+ * A code parent (an epic under construction) collapsed: the Code badge, the assigned-project
+ * chip, the subtask count, and — code root only — the "Add story" affordance.
+ */
+export const CodeParentWithChildren: Story = {
+  args: {
+    node: CODE_PARENT,
+  },
+};
+
+/**
+ * The same epic under construction expanded: three code children in their manual order, each
+ * with the Code badge, no checkbox, and no add affordance of their own (stories are 1-deep).
+ */
+export const CodeParentExpanded: Story = {
+  args: {
+    node: CODE_PARENT,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Expand subtasks' }));
+  },
+};
+
 export const Subtask: Story = {
   args: {
     node: { ...CHILD_NODE, title: 'Outline key sections' },

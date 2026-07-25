@@ -21,6 +21,9 @@ const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 // The gate (GateDialog) reads projects/epics from the CodeProvider and routes the send
 // through the store's convertTaskToCode, which calls enterCodeModule under the hood.
 const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
+// The epic conversion (ALF-129) routes through the code store's convertToCodeEpic, which
+// calls this endpoint under the hood.
+const mockConvertToCodeEpic = jest.mocked(apiClient.convertToCodeEpic);
 
 const BASE_ITEM: Item = {
   id: 'item-1',
@@ -166,6 +169,17 @@ async function activateMenuItem(
   }
   expect(target).toHaveFocus();
   await user.keyboard('[Enter]');
+}
+
+/** Open the ⋯ menu of the row carrying `title`. */
+async function openMenuFor(user: ReturnType<typeof userEvent.setup>, title: string) {
+  await user.click(within(rowFor(title)).getByRole('button', { name: /more actions/i }));
+  await screen.findByRole('menu');
+}
+
+/** Expand the parent's subtree so its child rows render. */
+async function expandRow(user: ReturnType<typeof userEvent.setup>, title: string) {
+  await user.click(within(rowFor(title)).getByRole('button', { name: /expand subtasks/i }));
 }
 
 /** Open a row's actions menu and choose "Delete". */
@@ -2289,10 +2303,11 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
     });
 
-    it('a code row exposes no add-subtask affordance', () => {
+    it('a code ROOT exposes an "Add story" affordance (not "Add subtask") — ALF-129', () => {
       renderTasks([CODE_ITEM]);
 
       expect(screen.queryByRole('button', { name: 'Add subtask' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add story' })).toBeInTheDocument();
     });
 
     it('a task row exposes the add-subtask affordance', () => {
@@ -2310,13 +2325,14 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.queryByRole('menuitem', { name: 'Add subtask' })).not.toBeInTheDocument();
     });
 
-    it('offers no ⋯-menu "Add subtask" item on a code row', async () => {
+    it('offers the ⋯-menu "Add story" item on a code root (mobile affordance) — ALF-129', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
       expect(screen.queryByRole('menuitem', { name: 'Add subtask' })).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Add story' })).toBeInTheDocument();
     });
 
     it('offers the ⋯-menu "Add subtask" item on a task row (mobile affordance)', async () => {
@@ -2449,6 +2465,271 @@ describe('TaskRow — classification & type-gating', () => {
         '/code/p1?story=ALF-42',
       );
       // …and the gated item has left the inbox view (removed from the store).
+      await waitFor(() => {
+        expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+      });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ALF-129 — epics constructed in the inbox (code parents + the epic conversion)
+// ---------------------------------------------------------------------------
+
+describe('TaskRow — epic construction (ALF-129)', () => {
+  const CODE_PARENT: Item = {
+    ...BASE_ITEM,
+    id: 'cp-1',
+    title: 'Construction inbox',
+    item_type: 'code',
+  };
+  const CODE_CHILDREN: Item[] = [
+    { ...BASE_ITEM, id: 'cc-1', title: 'S1', item_type: 'code', parent_id: 'cp-1', sort_order: 1 },
+    { ...BASE_ITEM, id: 'cc-2', title: 'S2', item_type: 'code', parent_id: 'cp-1', sort_order: 2 },
+  ];
+
+  const PROJECT: Project = {
+    id: 'p1',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 0,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+
+  const CONVERTED_STORY_1 = {
+    item_id: 'cc-1',
+    project_id: 'p1',
+    epic_id: 'server-epic',
+    ref_number: 42,
+    ref: 'ALF-42',
+    factory_state: 'needs_refinement' as const,
+    lane: 'human' as const,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    created_at: '2025-01-02T00:00:00Z',
+    updated_at: '2025-01-02T00:00:00Z',
+    priority: -2,
+  };
+
+  const CONVERTED = {
+    epic: {
+      id: 'server-epic',
+      project_id: 'p1',
+      name: 'Construction inbox',
+      notes: null,
+      ref_number: 40,
+      ref: 'ALF-40',
+      archived_at: null,
+      created_at: '2025-01-02T00:00:00Z',
+    },
+    stories: [
+      CONVERTED_STORY_1,
+      { ...CONVERTED_STORY_1, item_id: 'cc-2', ref_number: 41, ref: 'ALF-41', priority: -1 },
+    ],
+  };
+
+  describe('the code child row shape', () => {
+    it('renders under its parent with the Code badge, no checkbox, and no add affordance', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_PARENT, ...CODE_CHILDREN]);
+
+      await expandRow(user, 'Construction inbox');
+      const childRow = rowFor('S1');
+      expect(within(childRow).getAllByText('Code').length).toBeGreaterThan(0);
+      expect(within(childRow).queryByRole('button', { name: /mark .* complete/i })).toBeNull();
+      expect(within(childRow).queryByRole('button', { name: 'Add story' })).toBeNull();
+      expect(within(childRow).queryByRole('button', { name: 'Add subtask' })).toBeNull();
+    });
+
+    it('offers no send/convert entry in a code child’s menu (it converts with its parent)', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_PARENT, ...CODE_CHILDREN]);
+
+      await expandRow(user, 'Construction inbox');
+      await openMenuFor(user, 'S1');
+      expect(screen.queryByRole('menuitem', { name: /send to code module/i })).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /convert to code/i })).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /add story/i })).toBeNull();
+    });
+
+    it('offers Move up / Move down on a code child, like a task subtask', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_PARENT, ...CODE_CHILDREN]);
+
+      await expandRow(user, 'Construction inbox');
+      await openMenuFor(user, 'S2');
+      expect(screen.getByRole('menuitem', { name: /move up/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('the add-story capture box', () => {
+    it('opens with an "Add story…" placeholder on a code parent', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_PARENT]);
+
+      await user.click(screen.getByRole('button', { name: 'Add story' }));
+      expect(await screen.findByPlaceholderText('Add story…')).toBeInTheDocument();
+    });
+  });
+
+  describe('the convert menu matrix', () => {
+    it('a childless task: Story enabled, Epic disabled with the epic-shape hint', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM]);
+
+      await openMenuFor(user, 'Write tests');
+      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      const epicItem = screen.getByRole('menuitem', { name: /convert to code epic/i });
+      expect(epicItem).toHaveAttribute('aria-disabled', 'true');
+      expect(epicItem).toHaveAttribute(
+        'title',
+        expect.stringMatching(/needs at least one subtask/i),
+      );
+    });
+
+    it('a task with an active child: Epic enabled, Story disabled with the story hint', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await openMenuFor(user, 'Write tests');
+      const storyItem = screen.getByRole('menuitem', { name: /convert to code story/i });
+      expect(storyItem).toHaveAttribute('aria-disabled', 'true');
+      expect(storyItem).toHaveAttribute('title', expect.stringMatching(/single item/i));
+      expect(screen.getByRole('menuitem', { name: /convert to code epic/i })).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+
+    it('a task with grandchildren: both entries disabled (visible, hinted)', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM]);
+
+      await openMenuFor(user, 'Write tests');
+      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: /convert to code epic/i })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+
+    it('an unclassified row: Story enabled, Epic disabled', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      await openMenuFor(user, 'Write tests');
+      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: /convert to code epic/i })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+  });
+
+  describe('the code parent send', () => {
+    it('keeps the "…" on the send label when the project dialog will open (no intended project)', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_PARENT, ...CODE_CHILDREN], { projects: [PROJECT] });
+
+      await openMenuFor(user, 'Construction inbox');
+      expect(screen.getByRole('menuitem', { name: 'Send to Code module…' })).toBeInTheDocument();
+    });
+
+    it('drops the "…" and converts immediately when an intended project is set', async () => {
+      mockConvertToCodeEpic.mockResolvedValue(CONVERTED);
+      const user = userEvent.setup();
+      renderTasks([{ ...CODE_PARENT, intended_project_id: 'p1' }, ...CODE_CHILDREN], {
+        projects: [PROJECT],
+      });
+
+      await openMenuFor(user, 'Construction inbox');
+      await activateMenuItem(user, /^send to code module$/i);
+
+      // No dialog opens — the conversion fires straight away…
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await waitFor(() => {
+        expect(mockConvertToCodeEpic).toHaveBeenCalledWith('cp-1', 'p1');
+      });
+      // …the toast announces the epic + story count, deep-linked to the project board…
+      expect(
+        await screen.findByRole('link', { name: 'Created ALF-40 · 2 stories' }),
+      ).toHaveAttribute('href', '/code/p1');
+      // …and the parent row (with its children) has left the inbox.
+      await waitFor(() => {
+        expect(screen.queryByText('Construction inbox')).not.toBeInTheDocument();
+      });
+      expect(screen.queryByText('S1')).not.toBeInTheDocument();
+    });
+
+    it('opens the project-only epic gate when no intended project is set, then converts', async () => {
+      mockConvertToCodeEpic.mockResolvedValue(CONVERTED);
+      const user = userEvent.setup();
+      renderTasks([CODE_PARENT, ...CODE_CHILDREN], { projects: [PROJECT] });
+
+      await openMenuFor(user, 'Construction inbox');
+      await activateMenuItem(user, /send to code module…/i);
+
+      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
+      // The read-only preview lists the epic name and the ordered story titles — no epic picker.
+      const preview = within(dialog).getByTestId('epic-gate-preview');
+      expect(preview).toHaveTextContent('Construction inbox');
+      const storyTitles = within(preview)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent);
+      expect(storyTitles).toEqual(['S1', 'S2']);
+      expect(within(dialog).queryByRole('listbox', { name: /epic/i })).toBeNull();
+
+      // Confirm is disabled until a project is chosen.
+      const confirm = within(dialog).getByRole('button', { name: /^send to code$/i });
+      expect(confirm).toBeDisabled();
+      await user.click(within(dialog).getByRole('option', { name: /alfred/i }));
+      await user.click(confirm);
+
+      await waitFor(() => {
+        expect(mockConvertToCodeEpic).toHaveBeenCalledWith('cp-1', 'p1');
+      });
+      await waitFor(() => {
+        expect(screen.queryByText('Construction inbox')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Convert to Code Epic… on a task', () => {
+    it('opens the epic gate; on success the parent completes and leaves the active inbox', async () => {
+      mockConvertToCodeEpic.mockResolvedValue({
+        ...CONVERTED,
+        stories: [{ ...CONVERTED_STORY_1, item_id: 'item-2' }],
+      });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM], { projects: [PROJECT] });
+
+      await openMenuFor(user, 'Write tests');
+      await activateMenuItem(user, /convert to code epic/i);
+
+      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
+      await user.click(within(dialog).getByRole('option', { name: /alfred/i }));
+      await user.click(within(dialog).getByRole('button', { name: /^send to code$/i }));
+
+      await waitFor(() => {
+        expect(mockConvertToCodeEpic).toHaveBeenCalledWith('item-1', 'p1');
+      });
+      // The parent is completed (not deleted): it leaves the ACTIVE inbox view.
       await waitFor(() => {
         expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
       });

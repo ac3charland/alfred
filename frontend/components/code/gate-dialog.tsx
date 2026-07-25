@@ -1,18 +1,16 @@
 'use client';
 
-import { Check, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
 import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import { FieldLabel } from '@/components/atoms/field-label';
-import { OptionButton } from '@/components/atoms/option-button';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { NewProjectDialog } from '@/components/code/new-project-dialog';
+import { AddNewRow, OptionRow, ProjectPicker } from '@/components/code/project-picker';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
-import { cn } from '@/lib/utils';
 
 /** The item being admitted to the factory — the fields the optimistic card needs. */
 export interface GateItem {
@@ -38,50 +36,6 @@ interface GateDialogProperties {
    * gated items from the tasks store and toasts the outcome.
    */
   onComplete: (stories: CodeStory[]) => void;
-}
-
-/** One selectable option in a combobox-style list (a project or an epic). */
-function OptionRow({
-  selected,
-  label,
-  hint,
-  onSelect,
-}: {
-  selected: boolean;
-  label: string;
-  // Explicit `| undefined` (not `?`) so an epic with no ref yet may pass `undefined`
-  // directly under exactOptionalPropertyTypes.
-  hint: string | undefined;
-  onSelect: () => void;
-}) {
-  return (
-    <OptionButton role="option" aria-selected={selected} selected={selected} onClick={onSelect}>
-      <span className="flex min-w-0 items-center gap-2">
-        <Check
-          size={14}
-          className={cn('shrink-0 text-accent-teal', selected ? 'opacity-100' : 'opacity-0')}
-        />
-        <span className="truncate">{label}</span>
-      </span>
-      {hint !== undefined && (
-        <span className="shrink-0 font-mono text-xs text-muted-foreground/70">{hint}</span>
-      )}
-    </OptionButton>
-  );
-}
-
-/**
- * A "+ New …" affordance at the foot of a selector list — an action row rather than a
- * selectable option, so it uses `OptionButton`'s `action` kind (left-aligned, all-teal accent
- * with a teal hover wash, no selected state) with a leading `Plus`.
- */
-function AddNewRow({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <OptionButton kind="action" onClick={onClick}>
-      <Plus size={14} className="shrink-0" />
-      {label}
-    </OptionButton>
-  );
 }
 
 /**
@@ -177,45 +131,14 @@ function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         {/* Project selector — a read-only chip when the bulk selection unanimously shares one
             assigned project (the user only picks the epic); otherwise the interactive list. */}
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="gate-project-list">Project</FieldLabel>
-          {projectLocked && selectedProject !== null ? (
-            <div
-              data-testid="gate-project-locked"
-              className="flex items-center gap-2 rounded-sm border border-border bg-input/40 px-3 py-2 text-sm text-foreground"
-            >
-              <span className="truncate">{selectedProject.name}</span>
-              <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground/70">
-                {selectedProject.key}
-              </span>
-            </div>
-          ) : (
-            <div
-              id="gate-project-list"
-              role="listbox"
-              aria-label="Project"
-              className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-sm border border-border bg-input/40 p-1"
-            >
-              {projects.map((project) => (
-                <OptionRow
-                  key={project.id}
-                  selected={project.id === projectId}
-                  label={project.name}
-                  hint={project.key}
-                  onSelect={() => {
-                    selectProject(project.id);
-                  }}
-                />
-              ))}
-              <AddNewRow
-                label="New project…"
-                onClick={() => {
-                  setNewProjectOpen(true);
-                }}
-              />
-            </div>
-          )}
-        </div>
+        <ProjectPicker
+          selectedProjectId={projectId}
+          locked={projectLocked}
+          onSelectProject={selectProject}
+          onNewProject={() => {
+            setNewProjectOpen(true);
+          }}
+        />
 
         {/* Epic selector — only meaningful once a project is chosen. */}
         <div className="flex flex-col gap-1.5">

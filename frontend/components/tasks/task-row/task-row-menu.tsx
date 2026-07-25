@@ -15,15 +15,41 @@ import {
 import { IconButton } from '@/components/atoms/icon-button';
 import type { Folder } from '@/lib/types';
 
+/** Why "Convert to Code Story…" is disabled on a row with subtasks. */
+const STORY_DISABLED_HINT = 'A story is a single item — this one has subtasks.';
+/** Why "Convert to Code Epic…" (and an epic-shaped send) is disabled on the wrong shape. */
+const EPIC_DISABLED_HINT =
+  'An epic needs at least one subtask, and its subtasks must not have subtasks of their own.';
+/** Why an epic conversion is disabled while a row in the group is still saving. */
+const TEMP_ID_HINT = 'Still saving — try again in a moment.';
+
 interface TaskRowMenuProperties {
-  /** True for a `task` row, which alone nests subtasks (offers the mobile "Add subtask" item). */
-  isTask: boolean;
   /** True when the row still has no classification (offers the Classify-as submenu). */
   isUnclassified: boolean;
   /** True for a code-classified inbox item (offers "Send to Code module…"). */
   isCode: boolean;
-  /** True for a task / unclassified row (offers "Convert to Code Story…"). */
+  /** True for a code child — it converts with its parent, so it offers no send entry. */
+  isCodeChild: boolean;
+  /** True for a code root with ≥1 child — "Send to Code module" runs the epic conversion. */
+  isCodeParent: boolean;
+  /**
+   * True when a code parent's send fires immediately (an intended project is already set) —
+   * the label drops its "…" because no dialog will open.
+   */
+  sendConvertsImmediately: boolean;
+  /** True for a task / unclassified row (renders the adjacent Convert to Story/Epic pair). */
   canConvert: boolean;
+  /** True when "Convert to Code Story…" applies (a convertible row with no subtasks). */
+  canConvertToStory: boolean;
+  /** True when "Convert to Code Epic…" applies (≥1 active child, no grandchildren). */
+  canConvertToEpic: boolean;
+  /**
+   * True while this row or one of its children still carries a temp (unreconciled) id — the
+   * conversion RPC needs real ids, so the epic-shaped actions disable until the saves land.
+   */
+  groupHasTempIds: boolean;
+  /** May host subtasks (any task, or a code root) — offers the mobile Add subtask/story item. */
+  canAddSubtask: boolean;
   /** The folders the row can be moved into (the "Move to…" submenu; hidden when empty). */
   folders: readonly Folder[];
   /** True for an active subtask not already at the top of its sibling group (offers "Move up"). */
@@ -39,28 +65,41 @@ interface TaskRowMenuProperties {
   /** Open the row's inline detail panel (the primary, leading entry). */
   onOpenDetails: () => void;
   onClassify: (itemType: 'task' | 'code') => void;
+  /** Open the story gate (Send a childless code row / Convert to Code Story). */
   onOpenGate: () => void;
+  /**
+   * Run the epic conversion (a code parent's send, or Convert to Code Epic…). The row
+   * decides between the immediate path (intended project set) and the project dialog.
+   */
+  onConvertToEpic: () => void;
   onMoveToFolder: (targetFolderId?: string) => void;
   onDelete: () => void;
 }
 
 /**
  * The task row's "More actions" dropdown. **"Open details" leads** (teal, the primary action —
- * it's how the detail is reached now), then a divider. On mobile a task row shows **"Add
- * subtask"** just below that divider — the inline "+" button is desktop-only now, so the
- * affordance collapses into this menu below `md` (ALF-118); the item is `md:hidden` so desktop,
- * where the "+" is still shown, never doubles up. Then the item-type entries (Classify-as while
- * unclassified, Send/Convert for code vs task), Move-to (when folders exist), and finally a
- * destructive Delete below a divider. The per-field
- * "Set due date / Set priority / Add notes" entries are gone — those edits live on the detail
- * panel's auto-saving chips and notes. Every conditional stays encapsulated here so the row body
- * composes the menu without restating them.
+ * it's how the detail is reached now), then a divider. On mobile a row that may host subtasks
+ * shows **"Add subtask"** (or **"Add story"** on a code root) just below that divider — the
+ * inline "+" button is desktop-only, so the affordance collapses into this menu below `md`
+ * (ALF-118); the item is `md:hidden` so desktop never doubles up. Then the item-type entries:
+ * Classify-as while unclassified; "Send to Code module" for a code row (the story gate when
+ * childless, the epic conversion when it has children); the adjacent "Convert to Code Story…"
+ * / "Convert to Code Epic…" pair for a convertible row — both always rendered, each disabled
+ * with a hint when it doesn't apply, so the epic path stays discoverable. Then Move-to (when
+ * folders exist), and finally a destructive Delete below a divider. Every conditional stays
+ * encapsulated here so the row body composes the menu without restating them.
  */
 export function TaskRowMenu({
-  isTask,
   isUnclassified,
   isCode,
+  isCodeChild,
+  isCodeParent,
+  sendConvertsImmediately,
   canConvert,
+  canConvertToStory,
+  canConvertToEpic,
+  groupHasTempIds,
+  canAddSubtask,
   folders,
   canMoveUp,
   canMoveDown,
@@ -70,6 +109,7 @@ export function TaskRowMenu({
   onOpenDetails,
   onClassify,
   onOpenGate,
+  onConvertToEpic,
   onMoveToFolder,
   onDelete,
 }: TaskRowMenuProperties) {
@@ -94,14 +134,13 @@ export function TaskRowMenu({
 
         <DropdownMenuSeparator />
 
-        {/* Add subtask — mobile-only (`md:hidden`): the inline "+" button is hidden below `md`,
-            so its affordance lives here, below the divider under "Open details" (ALF-118). Task
-            rows only, since subtasks nest only under tasks. On desktop (`md:hidden`) it simply
-            vanishes, leaving today's menu (Open details → divider → the item-type / move group). */}
-        {isTask && (
+        {/* Add subtask / Add story — mobile-only (`md:hidden`): the inline "+" button is hidden
+            below `md`, so its affordance lives here, below the divider under "Open details"
+            (ALF-118). Rows that may host subtasks only — a code CHILD never shows it (1-deep). */}
+        {canAddSubtask && (
           <DropdownMenuItem className="md:hidden" onSelect={onAddSubtask}>
             <Plus size={16} className="text-muted-foreground" />
-            Add subtask
+            {isCode ? 'Add story' : 'Add subtask'}
           </DropdownMenuItem>
         )}
 
@@ -153,13 +192,46 @@ export function TaskRowMenu({
           </DropdownMenuSub>
         )}
 
-        {/* Send to Code module… — a code-classified inbox item enters the gate. */}
-        {isCode && <DropdownMenuItem onSelect={onOpenGate}>Send to Code module…</DropdownMenuItem>}
+        {/* Send to Code module — a childless code root opens the story gate (with "…"); a code
+            PARENT runs the epic conversion instead: immediately (no "…") when an intended
+            project is set, otherwise via the project dialog. A code child converts with its
+            parent, so it offers no send entry. */}
+        {isCode &&
+          !isCodeChild &&
+          (isCodeParent ? (
+            <DropdownMenuItem
+              disabled={groupHasTempIds}
+              title={groupHasTempIds ? TEMP_ID_HINT : undefined}
+              onSelect={onConvertToEpic}
+            >
+              {sendConvertsImmediately ? 'Send to Code module' : 'Send to Code module…'}
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={onOpenGate}>Send to Code module…</DropdownMenuItem>
+          ))}
 
-        {/* Convert to Code Story… — the path for an existing task (or an unclassified item):
-            the gate both flips item_type and creates the factory row in one step. */}
+        {/* Convert to Code Story… / Convert to Code Epic… — always rendered adjacent for a
+            convertible row, each disabled (with a hint) when it doesn't apply, so the epic
+            path is discoverable rather than appearing only in the one state that allows it. */}
         {canConvert && (
-          <DropdownMenuItem onSelect={onOpenGate}>Convert to Code Story…</DropdownMenuItem>
+          <>
+            <DropdownMenuItem
+              disabled={!canConvertToStory}
+              title={canConvertToStory ? undefined : STORY_DISABLED_HINT}
+              onSelect={onOpenGate}
+            >
+              Convert to Code Story…
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!canConvertToEpic || groupHasTempIds}
+              title={
+                canConvertToEpic ? (groupHasTempIds ? TEMP_ID_HINT : undefined) : EPIC_DISABLED_HINT
+              }
+              onSelect={onConvertToEpic}
+            >
+              Convert to Code Epic…
+            </DropdownMenuItem>
+          </>
         )}
 
         {/* Move to folder */}

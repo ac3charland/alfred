@@ -20,6 +20,7 @@ import { bulkBarClass, bulkBarWrapperClass } from './inbox-bulk-bar.styles';
 
 const CLASSIFY_DISABLED_HINT = 'Only unclassified items can be classified';
 const MOVE_DISABLED_HINT = 'Only tasks can be filed into a folder';
+const SEND_DISABLED_HINT = 'An item with subtasks is sent from its own row menu';
 
 /**
  * The Inbox header's "Select" / "Done" toggle. Pressing it enters multi-edit mode (rows become
@@ -92,6 +93,9 @@ export function InboxBulkBar() {
   const count = selectedItems.length;
   const allUnclassified = count > 0 && selectedItems.every((i) => i.item_type === 'unclassified');
   const allTask = count > 0 && selectedItems.every((i) => i.item_type === 'task');
+  // The bulk send is story-per-item; an epic-shaped row (any children) goes through its own
+  // row menu instead (ALF-129).
+  const anySelectedHasChildren = selectedItems.some((i) => i.children.length > 0);
 
   // After a bulk action: full success exits; a partial failure narrows the selection to the
   // failed items so the same action can be retried on just those.
@@ -199,10 +203,12 @@ export function InboxBulkBar() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Send to Code — any non-empty selection is eligible. */}
+          {/* Send to Code — story-per-item, so it disables when any selected row has children. */}
           <Button
             variant="outline"
             size="sm"
+            disabled={anySelectedHasChildren}
+            title={anySelectedHasChildren ? SEND_DISABLED_HINT : undefined}
             onClick={() => {
               setShowGate(true);
             }}

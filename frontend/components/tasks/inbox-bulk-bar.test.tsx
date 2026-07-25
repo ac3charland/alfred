@@ -129,6 +129,27 @@ describe('Inbox select mode', () => {
     expect(screen.getByRole('button', { name: /classify as/i })).toBeDisabled();
   });
 
+  it('disables Send to Code with a hint when any selected row has children (ALF-129)', async () => {
+    const user = userEvent.setup();
+    renderInbox([
+      makeItem('flat', { item_type: 'code' }),
+      makeItem('parent', { item_type: 'code' }),
+      makeItem('child', { item_type: 'code', parent_id: 'parent' }),
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+
+    // A childless selection sends as usual.
+    await user.click(screen.getByRole('button', { name: /select "flat"/i }));
+    expect(screen.getByRole('button', { name: /send to code/i })).toBeEnabled();
+
+    // Adding the epic-shaped parent disables the bulk send (its own row menu converts it).
+    await user.click(screen.getByRole('button', { name: /select "parent"/i }));
+    const send = screen.getByRole('button', { name: /send to code/i });
+    expect(send).toBeDisabled();
+    expect(send).toHaveAttribute('title', expect.stringMatching(/row menu/i));
+  });
+
   it('Esc exits select mode and clears the selection', async () => {
     const user = userEvent.setup();
     renderInbox([makeItem('u1')]);
