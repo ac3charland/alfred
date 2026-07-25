@@ -766,6 +766,68 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const epicSpecColumnsResult = await attempt(
+    'epics carries the four nullable epic-spec columns the Worker writes (ALF-130)',
+    async () => {
+      const { rows } = await client.query<{ column_name: string; is_nullable: string }>(
+        `select column_name, is_nullable from information_schema.columns
+          where table_name = 'epics'
+            and column_name in ('spec_path', 'spec_sha', 'spec_markdown', 'refinement_pr_url')
+          order by column_name`,
+      );
+      const missing = ['refinement_pr_url', 'spec_markdown', 'spec_path', 'spec_sha'].filter(
+        (name) => !rows.some((row) => row.column_name === name),
+      );
+      if (missing.length > 0) throw new Error(`epics is missing ${missing.join(', ')}`);
+      // Every existing epic pre-dates the columns, so a NOT NULL one would have failed the
+      // migration outright — and the browser never writes them, only the Worker does.
+      const required = rows
+        .filter((row) => row.is_nullable !== 'YES')
+        .map((row) => row.column_name);
+      if (required.length > 0)
+        throw new Error(`epic-spec columns must be nullable: ${required.join(', ')}`);
+      return 'spec_path, spec_sha, spec_markdown, refinement_pr_url all present and nullable';
+    },
+  );
+
+  const epicSpecViewResult = await attempt(
+    'v_code_stories exposes epic_spec_path to authenticated (the 0017 grant regression class)',
+    async () => {
+      // 0020 re-declared the view to append `epic_spec_path`. `create or replace` preserves the
+      // SELECT grant; a drop/create would silently drop it and 500 the whole Code view (ALF-124).
+      // Assert BOTH: the column is there AND authenticated can still read the view through it.
+      const epic = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref, spec_path)
+           values ($1, $2, 'Spec-carrying epic', 130, 'ALF-130', 'docs/specs/epics/ALF-130.html')`,
+        [epic, PROJECT],
+      );
+      const { ref } = await createStory(client, 'story under a specced epic', PROJECT, epic);
+      const rows = await asRole(client, 'authenticated', () =>
+        client.query<{ epic_spec_path: string | null }>(
+          `select epic_spec_path from v_code_stories where ref = $1`,
+          [ref],
+        ),
+      );
+      const path = rows.rows[0]?.epic_spec_path;
+      if (path !== 'docs/specs/epics/ALF-130.html')
+        throw new Error(`authenticated read epic_spec_path as ${String(path)}`);
+      return `authenticated read epic_spec_path=${path} through v_code_stories`;
+    },
+  );
+
+  const epicRealtimeResult = await attempt(
+    'epics is in the supabase_realtime publication so a snapshot reaches an open board',
+    async () => {
+      const { rows } = await client.query<{ tablename: string }>(
+        `select tablename from pg_publication_tables
+          where pubname = 'supabase_realtime' and tablename = 'epics'`,
+      );
+      if (rows.length === 0) throw new Error('epics is not published to supabase_realtime');
+      return 'epics published to supabase_realtime';
+    },
+  );
+
   const anonInsertResult = await attempt('anon cannot insert (RLS write denial)', async () => {
     let denied = false;
     try {
@@ -811,6 +873,9 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     convertToEpicResult,
     convertTaskParentResult,
     codeStoryListReadResult,
+    epicSpecColumnsResult,
+    epicSpecViewResult,
+    epicRealtimeResult,
     anonInsertResult,
     anonReadResult,
   ];
