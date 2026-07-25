@@ -10,8 +10,8 @@
 import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
-import { patchCodeItem } from './supabase';
-import { planTransition } from './transitions';
+import { patchCodeItem, patchEpic } from './supabase';
+import { type TransitionTarget, planTransition } from './transitions';
 
 /**
  * Worker secrets. Hand-written because these are SECRETS, not
@@ -101,33 +101,45 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
     return json(200, { ignored: `no-op for action '${payload.action}'` });
   }
 
-  // 5. Apply the column updates to every ticket the PR names (always a list).
+  // 5. Apply the column updates to every ticket the PR names (always a list), against the
+  //    table the plan routes to — `code_items` for a story phase, `epics` for epic-refinement.
+  const patch = patchFor(plan.target);
   const results = await Promise.all(
     frontmatter.tickets.map(async (ref) => ({
       ref,
-      count: await patchCodeItem(env, ref, plan.updates),
+      count: await patch(env, ref, plan.updates),
     })),
   );
   const matched = results.filter((result) => result.count > 0).map((result) => result.ref);
 
   // 6. Snapshot the spec in the background on refinement-merge — best-effort, post-response.
   if (plan.snapshotSpec && frontmatter.specPath !== undefined && matched.length > 0) {
-    ctx.waitUntil(snapshotSpec(env, payload, matched, frontmatter.specPath));
+    ctx.waitUntil(snapshotSpec(env, payload, matched, frontmatter.specPath, plan.target));
   }
 
+  // `state` is undefined for an epic plan — epics have no factory_state.
   return json(200, { ok: true, tickets: matched, state: plan.updates.factory_state });
+}
+
+/** The ref-keyed PATCH for a plan's target table. */
+function patchFor(target: TransitionTarget): typeof patchCodeItem {
+  return target === 'epic' ? patchEpic : patchCodeItem;
 }
 
 /**
  * Fetch the merged spec from GitHub and store it on each matched ticket. Best-effort: a
  * failed fetch leaves `spec_markdown` null and the modal falls back to the live "view in repo"
  * link — the state transition is already recorded, so this never blocks it.
+ *
+ * `epics` names its snapshot columns exactly as `code_items` does, so the only per-target
+ * difference is which table the snapshot lands in.
  */
 async function snapshotSpec(
   env: Env,
   payload: PullRequestPayload,
   refs: string[],
   specPath: string,
+  target: TransitionTarget,
 ): Promise<void> {
   const [owner, name] = payload.repository.full_name.split('/');
   const sha = payload.pull_request.merge_commit_sha ?? undefined;
@@ -137,10 +149,9 @@ async function snapshotSpec(
   const spec = await fetchSpec(env, owner, name, specPath, sha);
   if (spec === undefined) return;
 
+  const patch = patchFor(target);
   await Promise.all(
-    refs.map((ref) =>
-      patchCodeItem(env, ref, { spec_markdown: spec.markdown, spec_sha: spec.sha }),
-    ),
+    refs.map((ref) => patch(env, ref, { spec_markdown: spec.markdown, spec_sha: spec.sha })),
   );
 }
 

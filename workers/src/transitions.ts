@@ -2,9 +2,9 @@
  * The PR → ticket state machine.
  *
  * Pure logic, no I/O: given the `(phase, action, merged)` of a `pull_request` webhook, decide
- * which `code_items` columns to patch and whether to snapshot the spec. Because both lifecycle
- * phases end in a PR, this table is the whole system's clock — every transition row lives here so
- * it can be unit-tested exhaustively.
+ * which table's columns to patch (`code_items` for a story, `epics` for an epic spec) and whether
+ * to snapshot the spec. Because both story lifecycle phases end in a PR, this table is the whole
+ * system's clock — every transition row lives here so it can be unit-tested exhaustively.
  */
 import type { CodePhase } from './frontmatter';
 
@@ -30,7 +30,11 @@ export interface PrEvent {
   specPath: string | undefined;
 }
 
-/** The column updates to PATCH onto a `code_items` row (only set keys are written). */
+/**
+ * The column updates to PATCH onto a `code_items` OR an `epics` row (only set keys are written).
+ * The two tables share the spec/PR column names deliberately, so an epic plan reuses this type —
+ * it only ever sets `refinement_pr_url` / `spec_path`, both of which exist on `epics` too.
+ */
 export interface TicketUpdate {
   factory_state?: FactoryState;
   refinement_pr_url?: string;
@@ -38,8 +42,16 @@ export interface TicketUpdate {
   spec_path?: string;
 }
 
-/** The decision for one PR event: columns to patch + whether to snapshot the spec. */
+/**
+ * Which table a plan patches. Routing is EXPLICIT, keyed off the phase — refs come from one
+ * shared per-project counter, so a "try code_items, fall back to epics" scheme would make a
+ * typo'd story ref silently patch nothing while looking like it worked.
+ */
+export type TransitionTarget = 'story' | 'epic';
+
+/** The decision for one PR event: which table, columns to patch + whether to snapshot the spec. */
 export interface TransitionPlan {
+  target: TransitionTarget;
   updates: TicketUpdate;
   snapshotSpec: boolean;
 }
@@ -49,6 +61,9 @@ export interface TransitionPlan {
  * (any action other than `opened` / `closed` — e.g. `edited`, `synchronize`, `reopened`).
  *
  * The transition table, verbatim:
+ *   epic-refinement+ opened          → (epics) record refinement_pr_url
+ *   epic-refinement+ closed & merged → (epics) record spec_path; snapshot spec
+ *   epic-refinement+ closed & !merged→ no-op (an epic has no state to revert)
  *   refinement     + opened          → no state change; record refinement_pr_url
  *   refinement     + closed & merged → ready_for_dev; record spec_path; snapshot spec
  *   refinement     + closed & !merged→ needs_refinement (revert; abandon is manual)
@@ -59,18 +74,36 @@ export interface TransitionPlan {
 export function planTransition(event: PrEvent): TransitionPlan | undefined {
   const { phase, action, merged, prUrl, specPath } = event;
 
+  if (phase === 'epic-refinement') {
+    // Epics carry NO lifecycle state, so an epic plan only ever records the PR url or the
+    // spec — never a factory_state — and a closed-unmerged PR has nothing to undo.
+    if (action === 'opened') {
+      return { target: 'epic', updates: { refinement_pr_url: prUrl }, snapshotSpec: false };
+    }
+    if (action === 'closed' && merged) {
+      const updates: TicketUpdate = {};
+      if (specPath !== undefined) updates.spec_path = specPath;
+      return { target: 'epic', updates, snapshotSpec: true };
+    }
+    return undefined;
+  }
+
   if (phase === 'refinement') {
     if (action === 'opened') {
       // A refinement PR opening is a no-op for the state machine — just record the URL.
-      return { updates: { refinement_pr_url: prUrl }, snapshotSpec: false };
+      return { target: 'story', updates: { refinement_pr_url: prUrl }, snapshotSpec: false };
     }
     if (action === 'closed') {
       if (merged) {
         const updates: TicketUpdate = { factory_state: 'ready_for_dev' };
         if (specPath !== undefined) updates.spec_path = specPath;
-        return { updates, snapshotSpec: true };
+        return { target: 'story', updates, snapshotSpec: true };
       }
-      return { updates: { factory_state: 'needs_refinement' }, snapshotSpec: false };
+      return {
+        target: 'story',
+        updates: { factory_state: 'needs_refinement' },
+        snapshotSpec: false,
+      };
     }
     return undefined;
   }
@@ -78,12 +111,14 @@ export function planTransition(event: PrEvent): TransitionPlan | undefined {
   // phase === 'implementation'
   if (action === 'opened') {
     return {
+      target: 'story',
       updates: { factory_state: 'ready_for_review', implementation_pr_url: prUrl },
       snapshotSpec: false,
     };
   }
   if (action === 'closed') {
     return {
+      target: 'story',
       updates: { factory_state: merged ? 'done' : 'ready_for_dev' },
       snapshotSpec: false,
     };
