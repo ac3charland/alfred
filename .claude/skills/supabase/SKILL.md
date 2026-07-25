@@ -268,6 +268,11 @@ to the pooler (5432 **and** 6543) is blocked, so `npm run migrate`, `psql`, and 
 all hang and fail with a bare `timeout expired`. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
 the environment, run migrations — and any ad-hoc SQL — over the **Management API** instead:
 
+**Check the ENVIRONMENT for credentials, not `frontend/.env.local`.** That file is gitignored
+and absent from a fresh sandbox clone, so its absence proves nothing — `SUPABASE_ACCESS_TOKEN`
+and `DATABASE_URL` are injected as env vars. `env | grep -c SUPABASE_ACCESS_TOKEN` before
+concluding you can't reach prod.
+
 ```bash
 curl -sS -X POST "https://api.supabase.com/v1/projects/<ref>/database/query" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
