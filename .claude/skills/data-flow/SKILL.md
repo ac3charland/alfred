@@ -67,6 +67,17 @@ the nextjs skill, "Client-side view switching." **Revisit** (scoped/paginated se
 or a normalized cache) only when the dataset grows large enough that filtering everything in
 memory hurts.
 
+**The one exception: big documents seed lazily.** `weekly_plans` rows are ~40 KB of HTML each
+and the archive grows by one a week, so seeding them all would inflate *every* page load,
+including the ones that never open `/plan`. The layout seeds the **index** (ids + timestamps,
+`html` excluded from the select) plus the **latest** document; `WeeklyPlanProvider` pulls an
+older one through `GET /api/weekly-plans/[id]` on demand and caches it in a ref keyed by id.
+The trigger for this shape is **per-row payload size**, not row count — a table of small rows
+still fetches all. The store has no optimistic machinery: nothing in the app writes a plan
+(uploads arrive through the keyed ingress endpoint), so it's seeded data plus a read-through
+cache. The selection only moves once the document is in hand, so the view never blanks
+mid-switch and a failed fetch just toasts.
+
 ## Realtime: the code module's one push path
 
 Seed-once works because the **only** writer is the user in their own browser — except in the
