@@ -328,6 +328,24 @@ export type Database = {
         }
         Relationships: []
       }
+      weekly_plans: {
+        Row: {
+          html: string
+          id: string
+          uploaded_at: string
+        }
+        Insert: {
+          html: string
+          id?: string
+          uploaded_at?: string
+        }
+        Update: {
+          html?: string
+          id?: string
+          uploaded_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       task_items: {
