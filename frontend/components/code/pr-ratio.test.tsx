@@ -1,0 +1,109 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import * as React from 'react';
+
+import * as api from '@/lib/api-client';
+import type { PrRatioResponse } from '@/lib/types';
+
+import { PrRatio } from './pr-ratio';
+
+jest.mock('@/lib/api-client');
+const mockGetPrRatio = jest.mocked(api.getPrRatio);
+
+const RATIO: PrRatioResponse = {
+  week: {
+    start: '2026-07-20T00:00:00-04:00',
+    end: '2026-07-27T00:00:00-04:00',
+    timezone: 'America/New_York',
+  },
+  total: 9,
+  repos: [
+    { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 33 },
+    { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 67 },
+  ],
+};
+
+/** A never-settling fetch, so the loading state can be asserted before data lands. */
+function pending<T>(): Promise<T> {
+  return new Promise<T>(() => {});
+}
+
+describe('PrRatio', () => {
+  it('reserves the card with a skeleton bar while the counts are in flight', () => {
+    mockGetPrRatio.mockReturnValue(pending());
+
+    render(<PrRatio />);
+
+    expect(screen.getByText('PRs merged this week')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('renders a percentage and a raw count per repo, in configured order', async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO);
+
+    render(<PrRatio />);
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay33%(3)', 'Alfred67%(6)']);
+  });
+
+  it('names the week by the days it actually covers (the exclusive end reads as Sunday)', async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO);
+
+    render(<PrRatio />);
+
+    expect(await screen.findByText(/Jul 20 – Jul 26/)).toBeInTheDocument();
+    expect(screen.getByText(/9 total/)).toBeInTheDocument();
+  });
+
+  it("spells the split out in the bar's accessible label", async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO);
+
+    render(<PrRatio />);
+
+    expect(
+      await screen.findByRole('img', {
+        name: 'RealPlay 33 percent, 3 pull requests; Alfred 67 percent, 6 pull requests',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('reports a zero-PR week as a normal state rather than an empty or NaN bar', async () => {
+    mockGetPrRatio.mockResolvedValue({
+      ...RATIO,
+      total: 0,
+      repos: RATIO.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
+    });
+
+    render(<PrRatio />);
+
+    expect(await screen.findByText('No PRs merged yet this week.')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('shows a muted line when the counts could not be loaded', async () => {
+    mockGetPrRatio.mockRejectedValue(new Error('502 GitHub request failed'));
+
+    render(<PrRatio />);
+
+    expect(await screen.findByText("Couldn't load PR counts.")).toBeInTheDocument();
+  });
+
+  it('renders NOTHING when the deployment reports the feature unconfigured', async () => {
+    mockGetPrRatio.mockResolvedValue(undefined);
+
+    const { container } = render(<PrRatio />);
+
+    await waitFor(() => {
+      expect(container).toBeEmptyDOMElement();
+    });
+  });
+
+  it("evaluates the week in the browser's own timezone", async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO);
+
+    render(<PrRatio />);
+
+    await screen.findByRole('img');
+    expect(mockGetPrRatio).toHaveBeenCalledWith(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  });
+});

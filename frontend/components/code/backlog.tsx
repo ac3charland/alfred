@@ -4,6 +4,7 @@ import { GitBranch } from 'lucide-react';
 import * as React from 'react';
 
 import { BacklogList } from '@/components/code/backlog/backlog-list';
+import { PrRatio } from '@/components/code/pr-ratio';
 import { StatusFilterMenu } from '@/components/code/status-filter-menu';
 import { useStatusFilter } from '@/lib/hooks/use-status-filter';
 import { ALL_FACTORY_STATES, DEFAULT_BACKLOG_STATUSES, useBacklog } from '@/lib/stores/code-store';
@@ -18,6 +19,9 @@ import { ALL_FACTORY_STATES, DEFAULT_BACKLOG_STATUSES, useBacklog } from '@/lib/
  *   **Filter by status** dropdown (multi-select checkboxes, one per factory state) that controls
  *   which statuses are listed. It defaults to the outstanding states, so `done`/`abandoned` are
  *   hidden until the owner checks them.
+ * - **Ratio card:** `PrRatio` — this week's merged-PR split across the configured repos. An
+ *   ornament, never a gate: it renders nothing at all on a deployment that hasn't configured
+ *   it, so the rest of the view is unaffected.
  * - **List:** the shared `BacklogList` renders one `BacklogRow` per story, ranked by global
  *   `priority`, with the chevron reorder/move controls (see `BacklogList` / `BacklogRow`).
  *
@@ -50,6 +54,8 @@ export function Backlog() {
           isFiltering={isFiltering}
         />
       </div>
+
+      <PrRatio />
 
       <BacklogList
         stories={stories}
