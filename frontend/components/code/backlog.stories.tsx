@@ -38,6 +38,10 @@ const EPICS: Epic[] = [
     ref_number: 1,
     ref: 'ALF-1',
     archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     created_at: '2025-01-01T00:00:00Z',
   },
   {
@@ -48,6 +52,10 @@ const EPICS: Epic[] = [
     ref_number: 1,
     ref: 'RLP-1',
     archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     created_at: '2025-01-02T00:00:00Z',
   },
 ];
@@ -89,6 +97,7 @@ function story(
     epic_name: epic?.name ?? 'Epic',
     epic_ref: epic?.ref ?? 'ALF-1',
     epic_archived_at: null,
+    epic_spec_path: null,
     priority,
   };
 }
@@ -133,6 +142,10 @@ const PALETTE = PALETTE_SEED.map(([name, key, repo, factoryState, title], index)
     ref_number: 1,
     ref: `${key}-1`,
     archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     created_at: createdAt,
   };
   const codeStory: CodeStory = {
@@ -162,6 +175,7 @@ const PALETTE = PALETTE_SEED.map(([name, key, repo, factoryState, title], index)
     epic_name: epic.name,
     epic_ref: epic.ref,
     epic_archived_at: null,
+    epic_spec_path: null,
     priority: index + 1,
   };
   return { project, epic, codeStory };

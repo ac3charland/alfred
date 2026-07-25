@@ -26,6 +26,10 @@ const EPICS: Epic[] = [
     ref_number: 1,
     ref: 'ALF-1',
     archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     created_at: '2025-01-01T00:00:00Z',
   },
   {
@@ -36,6 +40,10 @@ const EPICS: Epic[] = [
     ref_number: 2,
     ref: 'ALF-2',
     archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
     created_at: '2025-01-02T00:00:00Z',
   },
 ];
@@ -74,6 +82,7 @@ function story(
     epic_name: epicId === 'e1' ? 'Communication Firewall' : 'Capture Pipeline',
     epic_ref: epicId === 'e1' ? 'ALF-1' : 'ALF-2',
     epic_archived_at: null,
+    epic_spec_path: null,
     priority: 1,
   };
 }

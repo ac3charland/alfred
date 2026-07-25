@@ -111,6 +111,12 @@ export function makeEpic(name: string, overrides: Partial<Epic> = {}): Epic {
     ref_number: refNumber,
     ref: overrides.ref ?? `ALF-${String(refNumber)}`,
     archived_at: overrides.archived_at ?? null,
+    // The epic-spec columns the Worker writes; a seeded epic carries them only when the test
+    // is exercising an already-refined epic.
+    spec_path: overrides.spec_path ?? null,
+    spec_sha: overrides.spec_sha ?? null,
+    spec_markdown: overrides.spec_markdown ?? null,
+    refinement_pr_url: overrides.refinement_pr_url ?? null,
   };
 }
 
