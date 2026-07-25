@@ -135,6 +135,10 @@ export type Database = {
           project_id: string
           ref: string
           ref_number: number
+          refinement_pr_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
         }
         Insert: {
           archived_at?: string | null
@@ -145,6 +149,10 @@ export type Database = {
           project_id: string
           ref: string
           ref_number: number
+          refinement_pr_url?: string | null
+          spec_markdown?: string | null
+          spec_path?: string | null
+          spec_sha?: string | null
         }
         Update: {
           archived_at?: string | null
@@ -155,6 +163,10 @@ export type Database = {
           project_id?: string
           ref?: string
           ref_number?: number
+          refinement_pr_url?: string | null
+          spec_markdown?: string | null
+          spec_path?: string | null
+          spec_sha?: string | null
         }
         Relationships: [
           {
@@ -412,6 +424,7 @@ export type Database = {
           epic_id: string | null
           epic_name: string | null
           epic_ref: string | null
+          epic_spec_path: string | null
           factory_state:
             | Database["public"]["Enums"]["code_factory_state"]
             | null
@@ -548,6 +561,10 @@ export type Database = {
           project_id: string
           ref: string
           ref_number: number
+          refinement_pr_url: string | null
+          spec_markdown: string | null
+          spec_path: string | null
+          spec_sha: string | null
         }
         SetofOptions: {
           from: "*"
