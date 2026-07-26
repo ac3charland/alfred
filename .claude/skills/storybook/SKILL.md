@@ -398,7 +398,9 @@ to the border box** — a `ring`/`box-shadow`/`outline` drawn *outside* the elem
 `ring-2 ring-offset-1`) gets cut off. Wrap the story in a small **padded** frame
 (`inline-flex p-3`) and screenshot the frame so the focus ring stays inside the capture.
 See the `withVisualFrame` decorator + `VISUAL_TARGET` in
-`frontend/components/atoms/visual-test.tsx`.
+`frontend/components/atoms/visual-test.tsx`. When the target *must* be large (a whole modal or
+screen), the threshold can't see a lone control **resize** either — a close button growing
+24px → 44px moved ~0.7% and passed green; pin that with a Playwright `boundingBox()` assertion.
 
 **Skip the autodocs Docs entry.** `tags: ['autodocs']` generates a separate `*--docs`
 entry that renders every story at once. Guard `postVisit` with
