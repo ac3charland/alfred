@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-137 — Mark stories as not needing refinement</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 170px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  @media (max-width: 560px) { .decision { grid-template-columns: 1fr; gap: .1rem; } .decision dd { margin-bottom: .6rem; } }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "\2610"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  .mock {
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    margin: 1rem 0; background: var(--card); font-size: .82rem;
+  }
+  .mock-bar {
+    display: flex; align-items: center; gap: .6rem; padding: .5rem .8rem;
+    border-bottom: 1px solid var(--line); background: var(--bg); font-weight: 600;
+  }
+  .mock-body { padding: .9rem; }
+  .mock-field { margin-bottom: .7rem; }
+  .mock-input {
+    border: 1px solid var(--line); border-radius: 6px; padding: .35rem .55rem;
+    background: var(--bg); color: var(--faint); font-size: .78rem;
+  }
+  .mock-check { display: flex; align-items: flex-start; gap: .5rem; }
+  .mock-box {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border: 1px solid var(--accent); border-radius: 3px;
+    color: var(--accent); font-size: .7rem; line-height: 1; margin-top: .15rem; flex: none;
+  }
+  .mock-btn {
+    display: inline-block; border-radius: 6px; padding: .25rem .7rem; font-size: .78rem;
+    border: 1px solid var(--accent); color: var(--bg); background: var(--accent); font-weight: 600;
+  }
+  .mock-btn.ghost { background: none; color: var(--muted); border-color: var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-137 — Mark stories as not needing refinement</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Code module</span>
+    <span class="pill">DB · API · Store · UI</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    A code story enters the factory at <code>needs_refinement</code> and the only way out today,
+    short of actually refining it, is the <strong>“Skip to Development”</strong> chip
+    (<code class="filelabel">frontend/lib/code/launch.ts</code>, the <code>bypass</code> phase).
+    That chip is a <em>launch</em> action: it writes <code>factory_state = 'in_development'</code>
+    <strong>and opens a Claude Code tab in the same click</strong>.
+  </p>
+  <p>
+    So the decision <em>“this one doesn't need a spec”</em> is welded to the act
+    <em>“start building it right now.”</em> You cannot triage a batch of small stories as
+    dev-ready on Sunday and pick them up on Tuesday — every skip drags a browser tab with it.
+    Worse, the judgement leaves <strong>no trace</strong>: nothing on the row distinguishes
+    “deliberately skipped” from “not refined yet”, so a future automated dispatcher has no
+    column to query and, on any state revert, the intent is simply gone.
+  </p>
+  <p>
+    This ticket separates the two. A story gains a persisted
+    <strong><code>requires_refinement</code></strong> flag that can be set at creation or flipped
+    later; clearing it parks the story in <strong>Ready for Dev</strong> with no tab opened. The
+    “Skip to Development” chip stays exactly as it is for the impulse path — it just also records
+    the flag now, so both routes leave the same durable mark.
+  </p>
+
+  <h3>1.1 The latent bug this also fixes</h3>
+  <p>
+    <code>ready_for_dev</code> currently <em>assumes</em> a merged spec — its launch builds
+    <code>buildImplementationUrl</code>, whose prompt opens with
+    <em>“Implement the merged spec committed at <code>&lt;path&gt;</code> — read it first”</em>,
+    falling back to a <strong>conventional path</strong> when <code>spec_path</code> is null
+    (<code class="filelabel">frontend/lib/code/links.ts:272–299</code>). That assumption is already
+    false today: the Worker reverts a closed-unmerged implementation PR to <code>ready_for_dev</code>
+    (<code class="filelabel">workers/src/transitions.ts:122</code>), so a story that was
+    <em>bypassed</em> and whose PR got closed lands in a state it never passed through, with no spec
+    — and its next launch tells the agent to read a file that does not exist.
+  </p>
+  <p>
+    Making the mark land stories in <code>ready_for_dev</code> would multiply that bug, so the fix
+    is in scope: <strong>the development launch picks its prompt from whether a spec actually
+    exists</strong>, not from the state alone (§7).
+  </p>
+
+  <h2>2 · Decisions locked during refinement</h2>
+  <dl class="decision">
+    <dt>What the mark does</dt>
+    <dd><strong>Moves the story to <code>ready_for_dev</code>, opens nothing.</strong> It sits in
+      the Ready for Dev lane showing the normal <em>Implement in Claude Code</em> button, fired
+      whenever the human (or, later, the factory) is ready.</dd>
+    <dt>Persistence</dt>
+    <dd><strong>A real column</strong> — <code>code_items.requires_refinement boolean not null
+      default true</code>. Survives state reverts, is queryable by a future dispatcher, and is what
+      the UI and the prompt-selection read.</dd>
+    <dt>Entry points</dt>
+    <dd><strong>Two:</strong> a <em>Needs refinement</em> checkbox in the New Story dialog (checked
+      by default), and a toggle on an existing story in the detail modal.</dd>
+    <dt>Prompt selection</dt>
+    <dd><strong>Fixed here.</strong> A <code>ready_for_dev</code> story with no committed spec
+      launches the existing SKIP-REFINEMENT (<code>bypass</code>) prompt instead of the
+      spec-reading implementation prompt.</dd>
+    <dt>Not doing</dt>
+    <dd>The <strong>gate dialog</strong> (Send to Code module / Convert to Code Story) does
+      <em>not</em> get the toggle — those items land at <code>needs_refinement</code> as they do
+      today and can be marked afterwards from the modal (§12).</dd>
+  </dl>
+
+  <h2>3 · The shape of the change</h2>
+
+  <div class="scroll">
+  <svg viewBox="0 0 940 300" role="img" aria-labelledby="flow-title">
+    <title id="flow-title">Three routes out of Needs Refinement and the prompt each one yields</title>
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+      </marker>
+    </defs>
+    <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="12.5" color="#8a94a0">
+
+      <!-- Needs Refinement -->
+      <rect x="14" y="118" width="150" height="52" rx="8" fill="none" stroke="#0d7d7d" stroke-width="1.6"/>
+      <text x="89" y="140" text-anchor="middle" fill="#0d7d7d" font-weight="600">Needs Refinement</text>
+      <text x="89" y="157" text-anchor="middle" fill="#8a94a0" font-size="11">requires_refinement = true</text>
+
+      <!-- Route A: refine -->
+      <path d="M 164 130 L 230 130 L 230 46 L 292 46" fill="none" stroke="#8a94a0" stroke-width="1.4" marker-end="url(#ar)"/>
+      <rect x="296" y="24" width="140" height="44" rx="8" fill="none" stroke="#8a94a0" stroke-width="1.4"/>
+      <text x="366" y="51" text-anchor="middle" fill="#5c6672">In Refinement</text>
+      <path d="M 436 46 L 544 46" fill="none" stroke="#8a94a0" stroke-width="1.4" marker-end="url(#ar)"/>
+      <text x="490" y="38" text-anchor="middle" fill="#8a94a0" font-size="10.5">spec PR merges</text>
+      <rect x="548" y="16" width="176" height="60" rx="8" fill="none" stroke="#8a94a0" stroke-width="1.4"/>
+      <text x="636" y="38" text-anchor="middle" fill="#5c6672" font-weight="600">Ready for Dev</text>
+      <text x="636" y="55" text-anchor="middle" fill="#8a94a0" font-size="11">spec_path = docs/specs/…</text>
+      <path d="M 724 46 L 776 46" fill="none" stroke="#8a94a0" stroke-width="1.4" marker-end="url(#ar)"/>
+      <text x="782" y="43" fill="#5c6672" font-size="11.5">Implementation</text>
+      <text x="782" y="57" fill="#5c6672" font-size="11.5">prompt</text>
+
+      <!-- Route B: the new mark -->
+      <path d="M 164 144 L 544 144" fill="none" stroke="#0d7d7d" stroke-width="1.8" marker-end="url(#ar)"/>
+      <text x="352" y="136" text-anchor="middle" fill="#0d7d7d" font-size="11.5" font-weight="600">NEW · uncheck “Needs refinement” — no tab opens</text>
+      <rect x="548" y="118" width="176" height="60" rx="8" fill="none" stroke="#0d7d7d" stroke-width="1.8"/>
+      <text x="636" y="140" text-anchor="middle" fill="#0d7d7d" font-weight="600">Ready for Dev</text>
+      <text x="636" y="157" text-anchor="middle" fill="#8a94a0" font-size="11">spec_path = null</text>
+      <path d="M 724 148 L 776 148" fill="none" stroke="#0d7d7d" stroke-width="1.6" marker-end="url(#ar)"/>
+      <text x="782" y="145" fill="#0d7d7d" font-size="11.5" font-weight="600">Bypass</text>
+      <text x="782" y="159" fill="#0d7d7d" font-size="11.5" font-weight="600">prompt</text>
+
+      <!-- Route C: existing skip -->
+      <path d="M 164 158 L 230 158 L 230 250 L 544 250" fill="none" stroke="#8a94a0" stroke-width="1.4" marker-end="url(#ar)"/>
+      <text x="390" y="242" text-anchor="middle" fill="#8a94a0" font-size="11.5">existing · “Skip to Development” — opens a tab now</text>
+      <rect x="548" y="228" width="176" height="44" rx="8" fill="none" stroke="#8a94a0" stroke-width="1.4"/>
+      <text x="636" y="255" text-anchor="middle" fill="#5c6672" font-weight="600">In Development</text>
+      <path d="M 724 250 L 776 250" fill="none" stroke="#8a94a0" stroke-width="1.4" marker-end="url(#ar)"/>
+      <text x="782" y="247" fill="#5c6672" font-size="11.5">Bypass</text>
+      <text x="782" y="261" fill="#5c6672" font-size="11.5">prompt</text>
+    </g>
+  </svg>
+  </div>
+  <p class="diagram-cap">
+    Teal is what this ticket adds. Routes B and C both set <code>requires_refinement = false</code>;
+    route C is unchanged apart from that write.
+  </p>
+
+  <h3>3.1 Files touched, at a glance</h3>
+  <table>
+    <tr><th>Layer</th><th>File</th><th>Change</th></tr>
+    <tr><td>DB</td><td><code>database/migrations/&lt;next&gt;_story_requires_refinement.sql</code></td><td><span class="add">new</span> — column, view, RPC</td></tr>
+    <tr><td>Types</td><td><code>frontend/lib/database.types.ts</code></td><td>regenerated (never hand-edited)</td></tr>
+    <tr><td>API</td><td><code>frontend/lib/api/schemas.ts</code></td><td><code>newCodeStorySchema</code> + <code>updateCodeSchema</code> gain the flag</td></tr>
+    <tr><td>API</td><td><code>frontend/app/api/code/route.ts</code>, <code>…/code/[ref]/route.ts</code></td><td>forward the flag to the RPC / the update payload</td></tr>
+    <tr><td>Client</td><td><code>frontend/lib/api-client.ts</code></td><td><code>createCodeStory</code> arg; <code>UpdateCodeStateExtra</code> field</td></tr>
+    <tr><td>Pure</td><td><code>frontend/lib/code/refinement-mark.ts</code></td><td><span class="add">new</span> — where a mark lands the story</td></tr>
+    <tr><td>Pure</td><td><code>frontend/lib/code/links.ts</code></td><td><span class="add">new</span> <code>buildDevelopmentUrl</code> dispatcher</td></tr>
+    <tr><td>Store</td><td><code>frontend/lib/stores/code-store.tsx</code></td><td><code>setRefinementRequired</code>; <code>createStory</code> arg; patch/reconcile the column</td></tr>
+    <tr><td>Store</td><td><code>frontend/lib/tree.ts</code>, <code>frontend/lib/code/status.ts</code></td><td>carry the column through the optimistic + refetch projections</td></tr>
+    <tr><td>UI</td><td><code>frontend/components/code/new-story-dialog.tsx</code></td><td>the checkbox</td></tr>
+    <tr><td>UI</td><td><code>frontend/components/code/story-detail/refinement-mark.tsx</code></td><td><span class="add">new</span> — the modal toggle</td></tr>
+    <tr><td>Worker</td><td><code>workers/src/*</code></td><td><strong>none</strong> — see §8</td></tr>
+  </table>
+
+  <h2>4 · Database</h2>
+  <p>
+    One migration, at <strong>the next available migration number</strong> (take whatever is free
+    when you build this — do not reuse a number from this document), named
+    <code>&lt;next&gt;_story_requires_refinement.sql</code>. Follow the conventions in
+    <code>0002</code>/<code>0020</code>: <code>comment on</code> for the non-obvious column,
+    explicit grants, <code>notify pgrst</code> at the end.
+  </p>
+
+  <h3>4.1 The column</h3>
+<pre><code>alter table code_items
+  add column requires_refinement boolean not null default true;
+
+comment on column code_items.requires_refinement is
+  'False = a human judged this story small/clear enough to build with no spec. Independent of '
+  'factory_state so the intent survives a PR-close revert, and queryable by a future automated '
+  'dispatcher. Cleared by the New Story checkbox, the detail-modal toggle, and the '
+  'Skip to Development launch.';</code></pre>
+  <p class="small">
+    Default <code>true</code> so every existing row keeps today's meaning with no backfill, and so
+    the column reads the same way as the UI label (<em>“Needs refinement”</em>, checked by default).
+  </p>
+
+  <h3>4.2 The board read</h3>
+  <p>
+    Append the column to <code>v_code_stories</code>. Use <code>create or replace</code> — not
+    drop/create — so the view's grants survive (the 0017 lesson recorded in
+    <code>0020</code>), which means the <strong>new column must go last</strong> in the select
+    list. Re-assert the grant idempotently anyway; <code>migration-lint</code>'s
+    <code>view-grant</code> rule expects it.
+  </p>
+<pre><code>create or replace view v_code_stories with (security_invoker = true) as
+  select
+    …every existing column, in its existing order…,
+    c.priority,
+    e.spec_path as epic_spec_path,
+    c.requires_refinement;          -- new column LAST
+
+grant select on v_code_stories to anon, authenticated, service_role;</code></pre>
+
+  <h3>4.3 The creation RPC</h3>
+  <p>
+    <code>create_code_story</code> (added in <code>0004</code>) must accept the flag and land the
+    sidecar in the matching state.
+  </p>
+  <div class="callout">
+    <strong>Do not just add a defaulted 5th parameter.</strong> That creates a <em>second</em>
+    function rather than replacing the first, and PostgREST's existing 4-named-arg call
+    (<code>p_project, p_epic, p_title, p_notes</code>) then matches <em>both</em> candidates —
+    Postgres answers <code>function public.create_code_story(…) is not unique</code> and story
+    creation 500s. <strong>Drop the old signature first</strong>, then create the new one, and
+    re-issue <code>grant execute</code> (grants do not carry across signatures).
+  </div>
+<pre><code>drop function if exists create_code_story(uuid, uuid, text, text);
+
+create or replace function create_code_story(
+  p_project uuid, p_epic uuid, p_title text, p_notes text default null,
+  p_requires_refinement boolean default true
+) returns code_items language plpgsql security invoker as $$
+declare n int; k text; v_item uuid; row code_items;
+begin
+  select key into k from projects where id = p_project;
+  n := next_code_ref(p_project);
+  insert into items (title, notes, item_type)
+  values (p_title, p_notes, 'code')
+  returning id into v_item;
+  insert into code_items (item_id, project_id, epic_id, ref_number, ref,
+                          requires_refinement, factory_state)
+  values (v_item, p_project, p_epic, n, k || '-' || n,
+          p_requires_refinement,
+          case when p_requires_refinement then 'needs_refinement'
+               else 'ready_for_dev' end::code_factory_state)
+  returning * into row;
+  return row;
+end; $$;
+
+grant execute on function create_code_story(uuid, uuid, text, text, boolean)
+  to anon, authenticated, service_role;</code></pre>
+  <p class="small">
+    Only the last two insert columns and the new parameter differ from <code>0004</code>; keep the
+    rest of that body byte-for-byte.
+  </p>
+  <p>
+    <code>enter_code_module</code> and <code>convert_to_code_epic</code> are <strong>unchanged</strong>
+    — the column defaults to <code>true</code>, which is the behaviour the gate already has.
+  </p>
+
+  <h3>4.4 After the migration</h3>
+  <ul>
+    <li>Regenerate <code>frontend/lib/database.types.ts</code> with <code>supabase gen types</code>
+      and commit the raw output verbatim — never hand-edit it.</li>
+    <li>Apply with <code>npm run migrate -w database &lt;N&gt;</code> and commit the appended
+      <code>database/migrations-applied.log</code> line.</li>
+    <li>These two steps need live credentials from the gitignored <code>frontend/.env.local</code>.
+      A sandbox session should write the migration and leave both as an explicit checklist for a
+      local run — see the <code>supabase</code> skill.</li>
+  </ul>
+
+  <h2>5 · API surface</h2>
+  <table>
+    <tr><th>Endpoint</th><th>Change</th></tr>
+    <tr>
+      <td><code>POST /api/code</code></td>
+      <td><code>newCodeStorySchema</code> gains <code>requires_refinement: z.boolean().optional()</code>.
+        The route passes <code>p_requires_refinement</code> to the RPC when present, omitting the
+        arg when absent (the same treatment <code>p_notes</code> already gets, so the SQL default
+        applies). The <strong>gate</strong> shape is untouched — the union must keep rejecting the
+        flag on a <code>gateCodeSchema</code> body.</td>
+    </tr>
+    <tr>
+      <td><code>PATCH /api/code/[ref]</code></td>
+      <td><code>updateCodeSchema</code> gains <code>requires_refinement: z.boolean().optional()</code>;
+        add it to the <code>toUpdatePayload</code> allow-list next to
+        <code>factory_state</code>/<code>blocked_reason</code>/<code>epic_id</code>. Relax the
+        <code>.refine</code> so the flag alone is a valid body (the message becomes
+        <em>“At least one of "factory_state", "epic_id", or "requires_refinement" is required”</em>).</td>
+    </tr>
+  </table>
+  <p>
+    In <code>frontend/lib/api-client.ts</code>: <code>createCodeStory</code> takes a
+    <code>requiresRefinement: boolean</code> argument, and <code>UpdateCodeStateExtra</code> gains
+    <code>requires_refinement?: boolean</code> which <code>updateCodeState</code> forwards when
+    defined — mirroring exactly how <code>blocked_reason</code> is already threaded.
+  </p>
+
+  <h2>6 · Store &amp; the pure helper</h2>
+
+  <h3>6.1 Where a mark lands the story</h3>
+  <p>
+    The state consequence of flipping the flag is small, conditional, and worth unit-testing on its
+    own, so it lives as a pure module beside <code>launch.ts</code> and <code>status.ts</code>:
+    <code class="filelabel">frontend/lib/code/refinement-mark.ts</code>.
+  </p>
+<pre><code>/**
+ * The factory state a refinement-mark change should land the story in — often the state it is
+ * already in. Clearing the mark only fast-forwards a story still sitting at the front of the
+ * lifecycle; re-setting it only undoes that fast-forward, and only while no spec exists.
+ */
+export function refinementMarkTarget(
+  story: Pick&lt;CodeStory, 'factory_state' | 'spec_path'&gt;,
+  requiresRefinement: boolean,
+): CodeFactoryState { … }</code></pre>
+  <table>
+    <tr><th>Current state</th><th><code>spec_path</code></th><th>Mark → <code>false</code></th><th>Mark → <code>true</code></th></tr>
+    <tr><td><code>needs_refinement</code></td><td>—</td><td><span class="add">→ <code>ready_for_dev</code></span></td><td>unchanged</td></tr>
+    <tr><td><code>ready_for_dev</code></td><td><code>null</code></td><td>unchanged</td><td><span class="add">→ <code>needs_refinement</code></span> (undo)</td></tr>
+    <tr><td><code>ready_for_dev</code></td><td>set</td><td>unchanged</td><td>unchanged — a spec exists; do not rewind past it</td></tr>
+    <tr><td>anything else</td><td>—</td><td colspan="2">unchanged — the flag is recorded, the story does not move</td></tr>
+  </table>
+  <p class="small">
+    Marking a story mid-flight (say, in <code>ready_for_review</code>) is therefore harmless: it
+    records the judgement without yanking the card across the board.
+  </p>
+
+  <h3>6.2 The store action</h3>
+  <p>
+    Add <code>setRefinementRequired(ref: string, requiresRefinement: boolean): Promise&lt;void&gt;</code>
+    to <code>CodeActions</code>. It reuses the existing private <code>transitionState</code> helper
+    (<code class="filelabel">code-store.tsx:635</code>) rather than growing a parallel write path:
+  </p>
+<pre><code>await transitionState(
+  ref,
+  refinementMarkTarget(story, requiresRefinement),   // often === story.factory_state
+  { requires_refinement: requiresRefinement },
+  "Couldn't update refinement",
+);</code></pre>
+  <p>
+    <code>transitionState</code> needs three small extensions so the new field rides the existing
+    optimistic machinery: include <code>requires_refinement</code> in the captured
+    <code>rollback</code>, set it on the <code>optimistic</code> patch when
+    <code>extra.requires_refinement !== undefined</code>, and read it back in the
+    <code>reconcile</code> patch alongside <code>factory_state</code>. Sending an unchanged
+    <code>factory_state</code> is a deliberate no-op write — it keeps one code path for both the
+    moving and non-moving cases.
+  </p>
+
+  <h3>6.3 Carrying the column everywhere a story is projected</h3>
+  <p>
+    Four projections define what a <code>CodeStory</code> is made of; the new column has to appear
+    in all four or it will silently vanish on some path:
+  </p>
+  <table>
+    <tr><th>Projection</th><th>Why it matters</th></tr>
+    <tr><td><code>codeItemToStoryPatch</code> <span class="small">(code-store.tsx:415)</span></td>
+        <td>The single sidecar→story mapping shared by optimistic reconcile <em>and</em> the
+          <code>code_items</code> realtime subscription. Omit it and a Worker/second-device write
+          never reaches the board.</td></tr>
+    <tr><td><code>makeOptimisticStory</code> <span class="small">(lib/tree.ts:285)</span></td>
+        <td>Must default to <code>requires_refinement: true</code>. <code>createStory</code>
+          overrides it — and overrides <code>factory_state</code> to <code>ready_for_dev</code>
+          when the box is unchecked — so the optimistic card appears in the <em>right lane</em>
+          immediately, exactly as it already overrides <code>priority</code>.</td></tr>
+    <tr><td><code>codeStoryStatusPatch</code> <span class="small">(lib/code/status.ts)</span></td>
+        <td>The navigation-refetch reconcile. Add the flag to <code>CodeStoryStatus</code> so a
+          mark set elsewhere lands on a story already in the store.</td></tr>
+    <tr><td><code>createStory</code> signature</td>
+        <td><code>createStory(epicId, title, notes, requiresRefinement)</code>; the call site is
+          <code class="filelabel">components/code/board/epic-block.tsx:339</code>.</td></tr>
+  </table>
+
+  <h3>6.4 The existing skip chip also records the mark</h3>
+  <p>
+    In <code>openClaudeSession</code>, the <code>bypass</code> phase writes the flag with its
+    transition — pressing “Skip to Development” <em>is</em> declaring that no refinement is needed,
+    so the two routes must leave identical rows:
+  </p>
+<pre><code>await transitionState(
+  ref,
+  LAUNCH_TARGET_STATE[phase],
+  phase === 'bypass' ? { requires_refinement: false } : {},
+  "Couldn't start session",
+);</code></pre>
+
+  <h2>7 · Launch-prompt selection</h2>
+  <p>
+    Keep <code>launchPhasesFor</code> and <code>LAUNCH_LABELS</code> untouched: a
+    <code>ready_for_dev</code> story still offers one primary <em>Implement in Claude Code</em>
+    button, whether or not a spec exists. Only the <strong>prompt behind it</strong> changes, so add
+    a dispatcher to <code class="filelabel">frontend/lib/code/links.ts</code>:
+  </p>
+<pre><code>/**
+ * The development-launch prompt for a story in `ready_for_dev`: the spec-reading implementation
+ * prompt when a refinement PR actually recorded one, and the SKIP-REFINEMENT prompt when it did
+ * not. `spec_path` is the only honest test — the Worker sets it on refinement-PR merge, so a null
+ * means no committed spec exists, however the story reached this lane (the ALF-137 mark, or the
+ * closed-unmerged revert in workers/src/transitions.ts).
+ */
+export function buildDevelopmentUrl(project: Project, story: CodeStory): string {
+  return story.spec_path === null
+    ? buildBypassUrl(project, story)
+    : buildImplementationUrl(project, story);
+}</code></pre>
+  <p>
+    <code>openClaudeSession</code>'s <code>buildUrlForPhase</code> map then reads
+    <code>implementation: () =&gt; buildDevelopmentUrl(project, story)</code>. The
+    <code>bypass</code> entry keeps calling <code>buildBypassUrl</code> directly.
+  </p>
+  <p class="small">
+    <code>buildImplementationUrl</code> itself is left alone. Its conventional-path fallback for a
+    null <code>spec_path</code> becomes unreachable through the launch path, which is the point —
+    it stays as belt-and-braces for any direct caller.
+  </p>
+
+  <h2>8 · The Worker needs no change</h2>
+  <p>
+    <code>workers/src/transitions.ts</code> stays exactly as it is, and that is a decision, not an
+    omission:
+  </p>
+  <ul>
+    <li>A marked story's PR still carries <code>phase: implementation</code> and no
+      <code>spec-path</code>, which the frontmatter parser already accepts
+      (<code class="filelabel">workers/src/frontmatter.ts:43</code>) and the committed
+      <code>alfred-frontmatter</code> check already tolerates.</li>
+    <li>The <em>closed-unmerged → <code>ready_for_dev</code></em> revert
+      (<code class="filelabel">transitions.ts:122</code>) becomes <strong>correct</strong> under
+      this model: Ready for Dev is precisely where a no-spec story belongs, and §7 now gives it the
+      right prompt.</li>
+    <li>The Worker never writes <code>requires_refinement</code>. The flag is a human judgement; PR
+      events describe progress, not intent.</li>
+  </ul>
+
+  <h2>9 · UI</h2>
+
+  <h3>9.1 New Story dialog</h3>
+  <p>
+    <code class="filelabel">frontend/components/code/new-story-dialog.tsx</code> gains a third
+    field below Notes: a <strong>“Needs refinement”</strong> checkbox, <strong>checked by
+    default</strong>. Build it from the existing <code>CheckboxButton</code> atom +
+    <code>FieldLabel</code> (the atom is a <code>&lt;button&gt;</code>, so give it
+    <code>role="checkbox"</code> and <code>aria-checked</code> — the tests and the e2e both query
+    it by accessible role and name).
+  </p>
+  <p>
+    The <code>DialogDescription</code> is currently hard-coded to
+    <em>“It will be created in ALF-1 at <strong>Needs Refinement</strong>”</em> — make its trailing
+    state <strong>reactive to the checkbox</strong> so the consequence is visible before submitting.
+    <code>onCreateStory</code> becomes
+    <code>(title, notes, requiresRefinement) =&gt; Promise&lt;CodeStory&gt;</code>.
+  </p>
+
+  <div class="mock">
+    <div class="mock-bar">New story in <span style="color:var(--accent)">Software Factory</span></div>
+    <div class="mock-body">
+      <p class="small" style="margin:0 0 .8rem">
+        It will be created in ALF-19 at <span style="color:var(--fg)">Ready for Dev</span>.
+      </p>
+      <div class="mock-field">
+        <div class="small" style="margin-bottom:.2rem">Title</div>
+        <div class="mock-input">Bump the wrangler compat date</div>
+      </div>
+      <div class="mock-field">
+        <div class="small" style="margin-bottom:.2rem">Notes</div>
+        <div class="mock-input" style="padding-bottom:1.4rem">Optional detail…</div>
+      </div>
+      <div class="mock-check" style="margin:.9rem 0 1rem">
+        <span class="mock-box" aria-hidden="true"></span>
+        <span>
+          <span style="font-weight:600">Needs refinement</span><br />
+          <span class="small">Unchecked — creates the story straight in Ready for Dev, with no spec.</span>
+        </span>
+      </div>
+      <div style="text-align:right"><span class="mock-btn ghost">Cancel</span> <span class="mock-btn">Create</span></div>
+    </div>
+  </div>
+
+  <h3>9.2 Story detail modal</h3>
+  <p>
+    A new sub-component <code class="filelabel">frontend/components/code/story-detail/refinement-mark.tsx</code>,
+    rendered in the modal's header action row next to <code>PrimaryAction</code> and the PR links
+    (<code class="filelabel">story-detail-modal.tsx:218–228</code>). Same control as the dialog — a
+    <strong>“Needs refinement”</strong> checkbox — wired to <code>setRefinementRequired</code>, with
+    the pending/rollback handling the sibling <code>ManualControls</code> already models.
+  </p>
+  <ul>
+    <li>Unchecking it on a <code>needs_refinement</code> story moves the card to Ready for Dev
+      behind the modal and swaps the primary button from <em>Refine in Claude Code</em> to
+      <em>Implement in Claude Code</em> — no tab opens.</li>
+    <li>Re-checking it on a spec-less <code>ready_for_dev</code> story undoes that.</li>
+    <li>It is a plain checkbox in every other state, and disabled while a write is in flight.</li>
+    <li>It does <strong>not</strong> go in <code>ManualControls</code> (“Move this story”) — that
+      section is the linear advance/revert stepper, and this is a property of the story, not a hop.</li>
+  </ul>
+
+  <h3>9.3 The story card is unchanged</h3>
+  <p>
+    No third chip. A <code>needs_refinement</code> card keeps its two launch chips; a marked story
+    is visible by virtue of sitting in the Ready for Dev lane, which is the whole point of the
+    mark. A card-level menu is deferred (§12).
+  </p>
+
+  <h2>10 · Tests</h2>
+  <p>
+    Red/green TDD, per <code>CLAUDE.md</code>. Every requirement below is pinned by at least one
+    test; the suites and their conventions are owned by the <code>jest</code>,
+    <code>react-testing-library</code>, <code>storybook</code>, and <code>playwright</code> skills.
+  </p>
+  <table>
+    <tr><th>Suite</th><th>Covers</th></tr>
+    <tr>
+      <td>Unit — <code>lib/code/refinement-mark.test.ts</code> <span class="add">new</span></td>
+      <td>Every row of the §6.1 table, including the two “unchanged” cases and the
+        spec-exists guard.</td>
+    </tr>
+    <tr>
+      <td>Unit — <code>lib/code/links.test.ts</code></td>
+      <td><code>buildDevelopmentUrl</code> picks the bypass prompt when <code>spec_path</code> is
+        null and the implementation prompt when it is set — asserted on the prompt text
+        (<code>SKIP-REFINEMENT</code> vs <em>merged spec</em>), matching the existing
+        <code>buildBypassUrl</code> block's style.</td>
+    </tr>
+    <tr>
+      <td>Unit — <code>lib/code/status.test.ts</code>, <code>lib/tree.test.ts</code></td>
+      <td>The flag survives the refetch projection and defaults <code>true</code> on an optimistic
+        story.</td>
+    </tr>
+    <tr>
+      <td>Unit — <code>lib/stores/code-store.test.tsx</code></td>
+      <td><code>setRefinementRequired</code> patches optimistically, PATCHes flag + target state,
+        reconciles, and rolls <em>both</em> fields back on failure; <code>createStory</code> with
+        the box unchecked lands the optimistic card in <code>ready_for_dev</code>;
+        <code>openClaudeSession(ref,'bypass')</code> now sends <code>requires_refinement:false</code>
+        — this closes the existing coverage gap where <code>bypass</code> was never exercised
+        through the store.</td>
+    </tr>
+    <tr>
+      <td>Unit — <code>lib/api/schemas.test.ts</code>, the two route tests</td>
+      <td>The flag validates on both bodies, is rejected on the gate shape, satisfies the relaxed
+        <code>.refine</code> on its own, and reaches the RPC args / update payload.</td>
+    </tr>
+    <tr>
+      <td>RTL — <code>new-story-dialog.test.tsx</code></td>
+      <td>Checked by default; the description's trailing state follows the box; submitting passes
+        the third argument through.</td>
+    </tr>
+    <tr>
+      <td>RTL — <code>story-detail-modal.test.tsx</code></td>
+      <td>The toggle renders with the story's current value and calls
+        <code>setRefinementRequired</code>; also add the missing Skip-button case for the modal
+        while you are in this file.</td>
+    </tr>
+    <tr>
+      <td>Storybook</td>
+      <td>A <code>ReadyForDevNoSpec</code> story-detail story (unchecked toggle + Implement button)
+        and the new-story dialog's unchecked state. Both surfaces already carry committed image
+        snapshots — capture the diff the gate emits as demo evidence, then approve the new
+        baselines with <code>npm run test:storybook:update -w frontend</code> and commit the
+        regenerated PNGs. Never hand-edit a baseline.</td>
+    </tr>
+    <tr>
+      <td>Playwright — <code>e2e/code-links.spec.ts</code></td>
+      <td>End to end: create a story with <em>Needs refinement</em> unchecked → the card appears in
+        <strong>Ready for Dev</strong>, not Needs Refinement, and <strong>no new tab opened</strong>;
+        open it and click <em>Implement in Claude Code</em> → the launch URL's prompt contains
+        <code>SKIP-REFINEMENT</code> and not <em>merged spec</em>. Follow the existing
+        popup-interception pattern in that file.</td>
+    </tr>
+    <tr>
+      <td>DB integration — <code>database/src/</code> <span class="small">(check:slow)</span></td>
+      <td>Worth one case: calling <code>create_code_story</code> with four named args still resolves
+        after the drop/recreate (the §4.3 ambiguity trap), and with
+        <code>p_requires_refinement := false</code> returns a row at <code>ready_for_dev</code>.</td>
+    </tr>
+  </table>
+
+  <h2>11 · Demo doc</h2>
+  <p>
+    This is a user-visible behavioural change, so it needs a demo doc under
+    <code>docs/demos/&lt;branch-or-feature&gt;/</code>. Author it with the demo CLI and follow the
+    <code>showboat</code> skill for the command set, the folder-per-demo structure that
+    <code>demo-lint</code> enforces, and the evidence-matching rules — that skill stays the source
+    of truth; do not re-derive them here. The evidence that matters:
+  </p>
+  <ul>
+    <li>A screenshot of the New Story dialog with the box unchecked, and of the resulting card
+      sitting in the Ready for Dev lane.</li>
+    <li>A screenshot of the detail-modal toggle, before and after.</li>
+    <li>The Storybook snapshot diff images the gate emits for the two moved baselines (§10).</li>
+    <li>An <code>exec</code> block printing the built development-launch prompt for a spec-less
+      story, so a reviewer can see it says SKIP-REFINEMENT and names no spec file.</li>
+  </ul>
+
+  <h2>12 · Out of scope</h2>
+  <ul>
+    <li><strong>The gate dialog.</strong> Send to Code module / Convert to Code Story keep landing
+      items at <code>needs_refinement</code>; mark them from the modal afterwards.</li>
+    <li><strong>Project- or epic-level defaults</strong> (“this epic never needs refinement”).</li>
+    <li><strong>Automated dispatch.</strong> This ticket only creates the column the future factory
+      will query; nothing consumes it automatically yet.</li>
+    <li><strong>A card-level mark affordance</strong> (a story 3-dot menu). No such menu exists on a
+      story card today, and adding one is its own change.</li>
+    <li><strong>Backfilling the flag</strong> for stories bypassed before this ships. They keep
+      <code>requires_refinement = true</code>; the history is not worth a data migration.</li>
+    <li><strong>Renaming the “Skip to Development” chip.</strong> It keeps its label and its
+      subordinate styling — only its write changes (§6.4).</li>
+  </ul>
+
+  <h2>13 · Open questions</h2>
+  <ul>
+    <li>None blocking. One thing to <em>flag, not block</em> at build time: if the New Story
+      dialog's checkbox ends up feeling like the common case rather than the exception, the default
+      may want to flip — leave that to observed use, and keep the DB default <code>true</code>
+      regardless (the gate and the Worker both rely on it).</li>
+  </ul>
+
+  <h2>14 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li><code>code_items.requires_refinement boolean not null default true</code> exists, is
+      commented, and appears last in <code>v_code_stories</code>; the view's grant is re-asserted.</li>
+    <li><code>create_code_story</code>'s old 4-arg signature is dropped, the 5-arg version is
+      granted, and creating a story with four named args still works (no <em>is not unique</em>
+      error).</li>
+    <li><code>frontend/lib/database.types.ts</code> is regenerated output, not hand-edited, and the
+      applied migration is recorded in <code>database/migrations-applied.log</code>.</li>
+    <li>The New Story dialog shows a <strong>Needs refinement</strong> checkbox, checked by default,
+      and its description states the state the story will be created in.</li>
+    <li>Creating a story with the box <strong>unchecked</strong> lands it in <strong>Ready for
+      Dev</strong> with <code>requires_refinement = false</code> — optimistically and after reload —
+      and opens no tab.</li>
+    <li>The story detail modal offers the same <strong>Needs refinement</strong> toggle; unchecking
+      it on a <code>needs_refinement</code> story moves it to Ready for Dev with no tab, and
+      re-checking it on a spec-less <code>ready_for_dev</code> story moves it back.</li>
+    <li>Toggling the mark on a story in any other state records the flag and does
+      <strong>not</strong> move the card.</li>
+    <li>Toggling never rewinds a story that has a committed <code>spec_path</code>.</li>
+    <li>A failed mark write rolls back both <code>requires_refinement</code> and
+      <code>factory_state</code> and shows an error toast.</li>
+    <li>Launching development on a <code>ready_for_dev</code> story with <code>spec_path = null</code>
+      builds the SKIP-REFINEMENT prompt — no spec path, no archive step — while a story with a
+      recorded <code>spec_path</code> still builds the spec-reading implementation prompt. The
+      button label is <em>Implement in Claude Code</em> in both cases.</li>
+    <li>“Skip to Development” behaves exactly as before <em>and</em> now writes
+      <code>requires_refinement = false</code>.</li>
+    <li>The flag round-trips through the realtime subscription and the navigation refetch, so a
+      change made in another tab reaches the board.</li>
+    <li><code>workers/</code> is unmodified.</li>
+    <li>Root <code>npm run check</code> is green, including <code>migration-lint</code>,
+      <code>demo-lint</code>, the approved Storybook baselines, and the new e2e case.</li>
+    <li>A demo doc exists, reproduces under <code>npm run demo -- verify</code>, and is linked from
+      the PR description.</li>
+  </ul>
+
+</div>
+</body>
+</html>
