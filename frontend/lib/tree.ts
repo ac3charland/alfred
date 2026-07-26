@@ -302,6 +302,7 @@ export function makeOptimisticStory(
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: now,
     code_updated_at: now,
     title: item.title,
