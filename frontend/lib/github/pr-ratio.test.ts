@@ -1,5 +1,5 @@
 import type { PrRatioConfig } from './config';
-import { buildSearchQuery, fetchPrRatio, toPercentages } from './pr-ratio';
+import { buildOtherQuery, buildSearchQuery, fetchPrRatio, toPercentages } from './pr-ratio';
 import type { WeekWindow } from './week';
 
 jest.mock('server-only', () => ({}));
@@ -18,6 +18,9 @@ const CONFIG: PrRatioConfig = {
   authors: ['ac3charland'],
   token: 'ghp_test',
 };
+
+/** No allowlist, so there is nothing to anchor the Other sweep on. */
+const CONFIG_WITHOUT_AUTHORS: PrRatioConfig = { ...CONFIG, authors: [] };
 
 /** One recorded call to the stubbed GitHub search. */
 interface RecordedRequest {
@@ -78,6 +81,30 @@ describe('buildSearchQuery', () => {
   });
 });
 
+describe('buildOtherQuery', () => {
+  it('anchors on the authors and subtracts every measured repo', () => {
+    const query = buildOtherQuery([REALPLAY, ALFRED], WEEK, ['ac3charland', 'claude-bot']);
+
+    expect(query).toContain('is:pr');
+    expect(query).toContain('is:merged');
+    expect(query).toContain(`merged:${WEEK.start}..${WEEK.end}`);
+    expect(query).toContain('author:ac3charland');
+    expect(query).toContain('author:claude-bot');
+    expect(query).toContain('-repo:ac3charland/realplay');
+    expect(query).toContain('-repo:ac3charland/alfred');
+  });
+
+  it('never issues a bare repo: qualifier that would re-count a measured repo', () => {
+    const query = buildOtherQuery([REALPLAY, ALFRED], WEEK, ['ac3charland']);
+
+    expect(query).not.toMatch(/(^| )repo:/);
+  });
+
+  it('is unmeasurable without an author allowlist — the search would span all of GitHub', () => {
+    expect(buildOtherQuery([REALPLAY, ALFRED], WEEK, [])).toBeUndefined();
+  });
+});
+
 describe('toPercentages', () => {
   it('hands the leftover point to the largest remainder so the labels sum to exactly 100', () => {
     // Naive rounding gives 33 + 66 = 99; largest-remainder gives the point to the 2/3 share.
@@ -118,6 +145,7 @@ describe('fetchPrRatio', () => {
     mockSearchResponses([
       { ok: true, totalCount: 3 },
       { ok: true, totalCount: 6 },
+      { ok: true, totalCount: 0 },
     ]);
 
     await expect(fetchPrRatio(CONFIG, WEEK)).resolves.toEqual({
@@ -127,20 +155,63 @@ describe('fetchPrRatio', () => {
         { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 33 },
         { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 67 },
       ],
+      other: { count: 0, percentage: 0 },
     });
   });
 
-  it('issues one authenticated request per repo, asking for a single item', async () => {
+  it('counts the PRs merged outside the configured repos as Other, inside the same 100', async () => {
+    mockSearchResponses([
+      { ok: true, totalCount: 3 },
+      { ok: true, totalCount: 6 },
+      { ok: true, totalCount: 1 },
+    ]);
+
+    const ratio = await fetchPrRatio(CONFIG, WEEK);
+
+    expect(ratio?.total).toBe(10);
+    expect(ratio?.other).toEqual({ count: 1, percentage: 10 });
+    expect(ratio?.repos.map((repo) => repo.percentage)).toEqual([30, 60]);
+    // Other is a segment like any other, so it is inside the sum that must reach exactly 100.
+    const shares = [
+      ...(ratio?.repos ?? []).map((repo) => repo.percentage),
+      ratio?.other?.percentage,
+    ];
+    expect(shares.reduce((sum, share) => (sum ?? 0) + (share ?? 0), 0)).toBe(100);
+  });
+
+  it('omits Other entirely — rather than reporting zero — with no author allowlist', async () => {
     const recorded = mockSearchResponses([
+      { ok: true, totalCount: 3 },
+      { ok: true, totalCount: 6 },
+    ]);
+
+    const ratio = await fetchPrRatio(CONFIG_WITHOUT_AUTHORS, WEEK);
+
+    expect(ratio).not.toHaveProperty('other');
+    expect(ratio?.total).toBe(9);
+    // No third request: an unanchored sweep would have searched all of GitHub.
+    expect(recorded).toHaveLength(2);
+  });
+
+  it('fails the whole call when the Other sweep fails, like any other segment', async () => {
+    mockSearchResponses([{ ok: true, totalCount: 3 }, { ok: true, totalCount: 6 }, { ok: false }]);
+
+    await expect(fetchPrRatio(CONFIG, WEEK)).resolves.toBeUndefined();
+  });
+
+  it('issues one authenticated request per repo plus the Other sweep, asking for a single item', async () => {
+    const recorded = mockSearchResponses([
+      { ok: true, totalCount: 1 },
       { ok: true, totalCount: 1 },
       { ok: true, totalCount: 1 },
     ]);
 
     await fetchPrRatio(CONFIG, WEEK);
 
-    expect(recorded).toHaveLength(2);
+    expect(recorded).toHaveLength(3);
     expect(queryOf(recorded, 0)).toContain('repo:ac3charland/realplay');
     expect(queryOf(recorded, 1)).toContain('repo:ac3charland/alfred');
+    expect(queryOf(recorded, 2)).toContain('-repo:ac3charland/realplay');
 
     const [first] = recorded;
     expect(first?.url.origin).toBe('https://api.github.com');
@@ -170,6 +241,7 @@ describe('fetchPrRatio', () => {
     mockSearchResponses([
       { ok: true, totalCount: 0 },
       { ok: true, totalCount: 0 },
+      { ok: true, totalCount: 0 },
     ]);
 
     await expect(fetchPrRatio(CONFIG, WEEK)).resolves.toEqual({
@@ -179,6 +251,20 @@ describe('fetchPrRatio', () => {
         { repo: 'ac3charland/realplay', label: 'RealPlay', count: 0, percentage: 0 },
         { repo: 'ac3charland/alfred', label: 'Alfred', count: 0, percentage: 0 },
       ],
+      other: { count: 0, percentage: 0 },
     });
+  });
+
+  it('gives Other the whole bar when every merged PR landed outside the configured repos', async () => {
+    mockSearchResponses([
+      { ok: true, totalCount: 0 },
+      { ok: true, totalCount: 0 },
+      { ok: true, totalCount: 4 },
+    ]);
+
+    const ratio = await fetchPrRatio(CONFIG, WEEK);
+
+    expect(ratio?.total).toBe(4);
+    expect(ratio?.other).toEqual({ count: 4, percentage: 100 });
   });
 });
