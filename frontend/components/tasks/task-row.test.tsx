@@ -1012,6 +1012,76 @@ describe('TaskRow', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Overdue-subtask badge (ALF-59) — a red tally of the late work hiding inside a
+  // task, so a collapsed parent still says "something in here is late".
+  // ---------------------------------------------------------------------------
+
+  describe('overdue subtask badge', () => {
+    it('tallies an overdue subtask on the collapsed parent row', () => {
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, due_date: dueForDayOffset(-3) }]);
+      expect(screen.getByLabelText('1 overdue subtask')).toHaveTextContent('1');
+    });
+
+    it('counts overdue subtasks at any depth, not just direct children', () => {
+      // The grandchild is overdue and its parent is not — the root still reports it.
+      renderTasks([
+        BASE_ITEM,
+        CHILD_ITEM,
+        { ...GRANDCHILD_ITEM, due_date: dueForDayOffset(-2) },
+        { ...BASE_ITEM, id: 'item-4', parent_id: 'item-1', due_date: dueForDayOffset(-1) },
+      ]);
+      expect(screen.getByLabelText('2 overdue subtasks')).toHaveTextContent('2');
+    });
+
+    it('renders the tally in the red overdue tone', () => {
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, due_date: dueForDayOffset(-3) }]);
+      expect(screen.getByLabelText('1 overdue subtask')).toHaveClass(
+        'text-accent-red',
+        'border-accent-red/50',
+      );
+    });
+
+    it('stays visible once the parent is expanded', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, due_date: dueForDayOffset(-3) }]);
+      await expandRow(user, 'Write tests');
+      expect(screen.getByLabelText('1 overdue subtask')).toBeInTheDocument();
+    });
+
+    it('ignores a completed subtask, however overdue it is', () => {
+      renderTasks([
+        BASE_ITEM,
+        { ...CHILD_ITEM, due_date: dueForDayOffset(-3), status: 'completed' },
+      ]);
+      expect(screen.queryByLabelText(/overdue subtask/i)).not.toBeInTheDocument();
+    });
+
+    it('ignores a subtask due today — today is not yet late', () => {
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, due_date: todayLocalYMD() }]);
+      expect(screen.queryByLabelText(/overdue subtask/i)).not.toBeInTheDocument();
+    });
+
+    it('renders no tally when every subtask is on time', () => {
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, due_date: dueForDayOffset(5) }]);
+      expect(screen.queryByLabelText(/overdue subtask/i)).not.toBeInTheDocument();
+    });
+
+    it('does not tally the row’s OWN overdue due date — only its subtasks', () => {
+      // The parent is overdue and childless: its red due chip already says so.
+      renderTasks([{ ...BASE_ITEM, due_date: dueForDayOffset(-3) }]);
+      expect(screen.queryByLabelText(/overdue subtask/i)).not.toBeInTheDocument();
+    });
+
+    it('tallies on a subtask row that hides an overdue subtask of its own', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM, { ...GRANDCHILD_ITEM, due_date: dueForDayOffset(-2) }]);
+      await expandRow(user, 'Write tests');
+      // Both the root and the middle row report the single overdue grandchild.
+      expect(screen.getAllByLabelText('1 overdue subtask')).toHaveLength(2);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // formatDueDate — month names, Today/Tomorrow/Yesterday
   // ---------------------------------------------------------------------------
 
