@@ -61,7 +61,7 @@ and the endpoint answers 501 and the card renders nothing; the Backlog is unaffe
 |---|---|---|
 | `GITHUB_TOKEN` | GitHub → fine-grained PAT | **server-only**; needs Pull requests: read (+ Metadata: read) on the measured repos |
 | `PR_RATIO_REPOS` | `owner/name:Label,owner/name:Label` | the measured repos; order is the bar's left-to-right order, `:Label` optional |
-| `PR_RATIO_AUTHORS` | `login,login` | optional allowlist of GitHub logins whose merged PRs count; unset excludes the known dependency bots instead |
+| `PR_RATIO_AUTHORS` | `login,login` | optional allowlist of GitHub logins whose merged PRs count; unset excludes the known dependency bots instead. **Also switches on the "Other" segment** — those logins' merged PRs in every repo outside `PR_RATIO_REPOS`. Without it there is nothing to anchor that search on, so the bar shows only the measured repos |
 
 ### 3. Apply the database schema
 
