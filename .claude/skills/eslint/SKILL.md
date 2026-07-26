@@ -198,6 +198,16 @@ This creates a new array (satisfies `.sort()` mutation concern) using a loop (no
 
 Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.)
 
+**`unicorn/no-array-callback-reference` forbids passing a named function to `.map()`**
+
+A helper that happens to match the callback shape still can't go in bare — `.map()` passes the
+index and array too, so the rule wants the call spelled out. Wrap it in an arrow:
+
+```ts
+peers.map(priorityRank);            // error
+peers.map((peer) => priorityRank(peer));  // fine
+```
+
 **`unicorn/prefer-ternary` on `if/else` with `await`**
 
 When a function has an `if/else` where both branches `await` different things, ESLint's `unicorn/prefer-ternary` wants them collapsed to `await (condition ? a() : b())`. This is valid TypeScript and works:
