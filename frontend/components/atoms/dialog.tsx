@@ -4,6 +4,7 @@ import { type VariantProps, cva } from 'class-variance-authority';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import * as React from 'react';
 
+import { CloseButton } from '@/components/atoms/close-button';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,6 +63,22 @@ const dialogContentVariants = cva(
     },
   },
 );
+
+/**
+ * The modal's "×" dismiss: the Radix `Close` wired (via `asChild`) to the shared
+ * `CloseButton`'s `dialog` presentation, so every modal's close is one control — muted with a
+ * teal focus ring, a ≥44px tap target on mobile, dense again at md+. Sits in the header row
+ * opposite the title; pass `label` when "Close" isn't specific enough for the surface.
+ */
+export function DialogCloseButton({ label = 'Close' }: { label?: string }) {
+  return (
+    <DialogPrimitive.Close asChild>
+      <CloseButton variant="dialog" aria-label={label}>
+        <span aria-hidden="true">×</span>
+      </CloseButton>
+    </DialogPrimitive.Close>
+  );
+}
 
 export interface FormDialogProperties
   extends

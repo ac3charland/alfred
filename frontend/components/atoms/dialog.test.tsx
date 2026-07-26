@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Dialog as DialogPrimitive } from 'radix-ui';
+import type * as React from 'react';
 
 import {
   DialogClose,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogOverlay,
@@ -123,5 +126,57 @@ describe('re-exported dialog parts', () => {
     expect(screen.getByText('Re-exported title')).toBeInTheDocument();
     expect(screen.getByText('Re-exported description')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close me' })).toBeInTheDocument();
+  });
+});
+
+describe('DialogCloseButton', () => {
+  function renderInDialog(node: React.ReactNode) {
+    return render(
+      <FormDialog open onOpenChange={() => {}} aria-describedby={undefined}>
+        <DialogTitle>Dismissable</DialogTitle>
+        {node}
+      </FormDialog>,
+    );
+  }
+
+  it('renders the × dismiss with a default "Close" label', () => {
+    renderInDialog(<DialogCloseButton />);
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(close).toHaveTextContent('×');
+    expect(close).toHaveAttribute('type', 'button');
+  });
+
+  it('accepts a caller-supplied label', () => {
+    renderInDialog(<DialogCloseButton label="Close story" />);
+
+    expect(screen.getByRole('button', { name: 'Close story' })).toBeInTheDocument();
+  });
+
+  it('closes the dialog when clicked (it IS the Radix Close, not a lookalike)', async () => {
+    const onOpenChange = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <FormDialog open onOpenChange={onOpenChange} aria-describedby={undefined}>
+        <DialogTitle>Dismissable</DialogTitle>
+        <DialogCloseButton />
+      </FormDialog>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('carries the shared ≥44px mobile tap target (ALF-138)', () => {
+    renderInDialog(<DialogCloseButton />);
+
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass(
+      'h-11',
+      'w-11',
+      'md:h-auto',
+      'md:w-auto',
+      'md:p-1',
+    );
   });
 });
