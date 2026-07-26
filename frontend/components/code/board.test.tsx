@@ -144,6 +144,24 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
   };
 }
 
+/** Open the board toolbar's mobile ⋯ filter menu. */
+async function openFilterMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Board filters' }));
+  return screen.findByRole('menu');
+}
+
+/**
+ * Dismiss the ⋯ menu (and any open submenu) before asserting on the board. The menu is modal, so
+ * while it's open Radix `aria-hidden`s the rest of the tree and every role-based query behind it
+ * comes back empty — a closed menu is the only honest place to assert the board's state from.
+ */
+async function closeFilterMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.keyboard('[Escape][Escape]');
+  await waitFor(() => {
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+}
+
 function renderBoard(seed: {
   projects?: Project[];
   epics?: Epic[];
@@ -440,6 +458,62 @@ describe('Board', () => {
         expect(screen.queryByRole('region', { name: 'Needs Refinement' })).not.toBeInTheDocument();
       });
       expect(screen.getByText('ALF-gone')).toBeInTheDocument();
+    });
+  });
+
+  // Below `md` the three view filters fold into a single ⋯ menu (ALF-134). The desktop controls
+  // stay in the DOM under jsdom (media queries don't apply), so these drive the menu copies and
+  // assert the board itself reacts — the wiring, not just the toolbar's own callbacks.
+  describe('the mobile ⋯ filter menu', () => {
+    it('reveals abandoned stories from the menu', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-gone', factory_state: 'abandoned' })],
+      });
+
+      expect(screen.queryByText('ALF-gone')).not.toBeInTheDocument();
+
+      const menu = await openFilterMenu(user);
+      await user.click(within(menu).getByRole('menuitemcheckbox', { name: /show abandoned/i }));
+      await closeFilterMenu(user);
+
+      expect(screen.getByText('ALF-gone')).toBeInTheDocument();
+    });
+
+    it('reveals archived epics from the menu', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [
+          makeEpic('e1', { name: 'Active epic' }),
+          makeEpic('e2', { name: 'Old epic', archived_at: '2025-02-01T00:00:00Z' }),
+        ],
+      });
+
+      expect(screen.queryByRole('button', { name: /^old epic/i })).not.toBeInTheDocument();
+
+      const menu = await openFilterMenu(user);
+      await user.click(within(menu).getByRole('menuitemcheckbox', { name: /show archived/i }));
+      await closeFilterMenu(user);
+
+      expect(screen.getByRole('button', { name: /^old epic/i })).toBeInTheDocument();
+    });
+
+    it('hides a swimlane from the menu’s status submenu', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      expect(screen.getByRole('region', { name: 'Needs Refinement' })).toBeInTheDocument();
+
+      await openFilterMenu(user);
+      // Keyboard-driven (Radix portals set pointer-events:none on the body): ↓ lands on the
+      // submenu trigger, → opens it onto its first option, ↵ unchecks it.
+      await user.keyboard('[ArrowDown][ArrowRight][Enter]');
+      await closeFilterMenu(user);
+
+      expect(screen.queryByRole('region', { name: 'Needs Refinement' })).not.toBeInTheDocument();
+      // The remaining lanes are untouched.
+      expect(screen.getByRole('region', { name: 'In Development' })).toBeInTheDocument();
     });
   });
 
