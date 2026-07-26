@@ -84,6 +84,7 @@ function story(
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title,
