@@ -17,6 +17,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: 'Story i1',
@@ -37,17 +38,19 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 }
 
 describe('codeStoryStatusPatch', () => {
-  it('projects the three status fields (factory_state, lane, blocked_reason)', () => {
+  it('projects the four status fields (factory_state, lane, blocked_reason, blocked_from)', () => {
     const story = makeStory({
       factory_state: 'blocked',
       lane: 'local',
       blocked_reason: 'checks failing',
+      blocked_from: 'in_development',
     });
 
     expect(codeStoryStatusPatch(story)).toEqual({
       factory_state: 'blocked',
       lane: 'local',
       blocked_reason: 'checks failing',
+      blocked_from: 'in_development',
     });
   });
 
@@ -61,6 +64,7 @@ describe('codeStoryStatusPatch', () => {
       factory_state: 'in_development',
       lane: 'human',
       blocked_reason: null,
+      blocked_from: null,
     });
   });
 });

@@ -4,6 +4,7 @@ import { jsonError, jsonOk } from '@/lib/api/responses';
 import { updateCodeSchema } from '@/lib/api/schemas';
 import { mapSupabaseError } from '@/lib/api/supabase-errors';
 import { toUpdatePayload } from '@/lib/api/updates';
+import { nextBlockedFrom } from '@/lib/code/blocked';
 import type { CodeItemUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,23 @@ export const PATCH = withSession(
       'blocked_reason',
       'epic_id',
     ]);
+
+    // `blocked_from` — the swimlane a blocked story keeps its card in (ALF-136) — is derived HERE
+    // from the STORED row, never read off the request body: it must describe where the story
+    // actually came from, which only the server can vouch for. Every state transition writes it,
+    // so leaving `blocked` reliably clears the stale origin. An epic-only move skips this
+    // entirely and leaves the column alone.
+    if (input.factory_state !== undefined) {
+      const { data: current } = await supabase
+        .from('code_items')
+        .select('factory_state, blocked_from')
+        .eq('ref', ref)
+        .single();
+      updates.blocked_from = nextBlockedFrom(
+        current ?? { factory_state: null, blocked_from: null },
+        input.factory_state,
+      );
+    }
 
     const { data, error } = await supabase
       .from('code_items')
