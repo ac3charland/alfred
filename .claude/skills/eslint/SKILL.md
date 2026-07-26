@@ -208,6 +208,10 @@ peers.map(priorityRank);            // error
 peers.map((peer) => priorityRank(peer));  // fine
 ```
 
+**`unicorn/consistent-function-scoping` forbids a helper defined inside a `describe`**
+
+A test helper that closes over nothing (a fixture builder, a date-offset formatter) errors with *"Move function 'x' to the outer scope"* when it sits inside a `describe` block — the natural place to put a helper only that block uses. Define it at module scope alongside the file's other fixtures. Only a helper that genuinely closes over a `describe`-local binding may stay nested.
+
 **`unicorn/prefer-ternary` on `if/else` with `await`**
 
 When a function has an `if/else` where both branches `await` different things, ESLint's `unicorn/prefer-ternary` wants them collapsed to `await (condition ? a() : b())`. This is valid TypeScript and works:
