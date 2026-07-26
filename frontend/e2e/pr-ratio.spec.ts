@@ -56,6 +56,17 @@ const RATIO = {
   ],
 };
 
+/** The same week once the Other bucket (ALF-135) is measured and non-empty. */
+const RATIO_WITH_OTHER = {
+  ...RATIO,
+  total: 12,
+  repos: [
+    { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 25 },
+    { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 50 },
+  ],
+  other: { count: 3, percentage: 25 },
+};
+
 test('shows the weekly PR split above the story list', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.route('**/api/code/pr-ratio*', (route) => route.fulfill({ status: 200, json: RATIO }));
@@ -86,6 +97,48 @@ test('shows the weekly PR split above the story list', async ({ page, seed }) =>
   const cardBox = await page.getByText('PRs merged this week').boundingBox();
   const firstRowBox = await page.getByRole('listitem').filter({ hasText: 'ALF-3' }).boundingBox();
   expect(cardBox?.y ?? 0).toBeLessThan(firstRowBox?.y ?? 0);
+});
+
+test('adds an Other entry for the PRs merged outside the configured repos', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await page.route('**/api/code/pr-ratio*', (route) =>
+    route.fulfill({ status: 200, json: RATIO_WITH_OTHER }),
+  );
+
+  await page.goto('/code/backlog');
+
+  const legend = page.getByRole('listitem').filter({ hasText: '%' });
+  await expect(legend).toHaveCount(3);
+  // Other comes last, after the configured repos, and carries its own count.
+  await expect(legend.nth(2)).toContainText('Other');
+  await expect(legend.nth(2)).toContainText('25%');
+  await expect(legend.nth(2)).toContainText('(3)');
+
+  await expect(page.getByText('12 total', { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole('img', {
+      name: 'RealPlay 25 percent, 3 pull requests; Alfred 50 percent, 6 pull requests; Other 25 percent, 3 pull requests',
+    }),
+  ).toBeVisible();
+});
+
+test('drops the Other entry when nothing merged outside the configured repos', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await page.route('**/api/code/pr-ratio*', (route) =>
+    route.fulfill({ status: 200, json: { ...RATIO, other: { count: 0, percentage: 0 } } }),
+  );
+
+  await page.goto('/code/backlog');
+
+  const legend = page.getByRole('listitem').filter({ hasText: '%' });
+  await expect(legend).toHaveCount(2);
+  await expect(page.getByText('Other')).toBeHidden();
 });
 
 test('renders the Backlog untouched — no card, no error — when the feature is unconfigured', async ({
