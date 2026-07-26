@@ -25,6 +25,7 @@ record of what an agent just did. Two failure modes live here, and they share a 
 - Authoring a skill as a companion to the refactor that spawned it (frontend-architecture)
 - Annotating a "left out / not done" entry as now-done (data-flow, supabase)
 - "No edit was needed because…" — narrating the wiring just added (backpressure)
+- Forwarding note left behind after centralizing guidance (refinement, epic-refinement)
 - The constructive counterpart: replace-and-shrink (playwright)
 
 ## Supersession note instead of a deletion — storybook (`a55ea86`)
@@ -224,6 +225,24 @@ A workspace `check:slow` may stand up an external service — the `database` pac
 surrounding text already states the fan-out runs every workspace's `check:slow`; the current
 truth is just that a workspace `check:slow` can stand up a service. State the rule, not what
 the change didn't have to touch.
+
+## Forwarding note left behind after centralizing guidance — refinement, epic-refinement
+
+The `htmlpreview` preview-link instruction moved out of the per-repo refinement skills into the
+launch prompt alfred builds. The deletion left a bullet announcing where it had gone.
+
+BEFORE:
+```
+- **The launch prompt itself instructs adding a live `htmlpreview.github.io` preview link** to
+  the PR description whenever the spec is HTML — you don't need to repeat that guidance here;
+  just follow the prompt that opened this session.
+```
+AFTER: *(bullet removed; the surrounding list closes up)*
+
+**Lesson:** deduplicating is a deletion, not a redirect. A pointer to where guidance now lives
+gives the reading agent nothing to act on — it already has the prompt in context — and "you don't
+need to repeat that here" addresses a future *editor*, not the reader. When content moves to a
+single source, the copy just goes.
 
 ## The constructive counterpart: replace-and-shrink — playwright (`a652f2e`)
 
