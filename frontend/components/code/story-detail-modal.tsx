@@ -17,6 +17,7 @@ import { StateChip } from '@/components/code/state-chip';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
 import { PrimaryAction } from '@/components/code/story-detail/primary-action';
+import { PriorityControls } from '@/components/code/story-detail/priority-controls';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
 import type { LaunchPhase } from '@/lib/code/launch';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
@@ -233,7 +234,8 @@ function DetailBody({
         <SpecBody story={story} />
       </div>
 
-      <div className="mt-5 border-t border-border/60 pt-4">
+      <div className="mt-5 flex flex-col gap-5 border-t border-border/60 pt-4">
+        <PriorityControls story={story} />
         <ManualControls story={story} />
       </div>
     </>
@@ -257,13 +259,13 @@ export interface StoryDetailModalProperties {
  * `gate-dialog`, sized up) opened from a board card. Shows the ref + inline-editable title,
  * the Project › Epic breadcrumb, the factory-state chip, notes, the rendered spec (an HTML
  * plan in an isolated frame, or legacy markdown) with a "View in repo" link, PR links, the phase-appropriate
- * "Open Claude Code" launch button, and the manual fallback controls.
+ * "Open Claude Code" launch button, the Backlog priority jumps, and the manual fallback controls.
  *
  * Must be mounted under a `CodeProvider` — it reads `useCodeActions` for the title edit, the
- * move-to-epic dropdown, and the manual transitions, and `useEpics` for the dropdown's
- * candidates. The board owns the open story + the `onOpenSession` handler. The
- * header chip, primary action, spec body, and manual controls are their own sub-components
- * under `code/story-detail/`; this file is the composition root.
+ * move-to-epic dropdown, the priority jumps, and the manual transitions, and `useEpics` for the
+ * dropdown's candidates. The board owns the open story + the `onOpenSession` handler. The
+ * header chip, primary action, spec body, priority controls, and manual controls are their own
+ * sub-components under `code/story-detail/`; this file is the composition root.
  */
 export function StoryDetailModal({
   story,

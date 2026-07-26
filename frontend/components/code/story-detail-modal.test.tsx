@@ -27,6 +27,8 @@ jest.mock('@/lib/api-client');
 const mockUpdateItem = jest.mocked(api.updateItem);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
+const mockMoveCode = jest.mocked(api.moveCode);
+const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
 
 const PROJECT: Project = {
   id: 'p1',
@@ -135,6 +137,25 @@ function renderModal(
   // Portaled content lives on document.body — query the dialog from there (RTL skill).
   const dialog = within(screen.getByRole('dialog'));
   return { ...utils, dialog, onOpenSession };
+}
+
+/** Render the modal with other stories seeded alongside it (for the priority rank flags). */
+function renderModalWithPeers(story: CodeStory, peers: CodeStory[]) {
+  render(
+    <ToastProvider>
+      <CodeProvider
+        initialProjects={[PROJECT]}
+        initialEpics={[EPIC]}
+        initialStories={[story, ...peers]}
+      >
+        <ModalHarness
+          itemId={story.item_id ?? ''}
+          onOpenSession={jest.fn(() => Promise.resolve())}
+        />
+      </CodeProvider>
+    </ToastProvider>,
+  );
+  return within(screen.getByRole('dialog'));
 }
 
 /** Render the modal with a custom set of seeded epics (for the move-to-epic dropdown). */
@@ -514,6 +535,145 @@ describe('StoryDetailModal', () => {
       await waitFor(() => {
         expect(dialog.getByText('Original')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('priority controls', () => {
+    /** The four jump buttons, by accessible name. */
+    const TOP_OF_PROJECT = /top of project/i;
+    const BOTTOM_OF_PROJECT = /bottom of project/i;
+    const TOP_OF_BACKLOG = /top of backlog/i;
+    const BOTTOM_OF_BACKLOG = /bottom of backlog/i;
+
+    beforeEach(() => {
+      // An empty reconcile keeps the optimistic priority — these tests assert the CALL and the
+      // optimistic re-rank, not the server's chosen number.
+      mockMoveCode.mockResolvedValue([]);
+      mockMoveCodeInProject.mockResolvedValue([]);
+    });
+
+    it('offers all four Backlog jumps under a Priority heading', () => {
+      const dialog = renderModalWithPeers(makeStory({ priority: 2 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 1 }),
+        makeStory({ item_id: 'i3', ref: 'ALF-44', priority: 3 }),
+      ]);
+
+      expect(dialog.getByRole('heading', { name: /priority/i })).toBeInTheDocument();
+      expect(dialog.getByRole('button', { name: TOP_OF_PROJECT })).toBeEnabled();
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_PROJECT })).toBeEnabled();
+      expect(dialog.getByRole('button', { name: TOP_OF_BACKLOG })).toBeEnabled();
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_BACKLOG })).toBeEnabled();
+    });
+
+    it('disables every jump when the story is the only one in the Backlog', () => {
+      const { dialog } = renderModal(makeStory());
+
+      expect(dialog.getByRole('button', { name: TOP_OF_PROJECT })).toBeDisabled();
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_PROJECT })).toBeDisabled();
+      expect(dialog.getByRole('button', { name: TOP_OF_BACKLOG })).toBeDisabled();
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_BACKLOG })).toBeDisabled();
+    });
+
+    it('disables only the project jump when the story leads its project but another ranks above', () => {
+      const dialog = renderModalWithPeers(makeStory({ priority: 1 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 2 }),
+        makeStory({ item_id: 'i3', ref: 'RLP-1', project_id: 'p2', epic_id: 'e2', priority: 0 }),
+      ]);
+
+      expect(dialog.getByRole('button', { name: TOP_OF_PROJECT })).toBeDisabled();
+      expect(dialog.getByRole('button', { name: TOP_OF_BACKLOG })).toBeEnabled();
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_PROJECT })).toBeEnabled();
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_BACKLOG })).toBeEnabled();
+    });
+
+    it('ranks against outstanding work only — a done story above it does not hold the top slot', () => {
+      const dialog = renderModalWithPeers(makeStory({ priority: 1 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 0, factory_state: 'done' }),
+        makeStory({ item_id: 'i3', ref: 'ALF-44', priority: 2 }),
+      ]);
+
+      // The done story keeps priority 0 but is hidden from the Backlog, so ALF-42 still leads.
+      expect(dialog.getByRole('button', { name: TOP_OF_PROJECT })).toBeDisabled();
+      expect(dialog.getByRole('button', { name: TOP_OF_BACKLOG })).toBeDisabled();
+    });
+
+    it('jumps to the top of the project, calling moveCodeInProject', async () => {
+      const user = userEvent.setup();
+      const dialog = renderModalWithPeers(makeStory({ priority: 2 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 1 }),
+      ]);
+
+      await user.click(dialog.getByRole('button', { name: TOP_OF_PROJECT }));
+
+      // The optimistic re-rank lands instantly, so the button it just satisfied disables.
+      expect(dialog.getByRole('button', { name: TOP_OF_PROJECT })).toBeDisabled();
+      expect(mockMoveCode).not.toHaveBeenCalled();
+      // Only the network SYNC is debounced, so the call lands after a short delay.
+      await waitFor(() => {
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-42', true);
+      });
+    });
+
+    it('jumps to the bottom of the project, calling moveCodeInProject', async () => {
+      const user = userEvent.setup();
+      const dialog = renderModalWithPeers(makeStory({ priority: 1 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 2 }),
+      ]);
+
+      await user.click(dialog.getByRole('button', { name: BOTTOM_OF_PROJECT }));
+
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_PROJECT })).toBeDisabled();
+      expect(mockMoveCode).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(mockMoveCodeInProject).toHaveBeenCalledWith('ALF-42', false);
+      });
+    });
+
+    it('jumps to the top of the whole Backlog, calling moveCode', async () => {
+      const user = userEvent.setup();
+      const dialog = renderModalWithPeers(makeStory({ priority: 2 }), [
+        makeStory({ item_id: 'i3', ref: 'RLP-1', project_id: 'p2', epic_id: 'e2', priority: 1 }),
+      ]);
+
+      await user.click(dialog.getByRole('button', { name: TOP_OF_BACKLOG }));
+
+      expect(dialog.getByRole('button', { name: TOP_OF_BACKLOG })).toBeDisabled();
+      expect(mockMoveCodeInProject).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-42', true);
+      });
+    });
+
+    it('jumps to the bottom of the whole Backlog, calling moveCode', async () => {
+      const user = userEvent.setup();
+      const dialog = renderModalWithPeers(makeStory({ priority: 1 }), [
+        makeStory({ item_id: 'i3', ref: 'RLP-1', project_id: 'p2', epic_id: 'e2', priority: 2 }),
+      ]);
+
+      await user.click(dialog.getByRole('button', { name: BOTTOM_OF_BACKLOG }));
+
+      expect(dialog.getByRole('button', { name: BOTTOM_OF_BACKLOG })).toBeDisabled();
+      expect(mockMoveCodeInProject).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-42', false);
+      });
+    });
+
+    it('coalesces a burst of clicks into ONE network call', async () => {
+      const user = userEvent.setup();
+      const dialog = renderModalWithPeers(makeStory({ priority: 2 }), [
+        makeStory({ item_id: 'i2', ref: 'ALF-43', priority: 1 }),
+        makeStory({ item_id: 'i3', ref: 'ALF-44', priority: 3 }),
+      ]);
+
+      await user.click(dialog.getByRole('button', { name: TOP_OF_BACKLOG }));
+      await user.click(dialog.getByRole('button', { name: BOTTOM_OF_BACKLOG }));
+
+      // The LATEST direction wins; the intermediate jump never reaches the server.
+      await waitFor(() => {
+        expect(mockMoveCode).toHaveBeenCalledWith('ALF-42', false);
+      });
+      expect(mockMoveCode).toHaveBeenCalledTimes(1);
     });
   });
 

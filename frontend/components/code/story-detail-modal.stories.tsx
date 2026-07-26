@@ -79,6 +79,15 @@ const STORY: CodeStory = {
   priority: 1,
 };
 
+/**
+ * Backlog neighbours for {@link STORY} — one ranked above, one below — so the priority jumps
+ * render live rather than uniformly disabled (a lone story already holds every slot).
+ */
+const NEIGHBOURS: CodeStory[] = [
+  { ...STORY, item_id: 'i0', ref: 'ALF-41', title: 'Ship the digest', priority: 0 },
+  { ...STORY, item_id: 'i2', ref: 'ALF-43', title: 'Rate-limit the sender', priority: 2 },
+];
+
 const meta = {
   title: 'Code/StoryDetailModal',
   component: StoryDetailModal,
@@ -90,7 +99,11 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[STORY]}>
+      <CodeProvider
+        initialProjects={[PROJECT]}
+        initialEpics={[EPIC]}
+        initialStories={[STORY, ...NEIGHBOURS]}
+      >
         <Story />
       </CodeProvider>
     ),
@@ -109,11 +122,26 @@ type Story = StoryObj<typeof meta>;
 /**
  * A `ready_for_dev` story open in the modal: ref + inline-editable title, the Project › Epic
  * breadcrumb + state chip, notes, the rendered spec markdown (react-markdown + remark-gfm)
- * with the View-in-repo link, the refinement PR link, the Implement launch button, and the
- * manual fallback controls.
+ * with the View-in-repo link, the refinement PR link, the Implement launch button, the four
+ * Backlog priority jumps, and the manual fallback controls.
  */
 export const ReadyForDev: Story = {
   args: { story: STORY },
+};
+
+/**
+ * The priority jumps when the story already holds every slot — it leads and trails both its own
+ * project and the whole Backlog, so all four buttons are disabled (there is nowhere to jump to).
+ */
+export const PriorityAtBothExtremes: Story = {
+  args: { story: STORY },
+  decorators: [
+    (StoryComponent) => (
+      <CodeProvider initialProjects={[PROJECT]} initialEpics={[EPIC]} initialStories={[STORY]}>
+        <StoryComponent />
+      </CodeProvider>
+    ),
+  ],
 };
 
 /**
