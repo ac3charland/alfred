@@ -316,16 +316,23 @@ npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > fronte
   (`SetofOptions`, `graphql_public`, `__InternalSupabase`). Omit `--schema` so all exposed
   schemas are included.
 
-**No live DB and no Docker-image pulls (a sandbox whose proxy 403s registry blobs)? Generate
-against a local Postgres with the `@supabase/postgres-meta` npm server** — it's the exact
-engine inside the CLI's typegen container, so the output is byte-identical to the committed
-format after the CLI's formatting step:
+**Generate against a local Postgres with the `@supabase/postgres-meta` npm server** — it's
+the exact engine inside the CLI's typegen container, so the output is byte-identical to the
+committed format after the CLI's formatting step. Reach for it when there's no live DB and no
+Docker-image pulls (a sandbox whose proxy 403s registry blobs), **and whenever prod carries
+tables the migrations don't create** — introspecting prod then drags those unrelated tables
+into `database.types.ts`, burying the additive diff. The local cluster is built from
+`database/migrations/` alone, so it yields exactly the repo's schema:
 
 1. Local cluster (server binaries ship in the sandbox): `initdb`/`pg_ctl` **as a non-root
    user** (`useradd pguser` — initdb refuses root), then create the roles + publication the
    migrations expect (`create role anon/authenticated/service_role nologin; create
    publication supabase_realtime;`) and apply `database/migrations/0*.sql` in order with
    `psql -v ON_ERROR_STOP=1` — which also *integration-tests a new migration for real*.
+   Two permission traps: put `PGDATA` under **`pguser`'s own home**, not the agent scratchpad
+   (whose parent dirs `pguser` can't traverse — `pg_ctl` dies with `could not access
+   directory`), and pass `-o '-k <dir>'` to point the socket at a writable path, else startup
+   fails on `could not create lock file "/var/run/postgresql/.s.PGSQL.<port>.lock"`.
 2. Parity stub for the graphql section: `create schema graphql_public;` plus a
    `graphql_public.graphql("operationName" text default null, query text default null,
    variables jsonb default null, extensions jsonb default null) returns jsonb` stub function.
