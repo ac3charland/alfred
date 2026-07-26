@@ -1,15 +1,15 @@
 'use client';
 
-import { Ban, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Ban, ChevronLeft, ChevronRight, CircleCheck } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
 import { TextareaField } from '@/components/atoms/textarea-field';
 import { neighbourState, stateLabel } from '@/components/code/story-detail/state-helpers';
-import { useCodeActions } from '@/lib/stores/code-store';
+import { HAPPY_PATH_STATES, useCodeActions } from '@/lib/stores/code-store';
 import type { CodeFactoryState, CodeStory } from '@/lib/types';
 
-/** The manual fallback controls — Block (with reason), Abandon, Advance/Revert. */
+/** The manual fallback controls — Block (with reason), Unblock, Abandon, Advance/Revert. */
 export function ManualControls({ story }: { story: CodeStory }) {
   const { updateCodeState } = useCodeActions();
   const ref = story.ref;
@@ -20,6 +20,7 @@ export function ManualControls({ story }: { story: CodeStory }) {
 
   const advanceTo = neighbourState(state, 'advance');
   const revertTo = neighbourState(state, 'revert');
+  const unblockTo = story.blocked_from ?? HAPPY_PATH_STATES[0];
 
   const run = async (next: CodeFactoryState, extra?: { blocked_reason?: string | null }) => {
     if (ref === null) return;
@@ -63,6 +64,24 @@ export function ManualControls({ story }: { story: CodeStory }) {
           <ChevronRight size={14} className="ml-1" />
         </Button>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+        {/* Unblock is the way back out (ALF-136). Advance/Revert have no neighbour off the happy
+            path, so without this the only exit from Block was Abandon. It sends the story to the
+            state it was blocked from — `blocked_from`, or the first state for a row blocked before
+            that was recorded — and clears the reason along with it. */}
+        {state === 'blocked' ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => {
+              void run(unblockTo, { blocked_reason: null });
+            }}
+            className="border-amber-500/50 text-amber-400 hover:border-amber-500"
+          >
+            <CircleCheck size={14} className="mr-1" />
+            {`Unblock to ${stateLabel(unblockTo)}`}
+          </Button>
+        ) : null}
         {state === 'blocked' ? null : (
           <Button
             variant="outline"
