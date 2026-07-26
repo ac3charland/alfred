@@ -76,6 +76,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: 'Wire up the webhook',
@@ -108,7 +109,7 @@ function ModalHarness({
 }) {
   const board = useProjectBoard('p1');
   const live = board.activeEpics
-    .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.escapeStories])
+    .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.abandonedStories])
     .find((s) => s.item_id === itemId);
   return (
     <StoryDetailModal
@@ -682,6 +683,7 @@ describe('StoryDetailModal', () => {
       mockUpdateCodeState.mockResolvedValue({
         factory_state: 'in_refinement',
         blocked_reason: null,
+        blocked_from: null,
         updated_at: '2025-02-02T00:00:00Z',
       } as never);
     });
@@ -734,6 +736,48 @@ describe('StoryDetailModal', () => {
 
       // The store's updateCodeState defaults `extra` to {} before calling the api client.
       expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'abandoned', {});
+    });
+
+    // ALF-136: `blocked_from` gives a blocked story somewhere to go back to. Without it, Block
+    // was one-way — Advance/Revert are both disabled off the happy path, so the only exit was
+    // Abandon.
+    describe('Unblock', () => {
+      it('returns the story to the state it was blocked from and clears the reason', async () => {
+        const user = userEvent.setup();
+        const { dialog } = renderModal(
+          makeStory({
+            factory_state: 'blocked',
+            blocked_from: 'in_development',
+            blocked_reason: 'waiting on API',
+          }),
+        );
+
+        await user.click(dialog.getByRole('button', { name: /unblock to in development/i }));
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_development', {
+          blocked_reason: null,
+        });
+      });
+
+      it('falls back to the first state for a story with no recorded origin', async () => {
+        const user = userEvent.setup();
+        const { dialog } = renderModal(makeStory({ factory_state: 'blocked', blocked_from: null }));
+
+        await user.click(dialog.getByRole('button', { name: /unblock to needs refinement/i }));
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'needs_refinement', {
+          blocked_reason: null,
+        });
+      });
+
+      it('is offered only while the story is blocked', () => {
+        const happy = renderModal(makeStory({ factory_state: 'in_development' }));
+        expect(happy.dialog.queryByRole('button', { name: /unblock/i })).not.toBeInTheDocument();
+        happy.unmount();
+
+        const gone = renderModal(makeStory({ factory_state: 'abandoned' }));
+        expect(gone.dialog.queryByRole('button', { name: /unblock/i })).not.toBeInTheDocument();
+      });
     });
   });
 });
