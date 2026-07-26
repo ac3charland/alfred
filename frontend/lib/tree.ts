@@ -8,6 +8,7 @@
  * for folders / projects / epics / code stories).
  */
 import type { CreateItemInput, CreateProjectInput } from '@/lib/api-client';
+import { isDueDateOverdue } from '@/lib/date-utils';
 import { stableSorted } from '@/lib/sort';
 import type { CodeStory, Epic, Folder, Item, Project } from '@/lib/types';
 
@@ -121,6 +122,24 @@ export function countCompletedDescendants(node: ItemNode): number {
   for (const child of node.children) {
     if (child.status === 'completed') count += 1;
     count += countCompletedDescendants(child);
+  }
+  return count;
+}
+
+/**
+ * Count the descendants (any depth) that are **active and past due** — the tally behind a task
+ * row's overdue-subtask badge. Excludes the node itself (its own red due chip already says it's
+ * late) and completed descendants (a finished subtask's lateness is moot). "Overdue" is strictly
+ * before today, matching {@link isDueDateOverdue} and the folder overdue tally — a subtask due
+ * today is not yet late.
+ */
+export function countOverdueDescendants(node: ItemNode): number {
+  let count = 0;
+  for (const child of node.children) {
+    if (child.status === 'active' && child.due_date !== null && isDueDateOverdue(child.due_date)) {
+      count += 1;
+    }
+    count += countOverdueDescendants(child);
   }
   return count;
 }
