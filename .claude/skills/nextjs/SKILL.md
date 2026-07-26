@@ -236,14 +236,17 @@ To keep real URLs but make switching instant, drive navigation with the **native
   augmentation is the only way through.
 
 - **Driving `next dev` from a script: launch it as `node ../node_modules/.bin/next dev`, and
-  clear `.next/cache/fetch-cache` if the run must actually hit the network.** Next 16 allows
+  `rm -rf .next` if the run must actually hit the network.** Next 16 allows
   one dev server per project dir and refuses the next one with "Another next dev server is
   already running" — so an orphan holds the lock and every later server dies. Started via
   `npx`, `$!` is the npx wrapper, and killing it leaves the real server orphaned; launching
   the binary directly makes `$!` the server itself, so the trap actually reaps it.
-  Separately, `fetch(…, { next: { revalidate } })` responses persist in
-  `.next/cache/fetch-cache` **across restarts**, so a re-run is served from disk and never
-  reaches the network (or a stub standing in for it).
+  Separately, `fetch(…, { next: { revalidate } })` responses persist **across restarts**, so a
+  re-run is served from disk and never reaches the network (or a stub standing in for it).
+  Removing only `.next/cache/fetch-cache` does **not** clear them — dev restores the entries
+  and still answers from them, silently. The failure is quiet and easy to misread: the stub
+  never fires, so its recording side-effects are missing and the numbers are a previous run's.
+  Only dropping the whole `.next` directory resets it.
 
 - **A route-handler test that imports a `server-only` module needs `jest.mock('server-only',
   () => ({}))`.** `import 'server-only'` throws outside an RSC context, so the moment a route

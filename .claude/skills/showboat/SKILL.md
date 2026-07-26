@@ -410,6 +410,11 @@ reproducible:
   command's stdout/result, redirect its stderr (`… 2>/dev/null`) in the `exec` block.
 - If a command legitimately changes, re-run `verify --output` and commit the
   refreshed doc.
+- **A green `verify` means "reproducible", not "worked".** A block whose command *failed*
+  reproduces its failure exactly, so `verify` passes on it and a broken capture ships as
+  evidence — `docs/demos/pr-ratio/pr-ratio.md` still carries a `sed: can't read …` in place of
+  the query dump it meant to show. `verify` can't catch this; **read each captured output**
+  and confirm it says what the surrounding prose claims.
 - **Don't put a triple-backtick fenced code block inside a `note`.** Notes are raw
   markdown, so an embedded fence is reparsed as an `exec` block on the next load —
   it injects a stray empty `output` block, and `verify` will then try to *run* that
