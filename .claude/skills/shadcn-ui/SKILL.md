@@ -173,6 +173,18 @@ Use this when:
   this; scope its ref to the whole owning element (e.g. the task row) so the row's own ⋯ trigger
   isn't counted as outside.
 
+- **An open Dropdown/Dialog is modal: it `aria-hidden`s the rest of the page.** Every role-based
+  query behind it comes back empty — in RTL *and* Playwright — so a test that toggles a menu item
+  and then asserts on the page still sees the old state, or worse passes a `queryBy…not.toBeInTheDocument`
+  for the wrong reason. Dismiss the menu first (`[Escape]`, twice when a submenu is open; assert the
+  `menu` role is gone), then assert. Non-role queries (`getByText`) are unaffected, which is what
+  makes the failure look arbitrary.
+
+- **Driving a `DropdownMenuSub` in a test is keyboard-only.** A click opens the submenu but its
+  items don't respond to `user.click` (the portal's `pointer-events: none`). From the open parent
+  menu, `[ArrowDown]` lands on the submenu trigger and `[ArrowRight]` opens it **onto its first
+  option** — no extra `[ArrowDown]` — then `[Enter]` selects.
+
 - **Never** use `space-x-*` or `space-y-*` Tailwind utilities. Use `flex gap-*` instead. The
   `space-*` utilities use a lobotomized-owl selector (`* + *`) that breaks with conditional rendering
   and React fragment children.
