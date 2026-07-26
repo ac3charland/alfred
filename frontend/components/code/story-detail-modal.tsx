@@ -207,11 +207,13 @@ function DetailBody({
             {projectName} <span aria-hidden="true">›</span> <EpicBreadcrumb story={story} />
           </p>
         </div>
+        {/* ≥44px tap target on mobile (its own box, matching the backlog reorder-chevron
+          convention), back to today's compact p-1 hit area at md+. */}
         <DialogClose
           aria-label="Close"
-          className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal md:h-auto md:w-auto md:p-1"
         >
-          <span aria-hidden="true" className="text-lg leading-none">
+          <span aria-hidden="true" className="text-2xl leading-none md:text-lg">
             ×
           </span>
         </DialogClose>

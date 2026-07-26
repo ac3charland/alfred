@@ -179,6 +179,19 @@ describe('StoryDetailModal', () => {
     expect(dialog.getByText('Needs Refinement')).toBeInTheDocument();
   });
 
+  it('gives the close button a ≥44px tap target on mobile, back to compact at md+', () => {
+    const { dialog } = renderModal(makeStory());
+
+    // h-11/w-11 = 44px on mobile; md:h-auto/md:w-auto md:p-1 restores today's compact hit area.
+    expect(dialog.getByRole('button', { name: 'Close' })).toHaveClass(
+      'h-11',
+      'w-11',
+      'md:h-auto',
+      'md:w-auto',
+      'md:p-1',
+    );
+  });
+
   describe('inline title edit', () => {
     it('PATCHes the item and reflects the new title in the store', async () => {
       mockUpdateItem.mockResolvedValue({ title: 'Renamed' } as never);
