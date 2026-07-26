@@ -180,9 +180,11 @@ describe('StoryDetailModal', () => {
   });
 
   it('gives the close button a ≥44px tap target on mobile, back to compact at md+', () => {
+    // The dismiss is the shared DialogCloseButton, so the modal inherits the target rather than
+    // carrying its own copy: h-11/w-11 = 44px on mobile, md:* restores the compact hit area.
     const { dialog } = renderModal(makeStory());
 
-    // h-11/w-11 = 44px on mobile; md:h-auto/md:w-auto md:p-1 restores today's compact hit area.
+
     expect(dialog.getByRole('button', { name: 'Close' })).toHaveClass(
       'h-11',
       'w-11',
