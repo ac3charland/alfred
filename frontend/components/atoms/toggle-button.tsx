@@ -8,10 +8,12 @@ interface ToggleButtonProperties {
   pressed: boolean;
   onToggle: () => void;
   children: React.ReactNode;
+  /** Layout tweaks for the row this toggle sits in (e.g. matching a neighbour's height). */
+  className?: string;
 }
 
 /** A pill toggle (Show archived / blocked filter, Collapse all), styled for the dense dark UI. */
-export function ToggleButton({ pressed, onToggle, children }: ToggleButtonProperties) {
+export function ToggleButton({ pressed, onToggle, children, className }: ToggleButtonProperties) {
   return (
     <button
       type="button"
@@ -23,6 +25,7 @@ export function ToggleButton({ pressed, onToggle, children }: ToggleButtonProper
         pressed
           ? 'border-accent-teal/60 bg-accent-teal/10 text-accent-teal'
           : 'border-border text-muted-foreground hover:text-foreground',
+        className,
       )}
     >
       {children}
