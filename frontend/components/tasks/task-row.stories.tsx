@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { userEvent, within } from 'storybook/test';
 
+import { todayISODate } from '@/lib/date-utils';
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { ItemNode } from '@/lib/tree';
 import type { Project } from '@/lib/types';
@@ -235,6 +236,68 @@ export const WithNotes: Story = {
 export const WithChildren: Story = {
   args: {
     node: { ...BASE_NODE, children: [CHILD_NODE] },
+  },
+};
+
+/**
+ * A parent hiding late work (ALF-59). Its four subtasks cover every rule the red tally follows:
+ * an overdue direct child and an overdue GRANDCHILD both count (the tally spans the whole
+ * subtree, unlike the `completed/total` count beside it); a completed subtask's past-due date
+ * doesn't (a finished subtask can't be late); and one due today doesn't either (today isn't yet
+ * late). So the row reads `1/4` with a red `2`.
+ */
+const OVERDUE_SUBTASK_PARENT: ItemNode = {
+  ...BASE_NODE,
+  children: [
+    { ...CHILD_NODE, due_date: '2020-03-04' },
+    {
+      ...CHILD_NODE,
+      id: 'item-2b',
+      title: 'Collect the source links',
+      sort_order: 1,
+      children: [{ ...GRANDCHILD_NODE, parent_id: 'item-2b', due_date: '2020-01-09' }],
+    },
+    {
+      ...CHILD_NODE,
+      id: 'item-2c',
+      title: 'Pick a working title',
+      sort_order: 2,
+      due_date: '2020-02-20',
+      status: 'completed',
+      completed_at: '2020-02-21T09:00:00Z',
+    },
+    {
+      ...CHILD_NODE,
+      id: 'item-2d',
+      title: 'Book the review slot',
+      sort_order: 3,
+      due_date: todayISODate(),
+    },
+  ],
+};
+
+/** Collapsed — the whole point of the tally: late work you cannot see is still announced. */
+export const WithOverdueSubtasks: Story = {
+  args: {
+    node: OVERDUE_SUBTASK_PARENT,
+  },
+};
+
+/**
+ * The same parent expanded two levels. The tally stays put on every ancestor while the subtask
+ * rows show their own red "Yesterday"/`Mon D` due chips — the parent keeps the running total, and
+ * the middle row reports the one overdue grandchild beneath it.
+ */
+export const OverdueSubtasksExpanded: Story = {
+  args: {
+    node: OVERDUE_SUBTASK_PARENT,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // The root's toggle flips to "Collapse subtasks", so the only "Expand subtasks" left is the
+    // one subtask that has children of its own — click it to reveal the overdue grandchild.
+    await userEvent.click(canvas.getByRole('button', { name: 'Expand subtasks' }));
+    await userEvent.click(await canvas.findByRole('button', { name: 'Expand subtasks' }));
   },
 };
 

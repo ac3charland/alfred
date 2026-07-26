@@ -49,7 +49,13 @@ import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { ItemNode } from '@/lib/tree';
-import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
+import {
+  countOverdueDescendants,
+  getAncestorTitles,
+  getDescendantIds,
+  hasActiveDescendant,
+  isTempId,
+} from '@/lib/tree';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -325,6 +331,9 @@ export function TaskRow({
   // The row's subtask-count badge reads `${completed}/${total}` over the DIRECT subtasks (ALF-67).
   const totalSubtasks = node.children.length;
   const completedSubtasks = node.children.filter((child) => child.status === 'completed').length;
+  // The overdue tally spans the WHOLE subtree (ALF-59), unlike the `completed/total` count beside
+  // it: a late subtask buried three levels down still has to surface on the row you can see.
+  const overdueSubtasks = countOverdueDescendants(node);
   // The checkbox reads as "complete" both for a completed row and during the exit
   // animation, so its fill + check icon appear the instant completion begins.
   const showAsComplete = isCompleted || isCompleting;
@@ -337,6 +346,8 @@ export function TaskRow({
     (isTask && node.due_date !== null) ||
     (isTopLevelTask && recurrenceRule !== null) ||
     (isTask && isPriorityLevel(node.priority)) ||
+    // No `overdueSubtasks` term needed: an overdue descendant implies at least one child, so
+    // `totalSubtasks > 0` already covers every row that can carry the overdue tally.
     totalSubtasks > 0;
 
   // The card boundary is drawn exactly once, at a top-level (depth-0) node, enclosing the row
@@ -894,6 +905,21 @@ export function TaskRow({
                         className={subtaskCountBadgeClass}
                       >
                         {completedSubtasks}/{totalSubtasks}
+                      </Badge>
+                    )}
+
+                    {/* Overdue subtasks — how much of the subtree is already late (ALF-59). A
+                    bare red count, like the folder overdue tally: the number carries the signal
+                    and the `aria-label` names its meaning. Sits last so it reads as a rider on
+                    the subtask count, and stays put when the row expands (the subtask rows'
+                    own red due chips repeat it, but the parent keeps the running total). */}
+                    {overdueSubtasks > 0 && (
+                      <Badge
+                        variant="overdue"
+                        className="font-medium"
+                        aria-label={`${String(overdueSubtasks)} overdue ${overdueSubtasks === 1 ? 'subtask' : 'subtasks'}`}
+                      >
+                        {overdueSubtasks}
                       </Badge>
                     )}
                   </div>
