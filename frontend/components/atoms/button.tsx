@@ -16,6 +16,9 @@ const buttonVariants = cva(
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
         outline:
           'border border-border bg-transparent hover:bg-secondary hover:text-secondary-foreground',
+        // The `outline` trigger while its control is actively filtering — same shape, teal tone.
+        outlineActive:
+          'border border-accent-teal/60 bg-accent-teal/10 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-secondary hover:text-secondary-foreground',
         ghostAccent: 'text-accent-teal hover:bg-accent-teal/10',
