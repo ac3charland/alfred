@@ -28,7 +28,11 @@ export interface RatioRepo {
 export interface PrRatioConfig {
   /** The measured repos, in configured order — which is the bar's left-to-right order. */
   repos: RatioRepo[];
-  /** GitHub logins whose merged PRs count; empty means "anyone but the known bots". */
+  /**
+   * GitHub logins whose merged PRs count; empty means "anyone but the known bots". Also the
+   * anchor for the "Other" bucket — empty leaves that segment unmeasured, since a sweep of
+   * everything outside `repos` needs some qualifier to bound it.
+   */
   authors: string[];
   /** Fine-grained PAT with Pull requests: read on the measured repos. */
   token: string;

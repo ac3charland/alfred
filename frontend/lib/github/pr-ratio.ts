@@ -61,6 +61,34 @@ export function buildSearchQuery(
 }
 
 /**
+ * The search query for merged PRs OUTSIDE the configured repos — the "Other" bucket — or
+ * `undefined` when there is no author allowlist to anchor it on.
+ *
+ * That guard is the whole design constraint: GitHub Search has no "everywhere except these
+ * repos" without an anchoring qualifier, so `-repo:` exclusions alone would sweep the entire
+ * public timeline. The `author:` allowlist is that anchor, which makes the bucket "your merged
+ * PRs elsewhere". Without it the deployment simply doesn't measure Other, and the bar is
+ * exactly what it was before.
+ */
+export function buildOtherQuery(
+  repos: readonly RatioRepo[],
+  week: WeekWindow,
+  authors: readonly string[],
+): string | undefined {
+  if (authors.length === 0) return undefined;
+
+  return [
+    'is:pr',
+    'is:merged',
+    `merged:${week.start}..${week.end}`,
+    ...authors.map((login) => `author:${login}`),
+    // Negated qualifiers are ANDed, so every measured repo is subtracted from the sweep and
+    // no PR can be counted both in its own segment and in Other.
+    ...repos.map((repo) => `-repo:${repo.owner}/${repo.name}`),
+  ].join(' ');
+}
+
+/**
  * Integer percentages summing to exactly 100, via largest-remainder (Hamilton) rounding:
  * floor every share, then hand the leftover points to the largest fractional remainders,
  * ties broken by input order. Naive per-segment rounding produces the classic "33% / 66%"
@@ -90,14 +118,13 @@ export function toPercentages(counts: readonly number[]): number[] {
   return percentages;
 }
 
-/** One repo's merged-PR count for the week, or `undefined` when GitHub wouldn't say. */
+/** One query's merged-PR count, or `undefined` when GitHub wouldn't say. */
 async function countMergedPrs(
-  repo: RatioRepo,
-  week: WeekWindow,
+  searchQuery: string,
   config: PrRatioConfig,
 ): Promise<number | undefined> {
   const query = new URLSearchParams({
-    q: buildSearchQuery(repo, week, config.authors),
+    q: searchQuery,
     // Only `total_count` is read; asking for one item keeps the payload tiny.
     per_page: '1',
   });
@@ -126,22 +153,29 @@ async function countMergedPrs(
 }
 
 /**
- * The week's split across every configured repo, or `undefined` when ANY repo's request
- * failed. Partial results are deliberately discarded: a bar whose segments were counted
- * under different rules is a *wrong* ratio, and showing nothing beats showing that.
+ * The week's split across every configured repo — plus the "Other" bucket for everything
+ * merged outside them, when the config can anchor that sweep — or `undefined` when ANY
+ * request failed. Partial results are deliberately discarded: a bar whose segments were
+ * counted under different rules is a *wrong* ratio, and showing nothing beats showing that.
+ * Other is a segment like any other here, so its failure sinks the call too.
  *
- * The repos are queried in parallel — two sequential round-trips would double the
- * component's time-to-content for no reason.
+ * Every query is issued in parallel — sequential round-trips would multiply the component's
+ * time-to-content for no reason — and Other goes last so it sits at the end of the bar.
  */
 export async function fetchPrRatio(
   config: PrRatioConfig,
   week: WeekWindow,
 ): Promise<PrRatioResponse | undefined> {
-  const counts = await Promise.all(config.repos.map((repo) => countMergedPrs(repo, week, config)));
+  const otherQuery = buildOtherQuery(config.repos, week, config.authors);
+  const queries = config.repos.map((repo) => buildSearchQuery(repo, week, config.authors));
+  if (otherQuery !== undefined) queries.push(otherQuery);
+
+  const counts = await Promise.all(queries.map((query) => countMergedPrs(query, config)));
   if (counts.includes(undefined)) return undefined;
 
   const resolved = counts.map((count) => count ?? 0);
   const percentages = toPercentages(resolved);
+  const otherIndex = config.repos.length;
 
   return {
     week,
@@ -152,5 +186,11 @@ export async function fetchPrRatio(
       count: resolved[index] ?? 0,
       percentage: percentages[index] ?? 0,
     })),
+    ...(otherQuery !== undefined && {
+      other: {
+        count: resolved[otherIndex] ?? 0,
+        percentage: percentages[otherIndex] ?? 0,
+      },
+    }),
   };
 }
