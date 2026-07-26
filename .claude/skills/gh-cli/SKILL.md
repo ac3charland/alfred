@@ -71,6 +71,13 @@ fine, so it looks like it worked. It is **not** applied on every call — a `cre
 body with absolute links has come through untouched — so treat it as a risk to design around,
 never as a state you can infer from one green result.
 
+**Anything in angle brackets is stripped as an HTML tag**, including a prose placeholder —
+`-repo:<each measured repo>` saves as `-repo:`, quietly gutting the sentence. Stripping runs
+**before** markdown parsing, so backticks and fenced code blocks do **not** protect it: a
+`<placeholder>` inside a ` ``` ` fence is gutted just the same. Write placeholders without
+angle brackets (`merged:WEEK`, `merged:…`). A machine-readable fence that contains no angle
+brackets (e.g. the ` ```alfred ` ticket block) comes through intact.
+
 **Fix — link with a root-relative path (no `https://` token to wrap):**
 
 ```text
