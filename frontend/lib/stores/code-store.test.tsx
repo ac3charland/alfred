@@ -19,6 +19,7 @@ import {
   useProjectBoard,
   useProjects,
   useRankedProjects,
+  useStoryRankFlags,
 } from './code-store';
 
 // api-client is the seam the store calls; mock it so tests never hit the network.
@@ -578,6 +579,114 @@ describe('code-store', () => {
         wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }),
       });
       expect(result.current).toEqual([]);
+    });
+  });
+
+  describe('useStoryRankFlags', () => {
+    const epics = [makeEpic('e1', 'p1'), makeEpic('eX', 'p2')];
+
+    /** Read the flags for `story` with the whole seeded set in the store. */
+    function flagsFor(story: CodeStory, stories: CodeStory[]) {
+      const { result } = renderHook(() => useStoryRankFlags(story), {
+        wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }),
+      });
+      return result.current;
+    }
+
+    it('marks a lone story as holding every slot', () => {
+      const only = makeStory('i1', 'e1', 'p1', { priority: 10 });
+      expect(flagsFor(only, [only])).toEqual({
+        isProjectTop: true,
+        isProjectBottom: true,
+        isBacklogTop: true,
+        isBacklogBottom: true,
+      });
+    });
+
+    it('marks a story ranked between peers as holding no slot', () => {
+      const middle = makeStory('i2', 'e1', 'p1', { priority: 20 });
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 10 }),
+        middle,
+        makeStory('i3', 'e1', 'p1', { priority: 30 }),
+      ];
+      expect(flagsFor(middle, stories)).toEqual({
+        isProjectTop: false,
+        isProjectBottom: false,
+        isBacklogTop: false,
+        isBacklogBottom: false,
+      });
+    });
+
+    it('separates the project slot from the whole-Backlog slot', () => {
+      const leader = makeStory('i2', 'e1', 'p1', { priority: 20 });
+      const stories = [
+        // Another project outranks p1's best, and trails p1's worst.
+        makeStory('i1', 'eX', 'p2', { priority: 10 }),
+        leader,
+        makeStory('i3', 'e1', 'p1', { priority: 30 }),
+        makeStory('i4', 'eX', 'p2', { priority: 40 }),
+      ];
+      expect(flagsFor(leader, stories)).toEqual({
+        isProjectTop: true,
+        isProjectBottom: false,
+        isBacklogTop: false,
+        isBacklogBottom: false,
+      });
+    });
+
+    it('ignores done/abandoned peers, which the Backlog hides', () => {
+      const story = makeStory('i2', 'e1', 'p1', { priority: 20 });
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 10, factory_state: 'done' }),
+        story,
+        makeStory('i3', 'e1', 'p1', { priority: 30, factory_state: 'abandoned' }),
+      ];
+      // Both peers keep their priority but are hidden, so `story` leads and trails alone.
+      expect(flagsFor(story, stories)).toEqual({
+        isProjectTop: true,
+        isProjectBottom: true,
+        isBacklogTop: true,
+        isBacklogBottom: true,
+      });
+    });
+
+    it('still ranks a done story against the outstanding work around it', () => {
+      const finished = makeStory('i2', 'e1', 'p1', { priority: 20, factory_state: 'done' });
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { priority: 10 }),
+        finished,
+        makeStory('i3', 'e1', 'p1', { priority: 30 }),
+      ];
+      expect(flagsFor(finished, stories)).toEqual({
+        isProjectTop: false,
+        isProjectBottom: false,
+        isBacklogTop: false,
+        isBacklogBottom: false,
+      });
+    });
+
+    it('treats an unranked story (null priority) as sitting at the bottom', () => {
+      const unranked = makeStory('i2', 'e1', 'p1', { priority: null });
+      const stories = [makeStory('i1', 'e1', 'p1', { priority: 10 }), unranked];
+      expect(flagsFor(unranked, stories)).toEqual({
+        isProjectTop: false,
+        isProjectBottom: true,
+        isBacklogTop: false,
+        isBacklogBottom: true,
+      });
+    });
+
+    it('holds every slot for a null story (the modal before one is chosen)', () => {
+      const { result } = renderHook(() => useStoryRankFlags(null), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories: [] }),
+      });
+      expect(result.current).toEqual({
+        isProjectTop: true,
+        isProjectBottom: true,
+        isBacklogTop: true,
+        isBacklogBottom: true,
+      });
     });
   });
 
