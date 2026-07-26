@@ -2,9 +2,10 @@
 name: git
 description: >
   Covers git CLI workflows in the monorepo: author/committer identity for verified commits,
-  rewriting commit metadata, safe rebase patterns, and the "stale local main" trap.
-  Use when running git rebase, git filter-branch, git push --force, amending commits,
-  or fixing unverified commit warnings from the stop hook.
+  rewriting commit metadata, safe rebase patterns, resolving a conflicting pull so the branch
+  stays rebase-mergeable, and the "stale local main" trap. Use when running git rebase,
+  git merge, git filter-branch, git push --force, amending commits, resolving conflicts with
+  main, or fixing unverified commit warnings from the stop hook.
 ---
 
 # git skill (alfred)
@@ -114,6 +115,27 @@ the current `origin/main`** — so it sees files that exist on `main` but never 
 branch. A green local `check:fast` can therefore still fail CI: tighten a shared type
 (e.g. make an `items` column **required** on `Item`) and a fixture added to `main` by a
 PR that merged after you branched fails `tsc` on the merge, in a file you never touched.
-Before pushing a change that narrows a widely-used type, **`git fetch origin main && git
-merge origin/main`** (or rebase onto it) and re-run `check:fast` so the merge's fallout
-surfaces locally instead of in CI.
+Before pushing a change that narrows a widely-used type, **`git fetch origin main && git rebase
+origin/main`** and re-run `check:fast` so the fallout surfaces locally instead of in CI. Rebase
+rather than merge — see below.
+
+## Resolve a conflicting pull by rebasing, never merging
+
+PRs land via GitHub's **rebase** merge, which replays only **non-merge** commits. Resolve a
+conflict with `git merge origin/main` and the branch becomes un-mergeable: GitHub replays each
+commit's *pre-merge* version into the changed base, hits the very conflict you fixed, and
+auto-merge stalls — your resolution lives only in the merge commit's tree, which is never
+replayed. `git rebase origin/main` puts it in ordinary commits, where it survives.
+
+Check a branch before relying on auto-merge: `git log --merges origin/main..HEAD` must be empty.
+
+To linearize a branch whose resolution is already trapped in a merge commit, don't re-resolve it
+commit by commit — lift the tree you already validated:
+
+```bash
+git checkout -B linearize origin/main
+git checkout <merge-sha> -- .              # the exact validated tree, nothing re-derived
+git diff <merge-sha> --exit-code           # prove it — no output means identical
+# re-commit by concern, then move the branch and:
+git push --force-with-lease -u origin <branch>
+```
