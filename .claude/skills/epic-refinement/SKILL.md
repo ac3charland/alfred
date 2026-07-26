@@ -95,9 +95,6 @@ spec-path: docs/specs/epics/<EPIC-REF>.html
 
 - `alfred-ticket` is the **epic's** ref, and `phase` is **`epic-refinement`** — that phase is what
   routes the Worker at the epic instead of a story. `spec-path` must match the file you wrote.
-- **Add the `htmlpreview.github.io` link** to the rendered spec on this PR's head branch, for the
-  same reason and in the same form the [`refinement`](../refinement/SKILL.md) skill documents (GitHub
-  serves a committed `.html` as raw source, so a reviewer can't otherwise read it).
 - The `alfred-frontmatter` check enforces the block and requires `spec-path` on this phase. Fix the
   description if it's red.
 
