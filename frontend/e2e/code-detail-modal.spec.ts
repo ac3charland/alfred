@@ -18,6 +18,9 @@ const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const EPIC_ID = '22222222-2222-4222-8222-222222222222';
 const EPIC_TWO_ID = '33333333-3333-4333-8333-333333333333';
 const STORY_ITEM_ID = '44444444-4444-4444-8444-444444444444';
+const STORY_TWO_ITEM_ID = '55555555-5555-4555-8555-555555555555';
+const PROJECT_TWO_ID = '66666666-6666-4666-8666-666666666666';
+const OTHER_STORY_ITEM_ID = '77777777-7777-4777-8777-777777777777';
 
 const SPEC_MARKDOWN = [
   '# Allow-list parser spec',
@@ -266,4 +269,95 @@ test('archiving an epic from its header removes it from the active board', async
   // Show archived reveals it again.
   await page.getByRole('button', { name: /show archived/i }).click();
   await expect(page.getByRole('button', { name: /^communication firewall/i })).toBeVisible();
+});
+
+test('re-ranks a story from the modal, in its project and across the whole Backlog', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
+  const otherProject = makeProject('Relay', { id: PROJECT_TWO_ID, key: 'RLP' });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const otherEpic = makeEpic('Routing', {
+    id: EPIC_TWO_ID,
+    project_id: PROJECT_TWO_ID,
+    ref_number: 1,
+    ref: 'RLP-1',
+  });
+  const items = [
+    makeItem('Draft the inbound filter spec', { id: STORY_ITEM_ID, item_type: 'code' }),
+    makeItem('Implement the allow-list parser', { id: STORY_TWO_ITEM_ID, item_type: 'code' }),
+    makeItem('Other project story', { id: OTHER_STORY_ITEM_ID, item_type: 'code' }),
+  ];
+  const codeItems = [
+    makeCodeStory({
+      item_id: STORY_ITEM_ID,
+      project_id: PROJECT_ID,
+      epic_id: EPIC_ID,
+      ref_number: 3,
+      ref: 'ALF-3',
+      priority: 1,
+    }),
+    makeCodeStory({
+      item_id: STORY_TWO_ITEM_ID,
+      project_id: PROJECT_ID,
+      epic_id: EPIC_ID,
+      ref_number: 5,
+      ref: 'ALF-5',
+      priority: 2,
+    }),
+    // Ranked BETTER than every Alfred story, so a project-scoped jump must stop short of it.
+    makeCodeStory({
+      item_id: OTHER_STORY_ITEM_ID,
+      project_id: PROJECT_TWO_ID,
+      epic_id: EPIC_TWO_ID,
+      ref_number: 1,
+      ref: 'RLP-1',
+      priority: 0.5,
+    }),
+  ];
+
+  await seed({ projects: [project, otherProject], epics: [epic, otherEpic], items, codeItems });
+
+  // Open ALF-5's modal through the Backlog row's deep link and take it to the top of ITS PROJECT.
+  await page.goto(`/code/${PROJECT_ID}?story=ALF-5`);
+  const dialog = page.getByRole('dialog');
+  const toTopOfProject = dialog.getByRole('button', { name: /top of project/i });
+  await expect(toTopOfProject).toBeEnabled();
+
+  const moveInProjectSynced = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/code/move-project') && response.request().method() === 'POST',
+  );
+  await toTopOfProject.click();
+  // The optimistic re-rank lands instantly, so the jump it just satisfied disables.
+  await expect(toTopOfProject).toBeDisabled();
+  await moveInProjectSynced;
+
+  // It persisted: ALF-5 now leads Alfred's stories but stays BEHIND the other project's.
+  await page.goto('/code/backlog');
+  const rows = page.getByRole('listitem');
+  await expect(rows.nth(0)).toContainText('RLP-1');
+  await expect(rows.nth(1)).toContainText('ALF-5');
+  await expect(rows.nth(2)).toContainText('ALF-3');
+
+  // Now take it to the top of the WHOLE Backlog, past the other project.
+  await page.goto(`/code/${PROJECT_ID}?story=ALF-5`);
+  const toTopOfBacklog = dialog.getByRole('button', { name: /top of backlog/i });
+  const moveSynced = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/code/move') && response.request().method() === 'POST',
+  );
+  await toTopOfBacklog.click();
+  await expect(toTopOfBacklog).toBeDisabled();
+  await moveSynced;
+
+  await page.goto('/code/backlog');
+  await expect(page.getByRole('listitem').nth(0)).toContainText('ALF-5');
+  await expect(page.getByRole('listitem').nth(1)).toContainText('RLP-1');
 });
