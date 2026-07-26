@@ -1,14 +1,11 @@
 'use client';
 
-import { Archive, Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
-import { Button } from '@/components/atoms/button';
-import { ToggleButton } from '@/components/atoms/toggle-button';
+import { BoardToolbar } from '@/components/code/board/board-toolbar';
 import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic-block';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
-import { StatusFilterMenu } from '@/components/code/status-filter-menu';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
 import { useStatusFilter } from '@/lib/hooks/use-status-filter';
 import { HAPPY_PATH_STATES, useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
@@ -32,6 +29,8 @@ export interface BoardProperties {
  *   distinct card treatment; each epic header badges how many it holds (ALF-136).
  * - **abandoned** stories have no lane to return to, so they stay in a per-epic bucket behind a
  *   *Show abandoned* toggle.
+ * - **The header controls** live in `BoardToolbar`, which owns their responsive shape (the
+ *   view filters fold into a ⋯ menu below `md`); the board keeps the state they act on.
  *
  * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder for
  * now; the detail modal hangs off it.
@@ -143,57 +142,33 @@ export function Board({ projectId }: BoardProperties) {
           <h2 className="font-serif text-2xl text-foreground">{project.name}</h2>
           <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setNewEpicOpen(true);
-            }}
-          >
-            <Plus size={14} />
-            Create epic
-          </Button>
-          {visibleEpics.length > 0 ? (
-            <ToggleButton
-              pressed={false}
-              onToggle={() => {
-                if (allCollapsed) {
-                  openAll();
-                } else {
-                  collapseAll(visibleEpics.map((b) => b.epic.id));
-                }
-              }}
-            >
-              {allCollapsed ? 'Open all' : 'Collapse all'}
-            </ToggleButton>
-          ) : null}
-          <StatusFilterMenu
-            options={HAPPY_PATH_STATES}
-            selected={visibleStates}
-            onToggle={toggleState}
-            isFiltering={isFiltering}
-          />
-          <ToggleButton
-            pressed={showAbandoned}
-            onToggle={() => {
-              setShowAbandoned((on) => !on);
-            }}
-          >
-            Show abandoned
-          </ToggleButton>
-          {archivedEpics.length > 0 ? (
-            <ToggleButton
-              pressed={showArchived}
-              onToggle={() => {
-                setShowArchived((on) => !on);
-              }}
-            >
-              <Archive size={12} />
-              Show archived
-            </ToggleButton>
-          ) : null}
-        </div>
+        <BoardToolbar
+          onCreateEpic={() => {
+            setNewEpicOpen(true);
+          }}
+          hasVisibleEpics={visibleEpics.length > 0}
+          allCollapsed={allCollapsed}
+          onToggleCollapseAll={() => {
+            if (allCollapsed) {
+              openAll();
+            } else {
+              collapseAll(visibleEpics.map((b) => b.epic.id));
+            }
+          }}
+          statusOptions={HAPPY_PATH_STATES}
+          selectedStatuses={visibleStates}
+          onToggleStatus={toggleState}
+          isFiltering={isFiltering}
+          showAbandoned={showAbandoned}
+          onToggleAbandoned={() => {
+            setShowAbandoned((on) => !on);
+          }}
+          hasArchivedEpics={archivedEpics.length > 0}
+          showArchived={showArchived}
+          onToggleArchived={() => {
+            setShowArchived((on) => !on);
+          }}
+        />
       </div>
 
       {hasAnyEpic ? (
