@@ -249,6 +249,7 @@ function newCodeItem(input) {
     refinement_pr_url: input.refinement_pr_url ?? null,
     implementation_pr_url: input.implementation_pr_url ?? null,
     blocked_reason: input.blocked_reason ?? null,
+    blocked_from: input.blocked_from ?? null,
     created_at: input.created_at ?? now,
     updated_at: input.updated_at ?? now,
     // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
@@ -371,6 +372,7 @@ function codeStoryRows() {
       refinement_pr_url: code.refinement_pr_url,
       implementation_pr_url: code.implementation_pr_url,
       blocked_reason: code.blocked_reason,
+      blocked_from: code.blocked_from,
       code_created_at: code.created_at,
       code_updated_at: code.updated_at,
       priority: code.priority,
