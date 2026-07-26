@@ -16,11 +16,9 @@ import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
 import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
 import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
+import { MOVE_SYNC_DEBOUNCE_MS, useMoveBurst } from '@/lib/hooks/use-move-burst';
 import type { ReorderStep } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
-
-/** A chevron burst reorders on screen instantly; only the network sync waits this long. */
-const CHEVRON_DEBOUNCE_MS = 200;
 
 export interface BacklogRowProperties {
   /** The ranked story to render. */
@@ -57,42 +55,6 @@ export interface BacklogRowProperties {
   applyMove: (ref: string, toTop: boolean) => { priorityBefore: number | null } | null;
   /** Sync the latest whole-Backlog jump to the server (the store's `commitMove`). */
   commitMove: (ref: string, toTop: boolean, priorityBefore: number | null) => Promise<void>;
-}
-
-/**
- * The instant-apply + debounced-commit pattern shared by the project-scope and whole-Backlog
- * jump buttons: every click re-ranks the story on screen immediately, but only ONE network call
- * — the LATEST click's direction, rolling back to the burst's ORIGINAL prior priority on failure
- * — goes out once the clicks settle. A jump is idempotent in its direction, so (unlike the
- * neighbour-swap reorder) it never needs to replay earlier clicks in the burst.
- */
-function useMoveBurst(
-  storyRef: string | null,
-  apply: (ref: string, toTop: boolean) => { priorityBefore: number | null } | null,
-  commit: (ref: string, toTop: boolean, priorityBefore: number | null) => Promise<void>,
-): (toTop: boolean) => void {
-  const burstRef = React.useRef<{ toTop: boolean; priorityBefore: number | null } | null>(null);
-
-  const flush = useDebouncedCallback(() => {
-    const burst = burstRef.current;
-    burstRef.current = null;
-    if (burst !== null && storyRef !== null)
-      void commit(storyRef, burst.toTop, burst.priorityBefore);
-  }, CHEVRON_DEBOUNCE_MS);
-
-  return (toTop: boolean) => {
-    if (storyRef === null) return;
-    const applied = apply(storyRef, toTop);
-    if (applied !== null) {
-      // Keep the FIRST click's prior priority for the whole burst — later clicks never reach
-      // the server, so that original is what a failed commit rolls back to.
-      burstRef.current = {
-        toTop,
-        priorityBefore: burstRef.current?.priorityBefore ?? applied.priorityBefore,
-      };
-    }
-    flush();
-  };
 }
 
 /**
@@ -141,7 +103,8 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
     const steps = reorderStepsRef.current;
     reorderStepsRef.current = [];
     if (steps.length > 0) void commitReorder(steps);
-  }, CHEVRON_DEBOUNCE_MS);
+    // The swaps queue rather than coalesce, but they sync on the same window as the jumps.
+  }, MOVE_SYNC_DEBOUNCE_MS);
 
   const reorder = (neighbourRef: string) => {
     if (storyRef === null) return;
