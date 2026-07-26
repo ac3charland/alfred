@@ -184,7 +184,6 @@ describe('StoryDetailModal', () => {
     // carrying its own copy: h-11/w-11 = 44px on mobile, md:* restores the compact hit area.
     const { dialog } = renderModal(makeStory());
 
-
     expect(dialog.getByRole('button', { name: 'Close' })).toHaveClass(
       'h-11',
       'w-11',
