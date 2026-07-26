@@ -126,6 +126,20 @@ describe('EpicSpecModal', () => {
     expect(screen.getByText(/no spec snapshot yet/i)).toBeInTheDocument();
   });
 
+  it('closes via a ≥44px close target on mobile, dense at md+ (ALF-138)', () => {
+    // Same shared DialogCloseButton as the story detail modal — the two close buttons are one
+    // control now, so this modal can't drift back to the old dense-only box.
+    renderModal(makeEpic());
+
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass(
+      'h-11',
+      'w-11',
+      'md:h-auto',
+      'md:w-auto',
+      'md:p-1',
+    );
+  });
+
   it('omits the repo link when the epic’s project is not in the store', () => {
     renderModal(makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html' }), []);
 

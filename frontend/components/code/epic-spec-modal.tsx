@@ -1,6 +1,6 @@
 'use client';
 
-import { DialogClose, DialogTitle, FormDialog } from '@/components/atoms/dialog';
+import { DialogCloseButton, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import { SpecView } from '@/components/code/spec-view';
 import { specBlobUrl } from '@/lib/code/links';
 import { useProjects } from '@/lib/stores/code-store';
@@ -20,14 +20,7 @@ function EpicSpecBody({ epic }: { epic: Epic }) {
           <span className="font-mono text-sm font-medium text-accent-teal">{epic.ref}</span>{' '}
           {epic.name}
         </DialogTitle>
-        <DialogClose
-          aria-label="Close"
-          className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
-        >
-          <span aria-hidden="true" className="text-lg leading-none">
-            ×
-          </span>
-        </DialogClose>
+        <DialogCloseButton />
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto">

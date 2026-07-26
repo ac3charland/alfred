@@ -3,7 +3,7 @@
 import { ChevronDown, Pencil } from 'lucide-react';
 import * as React from 'react';
 
-import { DialogClose, DialogTitle, FormDialog } from '@/components/atoms/dialog';
+import { DialogCloseButton, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -207,16 +207,7 @@ function DetailBody({
             {projectName} <span aria-hidden="true">›</span> <EpicBreadcrumb story={story} />
           </p>
         </div>
-        {/* ≥44px tap target on mobile (its own box, matching the backlog reorder-chevron
-          convention), back to today's compact p-1 hit area at md+. */}
-        <DialogClose
-          aria-label="Close"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal md:h-auto md:w-auto md:p-1"
-        >
-          <span aria-hidden="true" className="text-2xl leading-none md:text-lg">
-            ×
-          </span>
-        </DialogClose>
+        <DialogCloseButton />
       </div>
 
       {/* The primary launch action sits in the header region. */}
