@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { copyToClipboard } from '@/lib/clipboard';
+import { nextBlockedFrom } from '@/lib/code/blocked';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import {
   buildBypassUrl,
@@ -38,8 +39,9 @@ import type { CodeFactoryState, CodeItem, CodeStory, Epic, Project } from '@/lib
  */
 
 // ── The happy-path swimlanes, in board order. ──
-// blocked/abandoned are NOT columns — they surface via a card treatment + filter,
-// so they're excluded from the lane list deliberately.
+// blocked/abandoned are NOT columns of their own: a blocked story keeps its card in the lane it
+// was blocked FROM (see `laneStateFor`), and abandoned sits in a per-epic bucket. Both are marked
+// by a card treatment rather than a column, so they're excluded from the lane list deliberately.
 export const HAPPY_PATH_STATES = [
   'needs_refinement',
   'in_refinement',
@@ -61,9 +63,26 @@ export const STATE_LABELS: Record<HappyPathState, string> = {
   done: 'Done',
 };
 
-/** The off-board escape states — rendered via a card treatment + filter, never a column. */
+/** The off-board escape states — rendered via a card treatment, never a column of their own. */
 export function isEscapeState(state: CodeFactoryState | null): boolean {
   return state === 'blocked' || state === 'abandoned';
+}
+
+/**
+ * The swimlane a story's card belongs in, or `null` for one that belongs in no lane at all
+ * (`abandoned`, and the view's nullable `factory_state`).
+ *
+ * A `blocked` story resolves to the lane it was blocked FROM (ALF-136): blocking is a flag on
+ * work in flight, not a destination, so its card stays put next to the work it is holding up
+ * instead of vanishing into a separate bucket. Rows blocked before `blocked_from` existed carry
+ * no origin — they fall back to the FIRST lane so they stay on the board rather than disappearing.
+ */
+export function laneStateFor(
+  story: Pick<CodeStory, 'factory_state' | 'blocked_from'>,
+): HappyPathState | null {
+  const state = story.factory_state === 'blocked' ? story.blocked_from : story.factory_state;
+  if (state === null) return story.factory_state === 'blocked' ? HAPPY_PATH_STATES[0] : null;
+  return HAPPY_PATH_STATES.find((happy) => happy === state) ?? null;
 }
 
 /**
@@ -116,13 +135,15 @@ export interface BoardLane {
   stories: CodeStory[];
 }
 
-/** One epic on the board: its row plus its swimlanes and any escape-state stories. */
+/** One epic on the board: its row plus its swimlanes and any abandoned stories. */
 export interface BoardEpic {
   epic: Epic;
   /** The 6 happy-path swimlanes, always present and in board order (may be empty). */
   lanes: BoardLane[];
-  /** Stories in `blocked`/`abandoned` — surfaced via the filter toggle, not a lane. */
-  escapeStories: CodeStory[];
+  /** Stories in `abandoned` — surfaced via the Show-abandoned toggle, not a lane. */
+  abandonedStories: CodeStory[];
+  /** How many of this epic's stories are `blocked` — the epic header's badge (ALF-136). */
+  blockedCount: number;
 }
 
 /** The derived board for one project: active epics (with lanes) + the archived ones. */
@@ -425,6 +446,7 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
     refinement_pr_url: row.refinement_pr_url,
     implementation_pr_url: row.implementation_pr_url,
     blocked_reason: row.blocked_reason,
+    blocked_from: row.blocked_from,
     code_created_at: row.created_at,
     code_updated_at: row.updated_at,
     priority: row.priority,
@@ -655,8 +677,14 @@ export function CodeProvider({
       const rollback: Partial<CodeStory> = {
         factory_state: previous.factory_state,
         blocked_reason: previous.blocked_reason,
+        blocked_from: previous.blocked_from,
       };
-      const optimistic: Partial<CodeStory> = { factory_state: factoryState };
+      // Predict the server's `blocked_from` with the same rule the route applies, so the card
+      // lands in (or leaves) the right lane on the optimistic pass rather than after the round-trip.
+      const optimistic: Partial<CodeStory> = {
+        factory_state: factoryState,
+        blocked_from: nextBlockedFrom(previous, factoryState),
+      };
       if (extra.blocked_reason !== undefined) optimistic.blocked_reason = extra.blocked_reason;
       await runOptimisticMutation({
         optimistic: () => {
@@ -670,6 +698,7 @@ export function CodeProvider({
             patch: {
               factory_state: saved.factory_state,
               blocked_reason: saved.blocked_reason,
+              blocked_from: saved.blocked_from,
               code_updated_at: saved.updated_at,
             },
           });
@@ -1321,9 +1350,9 @@ function isBacklogOutstanding(state: CodeFactoryState | null): boolean {
   return state !== 'done' && state !== 'abandoned';
 }
 
-/** Every story under an epic, across all lanes and the escape bucket (for the epic-rank key). */
+/** Every story under an epic, across all lanes and the abandoned bucket (for the epic-rank key). */
 function epicStories(board: BoardEpic): CodeStory[] {
-  return [...board.lanes.flatMap((lane) => lane.stories), ...board.escapeStories];
+  return [...board.lanes.flatMap((lane) => lane.stories), ...board.abandonedStories];
 }
 
 /**
@@ -1350,8 +1379,11 @@ function byEpicRank(a: BoardEpic, b: BoardEpic): number {
 }
 
 /**
- * Group one epic's stories into the 6 happy-path swimlanes + the escape-state bucket. Every lane
- * (and the escape bucket) is sorted by global `priority` so the board reflects the Backlog rank.
+ * Group one epic's stories into the 6 happy-path swimlanes + the abandoned bucket. Every lane
+ * (and the bucket) is sorted by global `priority` so the board reflects the Backlog rank.
+ *
+ * Lane membership goes through `laneStateFor`, not a bare `factory_state` match, so a blocked
+ * story lands in the lane it was blocked from and sorts by priority among its lane-mates.
  */
 function buildEpicBoard(epic: Epic, stories: CodeStory[]): BoardEpic {
   const forEpic = stories.filter((story) => story.epic_id === epic.id);
@@ -1359,17 +1391,18 @@ function buildEpicBoard(epic: Epic, stories: CodeStory[]): BoardEpic {
     state,
     label: STATE_LABELS[state],
     stories: stableSorted(
-      forEpic.filter((story) => story.factory_state === state),
+      forEpic.filter((story) => laneStateFor(story) === state),
       // Done is recency-sorted (latest completion first) to feed its "latest N" collapse (ALF-81);
       // every other lane keeps the global Backlog priority order.
       state === 'done' ? byRecentlyUpdatedDesc : byPriorityAsc,
     ),
   }));
-  const escapeStories = stableSorted(
-    forEpic.filter((story) => isEscapeState(story.factory_state)),
+  const abandonedStories = stableSorted(
+    forEpic.filter((story) => story.factory_state === 'abandoned'),
     byPriorityAsc,
   );
-  return { epic, lanes, escapeStories };
+  const blockedCount = forEpic.filter((story) => story.factory_state === 'blocked').length;
+  return { epic, lanes, abandonedStories, blockedCount };
 }
 
 /**
