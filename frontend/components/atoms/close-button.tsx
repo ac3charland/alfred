@@ -15,6 +15,12 @@ const closeButtonVariants = cva(
         icon: 'p-0.5',
         // A small text-link "Close" (e.g. the inline task meta panel). Children default to "Close".
         text: 'text-xs',
+        // A modal's "×" dismiss (see `DialogCloseButton`). A thumb reaches for this first, so
+        // the REAL box is a ≥44px tap target on mobile — the size the rest of the app's mobile
+        // controls use — with the glyph scaled to match so it isn't lost in the target. At md+
+        // it collapses back to the dense header close pointer devices don't need enlarged.
+        dialog:
+          'inline-flex h-11 w-11 items-center justify-center text-2xl leading-none md:h-auto md:w-auto md:p-1 md:text-lg',
       },
     },
     defaultVariants: { variant: 'icon' },
@@ -25,10 +31,11 @@ export interface CloseButtonProperties
   extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof closeButtonVariants> {}
 
 /**
- * The shared dismiss control — one muted, teal-focus-ring close affordance in two
- * presentations: `icon` (an "X" glyph, e.g. a toast's close) and `text` (a small "Close"
- * text link, e.g. the inline task meta panel). Children are the icon (or, for `text`, default
- * to the "Close" label). Callers wire `aria-label` (for `icon`) and `onClick`.
+ * The shared dismiss control — one muted, teal-focus-ring close affordance in three
+ * presentations: `icon` (an "X" glyph, e.g. a toast's close), `text` (a small "Close"
+ * text link, e.g. the inline task meta panel), and `dialog` (a modal's "×", with a ≥44px
+ * mobile tap target). Children are the icon (or, for `text`, default to the "Close" label).
+ * Callers wire `aria-label` (for `icon` / `dialog`) and `onClick`.
  *
  * Defaults to `type="button"` so it never submits a surrounding form.
  */
