@@ -162,6 +162,7 @@ function makeStory(
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: `Story ${itemId}`,
@@ -197,6 +198,7 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-02-02T00:00:00Z',
     priority: 1,
@@ -207,7 +209,7 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
 /** The live story row for item `i1` wherever it sits on the board (lane or escape bucket). */
 function findStory(board: ReturnType<typeof useProjectBoard>): CodeStory | undefined {
   return board.activeEpics
-    .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.escapeStories])
+    .flatMap((b) => [...b.lanes.flatMap((l) => l.stories), ...b.abandonedStories])
     .find((s) => s.item_id === 'i1');
 }
 
@@ -244,7 +246,7 @@ function BoardCards() {
   const board = useProjectBoard('p1');
   const stories = board.activeEpics.flatMap((bucket) => [
     ...bucket.lanes.flatMap((lane) => lane.stories),
-    ...bucket.escapeStories,
+    ...bucket.abandonedStories,
   ]);
   return (
     <>
@@ -384,9 +386,9 @@ describe('code-store', () => {
       expect(byState.get('done')).toEqual([]);
     });
 
-    it('routes blocked/abandoned stories to escapeStories, not a lane', () => {
+    it('keeps a blocked story in the lane it was blocked from, and routes only abandoned aside', () => {
       const stories = [
-        makeStory('i1', 'e1', 'p1', { factory_state: 'blocked' }),
+        makeStory('i1', 'e1', 'p1', { factory_state: 'blocked', blocked_from: 'in_development' }),
         makeStory('i2', 'e1', 'p1', { factory_state: 'abandoned' }),
         makeStory('i3', 'e1', 'p1', { factory_state: 'done' }),
       ];
@@ -394,12 +396,37 @@ describe('code-store', () => {
         wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')], stories }),
       });
       const [board] = result.current.activeEpics;
-      expect(board?.escapeStories.map((story) => story.item_id)).toEqual(['i1', 'i2']);
-      // The escape stories never appear in any happy-path lane.
-      const laneItemIds = board?.lanes.flatMap((lane) =>
-        lane.stories.map((story) => story.item_id),
-      );
-      expect(laneItemIds).toEqual(['i3']);
+      const byState = new Map(board?.lanes.map((lane) => [lane.state, lane.stories]));
+      expect(byState.get('in_development')?.map((story) => story.item_id)).toEqual(['i1']);
+      // Only abandoned is set aside now; blocked lives in a lane.
+      expect(board?.abandonedStories.map((story) => story.item_id)).toEqual(['i2']);
+    });
+
+    it('falls back to the first lane for a story blocked before an origin was recorded', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { factory_state: 'blocked', blocked_from: null }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')], stories }),
+      });
+      const [board] = result.current.activeEpics;
+      const byState = new Map(board?.lanes.map((lane) => [lane.state, lane.stories]));
+      // Legacy rows are surfaced rather than dropped off the board entirely.
+      expect(byState.get('needs_refinement')?.map((story) => story.item_id)).toEqual(['i1']);
+      expect(board?.abandonedStories).toEqual([]);
+    });
+
+    it('counts the epic’s blocked stories (the header badge), ignoring abandoned ones', () => {
+      const stories = [
+        makeStory('i1', 'e1', 'p1', { factory_state: 'blocked', blocked_from: 'in_development' }),
+        makeStory('i2', 'e1', 'p1', { factory_state: 'blocked', blocked_from: 'ready_for_dev' }),
+        makeStory('i3', 'e1', 'p1', { factory_state: 'abandoned' }),
+        makeStory('i4', 'e1', 'p1', { factory_state: 'done' }),
+      ];
+      const { result } = renderHook(() => useProjectBoard('p1'), {
+        wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')], stories }),
+      });
+      expect(result.current.activeEpics[0]?.blockedCount).toBe(2);
     });
 
     it('splits archived epics out of the active list', () => {
@@ -414,22 +441,27 @@ describe('code-store', () => {
       expect(result.current.archivedEpics.map((board) => board.epic.id)).toEqual(['e2']);
     });
 
-    it('sorts each lane and the escape bucket by priority ascending', () => {
+    it('sorts each lane and the abandoned bucket by priority ascending', () => {
       const stories = [
         makeStory('i1', 'e1', 'p1', { factory_state: 'in_development', priority: 30 }),
         makeStory('i2', 'e1', 'p1', { factory_state: 'in_development', priority: 10 }),
         makeStory('i3', 'e1', 'p1', { factory_state: 'in_development', priority: 20 }),
-        makeStory('i4', 'e1', 'p1', { factory_state: 'blocked', priority: 25 }),
+        makeStory('i4', 'e1', 'p1', {
+          factory_state: 'blocked',
+          blocked_from: 'in_development',
+          priority: 25,
+        }),
         makeStory('i5', 'e1', 'p1', { factory_state: 'abandoned', priority: 5 }),
+        makeStory('i6', 'e1', 'p1', { factory_state: 'abandoned', priority: 40 }),
       ];
       const { result } = renderHook(() => useProjectBoard('p1'), {
         wrapper: makeWrapper({ projects: [PROJECT_A], epics: [makeEpic('e1', 'p1')], stories }),
       });
       const [board] = result.current.activeEpics;
       const lane = board?.lanes.find((l) => l.state === 'in_development');
-      expect(lane?.stories.map((s) => s.item_id)).toEqual(['i2', 'i3', 'i1']);
-      // The escape bucket is priority-sorted too (i5 priority 5 before i4 priority 25).
-      expect(board?.escapeStories.map((s) => s.item_id)).toEqual(['i5', 'i4']);
+      // The blocked card sorts by priority among its lane-mates, not appended after them.
+      expect(lane?.stories.map((s) => s.item_id)).toEqual(['i2', 'i3', 'i4', 'i1']);
+      expect(board?.abandonedStories.map((s) => s.item_id)).toEqual(['i5', 'i6']);
     });
 
     it('sorts the Done lane by most-recently-updated (latest completion first), not priority', () => {
@@ -745,6 +777,7 @@ describe('code-store', () => {
         refinement_pr_url: null,
         implementation_pr_url: null,
         blocked_reason: null,
+        blocked_from: null,
         created_at: '2025-01-04T00:00:00Z',
         updated_at: '2025-01-04T00:00:00Z',
         priority: 1,
@@ -1109,6 +1142,7 @@ describe('code-store', () => {
         refinement_pr_url: null,
         implementation_pr_url: null,
         blocked_reason: null,
+        blocked_from: null,
         created_at: '2025-01-05T00:00:00Z',
         updated_at: '2025-01-05T00:00:00Z',
         priority: 1,
@@ -2596,6 +2630,7 @@ describe('code-store', () => {
         refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/1',
         implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/2',
         blocked_reason: 'checks failing',
+        blocked_from: 'in_development',
         created_at: '2025-01-01T00:00:00Z',
         updated_at: '2025-02-02T00:00:00Z',
         priority: 9,
@@ -2612,6 +2647,7 @@ describe('code-store', () => {
         refinement_pr_url: 'https://github.com/ac3charland/alfred/pull/1',
         implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/2',
         blocked_reason: 'checks failing',
+        blocked_from: 'in_development',
         code_created_at: '2025-01-01T00:00:00Z',
         code_updated_at: '2025-02-02T00:00:00Z',
         priority: 9,
@@ -2654,6 +2690,7 @@ describe('code-store', () => {
         factory_state: 'in_development',
         lane: 'human',
         blocked_reason: null,
+        blocked_from: null,
       });
       const { result } = renderHook(() => useStore('p1'), {
         wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
