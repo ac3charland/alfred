@@ -69,7 +69,8 @@ test('opens the detail modal from a card and shows the rendered spec', async ({ 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('ALF-5')).toBeVisible();
   await expect(dialog.getByText('Implement the allow-list parser')).toBeVisible();
-  await expect(dialog.getByText('Ready for Dev')).toBeVisible();
+  // The state chip specifically — the status dropdown's trigger shows the same label.
+  await expect(dialog.locator('[data-factory-state="ready_for_dev"]')).toHaveText('Ready for Dev');
 
   // The spec markdown renders to real HTML — a heading + a list (react-markdown + remark-gfm).
   await expect(dialog.getByRole('heading', { name: /allow-list parser spec/i })).toBeVisible();
@@ -85,7 +86,10 @@ test('opens the detail modal from a card and shows the rendered spec', async ({ 
   await expect(dialog.getByRole('button', { name: /implement in claude/i })).toBeVisible();
 });
 
-test('a manual Advance moves the story to the next swimlane', async ({ page, seed }) => {
+test('a status picked from the dropdown moves the story to that swimlane', async ({
+  page,
+  seed,
+}) => {
   const project = makeProject('Alfred', { id: PROJECT_ID, key: 'ALF' });
   const epic = makeEpic('Communication Firewall', {
     id: EPIC_ID,
@@ -113,20 +117,22 @@ test('a manual Advance moves the story to the next swimlane', async ({ page, see
   const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
   await expect(needsRefinement.getByText('ALF-3')).toBeVisible();
 
-  // Open the modal and advance one step (needs_refinement → in_refinement).
+  // Open the modal and pick a status two lanes ahead (needs_refinement → ready_for_dev),
+  // which the old one-step Advance button could not do in a single move.
   await page.getByRole('button', { name: /open ALF-3/i }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: /advance/i }).click();
+  await dialog.getByRole('button', { name: /change status/i }).click();
+  await page.getByRole('menuitem', { name: 'Ready for Dev' }).click();
 
-  // The modal reflects the new state immediately.
-  await expect(dialog.getByText('In Refinement')).toBeVisible();
+  // The modal reflects the new state immediately (the header chip carries the raw state).
+  await expect(dialog.locator('[data-factory-state="ready_for_dev"]')).toBeVisible();
 
   // Close the modal (its overlay covers the board) and confirm the card has moved lanes.
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
 
-  const inRefinement = page.getByRole('region', { name: 'In Refinement' });
-  await expect(inRefinement.getByText('ALF-3')).toBeVisible();
+  const readyForDev = page.getByRole('region', { name: 'Ready for Dev' });
+  await expect(readyForDev.getByText('ALF-3')).toBeVisible();
   await expect(needsRefinement.getByText('ALF-3')).toBeHidden();
 });
 

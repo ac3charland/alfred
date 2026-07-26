@@ -198,7 +198,10 @@ describe('StoryDetailModal', () => {
     expect(dialog.getByText('Wire up the webhook')).toBeInTheDocument();
     expect(dialog.getByText(/Alfred/)).toBeInTheDocument();
     expect(dialog.getByText(/Communication Firewall/)).toBeInTheDocument();
-    expect(dialog.getByText('Needs Refinement')).toBeInTheDocument();
+    // Target the chip specifically — the status dropdown's trigger shows the same label.
+    expect(
+      dialog.getByText('Needs Refinement', { selector: '[data-factory-state]' }),
+    ).toBeInTheDocument();
   });
 
   it('gives the close button a ≥44px tap target on mobile, back to compact at md+', () => {
@@ -336,8 +339,8 @@ describe('StoryDetailModal', () => {
   });
 
   describe('the primary launch action', () => {
-    // Match the launch button by its full label so it doesn't collide with the manual
-    // "Revert to … Refinement" / "Advance to …" controls that also contain "refine".
+    // Match the launch button by its full label so it doesn't collide with anything else in
+    // the modal that mentions a refinement state.
     const refineButton = /refine in claude/i;
     const implementButton = /implement in claude/i;
 
@@ -688,31 +691,92 @@ describe('StoryDetailModal', () => {
       } as never);
     });
 
-    it('Advance one step targets the next happy-path state', async () => {
-      const user = userEvent.setup();
-      const { dialog } = renderModal(makeStory({ factory_state: 'needs_refinement' }));
+    const statusTrigger = /change status/i;
 
-      await user.click(dialog.getByRole('button', { name: /advance/i }));
+    it('shows the current status on the dropdown trigger', () => {
+      const { dialog } = renderModal(makeStory({ factory_state: 'ready_for_dev' }));
 
-      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_refinement', {});
+      expect(dialog.getByRole('button', { name: statusTrigger })).toHaveTextContent(
+        'Ready for Dev',
+      );
     });
 
-    it('Revert one step targets the previous happy-path state', async () => {
+    it('offers every happy-path status in board order, marking the current one', async () => {
       const user = userEvent.setup();
       const { dialog } = renderModal(makeStory({ factory_state: 'ready_for_dev' }));
 
-      await user.click(dialog.getByRole('button', { name: /revert/i }));
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
 
-      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_refinement', {});
+      expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+        'Needs Refinement',
+        'In Refinement',
+        'Ready for Dev',
+        'In Development',
+        'Ready for Review',
+        'Done',
+      ]);
+      expect(screen.getByRole('menuitem', { name: 'Ready for Dev' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: 'Done' })).not.toHaveAttribute('aria-current');
     });
 
-    it('disables Revert at the first state and Advance at the last', () => {
-      const first = renderModal(makeStory({ factory_state: 'needs_refinement' }));
-      expect(first.dialog.getByRole('button', { name: /revert/i })).toBeDisabled();
-      first.unmount();
+    it('moves the story to any status picked from the dropdown', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'needs_refinement' }));
 
-      const last = renderModal(makeStory({ factory_state: 'done' }));
-      expect(last.dialog.getByRole('button', { name: /advance/i })).toBeDisabled();
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
+      // Radix portals set pointer-events:none on the body, so select via the keyboard —
+      // five steps down from the trigger lands on the fifth lane, Ready for Review.
+      await user.keyboard('[ArrowDown][ArrowDown][ArrowDown][ArrowDown][ArrowDown][Enter]');
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_review', {});
+    });
+
+    it('writes nothing when the story is already in the picked status', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+
+      expect(mockUpdateCodeState).not.toHaveBeenCalled();
+    });
+
+    it('moves a blocked story back onto the happy path, clearing the reason', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(
+        makeStory({ factory_state: 'blocked', blocked_reason: 'waiting on API' }),
+      );
+      const trigger = dialog.getByRole('button', { name: statusTrigger });
+
+      expect(trigger).toHaveTextContent('Blocked');
+
+      await user.click(trigger);
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+
+      // The reason travels with the transition — the route only forwards the key when present,
+      // so a pick that omitted it would leave the story unblocked but still carrying "waiting
+      // on API".
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'needs_refinement', {
+        blocked_reason: null,
+      });
+    });
+
+    it('leaves the reason key out of a move between happy-path lanes', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'in_refinement' }));
+
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'needs_refinement', {});
     });
 
     it('Block opens a reason field and sets blocked + the reason', async () => {

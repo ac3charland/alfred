@@ -1,15 +1,72 @@
 'use client';
 
-import { Ban, ChevronLeft, ChevronRight, CircleCheck } from 'lucide-react';
+import { Ban, Check, ChevronDown, CircleCheck } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/atoms/dropdown-menu';
 import { TextareaField } from '@/components/atoms/textarea-field';
-import { neighbourState, stateLabel } from '@/components/code/story-detail/state-helpers';
-import { HAPPY_PATH_STATES, useCodeActions } from '@/lib/stores/code-store';
+import { stateLabel } from '@/components/code/story-detail/state-helpers';
+import { HAPPY_PATH_STATES, STATE_LABELS, useCodeActions } from '@/lib/stores/code-store';
 import type { CodeFactoryState, CodeStory } from '@/lib/types';
 
-/** The manual fallback controls — Block (with reason), Unblock, Abandon, Advance/Revert. */
+/**
+ * The status picker: an outline trigger showing the story's current status over a menu of every
+ * happy-path lane in board order, check-marking the one it's in. Any lane is one pick away — so a
+ * story can jump several lanes at once, and a blocked/abandoned one (which has no lane, hence no
+ * check mark) can be dropped straight back onto the board.
+ */
+function StatusMenu({
+  state,
+  disabled,
+  onPick,
+}: {
+  state: CodeFactoryState | null;
+  disabled: boolean;
+  onPick: (next: CodeFactoryState) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          // The visible label is the current status, so name the control's *purpose* for
+          // assistive tech while still announcing where the story sits today.
+          aria-label={`Change status (currently ${stateLabel(state)})`}
+          className="gap-1.5"
+        >
+          {stateLabel(state)}
+          <ChevronDown size={14} className="text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {HAPPY_PATH_STATES.map((option) => (
+          <DropdownMenuItem
+            key={option}
+            aria-current={option === state ? 'true' : undefined}
+            className="justify-between gap-6"
+            onSelect={() => {
+              // Re-picking the current status is a no-op, not a same-state write.
+              if (option !== state) onPick(option);
+            }}
+          >
+            {STATE_LABELS[option]}
+            {option === state ? <Check size={12} className="text-accent-teal" /> : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The manual fallback controls — the status dropdown, Block (with reason), Unblock, Abandon. */
 export function ManualControls({ story }: { story: CodeStory }) {
   const { updateCodeState } = useCodeActions();
   const ref = story.ref;
@@ -18,8 +75,6 @@ export function ManualControls({ story }: { story: CodeStory }) {
   const [blockOpen, setBlockOpen] = React.useState(false);
   const [reason, setReason] = React.useState(story.blocked_reason ?? '');
 
-  const advanceTo = neighbourState(state, 'advance');
-  const revertTo = neighbourState(state, 'revert');
   const unblockTo = story.blocked_from ?? HAPPY_PATH_STATES[0];
 
   const run = async (next: CodeFactoryState, extra?: { blocked_reason?: string | null }) => {
@@ -41,33 +96,20 @@ export function ManualControls({ story }: { story: CodeStory }) {
         Move this story
       </h3>
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={pending || revertTo === undefined}
-          onClick={() => {
-            if (revertTo !== undefined) void run(revertTo);
+        <StatusMenu
+          state={state}
+          disabled={pending}
+          onPick={(next) => {
+            // Leaving `blocked` must clear the reason with the same write: the PATCH route only
+            // forwards `blocked_reason` when the body carries the key, so omitting it here would
+            // strand the old reason on a story that is no longer blocked.
+            void run(next, state === 'blocked' ? { blocked_reason: null } : undefined);
           }}
-        >
-          <ChevronLeft size={14} className="mr-1" />
-          {revertTo === undefined ? 'Revert' : `Revert to ${stateLabel(revertTo)}`}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={pending || advanceTo === undefined}
-          onClick={() => {
-            if (advanceTo !== undefined) void run(advanceTo);
-          }}
-        >
-          {advanceTo === undefined ? 'Advance' : `Advance to ${stateLabel(advanceTo)}`}
-          <ChevronRight size={14} className="ml-1" />
-        </Button>
+        />
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-        {/* Unblock is the way back out (ALF-136). Advance/Revert have no neighbour off the happy
-            path, so without this the only exit from Block was Abandon. It sends the story to the
-            state it was blocked from — `blocked_from`, or the first state for a row blocked before
-            that was recorded — and clears the reason along with it. */}
+        {/* Unblock is the one-click way back out: the dropdown can send a blocked story to ANY
+            lane, but only this knows which one it came FROM — `blocked_from`, or the first state
+            for a row blocked before that was recorded — and it clears the reason along with it. */}
         {state === 'blocked' ? (
           <Button
             variant="outline"
