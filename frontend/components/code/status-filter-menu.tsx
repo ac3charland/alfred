@@ -12,15 +12,40 @@ import {
 } from '@/components/atoms/dropdown-menu';
 import { FACTORY_STATE_LABELS } from '@/lib/stores/code-store';
 import type { CodeFactoryState } from '@/lib/types';
-import { cn } from '@/lib/utils';
 
-export interface StatusFilterMenuProperties {
+export interface StatusFilterItemsProperties {
   /** The factory states offered as checkboxes, in display order. */
   options: readonly CodeFactoryState[];
   /** The currently-selected states. */
   selected: readonly CodeFactoryState[];
   /** Toggle one state in or out of the selection. */
   onToggle: (state: CodeFactoryState) => void;
+}
+
+/**
+ * The status checkboxes on their own, with no trigger — for a caller that already owns the menu
+ * they sit in. Used by `StatusFilterMenu` below and by the board toolbar's mobile "Filter by
+ * status" submenu (ALF-134), so the option list is defined once and both stay identical.
+ */
+export function StatusFilterItems({ options, selected, onToggle }: StatusFilterItemsProperties) {
+  return options.map((state) => (
+    <DropdownMenuCheckboxItem
+      key={state}
+      checked={selected.includes(state)}
+      onCheckedChange={() => {
+        onToggle(state);
+      }}
+      // Keep the menu open so several statuses can be toggled in one pass.
+      onSelect={(event) => {
+        event.preventDefault();
+      }}
+    >
+      {FACTORY_STATE_LABELS[state]}
+    </DropdownMenuCheckboxItem>
+  ));
+}
+
+export interface StatusFilterMenuProperties extends StatusFilterItemsProperties {
   /** Whether the selection differs from its default — surfaces the teal highlight + a count. */
   isFiltering: boolean;
 }
@@ -41,36 +66,14 @@ export function StatusFilterMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn(
-            'gap-1.5',
-            isFiltering &&
-              'border-accent-teal/60 bg-accent-teal/10 text-accent-teal hover:bg-accent-teal/10 hover:text-accent-teal',
-          )}
-        >
+        <Button variant={isFiltering ? 'outlineActive' : 'outline'} size="sm" className="gap-1.5">
           <ListFilter size={14} />
           Filter by status
           {isFiltering ? ` (${String(selected.length)})` : ''}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {options.map((state) => (
-          <DropdownMenuCheckboxItem
-            key={state}
-            checked={selected.includes(state)}
-            onCheckedChange={() => {
-              onToggle(state);
-            }}
-            // Keep the menu open so several statuses can be toggled in one pass.
-            onSelect={(event) => {
-              event.preventDefault();
-            }}
-          >
-            {FACTORY_STATE_LABELS[state]}
-          </DropdownMenuCheckboxItem>
-        ))}
+        <StatusFilterItems options={options} selected={selected} onToggle={onToggle} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
