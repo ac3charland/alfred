@@ -58,12 +58,52 @@ function makeEpic(overrides: Partial<Epic> = {}): Epic {
   };
 }
 
+function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
+  return {
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 42,
+    ref: 'ALF-42',
+    factory_state: 'abandoned',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    blocked_from: null,
+    code_created_at: '2025-01-01T00:00:00Z',
+    code_updated_at: '2025-01-01T00:00:00Z',
+    title: 'Retire the legacy importer',
+    notes: null,
+    source_url: null,
+    item_created_at: '2025-01-01T00:00:00Z',
+    project_key: 'ALF',
+    project_name: 'Alfred',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    epic_name: 'Communication Firewall',
+    epic_ref: 'ALF-12',
+    epic_archived_at: null,
+    epic_spec_path: null,
+    priority: 1,
+    ...overrides,
+  };
+}
+
 /** Render one epic block with an empty (but well-formed) board for that epic. */
-function renderEpicBlock(epic: Epic) {
+function renderEpicBlock(
+  epic: Epic,
+  boardOverrides: { abandonedStories?: CodeStory[]; blockedCount?: number } = {},
+  properties: { showAbandoned?: boolean } = {},
+) {
   const board = {
     epic,
     lanes: [] as { state: never; label: string; stories: CodeStory[] }[],
-    escapeStories: [] as CodeStory[],
+    abandonedStories: boardOverrides.abandonedStories ?? [],
+    blockedCount: boardOverrides.blockedCount ?? 0,
   };
   return render(
     <ToastProvider>
@@ -73,7 +113,7 @@ function renderEpicBlock(epic: Epic) {
           collapsed={false}
           onToggleCollapse={jest.fn()}
           visibleStates={[]}
-          showBlocked={false}
+          showAbandoned={properties.showAbandoned ?? false}
           onOpenStory={jest.fn()}
           onOpenSession={jest.fn()}
         />
@@ -89,6 +129,69 @@ beforeEach(() => {
 });
 afterEach(() => {
   openSpy.mockRestore();
+});
+
+describe('EpicBlock — the blocked badge (ALF-136)', () => {
+  it('badges the epic header with its blocked-story count', () => {
+    renderEpicBlock(makeEpic(), { blockedCount: 3 });
+
+    expect(screen.getByText('3 blocked')).toBeInTheDocument();
+  });
+
+  it('singularises the count for one blocked story', () => {
+    renderEpicBlock(makeEpic(), { blockedCount: 1 });
+
+    expect(screen.getByText('1 blocked')).toBeInTheDocument();
+  });
+
+  it('shows no badge when nothing in the epic is blocked', () => {
+    renderEpicBlock(makeEpic(), { blockedCount: 0 });
+
+    expect(screen.queryByText(/blocked/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the badge visible while the epic is collapsed', () => {
+    // The badge replaces the old Show-blocked toggle as the at-a-glance signal, so it has to
+    // survive collapse — that is the case where the lanes themselves are hidden.
+    render(
+      <ToastProvider>
+        <CodeProvider initialProjects={[PROJECT]} initialEpics={[]} initialStories={[]}>
+          <EpicBlock
+            board={{ epic: makeEpic(), lanes: [], abandonedStories: [], blockedCount: 2 }}
+            collapsed
+            onToggleCollapse={jest.fn()}
+            visibleStates={[]}
+            showAbandoned={false}
+            onOpenStory={jest.fn()}
+            onOpenSession={jest.fn()}
+          />
+        </CodeProvider>
+      </ToastProvider>,
+    );
+
+    expect(screen.getByText('2 blocked')).toBeInTheDocument();
+  });
+});
+
+describe('EpicBlock — the abandoned section (ALF-136)', () => {
+  it('hides abandoned stories until Show abandoned is on', () => {
+    renderEpicBlock(makeEpic(), { abandonedStories: [makeStory()] }, { showAbandoned: false });
+
+    expect(screen.queryByText('Retire the legacy importer')).not.toBeInTheDocument();
+  });
+
+  it('reveals them under an "Abandoned" heading when it is on', () => {
+    renderEpicBlock(makeEpic(), { abandonedStories: [makeStory()] }, { showAbandoned: true });
+
+    expect(screen.getByRole('heading', { name: /abandoned/i })).toBeInTheDocument();
+    expect(screen.getByText('Retire the legacy importer')).toBeInTheDocument();
+  });
+
+  it('renders no heading when the epic has no abandoned stories', () => {
+    renderEpicBlock(makeEpic(), { abandonedStories: [] }, { showAbandoned: true });
+
+    expect(screen.queryByRole('heading', { name: /abandoned/i })).not.toBeInTheDocument();
+  });
 });
 
 describe('EpicBlock — the 3-dot menu', () => {

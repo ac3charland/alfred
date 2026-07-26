@@ -28,8 +28,10 @@ export interface BoardProperties {
  *   collapsing one epic leaves the others open — ephemeral session UI, like the tasks
  *   ExpansionProvider (not DB-backed).
  * - **Archived epics** are hidden behind a *Show archived* toggle (a client read filter).
- * - **blocked/abandoned** stories never get a column; a *Show blocked* toggle reveals them
- *   per-epic as off-track cards with their distinct treatment.
+ * - **blocked** stories are always visible, in the lane they were blocked from, carrying their
+ *   distinct card treatment; each epic header badges how many it holds (ALF-136).
+ * - **abandoned** stories have no lane to return to, so they stay in a per-epic bucket behind a
+ *   *Show abandoned* toggle.
  *
  * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder for
  * now; the detail modal hangs off it.
@@ -42,10 +44,11 @@ export function Board({ projectId }: BoardProperties) {
 
   const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
   const [showArchived, setShowArchived] = React.useState(false);
-  const [showBlocked, setShowBlocked] = React.useState(false);
+  const [showAbandoned, setShowAbandoned] = React.useState(false);
   // "Filter by status": hides unchecked happy-path lanes across every epic. Defaults to all six
-  // shown, so an untouched board is identical to before. The off-track (blocked/abandoned) cards
-  // stay governed by the separate Show-blocked toggle — they are not lanes.
+  // shown, so an untouched board is identical to before. A blocked card follows the lane it was
+  // blocked from, so it hides with that lane; abandoned cards are not lanes at all and stay
+  // governed by the separate Show-abandoned toggle.
   // Keyed by project id so each board keeps its own lane selection across SPA navigation
   // to the Backlog (or another board) and back.
   const {
@@ -101,10 +104,10 @@ export function Board({ projectId }: BoardProperties) {
   );
 
   // Resolve the open story from the current board so the modal reflects live store state
-  // (every epic's lanes + escape bucket cover all of this project's stories).
+  // (every epic's lanes + abandoned bucket cover all of this project's stories).
   const allStories = [...activeEpics, ...archivedEpics].flatMap((board) => [
     ...board.lanes.flatMap((lane) => lane.stories),
-    ...board.escapeStories,
+    ...board.abandonedStories,
   ]);
 
   // Deep-link seam (ALF-35): a `?story=<ref>` opens that story's modal. Resolve the ref against
@@ -172,12 +175,12 @@ export function Board({ projectId }: BoardProperties) {
             isFiltering={isFiltering}
           />
           <ToggleButton
-            pressed={showBlocked}
+            pressed={showAbandoned}
             onToggle={() => {
-              setShowBlocked((on) => !on);
+              setShowAbandoned((on) => !on);
             }}
           >
-            Show blocked
+            Show abandoned
           </ToggleButton>
           {archivedEpics.length > 0 ? (
             <ToggleButton
@@ -204,7 +207,7 @@ export function Board({ projectId }: BoardProperties) {
                 toggleCollapse(board.epic.id);
               }}
               visibleStates={visibleStates}
-              showBlocked={showBlocked}
+              showAbandoned={showAbandoned}
               onOpenStory={handleOpenStory}
               onOpenSession={handleOpenSession}
             />

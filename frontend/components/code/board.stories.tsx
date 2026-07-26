@@ -69,6 +69,7 @@ function story(
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title,
@@ -123,6 +124,42 @@ type Story = StoryObj<typeof meta>;
 /** A seeded project board: two epics, each expanded into its six happy-path swimlanes. */
 export const Seeded: Story = {};
 
+// ── Blocked stories in place (ALF-136) ──────────────────────────────────────────
+// Blocked work is always on the board — no toggle — sitting in the lane it was blocked from,
+// with the epic header badging how many the epic holds.
+const BLOCKED_STORIES: CodeStory[] = [
+  ...STORIES,
+  {
+    ...story('i7', 'e1', 'ALF-9', 'Upstream API contract unresolved', 'blocked'),
+    blocked_from: 'in_development',
+    blocked_reason: 'waiting on the vendor',
+  },
+  {
+    ...story('i8', 'e1', 'ALF-10', 'Flaky snapshot on the digest view', 'blocked'),
+    blocked_from: 'ready_for_review',
+  },
+];
+
+/**
+ * Two blocked stories sitting in their own lanes (In Development, Ready for Review) with the
+ * amber card treatment, and a "2 blocked" badge on the epic header.
+ */
+export const WithBlockedStories: Story = {
+  decorators: [
+    (StoryComponent) => (
+      <CodeProvider
+        initialProjects={[PROJECT]}
+        initialEpics={EPICS.slice(0, 1)}
+        initialStories={BLOCKED_STORIES}
+      >
+        <div data-testid="board-frame" className="w-[1100px] bg-background">
+          <StoryComponent />
+        </div>
+      </CodeProvider>
+    ),
+  ],
+};
+
 // ── Realtime swimlane move (ALF-41) ─────────────────────────────────────────────
 // One epic with a single story sitting in "In Refinement". The Worker (a non-browser
 // writer) advances it to "Ready for Dev"; the open board reflects that live with no reload.
@@ -146,6 +183,7 @@ const MOVED_SIDECAR: CodeItem = {
   refinement_pr_url: null,
   implementation_pr_url: null,
   blocked_reason: null,
+  blocked_from: null,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2026-06-22T00:00:00Z',
   priority: 1,

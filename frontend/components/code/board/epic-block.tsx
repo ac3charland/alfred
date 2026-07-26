@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
+import { Badge } from '@/components/atoms/badge';
 import { Button } from '@/components/atoms/button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import {
@@ -101,7 +102,7 @@ interface EpicBlockProperties {
   onToggleCollapse: () => void;
   /** The happy-path states whose swimlanes are shown (the board's "Filter by status"). */
   visibleStates: readonly CodeFactoryState[];
-  showBlocked: boolean;
+  showAbandoned: boolean;
   onOpenStory: (story: CodeStory) => void;
   onOpenSession: OpenSessionHandler;
 }
@@ -112,11 +113,11 @@ export function EpicBlock({
   collapsed,
   onToggleCollapse,
   visibleStates,
-  showBlocked,
+  showAbandoned,
   onOpenStory,
   onOpenSession,
 }: EpicBlockProperties) {
-  const { epic, lanes, escapeStories } = board;
+  const { epic, lanes, abandonedStories, blockedCount } = board;
   // Only render the lanes whose state passes the board-level status filter.
   const visibleLanes = lanes.filter((lane) => visibleStates.includes(lane.state));
   const { updateEpic, createStory, openEpicSession } = useCodeActions();
@@ -218,6 +219,19 @@ export function EpicBlock({
           </DisclosureToggle>
         )}
 
+        {/* How many of this epic's stories are blocked (ALF-136). Blocked cards now sit in their
+            own lanes rather than a labelled bucket, so this badge is the at-a-glance signal that
+            an epic is holding blocked work — including while it is collapsed. It sits OUTSIDE the
+            disclosure button so it survives the rename swap and stays out of the button's name. */}
+        {blockedCount > 0 ? (
+          <Badge
+            variant="alert"
+            className="mr-2 shrink-0 self-center font-semibold uppercase tracking-wide"
+          >
+            {blockedCount} blocked
+          </Badge>
+        ) : null}
+
         {/* The "+" (new story) trigger sits immediately to the left of the 3-dot menu; both
             hide while the title is being renamed. */}
         {editingTitle ? null : (
@@ -313,14 +327,16 @@ export function EpicBlock({
             ))}
           </div>
 
-          {/* Off-track stories (blocked / abandoned): revealed only by the filter toggle. */}
-          {showBlocked && escapeStories.length > 0 ? (
+          {/* Abandoned stories: the one state with no lane to return to, so it keeps a bucket of
+              its own behind the board's Show-abandoned toggle. Blocked stories no longer land
+              here — they stay in the lane they were blocked from. */}
+          {showAbandoned && abandonedStories.length > 0 ? (
             <div className="mt-3 border-t border-border/60 pt-3">
               <h4 className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Off track
+                Abandoned
               </h4>
               <div className="grid grid-cols-1 gap-2 px-2 sm:grid-cols-2 lg:grid-cols-3">
-                {escapeStories.map((story) => (
+                {abandonedStories.map((story) => (
                   <StoryCard key={story.item_id} story={story} onOpen={onOpenStory} />
                 ))}
               </div>

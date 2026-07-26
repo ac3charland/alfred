@@ -72,6 +72,7 @@ function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
     priority: 1,
@@ -123,6 +124,7 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
     refinement_pr_url: null,
     implementation_pr_url: null,
     blocked_reason: null,
+    blocked_from: null,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: `Story ${itemId}`,
@@ -275,22 +277,66 @@ describe('Board', () => {
     expect(screen.queryByRole('button', { name: /show archived/i })).not.toBeInTheDocument();
   });
 
-  it('hides blocked/abandoned stories until the blocked filter is toggled on', async () => {
+  // ALF-136: the Show-blocked toggle is gone; blocked work is always on the board.
+  it('offers no Show blocked toggle', () => {
+    renderBoard({ epics: [makeEpic('e1')] });
+
+    expect(screen.queryByRole('button', { name: /show blocked/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a blocked story with no toggling, in the lane it was blocked from', () => {
+    renderBoard({
+      epics: [makeEpic('e1')],
+      stories: [
+        makeStory('i1', 'e1', {
+          ref: 'ALF-blocked',
+          factory_state: 'blocked',
+          blocked_from: 'in_development',
+        }),
+      ],
+    });
+
+    // Visible immediately, carrying its Blocked treatment, inside the In Development swimlane.
+    const lane = screen.getByRole('region', { name: 'In Development' });
+    expect(within(lane).getByText('ALF-blocked')).toBeInTheDocument();
+    expect(within(lane).getByText('Blocked')).toBeInTheDocument();
+    // Blocked still never gets a swimlane of its own.
+    expect(screen.queryByRole('region', { name: /^blocked$/i })).not.toBeInTheDocument();
+  });
+
+  it('badges the epic header with the number of blocked stories', () => {
+    renderBoard({
+      epics: [makeEpic('e1')],
+      stories: [
+        makeStory('i1', 'e1', { ref: 'ALF-b1', factory_state: 'blocked', blocked_from: 'done' }),
+        makeStory('i2', 'e1', {
+          ref: 'ALF-b2',
+          factory_state: 'blocked',
+          blocked_from: 'in_development',
+        }),
+      ],
+    });
+
+    expect(screen.getByText('2 blocked')).toBeInTheDocument();
+  });
+
+  it('hides abandoned stories until Show abandoned is toggled on', async () => {
     const user = userEvent.setup();
     renderBoard({
       epics: [makeEpic('e1')],
-      stories: [makeStory('i1', 'e1', { ref: 'ALF-blocked', factory_state: 'blocked' })],
+      stories: [makeStory('i1', 'e1', { ref: 'ALF-gone', factory_state: 'abandoned' })],
     });
 
-    // The blocked story isn't shown by default, and never as a swimlane.
-    expect(screen.queryByText('ALF-blocked')).not.toBeInTheDocument();
+    expect(screen.queryByText('ALF-gone')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /show blocked/i }));
+    await user.click(screen.getByRole('button', { name: /show abandoned/i }));
 
-    expect(screen.getByText('ALF-blocked')).toBeInTheDocument();
-    expect(screen.getByText('Blocked')).toBeInTheDocument();
-    // Still no "blocked"/"abandoned" swimlane region exists.
-    expect(screen.queryByRole('region', { name: /^blocked$/i })).not.toBeInTheDocument();
+    expect(screen.getByText('ALF-gone')).toBeInTheDocument();
+    // The card keeps its Abandoned pill, under the bucket's "Abandoned" heading.
+    expect(screen.getByRole('heading', { name: 'Abandoned' })).toBeInTheDocument();
+    expect(screen.getAllByText('Abandoned')).toHaveLength(2);
+    // Abandoned is a bucket, never a swimlane.
+    expect(screen.queryByRole('region', { name: /^abandoned$/i })).not.toBeInTheDocument();
   });
 
   describe('the status filter', () => {
@@ -346,18 +392,23 @@ describe('Board', () => {
       });
     });
 
-    it('leaves the off-track (Show blocked) cards unaffected by the column filter', async () => {
+    it('hides a blocked card along with the lane it was blocked from', async () => {
       const user = userEvent.setup();
       renderBoard({
         epics: [makeEpic('e1')],
-        stories: [makeStory('i1', 'e1', { ref: 'ALF-blocked', factory_state: 'blocked' })],
+        stories: [
+          makeStory('i1', 'e1', {
+            ref: 'ALF-blocked',
+            factory_state: 'blocked',
+            blocked_from: 'needs_refinement',
+          }),
+        ],
       });
 
-      // Reveal the off-track cards.
-      await user.click(screen.getByRole('button', { name: /show blocked/i }));
       expect(screen.getByText('ALF-blocked')).toBeInTheDocument();
 
-      // Unchecking a happy-path lane must not touch the blocked card (blocked is never a lane).
+      // A blocked card now lives IN a lane (ALF-136), so unchecking that lane takes it with it —
+      // the opposite of the old off-track bucket, which the column filter never touched.
       await user.click(screen.getByRole('button', { name: /filter by status/i }));
       await screen.findByRole('menu');
       await user.keyboard('[ArrowDown][Enter]');
@@ -366,7 +417,29 @@ describe('Board', () => {
       await waitFor(() => {
         expect(screen.queryByRole('region', { name: 'Needs Refinement' })).not.toBeInTheDocument();
       });
-      expect(screen.getByText('ALF-blocked')).toBeInTheDocument();
+      expect(screen.queryByText('ALF-blocked')).not.toBeInTheDocument();
+    });
+
+    it('leaves the abandoned bucket unaffected by the column filter', async () => {
+      const user = userEvent.setup();
+      renderBoard({
+        epics: [makeEpic('e1')],
+        stories: [makeStory('i1', 'e1', { ref: 'ALF-gone', factory_state: 'abandoned' })],
+      });
+
+      await user.click(screen.getByRole('button', { name: /show abandoned/i }));
+      expect(screen.getByText('ALF-gone')).toBeInTheDocument();
+
+      // Abandoned is never a lane, so no column can filter it away.
+      await user.click(screen.getByRole('button', { name: /filter by status/i }));
+      await screen.findByRole('menu');
+      await user.keyboard('[ArrowDown][Enter]');
+      await user.keyboard('[Escape]');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('region', { name: 'Needs Refinement' })).not.toBeInTheDocument();
+      });
+      expect(screen.getByText('ALF-gone')).toBeInTheDocument();
     });
   });
 
