@@ -1233,12 +1233,19 @@ export function useCodeStories(): CodeStory[] {
 }
 
 /**
+ * A story's ordering key in the global Backlog rank. `priority` is non-null on the base table but
+ * nominally nullable on the view row, so a missing value ranks last.
+ */
+function priorityRank(story: CodeStory): number {
+  return story.priority ?? Number.POSITIVE_INFINITY;
+}
+
+/**
  * Compare two stories by global Backlog `priority` ascending (lowest number = highest priority,
- * sorts first). `priority` is non-null on the base table but nominally nullable on the view row,
- * so a missing value sorts last. Used to order every lane, the escape bucket, and the Backlog.
+ * sorts first). Used to order every lane, the escape bucket, and the Backlog.
  */
 function byPriorityAsc(a: CodeStory, b: CodeStory): number {
-  return (a.priority ?? Number.POSITIVE_INFINITY) - (b.priority ?? Number.POSITIVE_INFINITY);
+  return priorityRank(a) - priorityRank(b);
 }
 
 /**
@@ -1414,6 +1421,61 @@ export function useBacklog({ statuses }: { statuses: readonly CodeFactoryState[]
     );
     return stableSorted(visible, byPriorityAsc);
   }, [stories, statuses]);
+}
+
+/** Which extremes of the Backlog ranking a story already occupies — see {@link useStoryRankFlags}. */
+export interface StoryRankFlags {
+  /** The story already leads its own project; "move to top of project" would be a no-op. */
+  isProjectTop: boolean;
+  /** The story already trails its own project. */
+  isProjectBottom: boolean;
+  /** The story already leads the whole Backlog. */
+  isBacklogTop: boolean;
+  /** The story already trails the whole Backlog. */
+  isBacklogBottom: boolean;
+}
+
+/** Every slot occupied — the "nothing to move" answer for a missing or unresolvable story. */
+const ALL_SLOTS_HELD: StoryRankFlags = {
+  isProjectTop: true,
+  isProjectBottom: true,
+  isBacklogTop: true,
+  isBacklogBottom: true,
+};
+
+/**
+ * Where `story` already sits in the Backlog ranking, so a control offering the top/bottom jumps
+ * can disable the ones that would do nothing (the Backlog rows derive the same flags from the
+ * neighbours they render; a detail view has no list to read them off).
+ *
+ * Ranked against the stories the Backlog shows by DEFAULT — outstanding work only, since a
+ * done/abandoned story keeps its priority but is hidden, and counting it would report a slot the
+ * user can't see. `story` itself always counts, so a finished story still reads its position
+ * among the live work around it. A null priority sorts last, exactly like `byPriorityAsc`.
+ */
+export function useStoryRankFlags(story: CodeStory | null): StoryRankFlags {
+  const stories = useCodeStories();
+
+  return React.useMemo<StoryRankFlags>(() => {
+    if (story === null) return ALL_SLOTS_HELD;
+    const peers = stories.filter(
+      (candidate) =>
+        isBacklogOutstanding(candidate.factory_state) ||
+        (story.item_id !== null && candidate.item_id === story.item_id),
+    );
+    const projectPeers = peers.filter((candidate) => candidate.project_id === story.project_id);
+    if (peers.length === 0 || projectPeers.length === 0) return ALL_SLOTS_HELD;
+
+    const own = priorityRank(story);
+    const all = peers.map((peer) => priorityRank(peer));
+    const project = projectPeers.map((peer) => priorityRank(peer));
+    return {
+      isProjectTop: own <= Math.min(...project),
+      isProjectBottom: own >= Math.max(...project),
+      isBacklogTop: own <= Math.min(...all),
+      isBacklogBottom: own >= Math.max(...all),
+    };
+  }, [stories, story]);
 }
 
 /** Read the code mutation actions (the gate / ProjectNav `+`). Throws outside a CodeProvider. */
