@@ -72,6 +72,20 @@ function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
   return firstCall[0];
 }
 
+/**
+ * The payload the Nth `code_items` chain was asked to update with. The per-table mock hands out
+ * one chain per `.from('code_items')` call, so the derive-blocked_from tests read chain 1 — the
+ * update that follows the current-row select.
+ */
+function updatePayloadAt(
+  chains: ReturnType<typeof makeQueryChain>[] | undefined,
+  index: number,
+): Record<string, unknown> {
+  const chain = chains?.[index];
+  if (!chain) throw new Error(`no code_items chain at index ${String(index)}`);
+  return firstCallArg(chain.update);
+}
+
 function patchRequest(body: unknown): Request {
   return new Request('http://localhost/api/code/ALF-42', {
     method: 'PATCH',
@@ -140,14 +154,14 @@ describe('PATCH /api/code/[ref]', () => {
     expect(chain.eq).toHaveBeenCalledWith('ref', 'ALF-42');
   });
 
-  it('sends only factory_state when blocked_reason is absent (strict PATCH payload)', async () => {
+  it('sends factory_state and its derived blocked_from when blocked_reason is absent', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_STORY, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await PATCH(patchRequest({ factory_state: 'in_refinement' }), routeContext);
 
     const payload = firstCallArg(mockSupabase._chain.update);
-    expect(Object.keys(payload)).toStrictEqual(['factory_state']);
+    expect(Object.keys(payload)).toStrictEqual(['factory_state', 'blocked_from']);
     expect(payload['factory_state']).toBe('in_refinement');
   });
 
@@ -163,6 +177,7 @@ describe('PATCH /api/code/[ref]', () => {
     expect(mockSupabase._chain.update).toHaveBeenCalledWith({
       factory_state: 'blocked',
       blocked_reason: 'checks failing',
+      blocked_from: 'in_refinement',
     });
   });
 
@@ -176,7 +191,77 @@ describe('PATCH /api/code/[ref]', () => {
     );
 
     const payload = firstCallArg(mockSupabase._chain.update);
-    expect(payload).toStrictEqual({ factory_state: 'ready_for_dev', blocked_reason: null });
+    expect(payload).toStrictEqual({
+      factory_state: 'ready_for_dev',
+      blocked_reason: null,
+      blocked_from: null,
+    });
+  });
+
+  // ALF-136: `blocked_from` is derived on the SERVER from the stored row, never taken from the
+  // request body — the board reads it to keep a blocked card in the swimlane it was blocked from.
+  describe('deriving blocked_from', () => {
+    it('records the state the story is leaving when it becomes blocked', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [
+          { data: { factory_state: 'in_development', blocked_from: null }, error: undefined },
+          { data: TEST_STORY, error: undefined },
+        ],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      await PATCH(patchRequest({ factory_state: 'blocked' }), routeContext);
+
+      expect(updatePayloadAt(mockSupabase._chains['code_items'], 1)['blocked_from']).toBe(
+        'in_development',
+      );
+    });
+
+    it('clears the origin when the story is unblocked back onto the happy path', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [
+          { data: { factory_state: 'blocked', blocked_from: 'ready_for_dev' }, error: undefined },
+          { data: TEST_STORY, error: undefined },
+        ],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      await PATCH(patchRequest({ factory_state: 'ready_for_dev' }), routeContext);
+
+      expect(updatePayloadAt(mockSupabase._chains['code_items'], 1)['blocked_from']).toBeNull();
+    });
+
+    it('ignores a client-supplied blocked_from (the server owns the column)', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [
+          { data: { factory_state: 'in_refinement', blocked_from: null }, error: undefined },
+          { data: TEST_STORY, error: undefined },
+        ],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      await PATCH(patchRequest({ factory_state: 'blocked', blocked_from: 'done' }), routeContext);
+
+      expect(updatePayloadAt(mockSupabase._chains['code_items'], 1)['blocked_from']).toBe(
+        'in_refinement',
+      );
+    });
+
+    it('leaves blocked_from untouched on an epic-only move (no state transition)', async () => {
+      const mockSupabase = makeMockSupabaseByTable(TEST_USER, {
+        code_items: [
+          { data: { project_id: 'p1' }, error: undefined },
+          { data: { ...TEST_STORY, epic_id: EPIC_ID }, error: undefined },
+        ],
+        epics: [{ data: { project_id: 'p1' }, error: undefined }],
+      });
+      mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+      await PATCH(patchRequest({ epic_id: EPIC_ID }), routeContext);
+
+      const updateChain = mockSupabase._chains['code_items']?.[1];
+      expect(updateChain?.update).toHaveBeenCalledWith({ epic_id: EPIC_ID });
+    });
   });
 
   it('returns 400 for an empty patch body (nothing to update)', async () => {
