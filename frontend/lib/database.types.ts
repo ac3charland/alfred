@@ -41,6 +41,7 @@ export type Database = {
     Tables: {
       code_items: {
         Row: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
           epic_id: string
@@ -59,6 +60,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          blocked_from?:
+            | Database["public"]["Enums"]["code_factory_state"]
+            | null
           blocked_reason?: string | null
           created_at?: string
           epic_id: string
@@ -77,6 +81,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          blocked_from?:
+            | Database["public"]["Enums"]["code_factory_state"]
+            | null
           blocked_reason?: string | null
           created_at?: string
           epic_id?: string
@@ -417,6 +424,7 @@ export type Database = {
       }
       v_code_stories: {
         Row: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           code_created_at: string | null
           code_updated_at: string | null
@@ -526,6 +534,7 @@ export type Database = {
           p_title: string
         }
         Returns: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
           epic_id: string
@@ -576,6 +585,7 @@ export type Database = {
       enter_code_module: {
         Args: { p_epic: string; p_item: string; p_project: string }
         Returns: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
           epic_id: string
@@ -624,6 +634,7 @@ export type Database = {
       move_code_priority: {
         Args: { p_ref: string; p_to_top: boolean }
         Returns: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
           epic_id: string
@@ -651,6 +662,7 @@ export type Database = {
       move_code_priority_in_project: {
         Args: { p_ref: string; p_to_top: boolean }
         Returns: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
           epic_id: string
@@ -679,6 +691,7 @@ export type Database = {
       swap_code_priority: {
         Args: { p_a: string; p_b: string }
         Returns: {
+          blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
           epic_id: string
