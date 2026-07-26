@@ -20,10 +20,21 @@ const SPLIT: PrRatioResponse = {
   ],
 };
 
+const WITH_OTHER: PrRatioResponse = {
+  week: WEEK,
+  total: 12,
+  repos: [
+    { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 25 },
+    { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 50 },
+  ],
+  other: { count: 3, percentage: 25 },
+};
+
 const EMPTY_WEEK: PrRatioResponse = {
   week: WEEK,
   total: 0,
   repos: SPLIT.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
+  other: { count: 0, percentage: 0 },
 };
 
 /**
@@ -72,6 +83,23 @@ type Story = StoryObj<typeof meta>;
  */
 export const Ready: Story = {
   decorators: [stubEndpoint(200, SPLIT)],
+};
+
+/**
+ * The same week with the "Other" bucket populated: PRs merged in repos outside
+ * `PR_RATIO_REPOS`. It always sits last and wears a de-emphasized neutral rather than a named
+ * accent, so the repos the owner chose to measure keep the colour.
+ */
+export const WithOther: Story = {
+  decorators: [stubEndpoint(200, WITH_OTHER)],
+};
+
+/**
+ * Other measured but empty — nothing merged outside the configured repos. The entry is
+ * dropped rather than shown at 0%, since a zero row tells the reader nothing.
+ */
+export const OtherEmpty: Story = {
+  decorators: [stubEndpoint(200, { ...SPLIT, other: { count: 0, percentage: 0 } })],
 };
 
 /**

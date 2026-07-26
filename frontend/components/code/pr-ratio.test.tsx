@@ -22,6 +22,17 @@ const RATIO: PrRatioResponse = {
   ],
 };
 
+/** The same week with a measured Other bucket, which shifts every share. */
+const RATIO_WITH_OTHER: PrRatioResponse = {
+  ...RATIO,
+  total: 10,
+  repos: [
+    { repo: 'ac3charland/realplay', label: 'RealPlay', count: 3, percentage: 30 },
+    { repo: 'ac3charland/alfred', label: 'Alfred', count: 6, percentage: 60 },
+  ],
+  other: { count: 1, percentage: 10 },
+};
+
 /** A never-settling fetch, so the loading state can be asserted before data lands. */
 function pending<T>(): Promise<T> {
   return new Promise<T>(() => {});
@@ -65,6 +76,68 @@ describe('PrRatio', () => {
         name: 'RealPlay 33 percent, 3 pull requests; Alfred 67 percent, 6 pull requests',
       }),
     ).toBeInTheDocument();
+  });
+
+  it('adds an Other entry after the configured repos for the PRs merged elsewhere', async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO_WITH_OTHER);
+
+    render(<PrRatio />);
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual([
+      'RealPlay30%(3)',
+      'Alfred60%(6)',
+      'Other10%(1)',
+    ]);
+  });
+
+  it('names Other in the accessible label too, so the bar and the legend agree', async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO_WITH_OTHER);
+
+    render(<PrRatio />);
+
+    expect(
+      await screen.findByRole('img', {
+        name: 'RealPlay 30 percent, 3 pull requests; Alfred 60 percent, 6 pull requests; Other 10 percent, 1 pull request',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('drops the Other entry when nothing merged outside the configured repos', async () => {
+    mockGetPrRatio.mockResolvedValue({ ...RATIO, other: { count: 0, percentage: 0 } });
+
+    render(<PrRatio />);
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay33%(3)', 'Alfred67%(6)']);
+  });
+
+  it('renders no Other entry when the deployment cannot measure the bucket', async () => {
+    mockGetPrRatio.mockResolvedValue(RATIO);
+
+    render(<PrRatio />);
+
+    await screen.findByRole('img');
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+  });
+
+  it('keeps a configured repo listed at zero — only Other is dropped when empty', async () => {
+    mockGetPrRatio.mockResolvedValue({
+      ...RATIO,
+      total: 4,
+      repos: RATIO.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
+      other: { count: 4, percentage: 100 },
+    });
+
+    render(<PrRatio />);
+
+    const entries = await screen.findAllByRole('listitem');
+    expect(entries.map((entry) => entry.textContent)).toEqual([
+      'RealPlay0%(0)',
+      'Alfred0%(0)',
+      'Other100%(4)',
+    ]);
+    expect(screen.getByText(/4 total/)).toBeInTheDocument();
   });
 
   it('reports a zero-PR week as a normal state rather than an empty or NaN bar', async () => {

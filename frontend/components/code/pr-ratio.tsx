@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { RatioBar, type RatioSegment } from '@/components/atoms/ratio-bar';
 import { usePrRatio } from '@/lib/hooks/use-pr-ratio';
-import type { PrRatioRepoCount } from '@/lib/types';
+import type { PrRatioResponse } from '@/lib/types';
 
 /**
  * Segment fills, cycled by config order, from the existing named-accent tokens. The bar
@@ -14,6 +14,50 @@ const TONES = ['bg-accent-teal', 'bg-accent-blue', 'bg-accent-amber', 'bg-accent
 
 function toneFor(index: number): string {
   return TONES[index % TONES.length] ?? 'bg-accent-teal';
+}
+
+const OTHER_LABEL = 'Other';
+
+/**
+ * Other gets a de-emphasized neutral rather than the next accent: the accents name the repos
+ * the owner chose to measure, and the catch-all shouldn't compete with them for attention.
+ */
+const OTHER_TONE = 'bg-muted-foreground';
+
+/** One legend row and its matching bar segment — a configured repo, or the Other bucket. */
+interface RatioEntry {
+  key: string;
+  label: string;
+  count: number;
+  percentage: number;
+  tone: string;
+}
+
+/**
+ * The bar's entries, left to right: every configured repo (kept even at zero — the owner
+ * asked for them), then Other, which is dropped when empty. A zero Other is indistinguishable
+ * from an unmeasured one to a reader, so showing it would be noise either way.
+ */
+function toEntries(ratio: PrRatioResponse): RatioEntry[] {
+  const entries: RatioEntry[] = ratio.repos.map((repo, index) => ({
+    key: repo.repo,
+    label: repo.label,
+    count: repo.count,
+    percentage: repo.percentage,
+    tone: toneFor(index),
+  }));
+
+  if (ratio.other && ratio.other.count > 0) {
+    entries.push({
+      key: 'other',
+      label: OTHER_LABEL,
+      count: ratio.other.count,
+      percentage: ratio.other.percentage,
+      tone: OTHER_TONE,
+    });
+  }
+
+  return entries;
 }
 
 /**
@@ -36,12 +80,12 @@ function formatWeekRange(start: string, end: string): string {
 }
 
 /** "RealPlay 33 percent, 3 pull requests; Alfred 67 percent, 6 pull requests". */
-function describeSplit(repos: readonly PrRatioRepoCount[]): string {
-  return repos
+function describeSplit(entries: readonly RatioEntry[]): string {
+  return entries
     .map(
-      (repo) =>
-        `${repo.label} ${String(repo.percentage)} percent, ${String(repo.count)} pull ${
-          repo.count === 1 ? 'request' : 'requests'
+      (entry) =>
+        `${entry.label} ${String(entry.percentage)} percent, ${String(entry.count)} pull ${
+          entry.count === 1 ? 'request' : 'requests'
         }`,
     )
     .join('; ');
@@ -96,7 +140,7 @@ export function PrRatio() {
     );
   }
 
-  const { week, total, repos } = state.ratio;
+  const { week, total } = state.ratio;
   const range = formatWeekRange(week.start, week.end);
 
   if (total === 0) {
@@ -109,26 +153,24 @@ export function PrRatio() {
     );
   }
 
-  const segments: RatioSegment[] = repos.map((repo, index) => ({
-    label: repo.label,
-    value: repo.count,
-    tone: toneFor(index),
+  const entries = toEntries(state.ratio);
+  const segments: RatioSegment[] = entries.map((entry) => ({
+    label: entry.label,
+    value: entry.count,
+    tone: entry.tone,
   }));
 
   return (
     <Card>
       <Heading detail={`${range}  ·  ${String(total)} total`} />
-      <RatioBar segments={segments} ariaLabel={describeSplit(repos)} />
+      <RatioBar segments={segments} ariaLabel={describeSplit(entries)} />
       <ul className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-        {repos.map((repo, index) => (
-          <li key={repo.repo} className="flex items-center gap-2 text-sm">
-            <span
-              aria-hidden="true"
-              className={`h-2 w-2 shrink-0 rounded-full ${toneFor(index)}`}
-            />
-            <span className="text-foreground">{repo.label}</span>
-            <span className="font-medium text-foreground">{repo.percentage}%</span>
-            <span className="text-muted-foreground">({repo.count})</span>
+        {entries.map((entry) => (
+          <li key={entry.key} className="flex items-center gap-2 text-sm">
+            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${entry.tone}`} />
+            <span className="text-foreground">{entry.label}</span>
+            <span className="font-medium text-foreground">{entry.percentage}%</span>
+            <span className="text-muted-foreground">({entry.count})</span>
           </li>
         ))}
       </ul>
