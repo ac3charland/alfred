@@ -346,7 +346,9 @@ Turn that failure into a reviewable, self-approving event:
    (Add a `note` first describing the intended change. The diff *is* the demo evidence for
    a visual change — see the showboat skill.)
 3. **Approve the new render** — this regenerates the baselines, rewriting **only** the
-   mismatched PNGs: `npm run test:storybook:update -w frontend`.
+   mismatched PNGs: `npm run test:storybook:update -w frontend`. A change that lands under the
+   1% threshold (easy on a big crop like a whole dialog) leaves its baseline passing-but-stale,
+   and `:update` skips it — `rm` that PNG first, since a **missing** baseline is always rewritten.
 4. **Commit the regenerated baseline PNG(s) together with the demo doc** (e.g.
    `test(<scope>): rebaseline <component> visual snapshot`). The regenerated PNG is the
    approval; the embedded diff is the proof. **Never hand-edit a baseline PNG** — only the
