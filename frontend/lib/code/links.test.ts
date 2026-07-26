@@ -187,6 +187,36 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toMatch(/verbatim|reproduced exactly/i);
   });
 
+  it('instructs a rendered-preview link for an HTML spec, with the project repo baked into the URL', () => {
+    const prompt =
+      parse(
+        buildRefinementUrl(
+          makeProject({ repo_owner: 'octocat', repo_name: 'hello-world' }),
+          makeStory(),
+        ),
+      ).prompt ?? '';
+    // The instruction lives in the prompt rather than each repo's refinement skill, so every
+    // project gets it without it being copy-pasted into — and drifting between — every skill file.
+    // Only the head branch and the spec path are left for the agent; the repo is known here.
+    expect(prompt).toContain(
+      'https://htmlpreview.github.io/?https://github.com/octocat/hello-world/blob/<head-branch>/<spec-path>',
+    );
+    // The rationale has to travel with it, or the step reads as arbitrary and gets dropped.
+    expect(prompt).toMatch(/raw source/i);
+    // Conditional: a repo whose skill chose markdown or a multi-file folder must not be told to
+    // preview-link a spec that isn't HTML.
+    expect(prompt).toMatch(/if the spec is an HTML file/i);
+    // The spec exists only on the PR's head branch — a main link 404s until the PR merges.
+    expect(prompt).toMatch(/head branch/i);
+  });
+
+  it('covers the preview link in the pre-PR self-check', () => {
+    const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
+    const selfCheck = prompt.split('\n').find((line) => line.startsWith('6. ')) ?? '';
+    expect(selfCheck).toMatch(/before opening the PR/i);
+    expect(selfCheck).toMatch(/preview link/i);
+  });
+
   it('flags truncated notes so partial context is not mistaken for the whole', () => {
     const prompt =
       parse(buildRefinementUrl(makeProject(), makeStory({ notes: 'Z'.repeat(2000) }))).prompt ?? '';
@@ -494,6 +524,30 @@ describe('buildEpicRefinementUrl', () => {
     expect(prompt).toMatch(/reproduced exactly/i);
   });
 
+  it('carries the same HTML preview-link instruction as the story prompt', () => {
+    const prompt =
+      parse(
+        buildEpicRefinementUrl(
+          makeProject({ repo_owner: 'octocat', repo_name: 'hello-world' }),
+          makeEpic(),
+        ),
+      ).prompt ?? '';
+    // An epic spec is HTML too, so its PR needs the same rendered link — and for the same reason
+    // it belongs here rather than in each repo's epic-refinement skill.
+    expect(prompt).toContain(
+      'https://htmlpreview.github.io/?https://github.com/octocat/hello-world/blob/<head-branch>/<spec-path>',
+    );
+    expect(prompt).toMatch(/raw source/i);
+    expect(prompt).toMatch(/head branch/i);
+  });
+
+  it('covers the preview link in the pre-PR self-check', () => {
+    const prompt = parse(buildEpicRefinementUrl(makeProject(), makeEpic())).prompt ?? '';
+    const selfCheck = prompt.split('\n').find((line) => line.startsWith('6. ')) ?? '';
+    expect(selfCheck).toMatch(/before opening the PR/i);
+    expect(selfCheck).toMatch(/preview link/i);
+  });
+
   it('tells the agent to UPDATE an existing epic spec in place rather than write a second one', () => {
     const prompt =
       parse(
@@ -547,6 +601,17 @@ describe('buildEpicRefinementUrl', () => {
     expect(repo).toBe('me/relay');
     expect((prompt ?? '').split('\n', 1)[0]).toBe('RLP-3: Digest pipeline');
     expect(prompt).toContain('alfred-ticket: RLP-3');
+  });
+});
+
+describe('the HTML spec preview link', () => {
+  it.each([
+    ['buildImplementationUrl', buildImplementationUrl],
+    ['buildBypassUrl', buildBypassUrl],
+  ] as const)('%s does NOT carry it — those sessions write no spec', (_name, build) => {
+    const prompt = parse(build(makeProject(), makeStory())).prompt ?? '';
+    // Only the two refinement phases author a spec, so only they have one to preview-link.
+    expect(prompt).not.toMatch(/htmlpreview/i);
   });
 });
 

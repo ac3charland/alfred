@@ -159,6 +159,18 @@ function epicContextLines(story: CodeStory): string[] {
   ];
 }
 
+/**
+ * The rendered-preview instruction both refinement prompts carry. GitHub serves a committed
+ * `.html` file as raw source, so a reviewer who clicks an HTML spec gets markup instead of the
+ * plan; htmlpreview.github.io renders it. It lives in the prompt rather than in each repo's
+ * refinement skill so every project gets it without the instruction being copy-pasted into — and
+ * drifting between — every repo's own skill file. Owner/repo come from the project row; the head
+ * branch and spec path are the agent's to fill, since only it knows where the spec landed.
+ */
+function htmlPreviewStep(project: Project): string {
+  return `If the spec is an HTML file, also put a rendered-preview link in the description — GitHub serves a committed \`.html\` as raw source, so a reviewer who clicks the spec gets markup instead of the plan. Point it at this PR's head branch (the spec isn't on main yet): \`https://htmlpreview.github.io/?https://github.com/${project.repo_owner}/${project.repo_name}/blob/<head-branch>/<spec-path>\``;
+}
+
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
 function buildUrl(project: Project, prompt: string): string {
   const parameters = new URLSearchParams({
@@ -214,7 +226,8 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     '',
     frontmatterBlock(ref, 'refinement', SPEC_PATH_PLACEHOLDER),
     '',
-    `5. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), and the block is reproduced exactly.`,
+    `5. ${htmlPreviewStep(project)}`,
+    `6. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), the preview link is there if the spec is HTML, and the block is reproduced exactly.`,
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
@@ -252,7 +265,8 @@ export function buildEpicRefinementUrl(project: Project, epic: Epic): string {
     '',
     frontmatterBlock(epic.ref, 'epic-refinement', SPEC_PATH_PLACEHOLDER),
     '',
-    `5. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), and the block is reproduced exactly.`,
+    `5. ${htmlPreviewStep(project)}`,
+    `6. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), the preview link is there if the spec is HTML, and the block is reproduced exactly.`,
     notesContext(epic.notes, 'the epic notes'),
   ].join('\n');
   return buildUrl(project, prompt);
