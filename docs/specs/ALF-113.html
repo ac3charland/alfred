@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-113 — Attach images to code tickets and pass them to Claude Code</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.4rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: .95rem; margin: 1.2rem 0 .3rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .84rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .decision { display: grid; grid-template-columns: 150px 1fr; gap: .4rem 1rem; margin: .5rem 0; }
+  .decision dt { font-weight: 600; color: var(--accent); }
+  .decision dd { margin: 0; }
+  ul.ac { list-style: none; padding: 0; }
+  ul.ac li { padding: .35rem 0 .35rem 1.9rem; position: relative; border-bottom: 1px solid var(--line); }
+  ul.ac li::before {
+    content: "\2610"; position: absolute; left: .3rem; top: .35rem; color: var(--accent); font-size: 1.05rem;
+  }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .filelabel { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; display: block; margin: 1rem auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.3rem; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  .mock {
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    margin: 1rem 0; background: var(--card); font-size: .82rem;
+  }
+  .mock-bar {
+    display: flex; align-items: center; gap: .6rem; padding: .5rem .8rem;
+    border-bottom: 1px solid var(--line); background: var(--bg);
+  }
+  .mock-body { padding: .9rem; }
+  .mock-frame {
+    border: 1px dashed var(--accent); border-radius: 8px; padding: 1.2rem .9rem;
+    text-align: center; color: var(--muted); background: var(--bg);
+  }
+  .mock-select {
+    border: 1px solid var(--line); border-radius: 6px; padding: .2rem .55rem;
+    background: var(--card); font-family: ui-monospace, monospace; font-size: .78rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ALF-113 — Add ability to attach images to code tickets and pass to Claude Code</h1>
+  <p class="sub">
+    <span class="pill">Refinement</span>
+    <span class="pill">Code module</span>
+    <span class="pill">DB · Storage · API · UI · Prompts</span>
+    Spec only — no implementation. Build in a later session.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    Half of what a code ticket is really about is visual: a screenshot of the broken layout, a
+    mockup of the target design, a stack trace captured from a phone. Today alfred has nowhere to
+    put any of it. A story carries a title and free-text <code>notes</code>
+    (<code class="filelabel">items.notes</code>) and nothing else, so the owner ends up describing a
+    picture in prose — and the launched Claude Code session gets that prose instead of the picture.
+  </p>
+  <p>
+    The launch path is the constraint that shapes this whole ticket. A story is handed to Claude
+    Code by a <strong>human click</strong> on a prefilled deep link built in
+    <code class="filelabel">frontend/lib/code/links.ts</code>:
+  </p>
+  <pre><code>https://claude.ai/code?repo=&lt;owner&gt;/&lt;name&gt;&amp;q=&lt;urlencoded prompt&gt;</code></pre>
+  <p>
+    That URL carries <strong>text only</strong> — there is no attachment parameter, no multipart
+    body, no way to hand the surface a binary. So "pass to Claude Code" cannot mean "upload the
+    image with the prompt." It has to mean: <strong>host the image somewhere the session can reach,
+    and put its address in the prompt with an instruction to go fetch it.</strong> Claude Code can
+    already do the rest — it downloads the file into its sandbox and reads it, and its file-read
+    tool renders images visually.
+  </p>
+  <div class="callout">
+    <strong>The one thing this spec cannot prove up front:</strong> whether the Claude Code web
+    sandbox's network policy lets it reach the Supabase Storage host. Outbound HTTPS in that
+    sandbox goes through an agent proxy whose allowlist is environment-configured. This is
+    called out as risk R1 (§12) with a verification step in the acceptance criteria and a
+    human-paste fallback baked into the prompt text — it does not block the build.
+  </div>
+
+  <h2>2 · Decisions locked during refinement</h2>
+  <p>Four forks were resolved with the owner before this spec was written:</p>
+  <dl class="decision">
+    <dt>Transport</dt>
+    <dd><strong>Supabase Storage + URL in the prompt.</strong> Images live in a Storage bucket; the
+      launch prompt lists each one's signed URL and tells the agent to download and read it.
+      Rejected: committing images into the project repo (needs a GitHub write token in the
+      frontend and puts binaries in the repo); clipboard-paste-only (manual, one image at a time,
+      unreliable on mobile).</dd>
+    <dt>Where you attach</dt>
+    <dd><strong>The story detail modal</strong> (the code board / backlog surface) <strong>and the
+      inbox row's "Open details" panel once the item is classified as Code.</strong> Both surfaces
+      render the same shared component. A task's detail panel is unchanged.</dd>
+    <dt>What can carry images</dt>
+    <dd><strong>Code stories only.</strong> Epics and tasks are untouched — no epic attachments, no
+      change to the epic-refinement prompt.</dd>
+    <dt>Which prompts get them</dt>
+    <dd><strong>All three story launches</strong> — refinement, implementation, and the
+      skip-refinement bypass. A screenshot is as useful when building as when speccing.</dd>
+  </dl>
+  <p>
+    One consequence of the second decision drives the data model: an inbox item classified as
+    <code>code</code> has <em>no</em> <code>code_items</code> sidecar and <em>no</em> ref yet — it
+    only gets those at the gate. So attachments must key off <strong><code>items.id</code></strong>,
+    not the story ref. That id survives <code>enter_code_module</code> unchanged, so images attached
+    in the inbox travel with the item into the factory for free.
+  </p>
+
+  <h2>3 · Proposed change at a glance</h2>
+  <svg viewBox="0 0 860 360" role="img" aria-label="Data flow: browser uploads an image through a Next route handler into Supabase Storage; a metadata row lands in item_attachments; at launch the store mints signed URLs and embeds them in the Claude Code prompt; the Claude session downloads and reads the image.">
+    <defs>
+      <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6 z" fill="currentColor" />
+      </marker>
+    </defs>
+    <g fill="none" stroke="currentColor" stroke-width="1.2" color="#8a94a0">
+      <rect x="12"  y="26"  width="180" height="80" rx="9" />
+      <rect x="252" y="26"  width="180" height="80" rx="9" />
+      <rect x="492" y="12"  width="180" height="52" rx="9" />
+      <rect x="492" y="86"  width="180" height="52" rx="9" />
+      <rect x="12"  y="200" width="180" height="80" rx="9" />
+      <rect x="252" y="200" width="180" height="80" rx="9" />
+      <rect x="492" y="200" width="180" height="80" rx="9" />
+      <rect x="700" y="200" width="148" height="80" rx="9" stroke-dasharray="5 4" />
+      <path d="M192,66 L246,66"  marker-end="url(#ar)" />
+      <path d="M432,52 L486,40"  marker-end="url(#ar)" />
+      <path d="M432,80 L486,106" marker-end="url(#ar)" />
+      <path d="M192,240 L246,240" marker-end="url(#ar)" />
+      <path d="M432,240 L486,240" marker-end="url(#ar)" />
+      <path d="M672,240 L694,240" marker-end="url(#ar)" />
+      <path d="M582,138 L582,194" marker-end="url(#ar)" />
+    </g>
+    <g font-family="ui-monospace, monospace" font-size="11" fill="#5c6672">
+      <text x="102" y="52" text-anchor="middle" font-size="12" font-weight="600" fill="#0d7d7d">ATTACH</text>
+      <text x="102" y="72" text-anchor="middle">paste / drop / pick</text>
+      <text x="102" y="88" text-anchor="middle">attachments-store</text>
+      <text x="342" y="52" text-anchor="middle" font-size="12" font-weight="600" fill="#0d7d7d">ROUTE HANDLER</text>
+      <text x="342" y="72" text-anchor="middle">POST /api/items/</text>
+      <text x="342" y="88" text-anchor="middle">[id]/attachments</text>
+      <text x="582" y="34" text-anchor="middle">Storage bucket</text>
+      <text x="582" y="50" text-anchor="middle" font-size="10">ticket-images/&lt;item&gt;/&lt;uuid&gt;.png</text>
+      <text x="582" y="108" text-anchor="middle">table</text>
+      <text x="582" y="124" text-anchor="middle" font-size="10">item_attachments</text>
+      <text x="102" y="226" text-anchor="middle" font-size="12" font-weight="600" fill="#0d7d7d">LAUNCH</text>
+      <text x="102" y="246" text-anchor="middle">openClaudeSession</text>
+      <text x="102" y="262" text-anchor="middle" font-size="10">(story has images?)</text>
+      <text x="342" y="226" text-anchor="middle" font-size="12" font-weight="600" fill="#0d7d7d">SIGN</text>
+      <text x="342" y="246" text-anchor="middle" font-size="10">GET /api/items/[id]/</text>
+      <text x="342" y="262" text-anchor="middle" font-size="10">attachment-links</text>
+      <text x="582" y="226" text-anchor="middle" font-size="12" font-weight="600" fill="#0d7d7d">PROMPT</text>
+      <text x="582" y="246" text-anchor="middle" font-size="10">links.ts embeds</text>
+      <text x="582" y="262" text-anchor="middle" font-size="10">filename + signed URL</text>
+      <text x="774" y="230" text-anchor="middle" font-size="12" font-weight="600" fill="#0d7d7d">CLAUDE</text>
+      <text x="774" y="250" text-anchor="middle" font-size="10">curl → sandbox</text>
+      <text x="774" y="266" text-anchor="middle" font-size="10">Read → sees it</text>
+    </g>
+  </svg>
+  <p class="diagram-cap">Attach (top) and launch (bottom). The dashed box is the Claude Code session — outside alfred.</p>
+
+  <h2>4 · Data model &amp; migration</h2>
+  <p>
+    One new migration, <code>database/migrations/&lt;next&gt;_item_attachments.sql</code> — take
+    whatever number is free when you build this; do not assume the number in this sentence's
+    neighbourhood is still available. Follow the <code>0001</code>/<code>0020</code> conventions:
+    <code>comment on</code> for non-obvious columns, RLS <em>authenticated full access</em>, explicit
+    grants to <code>anon, authenticated, service_role</code>, and a trailing
+    <code>notify pgrst, 'reload schema';</code>.
+  </p>
+
+  <h3>4.1 The table</h3>
+  <pre><code>-- Image attachments on an item (ALF-113). Keyed on items.id — NOT on a code ref —
+-- so an inbox item classified as `code` can carry images BEFORE it has a
+-- code_items sidecar, and keeps them across enter_code_module (same item id).
+create table item_attachments (
+  id           uuid primary key default gen_random_uuid(),
+  item_id      uuid not null references items (id) on delete cascade,
+  storage_path text not null unique,   -- object key inside the ticket-images bucket
+  filename     text not null,          -- the human-facing name, echoed into the prompt
+  mime_type    text not null,
+  size_bytes   integer not null,
+  created_at   timestamptz not null default now()
+);
+
+create index item_attachments_item_id_idx on item_attachments (item_id, created_at);
+
+comment on column item_attachments.storage_path is
+  'Object key in the ticket-images Storage bucket: &lt;item_id&gt;/&lt;uuid&gt;.&lt;ext&gt;. Unique so a '
+  'row and its object are 1:1; the object is removed best-effort when the row is deleted.';
+comment on column item_attachments.filename is
+  'Original upload name (or pasted-image.png for a clipboard blob). Display only — never used to '
+  'build the storage key, so it is not a path-traversal surface.';
+
+alter table item_attachments enable row level security;
+create policy "authenticated full access" on item_attachments
+  for all to authenticated using (true) with check (true);
+grant select, insert, update, delete on item_attachments to anon, authenticated, service_role;</code></pre>
+  <div class="callout">
+    <strong>Cascade, and what it does <em>not</em> cover.</strong> Deleting an item drops its
+    attachment rows, but Postgres cannot reach into Storage — the objects are orphaned. At
+    single-user volume that is a few stray blobs, not a problem; a sweeper is explicitly out of
+    scope (§11). Do not attempt a trigger against <code>storage.objects</code>.
+  </div>
+
+  <h3>4.2 The bucket</h3>
+  <p>
+    <strong>Private</strong>, not public — everything else in alfred sits behind auth, and a public
+    bucket would be the app's first world-readable surface. Reads happen two ways: the UI streams
+    through a cookie-authed route handler (§6), and the launch prompt carries a <em>time-limited
+    signed URL</em>, so exposure is bounded even though the URL travels into a Claude tab.
+  </p>
+  <pre><code>insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('ticket-images', 'ticket-images', false, 4194304,
+        array['image/png','image/jpeg','image/gif','image/webp'])
+on conflict (id) do nothing;
+
+create policy "authenticated ticket-image read" on storage.objects
+  for select to authenticated using (bucket_id = 'ticket-images');
+create policy "authenticated ticket-image write" on storage.objects
+  for insert to authenticated with check (bucket_id = 'ticket-images');
+create policy "authenticated ticket-image delete" on storage.objects
+  for delete to authenticated using (bucket_id = 'ticket-images');</code></pre>
+  <p>
+    The bucket enforces the type allowlist and the size cap server-side; the app validates the same
+    two rules earlier (§6.1) so the user gets a readable message instead of a raw Storage error.
+  </p>
+
+  <h3>4.3 Credentialed tail</h3>
+  <div class="callout">
+    <code>supabase db push</code> and <code>supabase gen types</code> need
+    <code>frontend/.env.local</code>, which a web/CI sandbox does not have (the §4 sandbox note in
+    the <a href="code-module/code-module-spec.md">code-module spec</a>). The implementation
+    session should <strong>write</strong> the migration and leave applying it + regenerating
+    <code class="filelabel">frontend/lib/database.types.ts</code> as an explicit checklist for a
+    local session. If credentials <em>are</em> present, run both and commit the regenerated types
+    verbatim — never hand-edit that file.
+  </div>
+
+  <h2>5 · Storage layout &amp; limits</h2>
+  <table>
+    <tr><th>Concern</th><th>Decision</th><th>Why</th></tr>
+    <tr>
+      <td>Object key</td>
+      <td><code>&lt;item_id&gt;/&lt;uuid&gt;.&lt;ext&gt;</code></td>
+      <td>Server-minted; the user's filename never touches the key, so no traversal or collision.
+        The extension comes from the validated MIME type, not the upload name.</td>
+    </tr>
+    <tr>
+      <td>Accepted types</td>
+      <td><code>image/png</code>, <code>image/jpeg</code>, <code>image/gif</code>,
+        <code>image/webp</code></td>
+      <td>Images only — this ticket is about screenshots and mockups, not general file storage.</td>
+    </tr>
+    <tr>
+      <td>Max size</td>
+      <td><strong>4 MB</strong> per image</td>
+      <td>The upload goes through a Next route handler, and Vercel caps a serverless request body
+        at 4.5 MB. 4 MB keeps a margin. Screenshots are well under it; the escape hatch if this
+        ever bites is a direct-to-Storage signed upload (out of scope).</td>
+    </tr>
+    <tr>
+      <td>Max per item</td>
+      <td><strong>10</strong></td>
+      <td>Bounds the prompt block (§8) and the thumbnail grid. Enforced client-side (the add
+        affordance disables) and re-checked in the route handler.</td>
+    </tr>
+    <tr>
+      <td>Signed-URL TTL</td>
+      <td><strong>7 days</strong> (604800 s)</td>
+      <td>A launched tab can sit unread for a day or two before the human hits enter; a one-hour
+        URL would be dead by then. Long enough to be useful, short enough to expire.</td>
+    </tr>
+  </table>
+
+  <h2>6 · API surface</h2>
+  <p>
+    Four route handlers, all following the house shape — <code>withSession</code>,
+    <code>parseUUID</code> on uuid segments, <code>jsonOk</code>/<code>jsonError</code>,
+    <code>mapSupabaseError</code> (see <code class="filelabel">frontend/app/api/code/epic/route.ts</code>
+    as the model). <strong>All Supabase Storage calls happen server-side</strong>, so the browser
+    never touches Storage directly and the data-flow layering holds.
+  </p>
+  <table>
+    <tr><th>Route</th><th>Body / params</th><th>Behaviour</th></tr>
+    <tr>
+      <td><code>POST /api/items/[id]/attachments</code></td>
+      <td><code>multipart/form-data</code>, field <code>file</code></td>
+      <td>Validate (type, size, per-item count) → upload to <code>ticket-images</code> under the
+        minted key → insert the <code>item_attachments</code> row → <code>201</code> with the saved
+        row. On a failed insert, remove the just-uploaded object so a half-write leaves nothing
+        behind.</td>
+    </tr>
+    <tr>
+      <td><code>DELETE /api/attachments/[id]</code></td>
+      <td>uuid segment</td>
+      <td>Read the row for its <code>storage_path</code>, delete the row, then remove the object
+        <strong>best-effort</strong>. Row first: the row is what the UI reads, so a stray object is
+        the harmless failure and a row pointing at a missing object is not.</td>
+    </tr>
+    <tr>
+      <td><code>GET /api/attachments/[id]/raw</code></td>
+      <td>uuid segment</td>
+      <td>Stream the object back with its <code>Content-Type</code> and
+        <code>Cache-Control: private, max-age=3600</code>. This is the <code>&lt;img src&gt;</code>
+        for every thumbnail and the lightbox — cookie-authed, so no signed URLs anywhere in the
+        UI.</td>
+    </tr>
+    <tr>
+      <td><code>GET /api/items/[id]/attachment-links</code></td>
+      <td>uuid segment</td>
+      <td>Mint a 7-day signed URL per attachment and return
+        <code>{ filename, url }[]</code> in <code>created_at</code> order — exactly the shape
+        <code>links.ts</code> consumes. Called only at launch, and only when the story has
+        attachments.</td>
+    </tr>
+  </table>
+
+  <h3>6.1 Shared validation</h3>
+  <p>
+    Put the rules in one pure module, <code class="filelabel">frontend/lib/attachments/validate.ts</code>,
+    imported by both the client (to reject before uploading, with a toast) and the route handler (to
+    reject a crafted request). One source of truth, trivially unit-tested:
+  </p>
+  <pre><code>export const ACCEPTED_IMAGE_TYPES = ['image/png','image/jpeg','image/gif','image/webp'] as const;
+export const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_ITEM = 10;
+
+/** null when the file is acceptable, otherwise the user-facing reason. */
+export function rejectionReason(
+  file: { type: string; size: number },
+  existingCount: number,
+): string | null;
+
+/** '&lt;item_id&gt;/&lt;uuid&gt;.&lt;ext&gt;' — extension derived from the VALIDATED mime type. */
+export function buildStoragePath(itemId: string, mimeType: string, uuid: string): string;</code></pre>
+  <p>
+    <code>buildStoragePath</code> takes the uuid as an argument rather than generating one, so it
+    stays pure and the tests stay deterministic — the caller passes
+    <code>crypto.randomUUID()</code>.
+  </p>
+
+  <h2>7 · Frontend</h2>
+
+  <h3>7.1 The store</h3>
+  <p>
+    A new <code>AttachmentsProvider</code> in
+    <code class="filelabel">frontend/lib/stores/attachments-store.tsx</code>, seeded once at the
+    shell layout exactly like Folders / Tasks / Code
+    (<code class="filelabel">frontend/app/(shell)/layout.tsx</code>), from a new server reader
+    <code class="filelabel">frontend/lib/data/attachments.ts</code> → <code>getAttachments()</code>.
+    Metadata rows are tiny, so the house "fetch-all, seed once, filter client-side" choice applies
+    unchanged. Mount it inside <code>ToastProvider</code> so rollbacks can toast.
+  </p>
+  <table>
+    <tr><th>Export</th><th>Shape</th><th>Notes</th></tr>
+    <tr><td><code>useItemAttachments(itemId)</code></td><td><code>AttachmentEntry[]</code></td>
+      <td>The item's attachments in <code>created_at</code> order.</td></tr>
+    <tr><td><code>useAttachmentActions()</code></td>
+      <td><code>{ uploadAttachment(itemId, file), deleteAttachment(id) }</code></td>
+      <td>Both optimistic with reconcile/rollback, per the <code>data-flow</code> skill.</td></tr>
+  </table>
+  <p>
+    <code>AttachmentEntry</code> (in <code class="filelabel">frontend/lib/types.ts</code>) is the
+    saved row plus two client-only fields:
+  </p>
+  <pre><code>export type ItemAttachment = Database['public']['Tables']['item_attachments']['Row'];
+
+export interface AttachmentEntry extends ItemAttachment {
+  /** Object-URL preview shown while the upload is in flight, so the thumbnail is instant. */
+  previewUrl?: string;
+  /** True until the server row reconciles — drives the dimmed/spinner treatment. */
+  pending?: boolean;
+}</code></pre>
+  <p>
+    <strong>Upload:</strong> validate → insert an optimistic entry (temp id, <code>pending</code>,
+    <code>previewUrl</code> from <code>URL.createObjectURL(file)</code>) → POST → replace the temp
+    entry with the saved row and <code>URL.revokeObjectURL(previewUrl)</code>. On failure, drop the
+    entry, revoke the preview, and fire the existing error toast. <strong>Delete:</strong> remove
+    the entry, DELETE, restore it at its original index on failure.
+  </p>
+  <p>
+    The thumbnail <code>src</code> is <code>entry.previewUrl ?? `/api/attachments/${entry.id}/raw`</code>
+    — one expression covering both the in-flight and the saved case.
+  </p>
+
+  <h3>7.2 The shared component</h3>
+  <p>
+    One component used by both surfaces, so the two never drift — new folder
+    <code class="filelabel">frontend/components/attachments/</code> (sibling of
+    <code>components/code</code> and <code>components/tasks</code>), per the
+    <code>frontend-architecture</code> skill:
+  </p>
+  <table>
+    <tr><th>File</th><th>Responsibility</th></tr>
+    <tr><td><code>attachments-section.tsx</code></td>
+      <td>The composition root: eyebrow label + count, the grid, the add affordance (a visually
+        hidden <code>&lt;input type="file" accept="image/*" multiple&gt;</code> behind a labelled
+        button), drag-and-drop onto the section, and a <code>paste</code> handler reading
+        <code>event.clipboardData.files</code>. Takes <code>itemId</code> and nothing else — it
+        reads and mutates through the store.</td></tr>
+    <tr><td><code>attachment-grid.tsx</code></td>
+      <td>The thumbnail row: fixed-size rounded tiles, <code>object-cover</code>, a hover-revealed
+        delete <code>IconButton</code> per tile (reusing <code>components/atoms/icon-button</code>),
+        and the dimmed + <code>Spinner</code> treatment while <code>pending</code>.</td></tr>
+    <tr><td><code>attachment-lightbox.tsx</code></td>
+      <td>Click a tile → the full image in a <code>FormDialog</code>
+        (<code class="filelabel">components/atoms/dialog</code>), filename in the title, Escape /
+        overlay to close. No zoom or pan.</td></tr>
+  </table>
+  <p>
+    Styling follows the dark dense house tokens (<code>bg-surface</code>, <code>border-border</code>,
+    <code>text-accent-teal</code>) and the motion tokens for the hover/fade treatments — see the
+    <code>tailwindcss</code> and <code>motion</code> skills; do not hand-roll transitions.
+  </p>
+  <p>Rough shape of the section, in both surfaces:</p>
+  <div class="mock">
+    <div class="mock-bar"><strong>ALF-113</strong> <span class="mock-select">needs_refinement</span></div>
+    <div class="mock-body">
+      <div style="font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:#5c6672;margin-bottom:.5rem">Images · 3</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <div class="mock-frame" style="width:88px;padding:1.4rem .2rem">login.png</div>
+        <div class="mock-frame" style="width:88px;padding:1.4rem .2rem">spacing.png</div>
+        <div class="mock-frame" style="width:88px;padding:1.4rem .2rem;opacity:.5">uploading…</div>
+        <div class="mock-frame" style="width:88px;padding:1.4rem .2rem;border-style:solid">+ Add</div>
+      </div>
+      <div style="font-size:.75rem;color:#8a94a0;margin-top:.6rem">Drop an image here, or paste one (⌘V).</div>
+    </div>
+  </div>
+
+  <h3>7.3 Wiring into the two surfaces</h3>
+  <table>
+    <tr><th>Surface</th><th>File</th><th>Change</th></tr>
+    <tr>
+      <td>Story detail modal</td>
+      <td><code class="filelabel">frontend/components/code/story-detail-modal.tsx</code></td>
+      <td>Render <code>&lt;AttachmentsSection itemId={story.item_id} /&gt;</code> in
+        <code>DetailBody</code>, between the Notes block and <code>&lt;SpecBody /&gt;</code>. Guard
+        the nullable <code>item_id</code> the same way <code>EditableTitle</code> does (the view row
+        type is all-nullable).</td>
+    </tr>
+    <tr>
+      <td>Inbox "Open details" panel</td>
+      <td><code class="filelabel">frontend/components/tasks/task-row/task-detail-panel.tsx</code></td>
+      <td>Render the same section <strong>only when the item is classified <code>code</code></strong>,
+        below the notes editor. Pass a <code>showAttachments</code> flag from
+        <code class="filelabel">task-row.tsx</code> computed as
+        <code>node.item_type === 'code'</code> — mirroring how <code>showTypeBadge</code> is already
+        derived there, rather than reaching into <code>node</code> inside the panel.</td>
+    </tr>
+  </table>
+  <p>
+    No change to the row menu: <em>Open details</em> already leads it for every type, so a
+    code-classified inbox item reaches the uploader through the affordance that exists.
+  </p>
+
+  <h2>8 · The prompt change (<code>links.ts</code>)</h2>
+  <p>
+    This is where the feature actually pays off. Add one more context block, appended after
+    <code>notesContext(...)</code> in <strong>all three story builders</strong> —
+    <code>buildRefinementUrl</code>, <code>buildImplementationUrl</code>,
+    <code>buildBypassUrl</code>. <code>buildEpicRefinementUrl</code> is untouched (§2).
+  </p>
+  <pre><code>export interface PromptAttachment {
+  filename: string;
+  url: string;
+}
+
+/** Cap the listed images so the block can't push the prompt past the ~14k desktop truncation. */
+const MAX_PROMPT_ATTACHMENTS = 10;
+
+function attachmentsContext(attachments: readonly PromptAttachment[]): string { … }
+
+export function buildRefinementUrl(
+  project: Project,
+  story: CodeStory,
+  attachments: readonly PromptAttachment[] = [],
+): string { … }</code></pre>
+  <p>
+    The parameter defaults to <code>[]</code>, so every existing caller and test keeps compiling and
+    a story with no images produces a byte-identical prompt to today. The emitted block:
+  </p>
+  <pre><code>Attached images (2) — these are part of the ticket. Download each one into your sandbox and
+READ it so you can actually see it (e.g. `curl -fsSL "&lt;url&gt;" -o /tmp/&lt;filename&gt;`, then open
+that path with your file-read tool — it renders images). The links are time-limited; if a
+download fails, tell me here and I'll paste the image into this tab instead.
+1. login-error.png — https://&lt;project&gt;.supabase.co/storage/v1/object/sign/ticket-images/…
+2. target-spacing.png — https://&lt;project&gt;.supabase.co/storage/v1/object/sign/ticket-images/…</code></pre>
+  <p>
+    Three details that matter and should each be pinned by a test: the block is <strong>absent
+    entirely</strong> when there are no attachments (an empty "Attached images (0)" heading invites
+    an agent to go looking for nothing); past <code>MAX_PROMPT_ATTACHMENTS</code> the list is
+    clipped and the agent is <strong>told</strong> it was clipped, the same way
+    <code>notesContext</code> announces truncated notes; and the explicit failure instruction is
+    what makes risk R1 (§12) survivable rather than silent.
+  </p>
+
+  <h3>8.1 The launcher</h3>
+  <p>
+    <code>openClaudeSession</code> in
+    <code class="filelabel">frontend/lib/stores/code-store.tsx</code> gains one step, <em>before</em>
+    the state write:
+  </p>
+  <pre><code>// 1. Sign the images FIRST — a signing failure must not leave the story transitioned
+//    to in_refinement with no session ever opened. Skipped entirely (no round trip)
+//    when the store already knows the story has no attachments.
+const attachments = hasAttachments ? await api.getAttachmentLinks(itemId) : [];
+// 2. …then the existing await-the-state-write → copy prompt → window.open sequence.</code></pre>
+  <p>
+    Order matters: signing before the write means a failure aborts cleanly with an error toast and
+    the story stays where it was. The clipboard paste-fallback (the mobile app drops <code>q</code>)
+    copies the same prompt, images included, so mobile is covered for free.
+  </p>
+
+  <h2>9 · The e2e mock backend</h2>
+  <p>
+    <code class="filelabel">frontend/scripts/mock-supabase.mjs</code> fakes the Supabase wire
+    protocol for the Playwright suite — and it has <strong>no Storage surface at all</strong> today.
+    Without one, every upload path 404s under e2e. Extend it (self-contained, Node builtins only,
+    matching its existing style):
+  </p>
+  <table>
+    <tr><th>Endpoint</th><th>Behaviour</th></tr>
+    <tr><td><code>POST|PUT /storage/v1/object/ticket-images/&lt;path&gt;</code></td>
+      <td>Keep the bytes in an in-memory map keyed by path; respond <code>{ Key }</code>.</td></tr>
+    <tr><td><code>GET /storage/v1/object/…/ticket-images/&lt;path&gt;</code></td>
+      <td>Return the stored bytes with the recorded content type (serves both the authenticated
+        download and a signed-URL fetch).</td></tr>
+    <tr><td><code>POST /storage/v1/object/sign/ticket-images/&lt;path&gt;</code></td>
+      <td>Respond <code>{ signedURL: '/object/sign/ticket-images/&lt;path&gt;?token=mock' }</code> —
+        supabase-js resolves it against the configured Storage URL, so the deterministic
+        <code>token=mock</code> is directly assertable in a prompt test.</td></tr>
+    <tr><td><code>DELETE /storage/v1/object/ticket-images/&lt;path&gt;</code></td>
+      <td>Drop the entry; respond <code>200</code>.</td></tr>
+    <tr><td><code>/rest/v1/item_attachments</code></td>
+      <td>CRUD alongside the existing tables, plus an <code>attachments</code> array in
+        <code>SeedState</code> / <code>/__mock__/{reset,seed,state}</code> and a
+        <code>makeAttachment()</code> helper in
+        <code class="filelabel">frontend/e2e/support/constants.ts</code>.</td></tr>
+  </table>
+  <p>Reset must clear the object map as well as the rows, or images leak between tests.</p>
+
+  <h2>10 · Testing</h2>
+  <p>
+    Red/green TDD, per <code>CLAUDE.md</code> — every behaviour below lands as a failing test first.
+  </p>
+  <table>
+    <tr><th>Layer</th><th>Covers</th></tr>
+    <tr><td>Jest (pure)</td>
+      <td><code>validate.ts</code>: each accepted type, a rejected type, at/over the size cap, at/over
+        the count cap; <code>buildStoragePath</code> extension mapping.
+        <code>links.ts</code>: no block when empty; one image; several; over the cap → clipped +
+        announced; the block appears in all three story builders and <strong>not</strong> in
+        <code>buildEpicRefinementUrl</code>; the URL round-trips through
+        <code>promptFromLaunchUrl</code>.</td></tr>
+    <tr><td>Jest (route handlers)</td>
+      <td>Following the existing <code>route.test.ts</code> pattern: upload happy path (201 + row),
+        rejected type/size/count (400), the compensating object-removal when the insert fails,
+        delete removes row then object, <code>raw</code> streams with the right content type,
+        <code>attachment-links</code> returns one signed URL per row in order, and 401 without a
+        session on every route.</td></tr>
+    <tr><td>Jest (store)</td>
+      <td><code>attachments-store.test.tsx</code>: optimistic insert shows immediately, reconcile
+        swaps in the saved row and revokes the object URL, failure rolls back + toasts; delete
+        rollback restores position. Plus <code>code-store</code>: launch signs before writing state,
+        skips the sign call when there are no attachments, and aborts the launch (no state change)
+        when signing fails.</td></tr>
+    <tr><td>RTL</td>
+      <td>The section: upload via the file input, upload via a synthesised <code>paste</code> with
+        <code>clipboardData.files</code>, drag-and-drop, delete, lightbox open/close, add affordance
+        disabled at the cap, rejection toast. Placement: the story detail modal renders it; the
+        inbox detail panel renders it for a <code>code</code> item and <strong>not</strong> for a
+        <code>task</code> or <code>unclassified</code> one.</td></tr>
+    <tr><td>Storybook</td>
+      <td>Stories for empty / three thumbnails / one pending / at-cap, with committed image-snapshot
+        baselines. Capture the diff image first, then approve —
+        <code>npm run test:storybook:update -w frontend</code>; never hand-edit a baseline (the
+        <code>storybook</code> skill).</td></tr>
+    <tr><td>Playwright</td>
+      <td>Seeded story with an attachment → the thumbnail renders in the modal. Upload via
+        <code>setInputFiles</code> from a small committed fixture PNG → appears, survives a reload.
+        Delete → gone after reload. Inbox: classify as Code → Open details → the section is there
+        (and is absent on a task row). Extend
+        <code class="filelabel">frontend/e2e/code-links.spec.ts</code>: a story with an image →
+        Refine → the opened URL's <code>q</code> contains the filename and the signed URL.</td></tr>
+  </table>
+
+  <h2>11 · Demo doc</h2>
+  <p>
+    A user-facing change, so it needs one. Author it with <code>npm run demo</code> into a branch
+    folder under <code>docs/demos/</code> — the structure, the evidence rules, the screenshot
+    helper, and <code>demo -- verify</code> are owned by the <code>showboat</code> skill and the
+    <code>demo-lint</code> gate; follow those rather than anything restated here. What the demo
+    must actually show: an image attached in the modal, the same image on the inbox detail panel,
+    and <strong>the generated launch prompt with the image block in it</strong> — the prompt is the
+    deliverable, so it is the evidence.
+  </p>
+
+  <h2>12 · Acceptance criteria</h2>
+  <ul class="ac">
+    <li>A migration adds <code>item_attachments</code> (keyed on <code>items.id</code>, cascade
+      delete) with RLS, grants, and comments, plus the private <code>ticket-images</code> bucket and
+      its three <code>storage.objects</code> policies.</li>
+    <li>From the <strong>story detail modal</strong>, an image can be added by file picker, by drag
+      and drop, and by paste; it appears as a thumbnail immediately and survives a reload.</li>
+    <li>From an <strong>inbox item classified as Code</strong>, "Open details" shows the same
+      uploader with the same three input methods. A task or unclassified item shows no such
+      section.</li>
+    <li>Clicking a thumbnail opens the full image; each thumbnail can be deleted, and the delete
+      rolls back with an error toast if the request fails.</li>
+    <li>Non-image files, images over 4 MB, and an eleventh image are rejected client-side with a
+      readable message, and rejected again by the route handler.</li>
+    <li>Images attached to an inbox item are still attached after the gate moves it into the factory
+      (same <code>items.id</code>).</li>
+    <li>The refinement, implementation, and bypass prompts each carry an "Attached images" block
+      listing every attachment's filename and signed URL, with the download-and-read instruction and
+      the paste fallback. A story with no images produces the prompt unchanged from today.</li>
+    <li>The epic-refinement prompt is unchanged.</li>
+    <li>The launch signs the URLs <em>before</em> the factory-state write, and a signing failure
+      leaves the story's state untouched.</li>
+    <li>The e2e mock Supabase serves Storage upload / download / sign / delete plus
+      <code>item_attachments</code>, and resets cleanly between tests.</li>
+    <li>Root <code>npm run check</code> is green, every behaviour above is pinned by a test, and the
+      demo doc verifies.</li>
+    <li><strong>R1 verified by hand:</strong> one real launch from a story with an image, confirming
+      the Claude Code session can fetch the signed URL and see the image. Record the outcome in the
+      demo doc or the PR.</li>
+    <li>The <code>supabase</code> skill's line "Supabase Storage … not used in alfred's schema" is
+      updated to describe the <code>ticket-images</code> bucket and the server-side-only access
+      rule, per the compounding-learning rule.</li>
+  </ul>
+
+  <h2>13 · Out of scope</h2>
+  <ul>
+    <li><strong>Epic and task attachments.</strong> Stories only (§2). The table is keyed on
+      <code>items.id</code>, so extending later is additive.</li>
+    <li><strong>Non-image files</strong> — no PDFs, logs, or zips.</li>
+    <li><strong>Attachment count chips</strong> on board cards, backlog rows, or inbox rows. The
+      store has the data if this is wanted later; it is not part of this ticket.</li>
+    <li><strong>Annotation, cropping, reordering, or renaming</strong> — attach and delete only.</li>
+    <li><strong>Attaching from the capture box</strong> before an item exists.</li>
+    <li><strong>An orphaned-object sweeper</strong> for blobs left by a cascade delete (§4.1).</li>
+    <li><strong>Feeding images to the webhook Worker</strong> — the Worker is unchanged by this
+      ticket.</li>
+  </ul>
+
+  <h2>14 · Risks &amp; open questions</h2>
+  <table>
+    <tr><th></th><th>Risk / question</th><th>Handling</th></tr>
+    <tr>
+      <td><strong>R1</strong></td>
+      <td>The Claude Code web sandbox reaches the network through an agent proxy with an
+        environment-configured allowlist. If the Supabase Storage host is blocked, the agent cannot
+        download the image and the whole transport fails.</td>
+      <td>Flag, don't block. The prompt tells the agent to say so and ask for a paste, so the
+        failure is loud and recoverable. Verify with one real launch (§12) before calling this done.
+        If it <em>is</em> blocked, the fallback fork is committing images into the project repo —
+        respec that separately rather than bolting it on.</td>
+    </tr>
+    <tr>
+      <td><strong>R2</strong></td>
+      <td>Vercel's 4.5 MB serverless request-body limit caps what can flow through the upload
+        route.</td>
+      <td>Accepted: 4 MB per image (§5). A direct-to-Storage signed upload is the documented escape
+        hatch if a larger file is ever needed.</td>
+    </tr>
+    <tr>
+      <td><strong>Q1</strong></td>
+      <td>Is 7 days the right signed-URL TTL? A tab left open longer than that yields dead links in
+        an already-prefilled prompt.</td>
+      <td>Ship 7 days; it is a one-constant change. Revisit only if a real launch actually goes
+        stale.</td>
+    </tr>
+    <tr>
+      <td><strong>Q2</strong></td>
+      <td>Should the images also render inside the spec that a refinement session writes?</td>
+      <td>Deferred — that is the refinement session's call, and the signed URLs expire, so a
+        committed spec should not embed them. Not specified here.</td>
+    </tr>
+  </table>
+
+  <h2>15 · File inventory</h2>
+  <table>
+    <tr><th>Area</th><th>Files</th></tr>
+    <tr><td>Database</td>
+      <td><span class="add">new</span> <code>database/migrations/&lt;next&gt;_item_attachments.sql</code>;
+        <span class="add">regen</span> <code>frontend/lib/database.types.ts</code></td></tr>
+    <tr><td>Server reads</td>
+      <td><span class="add">new</span> <code>frontend/lib/data/attachments.ts</code></td></tr>
+    <tr><td>Routes</td>
+      <td><span class="add">new</span> <code>frontend/app/api/items/[id]/attachments/route.ts</code>,
+        <code>frontend/app/api/items/[id]/attachment-links/route.ts</code>,
+        <code>frontend/app/api/attachments/[id]/route.ts</code>,
+        <code>frontend/app/api/attachments/[id]/raw/route.ts</code></td></tr>
+    <tr><td>Lib</td>
+      <td><span class="add">new</span> <code>frontend/lib/attachments/validate.ts</code>;
+        edits to <code>frontend/lib/api-client.ts</code>, <code>frontend/lib/types.ts</code>,
+        <code>frontend/lib/code/links.ts</code></td></tr>
+    <tr><td>Store</td>
+      <td><span class="add">new</span> <code>frontend/lib/stores/attachments-store.tsx</code>;
+        edits to <code>frontend/lib/stores/code-store.tsx</code> (launch signing) and
+        <code>frontend/app/(shell)/layout.tsx</code> (seed the provider)</td></tr>
+    <tr><td>Components</td>
+      <td><span class="add">new</span> <code>frontend/components/attachments/{attachments-section,
+        attachment-grid,attachment-lightbox}.tsx</code>; edits to
+        <code>frontend/components/code/story-detail-modal.tsx</code>,
+        <code>frontend/components/tasks/task-row/task-detail-panel.tsx</code>,
+        <code>frontend/components/tasks/task-row.tsx</code></td></tr>
+    <tr><td>Test harness</td>
+      <td>edits to <code>frontend/scripts/mock-supabase.mjs</code>,
+        <code>frontend/e2e/support/constants.ts</code>; <span class="add">new</span> fixture PNG
+        under <code>frontend/e2e/support/</code></td></tr>
+    <tr><td>Docs</td>
+      <td><span class="add">new</span> demo doc under <code>docs/demos/&lt;branch&gt;/</code>;
+        edit <code>.claude/skills/supabase/SKILL.md</code></td></tr>
+  </table>
+
+  <p class="small" style="margin-top:2.5rem">
+    ALF-113 · refinement spec · no implementation in this PR.
+  </p>
+
+</div>
+</body>
+</html>
