@@ -84,6 +84,12 @@ form**, so its output pastes verbatim into an MCP-posted body — no conversion.
 `https://` link needs converting. Verify with a WebFetch of the PR page (cache-bust with `?cb=N` —
 WebFetch caches a URL for 15 min) and confirm the demo text is an anchor, not inline code.
 
+**The same writer HTML-escapes `'` and `"` into `&#39;` / `&#34;`.** In prose that's invisible
+(the renderer decodes them), but **inside a code span it is not** — CommonMark doesn't resolve
+entities in code, so `` `aria-current="true"` `` renders as the literal `aria-current=&#34;true&#34;`.
+Keep quotes and apostrophes out of backticks in an MCP-posted body — name the attribute alone, or
+put the snippet in a fenced block.
+
 ## What still works fine (don't over-correct)
 
 Only the project-card-fetching porcelain paths are affected. In this repo these worked
