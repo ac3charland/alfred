@@ -50,6 +50,16 @@ describe('ToggleButton', () => {
     );
   });
 
+  it('merges a caller className over its own layout classes', () => {
+    render(
+      <ToggleButton pressed={false} onToggle={() => {}} className="h-8">
+        Show archived
+      </ToggleButton>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Show archived' })).toHaveClass('h-8');
+  });
+
   it('calls onToggle when clicked', async () => {
     const onToggle = jest.fn();
     const user = userEvent.setup();
