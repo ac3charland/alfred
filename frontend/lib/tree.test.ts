@@ -6,6 +6,7 @@ import {
   buildTree,
   collectSubtree,
   countCompletedDescendants,
+  countOverdueDescendants,
   getAncestorTitles,
   getDescendantIds,
   getItemDepth,
@@ -176,6 +177,63 @@ describe('countCompletedDescendants', () => {
 
   it('returns 0 for a leaf', () => {
     expect(countCompletedDescendants(defined(buildTree([BASE])[0]))).toBe(0);
+  });
+});
+
+/**
+ * A `YYYY-MM-DD` due date `offsetDays` from today's LOCAL calendar date. Built from the local
+ * getters (not a UTC-midnight string) so an offset never lands in the adjacent day in a
+ * negative-UTC timezone — the same convention `parseDueDate` reads dates back in.
+ */
+function dueOffsetDays(offsetDays: number): string {
+  const now = new Date();
+  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offsetDays);
+  return `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+describe('countOverdueDescendants', () => {
+  it('counts active overdue descendants at every depth, ignoring the node itself', () => {
+    // item-1 is itself overdue (not counted); c-1 and g-1 are overdue descendants.
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', due_date: dueOffsetDays(-3), created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', due_date: dueOffsetDays(-1) }),
+        item({ id: 'c-2', parent_id: 'item-1', due_date: dueOffsetDays(5) }),
+        item({ id: 'g-1', parent_id: 'c-1', due_date: dueOffsetDays(-10) }),
+      ])[0],
+    );
+    expect(countOverdueDescendants(root)).toBe(2);
+  });
+
+  it('ignores a completed descendant, however overdue it is', () => {
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', due_date: dueOffsetDays(-4), status: 'completed' }),
+        item({ id: 'c-2', parent_id: 'item-1', due_date: dueOffsetDays(-4), status: 'active' }),
+      ])[0],
+    );
+    expect(countOverdueDescendants(root)).toBe(1);
+  });
+
+  it('does not count a descendant due today — today is not yet late', () => {
+    const root = defined(
+      buildTree([
+        item({ id: 'item-1', created_at: '2025-01-05T00:00:00Z' }),
+        item({ id: 'c-1', parent_id: 'item-1', due_date: dueOffsetDays(0) }),
+      ])[0],
+    );
+    expect(countOverdueDescendants(root)).toBe(0);
+  });
+
+  it('does not count a descendant with no due date', () => {
+    const root = defined(buildTree(flatItems())[0]);
+    expect(countOverdueDescendants(root)).toBe(0);
+  });
+
+  it('returns 0 for a leaf, even one that is itself overdue', () => {
+    const leaf = defined(buildTree([item({ due_date: dueOffsetDays(-2) })])[0]);
+    expect(countOverdueDescendants(leaf)).toBe(0);
   });
 });
 
