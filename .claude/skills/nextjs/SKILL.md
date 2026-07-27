@@ -243,10 +243,18 @@ To keep real URLs but make switching instant, drive navigation with the **native
   the binary directly makes `$!` the server itself, so the trap actually reaps it.
   Separately, `fetch(…, { next: { revalidate } })` responses persist **across restarts**, so a
   re-run is served from disk and never reaches the network (or a stub standing in for it).
-  Removing only `.next/cache/fetch-cache` does **not** clear them — dev restores the entries
-  and still answers from them, silently. The failure is quiet and easy to misread: the stub
-  never fires, so its recording side-effects are missing and the numbers are a previous run's.
-  Only dropping the whole `.next` directory resets it.
+  Dev keeps them under `.next/dev/cache/fetch-cache`, so removing only the production
+  `.next/cache/fetch-cache` clears nothing and dev still answers from disk, silently. The
+  failure is quiet and easy to misread: the stub never fires, so its recording side-effects
+  are missing and the numbers are a previous run's. Delete **both** paths (or the whole
+  `.next`) between runs.
+
+- **Freezing the clock for a script-driven `next dev` (a time-dependent route in a demo):
+  re-attach `Date`'s statics by hand.** A `--import` preload that swaps `globalThis.Date` for
+  a `class FrozenDate extends Date` works in plain Node but makes the app throw
+  `TypeError: Date.parse is not a function`: Next copies globals into its own module context
+  by **own** property, so the statics a subclass merely inherits are dropped. Assign
+  `FrozenDate.now` / `.parse` / `.UTC` explicitly on the subclass.
 
 - **A route-handler test that imports a `server-only` module needs `jest.mock('server-only',
   () => ({}))`.** `import 'server-only'` throws outside an RSC context, so the moment a route
