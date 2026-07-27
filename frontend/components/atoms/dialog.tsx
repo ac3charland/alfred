@@ -70,7 +70,7 @@ const dialogContentVariants = cva(
  * teal focus ring, a ≥44px tap target on mobile, dense again at md+. Sits in the header row
  * opposite the title; pass `label` when "Close" isn't specific enough for the surface.
  */
-export function DialogCloseButton({ label = 'Close' }: { label?: string }) {
+export function DialogCloseButton({ label = 'Close' }: { label?: string | undefined }) {
   return (
     <DialogPrimitive.Close asChild>
       <CloseButton variant="dialog" aria-label={label}>
@@ -115,6 +115,70 @@ export function FormDialog({
           {...contentProps}
         >
           {children}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+export interface FullScreenDialogProperties
+  // `title` is ours (the header text), not the DOM's tooltip attribute.
+  extends Omit<React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>, 'title'> {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The header text, which doubles as the dialog's accessible name. */
+  title: React.ReactNode;
+  /** Overrides the × dismiss's label when "Close" isn't specific enough for the surface. */
+  closeLabel?: string | undefined;
+  /** Extra classes for the overlay — pass `z-[55]` here to match a deeper stacking context. */
+  overlayClassName?: string | undefined;
+}
+
+/**
+ * A full-bleed modal: the same `Root → Portal → Overlay → Content` scaffold as `FormDialog`, but
+ * the content **fills the viewport** rather than floating as a centred card — no centring
+ * translate, no radius, no padding. Built for handing a cramped embedded document (a week plan,
+ * a rendered spec) the whole screen on a phone.
+ *
+ * Height is `100dvh`, not `100vh`: on mobile the two differ by the browser's collapsing
+ * toolbars, and `100vh` leaves the bottom of the document clipped behind them.
+ *
+ * The header is a compact title row with the shared × dismiss; `children` fill the remaining
+ * space in a `min-h-0` flex column, so a `h-full` child (an iframe, a scroll container) gets
+ * exactly the leftover height instead of overflowing the screen.
+ */
+export function FullScreenDialog({
+  open,
+  onOpenChange,
+  title,
+  closeLabel,
+  className,
+  overlayClassName,
+  children,
+  ...contentProps
+}: FullScreenDialogProperties) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogOverlay className={overlayClassName} />
+        <DialogPrimitive.Content
+          className={cn(
+            'fixed inset-0 z-50 flex h-[100dvh] w-screen flex-col bg-surface',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 motion-reduce:animate-none',
+            className,
+          )}
+          // No description anywhere — silences the Radix warning without inventing prose.
+          aria-describedby={undefined}
+          {...contentProps}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
+            <DialogPrimitive.Title className="font-serif text-lg text-foreground">
+              {title}
+            </DialogPrimitive.Title>
+            <DialogCloseButton label={closeLabel} />
+          </div>
+          <div className="min-h-0 flex-1">{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
