@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-146 — Habit Tracker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --add: #1f8a4c; --del: #c0392b;
+    --met: #2ea36b; --met-soft: #b6e3ca;
+    --missed: #d1544a; --missed-soft: #f2c4c0;
+    --unknown: #e9edf3; --na: #f4f6fa; --na-line: #dfe4ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --add: #57c98a; --del: #e8776a;
+      --met: #3fbf82; --met-soft: #1e4936;
+      --missed: #e8776a; --missed-soft: #4a2320;
+      --unknown: #232a33; --na: #1a1f26; --na-line: #2b323c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.2rem; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .45rem .8rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .78rem; }
+  .mock-body { padding: .9rem; }
+  .hname { font-weight: 600; font-size: .82rem; }
+  .hmeta { color: var(--faint); font-size: .72rem; font-weight: 400; }
+
+  /* cells */
+  i.c { display: block; width: 13px; height: 13px; border-radius: 3px; background: var(--unknown); }
+  i.c.m { background: var(--met); }
+  i.c.x { background: var(--missed); }
+  i.c.u { background: var(--unknown); }
+  i.c.n { background: var(--na); border: 1px dashed var(--na-line); }
+  i.c.t { box-shadow: 0 0 0 2px var(--accent); }
+
+  .cgrid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 13px);
+           gap: 3px; width: max-content; }
+  .cgrid-wrap { display: flex; gap: 6px; align-items: flex-start; }
+  .dowcol { display: grid; grid-template-rows: repeat(7, 13px); gap: 3px;
+            font-size: .62rem; color: var(--faint); text-align: right; padding-right: 2px; }
+  .dowcol span { line-height: 13px; }
+
+  .strip { display: flex; gap: 3px; flex-wrap: wrap; }
+  .streak { display: inline-flex; align-items: baseline; gap: .3rem; font-weight: 700;
+            color: var(--met); font-size: .9rem; }
+  .streak small { color: var(--faint); font-weight: 500; font-size: .68rem;
+                  text-transform: uppercase; letter-spacing: .05em; }
+
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-width: 260px; }
+  .cal b { font-size: .62rem; color: var(--faint); text-align: center; font-weight: 500; }
+  .cal span { aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+              border-radius: 4px; font-size: .64rem; background: var(--unknown); color: var(--muted); }
+  .cal span.m { background: var(--met-soft); color: var(--met); font-weight: 700; }
+  .cal span.x { background: var(--missed-soft); color: var(--missed); font-weight: 700; }
+  .cal span.n { background: var(--na); border: 1px dashed var(--na-line); color: var(--faint); }
+  .cal span.e { background: none; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: .7rem;
+            font-size: .7rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: .3rem; }
+
+  /* logging affordances */
+  .row3 { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+          padding: .45rem 0; border-bottom: 1px solid var(--line); }
+  .row3:last-child { border-bottom: 0; }
+  .btns { display: flex; gap: .3rem; }
+  .b { border: 1px solid var(--line); border-radius: 6px; padding: .12rem .45rem;
+       font-size: .72rem; color: var(--muted); background: var(--bg); }
+  .b.on { background: var(--met); border-color: var(--met); color: #fff; font-weight: 700; }
+  .b.no { border-color: var(--missed); color: var(--missed); }
+  .val { border: 1px solid var(--line); border-radius: 6px; padding: .12rem .4rem;
+         font-family: ui-monospace, monospace; font-size: .72rem; color: var(--fg); background: var(--bg); }
+  .chipbar { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: .15rem .6rem; font-size: .72rem; }
+  .chip.m { border-color: var(--met); color: var(--met); }
+  .chip.q { border-style: dashed; color: var(--faint); }
+  .pop { border: 1px solid var(--accent); border-radius: 8px; padding: .4rem .55rem;
+         background: var(--bg); display: inline-flex; gap: .3rem; align-items: center;
+         font-size: .72rem; margin-top: .5rem; }
+
+  /* wireframes */
+  .wf { display: grid; gap: 6px; }
+  .wf div { background: var(--unknown); border: 1px solid var(--line); border-radius: 6px;
+            min-height: 26px; display: flex; align-items: center; padding: 0 .5rem;
+            font-size: .66rem; color: var(--muted); }
+  .wf .hi { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+  /* ── The picker ──────────────────────────────────────────────── */
+  .picker { border: 1px solid var(--accent); border-radius: 12px; padding: 1rem 1.1rem 1.2rem;
+            margin: 1.2rem 0; background: var(--bg); }
+  .picker fieldset { border: 0; padding: 0; margin: 0 0 .8rem; }
+  .picker legend { font-size: .74rem; font-weight: 700; letter-spacing: .05em;
+                   text-transform: uppercase; color: var(--accent); padding: 0; margin-bottom: .45rem; }
+  .opts { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .opts label { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+                border: 1px solid var(--line); border-radius: 999px; padding: .2rem .7rem;
+                font-size: .8rem; background: var(--card); }
+  .opts label:hover { border-color: var(--accent); }
+  .opts input { accent-color: var(--accent); margin: 0; }
+  .stage { margin: .9rem 0 0; }
+  .picker .opt { display: none; }
+  .picker .v { display: none; }
+  .picker .selection { margin-top: 1rem; position: relative; }
+  .copy { position: absolute; top: .5rem; right: .5rem; border: 1px solid var(--accent);
+          background: var(--accent-bg); color: var(--accent); border-radius: 6px;
+          padding: .15rem .6rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
+  .grp { margin: 1.4rem 0 0; padding-top: 1rem; border-top: 1px dashed var(--line); }
+  .grp:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+
+  /* CSS-only option switching — no JS needed to compare or to read the metadata block. */
+  .picker:has(#h-grid:checked)   .o-h-grid   { display: block; }
+  .picker:has(#h-strip:checked)  .o-h-strip  { display: block; }
+  .picker:has(#h-cal:checked)    .o-h-cal    { display: block; }
+  .picker:has(#h-chart:checked)  .o-h-chart  { display: block; }
+  .picker:has(#h-grid:checked)   .v-h-grid   { display: inline; }
+  .picker:has(#h-strip:checked)  .v-h-strip  { display: inline; }
+  .picker:has(#h-cal:checked)    .v-h-cal    { display: inline; }
+  .picker:has(#h-chart:checked)  .v-h-chart  { display: inline; }
+
+  .picker:has(#t-cards:checked)  .o-t-cards  { display: block; }
+  .picker:has(#t-cell:checked)   .o-t-cell   { display: block; }
+  .picker:has(#t-bar:checked)    .o-t-bar    { display: block; }
+  .picker:has(#t-cards:checked)  .v-t-cards  { display: inline; }
+  .picker:has(#t-cell:checked)   .v-t-cell   { display: inline; }
+  .picker:has(#t-bar:checked)    .v-t-bar    { display: inline; }
+
+  .picker:has(#l-stack:checked)  .o-l-stack  { display: block; }
+  .picker:has(#l-table:checked)  .o-l-table  { display: block; }
+  .picker:has(#l-detail:checked) .o-l-detail { display: block; }
+  .picker:has(#l-stack:checked)  .v-l-stack  { display: inline; }
+  .picker:has(#l-table:checked)  .v-l-table  { display: inline; }
+  .picker:has(#l-detail:checked) .v-l-detail { display: inline; }
+
+  .picker:has(#m-inline:checked) .o-m-inline { display: block; }
+  .picker:has(#m-hover:checked)  .o-m-hover  { display: block; }
+  .picker:has(#m-chart:checked)  .o-m-chart  { display: block; }
+  .picker:has(#m-inline:checked) .v-m-inline { display: inline; }
+  .picker:has(#m-hover:checked)  .v-m-hover  { display: inline; }
+  .picker:has(#m-chart:checked)  .v-m-chart  { display: inline; }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 1.25rem .9rem 3rem; }
+    .cgrid-wrap { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-146 — Habit Tracker</h1>
+<p class="sub">
+  <span class="pill">Epic</span>
+  <span class="pill">Tasks module</span>
+  <span class="pill">DB · API · Store · UI · Coach</span>
+  Epic spec — durable context and decisions for the whole body of work. No implementation, and
+  no per-story specs; each story is refined in its own session.
+</p>
+
+<div class="callout">
+  <b>Read this before refining any ALF-146 story.</b> Every decision below is settled with the owner
+  unless it appears in §8 <i>Open questions</i>. If a story session finds one inconvenient, that is a
+  conversation to have — not a decision to quietly re-take.
+</div>
+
+<h2>1 · Problem space &amp; why now</h2>
+
+<p>
+  The owner's goal this quarter is to <b>get up at 6:00 AM consistently</b>. That is not a task. It has
+  no completion, no due date, and no meaningful "done" — it is a standing commitment whose only real
+  measure is <b>a run of days</b>. alfred currently has nowhere honest to put it:
+</p>
+
+<ul>
+  <li>
+    <b>A task is the wrong shape.</b> Recurring tasks already exist (<code>items.recurrence</code>,
+    <code>complete_and_spawn</code>), and a daily "get up at 6" recurring task <i>almost</i> works —
+    except that the only outcome a task can record is <b>completion</b>. A day you failed and a day you
+    never looked at the app are the same row in the same state. Habit tracking is precisely the thing
+    that needs to record a <b>miss</b> as a first-class event, and tasks structurally cannot.
+  </li>
+  <li>
+    <b>The volume is wrong too.</b> A daily habit generates ~90 rows a quarter. Routed through
+    <code>items</code>, those land in the Inbox, the Priority list, the Completed view, the folder
+    counts, the search index, and the <code>getAllItems()</code> seed the whole shell loads on every
+    request. One habit would drown the task system it is supposed to sit beside.
+  </li>
+  <li>
+    <b>The coach has no signal.</b> The Friday productivity-coach review already reads alfred for the
+    merged-PR ratio (<code>GET /api/code/pr-ratio</code>) and writes back the week plan
+    (<code>POST /api/weekly-plans</code>) — see
+    <a href="../../productivity-coach-primer.md"><code>docs/productivity-coach-primer.md</code></a>.
+    "Did you actually get up at 6 this week?" is exactly the kind of question that review exists to ask,
+    and right now the answer lives only in the owner's memory.
+  </li>
+</ul>
+
+<p>
+  So this epic introduces <b>a new entity</b> (a habit, and its daily log), <b>a new view</b>, and
+  <b>a third entry in the coach's API surface</b>. The unit of value is a single loop:
+  <i>define a habit → record each day's outcome → see the chain → have the coach read it on Friday.</i>
+</p>
+
+<h2>2 · Decisions</h2>
+
+<p class="small">
+  Each decision carries its rationale. Decisions <b>D1–D6</b> were settled with the owner in the
+  refinement session; <b>D7–D12</b> follow from them plus existing repo convention.
+</p>
+
+<div class="dec">
+  <h3><span class="n">D1</span>Habits are their own tables, not a new <code>item_type</code></h3>
+  <p>
+    Two new tables — <code>habits</code> and <code>habit_entries</code> — with no relationship to
+    <code>items</code>. There is no <code>item_type = 'habit'</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> the generic-item core exists so a captured thought can be <i>converted</i> between
+    task / code / knowledge destinations (SPEC §3.1). A habit is never any of those and never converts
+    into one — it is a definition plus a dense daily log, a fundamentally different cardinality.
+    Reusing <code>items</code> would buy the recurrence engine and pay for it with habit rows leaking
+    into every task view, store, count and search path in the app. Keeping the tables separate also
+    means the entry log can carry the one thing tasks can't: an explicit <b>miss</b>.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>Habits are a view inside the Tasks module, at <code>/habits</code></h3>
+  <p>
+    A sidebar entry beneath <b>Week Plan</b> in <code>FolderNav</code>, a branch in
+    <code>TaskViews</code>, a page under <code>app/(shell)/(tasks)/habits/</code>, and a
+    <code>go-habits</code> destination in the ⌘K palette. <b>Not</b> a third segment in the
+    Tasks ⇄ Code switcher.
+  </p>
+  <p class="why">
+    <b>Why:</b> this is the same shape as <code>/priority</code> and <code>/plan</code> — a
+    cross-cutting personal-productivity surface, not a peer module with its own sidebar. The switcher
+    is a deliberate two-up segmented control, and the named accents are already pencilled in for the
+    SPEC §13 modules (Tasks = teal, Code/Factory = amber, Knowledge = green, Firewall = blue);
+    habits would have to squat on one. Promotion to a module later is cheap — the data model doesn't
+    change, only the navigation — so start at the cheaper altitude.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>An entry is <code>met</code> / <code>missed</code> / <code>skipped</code>, with an optional measurement</h3>
+  <p>
+    Every habit is scoreable as a binary. A habit <i>may additionally</i> declare a
+    <b>metric</b> — a label, a unit, a target and a comparator (e.g. wake time <code>&le; 06:15</code>)
+    — in which case an entry may carry a numeric <code>value</code> and the status is derived from it.
+  </p>
+  <p class="why">
+    <b>Why:</b> "up at 6" is naturally quantitative — <code>06:04</code> and <code>07:40</code> are
+    both misses against a 6:15 target but they are not the same morning, and the trend is the
+    interesting part. Forcing <i>every</i> habit to declare a metric would be worse: "no phone in bed"
+    has nothing to measure. Binary is the floor; measurement is opt-in enrichment on top of it.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Each habit declares the weekdays it applies to</h3>
+  <p>
+    <code>active_days</code> is a set of ISO weekday numbers (1 = Mon … 7 = Sun), defaulting to all
+    seven. A day outside the set is <b>not applicable</b>: it renders neutral, is never scored, and is
+    invisible to streaks and rates.
+  </p>
+  <p class="why">
+    <b>Why:</b> "up at 6 on weekdays" is the actual goal, and without this every Saturday reads as a
+    failure — the chain metaphor collapses if the app is wrong about which days counted.
+    <b>N-times-per-week quotas are explicitly out</b> (see §6): a quota is a per-week bar, not a chain,
+    and mixing the two would mean two incompatible visualizations in one view.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>An unlogged past day is <b>unknown</b>, not a miss</h3>
+  <p>
+    No row means no data. Unknown renders as an empty cell, visually distinct from a logged miss. It
+    <b>ends the current streak</b> (a streak is a run of days you actually met) but is <b>never counted
+    as a failure</b> — it is excluded from the numerator <i>and</i> the denominator of the hit rate.
+  </p>
+  <p class="why">
+    <b>Why:</b> auto-missing would conflate "I failed" with "I forgot to open the app", and that noise
+    would flow straight into the coach's Friday review as a false signal. Backfill exists precisely so
+    an unknown day can be resolved honestly after the fact. The cost is accepted: a chain can be broken
+    by forgetfulness — but the <i>statistics</i> stay truthful, which is what the coach reads.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>No quarter entity — habits are open-ended</h3>
+  <p>
+    A habit has <code>started_on</code> and, once retired, <code>archived_at</code>. There is no
+    quarter table, no quarter field, no rollover or renewal action, and the app never groups habits
+    by quarter.
+  </p>
+  <p class="why">
+    <b>Why:</b> "quarterly habit" describes the owner's intent, not a lifecycle the software needs to
+    enforce. A quarter boundary is derivable from dates by anything that cares — and the one consumer
+    that cares is the coach, which already slices by date range. Modelling quarters would add a rollover
+    concept, an "expired habit" state, and a renewal ritual, all to express something a
+    <code>started_on</code> date already implies.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>Two logging paths: the app, and a keyed API write</h3>
+  <p>
+    In-app logging from <code>/habits</code> is the primary path. In addition, the entry-upsert endpoint
+    accepts the existing <code>INGEST_API_KEY</code> (<code>x-api-key</code>), so the productivity coach
+    can log "I got up at 6:05" from chat and a Siri Shortcut can log by voice — the same dual-auth
+    pattern as <code>POST /api/items</code> and <code>GET /api/code/pr-ratio</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> the friction that kills habit tracking is remembering to open the app at 6 AM. The keyed
+    ingress already exists, is already documented for the coach, and costs one wrapper
+    (<code>withSessionOrApiKey</code> / <code>resolveIngestClient</code>) to reuse. Note this widens the
+    key from write-only-to-the-archive to <b>also readable</b> for habits (D8) — called out explicitly
+    in §6 so it is a considered change, not a drift.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>The read endpoint returns definitions, entries <i>and</i> derived stats</h3>
+  <p>
+    <code>GET /api/habits</code> returns each habit's definition, its entries over a requested window,
+    and the computed <code>current_streak</code> / <code>longest_streak</code> / <code>hit_rate</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> the streak rules (D4, D5, D9) are subtle enough that a consumer re-deriving them would
+    get a different answer than the UI shows, and the coach quoting a different streak than the app
+    displays is a trust bug. Ship one authority. The precedent is <code>/api/code/pr-ratio</code>, which
+    returns pre-rounded percentages "so they can be quoted directly without re-deriving them".
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D9</span>Streaks are computed in TypeScript, not SQL</h3>
+  <p>
+    A pure, dependency-free module under <code>frontend/lib/habits/</code> owns applicable-day logic,
+    streak walking, hit rate, and metric evaluation. The API route and the client store both call it.
+  </p>
+  <p class="why">
+    <b>Why:</b> it matches <code>lib/recurrence</code>, <code>lib/priority</code> and
+    <code>lib/tree</code> — pure logic in TS, exhaustively unit-tested, so the optimistic client store
+    and the server produce identical numbers with no round-trip. A Postgres function would force a
+    network call to answer "what's my streak?" after every optimistic click.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>Dates are plain <code>date</code>, resolved in a caller-named timezone</h3>
+  <p>
+    <code>habit_entries.entry_date</code> is a Postgres <code>date</code> — never a
+    <code>timestamptz</code>. "Today" is resolved from a <code>tz</code> query parameter (IANA zone,
+    falling back to UTC on an unrecognized value, exactly as <code>pr-ratio</code> does); the browser
+    passes its own zone, and a write may name <code>date</code> explicitly to backfill.
+  </p>
+  <p class="why">
+    <b>Why:</b> for a <i>wake-up-time</i> habit the day boundary is the whole game — a 6:04 AM
+    log stored as an instant and re-read in the wrong zone lands on the previous day and silently
+    corrupts a streak. A calendar date has no such ambiguity. alfred has no user-timezone setting and
+    this epic does not add one; the caller naming its zone is the established convention.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D11</span>A derived status is frozen at write time</h3>
+  <p>
+    When a metric habit records a value, the resolved <code>status</code> is stored <i>alongside</i> the
+    value. Editing a habit's target later does <b>not</b> retroactively re-score history.
+  </p>
+  <p class="why">
+    <b>Why:</b> a chain you already earned should not break because you tightened the goal in month
+    three. The stored status is the historical verdict; the stored value keeps the raw truth for
+    charting. Re-scoring would also make the coach's Friday numbers non-reproducible week to week.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D12</span>One quiet badge; no other view changes</h3>
+  <p>
+    The <code>/habits</code> nav link carries a count of today's applicable-but-unlogged habits,
+    reusing the <code>FolderCountBadge</code> pattern. Nothing is added to Priority, the Inbox, the
+    capture screen, or the Week Plan.
+  </p>
+  <p class="why">
+    <b>Why:</b> discoverability without interruption, and it keeps this epic's blast radius to one
+    new view plus one nav link. The heavier option — a check-off card on <code>/priority</code> — stays
+    available as a follow-up once there is real usage data on whether the badge is enough.
+  </p>
+</div>
+
+<h2>3 · Architecture &amp; data model</h2>
+
+<h3>3.1 Data flow</h3>
+
+<svg viewBox="0 0 900 300" role="img" aria-label="Habits data flow: browser and coach both reach the habits routes, which read and write two Supabase tables and derive stats through a shared TypeScript module.">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="currentColor" />
+    </marker>
+    <style>
+      .box { fill: none; stroke: currentColor; stroke-width: 1.3; rx: 8; }
+      .bx  { fill: none; stroke: currentColor; stroke-width: 1.3; }
+      .lbl { font: 600 12px -apple-system, system-ui, sans-serif; fill: currentColor; }
+      .sm  { font: 10px ui-monospace, monospace; fill: currentColor; opacity: .72; }
+      .ln  { stroke: currentColor; stroke-width: 1.2; fill: none; opacity: .65; }
+    </style>
+  </defs>
+  <g color="currentColor" opacity=".92">
+    <rect class="bx" x="12" y="20" width="184" height="70" rx="8" />
+    <text class="lbl" x="24" y="45">Habits view</text>
+    <text class="sm"  x="24" y="63">/habits · habits-store</text>
+    <text class="sm"  x="24" y="79">optimistic + rollback</text>
+
+    <rect class="bx" x="12" y="150" width="184" height="70" rx="8" />
+    <text class="lbl" x="24" y="175">Coach · Siri</text>
+    <text class="sm"  x="24" y="193">x-api-key</text>
+    <text class="sm"  x="24" y="209">INGEST_API_KEY</text>
+
+    <rect class="bx" x="290" y="20" width="230" height="200" rx="8" />
+    <text class="lbl" x="304" y="45">Route handlers</text>
+    <text class="sm"  x="304" y="68">GET  /api/habits</text>
+    <text class="sm"  x="304" y="86">POST /api/habits</text>
+    <text class="sm"  x="304" y="104">PATCH/DELETE /api/habits/[id]</text>
+    <text class="sm"  x="304" y="122">PUT  /api/habits/[id]/entries</text>
+    <text class="sm"  x="304" y="152" opacity=".95">session — all routes</text>
+    <text class="sm"  x="304" y="170" opacity=".95">+ api key — GET, PUT only</text>
+
+    <rect class="bx" x="290" y="243" width="230" height="44" rx="8" stroke-dasharray="4 3" />
+    <text class="lbl" x="304" y="262">lib/habits</text>
+    <text class="sm"  x="304" y="278">applicable days · streaks · metric</text>
+
+    <rect class="bx" x="612" y="20" width="272" height="200" rx="8" />
+    <text class="lbl" x="626" y="45">Supabase</text>
+    <text class="sm"  x="626" y="70">habits</text>
+    <text class="sm"  x="640" y="88">name · active_days · metric</text>
+    <text class="sm"  x="640" y="106">started_on · archived_at</text>
+    <text class="sm"  x="626" y="134">habit_entries</text>
+    <text class="sm"  x="640" y="152">habit_id · entry_date (date)</text>
+    <text class="sm"  x="640" y="170">status · value · note</text>
+    <text class="sm"  x="640" y="192">unique (habit_id, entry_date)</text>
+
+    <path class="ln" marker-end="url(#ar)" d="M196,45 L284,45" />
+    <path class="ln" marker-end="url(#ar)" d="M196,185 L262,185 L262,120 L284,120" />
+    <path class="ln" marker-end="url(#ar)" d="M520,110 L606,110" />
+    <path class="ln" marker-end="url(#ar)" d="M606,140 L560,140 L560,175 L524,175" />
+    <path class="ln" marker-end="url(#ar)" d="M405,224 L405,239" />
+    <!-- The view derives its own stats from the same module — routed down the empty
+         corridor between the two columns so it crosses no box. -->
+    <path class="ln" marker-end="url(#ar)" d="M196,72 L232,72 L232,265 L286,265" opacity=".5" />
+  </g>
+</svg>
+<p class="diagram-cap">
+  Both the view and the coach reach the same routes; the same pure <code>lib/habits</code> module
+  derives stats on the server <i>and</i> in the optimistic store, so the two never disagree.
+</p>
+
+<h3>3.2 Schema shape</h3>
+
+<p class="small">
+  Illustrative, not final DDL — the story session writes the migration and takes
+  <b>the next available migration number</b> (never a number pinned here). RLS is mandatory and
+  explicit <code>grant</code>s are required on both tables (and on any sequence) or the Data API
+  returns "permission denied" — see the <code>supabase</code> skill and <code>migration-lint</code>.
+</p>
+
+<pre><code>-- habits ────────────────────────────────────────────────────────────
+id           uuid  pk
+name         text  not null
+notes        text
+active_days  smallint[]  not null default '{1,2,3,4,5,6,7}'   -- ISO 1=Mon .. 7=Sun  (D4)
+metric       jsonb                                            -- null = binary habit (D3)
+             -- { kind: 'time'|'count'|'duration', label, unit,
+             --   target: number, comparator: 'lte'|'gte' }
+started_on   date  not null default current_date              -- (D6)
+archived_at  timestamptz                                      -- retire, never delete
+sort_order   int                                              -- manual display order
+created_at   timestamptz not null default now()
+
+-- habit_entries ─────────────────────────────────────────────────────
+id          uuid pk
+habit_id    uuid not null references habits(id) on delete cascade
+entry_date  date not null                                     -- plain date (D10)
+status      habit_entry_status not null                       -- 'met' | 'missed' | 'skipped'
+value       numeric                                           -- optional measurement (D3)
+note        text
+created_at  timestamptz not null default now()
+updated_at  timestamptz not null default now()
+unique (habit_id, entry_date)                                 -- one row per habit per day
+</code></pre>
+
+<p>
+  The <code>unique (habit_id, entry_date)</code> constraint is load-bearing: it is what makes the
+  write path a plain <b>upsert</b> — logging is idempotent, and correcting a day is the same call as
+  making it.
+</p>
+
+<p>
+  <b>Time metrics are stored as minutes after local midnight</b> (integer <code>value</code>, e.g.
+  <code>364</code> = 06:04), rendered as <code>HH:MM</code> from <code>metric.kind === 'time'</code>.
+  A Postgres <code>time</code> column would drag zone semantics back into a model D10 deliberately
+  keeps zone-free.
+</p>
+
+<h3>3.3 The rules <code>lib/habits</code> owns</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:24%">Concept</th><th>Rule</th></tr>
+  <tr>
+    <td><b>Applicable day</b></td>
+    <td>
+      A date <code>d</code> is applicable to a habit when <code>d &ge; started_on</code>,
+      <code>archived_at</code> is null or <code>d</code> precedes it, and
+      <code>isoWeekday(d) &isin; active_days</code>. Non-applicable days are never scored and never
+      appear in any denominator.
+    </td>
+  </tr>
+  <tr>
+    <td><b><code>met</code></b></td>
+    <td>Entered directly, or derived from <code>value</code> against <code>metric.target</code> via the comparator and frozen at write time (D11).</td>
+  </tr>
+  <tr>
+    <td><b><code>missed</code></b></td>
+    <td>An explicit, logged failure. The only thing that <i>counts against</i> you.</td>
+  </tr>
+  <tr>
+    <td><b><code>skipped</code></b></td>
+    <td>Transparent by design — a legitimately excused day (illness, travel). Neither extends nor breaks a streak; excluded from the hit rate entirely. This is how a day gets excused <i>after</i> the fact, since <code>active_days</code> is a fixed rule.</td>
+  </tr>
+  <tr>
+    <td><b>unknown</b></td>
+    <td>No row (D5). Ends the current streak; excluded from both sides of the hit rate.</td>
+  </tr>
+  <tr>
+    <td><b>Current streak</b></td>
+    <td>
+      Walk backwards over applicable days counting consecutive <code>met</code>, stopping at the first
+      <code>missed</code> or unknown, stepping transparently over <code>skipped</code>.
+      <b>Today is exempt:</b> if today is applicable and unlogged, the walk starts at the previous
+      applicable day — otherwise every streak would read <code>0</code> each morning until you logged.
+    </td>
+  </tr>
+  <tr>
+    <td><b>Longest streak</b></td>
+    <td>The maximum such run over the habit's whole history.</td>
+  </tr>
+  <tr>
+    <td><b>Hit rate</b></td>
+    <td><code>met / (met + missed)</code> over the requested window. Unknown and skipped days appear on neither side, so forgetting to log never depresses the rate (D5).</td>
+  </tr>
+</table>
+</div>
+
+<h3>3.4 Frontend wiring</h3>
+<p>
+  Habits follow the established data-flow architecture exactly (see the <code>data-flow</code> and
+  <code>frontend-architecture</code> skills): a server-side <code>lib/data/habits.ts</code> fetch
+  seeded once by the <code>(shell)</code> layout into a <code>HabitsProvider</code> optimistic store
+  with reconcile/rollback and a toast on failure; the view reads from the store and never calls
+  <code>router.refresh()</code>.
+</p>
+<p>
+  <b>One deviation from "fetch everything":</b> the shell seeds a <b>bounded window</b> of entries
+  (the last ~120 days) rather than all history. The existing eager-fetch tradeoff is accepted at
+  hundreds of rows; a daily habit is a few hundred rows <i>per habit per year</i> and grows without
+  bound, so the window is the point at which that tradeoff stops holding. Scrolling further back is
+  an on-demand fetch, the same shape as pulling an older week's plan HTML.
+</p>
+
+<h2>4 · API surface</h2>
+
+<div class="scroll">
+<table>
+  <tr><th>Route</th><th>Auth</th><th>Purpose</th></tr>
+  <tr>
+    <td><code>GET /api/habits</code></td>
+    <td>session <b>or</b> API key</td>
+    <td>Definitions + entries in a window + derived stats (D8). Query: <code>tz</code>, <code>from</code>, <code>to</code>, <code>include_archived</code>.</td>
+  </tr>
+  <tr>
+    <td><code>POST /api/habits</code></td>
+    <td>session</td>
+    <td>Create a habit.</td>
+  </tr>
+  <tr>
+    <td><code>PATCH /api/habits/[id]</code></td>
+    <td>session</td>
+    <td>Rename, edit <code>active_days</code> / metric / notes, archive (set <code>archived_at</code>), reorder.</td>
+  </tr>
+  <tr>
+    <td><code>DELETE /api/habits/[id]</code></td>
+    <td>session</td>
+    <td>Hard delete, cascading entries. Archiving is the expected path; delete is for mistakes.</td>
+  </tr>
+  <tr>
+    <td><code>PUT /api/habits/[id]/entries</code></td>
+    <td>session <b>or</b> API key</td>
+    <td>Upsert one day (D7). Body: <code>{ date?, status?, value?, note? }</code>. <code>date</code> omitted ⇒ today in <code>tz</code>. <code>status</code> omitted with a <code>value</code> on a metric habit ⇒ derived (D3, D11).</td>
+  </tr>
+</table>
+</div>
+
+<p class="small">
+  Errors use alfred's standard <code>{ "error": "…" }</code> envelope. Auth follows the existing
+  precedence rule the primer documents: a present <code>x-api-key</code> wins outright and an empty
+  value is a mismatch, not an absent header.
+</p>
+
+<h4>Sketch of the read payload</h4>
+<pre><code>GET /api/habits?tz=America/New_York&amp;from=2026-05-01
+
+{
+  "today": "2026-07-27",
+  "timezone": "America/New_York",
+  "habits": [
+    {
+      "id": "…", "name": "Up at 6:00",
+      "active_days": [1,2,3,4,5],
+      "metric": { "kind": "time", "label": "Wake time", "target": 375, "comparator": "lte" },
+      "started_on": "2026-07-01", "archived_at": null,
+      "stats": { "current_streak": 9, "longest_streak": 14, "hit_rate": 0.82,
+                 "met": 18, "missed": 4, "skipped": 1, "unknown": 2 },
+      "entries": [ { "date": "2026-07-27", "status": "met", "value": 364, "note": null }, … ]
+    }
+  ]
+}
+</code></pre>
+
+<p>
+  Shipping this endpoint means <a href="../../productivity-coach-primer.md">the coach primer</a> gains a
+  third endpoint section and a third reference script, written in the same voice as the existing two.
+  That document is the contract the coach's <code>alfred</code> skill is generated from, so it is part
+  of the epic's definition of done — not a docs afterthought.
+</p>
+
+<h2>5 · Pick the UI</h2>
+
+<p>
+  Four independent UI decisions, each with live mockups you can flip between. The metadata block at the
+  bottom updates as you choose — <b>copy it and paste it back to me</b> and the story sessions build
+  exactly that. Toggling works with JavaScript disabled; only the copy button needs it (otherwise just
+  select the block).
+</p>
+
+<div class="picker">
+
+  <!-- ── D-A · history visualization ─────────────────────────── -->
+  <div class="grp">
+  <fieldset>
+    <legend>A · How history is visualized</legend>
+    <div class="opts">
+      <label><input type="radio" name="hist" id="h-grid" checked /> Contribution grid</label>
+      <label><input type="radio" name="hist" id="h-strip" /> Chain strip</label>
+      <label><input type="radio" name="hist" id="h-cal" /> Month calendar</label>
+      <label><input type="radio" name="hist" id="h-chart" /> Value vs. target</label>
+    </div>
+  </fieldset>
+
+  <div class="stage">
+    <div class="opt o-h-grid">
+      <div class="mock">
+        <div class="mock-bar"><span class="hname">Up at 6:00 <span class="hmeta">· Mon–Fri</span></span><span class="streak">9 <small>day streak</small></span></div>
+        <div class="mock-body">
+          <div class="cgrid-wrap">
+            <div class="dowcol"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span></span></div>
+            <div class="cgrid">
+              <i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i>
+              <i class="c m"></i><i class="c m t"></i><i class="c u"></i><i class="c u"></i><i class="c u"></i><i class="c n"></i><i class="c n"></i>
+            </div>
+          </div>
+          <div class="legend">
+            <span><i class="c m"></i> met</span>
+            <span><i class="c x"></i> missed</span>
+            <span><i class="c u"></i> unknown</span>
+            <span><i class="c n"></i> n/a (weekend)</span>
+            <span><i class="c m t"></i> today</span>
+          </div>
+        </div>
+      </div>
+      <p class="small">
+        GitHub-contributions shape: weeks as columns, weekdays as rows. A whole quarter fits without
+        scrolling and the weekend n/a band is visually obvious. Densest option; individual days are
+        small targets on mobile.
+      </p>
+    </div>
+
+    <div class="opt o-h-strip">
+      <div class="mock">
+        <div class="mock-bar"><span class="hname">Up at 6:00 <span class="hmeta">· Mon–Fri</span></span><span class="streak">9 <small>day streak</small></span></div>
+        <div class="mock-body">
+          <div class="strip">
+            <i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c x"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c m t"></i>
+          </div>
+          <p class="small" style="margin:.6rem 0 0">Last 30 days · 82% hit rate · longest 14</p>
+        </div>
+      </div>
+      <p class="small">
+        One unbroken line per habit — the most literal "don't break the chain". Reads instantly and
+        stacks well when there are several habits; shows a month rather than a quarter.
+      </p>
+    </div>
+
+    <div class="opt o-h-cal">
+      <div class="mock">
+        <div class="mock-bar"><span class="hname">Up at 6:00 <span class="hmeta">· July 2026</span></span><span class="streak">9 <small>day streak</small></span></div>
+        <div class="mock-body">
+          <div class="cal">
+            <b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b><b>S</b>
+            <span class="e"></span><span class="e"></span><span class="m">1</span><span class="x">2</span><span class="m">3</span><span class="n">4</span><span class="n">5</span>
+            <span class="m">6</span><span class="m">7</span><span>8</span><span class="m">9</span><span class="m">10</span><span class="n">11</span><span class="n">12</span>
+            <span class="x">13</span><span class="m">14</span><span class="m">15</span><span class="m">16</span><span class="m">17</span><span class="n">18</span><span class="n">19</span>
+            <span class="m">20</span><span class="m">21</span><span class="m">22</span><span class="m">23</span><span class="m">24</span><span class="n">25</span><span class="n">26</span>
+            <span class="m">27</span><span>28</span><span>29</span><span>30</span><span>31</span><span class="e"></span><span class="e"></span>
+          </div>
+          <div class="legend">
+            <span><i class="c m"></i> met</span><span><i class="c x"></i> missed</span>
+            <span><i class="c u"></i> unknown</span><span><i class="c n"></i> n/a</span>
+          </div>
+        </div>
+      </div>
+      <p class="small">
+        Familiar and unambiguous — real dates, comfortable tap targets, easiest to backfill from.
+        Costs the most vertical space and only shows a month at a time.
+      </p>
+    </div>
+
+    <div class="opt o-h-chart">
+      <div class="mock">
+        <div class="mock-bar"><span class="hname">Up at 6:00 <span class="hmeta">· target ≤ 06:15</span></span><span class="streak">9 <small>day streak</small></span></div>
+        <div class="mock-body">
+          <svg viewBox="0 0 620 170" role="img" aria-label="Wake time over four weeks, mostly under the 6:15 target line with three excursions above it.">
+            <g font-family="ui-monospace, monospace" font-size="9">
+              <line x1="46" y1="150" x2="612" y2="150" stroke="currentColor" opacity=".3" />
+              <line x1="46" y1="18" x2="46" y2="150" stroke="currentColor" opacity=".3" />
+              <text x="6" y="24" fill="currentColor" opacity=".6">07:00</text>
+              <text x="6" y="80" fill="currentColor" opacity=".6">06:30</text>
+              <text x="6" y="146" fill="currentColor" opacity=".6">05:45</text>
+              <line x1="46" y1="97" x2="612" y2="97" stroke="var(--missed)" stroke-dasharray="5 4" opacity=".85" />
+              <text x="556" y="92" fill="var(--missed)" opacity=".95">06:15</text>
+              <polyline fill="none" stroke="var(--met)" stroke-width="1.6" opacity=".85"
+                points="60,112 82,105 104,124 126,88 148,116 170,40 192,118 214,109 236,101 258,126 280,52 302,120 324,113 346,104 368,122 390,110 412,99 434,128 456,118 478,66 500,115 522,121 544,108 566,124 588,117" />
+              <g fill="var(--met)">
+                <circle cx="60" cy="112" r="2.6" /><circle cx="82" cy="105" r="2.6" /><circle cx="104" cy="124" r="2.6" />
+                <circle cx="126" cy="88" r="2.6" /><circle cx="148" cy="116" r="2.6" /><circle cx="192" cy="118" r="2.6" />
+                <circle cx="214" cy="109" r="2.6" /><circle cx="236" cy="101" r="2.6" /><circle cx="258" cy="126" r="2.6" />
+                <circle cx="302" cy="120" r="2.6" /><circle cx="324" cy="113" r="2.6" /><circle cx="346" cy="104" r="2.6" />
+                <circle cx="368" cy="122" r="2.6" /><circle cx="390" cy="110" r="2.6" /><circle cx="412" cy="99" r="2.6" />
+                <circle cx="434" cy="128" r="2.6" /><circle cx="456" cy="118" r="2.6" /><circle cx="500" cy="115" r="2.6" />
+                <circle cx="522" cy="121" r="2.6" /><circle cx="544" cy="108" r="2.6" /><circle cx="566" cy="124" r="2.6" />
+                <circle cx="588" cy="117" r="2.6" />
+              </g>
+              <g fill="var(--missed)">
+                <circle cx="170" cy="40" r="3.4" /><circle cx="280" cy="52" r="3.4" /><circle cx="478" cy="66" r="3.4" />
+              </g>
+              <text x="60" y="164" fill="currentColor" opacity=".6">Jun 29</text>
+              <text x="520" y="164" fill="currentColor" opacity=".6">Jul 27</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <p class="small">
+        The trend, not the tally — you can see 6:40 creeping toward 6:10 in a way no cell colour shows.
+        <b>Only works for metric habits</b>, so a binary habit would need one of the other three as a
+        fallback; picking this means picking a pairing.
+      </p>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── D-B · today's logging affordance ────────────────────── -->
+  <div class="grp">
+  <fieldset>
+    <legend>B · How today gets logged</legend>
+    <div class="opts">
+      <label><input type="radio" name="today" id="t-cards" checked /> Check-off list on top</label>
+      <label><input type="radio" name="today" id="t-cell" /> Click today's cell</label>
+      <label><input type="radio" name="today" id="t-bar" /> Pinned Today bar</label>
+    </div>
+  </fieldset>
+
+  <div class="stage">
+    <div class="opt o-t-cards">
+      <div class="mock">
+        <div class="mock-bar"><span>Today · Mon 27 Jul</span><span class="hmeta">2 of 3 logged</span></div>
+        <div class="mock-body">
+          <div class="row3">
+            <span class="hname">Up at 6:00</span>
+            <span class="btns"><span class="val">06:04</span><span class="b on">Met</span><span class="b">Miss</span><span class="b">Skip</span></span>
+          </div>
+          <div class="row3">
+            <span class="hname">No phone in bed</span>
+            <span class="btns"><span class="b">Met</span><span class="b no">Miss</span><span class="b">Skip</span></span>
+          </div>
+          <div class="row3">
+            <span class="hname">Read 20 min</span>
+            <span class="btns"><span class="b">Met</span><span class="b">Miss</span><span class="b">Skip</span></span>
+          </div>
+        </div>
+      </div>
+      <p class="small">
+        An explicit "today" panel above the history. Unambiguous, obvious where the value input goes,
+        and the only option that makes "what's still unlogged" visible at a glance — which is what the
+        nav badge (D12) counts.
+      </p>
+    </div>
+
+    <div class="opt o-t-cell">
+      <div class="mock">
+        <div class="mock-bar"><span class="hname">Up at 6:00</span><span class="streak">9 <small>day streak</small></span></div>
+        <div class="mock-body">
+          <div class="strip">
+            <i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m"></i><i class="c u t"></i>
+          </div>
+          <span class="pop"><b>Mon 27 Jul</b><span class="val">06:04</span><span class="b on">Met</span><span class="b">Miss</span><span class="b">Skip</span></span>
+        </div>
+      </div>
+      <p class="small">
+        No separate panel — any cell opens a small editor, so logging today and backfilling last
+        Thursday are literally the same gesture. Most compact; relies on you noticing the outlined cell,
+        and the tap target is small on the grid option.
+      </p>
+    </div>
+
+    <div class="opt o-t-bar">
+      <div class="mock">
+        <div class="mock-bar"><span>Today · Mon 27 Jul</span><span class="hmeta">tap a chip to log</span></div>
+        <div class="mock-body">
+          <div class="chipbar">
+            <span class="chip m">✓ Up at 6:00 · 06:04</span>
+            <span class="chip">✕ No phone in bed</span>
+            <span class="chip q">Read 20 min</span>
+          </div>
+        </div>
+      </div>
+      <p class="small">
+        A single compact strip pinned above the list, one chip per habit, cycling state on tap.
+        Smallest footprint and the best mobile ergonomics; a metric habit needs a second tap to enter
+        a value, so it is the weakest fit for the wake-time case.
+      </p>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── D-C · page layout ───────────────────────────────────── -->
+  <div class="grp">
+  <fieldset>
+    <legend>C · Page layout with several habits</legend>
+    <div class="opts">
+      <label><input type="radio" name="layout" id="l-stack" checked /> Stacked habit cards</label>
+      <label><input type="radio" name="layout" id="l-table" /> One dense table</label>
+      <label><input type="radio" name="layout" id="l-detail" /> Master / detail</label>
+    </div>
+  </fieldset>
+
+  <div class="stage">
+    <div class="opt o-l-stack">
+      <div class="mock"><div class="mock-body">
+        <div class="wf">
+          <div class="hi">Up at 6:00 — streak 9 · 82%</div>
+          <div style="min-height:44px">history visualization</div>
+          <div class="hi">No phone in bed — streak 3 · 74%</div>
+          <div style="min-height:44px">history visualization</div>
+        </div>
+      </div></div>
+      <p class="small">
+        Each habit is a self-contained card with its own header, stats and history. Every visualization
+        option fits, per-habit chrome has somewhere to live, and it degrades to a single column on
+        mobile untouched. Gets long past ~5 habits.
+      </p>
+    </div>
+
+    <div class="opt o-l-table">
+      <div class="mock"><div class="mock-body">
+        <div class="wf" style="grid-template-columns:130px 1fr; align-items:center">
+          <div style="background:none;border:0">Habit</div><div class="hi">← last 30 days →</div>
+          <div>Up at 6:00</div><div style="background:none;border:0;padding:0">
+            <span class="strip"><i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m t"></i></span>
+          </div>
+          <div>No phone in bed</div><div style="background:none;border:0;padding:0">
+            <span class="strip"><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c u t"></i></span>
+          </div>
+          <div>Read 20 min</div><div style="background:none;border:0;padding:0">
+            <span class="strip"><i class="c u"></i><i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c u t"></i></span>
+          </div>
+        </div>
+      </div></div>
+      <p class="small">
+        Habits as rows, days as columns — every habit and the same date range in one glance, and
+        today is a single vertical line you can read down. Only really works with the chain-strip
+        visualization, and horizontal scroll on mobile is a real cost.
+      </p>
+    </div>
+
+    <div class="opt o-l-detail">
+      <div class="mock"><div class="mock-body">
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:6px">
+          <div class="wf">
+            <div class="hi">Up at 6:00</div><div>No phone…</div><div>Read 20 min</div>
+          </div>
+          <div class="wf">
+            <div class="hi">Up at 6:00 — 9 · 82% · longest 14</div>
+            <div style="min-height:56px">full history + value chart</div>
+            <div>edit · archive</div>
+          </div>
+        </div>
+      </div></div>
+      <p class="small">
+        A habit list beside one habit's full detail — the most room for a rich single-habit view
+        (history <i>and</i> trend chart together) and scales to many habits. The most machinery to
+        build, needs a separate mobile treatment, and hides the habits you aren't looking at.
+      </p>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── D-D · measurement display ───────────────────────────── -->
+  <div class="grp">
+  <fieldset>
+    <legend>D · Where the measured value shows</legend>
+    <div class="opts">
+      <label><input type="radio" name="metric" id="m-inline" checked /> In the cell</label>
+      <label><input type="radio" name="metric" id="m-hover" /> On hover / tap only</label>
+      <label><input type="radio" name="metric" id="m-chart" /> Separate chart below</label>
+    </div>
+  </fieldset>
+
+  <div class="stage">
+    <div class="opt o-m-inline">
+      <div class="mock"><div class="mock-body">
+        <div class="cal" style="max-width:300px">
+          <b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b><b>S</b>
+          <span class="m" style="font-size:.52rem">6:04</span><span class="m" style="font-size:.52rem">6:09</span>
+          <span class="x" style="font-size:.52rem">7:12</span><span class="m" style="font-size:.52rem">5:58</span>
+          <span class="m" style="font-size:.52rem">6:11</span><span class="n"></span><span class="n"></span>
+        </div>
+      </div></div>
+      <p class="small">
+        The number is always visible. Nothing hidden, works on touch with no hover — but it forces a
+        bigger cell, which makes the contribution grid impractical.
+      </p>
+    </div>
+
+    <div class="opt o-m-hover">
+      <div class="mock"><div class="mock-body">
+        <div class="strip">
+          <i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m t"></i>
+        </div>
+        <span class="pop"><b>Thu 23 Jul</b> · woke <b>07:12</b> · target ≤ 06:15 · <span style="color:var(--missed)">missed</span></span>
+      </div></div>
+      <p class="small">
+        Cells stay tiny and the colour carries met/missed; the number appears in a tooltip on hover or
+        tap. Keeps the dense options viable — the value is one interaction away rather than scannable.
+      </p>
+    </div>
+
+    <div class="opt o-m-chart">
+      <div class="mock"><div class="mock-body">
+        <div class="strip" style="margin-bottom:.6rem">
+          <i class="c m"></i><i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m"></i><i class="c m"></i><i class="c u"></i><i class="c m"></i><i class="c n"></i><i class="c n"></i><i class="c m"></i><i class="c m t"></i>
+        </div>
+        <svg viewBox="0 0 420 70" role="img" aria-label="A small wake-time trend chart beneath the chain, with a dashed target line.">
+          <line x1="8" y1="40" x2="412" y2="40" stroke="var(--missed)" stroke-dasharray="4 3" opacity=".8" />
+          <polyline fill="none" stroke="var(--met)" stroke-width="1.5" opacity=".9"
+            points="14,52 40,47 66,60 92,30 118,55 144,18 170,57 196,50 222,44 248,61 274,26 300,56 326,52 352,46 378,58 404,51" />
+        </svg>
+      </div></div>
+      <p class="small">
+        Both, stacked: the chain answers "did I?", a small trend chart underneath answers "by how
+        much?". The most information and the most vertical space; only metric habits render the second
+        band.
+      </p>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── the copyable result ─────────────────────────────────── -->
+  <div class="selection">
+    <button class="copy" type="button" id="copyBtn">Copy</button>
+<pre id="sel">```alfred-habits-ui
+history: <span class="v v-h-grid">contribution-grid</span><span class="v v-h-strip">chain-strip</span><span class="v v-h-cal">month-calendar</span><span class="v v-h-chart">value-vs-target</span>
+today-logging: <span class="v v-t-cards">check-off-list</span><span class="v v-t-cell">click-the-cell</span><span class="v v-t-bar">pinned-today-bar</span>
+layout: <span class="v v-l-stack">stacked-cards</span><span class="v v-l-table">dense-table</span><span class="v v-l-detail">master-detail</span>
+measurement: <span class="v v-m-inline">in-cell</span><span class="v v-m-hover">on-hover</span><span class="v v-m-chart">separate-chart</span>
+```</pre>
+  </div>
+  <p class="small">
+    Paste that block back into the epic thread (or a PR comment). It gets recorded in §5 of this spec
+    as a settled decision, and the UI stories are refined against it.
+  </p>
+</div>
+
+<script>
+  // Progressive enhancement only — the block above is already correct and selectable without JS.
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var text = document.getElementById('sel').innerText;
+    var done = function () {
+      var b = document.getElementById('copyBtn');
+      b.textContent = 'Copied';
+      setTimeout(function () { b.textContent = 'Copy'; }, 1600);
+    };
+    if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done, function () {}); }
+  });
+</script>
+
+<h2>6 · Constraints &amp; non-goals</h2>
+
+<table>
+  <tr><th style="width:34%">Deliberately out</th><th>Why / what to do instead</th></tr>
+  <tr>
+    <td><b>Reusing <code>items</code></b></td>
+    <td>No <code>item_type = 'habit'</code>, no recurrence-engine reuse, no habit rows in any task view, store, count or search path (D1). A story that finds itself reaching into <code>items</code> has taken a wrong turn.</td>
+  </tr>
+  <tr>
+    <td><b>N-times-per-week quotas</b></td>
+    <td>"Gym 3× a week" is a per-week bar, not a chain (D4). Revisit only if a real habit demands it — it is a second visualization, not a field.</td>
+  </tr>
+  <tr>
+    <td><b>Quarters, rollover, renewal</b></td>
+    <td>No quarter entity of any kind (D6). Date ranges express everything needed.</td>
+  </tr>
+  <tr>
+    <td><b>Reminders &amp; notifications</b></td>
+    <td>A 6 AM nudge is the obvious next thought and is <b>out of this epic</b>. The channel decision is already made and documented in <a href="../../notifications-spike.md"><code>docs/notifications-spike.md</code></a> (Telegram bot from the existing Worker) — it becomes its own epic that can consume the habits API, not a story here.</td>
+  </tr>
+  <tr>
+    <td><b>Automatic data capture</b></td>
+    <td>No Apple Health / sleep-tracker / calendar ingestion. Entries are typed by a human or written by the coach through the keyed endpoint (D7).</td>
+  </tr>
+  <tr>
+    <td><b>Gamification</b></td>
+    <td>No points, badges, levels, or freeze tokens. The streak number and the chain <i>are</i> the reward.</td>
+  </tr>
+  <tr>
+    <td><b>Editing history semantics beyond backfill</b></td>
+    <td>Backfilling and correcting a day are in scope; retroactive re-scoring when a target changes is not (D11).</td>
+  </tr>
+  <tr>
+    <td><b>Habit folders / tags / grouping</b></td>
+    <td>Manual <code>sort_order</code> only. At the expected volume (a handful of active habits) grouping is premature.</td>
+  </tr>
+  <tr>
+    <td><b>Multi-user anything</b></td>
+    <td>Single-user, role-based RLS as everywhere else — <code>authenticated full access</code>, <b>no <code>user_id</code> column</b> (SPEC §7).</td>
+  </tr>
+</table>
+
+<h4>Constraints inherited from the repo</h4>
+<ul>
+  <li><b>RLS + explicit grants are mandatory</b> on both new tables (and any sequence) — omitting a grant produces a "permission denied" the Data API surfaces at runtime, which is exactly what <code>migration-lint</code> exists to catch at commit time.</li>
+  <li><b>Every behavioral change lands with a test</b> (unit, Storybook, or E2E) and a <b>demo doc</b> under <code>docs/demos/&lt;branch&gt;/</code> per the <code>showboat</code> skill. The streak rules in §3.3 are pure functions and should be near-exhaustively unit-tested — they are the epic's highest-risk logic and its cheapest to cover.</li>
+  <li><b>The API key's blast radius widens</b> with D7/D8: it currently writes the plan archive and reads the PR ratio; after this epic it also reads and writes habit data. Worth stating plainly in the primer when the endpoints are documented.</li>
+  <li>Visual work must respect <code>prefers-reduced-motion</code> and the dark-canvas contrast floor (SPEC §5.4); habit cells are small, so the met/missed/unknown/n-a distinction has to survive a colour-blind reader — <b>shape or border, not hue alone</b>.</li>
+</ul>
+
+<h2>7 · How the work splits into stories</h2>
+
+<p class="small">
+  A sketch of the slices, not specs. Each is refined in its own session and may be resized there.
+  §5 must be settled before the UI slices (6–8) are refined.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:6%">#</th><th style="width:30%">Slice</th><th>Shape</th><th style="width:14%">Depends on</th></tr>
+  <tr><td>1</td><td>Schema &amp; data access</td><td>Migration for both tables + enum, RLS policies and grants, regenerated <code>database.types.ts</code>, <code>lib/data/habits.ts</code>.</td><td>—</td></tr>
+  <tr><td>2</td><td>The streak engine</td><td><code>lib/habits/</code>: applicable days, streak walk with the today exemption, hit rate, metric evaluation. Pure TS, unit tests only. The riskiest logic, isolated and cheap to verify.</td><td>1 (types)</td></tr>
+  <tr><td>3</td><td>Habit CRUD API</td><td><code>POST /api/habits</code>, <code>PATCH</code>/<code>DELETE /api/habits/[id]</code>, session-only, via the existing route-handler factories and zod schemas.</td><td>1</td></tr>
+  <tr><td>4</td><td>Read API for app + coach</td><td><code>GET /api/habits</code> with <code>tz</code>/window params, dual auth, stats from slice 2.</td><td>1, 2</td></tr>
+  <tr><td>5</td><td>Entry upsert</td><td><code>PUT /api/habits/[id]/entries</code>, dual auth, derive-and-freeze status, backfill by explicit date.</td><td>1, 2</td></tr>
+  <tr><td>6</td><td>Shell wiring</td><td><code>HabitsProvider</code> optimistic store, <code>/habits</code> route + <code>TaskViews</code> branch, <code>FolderNav</code> link + badge, ⌘K destination, empty state. No history rendering yet.</td><td>3, 4</td></tr>
+  <tr><td>7</td><td>History visualization</td><td>Whatever §5 settles on (A + C + D). Storybook stories with image snapshots are the natural evidence here.</td><td>6, §5</td></tr>
+  <tr><td>8</td><td>Logging affordance</td><td>Whatever §5 settles on (B), wired to slice 5 through the optimistic store; backfill included.</td><td>6, 7, §5</td></tr>
+  <tr><td>9</td><td>Habit create / edit / archive</td><td>The form: name, weekday set, optional metric (kind, label, target, comparator), archive.</td><td>6</td></tr>
+  <tr><td>10</td><td>Coach integration</td><td>Third endpoint section + reference script in <code>docs/productivity-coach-primer.md</code>, matching the existing two in voice and status-table detail. This is what closes the loop the epic opened.</td><td>4, 5</td></tr>
+</table>
+</div>
+
+<p>
+  Slices <b>1 → 2 → 4/5</b> are the critical path; <b>3</b>, and <b>9</b> after <b>6</b>, run beside it.
+  The earliest genuinely useful stopping point is <b>1 + 2 + 5 + 6 + 8</b> — at that point the habit is
+  loggable and the chain exists, even before the coach can read it.
+</p>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>
+    <b>The §5 selections.</b> The one intentionally-open decision. Paste the metadata block back and
+    it becomes settled context recorded in this file.
+  </li>
+  <li>
+    <b>Does the coach get a <i>writeback</i> ritual, or only ad-hoc logging?</b> D7 gives it the ability
+    to write an entry. Whether the Friday review should <i>routinely</i> reconcile the week ("you told
+    me Tuesday was a 6:40 — want me to log it?") is a coach-skill design question, not an alfred one,
+    and can be answered after the endpoint exists.
+  </li>
+  <li>
+    <b>Is <code>skipped</code> enough of an escape hatch,</b> or will a vacation want a date-range pause
+    on the habit itself? Deferred deliberately — one <code>skipped</code> entry per day is workable for
+    a week away, and a <code>paused_from</code>/<code>paused_to</code> pair is a cheap additive change if
+    it turns out not to be.
+  </li>
+</ol>
+
+<hr style="border:0;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+<p class="small">
+  Epic specs live in <code>docs/specs/epics/</code> and are <b>never archived</b> — story sessions keep
+  pointing at this file. Refining ALF-146 again revises this document in place rather than adding a
+  second one.
+</p>
+
+</div>
+</body>
+</html>
