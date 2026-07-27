@@ -382,10 +382,10 @@ export const listItemsQuerySchema = z.object({
 export type ListItemsQuery = z.infer<typeof listItemsQuerySchema>;
 
 /**
- * Validated shape for GET /api/code/pr-ratio query string. `tz` is the IANA timezone the ISO
- * week is evaluated in — deliberately just a string: an unrecognized zone degrades to UTC in
- * `isoWeekWindow` rather than 400-ing, because the endpoint's job is a number, not timezone
- * validation.
+ * Validated shape for GET /api/code/pr-ratio query string. `tz` is the IANA timezone the
+ * rolling window's timestamps are rendered in — deliberately just a string: an unrecognized
+ * zone degrades to UTC in `rollingWeekWindow` rather than 400-ing, because the endpoint's job
+ * is a number, not timezone validation.
  */
 export const prRatioQuerySchema = z.object({
   tz: z.string().optional(),

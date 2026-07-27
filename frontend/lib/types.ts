@@ -60,13 +60,13 @@ export interface PrRatioOtherCount {
 }
 
 /**
- * `GET /api/code/pr-ratio` — the merged-PR split for one ISO week. `repos` preserves the
- * configured order, which is the bar's left-to-right order. Computed live from GitHub, so
- * it is neither persisted nor reconciled into any store.
+ * `GET /api/code/pr-ratio` — the merged-PR split for the seven days ending when the request
+ * was made. `repos` preserves the configured order, which is the bar's left-to-right order.
+ * Computed live from GitHub, so it is neither persisted nor reconciled into any store.
  *
  * `other` is ABSENT when the deployment can't measure the bucket at all, and present at zero
  * when it measured and found nothing — a distinction the card needs, since only the second
- * one is honestly "no PRs merged elsewhere this week".
+ * one is honestly "no PRs merged elsewhere in the window".
  */
 export interface PrRatioResponse {
   week: WeekWindow;
