@@ -5,9 +5,10 @@ import type { PrRatioResponse } from '@/lib/types';
 
 import { PrRatio } from './pr-ratio';
 
+/** The seven days ending at a Friday-afternoon request — rolling, so neither end is midnight. */
 const WEEK = {
-  start: '2026-07-20T00:00:00-04:00',
-  end: '2026-07-27T00:00:00-04:00',
+  start: '2026-07-17T16:00:00-04:00',
+  end: '2026-07-24T16:00:00-04:00',
   timezone: 'America/New_York',
 };
 
@@ -30,7 +31,7 @@ const WITH_OTHER: PrRatioResponse = {
   other: { count: 3, percentage: 25 },
 };
 
-const EMPTY_WEEK: PrRatioResponse = {
+const EMPTY_WINDOW: PrRatioResponse = {
   week: WEEK,
   total: 0,
   repos: SPLIT.repos.map((repo) => ({ ...repo, count: 0, percentage: 0 })),
@@ -86,7 +87,7 @@ export const Ready: Story = {
 };
 
 /**
- * The same week with the "Other" bucket populated: PRs merged in repos outside
+ * The same window with the "Other" bucket populated: PRs merged in repos outside
  * `PR_RATIO_REPOS`. It always sits last and wears a de-emphasized neutral rather than a named
  * accent, so the repos the owner chose to measure keep the colour.
  */
@@ -103,11 +104,11 @@ export const OtherEmpty: Story = {
 };
 
 /**
- * A week that genuinely hasn't seen a merge yet — every Monday starts here. A muted line
- * rather than an empty bar, because a zero-width bar reads as broken, not as zero.
+ * Seven days that genuinely haven't seen a merge. A muted line rather than an empty bar,
+ * because a zero-width bar reads as broken, not as zero.
  */
 export const ZeroTotal: Story = {
-  decorators: [stubEndpoint(200, EMPTY_WEEK)],
+  decorators: [stubEndpoint(200, EMPTY_WINDOW)],
 };
 
 /** In flight: the card reserves the bar's height so the Backlog list beneath doesn't jump. */

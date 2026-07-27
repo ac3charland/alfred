@@ -17,8 +17,9 @@ export type PrRatioState =
   | { status: 'error' };
 
 /**
- * Fetch this week's merged-PR split once on mount, evaluated in the browser's own timezone
- * so the week boundary matches the viewer's Monday rather than the server's.
+ * Fetch the last seven days' merged-PR split once on mount, tagged with the browser's own
+ * timezone so the card's date range reads in the viewer's local days rather than the
+ * server's. The window itself is the same seven days wherever it is asked from.
  *
  * Nothing is thrown and nothing is retried: the ratio is an ornament on the Backlog, never a
  * gate, so every failure resolves to a state the card can render around.
