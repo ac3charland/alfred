@@ -4,17 +4,18 @@ import { stableSorted } from '@/lib/sort';
 import type { PrRatioResponse } from '@/lib/types';
 
 import type { PrRatioConfig, RatioRepo } from './config';
-import type { WeekWindow } from './week';
+import { WINDOW_GRANULARITY_SECONDS, type WeekWindow } from './week';
 
 /**
- * The weekly merged-PR split, counted live from the GitHub Search API.
+ * The merged-PR split over a rolling seven-day window, counted live from the GitHub
+ * Search API.
  *
  * `server-only`: the fan-out carries the fine-grained PAT, so importing this from a Client
  * Component is a build error rather than a leaked token.
  *
  * Nothing is read from Supabase. The webhook Worker only sees PRs whose body carries an
  * `alfred` frontmatter block, and `code_items.implementation_pr_url` has no merge timestamp,
- * so the tables can answer neither "was it merged this week" nor "what about the PRs the
+ * so the tables can answer neither "was it merged in the window" nor "what about the PRs the
  * factory never saw" — and most of the PRs being measured are in that second bucket.
  */
 
@@ -32,7 +33,7 @@ interface SearchResponse {
 }
 
 /**
- * The search query for one repo's merged PRs in the week.
+ * The search query for one repo's merged PRs in the window.
  *
  * `merged:` accepts offset-bearing ISO timestamps, so GitHub enforces the window itself. That
  * matters: the search response's issue objects carry no top-level `merged_at`, so there is
@@ -93,7 +94,7 @@ export function buildOtherQuery(
  * floor every share, then hand the leftover points to the largest fractional remainders,
  * ties broken by input order. Naive per-segment rounding produces the classic "33% / 66%"
  * bar that visibly doesn't add up. All-zero input yields all zeros — not NaN, not an even
- * split, because a week with no merged PRs has no split to show.
+ * split, because a stretch with no merged PRs has no split to show.
  */
 export function toPercentages(counts: readonly number[]): number[] {
   const total = counts.reduce((sum, count) => sum + count, 0);
@@ -138,9 +139,10 @@ async function countMergedPrs(
         // GitHub rejects API requests with no User-Agent.
         'User-Agent': 'alfred',
       },
-      // Search is capped at 30 req/min. Five minutes makes repeated Backlog visits free
-      // while keeping a weekly metric current enough.
-      next: { revalidate: 300 },
+      // Search is capped at 30 req/min, and repeated Backlog visits should be free. The
+      // window is floored to this same span, so a cached response answers the exact query
+      // that produced it for as long as it lives.
+      next: { revalidate: WINDOW_GRANULARITY_SECONDS },
     });
     if (!response.ok) return undefined;
 
@@ -153,7 +155,7 @@ async function countMergedPrs(
 }
 
 /**
- * The week's split across every configured repo — plus the "Other" bucket for everything
+ * The window's split across every configured repo — plus the "Other" bucket for everything
  * merged outside them, when the config can anchor that sweep — or `undefined` when ANY
  * request failed. Partial results are deliberately discarded: a bar whose segments were
  * counted under different rules is a *wrong* ratio, and showing nothing beats showing that.

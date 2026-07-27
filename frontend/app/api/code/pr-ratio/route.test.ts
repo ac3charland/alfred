@@ -71,6 +71,8 @@ describe('GET /api/code/pr-ratio', () => {
   afterEach(() => {
     process.env = { ...originalEnvironment };
     globalThis.fetch = originalFetch;
+    // Only the window tests pin the clock; the rest run on the real one.
+    jest.useRealTimers();
   });
 
   it('returns 401 with neither a session nor an API key', async () => {
@@ -123,20 +125,47 @@ describe('GET /api/code/pr-ratio', () => {
     expect(body.total).toBe(9);
   });
 
-  it('evaluates the week in the requested timezone and echoes it back', async () => {
+  it('measures the seven days ending at the moment of the request', async () => {
     mockSession(TEST_USER);
+    // Friday afternoon — the hour the weekly review is actually held.
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-24T20:00:00Z'));
     const requested = mockGithub([1, 1]);
 
     const response = await GET(getRequest('?tz=America/New_York'));
     const body = (await response.json()) as RatioBody;
 
-    expect(body.week.timezone).toBe('America/New_York');
-    // Both ends are a local midnight carrying the zone's offset, not UTC.
-    expect(body.week.start).toMatch(/T00:00:00-0[45]:00$/);
-    expect(body.week.end).toMatch(/T00:00:00-0[45]:00$/);
+    // The window reaches back past the weekend a Monday-anchored week would have dropped.
+    expect(body.week.start).toBe('2026-07-17T16:00:00-04:00');
+    expect(body.week.end).toBe('2026-07-24T16:00:00-04:00');
     // The very window the caller is told about is the one GitHub was asked for.
     const [first] = requested;
     expect(first?.searchParams.get('q')).toContain(`merged:${body.week.start}..${body.week.end}`);
+  });
+
+  it('rolls with the clock rather than resetting on Monday', async () => {
+    mockSession(TEST_USER);
+    // Monday morning: the old window would have been half an hour long.
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-27T00:30:00Z'));
+    mockGithub([1, 1]);
+
+    const response = await GET(getRequest());
+    const body = (await response.json()) as RatioBody;
+
+    expect(body.week.start).toBe('2026-07-20T00:30:00+00:00');
+    expect(body.week.end).toBe('2026-07-27T00:30:00+00:00');
+  });
+
+  it('evaluates the window in the requested timezone and echoes it back', async () => {
+    mockSession(TEST_USER);
+    mockGithub([1, 1]);
+
+    const response = await GET(getRequest('?tz=America/New_York'));
+    const body = (await response.json()) as RatioBody;
+
+    expect(body.week.timezone).toBe('America/New_York');
+    // Both ends carry the zone's offset, not UTC's.
+    expect(body.week.start).toMatch(/-0[45]:00$/);
+    expect(body.week.end).toMatch(/-0[45]:00$/);
   });
 
   it('defaults to UTC when no tz is given', async () => {
@@ -147,7 +176,7 @@ describe('GET /api/code/pr-ratio', () => {
     const body = (await response.json()) as RatioBody;
 
     expect(body.week.timezone).toBe('UTC');
-    expect(body.week.start).toMatch(/T00:00:00\+00:00$/);
+    expect(body.week.start).toMatch(/\+00:00$/);
   });
 
   it('degrades an unrecognized tz to UTC rather than erroring', async () => {

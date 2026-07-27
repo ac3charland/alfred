@@ -1,20 +1,31 @@
 /**
- * The ISO-week window the PR-ratio count is measured over.
+ * The rolling seven-day window the PR-ratio count is measured over.
  *
  * Pure and clock-free (the caller injects `now`), because this is the one piece of the
- * PR-ratio feature with real edge cases — DST, negative-UTC offsets, and Sunday — and it is
- * cheaper to unit-test a function than to reason about them in a Route Handler.
+ * PR-ratio feature with real edge cases — DST and negative-UTC offsets — and it is cheaper to
+ * unit-test a function than to reason about them in a Route Handler.
  */
 
 const MS_PER_MINUTE = 60_000;
-const MS_PER_DAY = 86_400_000;
+const MS_PER_WEEK = 604_800_000;
+
+/**
+ * The window's ends are floored to this many seconds, and the GitHub responses are cached for
+ * the same span — one constant, because they have to agree.
+ *
+ * A window ending at an exact `now` would put a different timestamp in every search URL, so
+ * the fetch cache could never hit and each Backlog visit would spend fresh calls against a
+ * 30-req/min quota. Flooring to a shared bucket makes the query identical for as long as the
+ * cached response is good for, at the cost of an end up to five minutes behind the clock.
+ */
+export const WINDOW_GRANULARITY_SECONDS = 300;
 
 export interface WeekWindow {
-  /** ISO 8601 with offset, e.g. '2026-07-20T00:00:00-04:00' — inclusive. */
+  /** ISO 8601 with offset, e.g. '2026-07-17T16:00:00-04:00' — seven days before `end`. */
   start: string;
-  /** ISO 8601 with offset — EXCLUSIVE (the following Monday's midnight). */
+  /** ISO 8601 with offset — the instant the request was made. */
   end: string;
-  /** The IANA timezone the window was computed in. */
+  /** The IANA timezone the window's timestamps are rendered in. */
   timezone: string;
 }
 
@@ -74,7 +85,8 @@ function zonedParts(instant: Date, timezone: string): ZonedParts {
 /**
  * The zone's UTC offset (in minutes, east-positive) at a given instant — derived by reading
  * the wall clock in that zone and asking how far it sits from the same fields read as UTC.
- * Deriving it per-instant is what makes a week spanning a DST change come out right.
+ * Deriving it per-instant is what makes a window spanning a DST change come out right: each
+ * end is stamped with the offset in force there, so the span stays a true seven days.
  */
 function offsetMinutes(instant: Date, timezone: string): number {
   const { year, month, day, hour, minute, second } = zonedParts(instant, timezone);
@@ -84,60 +96,42 @@ function offsetMinutes(instant: Date, timezone: string): number {
   return (asIfUtc - truncated) / MS_PER_MINUTE;
 }
 
-/**
- * The instant at which a given local calendar date begins (00:00:00) in `timezone`.
- *
- * Solved by iteration rather than algebra: the offset to subtract depends on the instant we
- * are trying to find. One refinement pass settles it, including the DST weeks where the first
- * guess lands on the wrong side of the transition.
- */
-function startOfLocalDay(year: number, month: number, day: number, timezone: string): Date {
-  const naive = Date.UTC(year, month - 1, day);
-  let instant = naive - offsetMinutes(new Date(naive), timezone) * MS_PER_MINUTE;
-  instant = naive - offsetMinutes(new Date(instant), timezone) * MS_PER_MINUTE;
-  return new Date(instant);
-}
-
 function pad(value: number): string {
   return String(value).padStart(2, '0');
 }
 
-/** `2026-07-20T00:00:00-04:00` — the offset-bearing form GitHub's `merged:` qualifier takes. */
+/** `2026-07-17T16:00:00-04:00` — the offset-bearing form GitHub's `merged:` qualifier takes. */
 function formatWithOffset(instant: Date, timezone: string): string {
   const offset = offsetMinutes(instant, timezone);
   const wallClock = new Date(instant.getTime() + offset * MS_PER_MINUTE);
   const sign = offset < 0 ? '-' : '+';
   const absolute = Math.abs(offset);
+  // `slice(0, 19)` drops the milliseconds, which the qualifier has no room for.
   return `${wallClock.toISOString().slice(0, 19)}${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
 }
 
 /**
- * The ISO week (Monday 00:00 → next Monday 00:00) containing `now`, expressed in `timezone`.
- * Falls back to 'UTC' when `timezone` is not a valid IANA zone — never throws, because the
- * endpoint's job is to return a number, not to validate timezones.
+ * The seven days ending at `now`, expressed in `timezone`.
+ *
+ * Rolling rather than Monday-anchored: the weekly review happens on a Friday afternoon, and
+ * sometimes slips to a Sunday, so a calendar week ending the following Monday would have
+ * shown a review only the days since Monday — silently dropping the weekend that just
+ * passed. Anchoring on the request instant makes every review see the same seven days of
+ * work, whenever it is held.
+ *
+ * The window is the same 168 hours of real time in every zone; `timezone` only decides the
+ * wall clock and offset the two ends are rendered in. Falls back to 'UTC' when it is not a
+ * valid IANA zone — never throws, because the endpoint's job is to return a number, not to
+ * validate timezones.
+ *
+ * `now` is floored to the enclosing {@link WINDOW_GRANULARITY_SECONDS} bucket; see that
+ * constant for why.
  */
-export function isoWeekWindow(now: Date, timezone: string): WeekWindow {
+export function rollingWeekWindow(now: Date, timezone: string): WeekWindow {
   const zone = isValidTimezone(timezone) ? timezone : 'UTC';
-  const { year, month, day } = zonedParts(now, zone);
-
-  // Weekday of the local calendar date, read off a UTC instant so no offset is involved.
-  const localDate = Date.UTC(year, month - 1, day);
-  const daysSinceMonday = (new Date(localDate).getUTCDay() + 6) % 7;
-  const monday = new Date(localDate - daysSinceMonday * MS_PER_DAY);
-  const nextMonday = new Date(monday.getTime() + 7 * MS_PER_DAY);
-
-  const start = startOfLocalDay(
-    monday.getUTCFullYear(),
-    monday.getUTCMonth() + 1,
-    monday.getUTCDate(),
-    zone,
-  );
-  const end = startOfLocalDay(
-    nextMonday.getUTCFullYear(),
-    nextMonday.getUTCMonth() + 1,
-    nextMonday.getUTCDate(),
-    zone,
-  );
+  const bucket = WINDOW_GRANULARITY_SECONDS * 1000;
+  const end = new Date(Math.floor(now.getTime() / bucket) * bucket);
+  const start = new Date(end.getTime() - MS_PER_WEEK);
 
   return {
     start: formatWithOffset(start, zone),
