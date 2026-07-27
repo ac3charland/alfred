@@ -54,7 +54,8 @@ Fill in `frontend/.env.local` (Supabase → Project Settings):
 
 `.env.local` is gitignored — never commit real secrets.
 
-Optional — the Backlog's weekly PR-ratio card and `GET /api/code/pr-ratio`. Leave them unset
+Optional — the Backlog's rolling seven-day PR-ratio card and `GET /api/code/pr-ratio`
+(the window is always the seven days ending when the request is made). Leave them unset
 and the endpoint answers 501 and the card renders nothing; the Backlog is unaffected:
 
 | Var | Where | Notes |
