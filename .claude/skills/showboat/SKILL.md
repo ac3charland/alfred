@@ -151,6 +151,14 @@ demo under a feature-named folder and the branch tag comes along for free.
 Global: `--workdir <dir>` sets the directory exec blocks run in (default: cwd).
 `--version`, `--help`.
 
+**Multi-line commentary:** `\n` inside a double-quoted `note` argument reaches the doc as
+the literal two characters. Use a `$'para one\n\npara two'` bash string, pipe the text in on
+stdin, or make one `note` call per paragraph.
+
+**`image` takes no caption argument** — every word after `<file>` is joined into the *path*,
+so a trailing caption produces `ENOENT: … 'shot.png My caption'`. Put the caption in a `note`
+immediately before the `image`.
+
 `exec` languages: `bash`/`sh`/`shell`/`zsh`/`console` (and anything unrecognized)
 run through the system shell; `node`/`js`/`javascript` run via `node -e`;
 `python`/`python3` via `python3 -c`. Prefer `bash` and `node` so `verify` works in
