@@ -182,6 +182,8 @@ test('admin can delete items', async ({ page }) => { ... });
 
 `test.use()` applies to the enclosing describe block or file. Reset with `test.use({ storageState: undefined })`.
 
+**`video` can only be set at file top level.** `test.use({ video: … })` inside a `describe` aborts the whole run (`Cannot use({ video }) in a describe group, because it forces a new worker`), so a video-recording test needs its own spec file.
+
 **Auto-use fixtures** for cross-cutting concerns (e.g., log collection on failure):
 
 ```typescript
@@ -232,6 +234,8 @@ test.beforeEach(async ({ page }) => {
 **Always set `baseURL` in config and use relative paths in `page.goto()`.** `page.goto('/')` is cleaner and survives URL changes. Never hardcode `http://localhost:3000` in individual tests.
 
 **Always place `page.route()` calls before `page.goto()`.** Route handlers registered after navigation won't intercept already-started requests. Set up mocks at the top of the test or in `beforeEach`.
+
+**A spec file may not import another spec file** — Playwright refuses to run (`test file "a.spec.ts" should not import test file "b.spec.ts"`). Share a constant or helper through a non-spec module under `e2e/support/` instead.
 
 **Never rely on test execution order.** Each test must be fully independent. Playwright randomizes file order by default. Use `storageState` for auth reuse, not a global auth cookie you set in test #1 and depend on in test #2.
 

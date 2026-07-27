@@ -41,6 +41,7 @@ home is never a judgement call — it's always `atoms/`.
 | an inline name editor (input + ✓, Enter/Escape/outside-click) | `InlineEditField` (`components/atoms/inline-edit-field`) | a per-site `<form>` + autofocus effect + outside-click effect |
 | a click-to-edit field (display ↔ edit, with draft/rollback) | `EditableTextField` / `useInlineEdit` (both wrap `InlineEditField`) | reimplementing draft + Enter/Escape + rollback per field |
 | a modal | `FormDialog` / `DialogOverlay` | pasting `Dialog.Root → Portal → Overlay → Content` again |
+| a full-bleed modal (hand a cramped embedded document the whole screen) | `FullScreenDialog` (same atom file) | overriding `FormDialog`'s centring translate + radius + padding back off |
 | a pill / status chip | `Badge` variants | a bespoke `rounded-full px-2 …` span |
 | an expand/collapse reveal | `AnimatedHeightCollapse` (+ the `motion` skill) | copying the `grid-rows-[0fr↔1fr]` transition block |
 | a textarea + save/cancel | `TextareaField` | another textarea + two `Button`s inline |
@@ -53,6 +54,12 @@ the existing component over forking a new one.
 does this, so reuse it rather than re-deriving the dismiss. Blur false-cancels an editor opened from
 a Radix dropdown (Radix restores focus to the trigger on close, firing a spurious blur); pointerdown
 fires before focus moves, so it's safe there and lets Tab-out keep the editor open.
+
+**An embedded document (`<iframe srcDoc>`) can't be made clickable with an `onClick`** — the frame
+swallows the event, so nothing reaches the app. Make the frame's *region* the target instead: a
+`ClickableCard` at `absolute inset-0` over it, carrying a visible chip so the affordance isn't
+invisible. That trades the frame's own interactivity for the click, so gate it (`md:hidden`) to the
+widths where the trade is worth it — the Week Plan's tap-to-full-screen is the working example.
 
 ## Stores and route handlers have a shared spine too
 
