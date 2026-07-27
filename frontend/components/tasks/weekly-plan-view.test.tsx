@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -137,5 +137,115 @@ describe('WeeklyPlanView', () => {
     renderView([]);
 
     expect(screen.queryByRole('combobox', { name: 'Week' })).not.toBeInTheDocument();
+  });
+
+  // The inline frame is cramped on a phone: it sits inside the shell's padding at a width the
+  // plan's own multi-column layout was never drawn for. Tapping it hands the document the whole
+  // screen. The tap target is a layer OVER the frame, because a tap inside a sandboxed iframe
+  // never reaches the app — the frame swallows it.
+  describe('full-screen on mobile', () => {
+    const TAP_LABEL = 'View the week plan full screen';
+
+    it('lays a tap target over the plan, labelled for what it does', () => {
+      renderView([LATEST]);
+
+      const tap = screen.getByRole('button', { name: TAP_LABEL });
+      expect(tap).toHaveClass('absolute', 'inset-0');
+      // Mobile-only: at md+ the inline frame is roomy and stays directly interactive. jsdom
+      // never resolves the breakpoint, so the class IS the assertion here — the real viewport
+      // behaviour is pinned by e2e/weekly-plan-fullscreen.spec.ts.
+      expect(tap).toHaveClass('md:hidden');
+    });
+
+    it('shows a visible "Full screen" hint so the tap target is discoverable', () => {
+      renderView([LATEST]);
+
+      expect(
+        within(screen.getByRole('button', { name: TAP_LABEL })).getByText('Full screen'),
+      ).toBeInTheDocument();
+    });
+
+    it('offers no tap target in the empty state — there is no plan to open', () => {
+      renderView([]);
+
+      expect(screen.queryByRole('button', { name: TAP_LABEL })).not.toBeInTheDocument();
+    });
+
+    it('keeps the full-screen frame unmounted until the plan is tapped', () => {
+      renderView([LATEST]);
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('weekly-plan-html-fullscreen')).not.toBeInTheDocument();
+    });
+
+    it('opens the plan in a full-screen dialog when tapped', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST]);
+
+      await user.click(screen.getByRole('button', { name: TAP_LABEL }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByTestId('weekly-plan-html-fullscreen')).toHaveAttribute(
+        'srcdoc',
+        LATEST.html,
+      );
+    });
+
+    it('sandboxes the full-screen frame exactly like the inline one', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST]);
+
+      await user.click(screen.getByRole('button', { name: TAP_LABEL }));
+
+      // Same contract, not a laxer copy: scripts run so the plan highlights today, but the
+      // frame keeps an opaque origin.
+      const frame = await screen.findByTestId('weekly-plan-html-fullscreen');
+      expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+      expect(frame.getAttribute('sandbox') ?? '').not.toContain('allow-same-origin');
+    });
+
+    it('titles the full-screen view with the week being shown', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST]);
+
+      await user.click(screen.getByRole('button', { name: TAP_LABEL }));
+
+      // Labelled by the same upload date the picker uses, so it is unambiguous which week
+      // filled the screen.
+      expect(await screen.findByRole('dialog', { name: 'Week Plan · Jul 24' })).toBeInTheDocument();
+    });
+
+    it('opens whichever week is selected, not just the latest', async () => {
+      mockFetchWeeklyPlan.mockResolvedValue(OLDER);
+      const user = userEvent.setup();
+      renderView([LATEST, OLDER]);
+
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Week' }), OLDER.id);
+      await waitFor(() => {
+        expect(screen.getByTestId('weekly-plan-html')).toHaveAttribute('srcdoc', OLDER.html);
+      });
+      await user.click(screen.getByRole('button', { name: TAP_LABEL }));
+
+      expect(await screen.findByTestId('weekly-plan-html-fullscreen')).toHaveAttribute(
+        'srcdoc',
+        OLDER.html,
+      );
+      expect(screen.getByRole('dialog', { name: 'Week Plan · Jul 17' })).toBeInTheDocument();
+    });
+
+    it('closes again on the × dismiss', async () => {
+      const user = userEvent.setup();
+      renderView([LATEST]);
+
+      await user.click(screen.getByRole('button', { name: TAP_LABEL }));
+      await screen.findByRole('dialog');
+      await user.click(screen.getByRole('button', { name: 'Close full screen' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      // Back to the inline frame, still showing the plan.
+      expect(screen.getByTestId('weekly-plan-html')).toHaveAttribute('srcdoc', LATEST.html);
+    });
   });
 });
