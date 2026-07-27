@@ -13,6 +13,7 @@ import {
   DialogRoot,
   DialogTitle,
   FormDialog,
+  FullScreenDialog,
   dialogContentVariants,
 } from './dialog';
 
@@ -106,6 +107,83 @@ describe('FormDialog', () => {
     );
     const content = screen.getByRole('dialog');
     expect(content).toHaveClass('flex', 'max-h-[85vh]', 'flex-col', 'max-w-md');
+  });
+});
+
+describe('FullScreenDialog', () => {
+  it('names the dialog with its title and renders it as a heading', () => {
+    render(
+      <FullScreenDialog open onOpenChange={jest.fn()} title="Week Plan">
+        <p>body</p>
+      </FullScreenDialog>,
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Week Plan' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Week Plan' })).toBeInTheDocument();
+    expect(screen.getByText('body')).toBeInTheDocument();
+  });
+
+  it('fills the viewport instead of floating as a centred card', () => {
+    render(
+      <FullScreenDialog open onOpenChange={jest.fn()} title="Week Plan">
+        <p>body</p>
+      </FullScreenDialog>,
+    );
+
+    const content = screen.getByRole('dialog');
+    // `100dvh` (not `100vh`) so a phone's collapsing browser chrome can't clip the bottom.
+    expect(content).toHaveClass('fixed', 'inset-0', 'h-[100dvh]', 'flex', 'flex-col');
+    // None of the FormDialog card chrome: no centring translate, no radius, no padding.
+    expect(content).not.toHaveClass('rounded-2xl', 'p-6', '-translate-x-1/2', 'max-w-md');
+  });
+
+  it('carries the shared × dismiss, which closes it', async () => {
+    const onOpenChange = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <FullScreenDialog open onOpenChange={onOpenChange} title="Week Plan">
+        <p>body</p>
+      </FullScreenDialog>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('accepts a caller-supplied close label', () => {
+    render(
+      <FullScreenDialog open onOpenChange={jest.fn()} title="Week Plan" closeLabel="Close plan">
+        <p>body</p>
+      </FullScreenDialog>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Close plan' })).toBeInTheDocument();
+  });
+
+  it('closes on Escape', async () => {
+    const onOpenChange = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <FullScreenDialog open onOpenChange={onOpenChange} title="Week Plan">
+        <p>body</p>
+      </FullScreenDialog>,
+    );
+
+    await user.keyboard('[Escape]');
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('renders nothing when closed', () => {
+    render(
+      <FullScreenDialog open={false} onOpenChange={jest.fn()} title="Week Plan">
+        <p>body</p>
+      </FullScreenDialog>,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('body')).not.toBeInTheDocument();
   });
 });
 
