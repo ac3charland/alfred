@@ -157,7 +157,10 @@ no autofix). The escape is to **restructure, not assert**: assert on the whole v
 **`exactOptionalPropertyTypes` makes `undefined` and "missing" different.**
 You cannot pass `{ field: undefined }` where `{ field?: string }` is expected — `undefined` is not
 the same as "not present". When building partial update objects via spread: use
-`{ ...(val !== undefined && { field: val }) }` to conditionally include a key.
+`{ ...(val !== undefined && { field: val }) }` to conditionally include a key. The spread trick doesn't
+help when a component **forwards** its own optional prop onward (`<Child label={maybeLabel} />`) — type
+the *receiving* prop `?: T | undefined` (as `DialogCloseButton`'s `label` does) so an explicit
+`undefined` is assignable.
 
 **Deriving an exact-optional type from a zod schema needs an `ExactOptional` wrapper.**
 `z.infer` types a schema's `.optional()` field as `field?: T | undefined` (explicit `undefined`).
