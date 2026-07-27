@@ -11,8 +11,10 @@ const mockGetPrRatio = jest.mocked(api.getPrRatio);
 
 const RATIO: PrRatioResponse = {
   week: {
-    start: '2026-07-20T00:00:00-04:00',
-    end: '2026-07-27T00:00:00-04:00',
+    // The seven days ending at a Friday-afternoon request — a rolling window, not a
+    // calendar week, so neither end sits at midnight.
+    start: '2026-07-17T16:00:00-04:00',
+    end: '2026-07-24T16:00:00-04:00',
     timezone: 'America/New_York',
   },
   total: 9,
@@ -22,7 +24,7 @@ const RATIO: PrRatioResponse = {
   ],
 };
 
-/** The same week with a measured Other bucket, which shifts every share. */
+/** The same window with a measured Other bucket, which shifts every share. */
 const RATIO_WITH_OTHER: PrRatioResponse = {
   ...RATIO,
   total: 10,
@@ -44,7 +46,7 @@ describe('PrRatio', () => {
 
     render(<PrRatio />);
 
-    expect(screen.getByText('PRs merged this week')).toBeInTheDocument();
+    expect(screen.getByText('PRs merged in the last 7 days')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
@@ -57,12 +59,12 @@ describe('PrRatio', () => {
     expect(entries.map((entry) => entry.textContent)).toEqual(['RealPlay33%(3)', 'Alfred67%(6)']);
   });
 
-  it('names the week by the days it actually covers (the exclusive end reads as Sunday)', async () => {
+  it('names the window by the first and last day it covers, both inclusive', async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
     render(<PrRatio />);
 
-    expect(await screen.findByText(/Jul 20 – Jul 26/)).toBeInTheDocument();
+    expect(await screen.findByText(/Jul 17 – Jul 24/)).toBeInTheDocument();
     expect(screen.getByText(/9 total/)).toBeInTheDocument();
   });
 
@@ -140,7 +142,7 @@ describe('PrRatio', () => {
     expect(screen.getByText(/4 total/)).toBeInTheDocument();
   });
 
-  it('reports a zero-PR week as a normal state rather than an empty or NaN bar', async () => {
+  it('reports a zero-PR window as a normal state rather than an empty or NaN bar', async () => {
     mockGetPrRatio.mockResolvedValue({
       ...RATIO,
       total: 0,
@@ -149,7 +151,7 @@ describe('PrRatio', () => {
 
     render(<PrRatio />);
 
-    expect(await screen.findByText('No PRs merged yet this week.')).toBeInTheDocument();
+    expect(await screen.findByText('No PRs merged in the last 7 days.')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
@@ -171,7 +173,7 @@ describe('PrRatio', () => {
     });
   });
 
-  it("evaluates the week in the browser's own timezone", async () => {
+  it("renders the window in the browser's own timezone", async () => {
     mockGetPrRatio.mockResolvedValue(RATIO);
 
     render(<PrRatio />);

@@ -109,7 +109,7 @@ test('reordering a story animates smoothly with no mid-flight jump', async ({ pa
   );
   await page.goto('/code/backlog');
   await ratioAnswered;
-  await expect(page.getByText('PRs merged this week')).toBeHidden();
+  await expect(page.getByText('PRs merged in the last 7 days')).toBeHidden();
   await expect(page.getByRole('listitem').nth(1)).toContainText('ALF-4');
 
   await expectSmoothSwap(page);

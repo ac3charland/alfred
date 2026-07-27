@@ -72,11 +72,11 @@ function formatDay(iso: string, dayOffset: number): string {
 }
 
 /**
- * "Jul 20 – Jul 26" for a window whose `end` is the EXCLUSIVE next Monday — the label names
- * the last day the week actually covers.
+ * "Jul 17 – Jul 24" — the first and last day the rolling window covers. Both ends are
+ * inclusive instants, so neither is nudged: the end day is simply today.
  */
-function formatWeekRange(start: string, end: string): string {
-  return `${formatDay(start, 0)} – ${formatDay(end, -1)}`;
+function formatWindowRange(start: string, end: string): string {
+  return `${formatDay(start, 0)} – ${formatDay(end, 0)}`;
 }
 
 /** "RealPlay 33 percent, 3 pull requests; Alfred 67 percent, 6 pull requests". */
@@ -102,15 +102,15 @@ function Card({ children }: { children: React.ReactNode }) {
 function Heading({ detail }: { detail?: string }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <h3 className="text-sm font-medium text-foreground">PRs merged this week</h3>
+      <h3 className="text-sm font-medium text-foreground">PRs merged in the last 7 days</h3>
       {detail !== undefined && <p className="text-xs text-muted-foreground">{detail}</p>}
     </div>
   );
 }
 
 /**
- * The Backlog's weekly PR-ratio card: how this week's merged pull requests split across the
- * configured repos, as a stacked bar plus a per-repo legend.
+ * The Backlog's PR-ratio card: how the last seven days' merged pull requests split across
+ * the configured repos, as a stacked bar plus a per-repo legend.
  *
  * It is an ornament, never a gate. An unconfigured deployment renders **nothing at all** (no
  * card, no gap), and a GitHub failure renders one muted line — either way the Backlog beneath
@@ -141,14 +141,14 @@ export function PrRatio() {
   }
 
   const { week, total } = state.ratio;
-  const range = formatWeekRange(week.start, week.end);
+  const range = formatWindowRange(week.start, week.end);
 
   if (total === 0) {
     return (
       <Card>
         <Heading detail={range} />
-        {/* A week genuinely starts at zero every Monday — a normal state, not an error. */}
-        <p className="text-sm text-muted-foreground">No PRs merged yet this week.</p>
+        {/* A genuinely quiet week — a normal state, not an error. */}
+        <p className="text-sm text-muted-foreground">No PRs merged in the last 7 days.</p>
       </Card>
     );
   }

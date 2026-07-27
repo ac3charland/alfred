@@ -2,8 +2,8 @@ import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/consta
 import { expect, test } from './support/fixtures';
 
 /**
- * The PR-ratio card at the top of the Backlog (ALF-131): this week's merged pull requests
- * split across the configured repos.
+ * The PR-ratio card at the top of the Backlog (ALF-131): the last seven days' merged pull
+ * requests split across the configured repos.
  *
  * The counts come from a live GitHub query, which no test may make — so both cases stub
  * `/api/code/pr-ratio` at the network boundary. That also lets the second case assert the
@@ -45,8 +45,9 @@ const codeItems = [
 
 const RATIO = {
   week: {
-    start: '2026-07-20T00:00:00-04:00',
-    end: '2026-07-27T00:00:00-04:00',
+    // Rolling (ALF-144): the seven days ending at a Friday-afternoon request.
+    start: '2026-07-17T16:00:00-04:00',
+    end: '2026-07-24T16:00:00-04:00',
     timezone: 'America/New_York',
   },
   total: 9,
@@ -56,7 +57,7 @@ const RATIO = {
   ],
 };
 
-/** The same week once the Other bucket (ALF-135) is measured and non-empty. */
+/** The same window once the Other bucket (ALF-135) is measured and non-empty. */
 const RATIO_WITH_OTHER = {
   ...RATIO,
   total: 12,
@@ -67,14 +68,15 @@ const RATIO_WITH_OTHER = {
   other: { count: 3, percentage: 25 },
 };
 
-test('shows the weekly PR split above the story list', async ({ page, seed }) => {
+test('shows the rolling seven-day PR split above the story list', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
   await page.route('**/api/code/pr-ratio*', (route) => route.fulfill({ status: 200, json: RATIO }));
 
   await page.goto('/code/backlog');
 
-  await expect(page.getByText('PRs merged this week')).toBeVisible();
-  await expect(page.getByText('Jul 20 – Jul 26', { exact: false })).toBeVisible();
+  await expect(page.getByText('PRs merged in the last 7 days')).toBeVisible();
+  // Both ends inclusive: the first and last day the window actually covers.
+  await expect(page.getByText('Jul 17 – Jul 24', { exact: false })).toBeVisible();
 
   // One legend entry per repo, in configured order, each with its percentage and raw count.
   const legend = page.getByRole('listitem').filter({ hasText: '%' });
@@ -94,7 +96,7 @@ test('shows the weekly PR split above the story list', async ({ page, seed }) =>
   ).toBeVisible();
 
   // It sits above the story list, not below it.
-  const cardBox = await page.getByText('PRs merged this week').boundingBox();
+  const cardBox = await page.getByText('PRs merged in the last 7 days').boundingBox();
   const firstRowBox = await page.getByRole('listitem').filter({ hasText: 'ALF-3' }).boundingBox();
   expect(cardBox?.y ?? 0).toBeLessThan(firstRowBox?.y ?? 0);
 });
@@ -157,6 +159,6 @@ test('renders the Backlog untouched — no card, no error — when the feature i
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText('ALF-3');
 
-  await expect(page.getByText('PRs merged this week')).toBeHidden();
+  await expect(page.getByText('PRs merged in the last 7 days')).toBeHidden();
   await expect(page.getByText("Couldn't load PR counts.")).toBeHidden();
 });
