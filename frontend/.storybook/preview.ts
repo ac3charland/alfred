@@ -6,11 +6,12 @@ import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { CodeFilterProvider } from '../lib/stores/code-filter-store';
 import { ExpansionProvider } from '../lib/stores/expansion-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
+import { HabitsProvider } from '../lib/stores/habits-store';
 import { InboxSelectionProvider } from '../lib/stores/inbox-selection-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
 import { ToastProvider } from '../lib/stores/toast-store';
 import { WeeklyPlanProvider } from '../lib/stores/weekly-plan-store';
-import type { Folder, Item, WeeklyPlan, WeeklyPlanSummary } from '../lib/types';
+import type { Folder, Habit, HabitEntry, Item, WeeklyPlan, WeeklyPlanSummary } from '../lib/types';
 
 /** Per-story seeds for the data providers, set via `parameters.store`. */
 interface StoreSeed {
@@ -18,6 +19,8 @@ interface StoreSeed {
   tasks?: Item[];
   /** The weekly plan archive: the picker index plus the latest plan's document. */
   weeklyPlans?: { index: WeeklyPlanSummary[]; latest?: WeeklyPlan };
+  /** The habit definitions, their logged days, and the date the store treats as today. */
+  habits?: { habits?: Habit[]; entries?: HabitEntry[]; today?: string };
 }
 
 const preview: Preview = {
@@ -57,9 +60,18 @@ const preview: Preview = {
                         initialLatest: seed.weeklyPlans?.latest,
                       },
                       React.createElement(
-                        'div',
-                        { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                        React.createElement(Story),
+                        HabitsProvider,
+                        {
+                          initialHabits: seed.habits?.habits ?? [],
+                          initialEntries: seed.habits?.entries ?? [],
+                          // A fixed date, so a grid baseline doesn't move with the calendar.
+                          serverToday: seed.habits?.today ?? '2026-07-30',
+                        },
+                        React.createElement(
+                          'div',
+                          { className: 'dark min-h-screen bg-background text-foreground p-8' },
+                          React.createElement(Story),
+                        ),
                       ),
                     ),
                   ),
