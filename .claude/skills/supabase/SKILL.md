@@ -405,4 +405,21 @@ grant, an RLS gap, or a non-deferrable-unique 409 (the `0007` swap bug) is a red
 shipped 500. Add a regression there for any new DB-semantics bug. See the `migration-lint` and
 `backpressure` skills.
 
+### `supabase db dump` and restoring the dump
+
+`supabase db dump` writes **schema only** by default (no data, no roles); add `--data-only --use-copy`
+for the data. A full logical dump is the schema dump followed by the data dump. Two gotchas bite when
+you restore that dump into a **vanilla** Postgres (e.g. a CI throwaway) rather than another Supabase
+project:
+
+- **The schema dump references the hosted `extensions` schema** (Supabase keeps its extensions
+  there), so a bare cluster fails the restore with `ERROR: schema "extensions" does not exist`. A real
+  Supabase target already has it. To verify a dump on vanilla Postgres, rebuild the schema from the
+  committed migrations instead and load only the **data** — data-only SQL has no such reference.
+- **`items.parent_id` is a self-referential (circular) FK.** A plain data-only load fails on row
+  ordering (`pg_dump` even warns at dump time). Load the data with `set session_replication_role =
+  replica;` first (superuser only) to disable FK/trigger checks during the COPY — the source data is
+  already consistent. The uploaded backup artifact bakes this guard in around its data section so the
+  restore works anywhere. `database/src/backup.ts` is the worked example.
+
 > See `references/` for detailed SQL patterns: `references/rls-policies.md` for policy templates, `references/recursive-subtasks.md` for the WITH RECURSIVE CTE.
