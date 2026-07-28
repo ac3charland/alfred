@@ -84,6 +84,11 @@ its base has drifted.
   `merge-base(HEAD, trunk)..HEAD`, so a demo doc you haven't committed yet isn't in the changed
   set and the content rules (`no-test-in-demo`, …) report a false `0 errors`. Lint **after
   committing** the demo (or with `--all`); otherwise the rules first bite at pre-push.
+- **A stale `origin/main` makes a docs-only branch owe a demo.** The docs-only exemption is
+  computed from the diff against the remote trunk ref, so a fresh clone that only ever fetched
+  its own branch diffs against a months-old `origin/main` and sweeps every already-merged code
+  change into the branch's "changes" — `branch-folder` then fails a pure docs branch (a spec, a
+  README). `git fetch origin main` and re-run.
 - **Only `README.md` is allowed at the root.** That allow-list lives in
   `ALLOWED_ROOT_FILES` in `src/demos.ts`; everything else at the root is a finding.
 - **It's wired into `check:slow`, not `check:fast`.** The package's `check:slow` script is
