@@ -1,0 +1,11 @@
+$ curl -X PUT .../api/habits/<id>/entries -H 'x-api-key: …' -d '{"date":"2026-07-27","results":{"wake":364,"light":true}}'
+200 {"id":"d51225ef-8ab4-48c2-9186-02922532e991","habit_id":"11111111-1111-4111-8111-111111111111","entry_date":"2026-07-27","status":"met","results":{"wake":364,"light":true},"note":null,"created_at":"2026-07-28T18:01:16.045Z","updated_at":"2026-07-28T18:01:16.043Z"}
+
+$ curl -X PUT … -d '{"date":"2026-07-27","results":{"wake":700,"light":true}}'   # same day, corrected
+200 {"id":"d51225ef-8ab4-48c2-9186-02922532e991","habit_id":"11111111-1111-4111-8111-111111111111","entry_date":"2026-07-27","status":"partial","results":{"wake":700,"light":true},"note":null,"created_at":"2026-07-28T18:01:16.045Z","updated_at":"2026-07-28T18:01:16.066Z"}
+
+$ curl -X PUT … -d '{"results":{"wake":700,"light":false},"status":"met"}'
+400 {"error":"Invalid request body","details":[{"code":"invalid_value","values":["skipped"],"path":["status"],"message":"Invalid input: expected \"skipped\""}]}
+
+$ curl -X PUT … -d '{"status":"skipped"}'   # no reason
+400 {"error":"Invalid request body","details":[{"code":"custom","path":["note"],"message":"Skipping a day requires a non-empty \"note\" — the reason"}]}
