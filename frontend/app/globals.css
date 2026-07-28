@@ -70,6 +70,13 @@
   --color-accent-amber: #f0b429;
   --color-accent-red: #f87171;
 
+  /* Habit-grid greys — the only two values the history grid needs that nothing else names.
+     `habit-unknown` is the raised plate an unlogged day sits on; `habit-bridge` is the
+     forgiven connector, deliberately between border and muted-foreground so it reads as
+     inert rather than as a dimmer version of the lit chain. */
+  --color-habit-unknown: #141d2e;
+  --color-habit-bridge: #48566e;
+
   /* Font tokens wired from CSS variables set in layout.tsx.
      The --font-instrument-serif variable is injected by next/font at runtime;
      fall back to Georgia so the design still reads well if fonts are unavailable. */
