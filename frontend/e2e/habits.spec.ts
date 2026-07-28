@@ -106,7 +106,6 @@ test('skipping a day takes a second step and a reason, and the reason survives i
   const commit = page.getByRole('button', { name: 'Skip this day' });
   await expect(commit).toBeDisabled();
 
-  await page.getByRole('button', { name: 'Illness' }).click();
   await page.getByLabel('Reason for skipping').fill('flu, off all week');
   await expect(commit).toBeEnabled();
   await commit.click();

@@ -3,12 +3,8 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
-import { Chip } from '@/components/atoms/chip';
 import { TextField } from '@/components/atoms/text-field';
 import { formatShortDate } from '@/components/habits/habit-format';
-
-/** The two cases D3 names. One-tap prefills, NOT a closed list — the field stays editable. */
-const QUICK_REASONS = ['Illness', 'Travel'];
 
 interface SkipPanelProperties {
   date: string;
@@ -25,6 +21,10 @@ interface SkipPanelProperties {
  * skip a streak-laundering button, and in a single-user app the only person it fools is the
  * owner. So it takes a second step and a reason — and the reason turns the escape hatch into
  * data the Friday review can actually read.
+ *
+ * The reason is TYPED, with no one-tap suggestions. A prefill would hand back the second of
+ * the two things this step charges for: a tap that fills the field is a tap that skips the
+ * day, and "Illness" chosen off a list is a category, not something a human wrote.
  */
 export function SkipPanel({ date, onCancel, onSkip }: SkipPanelProperties) {
   const [reason, setReason] = React.useState('');
@@ -48,19 +48,6 @@ export function SkipPanel({ date, onCancel, onSkip }: SkipPanelProperties) {
       <p className="text-xs leading-relaxed text-muted-foreground">
         This day won&apos;t count for or against the habit, and won&apos;t spend your allowance.
       </p>
-      <div className="flex gap-1.5">
-        {QUICK_REASONS.map((quick) => (
-          <Chip
-            key={quick}
-            className="border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setReason(quick);
-            }}
-          >
-            {quick}
-          </Chip>
-        ))}
-      </div>
       <TextField
         aria-label="Reason for skipping"
         placeholder="Why is this day excused?"
