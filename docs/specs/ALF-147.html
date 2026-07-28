@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-147 — Habit tracker: the walking skeleton</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --met: #2ea36b; --met-soft: #b6e3ca;
+    --missed: #d1544a; --missed-soft: #f2c4c0;
+    --partial: #d99b2b; --partial-soft: #f6e0b4;
+    --unknown: #e9edf3; --na-line: #dfe4ec; --bridge: #b3bcc8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --met: #3fbf82; --met-soft: #1e4936;
+      --missed: #e8776a; --missed-soft: #4a2320;
+      --partial: #e0ab48; --partial-soft: #45330f;
+      --unknown: #232a33; --na-line: #2b323c; --bridge: #55606d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+         /* A long inline identifier must break rather than push the page sideways on a phone. */
+         overflow-wrap: break-word; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+             padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+             border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent); }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.2rem; }
+  ul.tight li, ol.tight li { margin-bottom: .3rem; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Acceptance checklist ────────────────────────────────────── */
+  .ac { list-style: none; padding: 0; margin: 1rem 0; }
+  .ac li { position: relative; padding-left: 1.9rem; margin-bottom: .55rem; font-size: .93rem; }
+  .ac li::before { content: '☐'; position: absolute; left: .35rem; top: -.05rem;
+                   color: var(--accent); font-size: 1.05rem; }
+  .ac li b { font-weight: 600; }
+  .acgroup { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+             color: var(--faint); margin: 1.3rem 0 .4rem; font-weight: 700; }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-body { padding: 1rem; }
+  .hname { font-weight: 600; font-size: .85rem; }
+  .hmeta { color: var(--faint); font-size: .72rem; font-weight: 400; }
+
+  /* ── Day cells + connectors (mirrors the epic's language) ────── */
+  i.c { position: relative; display: flex; align-items: center; justify-content: center;
+        width: 26px; height: 26px; border-radius: 6px; background: var(--unknown);
+        font-style: normal; font-size: 0; }
+  i.c.m { background: var(--met); }
+  i.c.p { background: var(--partial); }
+  i.c.x { background: var(--missed); }
+  i.c.fu { background: none; border: 1px dashed var(--na-line); }
+  i.c.t { box-shadow: 0 0 0 2px var(--accent); }
+  .gridq { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 26px);
+           gap: 6px; width: max-content; padding: 8px 0; }
+  .gridq i.c.lk::after { content: ''; position: absolute; left: 50%; top: 100%;
+                         transform: translateX(-50%); width: 10px; height: 6px; background: var(--met); }
+  .gridq i.c.lk.bridge::after { background: var(--bridge); }
+  .gridq i.c.wo::after { content: ''; position: absolute; left: 50%; top: 100%;
+                         transform: translateX(-50%); width: 10px; height: 7px;
+                         background: var(--met); border-radius: 0 0 3px 3px; }
+  .gridq i.c.wi::before { content: ''; position: absolute; left: 50%; bottom: 100%;
+                          transform: translateX(-50%); width: 10px; height: 7px;
+                          background: var(--met); border-radius: 3px 3px 0 0; }
+  .gridq i.c.wo.bridge::after, .gridq i.c.wi.bridge::before { background: var(--bridge); }
+  .dowq { display: grid; grid-template-rows: repeat(7, 26px); gap: 6px;
+          font-size: .62rem; color: var(--faint); text-align: right; padding: 8px 4px 0 0; }
+  .dowq span { line-height: 26px; }
+  .qwrap { display: flex; gap: 6px; align-items: flex-start; }
+  .legend { display: flex; flex-wrap: wrap; gap: .85rem; margin-top: .85rem;
+            font-size: .7rem; color: var(--muted); align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  .legend i.c { width: 15px; height: 15px; border-radius: 4px; }
+
+  /* ── Form mockup atoms ───────────────────────────────────────── */
+  .fld { border: 1px solid var(--line); border-radius: 7px; padding: .3rem .55rem;
+         background: var(--bg); font-size: .76rem; color: var(--fg); }
+  .flabel { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+            color: var(--faint); font-weight: 600; margin-bottom: .25rem; display: block; }
+  .row { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+  .critrow { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+             border: 1px solid var(--line); border-radius: 8px; padding: .4rem .6rem;
+             background: var(--bg); font-size: .76rem; margin-bottom: .35rem; }
+  .kindchip { border: 1px solid var(--line); border-radius: 999px; padding: .02rem .5rem;
+              font-size: .66rem; color: var(--muted); }
+  .dayset { display: flex; gap: .25rem; }
+  .dayset span { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line);
+                 display: inline-flex; align-items: center; justify-content: center;
+                 font-size: .66rem; color: var(--muted); background: var(--bg); }
+  .dayset span.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .btnrow { display: flex; justify-content: flex-end; gap: .4rem; margin-top: .9rem; }
+  .btn { border: 1px solid var(--line); border-radius: 7px; padding: .22rem .8rem;
+         font-size: .74rem; color: var(--muted); background: var(--bg); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .addrow { font-size: .74rem; color: var(--accent); margin-top: .1rem; }
+  .steps { display: flex; gap: .5rem; align-items: center; font-size: .68rem;
+           color: var(--faint); margin-bottom: .8rem; }
+  .steps b { color: var(--accent); }
+  .steps .barlet { flex: 1; height: 3px; border-radius: 2px; background: var(--unknown); }
+  .steps .barlet.on { background: var(--accent); }
+  .sentence { font-size: .95rem; line-height: 2.2; }
+  .slot { border-bottom: 2px dashed var(--accent); padding: .1rem .35rem;
+          color: var(--accent); font-weight: 600; }
+  .slotchip { border: 1px solid var(--accent); background: var(--accent-bg); color: var(--accent);
+              border-radius: 999px; padding: .1rem .6rem; font-size: .76rem; font-weight: 600; }
+
+  /* ── Day-editor popover mockup ───────────────────────────────── */
+  .pop { border: 1px solid var(--accent); border-radius: 10px; padding: .7rem .8rem;
+         background: var(--bg); display: inline-block; min-width: 260px; }
+  .pop .pt { font-weight: 700; font-size: .78rem; margin-bottom: .5rem; display: block; }
+  .crit { display: flex; align-items: center; justify-content: space-between; gap: .8rem;
+          padding: .32rem 0; border-bottom: 1px solid var(--line); font-size: .76rem; }
+  .crit:last-of-type { border-bottom: 0; }
+  .box { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px;
+         border: 1.5px solid var(--line); border-radius: 4px; font-size: .66rem; flex: none; }
+  .box.on { border-color: var(--met); background: var(--met); color: #fff; font-weight: 700; }
+  .box.off { border-color: var(--missed); color: var(--missed); font-weight: 700; }
+  .val { border: 1px solid var(--line); border-radius: 7px; padding: .12rem .5rem;
+         font-family: ui-monospace, monospace; font-size: .74rem; color: var(--fg); background: var(--bg); }
+
+  /* ── CSS-only option picker (no JS: radio + sibling selectors) ─ */
+  .picker { border: 1px solid var(--accent); border-radius: 12px; padding: 1rem 1.1rem;
+            margin: 1.2rem 0; background: var(--bg); }
+  .picker > input { position: absolute; opacity: 0; pointer-events: none; }
+  .ptabs { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; }
+  .ptabs label { cursor: pointer; border: 1px solid var(--line); border-radius: 999px;
+                 padding: .28rem .85rem; font-size: .78rem; color: var(--muted);
+                 background: var(--card); user-select: none; }
+  .ptabs label:hover { border-color: var(--accent); color: var(--accent); }
+  .ppanel { display: none; }
+  #opt-a:checked ~ .ptabs label[for="opt-a"],
+  #opt-b:checked ~ .ptabs label[for="opt-b"],
+  #opt-c:checked ~ .ptabs label[for="opt-c"] {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  #opt-a:checked ~ .ppanels > .pa,
+  #opt-b:checked ~ .ppanels > .pb,
+  #opt-c:checked ~ .ppanels > .pc { display: block; }
+  .optgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); gap: 1.2rem; align-items: start; }
+  @media (max-width: 760px) { .optgrid { grid-template-columns: 1fr; } }
+  .tradeoff { font-size: .8rem; }
+  .tradeoff dt { font-weight: 600; color: var(--accent); font-family: ui-monospace, monospace;
+                 font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; margin-top: .6rem; }
+  .tradeoff dd { margin: .1rem 0 0; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 1.25rem .9rem 3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-147 — Habit tracker: the walking skeleton</h1>
+<p class="sub">
+  <span class="pill">Story</span>
+  <span class="pill">Tasks module</span>
+  <span class="pill">DB · lib · API · Store · UI</span>
+  Implementation spec. Epic context and every settled decision live in
+  <a href="epics/ALF-146.html"><code>docs/specs/epics/ALF-146.html</code></a> — read it first;
+  this document does not restate it.
+</p>
+
+<div class="callout">
+  <b>One thing needs your answer before build.</b> §9.4 offers <b>three shapes for the create
+  form</b> as a live, clickable picker. Pick one in a PR comment. Everything else in this spec is
+  settled. If no pick lands before the implementation session starts, it builds <b>Option A</b>.
+</div>
+
+<h2>1 · What this story is</h2>
+
+<p>
+  ALF-146 §8 splits the habit tracker into twelve slices. ALF-147 is the <b>walking skeleton</b>:
+  the epic's own "earliest genuinely useful stopping point" — slices <b>1, 2, 3, 6, 7, 8, 10</b> —
+  plus the minimum needed to make it self-contained (§2, S1). When it merges, the owner can define
+  the reference habit, log a morning, and watch the chain grow. Nothing reads it from outside the
+  app yet, and no statistics are rendered.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:6%">Slice</th><th style="width:30%">What lands here</th><th>Where it's specified</th></tr>
+  <tr><td>1</td><td>Schema, RLS + grants, regenerated types, <code>lib/data/habits.ts</code></td><td>§4</td></tr>
+  <tr><td>2</td><td>Criterion evaluation → <code>met</code> / <code>partial</code> / <code>missed</code></td><td>§5.2</td></tr>
+  <tr><td>3</td><td>The streak engine — applicable days, rolling allowance walk, today exemption, ladder</td><td>§5.3</td></tr>
+  <tr><td>6</td><td><code>PUT /api/habits/[id]/entries</code> — derive-and-freeze, explicit skip, backfill</td><td>§6.2</td></tr>
+  <tr><td>7</td><td><code>HabitsProvider</code>, <code>/habits</code> route, <code>TaskViews</code> branch, nav link + badge, ⌘K</td><td>§7</td></tr>
+  <tr><td>8</td><td>The weeks-as-columns history grid, connectors, grey bridges, wrap stubs</td><td>§8</td></tr>
+  <tr><td>10</td><td>The derived-only day editor</td><td>§9.2</td></tr>
+  <tr><td><b>4ᵖ</b></td><td><b>Partial:</b> <code>POST /api/habits</code> only — no <code>PATCH</code>, no <code>DELETE</code></td><td>§6.1</td></tr>
+  <tr><td><b>11ᵖ</b></td><td><b>Partial:</b> the <b>create</b> dialog only — no edit, no archive</td><td>§9.3–9.4</td></tr>
+</table>
+</div>
+
+<p class="small">
+  Deferred to their own tickets, unchanged from the epic: <b>5</b> (<code>GET /api/habits</code> for
+  the coach), <b>9</b> (the stats rail + formation meter), the rest of <b>4</b> and <b>11</b>
+  (<code>PATCH</code>/<code>DELETE</code>, edit + archive UI), and <b>12</b> (the coach primer).
+</p>
+
+<h2>2 · Decisions locked during this refinement</h2>
+
+<p class="small">
+  These resolve questions the epic left to the story session. They do not reopen any epic decision;
+  where one is load-bearing here it is cited as <b>D<i>n</i></b>.
+</p>
+
+<div class="dec">
+  <h3><span class="n">S1</span><code>POST /api/habits</code> and a create dialog come along</h3>
+  <p>
+    The chosen slices contain no way to <b>create</b> a habit — slice 4 (the CRUD API) and slice 11
+    (the form) are both deferred. So the POST route and the create half of the form join this story.
+    <code>PATCH</code>, <code>DELETE</code>, and the edit/archive UI stay out.
+  </p>
+  <p class="why">
+    <b>Why:</b> without them <code>/habits</code> renders an empty state with no exit, slices 8 and
+    10 have nothing to draw, and no E2E can drive the loop — the skeleton would be unverifiable by
+    the repo's own definition of done. Create is the minimum that closes the loop; editing a habit
+    you just made is a real but separable need, and stopping there keeps this story from swallowing
+    slice 11 whole.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span>The app reads through the shell seed, never through an API route</h3>
+  <p>
+    <code>lib/data/habits.ts</code> is read by the <code>(shell)</code> layout and seeded into
+    <code>HabitsProvider</code>. <b>No habits reader is added to <code>lib/api-client.ts</code></b> in
+    this story, and <code>GET /api/habits</code> is not built.
+  </p>
+  <p class="why">
+    <b>Why:</b> D8's read endpoint exists for the <i>coach</i> — a consumer that can't run the shell
+    layout. The app itself follows the house data-flow exactly (server fetch → provider → optimistic
+    writes), so building the endpoint now would ship a second read path with no caller. Slice 5
+    adds it when the coach needs it.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>The only <code>status</code> a caller may state is <code>skipped</code></h3>
+  <p>
+    <code>PUT …/entries</code> derives and freezes the status from <code>results</code> (D3, D12).
+    A request body may carry <code>status: 'skipped'</code> — and nothing else. Any other explicit
+    status is a <b>400</b>.
+  </p>
+  <p class="why">
+    <b>Why:</b> D12 freezes the status <i>and</i> stores the raw results beside it, so history stays
+    chartable. Honouring a hand-typed <code>met</code> would let those two disagree permanently, with
+    no way to tell later which was true. <code>skipped</code> is the one status the model genuinely
+    cannot derive, which is exactly why it is the one exception. The epic's API table names only
+    <code>skipped</code>; this makes that exhaustive rather than illustrative.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S4</span>The browser always sends an explicit <code>date</code></h3>
+  <p>
+    Every write from the app names the day it means. The <code>tz</code>-resolved "today" default
+    (D11) stays in the route for the keyed callers — the coach and a Shortcut — that can't compute
+    one.
+  </p>
+  <p class="why">
+    <b>Why:</b> the client already knows which cell was tapped, so deriving it again server-side can
+    only introduce disagreement. It also keeps the one genuinely awkward case — the shell renders on
+    the server, which does not know the browser's zone — confined to a single highlight in the grid
+    (§7.2) instead of leaking into the write path.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>The streak engine ships whole, even though only part of it renders</h3>
+  <p>
+    <code>lib/habits</code> lands complete: the per-day calendar projection the grid draws
+    <i>and</i> the scalar statistics (current / longest / average streak, allowance remaining, hit
+    rate, cumulative met days, formation stage) that slice 9 will render later.
+  </p>
+  <p class="why">
+    <b>Why:</b> the grid's connectors <b>are</b> the streak walk made visible — a link is drawn
+    exactly where the walk continues, and greyed exactly where it spent allowance (D4, D5). Shipping
+    "just enough walk to draw links" would mean writing the same rolling-window logic twice and
+    risking the two disagreeing, which is the failure D8/D9 exist to prevent. One walk, one set of
+    table-tests, two consumers — the second arriving a ticket later.
+  </p>
+</div>
+
+<h2>3 · The shape of the change</h2>
+
+<svg viewBox="0 0 900 250" role="img" aria-label="Data flow for this story: the shell layout seeds the habits store from a server read; the store writes through the entry-upsert and create routes; the pure lib/habits module derives day statuses and the calendar projection for the grid.">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="currentColor" />
+    </marker>
+    <style>
+      .bx  { fill: none; stroke: currentColor; stroke-width: 1.3; }
+      .bxd { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-dasharray: 4 3; }
+      .lbl { font: 600 12px -apple-system, system-ui, sans-serif; fill: currentColor; }
+      .sm  { font: 10px ui-monospace, monospace; fill: currentColor; opacity: .72; }
+      .ln  { stroke: currentColor; stroke-width: 1.2; fill: none; opacity: .65; }
+    </style>
+  </defs>
+  <g color="currentColor" opacity=".92">
+    <rect class="bx" x="10" y="16" width="196" height="62" rx="8" />
+    <text class="lbl" x="22" y="40">(shell) layout</text>
+    <text class="sm"  x="22" y="58">lib/data/habits.ts</text>
+    <text class="sm"  x="22" y="72">seeds once, server-side</text>
+
+    <rect class="bx" x="10" y="112" width="196" height="76" rx="8" />
+    <text class="lbl" x="22" y="136">Habits view</text>
+    <text class="sm"  x="22" y="154">habits-store · optimistic</text>
+    <text class="sm"  x="22" y="168">grid · day editor · form</text>
+    <text class="sm"  x="22" y="182">reconcile / rollback + toast</text>
+
+    <rect class="bxd" x="290" y="180" width="238" height="46" rx="8" />
+    <text class="lbl" x="304" y="200">lib/habits (pure)</text>
+    <text class="sm"  x="304" y="216">criteria · walk · calendar · stage</text>
+
+    <rect class="bx" x="290" y="16" width="238" height="120" rx="8" />
+    <text class="lbl" x="304" y="40">Route handlers</text>
+    <text class="sm"  x="304" y="62">POST /api/habits</text>
+    <text class="sm"  x="304" y="80">PUT  /api/habits/[id]/entries</text>
+    <text class="sm"  x="304" y="106">session — POST</text>
+    <text class="sm"  x="304" y="122">session or api key — PUT</text>
+
+    <rect class="bx" x="612" y="16" width="276" height="120" rx="8" />
+    <text class="lbl" x="626" y="40">Supabase</text>
+    <text class="sm"  x="626" y="62">habits</text>
+    <text class="sm"  x="640" y="78">criteria · active_days · allowance</text>
+    <text class="sm"  x="626" y="102">habit_entries</text>
+    <text class="sm"  x="640" y="118">entry_date · status · results</text>
+
+    <path class="ln" marker-end="url(#ar)" d="M206,47 L250,47 L250,150 L206,150" opacity=".55" />
+    <path class="ln" marker-end="url(#ar)" d="M206,124 L284,124" />
+    <path class="ln" marker-end="url(#ar)" d="M528,76 L606,76" />
+    <path class="ln" marker-end="url(#ar)" d="M606,104 L560,104 L560,60 L534,60" />
+    <path class="ln" marker-end="url(#ar)" d="M409,136 L409,176" />
+    <path class="ln" marker-end="url(#ar)" d="M206,172 L246,172 L246,203 L286,203" opacity=".5" />
+  </g>
+</svg>
+<p class="diagram-cap">
+  The same pure module derives the frozen status the route writes and the calendar the grid draws,
+  so an optimistic cell and the server can't disagree.
+</p>
+
+<h3>3.1 Files touched, at a glance</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:38%">Path</th><th>What</th></tr>
+  <tr><td><code>database/migrations/&lt;next&gt;_habits.sql</code></td><td><b>new</b> — both tables, the day-status enum, checks, indexes, RLS + grants</td></tr>
+  <tr><td><code>frontend/lib/database.types.ts</code></td><td>regenerated (never hand-edited — see the <code>supabase</code> skill)</td></tr>
+  <tr><td><code>frontend/lib/types.ts</code></td><td><code>Habit</code>, <code>HabitInsert</code>, <code>HabitEntry</code>, <code>HabitDayStatus</code> re-exports</td></tr>
+  <tr><td><code>frontend/lib/habits/{types,criteria,streaks,dates,index}.ts</code></td><td><b>new</b> — the pure module (§5)</td></tr>
+  <tr><td><code>frontend/lib/data/habits.ts</code></td><td><b>new</b> — server-only seed readers</td></tr>
+  <tr><td><code>frontend/lib/api/schemas.ts</code></td><td>criterion / create-habit / upsert-entry zod schemas</td></tr>
+  <tr><td><code>frontend/app/api/habits/route.ts</code></td><td><b>new</b> — <code>POST</code></td></tr>
+  <tr><td><code>frontend/app/api/habits/[id]/entries/route.ts</code></td><td><b>new</b> — <code>PUT</code></td></tr>
+  <tr><td><code>frontend/lib/api-client.ts</code></td><td><code>createHabit</code>, <code>upsertHabitEntry</code></td></tr>
+  <tr><td><code>frontend/lib/stores/habits-store.tsx</code></td><td><b>new</b> — the optimistic store (§7.1)</td></tr>
+  <tr><td><code>frontend/app/(shell)/layout.tsx</code></td><td>fetch + wrap <code>HabitsProvider</code></td></tr>
+  <tr><td><code>frontend/app/(shell)/(tasks)/habits/page.tsx</code></td><td><b>new</b> — renders <code>ModuleRouter</code>, like every sibling page</td></tr>
+  <tr><td><code>frontend/components/tasks/task-views.tsx</code></td><td><code>/habits</code> branch</td></tr>
+  <tr><td><code>frontend/components/tasks/folder-nav.tsx</code></td><td>the link beneath Week Plan + its badge</td></tr>
+  <tr><td><code>frontend/components/shell/command-destinations.ts</code></td><td><code>go-habits</code> destination + <code>habits</code> icon token</td></tr>
+  <tr><td><code>frontend/components/shell/command-palette.tsx</code></td><td>the icon token → lucide mapping</td></tr>
+  <tr><td><code>frontend/components/habits/*</code></td><td><b>new</b> — view, card, grid, cell, day editor, create dialog, <code>.styles.ts</code></td></tr>
+  <tr><td><code>frontend/app/globals.css</code></td><td>five habit colour tokens in the existing <code>@theme inline</code> block (§8.3)</td></tr>
+</table>
+</div>
+
+<h2>4 · Database</h2>
+
+<p class="small">
+  One migration, taking <b>the next available number</b> — never one pinned here. Apply it and append
+  the row to <code>database/migrations-applied.log</code> the way 0021/0022 did, then regenerate
+  <code>database.types.ts</code> <b>against a local cluster built from <code>database/migrations/</code></b>,
+  not prod introspection (the <code>supabase</code> skill records why).
+</p>
+
+<h3>4.1 The migration</h3>
+
+<pre><code>create type habit_day_status as enum ('met', 'partial', 'missed', 'skipped');
+
+create table habits (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  notes        text,
+  criteria     jsonb not null,
+  active_days  smallint[] not null default '{1,2,3,4,5,6,7}',
+  allowance    smallint not null default 0,
+  started_on   date not null default current_date,
+  archived_at  timestamptz,
+  sort_order   int,
+  created_at   timestamptz not null default now(),
+
+  -- 1..n criteria, always an array (D3, D10). The per-criterion shape is validated by zod at
+  -- the route, not here: a check constraint over jsonb would duplicate that rule in a second
+  -- language and drift from it.
+  constraint habits_criteria_non_empty
+    check (jsonb_typeof(criteria) = 'array' and jsonb_array_length(criteria) &gt;= 1),
+  -- ISO weekdays only, at least one (D4).
+  constraint habits_active_days_valid
+    check (active_days &lt;@ array[1,2,3,4,5,6,7]::smallint[] and array_length(active_days, 1) &gt;= 1),
+  -- A rolling window is 7 days, so forgiving 8 is meaningless rather than merely generous.
+  constraint habits_allowance_range check (allowance between 0 and 7)
+);
+
+create table habit_entries (
+  id          uuid primary key default gen_random_uuid(),
+  habit_id    uuid not null references habits(id) on delete cascade,
+  entry_date  date not null,
+  status      habit_day_status not null,
+  results     jsonb,
+  note        text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  -- Load-bearing: this is what makes the write path a plain upsert, so logging is idempotent
+  -- and correcting a day is the same call as making it.
+  unique (habit_id, entry_date)
+);
+
+-- The only query shape: one habit's window, newest first.
+create index habit_entries_habit_date_idx on habit_entries (habit_id, entry_date desc);
+</code></pre>
+
+<p class="small">
+  <code>habits</code> carries no index beyond its primary key — at a handful of rows the sequential
+  scan is free, and D14's "no grouping" means there is no second access path to serve.
+  <code>updated_at</code> has no trigger: this repo sets it from the writer (as
+  <code>code_items</code> does), so the entries route stamps it explicitly.
+</p>
+
+<h3>4.2 RLS and grants</h3>
+
+<pre><code>alter table habits        enable row level security;
+alter table habit_entries enable row level security;
+
+create policy "authenticated full access" on habits
+  for all to authenticated using (true) with check (true);
+create policy "authenticated full access" on habit_entries
+  for all to authenticated using (true) with check (true);
+
+grant select, insert, update, delete on habits        to anon, authenticated, service_role;
+grant select, insert, update, delete on habit_entries to anon, authenticated, service_role;
+</code></pre>
+
+<div class="callout">
+  <b>RLS gates rows; <code>grant</code> gates whether the role may touch the table at all.</b> Raw
+  <code>psql -f</code> gets none of Supabase's auto-grants, so omitting these produces a runtime
+  "permission denied" from the Data API — exactly what <code>migration-lint</code> catches at commit
+  time. Both primary keys are <code>gen_random_uuid()</code>, so there is <b>no sequence</b> to grant.
+</div>
+
+<h3>4.3 The seed readers</h3>
+
+<p>
+  <code>frontend/lib/data/habits.ts</code>, <code>server-only</code>, in the shape of
+  <code>lib/data/weekly-plans.ts</code> — the closest precedent, because it too deliberately seeds a
+  <b>bounded</b> slice rather than everything:
+</p>
+
+<pre><code>/** Active habits in display order. Archived ones are excluded — nothing renders them yet. */
+export async function getHabits(): Promise&lt;Habit[]&gt;
+
+/**
+ * Entries for every habit over a bounded trailing window (ALF-146 §4.3): ENTRY_WINDOW_DAYS
+ * back from today, inclusive. A daily habit grows a few hundred rows per year per habit, which
+ * is the point at which the shell's "fetch everything" default stops holding.
+ */
+export async function getHabitEntries(windowDays?: number): Promise&lt;HabitEntry[]&gt;
+</code></pre>
+
+<p class="small">
+  <code>ENTRY_WINDOW_DAYS = 120</code>, matching the epic. The window is computed in <b>UTC</b> on the
+  server and deliberately generous, so whichever side of midnight the browser's zone is on, today's
+  row is always inside it (§7.2). Both readers swallow the Supabase error and fall back to
+  <code>[]</code>, like <code>getFolders</code> — a seed failure must not blank the whole shell.
+</p>
+
+<h2>5 · <code>lib/habits</code> — the pure module</h2>
+
+<p>
+  Dependency-free TypeScript beside <code>lib/recurrence</code> and <code>lib/priority</code>, with a
+  barrel <code>index.ts</code>. Every export is a pure function of (habit definition, entries, today).
+  No <code>Date</code> arithmetic on instants: <b>all dates are <code>YYYY-MM-DD</code> strings</b>,
+  because a wake-time habit is precisely where an instant re-read in the wrong zone lands on the
+  previous day (D11).
+</p>
+
+<h3>5.1 Types</h3>
+
+<pre><code>export type CriterionKind = 'boolean' | 'time' | 'count' | 'duration';
+export type Comparator    = 'lte' | 'gte' | 'eq';
+
+export interface BooleanCriterion  { key: string; label: string; kind: 'boolean' }
+export interface MeasuredCriterion {
+  key: string; label: string;
+  kind: 'time' | 'count' | 'duration';
+  target: number;          // minutes after local midnight for 'time' (375 = 06:15)
+  comparator: Comparator;
+}
+export type HabitCriterion = BooleanCriterion | MeasuredCriterion;
+
+/** Keyed by criterion key (D10). A key with no entry is *unrecorded*, not false. */
+export type HabitResults = Record&lt;string, boolean | number&gt;;
+
+export type DerivedStatus = 'met' | 'partial' | 'missed';        // never 'skipped'
+export type CellStatus    = HabitDayStatus | 'unknown' | 'not_applicable';
+</code></pre>
+
+<p class="small">
+  A <code>time</code> criterion stores <b>minutes after local midnight</b> as an integer, rendered
+  <code>HH:MM</code>. A Postgres <code>time</code> column would drag zone semantics back into a model
+  D11 keeps zone-free.
+</p>
+
+<h3>5.2 Criterion evaluation (slice 2)</h3>
+
+<pre><code>/** 'unrecorded' when the key is absent or the stored value doesn't match the kind. */
+export function evaluateCriterion(
+  criterion: HabitCriterion,
+  value: boolean | number | undefined,
+): 'pass' | 'fail' | 'unrecorded';
+
+/** Every criterion is required (D3), so an unrecorded one is simply not a pass. */
+export function deriveDayStatus(
+  criteria: HabitCriterion[],
+  results: HabitResults,
+): DerivedStatus;
+</code></pre>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:20%">Kind</th><th>Passes when</th></tr>
+  <tr><td><code>boolean</code></td><td>the stored value is <code>true</code></td></tr>
+  <tr><td><code>time</code> / <code>count</code> / <code>duration</code></td><td><code>lte</code>: <code>value &le; target</code> · <code>gte</code>: <code>value &ge; target</code> · <code>eq</code>: <code>value === target</code></td></tr>
+</table>
+</div>
+
+<p>
+  <code>deriveDayStatus</code>: all pass → <code>met</code>; at least one pass and at least one not →
+  <code>partial</code>; none pass → <code>missed</code>. The three-way
+  <code>pass/fail/unrecorded</code> return exists for the <b>editor</b>, which must render an empty
+  field rather than a ✕ for a criterion the owner hasn't touched yet — the derivation itself folds
+  <code>unrecorded</code> into "not a pass".
+</p>
+
+<div class="callout">
+  <b>Orphaned keys are ignored, never fatal.</b> D10 accepts no referential integrity between
+  <code>criteria</code> and <code>results</code>: a criterion deleted later leaves stale keys in old
+  rows. Evaluation iterates the <b>criteria</b> and looks each key up — so extra keys in
+  <code>results</code> are simply never read.
+</div>
+
+<h3>5.3 The streak engine (slice 3)</h3>
+
+<p>
+  Every rule below is ALF-146 §3.1 — read it there; this section says only what the module
+  <i>exposes</i>. It is the riskiest logic in the epic and gets near-exhaustive table tests (§11).
+</p>
+
+<pre><code>export interface HabitDay {
+  date: string;                                  // YYYY-MM-DD
+  status: CellStatus;
+  isToday: boolean;
+  /** In the run the current streak is made of — what the grid tints. */
+  inStreak: boolean;
+  /** The connector drawn OUT of this day, toward the next calendar day. */
+  link: 'none' | 'streak' | 'bridge';
+}
+
+export interface HabitStats {
+  currentStreak: number;
+  longestStreak: number;
+  averageStreak: number | null;                  // null until one run has ended
+  allowanceRemaining: number;
+  hitRate: number | null;                        // null when the denominator is 0
+  metDaysTotal: number;
+  stage: 'fully_deliberate' | 'gaining_momentum' | 'nearing_automaticity' | 'possibly_established';
+  counts: { met: number; partial: number; missed: number; skipped: number; unknown: number };
+}
+
+export function isApplicableDay(habit: Habit, date: string): boolean;
+
+/** The per-day projection the grid renders — one entry per date in [from, to]. */
+export function buildHabitCalendar(
+  habit: Habit,
+  entries: HabitEntry[],
+  range: { from: string; to: string; today: string },
+): HabitDay[];
+
+/** The scalars. `metDaysTotal` / `longestStreak` are all-history figures (§5.4). */
+export function computeHabitStats(
+  habit: Habit,
+  entries: HabitEntry[],
+  today: string,
+): HabitStats;
+</code></pre>
+
+<p>
+  <b><code>link</code> is the whole point of exposing a per-day projection.</b> A day emits
+  <code>streak</code> when the walk continues into the next applicable day on the strength of a
+  <code>met</code>; <code>bridge</code> when it continues only because the rolling allowance absorbed
+  a spent day (D4, D5); <code>none</code> when the run ends there. §8 renders those three values and
+  invents nothing.
+</p>
+
+<h3>5.4 A note the store depends on</h3>
+
+<p class="small">
+  <code>metDaysTotal</code> and <code>longestStreak</code> are <b>all-history</b> figures and the
+  seed is a 120-day window, so the module cannot derive them correctly from what the store holds.
+  Nothing in this story <i>renders</i> them (slice 9 is deferred), so they are computed over the
+  seeded window and the limitation is recorded in the module's doc comment. Slice 5 introduces the
+  precomputed scalars the epic describes; that is the ticket where the distinction starts to matter.
+  Do not build a second, unused scalar channel now.
+</p>
+
+<h3>5.5 Dates</h3>
+
+<pre><code>export function todayIn(timezone: string): string;      // unknown zone → UTC, never a throw
+export function isoWeekday(date: string): 1|2|3|4|5|6|7; // 1 = Monday
+export function addDays(date: string, delta: number): string;
+export function eachDay(from: string, to: string): string[];
+</code></pre>
+
+<p class="small">
+  <code>todayIn</code> uses the same <code>Intl.DateTimeFormat</code> validity probe as
+  <code>lib/github/week.ts</code> (constructing the formatter throws on an unknown zone, which
+  <i>is</i> the test) and degrades to UTC exactly as <code>pr-ratio</code> does. The two live in
+  different modules on purpose — <code>lib/github/week.ts</code> resolves <i>instants with offsets</i>
+  for a GitHub query string, this resolves a <i>calendar date</i>. Sharing one helper would couple a
+  habit's day boundary to the PR-ratio window's, which is the coupling D11 warns about.
+</p>
+
+<h2>6 · API surface</h2>
+
+<p class="small">
+  Both routes use the existing helpers: <code>parseQueryParams</code> / zod schemas in
+  <code>lib/api/schemas.ts</code>, <code>jsonOk</code> / <code>jsonError</code>, and
+  <code>mapSupabaseError</code>. Errors keep the standard <code>{ "error": … }</code> envelope.
+</p>
+
+<h3>6.1 <code>POST /api/habits</code> — session only</h3>
+
+<pre><code>{
+  "name": "Morning routine",
+  "notes": null,
+  "criteria": [
+    { "key": "wake",  "label": "Up by 6:15",        "kind": "time", "target": 375, "comparator": "lte" },
+    { "key": "light", "label": "Outside for light", "kind": "boolean" }
+  ],
+  "active_days": [1,2,3,4,5,6,7],
+  "allowance": 1,
+  "started_on": "2026-07-28"
+}
+</code></pre>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Rule</th><th>Enforced how</th></tr>
+  <tr><td>≥ 1 criterion</td><td><code>z.array(...).min(1)</code> — and the table's check constraint as a backstop</td></tr>
+  <tr><td>Criterion <code>key</code> shape</td><td><code>/^[a-z][a-z0-9_]{0,31}$/</code> — stable, URL-safe, and readable in a stored <code>results</code> blob</td></tr>
+  <tr><td>Keys unique within a habit</td><td><code>.refine()</code> over the array — duplicates would make <code>results</code> ambiguous (D10)</td></tr>
+  <tr><td><code>kind</code> → fields</td><td><code>z.discriminatedUnion('kind', …)</code>: <code>boolean</code> takes no <code>target</code>/<code>comparator</code>; the measured kinds require both</td></tr>
+  <tr><td><code>active_days</code></td><td>1–7, unique, at least one; omitted ⇒ the column default (all seven)</td></tr>
+  <tr><td><code>allowance</code></td><td>integer 0–7; omitted ⇒ 0 (strict)</td></tr>
+  <tr><td><code>started_on</code></td><td><code>z.iso.date()</code>; omitted ⇒ <code>current_date</code></td></tr>
+</table>
+</div>
+
+<p class="small">
+  Responds <code>201</code> with the inserted row. Session-only: creating a habit is a deliberate act
+  at a keyboard, and D7 widens the ingest key for <i>logging</i>, not for defining new entities.
+</p>
+
+<h3>6.2 <code>PUT /api/habits/[id]/entries</code> — session <b>or</b> API key</h3>
+
+<p>
+  The epic's D7 path, via <code>resolveIngestClient</code> (a valid key resolves the admin client;
+  otherwise a session; otherwise 401). Body:
+</p>
+
+<pre><code>{ "date"?: "2026-07-27", "tz"?: "America/New_York",
+  "results"?: { "wake": 364, "light": true },
+  "status"?: "skipped",
+  "note"?: string | null }
+</code></pre>
+
+<ol class="tight">
+  <li><code>parseUUID</code> the <code>[id]</code>; load the habit (its <code>criteria</code>,
+    <code>started_on</code>, <code>archived_at</code>) or <b>404</b>.</li>
+  <li>Resolve the date: <code>date</code> if given, else <code>todayIn(tz ?? 'UTC')</code> (D11, S4).</li>
+  <li>Reject <b>400</b> when the date is in the future relative to that same resolution, or precedes
+    <code>started_on</code> — neither is a day this habit can have an outcome for.</li>
+  <li>Resolve the status: <code>skipped</code> if stated (S3 — any other explicit status is
+    <b>400</b>), else <code>deriveDayStatus(criteria, results)</code>. A body carrying neither
+    <code>results</code> nor <code>status</code> is <b>400</b>: there is nothing to record.</li>
+  <li>Upsert on <code>(habit_id, entry_date)</code>, stamping <code>updated_at</code>. Return the row.</li>
+</ol>
+
+<div class="callout">
+  <b>The upsert is the correction path.</b> Re-logging a day overwrites its results and re-freezes
+  its status — that is D12 working as intended (the verdict is frozen against later
+  <i>criteria</i> edits, not against the owner fixing what they typed). There is no delete-an-entry
+  route in this story; §13 records the gap.
+</div>
+
+<h3>6.3 <code>lib/api-client.ts</code></h3>
+
+<pre><code>export function createHabit(input: CreateHabitInput): Promise&lt;Habit&gt;;
+export function upsertHabitEntry(habitId: string, input: UpsertHabitEntryInput): Promise&lt;HabitEntry&gt;;
+</code></pre>
+
+<h2>7 · Store &amp; shell wiring (slice 7)</h2>
+
+<h3>7.1 <code>HabitsProvider</code></h3>
+
+<p>
+  A <code>createContextPair</code> store in the house shape, with
+  <code>runOptimisticMutation</code> doing the optimistic → reconcile → rollback dance and a toast on
+  failure (see the <code>data-flow</code> skill). It sits <b>inside</b> <code>ToastProvider</code>
+  like the other optimistic stores.
+</p>
+
+<pre><code>interface HabitsState {
+  habits: Habit[];
+  /** habitId → (YYYY-MM-DD → entry). A map, not a list: every read is "this habit, this day". */
+  entries: Record&lt;string, Record&lt;string, HabitEntry&gt;&gt;;
+  /** The owner's local today, corrected on mount (§7.2). */
+  today: string;
+}
+
+interface HabitsActions {
+  addHabit: (input: CreateHabitInput) =&gt; Promise&lt;Habit&gt;;
+  /** Log or correct a day. Derives the optimistic status locally with `deriveDayStatus`. */
+  logDay: (habitId: string, date: string, results: HabitResults, note?: string | null) =&gt; Promise&lt;void&gt;;
+  /** Excuse a day (D3) — the one status the model can't derive. */
+  skipDay: (habitId: string, date: string) =&gt; Promise&lt;void&gt;;
+}
+</code></pre>
+
+<p class="small">
+  Selectors: <code>useHabits()</code>, <code>useHabitEntries(habitId)</code>,
+  <code>useHabitsToday()</code>, <code>useHabitActions()</code>, and
+  <code>useUnloggedTodayCount()</code> for the nav badge — habits where today
+  <code>isApplicableDay</code> and no entry exists. The optimistic status the store writes uses the
+  <b>same</b> <code>deriveDayStatus</code> the route will, so reconcile is a no-op in the normal case
+  (S5).
+</p>
+
+<h3>7.2 The one genuinely awkward bit: whose "today"?</h3>
+
+<p>
+  The shell renders on the server, which does not know the browser's zone, but the grid highlights
+  today and the badge counts today's unlogged habits. Seeding a server-computed date and rendering it
+  directly would be a hydration mismatch for any owner not on UTC.
+</p>
+
+<p>
+  So: the provider initializes <code>today</code> from the server's UTC date and corrects it in a
+  mount effect from <code>Intl.DateTimeFormat().resolvedOptions().timeZone</code>. First paint matches
+  the server, the correction lands before the owner can act, and the seeded 120-day window is
+  generous enough that the corrected date is always already in hand (§4.3). Writes are unaffected —
+  they always name their date explicitly (S4).
+</p>
+
+<h3>7.3 Route, nav, palette</h3>
+
+<ul class="tight">
+  <li><code>app/(shell)/(tasks)/habits/page.tsx</code> renders <code>&lt;ModuleRouter /&gt;</code>,
+    verbatim in the shape of <code>plan/page.tsx</code>.</li>
+  <li><code>TaskViews</code> gains <code>if (pathname === '/habits') return &lt;HabitsView /&gt;;</code>.</li>
+  <li><code>FolderNav</code> adds a <code>ViewLink</code> to <code>/habits</code> <b>directly beneath
+    Week Plan</b> (D2), inside the same pinned group, with a <code>Repeat</code> lucide icon and a
+    <code>FolderCountBadge tone="attention"</code> carrying <code>useUnloggedTodayCount()</code> —
+    hidden at zero, exactly like the folder badges (D14).</li>
+  <li><code>command-destinations.ts</code> gains
+    <code>{ id: 'go-habits', group: 'go', label: 'Habits', href: '/habits', icon: 'habits' }</code>
+    after <code>go-plan</code>, plus the <code>'habits'</code> token in
+    <code>DestinationIcon</code> and its lucide mapping in <code>command-palette.tsx</code>.</li>
+  <li>Empty state: the existing <code>EmptyState</code> atom, with the "New habit" button as its
+    action.</li>
+</ul>
+
+<h2>8 · The history grid (slice 8)</h2>
+
+<p>
+  ALF-146 §6 settled this design; build it rather than re-deriving it. §6.1's two connector
+  refinements are <b>behavioural</b> — each fixes a way the plain bar misstates §3 — so they are
+  acceptance criteria, not polish.
+</p>
+
+<h3>8.1 Structure</h3>
+
+<p>
+  A CSS grid, <code>grid-auto-flow: column</code> over <code>grid-template-rows: repeat(7, …)</code>:
+  weekdays down, ISO weeks across. The rendered range is the seeded window, padded forward to the end
+  of the current week so today never sits on the trailing edge. Each cell is a <code>relative</code>
+  wrapper holding the day square plus up to two absolutely-positioned connector spans, driven purely
+  by <code>HabitDay.link</code> and the day's <code>isoWeekday</code>:
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:20%">Connector</th><th>Rendered when</th><th>Colour</th></tr>
+  <tr><td>down-bar</td><td><code>link !== 'none'</code> and the day is <b>not</b> Sunday</td><td><code>streak</code> → met · <code>bridge</code> → bridge grey</td></tr>
+  <tr><td>wrap-out stub</td><td><code>link !== 'none'</code> and the day <b>is</b> Sunday</td><td>same</td></tr>
+  <tr><td>wrap-in stub</td><td>the day is Monday and the <b>previous</b> day's link is not <code>none</code></td><td>same as that previous day's link</td></tr>
+</table>
+</div>
+
+<div class="callout">
+  <b>A forgiven day's links are full-width and grey — never dashed</b> (§6.1). Same weight, same
+  geometry, colour only. A dash reads as <i>weaker</i> or <i>uncertain</i>; a run across a forgiven
+  day is neither — it is unbroken, it simply wasn't earned.
+</div>
+
+<h3>8.2 What it looks like</h3>
+
+<p class="small">
+  The reference habit over five weeks — <code>allowance: 1</code>, criteria "up by 6:15" and "outside
+  for light". Week two contains a forgiven <code>partial</code> (grey links either side, run
+  survives). Week three is a real break: a forgiven <code>missed</code> on Thursday, then an unlogged
+  Friday — two spent days in one rolling window exceeds the allowance, so no link leaves Thursday.
+</p>
+
+<div class="scroll">
+<div class="mock" style="max-width:560px">
+  <div class="mock-bar">
+    <span class="hname">Morning routine <span class="hmeta">· every day · 1 miss / rolling week</span></span>
+    <span class="hmeta">Jun – Jul</span>
+  </div>
+  <div class="mock-body">
+    <div class="qwrap">
+      <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+      <div class="gridq">
+        <i class="c fu"></i><i class="c fu"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+        <i class="c m wi lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+        <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c"></i><i class="c m lk"></i><i class="c m wo"></i>
+        <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+        <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="c m"></i> met</span>
+      <span><i class="c p"></i> partial</span>
+      <span><i class="c x"></i> missed</span>
+      <span><i class="c"></i> unknown</span>
+      <span><i class="c fu"></i> before start / future</span>
+      <span><i class="c m t"></i> today</span>
+      <span><i style="width:15px;height:5px;border-radius:2px;background:var(--met);display:inline-block"></i> streak link</span>
+      <span><i style="width:15px;height:5px;border-radius:2px;background:var(--bridge);display:inline-block"></i> forgiven</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<h3>8.3 Colour tokens and the non-colour channel</h3>
+
+<p>
+  Five tokens join the existing <code>@theme inline</code> block in
+  <code>frontend/app/globals.css</code>, beside <code>--color-accent-*</code>, each with a light and
+  dark value: <code>--color-habit-met</code>, <code>--color-habit-partial</code>,
+  <code>--color-habit-missed</code>, <code>--color-habit-unknown</code>,
+  <code>--color-habit-bridge</code>. Components use the generated Tailwind utilities, never a raw hex.
+</p>
+
+<div class="callout">
+  <b>Accessibility floor (ALF-146 §6.3) — a requirement, not a nice-to-have.</b> Six states on small
+  cells is too much for hue alone, so every state also carries a <b>shape</b> cue, and every cell is
+  a real <code>&lt;button&gt;</code> with an accessible name — the grid is the only route to the editor.
+</div>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:22%">State</th><th style="width:38%">Non-colour cue</th><th>Accessible name</th></tr>
+  <tr><td><code>met</code></td><td>solid fill</td><td rowspan="6" style="vertical-align:middle">
+    <code>"Thursday 23 July — partial. Up by 6:15: met (06:04). Outside for light: not met."</code><br />
+    <span class="small">Date, status, then one clause per criterion with its recorded value. Unknown
+    days read <code>"— not logged"</code>; non-applicable days are <code>aria-hidden</code> and not
+    focusable, since there is nothing to open.</span>
+  </td></tr>
+  <tr><td><code>partial</code></td><td>solid fill with a lighter diagonal half</td></tr>
+  <tr><td><code>missed</code></td><td>fill plus an inner ring</td></tr>
+  <tr><td><code>skipped</code></td><td>flat neutral fill with a centred dash</td></tr>
+  <tr><td><code>unknown</code></td><td>flat neutral, no fill weight</td></tr>
+  <tr><td>before start / future</td><td>dashed 1px outline, no fill</td></tr>
+</table>
+</div>
+
+<p class="small">
+  Keyboard: cells are in tab order, <kbd>Enter</kbd>/<kbd>Space</kbd> opens the editor,
+  <kbd>Escape</kbd> closes it and returns focus to the cell. Any transition respects
+  <code>prefers-reduced-motion</code> (see the <code>motion</code> skill).
+</p>
+
+<h2>9 · The remaining UI</h2>
+
+<h3>9.1 <code>/habits</code></h3>
+
+<p class="small">
+  A page header with a <b>New habit</b> button, then one card per habit — name, a cadence summary
+  ("every day · 1 miss / rolling week"), and the grid. No stats rail: slice 9 owns it, and the card
+  is laid out so the rail can be dropped in beside the grid without moving anything else.
+</p>
+
+<h3>9.2 The day editor (slice 10)</h3>
+
+<p class="small">
+  Tapping any applicable cell — today or a backfill — opens a <code>Popover</code> anchored to it.
+  The verdict in the header is <b>computed, never typed</b>.
+</p>
+
+<div class="mock"><div class="mock-body">
+  <span class="pop">
+    <span class="pt">Thu 23 Jul <span style="color:var(--partial);font-weight:700;float:right">Partial</span></span>
+    <span class="crit"><span>Up by 6:15</span><span class="val">06:04</span></span>
+    <span class="crit"><span>Outside for light</span><span class="box off">✕</span></span>
+    <span class="crit" style="border-top:1px solid var(--line);padding-top:.45rem;color:var(--faint)">
+      <span style="font-size:.72rem">Spends this week's allowance</span>
+      <span class="btn">⋯</span>
+    </span>
+  </span>
+</div></div>
+
+<ul class="tight">
+  <li><b>One row per criterion.</b> <code>boolean</code> → a tri-state
+    <code>CheckboxButton</code> (unrecorded → ✓ → ✕); <code>time</code> → an
+    <code>&lt;input type="time"&gt;</code> mapped to minutes after midnight; <code>count</code> /
+    <code>duration</code> → a number field.</li>
+  <li><b>No Save button.</b> Booleans commit on toggle; measured fields commit on blur or
+    <kbd>Enter</kbd>, debounced through <code>useDebouncedCallback</code> so a typed time costs one
+    request. Each commit is one <code>logDay</code> — the store's optimistic patch repaints the cell
+    and the connectors around it immediately.</li>
+  <li><b>The header re-derives on every change</b> via <code>deriveDayStatus</code>, so it cannot be
+    made to disagree with the criteria beneath it — that is what "derived only" buys (D3).</li>
+  <li><b>The allowance line</b> appears whenever the derived status isn't <code>met</code>, naming
+    the consequence in the owner's terms (D5).</li>
+  <li><b>The <code>⋯</code> overflow</b> holds <b>Mark as skipped</b> — the one status the model
+    can't derive, kept out of the main flow so it isn't a fourth thing to tap past every morning.</li>
+</ul>
+
+<h3>9.3 The create dialog</h3>
+
+<p>
+  A <code>FormDialog</code> opened from the page header and from the empty state, collecting exactly
+  what <code>POST /api/habits</code> takes: <b>name</b>, <b>criteria</b> (≥ 1; label + kind, and for a
+  measured kind a comparator + target), the <b>weekday set</b>, and the <b>allowance</b>. Submitting
+  calls <code>addHabit</code>; the habit appears in the list optimistically and the dialog closes.
+</p>
+
+<p class="small">
+  Criterion <b>keys are generated, never typed</b> — slugify the label, de-duplicate with a numeric
+  suffix, and freeze the key once created so history stays intact (D10). Errors surface through
+  <code>useFormSubmit</code>, as in <code>NewStoryDialog</code>.
+</p>
+
+<h3>9.4 Pick the create form's shape</h3>
+
+<div class="callout">
+  <b>Your call — everything else here is settled.</b> The three shapes below collect the same fields
+  and post the same body; they differ in how much they ask for at once. Click a tab to compare, then
+  name your pick in a PR comment. <b>No pick before the implementation session starts ⇒ Option A.</b>
+</div>
+
+<div class="picker">
+  <input type="radio" name="createform" id="opt-a" checked />
+  <input type="radio" name="createform" id="opt-b" />
+  <input type="radio" name="createform" id="opt-c" />
+
+  <div class="ptabs">
+    <label for="opt-a">A · One stacked form</label>
+    <label for="opt-b">B · Two steps</label>
+    <label for="opt-c">C · Sentence builder</label>
+  </div>
+
+  <div class="ppanels">
+
+    <!-- ── Option A ─────────────────────────────────────────────── -->
+    <div class="ppanel pa">
+      <div class="optgrid">
+        <div class="mock">
+          <div class="mock-bar"><span>New habit</span><span class="hmeta">✕</span></div>
+          <div class="mock-body">
+            <span class="flabel">Name</span>
+            <div class="fld" style="margin-bottom:.9rem">Morning routine</div>
+
+            <span class="flabel">How a day is judged</span>
+            <div class="critrow">
+              <span>Up by 6:15</span>
+              <span class="row"><span class="kindchip">time ≤ 06:15</span><span class="hmeta">⋯</span></span>
+            </div>
+            <div class="critrow">
+              <span>Outside for light</span>
+              <span class="row"><span class="kindchip">yes / no</span><span class="hmeta">⋯</span></span>
+            </div>
+            <div class="addrow">+ Add criterion</div>
+
+            <div style="margin-top:.9rem"><span class="flabel">Which days</span>
+              <div class="dayset">
+                <span class="on">M</span><span class="on">T</span><span class="on">W</span><span class="on">T</span>
+                <span class="on">F</span><span class="on">S</span><span class="on">S</span>
+              </div>
+            </div>
+
+            <div style="margin-top:.9rem"><span class="flabel">Forgive</span>
+              <span class="row"><span class="fld">− 1 +</span>
+                <span class="hmeta">misses per rolling week</span></span>
+            </div>
+
+            <div class="btnrow"><span class="btn">Cancel</span><span class="btn primary">Create habit</span></div>
+          </div>
+        </div>
+        <dl class="tradeoff">
+          <dt>Shape</dt>
+          <dd>Everything on one surface, in the order the epic describes a habit: what it's called,
+            how a day is judged, when it applies, how forgiving it is.</dd>
+          <dt>Reuses</dt>
+          <dd><code>FormDialog</code>, <code>FieldLabel</code>, <code>TextField</code>,
+            <code>ToggleButton</code>, <code>useFormSubmit</code> — no new atoms.</dd>
+          <dt>Strength</dt>
+          <dd>Cheapest to build and to test; the whole habit is reviewable before you commit to it;
+            closest to <code>NewStoryDialog</code>, so it needs no new conventions.</dd>
+          <dt>Weakness</dt>
+          <dd>The tallest of the three. With 3+ criteria it scrolls inside the dialog on a phone.</dd>
+          <dt>Best if</dt>
+          <dd>You want the skeleton standing with the least new surface area.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <!-- ── Option B ─────────────────────────────────────────────── -->
+    <div class="ppanel pb">
+      <div class="optgrid">
+        <div class="mock">
+          <div class="mock-bar"><span>New habit</span><span class="hmeta">✕</span></div>
+          <div class="mock-body">
+            <div class="steps">
+              <b>1 · The commitment</b><span class="barlet on"></span><span class="barlet"></span>
+              <span>2 · How it's judged</span>
+            </div>
+
+            <span class="flabel">Name</span>
+            <div class="fld" style="margin-bottom:.9rem">Morning routine</div>
+
+            <span class="flabel">Which days</span>
+            <div class="dayset" style="margin-bottom:.9rem">
+              <span class="on">M</span><span class="on">T</span><span class="on">W</span><span class="on">T</span>
+              <span class="on">F</span><span class="on">S</span><span class="on">S</span>
+            </div>
+
+            <span class="flabel">Forgive</span>
+            <span class="row"><span class="fld">− 1 +</span><span class="hmeta">misses per rolling week</span></span>
+
+            <div class="btnrow"><span class="btn">Cancel</span><span class="btn primary">Next →</span></div>
+          </div>
+        </div>
+        <dl class="tradeoff">
+          <dt>Shape</dt>
+          <dd>Step 1 is the promise (name, days, allowance). Step 2 is the scoring (the criteria
+            list, identical to A's). Back/Next; Create only on step 2.</dd>
+          <dt>Reuses</dt>
+          <dd>Everything A does, plus a small step indicator and one piece of wizard state.</dd>
+          <dt>Strength</dt>
+          <dd>Matches how the epic frames a habit — a commitment, then the rule that judges it. Each
+            step fits a phone with no scrolling however many criteria you add.</dd>
+          <dt>Weakness</dt>
+          <dd>Two surfaces to test and to screenshot; you can't see the whole habit at once before
+            creating it; a second click for the common one-criterion case.</dd>
+          <dt>Best if</dt>
+          <dd>You expect several criteria per habit, and mostly create habits on your phone.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <!-- ── Option C ─────────────────────────────────────────────── -->
+    <div class="ppanel pc">
+      <div class="optgrid">
+        <div class="mock">
+          <div class="mock-bar"><span>New habit</span><span class="hmeta">✕</span></div>
+          <div class="mock-body">
+            <div class="sentence">
+              <span class="fld" style="font-size:.9rem">Morning routine</span><br />
+              Every <span class="slot">day</span> I will
+              <span class="slotchip">be up by 06:15</span>
+              and <span class="slotchip">get outside for light</span>
+              <span class="slot">+</span><br />
+              forgiving <span class="slot">1</span> miss a week.
+            </div>
+            <div class="btnrow"><span class="btn">Cancel</span><span class="btn primary">Create habit</span></div>
+          </div>
+        </div>
+        <dl class="tradeoff">
+          <dt>Shape</dt>
+          <dd>One editable sentence. Each underlined slot opens a small popover — the weekday set,
+            a criterion editor, the allowance stepper — and writes its result back inline.</dd>
+          <dt>Reuses</dt>
+          <dd><code>FormDialog</code> and <code>Popover</code>, but the slot components and their
+            inline-editing behaviour are new.</dd>
+          <dt>Strength</dt>
+          <dd>Reads back as the commitment you're actually making, which is the thing a habit form is
+            for. Shortest surface; a one-criterion habit is a single line.</dd>
+          <dt>Weakness</dt>
+          <dd>Most to build and the most novel to make accessible — every slot needs a real
+            control, a label and a keyboard path, and the sentence must survive reflow on a narrow
+            screen. Highest risk of overrunning this story.</dd>
+          <dt>Best if</dt>
+          <dd>You want the habits view to feel distinct from the task forms and will accept a
+            larger UI slice to get it.</dd>
+        </dl>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<h2>10 · What this story does <i>not</i> touch</h2>
+
+<ul class="tight">
+  <li><b><code>items</code> and everything downstream of it</b> — no <code>item_type</code>, no
+    recurrence reuse, no habit rows in any task view, store, count or search path (D1). A change
+    reaching into <code>items</code> has taken a wrong turn.</li>
+  <li><b>Priority, Inbox, capture, Week Plan, the Tasks ⇄ Code switcher</b> — the nav link and its
+    badge are the entire footprint outside the new view (D2, D14).</li>
+  <li><b><code>docs/productivity-coach-primer.md</code></b> — untouched until slice 12, because no
+    endpoint the coach can call ships here (S2).</li>
+</ul>
+
+<h2>11 · Tests</h2>
+
+<p class="small">
+  Every requirement above must be pinned somewhere — unit, Storybook, or E2E. §5.3 is the part that
+  earns near-exhaustive table tests: a rolling window over four statuses with an allowance, a today
+  exemption and transparent skips has more edge cases than the rest of the story combined.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">File</th><th>Pins</th></tr>
+  <tr><td><code>lib/habits/criteria.test.ts</code></td>
+      <td>every kind × comparator; boundary values (<code>value === target</code> under each
+        comparator); a missing key → <code>unrecorded</code>; a wrong-typed value →
+        <code>unrecorded</code>; the three status derivations; an orphaned result key ignored.</td></tr>
+  <tr><td><code>lib/habits/streaks.test.ts</code></td>
+      <td>Table-driven. <code>started_on</code> / <code>archived_at</code> / <code>active_days</code>
+        bounding applicability; the today exemption (applicable-and-unlogged today doesn't zero the
+        streak, but a <i>logged</i> miss today does count); <code>skipped</code> stepped over
+        transparently; allowance <b>equal to</b> vs <b>exceeding</b> the window (the off-by-one that
+        decides whether a chain survives); the epic's §3.2 and §6.2 grids as fixtures, asserting
+        <b>both</b> the scalars and the per-day <code>link</code> values; the streak counting
+        <code>met</code> days not elapsed days; hit-rate denominators excluding unknown and skipped;
+        <code>averageStreak</code> null until a run ends and excluding the in-progress run; ladder
+        boundaries at 13/14, 41/42, 65/66.</td></tr>
+  <tr><td><code>lib/habits/dates.test.ts</code></td>
+      <td><code>todayIn</code> either side of local midnight for a negative- and a positive-offset
+        zone; an unknown zone falling back to UTC rather than throwing; a DST transition day;
+        <code>addDays</code> across month and year ends; <code>isoWeekday</code> Monday = 1.</td></tr>
+  <tr><td><code>app/api/habits/route.test.ts</code></td>
+      <td>201 + the stored row; each validation rejection (no criteria, duplicate keys, bad key
+        shape, <code>boolean</code> carrying a target, measured kind missing one, weekday out of
+        range, empty weekday set, allowance out of range); 401 without a session; an API key does
+        <b>not</b> authorize this route.</td></tr>
+  <tr><td><code>app/api/habits/[id]/entries/route.test.ts</code></td>
+      <td>Derived-and-frozen status for each outcome; explicit <code>skipped</code> accepted; any
+        other explicit status → 400 (S3); neither results nor status → 400; future date → 400;
+        before <code>started_on</code> → 400; unknown habit → 404; <code>date</code> omitted resolves
+        through <code>tz</code>, and an unknown <code>tz</code> falls back to UTC; upsert idempotency
+        (same day twice → one row, second wins); all three auth paths.</td></tr>
+  <tr><td><code>lib/stores/habits-store.test.tsx</code></td>
+      <td>Optimistic cell appears before the request settles; reconcile with the server row; rollback
+        + error toast on failure; <code>skipDay</code>; <code>useUnloggedTodayCount</code> across
+        applicable / non-applicable / already-logged.</td></tr>
+  <tr><td><code>components/habits/*.test.tsx</code></td>
+      <td>Grid: one focusable cell per applicable day, non-applicable cells not focusable, the three
+        connector cases, the Sunday/Monday stub pair, accessible names for each state. Editor: the
+        header re-derives live, a boolean commits on toggle, a measured field commits on blur,
+        skip via the overflow, Escape returns focus. Create dialog: the chosen option's flow, key
+        slugification + de-duplication, submit disabled until valid.</td></tr>
+  <tr><td><code>components/habits/history-grid.stories.tsx</code></td>
+      <td><b>Committed visual baselines</b> — the natural evidence for §8 per the epic. Stories: every
+        day state in one grid; a forgiven bridge; a Sunday→Monday wrap; a real break; a habit starting
+        mid-window; a weekday-only habit. See the <code>storybook</code> skill for the capture →
+        approve flow; never hand-edit a baseline.</td></tr>
+  <tr><td><code>e2e/habits.spec.ts</code></td>
+      <td>The whole loop through the real stack: ⌘K → Habits → create the reference habit → the empty
+        state is replaced by a card → open today's cell → set both criteria → the header reads
+        <b>Met</b>, the cell fills and the nav badge clears → reload and it persists.</td></tr>
+  <tr><td><code>database/</code> integration</td>
+      <td>The unique constraint rejects a duplicate <code>(habit_id, entry_date)</code>; deleting a
+        habit cascades its entries; each check constraint rejects its bad value; the grants let the
+        authenticated role read and write both tables.</td></tr>
+</table>
+</div>
+
+<h2>12 · Demo doc</h2>
+
+<p>
+  <code>docs/demos/&lt;feature-folder&gt;/&lt;name&gt;.md</code>, created with
+  <code>npm run demo -- init</code> so the branch is recorded in its front matter (that is what
+  <code>demo-lint</code>'s <code>branch-folder</code> rule reads). <b>Follow the
+  <code>showboat</code> skill's evidence rules</b> — this change has a visual surface, so they make
+  screenshots of the running app primary; don't re-derive the policy here, and don't run the test
+  suite inside the doc.
+</p>
+
+<p class="small">
+  It must exercise <b>every</b> line of §14, so at minimum: the create form (whichever option is
+  chosen), <code>/habits</code> with a chain including a forgiven bridge and a real break, the day
+  editor mid-edit with the header derived, the nav badge before and after logging, plus
+  <code>exec</code> capture of the migration applying and a <code>curl</code> against
+  <code>PUT …/entries</code> showing the frozen status coming back. Confirm with
+  <code>npm run demo -- verify</code>.
+</p>
+
+<h2>13 · Out of scope &amp; open questions</h2>
+
+<p>
+  Everything ALF-146 §7 rules out stays ruled out. Beyond the deferred slices listed in §1:
+</p>
+
+<ol class="tight">
+  <li>
+    <b>Clearing an entry back to unknown.</b> The editor can correct a day (re-upsert) and excuse it
+    (<code>skipped</code>), but not un-log it — the epic's API surface has no delete-entry route, and
+    inventing one here would pre-empt slice 4's shape. A mis-tap is recoverable by correcting or
+    skipping the day. If that proves annoying in use, a <code>DELETE</code> on the entries route is a
+    small additive change.
+  </li>
+  <li>
+    <b>Editing a habit after creation.</b> Deliberate (S1) — <code>PATCH</code> and the edit/archive
+    UI are slice 4/11's remainder. Until then a wrong allowance or target means creating the habit
+    again. Worth watching: if the first week of real use hits this, that ticket jumps the queue.
+  </li>
+  <li>
+    <b>The window boundary is untested at scale.</b> 120 days is the epic's number and this story
+    honours it, but nothing here proves the "scroll further back is an on-demand fetch" story,
+    because with a habit created today there is nothing behind the window to fetch. It becomes real
+    around four months in.
+  </li>
+  <li>
+    <b>Does the <code>partial</code> rule feel right in practice?</b> ALF-146 §9 already defers this;
+    this story is what starts generating the data to answer it.
+  </li>
+</ol>
+
+<h2>14 · Acceptance criteria</h2>
+
+<p class="acgroup">Database</p>
+<ul class="ac">
+  <li><b>Migration</b> creates <code>habit_day_status</code>, <code>habits</code> and
+    <code>habit_entries</code> with the checks, the unique constraint, the index, RLS policies and
+    explicit grants — takes the next free number, is applied, and is recorded in
+    <code>migrations-applied.log</code>.</li>
+  <li><b><code>database.types.ts</code> is regenerated</b> from the repo's own migrations and
+    committed verbatim, with no unrelated tables swept in.</li>
+</ul>
+
+<p class="acgroup">Pure logic</p>
+<ul class="ac">
+  <li><b>Criterion evaluation</b> handles all four kinds and three comparators, and reports a missing
+    or wrong-typed value as <code>unrecorded</code> rather than <code>false</code>.</li>
+  <li><b>Day status derives</b> as all-pass → <code>met</code>, some-pass → <code>partial</code>,
+    none-pass → <code>missed</code>, and is never derived as <code>skipped</code>.</li>
+  <li><b>The streak walk</b> implements ALF-146 §3.1 exactly: applicable days only, the rolling
+    allowance, <code>skipped</code> stepped over, today exempt, and a count of <code>met</code> days
+    rather than elapsed days.</li>
+  <li><b><code>buildHabitCalendar</code></b> returns a <code>link</code> per day distinguishing an
+    earned continuation from a forgiven one, and the grid renders nothing the walk didn't say.</li>
+</ul>
+
+<p class="acgroup">API</p>
+<ul class="ac">
+  <li><b><code>POST /api/habits</code></b> creates a habit with ≥ 1 criterion, rejects every
+    malformed criteria shape, and is session-only.</li>
+  <li><b><code>PUT /api/habits/[id]/entries</code></b> upserts one day, derives and freezes its
+    status, accepts <code>skipped</code> as the only explicit status, rejects a future date and one
+    before <code>started_on</code>, and accepts <b>either</b> a session <b>or</b> the
+    <code>INGEST_API_KEY</code>.</li>
+  <li><b>Logging the same day twice</b> leaves one row, with the second write winning.</li>
+</ul>
+
+<p class="acgroup">App</p>
+<ul class="ac">
+  <li><b><code>/habits</code> exists</b> in the Tasks module: reachable from the sidebar beneath Week
+    Plan, from ⌘K, and by deep link / hard reload.</li>
+  <li><b>The nav badge</b> counts today's applicable-but-unlogged habits and disappears at zero.</li>
+  <li><b>A habit can be created in the app</b> — name, ≥ 1 criterion, weekday set, allowance — and
+    appears without a page refresh.</li>
+  <li><b>The grid renders weeks as columns</b>, with earned links, <b>full-width grey</b> forgiven
+    links, and stubs at both ends of a Sunday→Monday crossing.</li>
+  <li><b>Tapping a day opens the editor</b>, whose status header is derived live and cannot be typed;
+    <code>skipped</code> is reachable only from the overflow.</li>
+  <li><b>A logged day repaints immediately</b> and survives a reload; a failed write rolls the cell
+    back and toasts.</li>
+  <li><b>Every cell is keyboard-reachable</b> with an accessible name carrying date, status and
+    per-criterion results, and every state is distinguishable without colour.</li>
+</ul>
+
+<p class="acgroup">Gates</p>
+<ul class="ac">
+  <li><b><code>npm run check</code> is green</b> — including migration-lint, the Storybook baselines
+    and the E2E suite — with no config weakened and no ignore directive added.</li>
+  <li><b>A demo doc</b> exercises every criterion above and passes <code>npm run demo -- verify</code>.</li>
+</ul>
+
+<hr style="border:0;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+<p class="small">
+  Story specs live in <code>docs/specs/</code> and are archived to <code>docs/specs/archive/</code>
+  once shipped. The durable context for this work is the epic —
+  <a href="epics/ALF-146.html"><code>docs/specs/epics/ALF-146.html</code></a> — which is never archived.
+</p>
+
+</div>
+</body>
+</html>
