@@ -175,6 +175,31 @@ describe('DayEditor — committing a day', () => {
     expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { light: true });
   });
 
+  it('writes nothing when a day is only opened and looked at', async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    // Focus lands in the field, then leaves it — the shape of opening the ⋯ menu. An
+    // untouched empty field must not log an empty day, or looking marks the day missed.
+    await user.click(screen.getByLabelText('Up by 6:15'));
+    await user.tab();
+
+    expect(logDay).not.toHaveBeenCalled();
+  });
+
+  it('does not re-send an unchanged value when Enter is followed by a blur', async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.type(screen.getByLabelText('Up by 6:15'), '06:04');
+    await user.keyboard('{Enter}');
+    await user.tab();
+
+    await waitFor(() => {
+      expect(logDay).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('does not commit a measured field on every keystroke', async () => {
     const user = userEvent.setup();
     renderEditor();
@@ -229,19 +254,17 @@ describe('DayEditor — the skip flow', () => {
     expect(commit).toBeEnabled();
   });
 
-  it('fills the field from a quick reason but leaves it editable', async () => {
+  it('offers no one-tap reason — the whole point is that a human writes it', async () => {
     const user = userEvent.setup();
     renderEditor();
 
     await user.click(screen.getByRole('button', { name: /More options/ }));
     await user.click(screen.getByRole('menuitem', { name: 'Mark as skipped…' }));
-    await user.click(screen.getByRole('button', { name: 'Illness' }));
 
-    const field = screen.getByLabelText('Reason for skipping');
-    expect(field).toHaveValue('Illness');
-
-    await user.type(field, ' — flu');
-    expect(field).toHaveValue('Illness — flu');
+    // A suggestion chip would hand back the friction this step exists to charge.
+    expect(screen.getByLabelText('Reason for skipping')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Illness' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Travel' })).not.toBeInTheDocument();
   });
 
   it('sends the trimmed reason and closes', async () => {

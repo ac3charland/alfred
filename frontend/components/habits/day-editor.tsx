@@ -117,7 +117,15 @@ function MeasuredField({
   const [text, setText] = React.useState(initialText);
   const isTime = criterion.kind === 'time';
 
+  // What the field has already told the store. Blur fires whenever focus leaves — including
+  // when the day was merely opened and the ⋯ menu clicked — so without this an untouched
+  // empty field would log an empty day, and just LOOKING at an unlogged day would mark it
+  // missed.
+  const committedRef = React.useRef(initialText);
+
   const commit = () => {
+    if (text === committedRef.current) return;
+    committedRef.current = text;
     if (text.trim() === '') {
       onCommit();
       return;
