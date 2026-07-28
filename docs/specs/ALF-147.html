@@ -976,13 +976,21 @@ interface HabitsActions {
   </div>
 </div></div>
 
-<h4>The three non-<code>met</code> days, and what each costs</h4>
+<h4>The four non-<code>met</code> days, and what each costs</h4>
+
+<div class="callout">
+  <b><code>skipped</code> and <code>unknown</code> are different things, and conflating them is the
+  easy mistake here.</b> <code>unknown</code> means <b>no row exists</b> — you never logged the day. It
+  <b>spends the allowance</b> (D5), and backfilling it later is the ordinary write in §6.2.
+  <code>skipped</code> means <b>a row you deliberately created</b> to excuse the day — illness, travel
+  — and it spends nothing. You never drift into <code>skipped</code>: it is reached only through the
+  day editor's <code>⋯</code> menu, and per S3 it is the one status a caller may state at all.
+</div>
 
 <p class="small">
-  All three survive a run of <code>allowance: 1</code> and none adds to the count, so they are easy
-  to conflate — but they do <b>not</b> cost the same. <code>missed</code> and <code>partial</code>
-  each spend the allowance; <code>skipped</code> spends nothing (D5). The <b>links</b> are the only
-  place that difference is visible. Three independent runs below, same streak of 3:
+  All four survive a run of <code>allowance: 1</code> and none adds to the count, so they look alike —
+  but only three of them cost anything. The <b>links</b> are the only place that difference is
+  visible. Four independent runs below, same streak of 3:
 </p>
 
 <div class="app v2" style="padding:1.1rem 1.2rem;margin:1rem 0">
@@ -1006,7 +1014,18 @@ interface HabitsActions {
       </div>
     </div>
     <div>
-      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem"><b>Skipped</b></div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem"><b>Unlogged</b>
+        <span class="hmeta">· no row</span></div>
+      <div class="gq mini">
+        <i class="m lk bridge"></i><i class="u lk bridge"></i><i class="m lk"></i><i class="m"></i>
+      </div>
+      <div style="color:#8a96a8;font-size:.68rem;margin-top:.6rem;line-height:1.5">
+        links go <b style="color:#8a96a8">grey</b><br />streak 3 · <b>1 allowance spent</b>
+      </div>
+    </div>
+    <div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem"><b>Skipped</b>
+        <span class="hmeta">· excused on purpose</span></div>
       <div class="gq mini">
         <i class="m lk"></i><i class="sk lk">–</i><i class="m lk"></i><i class="m"></i>
       </div>
@@ -1018,9 +1037,10 @@ interface HabitsActions {
 </div>
 
 <p class="small">
-  An <b>unlogged</b> day is a fourth case and behaves exactly like <code>missed</code> here — it spends
-  the allowance and greys its links (D5). It has no cell of its own in this comparison because it has
-  no row: it is simply the absence of one.
+  <b>Unlogged is the only one of the four with no row in <code>habit_entries</code></b> — it is the
+  absence of a record, which is exactly why D5 charges it: were it free, forgetting to log a bad
+  morning would be cheaper than admitting one, and the data the coach reads would rot. Backfilling it
+  later replaces it with whichever of the other four is true.
 </p>
 
 <div class="callout">
