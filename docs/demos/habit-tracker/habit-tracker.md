@@ -109,7 +109,7 @@ Closing the editor leaves today green and the sidebar badge gone.
 
 ## Excusing a day
 
-`Mark as skipped…` opens a confirm step rather than skipping. It states the consequence in the owner's terms, offers the two cases the epic names as one-tap prefills, and keeps **Skip this day** disabled until a reason is there — a frictionless skip would be a button that launders a broken streak into an intact one.
+`Mark as skipped…` opens a confirm step rather than skipping. It states the consequence in the owner's terms and keeps **Skip this day** disabled until a reason is there — a frictionless skip would be a button that launders a broken streak into an intact one. The reason has to be **typed**: a one-tap suggestion would hand back the second of the two things this step charges for, and a category picked off a list isn't something a human wrote.
 
 ![](habit-tracker-image-10.png)
 
