@@ -343,6 +343,32 @@
   </p>
 </div>
 
+<div class="dec">
+  <h3><span class="n">S6</span>Skipping takes a second step and a required reason</h3>
+  <p>
+    <b>Mark as skipped…</b> opens a confirm step carrying a <b>required</b> free-text reason
+    (§9.2.1), stored in the <code>habit_entries.note</code> column the epic's schema already has. The
+    route enforces the same rule, so a keyed caller can't route around the UI (§6.2).
+  </p>
+  <p class="why">
+    <b>Why:</b> <code>skipped</code> is the only way to keep a chain alive at <b>no cost</b> — D5
+    charges <code>missed</code>, <code>partial</code> and an unlogged day one unit of allowance each,
+    and charges a skip nothing. A frictionless skip is therefore a button that launders a broken
+    streak into an intact one, and in a single-user app the only person it deceives is the owner. The
+    friction is the point: it should be easier to admit a miss than to excuse one. Requiring the
+    reason also turns the escape hatch into data — "why did this quarter have eleven skips?" is a
+    question the Friday review can actually ask, where a bare count tells it nothing.
+    <br />
+    <b>Why <code>note</code> rather than a new column:</b> it is the same field semantically (why this
+    day is what it is), the epic already put it on the table, and a dedicated
+    <code>skip_reason</code> would sit null on every other row.
+    <br />
+    <b>Not in the epic</b> — D3 defines <code>skipped</code> and names illness and travel, but says
+    nothing about friction. This adds a rule rather than contradicting one; §13 records the way it
+    could be wrong.
+  </p>
+</div>
+
 <h2>3 · The shape of the change</h2>
 
 <svg viewBox="0 0 900 250" role="img" aria-label="Data flow for this story: the shell layout seeds the habits store from a server read; the store writes through the entry-upsert and create routes; the pure lib/habits module derives day statuses and the calendar projection for the grid.">
@@ -808,6 +834,10 @@ export function eachDay(from: string, to: string): string[];
   <li>Resolve the status: <code>skipped</code> if stated (S3 — any other explicit status is
     <b>400</b>), else <code>deriveDayStatus(criteria, results)</code>. A body carrying neither
     <code>results</code> nor <code>status</code> is <b>400</b>: there is nothing to record.</li>
+  <li><b><code>status: 'skipped'</code> requires a non-empty <code>note</code></b> — the reason (S6).
+    Missing or whitespace-only is a <b>400</b>. This is the one conditional field rule in the route,
+    so express it as a zod <code>.refine()</code> on the body schema rather than an <code>if</code>
+    in the handler.</li>
   <li>Upsert on <code>(habit_id, entry_date)</code>, stamping <code>updated_at</code>. Return the row.</li>
 </ol>
 
@@ -847,8 +877,8 @@ interface HabitsActions {
   addHabit: (input: CreateHabitInput) =&gt; Promise&lt;Habit&gt;;
   /** Log or correct a day. Derives the optimistic status locally with `deriveDayStatus`. */
   logDay: (habitId: string, date: string, results: HabitResults, note?: string | null) =&gt; Promise&lt;void&gt;;
-  /** Excuse a day (D3) — the one status the model can't derive. */
-  skipDay: (habitId: string, date: string) =&gt; Promise&lt;void&gt;;
+  /** Excuse a day (D3). `reason` is required — see S6; it lands in the entry's `note`. */
+  skipDay: (habitId: string, date: string, reason: string) =&gt; Promise&lt;void&gt;;
 }
 </code></pre>
 
@@ -1119,12 +1149,16 @@ interface HabitsActions {
   <tr><td><code>met</code></td><td>solid fill</td><td rowspan="6" style="vertical-align:middle">
     <code>"Thursday 23 July — partial. Up by 6:15: met (06:04). Outside for light: not met."</code><br />
     <span class="small">Date, status, then one clause per criterion with its recorded value. Unknown
-    days read <code>"— not logged"</code>; non-applicable days are <code>aria-hidden</code> and not
-    focusable, since there is nothing to open.</span>
+    days read <code>"— not logged"</code>. A skipped day reads
+    <code>"Tue 14 July — skipped: flu, off all week"</code>, carrying its <b>reason</b> (S6) — which
+    is what makes requiring one worth anything; it also goes on the cell's <code>title</code>.
+    Non-applicable days are <code>aria-hidden</code> and not focusable, since there is nothing to
+    open.</span>
   </td></tr>
   <tr><td><code>partial</code></td><td>solid fill with a lighter diagonal half</td></tr>
   <tr><td><code>missed</code></td><td>fill plus an inner ring</td></tr>
-  <tr><td><code>skipped</code></td><td>flat neutral fill with a centred dash</td></tr>
+  <tr><td><code>skipped</code></td><td>flat neutral fill with a centred dash — distinct from
+    <code>unknown</code>, which has no dash and no rim</td></tr>
   <tr><td><code>unknown</code></td><td>flat neutral, no fill weight</td></tr>
   <tr><td>before start / future</td><td>dashed 1px outline, no fill</td></tr>
 </table>
@@ -1186,8 +1220,54 @@ interface HabitsActions {
     made to disagree with the criteria beneath it — that is what "derived only" buys (D3).</li>
   <li><b>The allowance line</b> appears whenever the derived status isn't <code>met</code>, naming
     the consequence in the owner's terms (D5).</li>
-  <li><b>The <code>⋯</code> overflow</b> holds <b>Mark as skipped</b> — the one status the model
-    can't derive, kept out of the main flow so it isn't a fourth thing to tap past every morning.</li>
+  <li><b>The <code>⋯</code> overflow</b> holds <b>Mark as skipped…</b> — the one status the model
+    can't derive, kept out of the main flow so it isn't a fourth thing to tap past every morning. The
+    trailing ellipsis is load-bearing: it does <b>not</b> skip the day, it opens the step below.</li>
+</ul>
+
+<h4>9.2.1 The skip flow — deliberately the highest-friction action in the view</h4>
+
+<p class="small">
+  Skipping is the only way to keep a chain alive at <b>no cost</b> (D5). Everything else that saves a
+  run — <code>missed</code>, <code>partial</code>, an unlogged day — spends the allowance. That makes
+  a one-tap skip a streak-laundering button, and the owner would be the only person it fooled. So
+  skipping takes a second step, and it takes a <b>reason</b>.
+</p>
+
+<div class="app" style="padding:1.2rem 1.1rem;margin:1rem 0">
+  <span class="pop" style="background:#0d1320;border-color:#25324a;border-radius:12px;min-width:275px;box-shadow:0 18px 40px -12px rgba(0,0,0,.7)">
+    <span class="pt" style="color:#e8edf5">Skip Thu 23 Jul?</span>
+    <span style="display:block;color:#8a96a8;font-size:.7rem;line-height:1.5;margin:-.2rem 0 .55rem">
+      This day won't count for or against the habit, and won't spend your allowance.</span>
+    <span style="display:flex;gap:.3rem;margin-bottom:.5rem">
+      <span class="btn" style="background:#0f1626;border-color:#1e2a3f;color:#8a96a8;font-size:.7rem">Illness</span>
+      <span class="btn" style="background:#0f1626;border-color:#1e2a3f;color:#8a96a8;font-size:.7rem">Travel</span>
+    </span>
+    <span class="fld" style="display:block;background:#0f1626;border-color:#4fd1e0;color:#e8edf5;margin-bottom:.6rem">Flu — off all week▍</span>
+    <span style="display:flex;justify-content:flex-end;gap:.35rem">
+      <span class="btn" style="background:#0f1626;border-color:#1e2a3f;color:#8a96a8">Cancel</span>
+      <span class="btn" style="background:#4fd1e0;border-color:#4fd1e0;color:#0a0e17;font-weight:600">Skip this day</span>
+    </span>
+  </span>
+</div>
+
+<ul class="tight">
+  <li><b>The reason is required.</b> <b>Skip this day</b> stays disabled until the field is non-empty
+    after trimming; the route enforces the same rule (§6.2) so the keyed callers can't route around
+    the UI. It is stored in <code>habit_entries.note</code> — the column the epic's schema already
+    carries, so no migration change.</li>
+  <li><b>Illness and Travel are one-tap prefills, not a closed list.</b> They fill the free-text field
+    and leave it editable. They are the two cases D3 names; anything else is typed. Deliberately
+    <i>not</i> an enum — a fixed vocabulary would be guessed at now and wrong later, and the reason's
+    value is that a human wrote it.</li>
+  <li><b>The consequence is stated before you commit,</b> in the owner's terms rather than the
+    model's: <i>won't count for or against the habit, and won't spend your allowance.</i> This is the
+    one place the allowance rules are explained rather than merely shown.</li>
+  <li><b>Undo is the ordinary write.</b> Re-opening the day and entering results overwrites the skip
+    through the same upsert (§6.2) — there is no separate un-skip path, and the reason goes with it.</li>
+  <li><b>The reason has to be readable afterwards</b>, or requiring it is theatre: it goes in the
+    cell's accessible name and its <code>title</code> (§8.3), so a skipped day in the grid answers
+    "why is this here?" months later without opening anything.</li>
 </ul>
 
 <h3>9.3 The create dialog — a sentence builder</h3>
@@ -1320,7 +1400,9 @@ interface HabitsActions {
         range, empty weekday set, allowance out of range); 401 without a session; an API key does
         <b>not</b> authorize this route.</td></tr>
   <tr><td><code>app/api/habits/[id]/entries/route.test.ts</code></td>
-      <td>Derived-and-frozen status for each outcome; explicit <code>skipped</code> accepted; any
+      <td>Derived-and-frozen status for each outcome; explicit <code>skipped</code> accepted <b>only
+        with a non-empty <code>note</code></b>, and rejected 400 when the note is absent, empty or
+        whitespace-only (S6); any
         other explicit status → 400 (S3); neither results nor status → 400; future date → 400;
         before <code>started_on</code> → 400; unknown habit → 404; <code>date</code> omitted resolves
         through <code>tz</code>, and an unknown <code>tz</code> falls back to UTC; upsert idempotency
@@ -1333,7 +1415,9 @@ interface HabitsActions {
       <td>Grid: one focusable cell per applicable day, non-applicable cells not focusable, the three
         connector cases, the Sunday/Monday stub pair, accessible names for each state. Editor: the
         header re-derives live, a boolean commits on toggle, a measured field commits on blur,
-        skip via the overflow, Escape returns focus. Create sentence: the kind-menu → per-kind-popover
+        the skip flow (overflow opens the confirm step rather than skipping; <b>Skip this day</b>
+        disabled until the reason is non-empty; a quick-fill populates an editable field; cancelling
+        leaves no entry), Escape returns focus. Create sentence: the kind-menu → per-kind-popover
         flow (§9.4) for both adding and editing a criterion, <b>every slot reachable and operable by
         keyboard with a programmatic label</b>, key slugification + de-duplication, submit disabled
         until valid.</td></tr>
@@ -1381,6 +1465,17 @@ interface HabitsActions {
 </p>
 
 <ol class="tight">
+  <li>
+    <b>Is a required reason the right amount of friction (S6)?</b> The failure mode to watch is the
+    opposite of the one it guards against: if a genuine week of illness means typing "flu" seven
+    times, the friction stops being deliberation and becomes a tax on honesty — and the owner starts
+    leaving days unlogged instead, which is <i>worse</i> data than a skip with a thin reason. Two
+    cheap escapes if that happens: let a skip apply to a date range in one action, or remember the
+    last reason as the next prefill. Both are additive; neither is worth guessing at before there is
+    a single real skip to look at. This also sharpens the epic's §9 open question 3 — if range-skip
+    is what the friction drives you to, that <i>is</i> the vacation pause, arriving from the other
+    direction.
+  </li>
   <li>
     <b>Clearing an entry back to unknown.</b> The editor can correct a day (re-upsert) and excuse it
     (<code>skipped</code>), but not un-log it — the epic's API surface has no delete-entry route, and
@@ -1457,6 +1552,11 @@ interface HabitsActions {
     bridge, and logging it leaves the allowance remaining untouched.</li>
   <li><b>Tapping a day opens the editor</b>, whose status header is derived live and cannot be typed;
     <code>skipped</code> is reachable only from the overflow.</li>
+  <li><b>Skipping takes a second step and a reason</b> — the overflow item opens a confirm panel that
+    states the consequence, the commit stays disabled until a reason is entered, the reason persists
+    to the entry's <code>note</code>, and the API rejects a reasonless skip independently of the UI.</li>
+  <li><b>A skipped day's reason is retrievable from the grid</b> — it appears in the cell's accessible
+    name, so the record survives past the moment it was written.</li>
   <li><b>A logged day repaints immediately</b> and survives a reload; a failed write rolls the cell
     back and toasts.</li>
   <li><b>Every cell is keyboard-reachable</b> with an accessible name carrying date, status and
