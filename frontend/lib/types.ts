@@ -14,6 +14,17 @@ export type Folder = Database['public']['Tables']['folders']['Row'];
 export type FolderInsert = Database['public']['Tables']['folders']['Insert'];
 export type FolderUpdate = Database['public']['Tables']['folders']['Update'];
 
+// ── Habit tracker — definitions plus one row per logged day. ──
+
+/** The four stored day verdicts. `skipped` is the only one a caller ever states. */
+export type HabitDayStatus = Database['public']['Enums']['habit_day_status'];
+
+export type Habit = Database['public']['Tables']['habits']['Row'];
+export type HabitInsert = Database['public']['Tables']['habits']['Insert'];
+
+export type HabitEntry = Database['public']['Tables']['habit_entries']['Row'];
+export type HabitEntryInsert = Database['public']['Tables']['habit_entries']['Insert'];
+
 // ── Software Factory (the `code` item type) — Project / Epic / Story model. ──
 
 export type CodeFactoryState = Database['public']['Enums']['code_factory_state'];

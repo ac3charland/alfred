@@ -203,6 +203,86 @@ export type Database = {
         }
         Relationships: []
       }
+      habit_entries: {
+        Row: {
+          created_at: string
+          entry_date: string
+          habit_id: string
+          id: string
+          note: string | null
+          results: Json | null
+          status: Database["public"]["Enums"]["habit_day_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entry_date: string
+          habit_id: string
+          id?: string
+          note?: string | null
+          results?: Json | null
+          status: Database["public"]["Enums"]["habit_day_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entry_date?: string
+          habit_id?: string
+          id?: string
+          note?: string | null
+          results?: Json | null
+          status?: Database["public"]["Enums"]["habit_day_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_entries_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habits: {
+        Row: {
+          active_days: number[]
+          allowance: number
+          archived_at: string | null
+          created_at: string
+          criteria: Json
+          id: string
+          name: string
+          notes: string | null
+          sort_order: number | null
+          started_on: string
+        }
+        Insert: {
+          active_days?: number[]
+          allowance?: number
+          archived_at?: string | null
+          created_at?: string
+          criteria: Json
+          id?: string
+          name: string
+          notes?: string | null
+          sort_order?: number | null
+          started_on?: string
+        }
+        Update: {
+          active_days?: number[]
+          allowance?: number
+          archived_at?: string | null
+          created_at?: string
+          criteria?: Json
+          id?: string
+          name?: string
+          notes?: string | null
+          sort_order?: number | null
+          started_on?: string
+        }
+        Relationships: []
+      }
       items: {
         Row: {
           completed_at: string | null
@@ -747,6 +827,7 @@ export type Database = {
         | "blocked"
         | "abandoned"
       code_lane: "human" | "local"
+      habit_day_status: "met" | "partial" | "missed" | "skipped"
       item_status: "active" | "completed"
       item_type: "unclassified" | "task" | "code" | "knowledge"
       task_priority: "high" | "medium" | "low"
@@ -891,6 +972,7 @@ export const Constants = {
         "abandoned",
       ],
       code_lane: ["human", "local"],
+      habit_day_status: ["met", "partial", "missed", "skipped"],
       item_status: ["active", "completed"],
       item_type: ["unclassified", "task", "code", "knowledge"],
       task_priority: ["high", "medium", "low"],
