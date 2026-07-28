@@ -168,6 +168,78 @@
   .val { border: 1px solid var(--line); border-radius: 7px; padding: .12rem .5rem;
          font-family: ui-monospace, monospace; font-size: .74rem; color: var(--fg); background: var(--bg); }
 
+  /* ── App-canvas mockups ──────────────────────────────────────────
+     The product's real palette, lifted from globals.css. alfred is dark-ONLY
+     (`:root` is the dark theme; there is no light variant), so these panels stay
+     dark regardless of the theme this spec is being read in. */
+  .app {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-fg: #e8edf5; --a-muted: #8a96a8; --a-sunk: #0d1524; --a-rim: #1b2740;
+    --a-teal: #4fd1e0; --a-green: #34d399; --a-amber: #f0b429; --a-red: #f87171;
+    --a-bridge: #48566e;
+    background: var(--a-bg); color: var(--a-fg);
+    border: 1px solid var(--a-border); border-radius: 10px; overflow: hidden;
+    font-size: .8rem;
+  }
+  .app .mock-bar { background: var(--a-surface); border-bottom-color: var(--a-border); color: var(--a-fg); }
+  .app .hname { color: var(--a-fg); }
+  .app .hmeta { color: var(--a-muted); }
+  .app .legend { color: var(--a-muted); }
+  .app .dowq { color: var(--a-muted); }
+
+  /* Shared grid geometry — IDENTICAL markup across the three finishes below;
+     only the wrapper's variant class differs. */
+  .gq { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 26px);
+        gap: 6px; width: max-content; padding: 8px 0; }
+  .gq i { position: relative; display: block; width: 26px; height: 26px;
+          border-radius: 6px; background: #141d2e; font-style: normal; }
+  .gq i.m { background: var(--a-green); }
+  .gq i.p { background: var(--a-amber); }
+  .gq i.x { background: var(--a-red); }
+  .gq i.fu { background: none; border: 1px dashed #223049; }
+  .gq i.t { box-shadow: 0 0 0 2px var(--a-teal); }
+  .gq i.lk::after { content: ''; position: absolute; left: 50%; top: 100%;
+                    transform: translateX(-50%); width: 10px; height: 6px; background: var(--a-green); }
+  .gq i.wo::after { content: ''; position: absolute; left: 50%; top: 100%;
+                    transform: translateX(-50%); width: 10px; height: 7px;
+                    background: var(--a-green); border-radius: 0 0 3px 3px; }
+  .gq i.wi::before { content: ''; position: absolute; left: 50%; bottom: 100%;
+                     transform: translateX(-50%); width: 10px; height: 7px;
+                     background: var(--a-green); border-radius: 3px 3px 0 0; }
+  .gq i.lk.bridge::after, .gq i.wo.bridge::after, .gq i.wi.bridge::before { background: var(--a-bridge); }
+
+  /* V1 — ambient glow on every outcome cell */
+  .v1 .gq i.m { box-shadow: 0 0 16px 2px rgba(52, 211, 153, .15); }
+  .v1 .gq i.p { box-shadow: 0 0 16px 2px rgba(240, 180, 41, .15); }
+  .v1 .gq i.x { box-shadow: 0 0 16px 2px rgba(248, 113, 113, .15); }
+  .v1 .gq i.t { box-shadow: 0 0 0 2px var(--a-teal), 0 0 24px 4px rgba(79, 209, 224, .4); }
+
+  /* V2 — dim plates, the CONNECTOR carries the light */
+  .v2 .gq i.m { background: rgba(52, 211, 153, .22); box-shadow: inset 0 0 0 1px rgba(52, 211, 153, .75); }
+  .v2 .gq i.p { background: rgba(240, 180, 41, .22); box-shadow: inset 0 0 0 1px rgba(240, 180, 41, .75); }
+  .v2 .gq i.x { background: rgba(248, 113, 113, .22); box-shadow: inset 0 0 0 1px rgba(248, 113, 113, .75); }
+  .v2 .gq i.lk::after, .v2 .gq i.wo::after, .v2 .gq i.wi::before {
+    box-shadow: 0 0 10px 2px rgba(52, 211, 153, .5);
+  }
+  .v2 .gq i.lk.bridge::after, .v2 .gq i.wo.bridge::after, .v2 .gq i.wi.bridge::before { box-shadow: none; }
+  .v2 .gq i.t { box-shadow: inset 0 0 0 1px rgba(52, 211, 153, .75), 0 0 0 2px var(--a-teal); }
+
+  /* V3 — recessed instrument panel; glow reserved for the LIVE run. Settled history sits
+     flat and dim (cells AND their connectors); the current streak is the only lit thing. */
+  .v3 .gq i { background: var(--a-sunk); box-shadow: inset 0 0 0 1px var(--a-rim); }
+  .v3 .gq i.m { background: rgba(52, 211, 153, .10); box-shadow: inset 0 0 0 1px rgba(52, 211, 153, .30); }
+  .v3 .gq i.p { background: rgba(240, 180, 41, .10); box-shadow: inset 0 0 0 1px rgba(240, 180, 41, .30); }
+  .v3 .gq i.x { background: rgba(248, 113, 113, .10); box-shadow: inset 0 0 0 1px rgba(248, 113, 113, .30); }
+  .v3 .gq i.fu { background: none; box-shadow: none; }
+  .v3 .gq i.lk::after, .v3 .gq i.wo::after, .v3 .gq i.wi::before { background: rgba(52, 211, 153, .28); }
+  .v3 .gq i.lk.bridge::after, .v3 .gq i.wo.bridge::after, .v3 .gq i.wi.bridge::before { background: #2b3648; }
+  .v3 .gq i.m.hot { background: rgba(52, 211, 153, .34);
+                    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 1), 0 0 14px 1px rgba(52, 211, 153, .3); }
+  .v3 .gq i.hot.lk::after, .v3 .gq i.hot.wo::after, .v3 .gq i.hot.wi::before { background: var(--a-green); }
+  /* Today must out-specify `.m.hot` above (4 classes), or it silently loses its teal ring. */
+  .v3 .gq i.t, .v3 .gq i.m.hot.t { box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 1),
+                                               0 0 0 2px var(--a-teal), 0 0 20px 3px rgba(79, 209, 224, .35); }
+
   /* ── CSS-only option picker (no JS: radio + sibling selectors) ─ */
   .picker { border: 1px solid var(--accent); border-radius: 12px; padding: 1rem 1.1rem;
             margin: 1.2rem 0; background: var(--bg); }
@@ -178,14 +250,20 @@
                  background: var(--card); user-select: none; }
   .ptabs label:hover { border-color: var(--accent); color: var(--accent); }
   .ppanel { display: none; }
-  #opt-a:checked ~ .ptabs label[for="opt-a"],
-  #opt-b:checked ~ .ptabs label[for="opt-b"],
-  #opt-c:checked ~ .ptabs label[for="opt-c"] {
+  #gv-1:checked ~ .ptabs label[for="gv-1"],
+  #gv-2:checked ~ .ptabs label[for="gv-2"],
+  #gv-3:checked ~ .ptabs label[for="gv-3"],
+  #sb-1:checked ~ .ptabs label[for="sb-1"],
+  #sb-2:checked ~ .ptabs label[for="sb-2"],
+  #sb-3:checked ~ .ptabs label[for="sb-3"] {
     background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
   }
-  #opt-a:checked ~ .ppanels > .pa,
-  #opt-b:checked ~ .ppanels > .pb,
-  #opt-c:checked ~ .ppanels > .pc { display: block; }
+  #gv-1:checked ~ .ppanels > .g1,
+  #gv-2:checked ~ .ppanels > .g2,
+  #gv-3:checked ~ .ppanels > .g3,
+  #sb-1:checked ~ .ppanels > .s1,
+  #sb-2:checked ~ .ppanels > .s2,
+  #sb-3:checked ~ .ppanels > .s3 { display: block; }
   .optgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); gap: 1.2rem; align-items: start; }
   @media (max-width: 760px) { .optgrid { grid-template-columns: 1fr; } }
   .tradeoff { font-size: .8rem; }
@@ -212,9 +290,10 @@
 </p>
 
 <div class="callout">
-  <b>One thing needs your answer before build.</b> §9.4 offers <b>three shapes for the create
-  form</b> as a live, clickable picker. Pick one in a PR comment. Everything else in this spec is
-  settled. If no pick lands before the implementation session starts, it builds <b>Option A</b>.
+  <b>Two things need your answer before build,</b> each a live, clickable picker in this document:
+  <b>§8.2</b> — the history grid's <i>finish</i>, and <b>§9.4</b> — how the create sentence gets
+  <i>built</i>. Pick each in a PR comment; an unanswered picker builds its first tab. Everything else
+  here is settled, including that the create form <b>is</b> a sentence builder (§9.3) — chosen in review.
 </div>
 
 <h2>1 · What this story is</h2>
@@ -413,7 +492,7 @@
   <tr><td><code>frontend/components/shell/command-destinations.ts</code></td><td><code>go-habits</code> destination + <code>habits</code> icon token</td></tr>
   <tr><td><code>frontend/components/shell/command-palette.tsx</code></td><td>the icon token → lucide mapping</td></tr>
   <tr><td><code>frontend/components/habits/*</code></td><td><b>new</b> — view, card, grid, cell, day editor, create dialog, <code>.styles.ts</code></td></tr>
-  <tr><td><code>frontend/app/globals.css</code></td><td>five habit colour tokens in the existing <code>@theme inline</code> block (§8.3)</td></tr>
+  <tr><td><code>frontend/app/globals.css</code></td><td>two grey tokens in the existing <code>@theme inline</code> block — every other colour and glow already exists (§8.3)</td></tr>
 </table>
 </div>
 
@@ -865,54 +944,197 @@ interface HabitsActions {
   day is neither — it is unbroken, it simply wasn't earned.
 </div>
 
-<h3>8.2 What it looks like</h3>
+<h3>8.2 What it looks like — pick the finish</h3>
 
 <p class="small">
   The reference habit over five weeks — <code>allowance: 1</code>, criteria "up by 6:15" and "outside
   for light". Week two contains a forgiven <code>partial</code> (grey links either side, run
   survives). Week three is a real break: a forgiven <code>missed</code> on Thursday, then an unlogged
   Friday — two spent days in one rolling window exceeds the allowance, so no link leaves Thursday.
+  The live run then goes from that Saturday to today.
 </p>
 
-<div class="scroll">
-<div class="mock" style="max-width:560px">
-  <div class="mock-bar">
-    <span class="hname">Morning routine <span class="hmeta">· every day · 1 miss / rolling week</span></span>
-    <span class="hmeta">Jun – Jul</span>
+<div class="callout">
+  <b>Your call.</b> All three below are the <b>same grid, same markup, same day states</b> — the epic's
+  §6 structure is settled and none of them touches it. They differ only in <i>finish</i>: how much the
+  cells glow and what the glow is <i>for</i>. Each is drawn on the product's real canvas
+  (<code>#0a0e17</code>), with the real accent tokens and the real <code>glow-*</code> box-shadows from
+  <code>globals.css</code>. Name your pick in a PR comment; no pick ⇒ <b>Finish 1</b>.
+</div>
+
+<div class="picker">
+  <input type="radio" name="gridfinish" id="gv-1" checked />
+  <input type="radio" name="gridfinish" id="gv-2" />
+  <input type="radio" name="gridfinish" id="gv-3" />
+
+  <div class="ptabs">
+    <label for="gv-1">1 · Ambient glow</label>
+    <label for="gv-2">2 · Lit filament</label>
+    <label for="gv-3">3 · Instrument panel</label>
   </div>
-  <div class="mock-body">
-    <div class="qwrap">
-      <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
-      <div class="gridq">
-        <i class="c fu"></i><i class="c fu"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
-        <i class="c m wi lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
-        <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c"></i><i class="c m lk"></i><i class="c m wo"></i>
-        <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
-        <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+
+  <div class="ppanels">
+
+    <div class="ppanel g1">
+      <div class="optgrid">
+        <div class="scroll"><div class="app v1">
+          <div class="mock-bar">
+            <span class="hname">Morning routine <span class="hmeta">· every day · 1 miss / rolling week</span></span>
+            <span class="hmeta">Jun – Jul</span>
+          </div>
+          <div class="mock-body">
+            <div class="qwrap">
+              <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+              <div class="gq">
+                <i class="fu"></i><i class="fu"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+                <i class="m wi lk"></i><i class="m lk bridge"></i><i class="p lk bridge"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+                <i class="m wi lk"></i><i class="m lk"></i><i class="m lk bridge"></i><i class="x"></i><i class="u"></i><i class="m lk hot"></i><i class="m wo hot"></i>
+                <i class="m wi lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m wo hot"></i>
+                <i class="m wi lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m t hot"></i><i class="fu"></i><i class="fu"></i><i class="fu"></i>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <dl class="tradeoff">
+          <dt>The idea</dt>
+          <dd>Every outcome cell carries its own accent's ambient glow — the existing
+            <code>glow-green</code> / <code>glow-amber</code> / <code>glow-red</code> utilities,
+            unchanged. Today adds <code>glow-emphasis</code>, the same treatment the emphasis toast uses.</dd>
+          <dt>Reads as</dt>
+          <dd>A lit board. Closest to the Code board's card treatment, so the two modules feel like
+            one app.</dd>
+          <dt>Costs</dt>
+          <dd>Nothing new — three existing utilities applied by day state. Cheapest of the three.</dd>
+          <dt>Watch out</dt>
+          <dd>A dense grid of glowing cells blooms: at 26px with a 6px gap, neighbouring halos overlap
+            and a solid month can look hazy. Wants the largest gap of the three.</dd>
+        </dl>
       </div>
     </div>
-    <div class="legend">
-      <span><i class="c m"></i> met</span>
-      <span><i class="c p"></i> partial</span>
-      <span><i class="c x"></i> missed</span>
-      <span><i class="c"></i> unknown</span>
-      <span><i class="c fu"></i> before start / future</span>
-      <span><i class="c m t"></i> today</span>
-      <span><i style="width:15px;height:5px;border-radius:2px;background:var(--met);display:inline-block"></i> streak link</span>
-      <span><i style="width:15px;height:5px;border-radius:2px;background:var(--bridge);display:inline-block"></i> forgiven</span>
+
+    <div class="ppanel g2">
+      <div class="optgrid">
+        <div class="scroll"><div class="app v2">
+          <div class="mock-bar">
+            <span class="hname">Morning routine <span class="hmeta">· every day · 1 miss / rolling week</span></span>
+            <span class="hmeta">Jun – Jul</span>
+          </div>
+          <div class="mock-body">
+            <div class="qwrap">
+              <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+              <div class="gq">
+                <i class="fu"></i><i class="fu"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+                <i class="m wi lk"></i><i class="m lk bridge"></i><i class="p lk bridge"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+                <i class="m wi lk"></i><i class="m lk"></i><i class="m lk bridge"></i><i class="x"></i><i class="u"></i><i class="m lk hot"></i><i class="m wo hot"></i>
+                <i class="m wi lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m wo hot"></i>
+                <i class="m wi lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m t hot"></i><i class="fu"></i><i class="fu"></i><i class="fu"></i>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <dl class="tradeoff">
+          <dt>The idea</dt>
+          <dd>Invert it: cells become dim tinted plates with a 1px accent rim, and the <b>connector</b>
+            carries the light. The chain is the glowing filament; the days are nodes threaded on it.
+            A forgiven link keeps its full width and simply <b>doesn't glow</b> — grey and inert.</dd>
+          <dt>Reads as</dt>
+          <dd>The streak itself, lit. It puts the emphasis on the thing the feature is about — the
+            unbroken run — rather than on the individual days.</dd>
+          <dt>Costs</dt>
+          <dd>One new glow value on the connector pseudo-element; the cells get cheaper (no outer
+            shadow). Roughly the same work as Finish 1.</dd>
+          <dt>Watch out</dt>
+          <dd>Dimmer cells mean the met/partial/missed hues carry less weight, leaning harder on the
+            §8.3 shape cues. Verify the contrast floor before committing.</dd>
+        </dl>
+      </div>
     </div>
+
+    <div class="ppanel g3">
+      <div class="optgrid">
+        <div class="scroll"><div class="app v3">
+          <div class="mock-bar">
+            <span class="hname">Morning routine <span class="hmeta">· every day · 1 miss / rolling week</span></span>
+            <span class="hmeta">Jun – Jul</span>
+          </div>
+          <div class="mock-body">
+            <div class="qwrap">
+              <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+              <div class="gq">
+                <i class="fu"></i><i class="fu"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+                <i class="m wi lk"></i><i class="m lk bridge"></i><i class="p lk bridge"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+                <i class="m wi lk"></i><i class="m lk"></i><i class="m lk bridge"></i><i class="x"></i><i class="u"></i><i class="m lk hot"></i><i class="m wo hot"></i>
+                <i class="m wi lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m wo hot"></i>
+                <i class="m wi lk hot"></i><i class="m lk hot"></i><i class="m lk hot"></i><i class="m t hot"></i><i class="fu"></i><i class="fu"></i><i class="fu"></i>
+              </div>
+            </div>
+          </div>
+        </div></div>
+        <dl class="tradeoff">
+          <dt>The idea</dt>
+          <dd>Cells are <b>recessed</b> into the surface (inset rim, sunken fill), and glow is
+            <b>reserved for the live run</b> — the days in the current streak light up, everything
+            behind them sits flat and historical.</dd>
+          <dt>Reads as</dt>
+          <dd>An instrument panel. History is legible but quiet; the part that's still alive is the
+            part that shines, which is exactly the distinction the streak draws.</dd>
+          <dt>Costs</dt>
+          <dd>Needs <code>HabitDay.inStreak</code> on the rendered cell — <b>already in the model</b>
+            (§5.3), so no new engine work, but it's the only finish that consumes it.</dd>
+          <dt>Watch out</dt>
+          <dd>The most restrained of the three; if you wanted the habits view to feel as vivid as the
+            Code board, this is the one that won't. Also the most CSS per cell.</dd>
+        </dl>
+      </div>
+    </div>
+
   </div>
 </div>
+
+<div class="legend" style="margin-top:.4rem">
+  <span><i style="width:15px;height:15px;border-radius:4px;background:#34d399;display:inline-block"></i> met</span>
+  <span><i style="width:15px;height:15px;border-radius:4px;background:#f0b429;display:inline-block"></i> partial</span>
+  <span><i style="width:15px;height:15px;border-radius:4px;background:#f87171;display:inline-block"></i> missed</span>
+  <span><i style="width:15px;height:15px;border-radius:4px;background:#141d2e;display:inline-block"></i> unknown</span>
+  <span><i style="width:15px;height:15px;border-radius:4px;background:none;border:1px dashed #223049;display:inline-block"></i> before start / future</span>
+  <span><i style="width:15px;height:5px;border-radius:2px;background:#34d399;display:inline-block"></i> streak link</span>
+  <span><i style="width:15px;height:5px;border-radius:2px;background:#48566e;display:inline-block"></i> forgiven</span>
 </div>
 
 <h3>8.3 Colour tokens and the non-colour channel</h3>
 
-<p>
-  Five tokens join the existing <code>@theme inline</code> block in
-  <code>frontend/app/globals.css</code>, beside <code>--color-accent-*</code>, each with a light and
-  dark value: <code>--color-habit-met</code>, <code>--color-habit-partial</code>,
-  <code>--color-habit-missed</code>, <code>--color-habit-unknown</code>,
-  <code>--color-habit-bridge</code>. Components use the generated Tailwind utilities, never a raw hex.
+<div class="callout">
+  <b>Reuse the app's palette — do not invent one.</b> alfred is <b>dark-only</b>: <code>:root</code> in
+  <code>globals.css</code> already holds the dark values and there is no light variant to author
+  against. It also already names every colour this grid needs, and already owns the glow language as
+  reusable <code>@utility</code> rules. The grid consumes those; it does not add a parallel
+  <code>--color-habit-*</code> scale.
+</div>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:24%">Day state</th><th style="width:34%">Existing token</th><th>Glow (finishes 1 &amp; 3)</th></tr>
+  <tr><td><code>met</code></td><td><code>--color-accent-green</code> <span class="small">#34d399</span></td><td><code>glow-green</code></td></tr>
+  <tr><td><code>partial</code></td><td><code>--color-accent-amber</code> <span class="small">#f0b429</span></td><td><code>glow-amber</code></td></tr>
+  <tr><td><code>missed</code></td><td><code>--color-accent-red</code> <span class="small">#f87171</span></td><td><code>glow-red</code></td></tr>
+  <tr><td>today's ring</td><td><code>--color-accent-teal</code> <span class="small">#4fd1e0</span></td><td><code>glow-emphasis</code></td></tr>
+  <tr><td><code>skipped</code> / <code>unknown</code></td><td>a raised tint of <code>--color-surface</code></td><td>—</td></tr>
+  <tr><td>before start / future</td><td>a dashed <code>--color-border</code> outline</td><td>—</td></tr>
+  <tr><td>forgiven connector</td><td>between <code>--color-border</code> and <code>--color-muted-foreground</code></td><td>never — inert by design</td></tr>
+</table>
+</div>
+
+<p class="small">
+  So <b>exactly two new values</b> are needed, both greys with no existing name: the unknown-cell fill
+  and the forgiven-connector grey. Add those two to the <code>@theme inline</code> block as
+  <code>--color-habit-unknown</code> and <code>--color-habit-bridge</code>; everything else is an
+  existing utility. Components use generated Tailwind classes, never a raw hex.
+</p>
+
+<p class="small">
+  <b>No finish animates.</b> A pulsing streak was considered and left out: it would need a
+  <code>motion-reduce</code> escape on every cell in a quarter-sized grid, and a habit chain is
+  ambient information you glance at, not an event that needs announcing.
 </p>
 
 <div class="callout">
@@ -990,7 +1212,7 @@ interface HabitsActions {
     can't derive, kept out of the main flow so it isn't a fourth thing to tap past every morning.</li>
 </ul>
 
-<h3>9.3 The create dialog</h3>
+<h3>9.3 The create dialog — a sentence builder</h3>
 
 <p>
   A <code>FormDialog</code> opened from the page header and from the empty state, collecting exactly
@@ -999,170 +1221,169 @@ interface HabitsActions {
   calls <code>addHabit</code>; the habit appears in the list optimistically and the dialog closes.
 </p>
 
+<p>
+  <b>Settled:</b> the form is <b>one editable sentence</b>, not a stacked field list. Each underlined
+  slot is a real control that opens a small popover and writes its result back inline:
+</p>
+
+<div class="app" style="padding:1rem 1.1rem;margin:1rem 0">
+  <div class="sentence" style="color:#e8edf5">
+    <span class="fld" style="font-size:.9rem;background:#0f1626;border-color:#1e2a3f;color:#e8edf5">Morning routine</span><br />
+    Every <span class="slot" style="color:#4fd1e0;border-color:#4fd1e0">day</span> I will
+    <span class="slotchip" style="color:#4fd1e0;border-color:#4fd1e0;background:rgba(79,209,224,.12)">be up by 06:15</span>
+    and <span class="slotchip" style="color:#4fd1e0;border-color:#4fd1e0;background:rgba(79,209,224,.12)">get outside for light</span>
+    <span class="slot" style="color:#4fd1e0;border-color:#4fd1e0">+</span><br />
+    forgiving <span class="slot" style="color:#4fd1e0;border-color:#4fd1e0">1</span> miss a week.
+  </div>
+</div>
+
+<div class="callout">
+  <b>Accessibility is the cost of this shape, and it is not optional.</b> A sentence is not a form:
+  every slot needs a genuine control with a programmatic label (<i>not</i> a
+  <code>&lt;span onClick&gt;</code>), a visible focus ring, and a keyboard path that reaches it in
+  reading order. The sentence must also reflow to two or three lines on a phone without the slots
+  losing their inline meaning. Budget for this — it is the reason this shape was the most expensive
+  of the three considered.
+</div>
+
+<h3>9.4 Pick how the sentence gets built</h3>
+
+<div class="callout">
+  <b>Your call — the shape above is settled, this is its interaction.</b> The three models below all
+  produce the same criteria array and the same POST body; they differ in what <b>+</b> opens, how an
+  existing chip is edited, and how the sentence behaves as criteria pile up. Name your pick in a PR
+  comment; no pick ⇒ <b>Model 1</b>.
+</div>
+
+<div class="picker">
+  <input type="radio" name="builder" id="sb-1" checked />
+  <input type="radio" name="builder" id="sb-2" />
+  <input type="radio" name="builder" id="sb-3" />
+
+  <div class="ptabs">
+    <label for="sb-1">1 · Kind menu first</label>
+    <label for="sb-2">2 · One popover</label>
+    <label for="sb-3">3 · Type to build</label>
+  </div>
+
+  <div class="ppanels">
+
+    <div class="ppanel s1">
+      <div class="optgrid">
+        <div class="app" style="padding:1rem">
+          <div class="small" style="color:#8a96a8;margin:0 0 .5rem">+ opens a list of what a criterion can be</div>
+          <span class="pop" style="background:#0d1320;border-color:#25324a;min-width:230px">
+            <span class="crit" style="border-color:#1e2a3f"><span style="color:#e8edf5">Yes / no</span><span class="hmeta">got outside</span></span>
+            <span class="crit" style="border-color:#1e2a3f"><span style="color:#4fd1e0">A time</span><span class="hmeta">up by 06:15</span></span>
+            <span class="crit" style="border-color:#1e2a3f"><span style="color:#e8edf5">A count</span><span class="hmeta">3 glasses</span></span>
+            <span class="crit"><span style="color:#e8edf5">A duration</span><span class="hmeta">20 minutes</span></span>
+          </span>
+          <div class="small" style="color:#8a96a8;margin:.7rem 0 .4rem">→ then only that kind's fields</div>
+          <span class="pop" style="background:#0d1320;border-color:#25324a;min-width:230px">
+            <span class="pt" style="color:#e8edf5">A time</span>
+            <span class="crit" style="border-color:#1e2a3f"><span style="color:#8a96a8">Label</span><span class="val" style="background:#0f1626;border-color:#1e2a3f;color:#e8edf5">be up by</span></span>
+            <span class="crit"><span style="color:#8a96a8">No later than</span><span class="val" style="background:#0f1626;border-color:#1e2a3f;color:#e8edf5">06:15</span></span>
+          </span>
+        </div>
+        <dl class="tradeoff">
+          <dt>+ opens</dt>
+          <dd>A menu naming the four kinds with a one-line example each. Choosing one opens a
+            compact popover carrying <b>only</b> that kind's fields.</dd>
+          <dt>Editing a chip</dt>
+          <dd>Click it → the same second popover, prefilled, with <b>Remove</b>.</dd>
+          <dt>Precedent</dt>
+          <dd>Strongest of the three: this is exactly <code>REPEAT_PRESETS</code> +
+            <code>ruleFromPreset</code> from <code>lib/recurrence</code> — a named list of shapes, then
+            the fields that shape needs.</dd>
+          <dt>Strength</dt>
+          <dd>The menu <i>teaches</i> what a criterion can be, which matters when the concept is new.
+            Never shows an irrelevant field. Maps 1:1 onto the discriminated union in §6.1.</dd>
+          <dt>Weakness</dt>
+          <dd>Two taps to add one criterion.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="ppanel s2">
+      <div class="optgrid">
+        <div class="app" style="padding:1rem">
+          <div class="small" style="color:#8a96a8;margin:0 0 .5rem">+ opens one surface; the kind switch reveals the rest</div>
+          <span class="pop" style="background:#0d1320;border-color:#25324a;min-width:250px">
+            <span class="crit" style="border-color:#1e2a3f"><span style="color:#8a96a8">Label</span><span class="val" style="background:#0f1626;border-color:#1e2a3f;color:#e8edf5">be up by</span></span>
+            <span class="crit" style="border-color:#1e2a3f">
+              <span class="seg" style="border-color:#1e2a3f">
+                <span style="color:#8a96a8">yes/no</span><span class="sel" style="background:#4fd1e0;color:#0a0e17">time</span><span style="color:#8a96a8">count</span><span style="color:#8a96a8">mins</span>
+              </span>
+            </span>
+            <span class="crit"><span style="color:#8a96a8">No later than</span><span class="val" style="background:#0f1626;border-color:#1e2a3f;color:#e8edf5">06:15</span></span>
+          </span>
+        </div>
+        <dl class="tradeoff">
+          <dt>+ opens</dt>
+          <dd>A single popover: label field, a segmented kind switch, and the comparator + target row
+            revealed only when a measured kind is selected.</dd>
+          <dt>Editing a chip</dt>
+          <dd>Identical surface, prefilled — add and edit are literally the same component.</dd>
+          <dt>Precedent</dt>
+          <dd>The segmented control already exists in the shell's view switcher.</dd>
+          <dt>Strength</dt>
+          <dd>One tap, one surface, one commit. Least component work of the three, and the smallest
+            test surface.</dd>
+          <dt>Weakness</dt>
+          <dd>The popover reflows as you flip kinds, which is jumpy next to the sentence. Four kinds
+            crammed into a segmented control are less legible than a menu that names them with
+            examples.</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="ppanel s3">
+      <div class="optgrid">
+        <div class="app" style="padding:1rem">
+          <div class="small" style="color:#8a96a8;margin:0 0 .5rem">+ becomes an input inside the sentence itself</div>
+          <div class="sentence" style="color:#e8edf5;font-size:.85rem;line-height:2">
+            Every <span class="slot" style="color:#4fd1e0;border-color:#4fd1e0">day</span> I will
+            <span class="fld" style="background:#0f1626;border-color:#4fd1e0;color:#e8edf5">up by 6:15▍</span>
+          </div>
+          <span class="pop" style="background:#0d1320;border-color:#25324a;min-width:230px;margin-top:.5rem">
+            <span class="crit" style="border-color:#1e2a3f">
+              <span style="color:#e8edf5">a <b style="color:#4fd1e0">time</b>, no later than <b style="color:#4fd1e0">06:15</b></span>
+              <span class="hmeta">↵</span>
+            </span>
+            <span class="crit"><span style="color:#8a96a8">a yes / no called "up by 6:15"</span><span class="hmeta">⇥</span></span>
+          </span>
+        </div>
+        <dl class="tradeoff">
+          <dt>+ opens</dt>
+          <dd>Nothing — it becomes an inline text input in the sentence. You type
+            <code>up by 6:15</code>; the builder offers a parsed reading ("a time, no later than
+            06:15") that <kbd>Enter</kbd> accepts. Anything it can't parse becomes a yes/no criterion.</dd>
+          <dt>Editing a chip</dt>
+          <dd>Click → back to text, re-parsed on commit.</dd>
+          <dt>Precedent</dt>
+          <dd><b>None in this app.</b> Worth being plain about: recurrence uses <i>presets</i>, and
+            <code>lib/recurrence/parse.ts</code> is only a JSONB→typed bridge, not a language parser.
+            This model would introduce alfred's first natural-language parser.</dd>
+          <dt>Strength</dt>
+          <dd>Fastest once learned, and never leaves the sentence — the most in keeping with the
+            capture-first ethos.</dd>
+          <dt>Weakness</dt>
+          <dd>By far the most to build: a parser, its own exhaustive unit tests, and a suggestion
+            affordance that has to be keyboard-navigable. A wrong guess is worse than a menu, and
+            this is the option most likely to overrun the story. <b>If picked, expect the create form
+            to become its own ticket.</b></dd>
+        </dl>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <p class="small">
   Criterion <b>keys are generated, never typed</b> — slugify the label, de-duplicate with a numeric
   suffix, and freeze the key once created so history stays intact (D10). Errors surface through
   <code>useFormSubmit</code>, as in <code>NewStoryDialog</code>.
 </p>
-
-<h3>9.4 Pick the create form's shape</h3>
-
-<div class="callout">
-  <b>Your call — everything else here is settled.</b> The three shapes below collect the same fields
-  and post the same body; they differ in how much they ask for at once. Click a tab to compare, then
-  name your pick in a PR comment. <b>No pick before the implementation session starts ⇒ Option A.</b>
-</div>
-
-<div class="picker">
-  <input type="radio" name="createform" id="opt-a" checked />
-  <input type="radio" name="createform" id="opt-b" />
-  <input type="radio" name="createform" id="opt-c" />
-
-  <div class="ptabs">
-    <label for="opt-a">A · One stacked form</label>
-    <label for="opt-b">B · Two steps</label>
-    <label for="opt-c">C · Sentence builder</label>
-  </div>
-
-  <div class="ppanels">
-
-    <!-- ── Option A ─────────────────────────────────────────────── -->
-    <div class="ppanel pa">
-      <div class="optgrid">
-        <div class="mock">
-          <div class="mock-bar"><span>New habit</span><span class="hmeta">✕</span></div>
-          <div class="mock-body">
-            <span class="flabel">Name</span>
-            <div class="fld" style="margin-bottom:.9rem">Morning routine</div>
-
-            <span class="flabel">How a day is judged</span>
-            <div class="critrow">
-              <span>Up by 6:15</span>
-              <span class="row"><span class="kindchip">time ≤ 06:15</span><span class="hmeta">⋯</span></span>
-            </div>
-            <div class="critrow">
-              <span>Outside for light</span>
-              <span class="row"><span class="kindchip">yes / no</span><span class="hmeta">⋯</span></span>
-            </div>
-            <div class="addrow">+ Add criterion</div>
-
-            <div style="margin-top:.9rem"><span class="flabel">Which days</span>
-              <div class="dayset">
-                <span class="on">M</span><span class="on">T</span><span class="on">W</span><span class="on">T</span>
-                <span class="on">F</span><span class="on">S</span><span class="on">S</span>
-              </div>
-            </div>
-
-            <div style="margin-top:.9rem"><span class="flabel">Forgive</span>
-              <span class="row"><span class="fld">− 1 +</span>
-                <span class="hmeta">misses per rolling week</span></span>
-            </div>
-
-            <div class="btnrow"><span class="btn">Cancel</span><span class="btn primary">Create habit</span></div>
-          </div>
-        </div>
-        <dl class="tradeoff">
-          <dt>Shape</dt>
-          <dd>Everything on one surface, in the order the epic describes a habit: what it's called,
-            how a day is judged, when it applies, how forgiving it is.</dd>
-          <dt>Reuses</dt>
-          <dd><code>FormDialog</code>, <code>FieldLabel</code>, <code>TextField</code>,
-            <code>ToggleButton</code>, <code>useFormSubmit</code> — no new atoms.</dd>
-          <dt>Strength</dt>
-          <dd>Cheapest to build and to test; the whole habit is reviewable before you commit to it;
-            closest to <code>NewStoryDialog</code>, so it needs no new conventions.</dd>
-          <dt>Weakness</dt>
-          <dd>The tallest of the three. With 3+ criteria it scrolls inside the dialog on a phone.</dd>
-          <dt>Best if</dt>
-          <dd>You want the skeleton standing with the least new surface area.</dd>
-        </dl>
-      </div>
-    </div>
-
-    <!-- ── Option B ─────────────────────────────────────────────── -->
-    <div class="ppanel pb">
-      <div class="optgrid">
-        <div class="mock">
-          <div class="mock-bar"><span>New habit</span><span class="hmeta">✕</span></div>
-          <div class="mock-body">
-            <div class="steps">
-              <b>1 · The commitment</b><span class="barlet on"></span><span class="barlet"></span>
-              <span>2 · How it's judged</span>
-            </div>
-
-            <span class="flabel">Name</span>
-            <div class="fld" style="margin-bottom:.9rem">Morning routine</div>
-
-            <span class="flabel">Which days</span>
-            <div class="dayset" style="margin-bottom:.9rem">
-              <span class="on">M</span><span class="on">T</span><span class="on">W</span><span class="on">T</span>
-              <span class="on">F</span><span class="on">S</span><span class="on">S</span>
-            </div>
-
-            <span class="flabel">Forgive</span>
-            <span class="row"><span class="fld">− 1 +</span><span class="hmeta">misses per rolling week</span></span>
-
-            <div class="btnrow"><span class="btn">Cancel</span><span class="btn primary">Next →</span></div>
-          </div>
-        </div>
-        <dl class="tradeoff">
-          <dt>Shape</dt>
-          <dd>Step 1 is the promise (name, days, allowance). Step 2 is the scoring (the criteria
-            list, identical to A's). Back/Next; Create only on step 2.</dd>
-          <dt>Reuses</dt>
-          <dd>Everything A does, plus a small step indicator and one piece of wizard state.</dd>
-          <dt>Strength</dt>
-          <dd>Matches how the epic frames a habit — a commitment, then the rule that judges it. Each
-            step fits a phone with no scrolling however many criteria you add.</dd>
-          <dt>Weakness</dt>
-          <dd>Two surfaces to test and to screenshot; you can't see the whole habit at once before
-            creating it; a second click for the common one-criterion case.</dd>
-          <dt>Best if</dt>
-          <dd>You expect several criteria per habit, and mostly create habits on your phone.</dd>
-        </dl>
-      </div>
-    </div>
-
-    <!-- ── Option C ─────────────────────────────────────────────── -->
-    <div class="ppanel pc">
-      <div class="optgrid">
-        <div class="mock">
-          <div class="mock-bar"><span>New habit</span><span class="hmeta">✕</span></div>
-          <div class="mock-body">
-            <div class="sentence">
-              <span class="fld" style="font-size:.9rem">Morning routine</span><br />
-              Every <span class="slot">day</span> I will
-              <span class="slotchip">be up by 06:15</span>
-              and <span class="slotchip">get outside for light</span>
-              <span class="slot">+</span><br />
-              forgiving <span class="slot">1</span> miss a week.
-            </div>
-            <div class="btnrow"><span class="btn">Cancel</span><span class="btn primary">Create habit</span></div>
-          </div>
-        </div>
-        <dl class="tradeoff">
-          <dt>Shape</dt>
-          <dd>One editable sentence. Each underlined slot opens a small popover — the weekday set,
-            a criterion editor, the allowance stepper — and writes its result back inline.</dd>
-          <dt>Reuses</dt>
-          <dd><code>FormDialog</code> and <code>Popover</code>, but the slot components and their
-            inline-editing behaviour are new.</dd>
-          <dt>Strength</dt>
-          <dd>Reads back as the commitment you're actually making, which is the thing a habit form is
-            for. Shortest surface; a one-criterion habit is a single line.</dd>
-          <dt>Weakness</dt>
-          <dd>Most to build and the most novel to make accessible — every slot needs a real
-            control, a label and a keyboard path, and the sentence must survive reflow on a narrow
-            screen. Highest risk of overrunning this story.</dd>
-          <dt>Best if</dt>
-          <dd>You want the habits view to feel distinct from the task forms and will accept a
-            larger UI slice to get it.</dd>
-        </dl>
-      </div>
-    </div>
-
-  </div>
-</div>
 
 <h2>10 · What this story does <i>not</i> touch</h2>
 
@@ -1224,7 +1445,8 @@ interface HabitsActions {
       <td>Grid: one focusable cell per applicable day, non-applicable cells not focusable, the three
         connector cases, the Sunday/Monday stub pair, accessible names for each state. Editor: the
         header re-derives live, a boolean commits on toggle, a measured field commits on blur,
-        skip via the overflow, Escape returns focus. Create dialog: the chosen option's flow, key
+        skip via the overflow, Escape returns focus. Create sentence: the chosen builder model's flow
+        (§9.4), <b>every slot reachable and operable by keyboard with a programmatic label</b>, key
         slugification + de-duplication, submit disabled until valid.</td></tr>
   <tr><td><code>components/habits/history-grid.stories.tsx</code></td>
       <td><b>Committed visual baselines</b> — the natural evidence for §8 per the epic. Stories: every
@@ -1254,8 +1476,8 @@ interface HabitsActions {
 </p>
 
 <p class="small">
-  It must exercise <b>every</b> line of §14, so at minimum: the create form (whichever option is
-  chosen), <code>/habits</code> with a chain including a forgiven bridge and a real break, the day
+  It must exercise <b>every</b> line of §14, so at minimum: the create sentence being built,
+  <code>/habits</code> with a chain including a forgiven bridge and a real break, the day
   editor mid-edit with the header derived, the nav badge before and after logging, plus
   <code>exec</code> capture of the migration applying and a <code>curl</code> against
   <code>PUT …/entries</code> showing the frozen status coming back. Confirm with
@@ -1336,6 +1558,9 @@ interface HabitsActions {
   <li><b>The nav badge</b> counts today's applicable-but-unlogged habits and disappears at zero.</li>
   <li><b>A habit can be created in the app</b> — name, ≥ 1 criterion, weekday set, allowance — and
     appears without a page refresh.</li>
+  <li><b>The create form is the sentence builder</b> (§9.3), and <b>every slot is a real labelled
+    control</b> reachable by keyboard in reading order, with the sentence reflowing on a phone without
+    a slot losing its inline meaning.</li>
   <li><b>The grid renders weeks as columns</b>, with earned links, <b>full-width grey</b> forgiven
     links, and stubs at both ends of a Sunday→Monday crossing.</li>
   <li><b>Tapping a day opens the editor</b>, whose status header is derived live and cannot be typed;
