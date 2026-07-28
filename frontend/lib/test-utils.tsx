@@ -7,6 +7,7 @@ import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
+import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
@@ -15,6 +16,8 @@ import type {
   CodeStory,
   Epic,
   Folder,
+  Habit,
+  HabitEntry,
   Item,
   Project,
   WeeklyPlan,
@@ -38,6 +41,8 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   stories?: CodeStory[];
   /** The weekly plan archive: the picker index plus the latest plan's document. */
   weeklyPlans?: { index: WeeklyPlanSummary[]; latest: WeeklyPlan | undefined };
+  /** The habit definitions, their logged days, and the date the store treats as today. */
+  habits?: { habits: Habit[]; entries: HabitEntry[]; today: string };
 }
 
 export function renderWithProviders(
@@ -49,6 +54,7 @@ export function renderWithProviders(
     epics = [],
     stories = [],
     weeklyPlans = { index: [], latest: undefined },
+    habits = { habits: [], entries: [], today: '2026-07-28' },
     ...options
   }: ProviderRenderOptions = {},
 ) {
@@ -70,7 +76,13 @@ export function renderWithProviders(
                         initialIndex={weeklyPlans.index}
                         initialLatest={weeklyPlans.latest}
                       >
-                        {children}
+                        <HabitsProvider
+                          initialHabits={habits.habits}
+                          initialEntries={habits.entries}
+                          serverToday={habits.today}
+                        >
+                          {children}
+                        </HabitsProvider>
                       </WeeklyPlanProvider>
                     </CodeFilterProvider>
                   </CodeProvider>
