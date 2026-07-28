@@ -149,6 +149,12 @@
   .gq i.p { background: var(--a-amber); }
   .gq i.x { background: var(--a-red); }
   .gq i.fu { background: none; border: 1px dashed #223049; }
+  /* skipped — excused by hand, so it is neither an outcome colour nor blank-unknown */
+  .gq i.sk { background: #141d2e; box-shadow: inset 0 0 0 1px #2b3648;
+             display: flex; align-items: center; justify-content: center;
+             color: #7d8ba1; font-size: 14px; line-height: 1; }
+  /* a short standalone run, for the §8.2 comparison */
+  .gq.mini { grid-template-rows: repeat(4, 26px); padding: 0; }
   .gq i.t { box-shadow: 0 0 0 2px var(--a-teal); }
   .gq i.lk::after { content: ''; position: absolute; left: 50%; top: 100%;
                     transform: translateX(-50%); width: 10px; height: 6px; background: var(--a-green); }
@@ -275,18 +281,34 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">S3</span>The only <code>status</code> a caller may state is <code>skipped</code></h3>
+  <h3><span class="n">S3</span>A caller sends <i>evidence</i>, not a verdict — <code>skipped</code> is the sole exception</h3>
   <p>
-    <code>PUT …/entries</code> derives and freezes the status from <code>results</code> (D3, D12).
-    A request body may carry <code>status: 'skipped'</code> — and nothing else. Any other explicit
-    status is a <b>400</b>.
+    Logging a day normally means sending <code>results</code>. The server scores them against the
+    habit's criteria, and stores <b>both</b> the raw results and the status it computed:
+  </p>
+  <pre style="margin:.5rem 0"><code>PUT /api/habits/&lt;id&gt;/entries
+{ "date": "2026-07-27", "results": { "wake": 364, "light": true } }   → stored as met</code></pre>
+  <p>
+    The body also has an optional <code>status</code>. <b>The only value accepted there is
+    <code>"skipped"</code></b>; any other explicit status is a <b>400</b>, even alongside valid
+    results.
   </p>
   <p class="why">
-    <b>Why:</b> D12 freezes the status <i>and</i> stores the raw results beside it, so history stays
-    chartable. Honouring a hand-typed <code>met</code> would let those two disagree permanently, with
-    no way to tell later which was true. <code>skipped</code> is the one status the model genuinely
-    cannot derive, which is exactly why it is the one exception. The epic's API table names only
-    <code>skipped</code>; this makes that exhaustive rather than illustrative.
+    <b>Why:</b> because the row keeps the results <i>and</i> the verdict, honouring a stated status
+    would let a caller write this —
+    <code>{ "results": { "wake": 700, "light": false }, "status": "met" }</code> — a row reading
+    <i>met</i> while carrying evidence of an 11:40 wake-up and no light. Both are stored forever, they
+    contradict each other, and nothing downstream can tell which was true. D12 freezes the status so
+    that <i>editing your criteria later</i> can't retroactively break a chain you already earned; it
+    is not a licence to assert a verdict the evidence doesn't support.
+    <br />
+    <b>Why <code>skipped</code> is exempt:</b> it isn't a judgement about the criteria at all — it
+    means <i>don't score this day</i> (illness, travel). No set of results can imply it, so if a caller
+    can't state it, it can't exist. The epic's API table names only <code>skipped</code>; this reads
+    that as exhaustive rather than illustrative.
+    <br />
+    <b>In practice</b> the coach can log "I got up at 6:05 and went outside" and let the server derive
+    <code>met</code>. It cannot say "mark today as met."
   </p>
 </div>
 
@@ -900,6 +922,14 @@ interface HabitsActions {
 </table>
 </div>
 
+<p class="small">
+  <b>Only three link values exist, and <code>bridge</code> is reserved.</b> A day emits
+  <code>bridge</code> <i>only</i> when the run continued because the rolling allowance absorbed a
+  spent day — <code>missed</code>, <code>partial</code>, or unlogged (D5). A <code>skipped</code> day
+  spends nothing, so it emits <code>streak</code> on both sides like any other continuation; the
+  excusing is carried by the cell, not the connector (§8.2).
+</p>
+
 <div class="callout">
   <b>A forgiven day's links are full-width and grey — never dashed</b> (§6.1). Same weight, same
   geometry, colour only. A dash reads as <i>weaker</i> or <i>uncertain</i>; a run across a forgiven
@@ -913,7 +943,8 @@ interface HabitsActions {
   for light". Week two contains a forgiven <code>partial</code> (grey links either side, run
   survives). Week three is a real break: a forgiven <code>missed</code> on Thursday, then an unlogged
   Friday — two spent days in one rolling window exceeds the allowance, so no link leaves Thursday.
-  The live run then goes from that Saturday to today.
+  The live run then goes from that Saturday to today, straight through a <code>skipped</code>
+  Wednesday in week four whose links stay <b>fully lit</b> — see below.
 </p>
 
 <div class="settled">
@@ -937,15 +968,57 @@ interface HabitsActions {
         <i class="fu"></i><i class="fu"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
         <i class="m wi lk"></i><i class="m lk bridge"></i><i class="p lk bridge"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
         <i class="m wi lk"></i><i class="m lk"></i><i class="m lk bridge"></i><i class="x"></i><i class="u"></i><i class="m lk"></i><i class="m wo"></i>
-        <i class="m wi lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
+        <i class="m wi lk"></i><i class="m lk"></i><i class="sk lk">–</i><i class="m lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m wo"></i>
         <i class="m wi lk"></i><i class="m lk"></i><i class="m lk"></i><i class="m t"></i><i class="fu"></i><i class="fu"></i><i class="fu"></i>
       </div>
     </div>
   </div>
 </div></div>
 
+<h4>Skipped is not forgiven — and the connector is what says so</h4>
+
+<p class="small">
+  Both keep a run alive without adding to the count, so they are easy to conflate. They cost
+  different things, and the <b>links</b> are the only place that difference is visible. Same streak
+  number below; different price.
+</p>
+
+<div class="app v2" style="padding:1.1rem 1.2rem;margin:1rem 0">
+  <div style="display:flex;gap:2.6rem;flex-wrap:wrap">
+    <div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem">
+        <b>Skipped</b> — excused by hand</div>
+      <div class="gq mini">
+        <i class="m lk"></i><i class="sk lk">–</i><i class="m lk"></i><i class="m"></i>
+      </div>
+      <div style="color:#8a96a8;font-size:.68rem;margin-top:.6rem;line-height:1.5">
+        links stay <b style="color:#34d399">lit</b><br />streak 3 · allowance <b>untouched</b>
+      </div>
+    </div>
+    <div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem">
+        <b>Forgiven</b> — a spent day the allowance absorbed</div>
+      <div class="gq mini">
+        <i class="m lk bridge"></i><i class="p lk bridge"></i><i class="m lk"></i><i class="m"></i>
+      </div>
+      <div style="color:#8a96a8;font-size:.68rem;margin-top:.6rem;line-height:1.5">
+        links go <b style="color:#8a96a8">grey</b><br />streak 3 · <b>1 allowance spent</b>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="callout">
-  <b>The one thing to verify while building it.</b> Dim plates mean the met / partial / missed hues
+  <b>Do not render a skipped day's links as a grey bridge.</b> Grey means exactly one thing — <i>this
+  run survived only because the allowance absorbed a spent day</i>. A skipped day spends nothing
+  (D5), so greying its links would report an allowance charge that never happened, and the "misses
+  left" figure the owner reads would contradict the chain they're looking at. A skipped day emits
+  <code>link: 'streak'</code> like any other continuation; it is the <b>cell</b> that reads as
+  excused, never the connector.
+</div>
+
+<div class="callout">
+  <b>The other thing to verify while building it.</b> Dim plates mean the met / partial / missed hues
   carry less weight than a solid fill would, so this finish leans harder on the §8.3 shape cues and on
   the dark-canvas contrast floor (SPEC §5.4). Check both before calling it done — colour is doing less
   work here by design, so the non-colour channel has to take up the slack.
@@ -1191,7 +1264,10 @@ interface HabitsActions {
       <td>Table-driven. <code>started_on</code> / <code>archived_at</code> / <code>active_days</code>
         bounding applicability; the today exemption (applicable-and-unlogged today doesn't zero the
         streak, but a <i>logged</i> miss today does count); <code>skipped</code> stepped over
-        transparently; allowance <b>equal to</b> vs <b>exceeding</b> the window (the off-by-one that
+        transparently — <b>including that <code>met, skipped, met</code> emits
+        <code>link: 'streak'</code> on both sides and leaves <code>allowanceRemaining</code>
+        unchanged, where <code>met, partial, met</code> emits <code>bridge</code> and decrements it</b>
+        (the pair that stops the two being conflated); allowance <b>equal to</b> vs <b>exceeding</b> the window (the off-by-one that
         decides whether a chain survives); the epic's §3.2 and §6.2 grids as fixtures, asserting
         <b>both</b> the scalars and the per-day <code>link</code> values; the streak counting
         <code>met</code> days not elapsed days; hit-rate denominators excluding unknown and skipped;
@@ -1226,9 +1302,10 @@ interface HabitsActions {
         until valid.</td></tr>
   <tr><td><code>components/habits/history-grid.stories.tsx</code></td>
       <td><b>Committed visual baselines</b> — the natural evidence for §8 per the epic. Stories: every
-        day state in one grid; a forgiven bridge; a Sunday→Monday wrap; a real break; a habit starting
-        mid-window; a weekday-only habit. See the <code>storybook</code> skill for the capture →
-        approve flow; never hand-edit a baseline.</td></tr>
+        day state in one grid; a forgiven bridge; <b>a skipped day mid-run, its links still lit —
+        paired with the forgiven story so the baselines themselves carry the distinction</b>; a
+        Sunday→Monday wrap; a real break; a habit starting mid-window; a weekday-only habit. See the
+        <code>storybook</code> skill for the capture → approve flow; never hand-edit a baseline.</td></tr>
   <tr><td><code>e2e/habits.spec.ts</code></td>
       <td>The whole loop through the real stack: ⌘K → Habits → create the reference habit → the empty
         state is replaced by a card → open today's cell → set both criteria → the header reads
@@ -1339,6 +1416,8 @@ interface HabitsActions {
     a slot losing its inline meaning.</li>
   <li><b>The grid renders weeks as columns</b>, with earned links, <b>full-width grey</b> forgiven
     links, and stubs at both ends of a Sunday→Monday crossing.</li>
+  <li><b>A skipped day keeps the chain lit through it</b> — its links render as earned, not as a grey
+    bridge, and logging it leaves the allowance remaining untouched.</li>
   <li><b>Tapping a day opens the editor</b>, whose status header is derived live and cannot be typed;
     <code>skipped</code> is reachable only from the overflow.</li>
   <li><b>A logged day repaints immediately</b> and survives a reload; a failed write rolls the cell
