@@ -13,6 +13,7 @@
     --missed: #d1544a; --missed-soft: #f2c4c0;
     --partial: #d99b2b; --partial-soft: #f6e0b4;
     --unknown: #e9edf3; --na: #f4f6fa; --na-line: #dfe4ec;
+    --bridge: #b3bcc8; --future: #f0f3f7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -23,6 +24,7 @@
       --missed: #e8776a; --missed-soft: #4a2320;
       --partial: #e0ab48; --partial-soft: #45330f;
       --unknown: #232a33; --na: #1a1f26; --na-line: #2b323c;
+      --bridge: #55606d; --future: #191e25;
     }
   }
   * { box-sizing: border-box; }
@@ -199,61 +201,48 @@
   .seg span { padding: .15rem .55rem; border-radius: 6px; font-size: .72rem; color: var(--muted); }
   .seg span.sel { background: var(--met); color: #fff; font-weight: 700; }
 
-  /* ── The picker ──────────────────────────────────────────────── */
-  .picker { border: 1px solid var(--accent); border-radius: 12px; padding: 1rem 1.1rem 1.2rem;
-            margin: 1.2rem 0; background: var(--bg); }
-  .picker fieldset { border: 0; padding: 0; margin: 0 0 .8rem; }
-  .picker legend { font-size: .74rem; font-weight: 700; letter-spacing: .05em;
-                   text-transform: uppercase; color: var(--accent); padding: 0; margin-bottom: .45rem; }
-  .opts { display: flex; flex-wrap: wrap; gap: .4rem; }
-  .opts label { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
-                border: 1px solid var(--line); border-radius: 999px; padding: .2rem .7rem;
-                font-size: .8rem; background: var(--card); }
-  .opts label:hover { border-color: var(--accent); }
-  .opts input { accent-color: var(--accent); margin: 0; }
-  .stage { margin: .9rem 0 0; }
-  .picker .opt { display: none; }
-  .picker .v { display: none; }
-  .picker .selection { margin-top: 1rem; position: relative; }
-  .copy { position: absolute; top: .5rem; right: .5rem; border: 1px solid var(--accent);
-          background: var(--accent-bg); color: var(--accent); border-radius: 6px;
-          padding: .15rem .6rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
-  .grp { margin: 1.4rem 0 0; padding-top: 1rem; border-top: 1px dashed var(--line); }
-  .grp:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  /* ── The settled grid: weeks as columns, weekdays as rows ────── */
+  .qwrap { display: flex; gap: 7px; align-items: flex-start; }
+  .months { display: grid; grid-template-columns: repeat(13, 36px);
+            font-size: .62rem; color: var(--faint); margin-bottom: 5px; }
+  .dowq { display: grid; grid-template-rows: repeat(7, 30px); gap: 7px;
+          font-size: .62rem; color: var(--faint); text-align: right; padding: 29px 3px 0 0; }
+  .dowq span { line-height: 30px; }
+  /* Vertical padding leaves room for the wrap stubs above row 1 and below row 7. */
+  .gridq { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 30px);
+           gap: 7px; width: max-content; padding: 9px 0; }
+  .gridq i.c { width: 30px; height: 30px; border-radius: 7px; font-size: 0; }
+  .gridq i.c.fu { background: none; border: 1px dashed var(--na-line); }
 
-  /* CSS-only option switching — no JS needed to compare or to read the metadata block. */
-  .picker:has(#o-cal:checked)    .o-o-cal    { display: block; }
-  .picker:has(#o-gh:checked)     .o-o-gh     { display: block; }
-  .picker:has(#o-cal:checked)    .v-o-cal    { display: inline; }
-  .picker:has(#o-gh:checked)     .v-o-gh     { display: inline; }
+  /* Connector — a bar filling the 6px gap down to the next weekday. A FORGIVEN day's
+     links keep the full bar and go grey (never dashed): same weight, different colour. */
+  .gridq i.c.lk::after {
+    content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    width: 12px; height: 7px; background: var(--met);
+  }
+  .gridq i.c.lk.bridge::after { background: var(--bridge); }
 
-  .picker:has(#k-bar:checked)    .o-k-bar    { display: block; }
-  .picker:has(#k-merge:checked)  .o-k-merge  { display: block; }
-  .picker:has(#k-rail:checked)   .o-k-rail   { display: block; }
-  .picker:has(#k-bar:checked)    .v-k-bar    { display: inline; }
-  .picker:has(#k-merge:checked)  .v-k-merge  { display: inline; }
-  .picker:has(#k-rail:checked)   .v-k-rail   { display: inline; }
+  /* Wrap stubs — Sunday (bottom of a column) and the next Monday (top of the next) are
+     consecutive days at opposite ends of the grid, so each grows a half-stub outward. */
+  .gridq i.c.wo::after {
+    content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    width: 12px; height: 8px; background: var(--met); border-radius: 0 0 3px 3px;
+  }
+  .gridq i.c.wi::before {
+    content: ''; position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%);
+    width: 12px; height: 8px; background: var(--met); border-radius: 3px 3px 0 0;
+  }
+  .gridq i.c.wo.bridge::after, .gridq i.c.wi.bridge::before { background: var(--bridge); }
 
-  .picker:has(#g-list:checked)   .o-g-list   { display: block; }
-  .picker:has(#g-seg:checked)    .o-g-seg    { display: block; }
-  .picker:has(#g-auto:checked)   .o-g-auto   { display: block; }
-  .picker:has(#g-list:checked)   .v-g-list   { display: inline; }
-  .picker:has(#g-seg:checked)    .v-g-seg    { display: inline; }
-  .picker:has(#g-auto:checked)   .v-g-auto   { display: inline; }
-
-  .picker:has(#s-row:checked)    .o-s-row    { display: block; }
-  .picker:has(#s-rail:checked)   .o-s-rail   { display: block; }
-  .picker:has(#s-chips:checked)  .o-s-chips  { display: block; }
-  .picker:has(#s-row:checked)    .v-s-row    { display: inline; }
-  .picker:has(#s-rail:checked)   .v-s-rail   { display: inline; }
-  .picker:has(#s-chips:checked)  .v-s-chips  { display: inline; }
-
-  .picker:has(#f-badge:checked)  .o-f-badge  { display: block; }
-  .picker:has(#f-meter:checked)  .o-f-meter  { display: block; }
-  .picker:has(#f-ladder:checked) .o-f-ladder { display: block; }
-  .picker:has(#f-badge:checked)  .v-f-badge  { display: inline; }
-  .picker:has(#f-meter:checked)  .v-f-meter  { display: inline; }
-  .picker:has(#f-ladder:checked) .v-f-ladder { display: inline; }
+  .settled { border: 1px solid var(--accent); border-radius: 12px; padding: 1rem 1.1rem;
+             margin: 1.2rem 0; background: var(--bg); }
+  .chosen { display: grid; grid-template-columns: 150px 1fr; gap: .3rem .9rem; font-size: .9rem; }
+  .chosen dt { font-weight: 600; color: var(--accent); font-family: ui-monospace, monospace; font-size: .8rem; }
+  .chosen dd { margin: 0; }
+  @media (max-width: 560px) {
+    .chosen { grid-template-columns: 1fr; gap: .1rem; }
+    .chosen dd { margin-bottom: .5rem; }
+  }
 
   @media (max-width: 560px) {
     .wrap { padding: 1.25rem .9rem 3rem; }
@@ -578,7 +567,7 @@
   <p>
     Every habit shows, next to its history: <b>current streak</b>, <b>longest streak</b>,
     <b>average streak</b>, <b>allowance remaining</b>, <b>hit rate</b>, and the <b>formation stage</b>.
-    The exact layout is §6's decision <code>stats</code>; that it exists is not optional.
+    They render in a rail beside the history grid (§6); that they exist at all is not optional.
   </p>
   <p class="why">
     <b>Why:</b> "how long has this been going" is a headline outcome of the feature, not a caption. The
@@ -912,406 +901,182 @@ unique (habit_id, entry_date)                                -- one row per habi
   of the epic's definition of done — not a docs afterthought.
 </p>
 
-<h2>6 · Pick the UI</h2>
+<h2>6 · The settled UI</h2>
 
 <p>
-  Settled in round one and <b>not re-asked here</b>: a <b>grid</b> of day cells (not a strip, not a
-  per-habit month view), cells <b>large enough to read and tap</b>, <b>click a cell to log or backfill</b>,
-  and measured values shown <b>on tap</b> rather than printed in every cell. The layout question from
-  round one is gone — it wasn't independent of the visualization, so it was really the same choice
-  twice.
-</p>
-<p>
-  Five decisions remain. The metadata block at the bottom updates as you choose — <b>copy it and paste
-  it back</b> and the story sessions build exactly that. Toggling works with JavaScript disabled; only
-  the copy button needs it (otherwise just select the block).
+  Settled with the owner. <b>This is the design to build</b> — a UI story should implement what's
+  below rather than re-deriving it.
 </p>
 
-<div class="picker">
-
-  <!-- ── A · grid orientation ────────────────────────────────── -->
-  <div class="grp">
-  <fieldset>
-    <legend>A · Grid orientation — which way does the chain run?</legend>
-    <div class="opts">
-      <label><input type="radio" name="orient" id="o-cal" checked /> Weeks as rows (calendar-like)</label>
-      <label><input type="radio" name="orient" id="o-gh" /> Weeks as columns (GitHub-like)</label>
-    </div>
-  </fieldset>
-
-  <div class="stage">
-    <div class="opt o-o-cal">
-      <div class="mock">
-        <div class="mock-bar"><span class="hname">Morning routine</span><span class="hmeta">Jul 2026 · every day · 1 miss/wk</span></div>
-        <div class="mock-body">
-          <div class="scrollx">
-          <div class="gridc">
-            <b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b><b>S</b>
-            <i class="c m lk">1</i><i class="c m">2</i><i class="c x">3</i><i class="c u">4</i><i class="c m lk">5</i><i class="c m lk">6</i><i class="c m">7</i>
-            <i class="c m lk">8</i><i class="c m lk bridge">9</i><i class="c p lk bridge">10</i><i class="c m lk">11</i><i class="c m lk">12</i><i class="c m lk">13</i><i class="c m">14</i>
-            <i class="c m lk">15</i><i class="c m lk">16</i><i class="c m lk">17</i><i class="c m lk">18</i><i class="c m lk">19</i><i class="c m lk">20</i><i class="c m">21</i>
-            <i class="c m lk">22</i><i class="c m lk">23</i><i class="c m lk">24</i><i class="c m lk">25</i><i class="c m lk">26</i><i class="c m lk">27</i><i class="c m t">28</i>
-          </div>
-          </div>
-          <div class="legend">
-            <span><i class="c m"></i> met</span><span><i class="c p"></i> partial</span>
-            <span><i class="c x"></i> missed</span><span><i class="c u"></i> unknown</span>
-            <span><i class="c n"></i> n/a</span><span><i class="c m t"></i> today</span>
-          </div>
-        </div>
-      </div>
-      <p class="small">
-        Weekdays across, weeks down — a continuous calendar that never breaks at a month boundary.
-        <b>Chains read left-to-right like text</b>, dates are legible, cells are comfortably tappable,
-        and it's the familiar shape you liked in the month view. Costs vertical space: a quarter is
-        ~13 rows and scrolls. Note the <b>wrap</b>: Sunday and the next Monday are consecutive days at
-        opposite ends of the grid, so a connector can't span them — a run visually restarts each row.
-        Both orientations have this seam; here it falls on a week boundary, which is at least a
-        natural place for the eye to break.
-      </p>
-    </div>
-
-    <div class="opt o-o-gh">
-      <div class="mock">
-        <div class="mock-bar"><span class="hname">Morning routine</span><span class="hmeta">13 weeks · every day · 1 miss/wk</span></div>
-        <div class="mock-body">
-          <div class="scrollx" style="display:flex;gap:6px;align-items:flex-start">
-            <div class="dowcol"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
-            <div class="gridv">
-              <i class="c m lk"></i><i class="c m"></i><i class="c x"></i><i class="c u"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i><i class="c x"></i><i class="c u"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m"></i>
-              <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c u"></i><i class="c u"></i>
-            </div>
-          </div>
-          <div class="legend">
-            <span><i class="c m"></i> met</span><span><i class="c p"></i> partial</span>
-            <span><i class="c x"></i> missed</span><span><i class="c u"></i> unknown</span>
-          </div>
-        </div>
-      </div>
-      <p class="small">
-        The GitHub-contributions shape: a whole quarter in one screenful with no scrolling.
-        <b>But the chain runs <i>vertically</i> down each column and wraps to the top of the next</b> —
-        that's inherent to the orientation, and it makes a connector harder to read as a chain. Cells
-        must also stay smaller for a quarter to fit, which fights the legibility you asked for and
-        leaves no room for date numbers.
-      </p>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── B · connector style ─────────────────────────────────── -->
-  <div class="grp">
-  <fieldset>
-    <legend>B · How a streak connects — and how a forgiven day bridges</legend>
-    <div class="opts">
-      <label><input type="radio" name="conn" id="k-bar" checked /> Solid bar in the gap</label>
-      <label><input type="radio" name="conn" id="k-merge" /> Cells fuse into a capsule</label>
-      <label><input type="radio" name="conn" id="k-rail" /> Rail beneath the run</label>
-    </div>
-  </fieldset>
-
-  <div class="stage">
-    <div class="opt o-k-bar">
-      <div class="mock"><div class="mock-body">
-        <div class="strip">
-          <i class="c m lk">21</i><i class="c m lk bridge">22</i><i class="c p lk bridge">23</i><i class="c m lk">24</i><i class="c m">25</i><i class="c x">26</i><i class="c m">27</i>
-        </div>
-        <p class="small" style="margin:.8rem 0 0">
-          A short bar fills the gap between two linked days; the links <i>either side</i> of a
-          <b>forgiven</b> day go dashed, so the bridge reads as one span rather than a solid bar
-          running into an amber cell. The break after 25 is a real break (the allowance was already
-          spent on 23, so 26 ends the run). Lightest touch —
-          cells keep their own shape, so met/partial/missed colour still reads first.
-        </p>
-      </div></div>
-    </div>
-
-    <div class="opt o-k-merge">
-      <div class="mock"><div class="mock-body">
-        <div class="strip merge" style="gap:6px">
-          <i class="c m lk rs">21</i><i class="c m lk">22</i><i class="c p lk bridge">23</i><i class="c m lk">24</i><i class="c m re">25</i><i class="c x solo">26</i><i class="c m solo">27</i>
-        </div>
-        <p class="small" style="margin:.8rem 0 0">
-          Consecutive days lose their inner corners and fuse into one continuous capsule; a forgiven
-          day sits inside it at reduced opacity. <b>The most literal "unbroken chain"</b> — the run
-          reads as a single object. Costs the most: cell shape now encodes streak membership as well
-          as outcome, and a long run becomes one big block.
-        </p>
-      </div></div>
-    </div>
-
-    <div class="opt o-k-rail">
-      <div class="mock"><div class="mock-body">
-        <div class="rail">
-          <div class="railrow" style="width:max-content">
-            <div class="strip">
-              <i class="c m">21</i><i class="c m">22</i><i class="c p">23</i><i class="c m">24</i><i class="c m">25</i><i class="c x">26</i><i class="c m">27</i>
-            </div>
-            <span class="railbar" style="left:0; width:67px"></span>
-            <span class="railbar dash" style="left:67px; width:44px"></span>
-            <span class="railbar" style="left:111px; width:67px"></span>
-          </div>
-        </div>
-        <p class="small" style="margin:.8rem 0 0">
-          A thin rail runs under the streak, dashed where a day was forgiven. <b>Cleanly separates the
-          two ideas</b> — colour is the day's outcome, the rail is the run — and scales to long runs
-          without changing any cell. Adds a row of vertical space and is the subtlest of the three.
-        </p>
-      </div></div>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── C · logging a multi-criteria day ────────────────────── -->
-  <div class="grp">
-  <fieldset>
-    <legend>C · The editor that opens when you tap a day</legend>
-    <div class="opts">
-      <label><input type="radio" name="log" id="g-list" checked /> Criteria checklist</label>
-      <label><input type="radio" name="log" id="g-seg" /> Day verdict, then details</label>
-      <label><input type="radio" name="log" id="g-auto" /> Criteria only, status derived live</label>
-    </div>
-  </fieldset>
-
-  <div class="stage">
-    <div class="opt o-g-list">
-      <div class="mock"><div class="mock-body">
-        <span class="pop">
-          <span class="pt">Mon 27 Jul</span>
-          <span class="crit"><span><span class="box on">✓</span> Up by 6:15</span><span class="val">06:04</span></span>
-          <span class="crit"><span><span class="box off">✕</span> Outside for light</span><span class="b no">no</span></span>
-          <span class="crit" style="border-top:1px solid var(--line);padding-top:.45rem">
-            <span style="color:var(--partial);font-weight:700">Partial</span>
-            <span class="b">Skip this day</span>
-          </span>
-        </span>
-        <p class="small" style="margin:.8rem 0 0">
-          One row per criterion — tick the boolean, type the time. The day's verdict is shown at the
-          bottom as a <b>consequence</b>, not an input, with an explicit escape hatch for
-          <code>skipped</code>. Most honest to the model; two taps for a two-criterion habit.
-        </p>
-      </div></div>
-    </div>
-
-    <div class="opt o-g-seg">
-      <div class="mock"><div class="mock-body">
-        <span class="pop">
-          <span class="pt">Mon 27 Jul</span>
-          <span class="seg" style="margin-bottom:.55rem">
-            <span class="sel">Met</span><span>Partial</span><span>Missed</span><span>Skip</span>
-          </span>
-          <span class="crit"><span>Up by 6:15</span><span class="val">06:04</span></span>
-          <span class="crit"><span>Outside for light</span><span class="box on">✓</span></span>
-        </span>
-        <p class="small" style="margin:.8rem 0 0">
-          Pick the day's verdict first, then optionally fill in the detail. <b>One tap to log a good
-          day</b> — the fastest path for the common case — but the verdict can now disagree with the
-          criteria beneath it, so the model needs a rule for which wins (D12 says the stored status
-          wins, which makes this coherent but quietly overridable).
-        </p>
-      </div></div>
-    </div>
-
-    <div class="opt o-g-auto">
-      <div class="mock"><div class="mock-body">
-        <span class="pop">
-          <span class="pt">Mon 27 Jul <span style="color:var(--met);font-weight:700;float:right">Met</span></span>
-          <span class="crit"><span>Up by 6:15</span><span class="val">06:04</span></span>
-          <span class="crit"><span>Outside for light</span><span class="box on">✓</span></span>
-        </span>
-        <p class="small" style="margin:.8rem 0 0">
-          No verdict control at all — the status in the header recomputes as you edit, and
-          <code>skipped</code> moves to an overflow menu. <b>Smallest surface and impossible to make
-          inconsistent</b>, at the cost of hiding the one status the model can't derive.
-        </p>
-      </div></div>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── D · stats surface ───────────────────────────────────── -->
-  <div class="grp">
-  <fieldset>
-    <legend>D · Where the six numbers live (D13)</legend>
-    <div class="opts">
-      <label><input type="radio" name="stats" id="s-row" checked /> Stat row above the grid</label>
-      <label><input type="radio" name="stats" id="s-rail" /> Rail beside the grid</label>
-      <label><input type="radio" name="stats" id="s-chips" /> Chip cluster in the header</label>
-    </div>
-  </fieldset>
-
-  <div class="stage">
-    <div class="opt o-s-row">
-      <div class="mock">
-        <div class="mock-bar"><span class="hname">Morning routine</span><span class="stagebadge">Gaining Momentum</span></div>
-        <div class="mock-body">
-          <div class="stats" style="padding-bottom:.9rem;border-bottom:1px solid var(--line);margin-bottom:.9rem">
-            <span class="stat"><b class="hot">6</b><small>current</small></span>
-            <span class="stat"><b>14</b><small>longest</small></span>
-            <span class="stat"><b>5.5</b><small>average</small></span>
-            <span class="stat"><b>0</b><small>misses left</small></span>
-            <span class="stat"><b>82%</b><small>hit rate</small></span>
-            <span class="stat"><b>41</b><small>days banked</small></span>
-          </div>
-          <div class="strip">
-            <i class="c m lk">21</i><i class="c m lk bridge">22</i><i class="c p lk bridge">23</i><i class="c m lk">24</i><i class="c m lk">25</i><i class="c m lk">26</i><i class="c m t">27</i>
-          </div>
-        </div>
-      </div>
-      <p class="small">
-        A row of big numbers directly above the history. <b>Most legible and the most emphatic</b> —
-        the streak is the first thing you see, which is what D13 is for. Takes a full band of vertical
-        space per habit, so a page of five habits gets tall.
-      </p>
-    </div>
-
-    <div class="opt o-s-rail">
-      <div class="mock">
-        <div class="mock-bar"><span class="hname">Morning routine</span><span class="stagebadge">Gaining Momentum</span></div>
-        <div class="mock-body">
-          <div style="display:flex;gap:1.1rem;align-items:flex-start;flex-wrap:wrap">
-            <div class="strip" style="flex-wrap:wrap;max-width:280px">
-              <i class="c m lk">21</i><i class="c m lk bridge">22</i><i class="c p lk bridge">23</i><i class="c m lk">24</i><i class="c m lk">25</i><i class="c m lk">26</i><i class="c m t">27</i>
-            </div>
-            <div class="statrail">
-              <span class="stat"><b class="hot">6</b><small>current streak</small></span>
-              <span class="stat"><b>14 · 5.5</b><small>longest · average</small></span>
-              <span class="stat"><b>82% · 0</b><small>hit rate · misses left</small></span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <p class="small">
-        The numbers sit beside the grid rather than above it, so each habit stays one band tall.
-        <b>Best density when several habits are stacked</b>; needs a fallback stacking on narrow
-        screens, and pairs figures up to fit, which reads as slightly denser.
-      </p>
-    </div>
-
-    <div class="opt o-s-chips">
-      <div class="mock">
-        <div class="mock-bar" style="flex-wrap:wrap;gap:.5rem">
-          <span class="hname">Morning routine</span>
-          <span class="statchips">
-            <span class="statchip">🔥 <b>6</b></span>
-            <span class="statchip">best <b>14</b></span>
-            <span class="statchip">avg <b>5.5</b></span>
-            <span class="statchip">misses left <b>0</b></span>
-            <span class="statchip">hit <b>82%</b></span>
-            <span class="statchip">Gaining Momentum</span>
-          </span>
-        </div>
-        <div class="mock-body">
-          <div class="strip">
-            <i class="c m lk">21</i><i class="c m lk bridge">22</i><i class="c p lk bridge">23</i><i class="c m lk">24</i><i class="c m lk">25</i><i class="c m lk">26</i><i class="c m t">27</i>
-          </div>
-        </div>
-      </div>
-      <p class="small">
-        Everything folds into the card header as pill chips, matching the existing chip vocabulary
-        (<code>PriorityChip</code>, <code>DueDateChip</code>, <code>RecurrenceChip</code>).
-        <b>Most compact and most native to the app</b>; every figure gets equal, small emphasis, so
-        the streak stops being the headline.
-      </p>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── E · formation stage ─────────────────────────────────── -->
-  <div class="grp">
-  <fieldset>
-    <legend>E · How the formation stage is shown (D6)</legend>
-    <div class="opts">
-      <label><input type="radio" name="form" id="f-badge" checked /> Badge only</label>
-      <label><input type="radio" name="form" id="f-meter" /> Badge + progress meter</label>
-      <label><input type="radio" name="form" id="f-ladder" /> Four-stage ladder</label>
-    </div>
-  </fieldset>
-
-  <div class="stage">
-    <div class="opt o-f-badge">
-      <div class="mock"><div class="mock-body">
-        <span class="stagebadge">Gaining Momentum</span>
-        <p class="small" style="margin:.8rem 0 0">
-          Just the label, with the day count on tap. <b>Quietest option</b> — it's an approximate
-          heuristic (D6) and this presents it as one, without implying precision it doesn't have.
-          Gives no sense of how far off the next stage is.
-        </p>
-      </div></div>
-    </div>
-
-    <div class="opt o-f-meter">
-      <div class="mock"><div class="mock-body">
-        <div style="max-width:290px">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.35rem">
-            <span class="stagebadge">Gaining Momentum</span>
-            <span class="small">41 / 66 days</span>
-          </div>
-          <div class="meter"><span style="width:62%"></span></div>
-        </div>
-        <p class="small" style="margin:.8rem 0 0">
-          The badge plus a bar toward the 66-day marker. <b>Answers "how much further"</b> and turns
-          banked days into visible progress that a miss can never take away. Risks reading as a precise
-          target when the underlying range is 18–254 days — the caption has to carry that caveat.
-        </p>
-      </div></div>
-    </div>
-
-    <div class="opt o-f-ladder">
-      <div class="mock"><div class="mock-body">
-        <div style="max-width:400px">
-          <div class="ladder">
-            <div class="done">Deliberate</div>
-            <div class="now">Gaining Momentum</div>
-            <div>Nearing Automaticity</div>
-            <div>Possibly Established</div>
-          </div>
-          <p class="small" style="margin:.5rem 0 0">41 banked days · next stage at 42</p>
-        </div>
-        <p class="small" style="margin:.8rem 0 0">
-          All four stages visible with the current one marked. <b>Most legible as a journey</b> and
-          makes the whole arc discoverable without a tooltip. Widest of the three and the most visual
-          weight for a heuristic — a strong candidate for a detail view rather than every card.
-        </p>
-      </div></div>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── the copyable result ─────────────────────────────────── -->
-  <div class="selection">
-    <button class="copy" type="button" id="copyBtn">Copy</button>
-<pre id="sel">alfred-habits-ui
-orientation: <span class="v v-o-cal">weeks-as-rows</span><span class="v v-o-gh">weeks-as-columns</span>
-connector: <span class="v v-k-bar">gap-bar</span><span class="v v-k-merge">fused-capsule</span><span class="v v-k-rail">under-rail</span>
-day-editor: <span class="v v-g-list">criteria-checklist</span><span class="v v-g-seg">verdict-first</span><span class="v v-g-auto">derived-only</span>
-stats: <span class="v v-s-row">stat-row</span><span class="v v-s-rail">side-rail</span><span class="v v-s-chips">header-chips</span>
-formation: <span class="v v-f-badge">badge</span><span class="v v-f-meter">badge-and-meter</span><span class="v v-f-ladder">four-stage-ladder</span></pre>
-  </div>
-  <p class="small">
-    Paste that block back into the epic thread (or a PR comment). It gets recorded here as a settled
-    decision, and the UI stories are refined against it.
-  </p>
+<div class="settled">
+  <dl class="chosen">
+    <dt>orientation</dt>
+    <dd><b>Weeks as columns</b> (GitHub-like) — weekdays down, weeks across. A full quarter fits on
+      one screen with no scrolling.</dd>
+    <dt>connector</dt>
+    <dd><b>Gap bar</b> — a bar filling the gap between two days the streak links. Cells keep their own
+      shape, so outcome colour still reads first.</dd>
+    <dt>day-editor</dt>
+    <dd><b>Derived only</b> — tapping a day opens the criteria; the status recomputes live in the
+      header and is never typed directly. <code>skipped</code> lives in an overflow menu.</dd>
+    <dt>stats</dt>
+    <dd><b>Side rail</b> — the six figures sit beside the grid, so each habit stays one band tall when
+      several are stacked.</dd>
+    <dt>formation</dt>
+    <dd><b>Badge + meter</b> — the stage label with a progress bar toward the 66-day marker.</dd>
+  </dl>
 </div>
 
-<script>
-  // Progressive enhancement only — the block above is already correct and selectable without JS.
-  document.getElementById('copyBtn').addEventListener('click', function () {
-    var text = document.getElementById('sel').innerText;
-    var done = function () {
-      var b = document.getElementById('copyBtn');
-      b.textContent = 'Copied';
-      setTimeout(function () { b.textContent = 'Copy'; }, 1600);
-    };
-    if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done, function () {}); }
-  });
-</script>
+<h3>6.1 Two refinements to the connector</h3>
+
+<p>
+  Both were raised by the owner against the round-two mockups and are <b>part of the spec, not
+  polish</b> — each fixes a way the plain gap bar misrepresents the streak rules in §3.
+</p>
+
+<ol>
+  <li>
+    <b>A forgiven day's links are full-width and grey — never dashed.</b> The bar keeps exactly the
+    weight and geometry of a normal link and changes only colour. A dashed line reads as
+    <i>weaker</i> or <i>uncertain</i>; the run across a forgiven day is neither. It is unbroken —
+    it simply wasn't earned, and grey says that without implying the chain is fraying.
+  </li>
+  <li>
+    <b>A streak crossing a column boundary grows a stub at each end.</b> Sunday sits at the bottom
+    of one column and the next Monday at the top of the next, so no bar can join them. Each
+    therefore renders a half-stub pointing outward — down from the Sunday, up into the Monday.
+    Without it the chain appears to break every week, which is the one thing this visualization
+    exists to communicate correctly.
+  </li>
+</ol>
+
+<h3>6.2 The habit card</h3>
+
+<p class="small">
+  The reference habit: every day, <code>allowance: 1</code>, criteria "up by 6:15" and "outside for
+  light". The window is a full quarter — which fits without scrolling at this cell size — and the
+  habit itself started partway through it, in mid-June. Every number in the rail is derived from the
+  grid beside it, so the two can be checked against each other.
+</p>
+
+<div class="scrollx">
+<div class="mock">
+  <div class="mock-bar">
+    <span class="hname">Morning routine <span class="hmeta">· every day · 1 miss / rolling week</span></span>
+    <span class="hmeta">May – Jul 2026</span>
+  </div>
+  <div class="mock-body">
+    <div style="display:flex;gap:1.4rem;align-items:flex-start;flex-wrap:wrap">
+
+      <div class="qwrap">
+        <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+        <div>
+          <div class="months"><span style="grid-column:1/5">May</span><span style="grid-column:5/10">Jun</span><span style="grid-column:10/14">Jul</span></div>
+          <div class="gridq">
+            <i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+            <i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+            <i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+            <i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+            <i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+            <i class="c fu"></i><i class="c fu"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c u"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+            <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c fu"></i><i class="c fu"></i><i class="c fu"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="statrail">
+        <span class="stat"><b class="hot">33</b><small>current streak</small></span>
+        <span class="stat"><b>33 · 14</b><small>longest · average</small></span>
+        <span class="stat"><b>94% · 1</b><small>hit rate · misses left</small></span>
+        <div style="max-width:190px;padding-top:.15rem">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.35rem">
+            <span class="stagebadge">Nearing Automaticity</span>
+          </div>
+          <div class="meter"><span style="width:71%"></span></div>
+          <p class="small" style="margin:.3rem 0 0;font-size:.68rem">47 of ~66 banked days</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="legend">
+      <span><i class="c m"></i> met</span>
+      <span><i class="c p"></i> partial</span>
+      <span><i class="c x"></i> missed</span>
+      <span><i class="c u"></i> unknown</span>
+      <span><i class="c fu"></i> before start / future</span>
+      <span><i class="c m t"></i> today</span>
+      <span><i style="width:16px;height:5px;border-radius:2px;background:var(--met);display:inline-block"></i> streak link</span>
+      <span><i style="width:16px;height:5px;border-radius:2px;background:var(--bridge);display:inline-block"></i> forgiven</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<p class="small">
+  Four things in that grid are worth reading carefully, because they are the §3 rules made visible:
+</p>
+<ul class="small">
+  <li>
+    <b>Two weeks contain a <code>partial</code></b> (the second and the sixth tracked weeks). The
+    links either side go grey, the run continues through, and the streak count skips the day — it was
+    forgiven, not earned. That is why the current streak reads <b>33</b> rather than the 35 elapsed
+    days of the run.
+  </li>
+  <li>
+    <b>The third tracked week is a real break.</b> Thursday was <code>missed</code> — grey link in, so
+    it was forgiven on its own — and then Friday was never logged. Two spent days inside the same
+    rolling window exceeds the allowance, so the chain stops dead: no link out of Thursday at all.
+    Saturday begins the run that is still going.
+  </li>
+  <li>
+    <b>Every column boundary carries a stub</b> where the streak survived the Sunday→Monday hop, so
+    one 33-day run reads as a single chain instead of eight weekly fragments.
+  </li>
+  <li>
+    <b>The first five columns are before <code>started_on</code></b> and render with the same
+    "not tracked" treatment as the three future days at the end. They are not misses, and they are in
+    no denominator — the 94% hit rate is over the 50 logged days only.
+  </li>
+</ul>
+
+<h3>6.3 The day editor</h3>
+
+<p class="small">
+  Opens on tapping any cell — today or a backfill. The verdict in the header is computed, never typed.
+</p>
+
+<div class="mock"><div class="mock-body">
+  <span class="pop">
+    <span class="pt">Thu 23 Jul <span style="color:var(--partial);font-weight:700;float:right">Partial</span></span>
+    <span class="crit"><span>Up by 6:15</span><span class="val">06:04</span></span>
+    <span class="crit"><span>Outside for light</span><span class="box off">✕</span></span>
+    <span class="crit" style="border-top:1px solid var(--line);padding-top:.45rem;color:var(--faint)">
+      <span style="font-size:.72rem">Spends this week's allowance</span>
+      <span class="b">⋯</span>
+    </span>
+  </span>
+</div></div>
+
+<p class="small">
+  Two properties this shape has to preserve. The header status is a <b>consequence</b> of the criteria
+  and cannot be made to disagree with them — which is what "derived only" buys. And because
+  <code>skipped</code> is the one status the model can't derive, it lives behind the <code>⋯</code>
+  overflow rather than as a fourth thing to tap past on every edit.
+</p>
+
+<div class="callout">
+  <b>Accessibility floor for this design.</b> Four day states plus future and n/a is a lot to carry on
+  hue alone, and the cells are small. Met / partial / missed must stay distinguishable without colour
+  — a glyph, border treatment, or fill pattern — and every cell needs an accessible name giving the
+  date, status and criteria results, since the grid is the only way to reach the editor.
+</div>
 
 <h2>7 · Constraints &amp; non-goals</h2>
 
@@ -1368,14 +1133,14 @@ formation: <span class="v v-f-badge">badge</span><span class="v v-f-meter">badge
   <li><b>RLS + explicit grants are mandatory</b> on both new tables (and any sequence) — omitting a grant produces a "permission denied" the Data API surfaces at runtime, which is exactly what <code>migration-lint</code> exists to catch at commit time.</li>
   <li><b>Every behavioral change lands with a test</b> (unit, Storybook, or E2E) and a <b>demo doc</b> under <code>docs/demos/&lt;branch&gt;/</code> per the <code>showboat</code> skill. §3 is pure functions and should be <b>near-exhaustively table-tested</b> — the rolling-window walk with four statuses, an allowance, a today exemption and transparent skips has more edge cases than the rest of the epic combined.</li>
   <li><b>The API key's blast radius widens</b> with D7/D8: it currently writes the plan archive and reads the PR ratio; after this epic it also reads and writes habit data. Worth stating plainly in the primer when the endpoints are documented.</li>
-  <li>Visual work must respect <code>prefers-reduced-motion</code> and the dark-canvas contrast floor (SPEC §5.4). <b>Four day states plus n/a is a lot to carry on hue alone</b> — met / partial / missed must stay distinguishable to a colour-blind reader via shape, glyph or border, not colour only.</li>
+  <li>Visual work must respect <code>prefers-reduced-motion</code> and the dark-canvas contrast floor (SPEC §5.4). The grid's colour and accessible-name floor is stated with the design in §6.3 — it is a requirement, not a nice-to-have.</li>
 </ul>
 
 <h2>8 · How the work splits into stories</h2>
 
 <p class="small">
   A sketch of the slices, not specs. Each is refined in its own session and may be resized there.
-  §6 must be settled before the UI slices (7–9) are refined.
+  The UI is settled (§6), so no slice is blocked on a design decision.
 </p>
 
 <div class="scroll">
@@ -1388,9 +1153,9 @@ formation: <span class="v v-f-badge">badge</span><span class="v v-f-meter">badge
   <tr><td>5</td><td>Read API for app + coach</td><td><code>GET /api/habits</code> with <code>tz</code>/window params, dual auth, all stats from slice 3 including the all-history scalars.</td><td>1, 3</td></tr>
   <tr><td>6</td><td>Entry upsert</td><td><code>PUT /api/habits/[id]/entries</code>, dual auth, derive-and-freeze status, explicit skip, backfill by date.</td><td>1, 2</td></tr>
   <tr><td>7</td><td>Shell wiring</td><td><code>HabitsProvider</code> optimistic store, <code>/habits</code> route + <code>TaskViews</code> branch, <code>FolderNav</code> link + badge, ⌘K destination, empty state. No history rendering yet.</td><td>4, 5</td></tr>
-  <tr><td>8</td><td>History grid + connectors</td><td>The grid and streak connectors §6 settles on (A + B). Storybook stories with image snapshots are the natural evidence — every day state, a bridged run, and a real break.</td><td>7, §6</td></tr>
-  <tr><td>9</td><td>Stats surface + formation stage</td><td>The six figures and the stage indicator (D + E), reading from the store.</td><td>7, 3, §6</td></tr>
-  <tr><td>10</td><td>Day editor</td><td>The tap-a-cell editor (C), wired to slice 6 through the optimistic store; backfill and skip included.</td><td>8, 6, §6</td></tr>
+  <tr><td>8</td><td>History grid + connectors</td><td>The weeks-as-columns grid, gap-bar connectors, grey forgiven links and the column-wrap stubs (§6.1–6.2). Storybook image snapshots are the natural evidence — every day state, a forgiven bridge, a wrap, and a real break.</td><td>7, §6</td></tr>
+  <tr><td>9</td><td>Stats rail + formation meter</td><td>The six figures in a side rail, plus the stage badge and its progress meter (§6.2), reading from the store.</td><td>7, 3</td></tr>
+  <tr><td>10</td><td>Day editor</td><td>The derived-only tap-a-cell editor (§6.3), wired to slice 6 through the optimistic store; backfill and the overflow <code>skipped</code> included.</td><td>8, 6</td></tr>
   <tr><td>11</td><td>Habit create / edit / archive</td><td>The form: name, criteria list (add/remove/reorder, kind + target per criterion), weekday set, allowance, archive.</td><td>7, 4</td></tr>
   <tr><td>12</td><td>Coach integration</td><td>Third endpoint section + reference script in <code>docs/productivity-coach-primer.md</code>, matching the existing two in voice and status-table detail. This is what closes the loop the epic opened.</td><td>5, 6</td></tr>
 </table>
@@ -1405,10 +1170,6 @@ formation: <span class="v v-f-badge">badge</span><span class="v v-f-meter">badge
 <h2>9 · Open questions</h2>
 
 <ol>
-  <li>
-    <b>The §6 selections.</b> The one intentionally-open decision. Paste the metadata block back and
-    it becomes settled context recorded in this file.
-  </li>
   <li>
     <b>Should a <code>partial</code> cost the same as a full <code>missed</code>?</b> D5 charges both
     one unit of allowance, which keeps the rule to a single sentence — but "up on time, forgot the
