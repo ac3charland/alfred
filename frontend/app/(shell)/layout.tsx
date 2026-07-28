@@ -5,14 +5,17 @@ import { TaskDndProvider } from '@/components/tasks/task-dnd-provider';
 import { requireUser } from '@/lib/auth/require-user';
 import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { getFolders } from '@/lib/data/folders';
+import { getHabitEntries, getHabits } from '@/lib/data/habits';
 import { getAllItems } from '@/lib/data/items';
 import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
+import { todayIn } from '@/lib/habits';
 import { getInstanceConfig } from '@/lib/instance';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
+import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
@@ -41,16 +44,27 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   // instance menu header, so keep the return rather than discarding it.
   const user = await requireUser();
 
-  const [folders, items, projects, epics, stories, weeklyPlanIndex, latestWeeklyPlan] =
-    await Promise.all([
-      getFolders(),
-      getAllItems(),
-      getProjects(),
-      getEpics(),
-      getCodeStories(),
-      getWeeklyPlanIndex(),
-      getLatestWeeklyPlan(),
-    ]);
+  const [
+    folders,
+    items,
+    projects,
+    epics,
+    stories,
+    weeklyPlanIndex,
+    latestWeeklyPlan,
+    habits,
+    habitEntries,
+  ] = await Promise.all([
+    getFolders(),
+    getAllItems(),
+    getProjects(),
+    getEpics(),
+    getCodeStories(),
+    getWeeklyPlanIndex(),
+    getLatestWeeklyPlan(),
+    getHabits(),
+    getHabitEntries(),
+  ]);
 
   return (
     // ToastProvider is the OUTERMOST provider so all three optimistic stores
@@ -76,9 +90,17 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                           initialIndex={weeklyPlanIndex}
                           initialLatest={latestWeeklyPlan}
                         >
-                          <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
-                            {children}
-                          </AppShell>
+                          {/* The server can't know the browser's zone, so today is seeded in
+                              UTC and corrected in a mount effect (see the habits store). */}
+                          <HabitsProvider
+                            initialHabits={habits}
+                            initialEntries={habitEntries}
+                            serverToday={todayIn('UTC')}
+                          >
+                            <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
+                              {children}
+                            </AppShell>
+                          </HabitsProvider>
                         </WeeklyPlanProvider>
                       </SearchProvider>
                     </CodeFilterProvider>
