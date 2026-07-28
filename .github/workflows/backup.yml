@@ -28,9 +28,11 @@ jobs:
       group: db-backup-${{ matrix.instance }}
       cancel-in-progress: false
     services:
-      # Throwaway Postgres for the in-job restore check (VERIFY_DB_URL points here).
+      # Throwaway Postgres for the in-job restore check (VERIFY_DB_URL points here). Must match
+      # Supabase's major version (17) — its pg_dump emits PG17-only GUCs (e.g. transaction_timeout)
+      # that an older server rejects, aborting the restore.
       verify-db:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
         ports:
