@@ -179,8 +179,13 @@ async function main(): Promise<number> {
 
   try {
     log(`› [${instance}] dumping database (full logical dump: schema + data)…`);
-    run(`supabase db dump --db-url "$SUPABASE_DB_URL" -f ${schemaPath}`);
-    run(`supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f ${dataPath}`);
+    // Scope to the `public` schema — that's all the app's data (items, folders, projects, …).
+    // Without it, --data-only also dumps Supabase's managed `auth`/`storage` schemas, whose COPY
+    // statements fail to restore into a cluster that only has our migrations' public schema.
+    run(`supabase db dump --db-url "$SUPABASE_DB_URL" --schema public -f ${schemaPath}`);
+    run(
+      `supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy --schema public -f ${dataPath}`,
+    );
     // Assemble the restorable artifact: schema (creates tables + FKs), then data with FK/trigger
     // checks disabled so the circular items.parent_id FK doesn't reject rows during the COPY.
     run(

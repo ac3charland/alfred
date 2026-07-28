@@ -118,11 +118,12 @@ uploads or counts as green — a red run triggers GitHub's failed-scheduled-run 
 owner):
 
 1. **Dump** — `supabase db dump` writes schema only by default, so the script takes a schema dump
-   plus a `--data-only` dump and assembles one gzip: the schema, then the data loaded with
-   `session_replication_role = replica`. That guard matters — `items.parent_id` is a self-referential
-   (circular) FK, so a plain data-only load fails on row ordering; disabling FK/trigger checks during
-   the COPY (the source data is already consistent) is what lets the artifact restore standalone. A
-   size floor rejects an empty/truncated dump.
+   plus a `--data-only` dump (both scoped to the **`public`** schema — that's all the app's data;
+   `auth`/`storage` are Supabase-managed) and assembles one gzip: the schema, then the data loaded
+   with `session_replication_role = replica`. That guard matters — `items.parent_id` is a
+   self-referential (circular) FK, so a plain data-only load fails on row ordering; disabling
+   FK/trigger checks during the COPY (the source data is already consistent) is what lets the artifact
+   restore standalone. A size floor rejects an empty/truncated dump.
 2. **Verify** — rebuilds the schema in a throwaway Postgres (an Actions service container) from the
    committed migrations — which restore cleanly on vanilla Postgres, unlike the dump's own DDL, which
    references the hosted Supabase `extensions` schema — then loads the dump's **data** into it with the
