@@ -78,8 +78,13 @@ Smoke-test the health route:
 
 ```
 curl https://alfred-workers.<your-subdomain>.workers.dev/
-# → alfred workers ok
+# → alfred workers ok (build 8cbc1d5…)   ← the commit this Worker was built from
+# → alfred workers ok (build unstamped)  ← deployed by hand; nothing records which commit it is
 ```
+
+That build stamp is the answer to *"is production actually current?"* — diff it against
+`git rev-parse origin/main`. A CI deploy stamps the merge commit; a hand-run `wrangler deploy`
+passes no `--var`, so it reports `unstamped`.
 
 The webhook ingress is `POST /github/webhook` on that same host — that's the **Payload URL** you'll
 give GitHub next.
@@ -105,15 +110,57 @@ for you), then:
 
 1. **Merge it.** Within seconds the story should jump `in_refinement → ready_for_dev` on the board,
    and the detail modal should render the snapshotted spec.
-2. If nothing happens, check GitHub → repo → Settings → Webhooks → **Recent Deliveries**: a `401`
-   means the secret mismatches step 3; a `200` with no board change means the `alfred` block didn't
-   parse (compare it to the contract format in `repo-setup/README.md`) or the ref isn't a story in `code_items`.
+2. If nothing happens, check GitHub → repo → Settings → Webhooks → **Recent Deliveries** and read
+   the **response body**:
+
+   | Response | What it means |
+   |---|---|
+   | `401 {"error":"invalid signature"}` | The webhook secret mismatches step 3. |
+   | `200 {"ignored":"no alfred frontmatter block"}` | The Worker couldn't parse the block. Either the PR body really is malformed (compare it to `repo-setup/README.md`) — **or the deployed Worker is older than the phase the PR uses**, which looks identical from here. Check the build stamp on `GET /` before suspecting the PR. |
+   | `200 {"ok":true,"tickets":[]}` | Parsed fine, but the ref matched no row: a typo'd ref, or a story ref sent at `epics` (or vice versa). |
+   | `200 {"ok":true,"tickets":["ALF-42"],…}` | It worked. If the board still looks wrong, the problem is downstream (schema cache, realtime). |
 3. Tail the Worker logs live with `npx wrangler tail` while you redeliver from the Recent Deliveries
    panel.
 
 ## Updating the Worker later
 
-Re-run `npx wrangler deploy` from `workers/`. Secrets persist across deploys — you only re-`secret
-put` a value when it changes (e.g. you rotate the PAT). After any `wrangler.toml` binding change,
-run `npx wrangler types` to refresh `worker-configuration.d.ts` (note: the four secrets are typed by
-hand in `src/index.ts`, since `wrangler types` only generates *bindings*, not secrets).
+**Nothing to do — merging to `main` deploys.** `.github/workflows/deploy-worker.yml` runs
+`wrangler deploy` on every push to `main` (and on demand via *Actions → Deploy Worker → Run
+workflow*). Secrets persist across deploys — you only re-`secret put` a value when it changes
+(e.g. you rotate the PAT). After any `wrangler.toml` binding change, run `npx wrangler types` to
+refresh `worker-configuration.d.ts` (note: the secrets are typed by hand in `src/index.ts`, since
+`wrangler types` only generates *bindings*, not secrets).
+
+### One-time setup for the automatic deploy
+
+The workflow authenticates with a repo secret. Create the token in the Cloudflare dashboard →
+My Profile → API Tokens → **"Edit Cloudflare Workers"** template, then add it under GitHub → repo
+→ Settings → Secrets and variables → Actions:
+
+| Secret | Required? | Value |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | **Yes** | The "Edit Cloudflare Workers" API token. |
+| `CLOUDFLARE_ACCOUNT_ID` | Only if the token can see more than one account | Dashboard → Workers & Pages → Account ID. Leave it unset otherwise. |
+
+Until that secret exists the workflow runs and fails on every merge to `main` — which is the
+intended noise. A Worker that isn't deploying should be loud, not silent.
+
+> **Why this exists (ALF-149).** ALF-130 added the `epic-refinement` phase to the Worker, merged
+> on Jul 25, and was never hand-deployed. Production kept running a build that had never heard of
+> the phase, so every epic-refinement PR got `200 {"ignored":"no alfred frontmatter block"}` and was
+> dropped on the floor — a green delivery, an epic spec that silently never attached. Deploying
+> from CI is what stops "merged" and "live" from drifting apart.
+
+## Recovering a webhook the Worker dropped
+
+A delivery that hit a stale (or broken) Worker is **not** replayed automatically — GitHub got its
+`200`. Once the Worker is fixed and deployed, replay it by hand:
+
+1. GitHub → repo → Settings → Webhooks → the Worker's hook → **Recent Deliveries**.
+2. Find the delivery to re-run — for a merge it's the `pull_request` delivery whose payload has
+   `"action": "closed"` with `"merged": true`.
+3. **Redeliver.** The Worker re-runs the transition against the same payload, so the ticket
+   advances (and a refinement spec snapshots) exactly as it should have at merge time.
+
+Redelivery is idempotent — the transition PATCHes columns to fixed values rather than
+incrementing anything — so re-running one you're unsure about is safe.
