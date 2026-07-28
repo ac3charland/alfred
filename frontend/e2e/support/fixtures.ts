@@ -33,6 +33,8 @@ export const test = base.extend<Fixtures>({
           epics: state.epics ?? [],
           codeItems: state.codeItems ?? [],
           weeklyPlans: state.weeklyPlans ?? [],
+          habits: state.habits ?? [],
+          habitEntries: state.habitEntries ?? [],
         },
       });
       expect(response.ok()).toBeTruthy();

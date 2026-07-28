@@ -8,7 +8,16 @@
 import path from 'node:path';
 import process from 'node:process';
 
-import type { CodeItem, Epic, Folder, Item, Project, WeeklyPlan } from '@/lib/types';
+import type {
+  CodeItem,
+  Epic,
+  Folder,
+  Habit,
+  HabitEntry,
+  Item,
+  Project,
+  WeeklyPlan,
+} from '@/lib/types';
 
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;
@@ -30,6 +39,8 @@ export interface SeedState {
   epics?: Epic[];
   codeItems?: CodeItem[];
   weeklyPlans?: WeeklyPlan[];
+  habits?: Habit[];
+  habitEntries?: HabitEntry[];
 }
 
 let sequence = 0;
@@ -151,5 +162,41 @@ export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
     created_at: overrides.created_at ?? nextCreatedAt(),
     updated_at: overrides.updated_at ?? nextCreatedAt(),
     priority: overrides.priority ?? 1,
+  };
+}
+
+// ── Habit seed builders. ──
+
+/** A habit definition. Defaults to the reference habit's cadence: every day, one miss a week. */
+export function makeHabit(name: string, overrides: Partial<Habit> = {}): Habit {
+  return {
+    id: overrides.id ?? crypto.randomUUID(),
+    name,
+    notes: overrides.notes ?? null,
+    criteria: overrides.criteria ?? [{ key: 'light', label: 'Outside for light', kind: 'boolean' }],
+    active_days: overrides.active_days ?? [1, 2, 3, 4, 5, 6, 7],
+    allowance: overrides.allowance ?? 1,
+    started_on: overrides.started_on ?? '2026-01-01',
+    archived_at: overrides.archived_at ?? null,
+    sort_order: overrides.sort_order ?? null,
+    created_at: overrides.created_at ?? nextCreatedAt(),
+  };
+}
+
+/** One logged day, carrying both the raw results and the status frozen from them. */
+export function makeHabitEntry(
+  habitId: string,
+  entryDate: string,
+  overrides: Partial<HabitEntry> = {},
+): HabitEntry {
+  return {
+    id: overrides.id ?? crypto.randomUUID(),
+    habit_id: habitId,
+    entry_date: entryDate,
+    status: overrides.status ?? 'met',
+    results: overrides.results ?? null,
+    note: overrides.note ?? null,
+    created_at: overrides.created_at ?? nextCreatedAt(),
+    updated_at: overrides.updated_at ?? nextCreatedAt(),
   };
 }

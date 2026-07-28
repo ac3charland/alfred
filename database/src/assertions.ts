@@ -828,6 +828,137 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const habitSchemaResult = await attempt(
+    'habits: the check constraints reject an empty criteria list, a bad weekday, and an over-large allowance (ALF-147)',
+    async () => {
+      const rejected: string[] = [];
+      const cases: [string, string][] = [
+        ['habits_criteria_non_empty', `'[]'::jsonb, '{1,2,3,4,5,6,7}', 0`],
+        ['habits_criteria_non_empty', `'{"key":"k"}'::jsonb, '{1,2,3,4,5,6,7}', 0`],
+        ['habits_active_days_valid', `'[{"key":"k"}]'::jsonb, '{0,1}', 0`],
+        ['habits_active_days_valid', `'[{"key":"k"}]'::jsonb, '{}', 0`],
+        ['habits_allowance_range', `'[{"key":"k"}]'::jsonb, '{1,2,3}', 8`],
+      ];
+      for (const [name, values] of cases) {
+        try {
+          await client.query(
+            `insert into habits (name, criteria, active_days, allowance) values ('bad', ${values})`,
+          );
+        } catch {
+          rejected.push(name);
+          continue;
+        }
+        throw new Error(`${name} accepted a row it should reject (${values})`);
+      }
+      return `rejected: ${rejected.join(', ')}`;
+    },
+  );
+
+  const habitEntryUniqueResult = await attempt(
+    'habit_entries: one row per (habit_id, entry_date), which is what makes logging an upsert (ALF-147)',
+    async () => {
+      const habit = 'aaaaaaaa-0000-4000-8000-000000000001';
+      await client.query(
+        `insert into habits (id, name, criteria) values ($1, 'Morning routine', '[{"key":"light"}]'::jsonb)`,
+        [habit],
+      );
+      await client.query(
+        `insert into habit_entries (habit_id, entry_date, status) values ($1, '2026-07-27', 'met')`,
+        [habit],
+      );
+      let denied = false;
+      try {
+        await client.query(
+          `insert into habit_entries (habit_id, entry_date, status) values ($1, '2026-07-27', 'missed')`,
+          [habit],
+        );
+      } catch {
+        denied = true;
+      }
+      if (!denied) throw new Error('a duplicate (habit_id, entry_date) was accepted');
+      // The same write as an upsert is the correction path, and it must land on the one row.
+      await client.query(
+        `insert into habit_entries (habit_id, entry_date, status) values ($1, '2026-07-27', 'missed')
+           on conflict (habit_id, entry_date) do update set status = excluded.status`,
+        [habit],
+      );
+      const { rows } = await client.query<{ count: string; status: string }>(
+        `select count(*)::text as count, max(status::text) as status
+           from habit_entries where habit_id = $1`,
+        [habit],
+      );
+      const settled = rows[0];
+      if (settled?.count !== '1') {
+        throw new Error(`upsert left ${settled?.count ?? 'no'} rows`);
+      }
+      return `duplicate rejected; upsert left 1 row at status=${settled.status}`;
+    },
+  );
+
+  const habitCascadeResult = await attempt(
+    'habit_entries: deleting a habit takes its logged days with it (ALF-147)',
+    async () => {
+      const habit = 'aaaaaaaa-0000-4000-8000-000000000002';
+      await client.query(
+        `insert into habits (id, name, criteria) values ($1, 'Doomed', '[{"key":"light"}]'::jsonb)`,
+        [habit],
+      );
+      await client.query(
+        `insert into habit_entries (habit_id, entry_date, status) values ($1, '2026-07-27', 'met')`,
+        [habit],
+      );
+      await client.query(`delete from habits where id = $1`, [habit]);
+      const { rows } = await client.query<{ count: string }>(
+        `select count(*)::text as count from habit_entries where habit_id = $1`,
+        [habit],
+      );
+      if (rows[0]?.count !== '0') throw new Error(`${rows[0]?.count ?? '?'} orphaned entries left`);
+      return 'entries cascaded with the habit';
+    },
+  );
+
+  const habitGrantsResult = await attempt(
+    'habits + habit_entries: the authenticated role can read and write both tables (the 0008/0017 grant class)',
+    async () => {
+      const habit = 'aaaaaaaa-0000-4000-8000-000000000003';
+      return asRole(client, 'authenticated', async () => {
+        await client.query(
+          `insert into habits (id, name, criteria) values ($1, 'As authenticated', '[{"key":"light"}]'::jsonb)`,
+          [habit],
+        );
+        await client.query(
+          `insert into habit_entries (habit_id, entry_date, status, results)
+             values ($1, '2026-07-27', 'met', '{"light":true}'::jsonb)`,
+          [habit],
+        );
+        const { rows } = await client.query<{ status: string }>(
+          `select status::text as status from habit_entries where habit_id = $1`,
+          [habit],
+        );
+        if (rows[0]?.status !== 'met')
+          throw new Error('authenticated could not read its own write');
+        return 'authenticated inserted and read back both tables';
+      });
+    },
+  );
+
+  const habitAnonResult = await attempt(
+    'anon sees zero habits despite rows existing (RLS read)',
+    async () => {
+      const total = await client.query<{ count: string }>(
+        `select count(*)::text as count from habits`,
+      );
+      const visible = await asRole(client, 'anon', () =>
+        client.query<{ count: string }>(`select count(*)::text as count from habits`),
+      );
+      if (total.rows[0]?.count === '0')
+        throw new Error('precondition failed: no habits to test RLS against');
+      if (visible.rows[0]?.count !== '0')
+        throw new Error(`anon saw ${visible.rows[0]?.count ?? '?'} habits; RLS should hide all`);
+      return `admin sees ${total.rows[0]?.count ?? '?'}, anon sees 0`;
+    },
+  );
+
   const anonInsertResult = await attempt('anon cannot insert (RLS write denial)', async () => {
     let denied = false;
     try {
@@ -876,6 +1007,11 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     epicSpecColumnsResult,
     epicSpecViewResult,
     epicRealtimeResult,
+    habitSchemaResult,
+    habitEntryUniqueResult,
+    habitCascadeResult,
+    habitGrantsResult,
+    habitAnonResult,
     anonInsertResult,
     anonReadResult,
   ];
