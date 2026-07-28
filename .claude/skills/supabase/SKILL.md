@@ -421,5 +421,10 @@ project:
   replica;` first (superuser only) to disable FK/trigger checks during the COPY — the source data is
   already consistent. The uploaded backup artifact bakes this guard in around its data section so the
   restore works anywhere. `database/src/backup.ts` is the worked example.
+- **Match the restore server's major version to Supabase's.** Supabase runs **Postgres 17**, whose
+  `pg_dump` writes PG17-only GUCs into the dump preamble (e.g. `SET transaction_timeout = 0;`). Loading
+  that into an older server fails with `unrecognized configuration parameter "transaction_timeout"` and
+  (under `ON_ERROR_STOP`) aborts the whole restore — so a throwaway verify cluster must be `postgres:17`,
+  not `:16`.
 
 > See `references/` for detailed SQL patterns: `references/rls-policies.md` for policy templates, `references/recursive-subtasks.md` for the WITH RECURSIVE CTE.
