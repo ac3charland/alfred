@@ -323,6 +323,16 @@ top folder — `chrome-linux64/` / `chrome-headless-shell-linux64/` — already 
 `executablePath()`, no rename) → `touch <install-dir>/INSTALLATION_COMPLETE` so Playwright treats it
 as installed and skips the re-download.
 
+**When even `curl` can't reach the CDN** (a stricter proxy answers `CONNECT tunnel failed, response
+403` rather than serving the zip), adapt the pre-baked browser into the path the pinned Playwright
+looks for — `ln -s`, no repo or config change, so the gate still runs unmodified. Point
+`chromium-<want>/chrome-linux64` at the shipped `chromium-<have>/chrome-linux`, and `touch`
+`INSTALLATION_COMPLETE` in the new dir. **The headless shell renames both its directory and its
+binary**: `executablePath()` wants `chromium_headless_shell-<want>/chrome-headless-shell-linux64/`
+`chrome-headless-shell`, while the shipped tree has `chrome-linux/headless_shell` — symlink both
+levels or the launch fails *after* the full-Chromium link already looks right. Accept the revision
+skew knowingly: it runs the suite locally, and CI still runs the pinned browser.
+
 **General container tip:** in memory-constrained containers, add `--disable-dev-shm-usage` to
 `launchOptions.args` — `/dev/shm` is tiny there and Chromium otherwise dies mid-run with
 `page.evaluate: Browser closed`.
