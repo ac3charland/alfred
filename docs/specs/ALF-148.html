@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-148 — Habit read endpoints for the productivity coach</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --met: #2ea36b; --missed: #d1544a; --dim: #aeb7c2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --met: #3fbf82; --missed: #e8776a; --dim: #55606d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+         overflow-wrap: break-word; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .callout { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+             padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+             border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent); }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.2rem; }
+  ul.tight li, ol.tight li { margin-bottom: .3rem; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Acceptance checklist ────────────────────────────────────── */
+  .ac { list-style: none; padding: 0; margin: 1rem 0; }
+  .ac li { position: relative; padding-left: 1.9rem; margin-bottom: .55rem; font-size: .93rem; }
+  .ac li::before { content: '☐'; position: absolute; left: .35rem; top: -.05rem;
+                   color: var(--accent); font-size: 1.05rem; }
+  .ac li b { font-weight: 600; }
+  .acgroup { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+             color: var(--faint); margin: 1.3rem 0 .4rem; font-weight: 700; }
+
+  /* ── Flow diagram ────────────────────────────────────────────── */
+  .fbox { fill: var(--card); stroke: var(--line); }
+  .fbox-a { fill: var(--accent-bg); stroke: var(--accent); }
+  .ftext { fill: var(--fg); font: 600 11px ui-monospace, monospace; }
+  .fsub { fill: var(--muted); font: 10px -apple-system, system-ui, sans-serif; }
+  .fdim { fill: var(--faint); font: 10px -apple-system, system-ui, sans-serif; }
+  .farrow { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .fghost { stroke: var(--dim); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+  .fghostbox { fill: none; stroke: var(--dim); stroke-dasharray: 4 3; }
+
+  .basis-all { color: var(--met); font-weight: 600; }
+  .basis-win { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p style="margin:0 0 .5rem">
+  <span class="pill">Story</span>
+  <span class="pill">Tasks module</span>
+  <span class="pill">API · docs</span>
+</p>
+
+<h1>ALF-148 — Habit read endpoints for the productivity coach</h1>
+<p class="sub">
+  Implementation spec. Epic context and every settled decision live in
+  <code>docs/specs/epics/ALF-146.html</code> — <b>read it first</b>; this document does not restate
+  it. The walking skeleton it builds on is specified in <code>docs/specs/ALF-147.html</code>.
+</p>
+
+<div class="callout">
+  <b>Depends on ALF-147 having merged.</b> The schema (<code>habits</code>,
+  <code>habit_entries</code>), the pure <code>lib/habits</code> module, and
+  <code>PUT /api/habits/[id]/entries</code> all ship there. ALF-148 adds <b>no migration</b> and
+  <b>no new UI</b>: it is one GET handler, one paging read, two small additions to
+  <code>lib/habits</code>, and the primer section that turns the whole thing into something the
+  coach can actually call.
+</div>
+
+<h2>1 · What this story is</h2>
+
+<p>
+  ALF-146 §8 splits the habit tracker into twelve slices. ALF-148 is <b>slice 5</b> (the read API)
+  and <b>slice 12</b> (the coach integration), taken together — because slice 5 alone ships an
+  endpoint nobody knows how to call, and slice 12 is the document the coach's <code>alfred</code>
+  skill is generated from. The epic says as much: the primer gaining a third endpoint section is
+  "part of the epic's definition of done — not a docs afterthought".
+</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:4rem">Slice</th><th>What lands here</th><th style="width:9rem">Where it's specified</th></tr></thead>
+  <tbody>
+    <tr><td>5</td><td><code>GET /api/habits</code> — definitions + a window of entries + every derived statistic, dual auth</td><td>§4–§6</td></tr>
+    <tr><td>12</td><td><code>docs/productivity-coach-primer.md</code> — the read endpoint <i>and</i> the entry-upsert write path ALF-147 shipped, each with a reference script</td><td>§7</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  <b>On the ticket's plural "endpoints".</b> There is one new <i>route</i> (§4, S1). The coach's
+  surface grows by <i>two</i> endpoints, because ALF-148 is also what documents
+  <code>PUT /api/habits/[id]/entries</code> — built in ALF-147, undocumented until now, and useless
+  to the coach without the read (S7). Read + write is the loop the epic opened in D7/D8.
+</p>
+
+<p>
+  <b>Unchanged and deliberately so:</b> slice 9 (the stats rail), the rest of slice 4
+  (<code>PATCH</code>/<code>DELETE</code>) and slice 11 (edit/archive UI) stay deferred, and the
+  app's own read path is untouched (S5).
+</p>
+
+<h2>2 · Decisions locked during this refinement</h2>
+<p class="small">
+  These resolve questions the epic left to the story session. They reopen no epic decision; where
+  one is load-bearing it is cited as <b>D</b><i>n</i>, and ALF-147's as <b>S</b><i>n</i> (147).
+</p>
+
+<div class="dec">
+  <h3><span class="n">S1</span>One route, one payload — no per-habit and no digest endpoint</h3>
+  <p>
+    <code>GET /api/habits</code> returns every habit, its window of entries, and all of its derived
+    numbers. There is no <code>GET /api/habits/[id]</code> and no summary/digest route.
+  </p>
+  <p class="why">
+    <b>Why:</b> D8 exists to ship <i>one authority</i> for numbers whose rules (D4, D5) are subtle
+    enough that a second derivation would disagree with the first — and a second <i>route</i> is a
+    second place for that to happen. The precedent is <code>/api/code/pr-ratio</code>, which returns
+    pre-rounded percentages "so they can be quoted directly". At the expected volume (a handful of
+    habits, a few hundred entries each) one call answers the Friday review completely; a digest that
+    saves the coach some JSON parsing is not worth a second contract to keep true.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span><code>resolveIngestClient</code>, not <code>withSessionOrApiKey</code></h3>
+  <p>
+    The handler resolves its Supabase client with <code>resolveIngestClient(request)</code> — the
+    same wrapper <code>PUT …/entries</code> and <code>POST /api/items</code> use. A valid key yields
+    the admin client; otherwise a session yields the session client; otherwise <code>401</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> <code>withSessionOrApiKey</code> is the obvious-looking choice (it is what
+    <code>pr-ratio</code> — the existing dual-auth read — uses) and it is the <i>wrong</i> one here:
+    it deliberately <b>yields no Supabase client</b>, because <code>pr-ratio</code> reads GitHub
+    rather than the database. A keyed caller carries no cookie, so a route that reaches for
+    <code>createClient()</code> under it gets an anonymous client and RLS-empty results — a
+    <code>200</code> with <code>habits: []</code>, which reads as "no habits" rather than as a
+    failure. This is the single easiest thing to get wrong in this story.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>Scalars are all-history; the rate and counts are the window</h3>
+  <p>
+    The route reads <b>every</b> entry a habit has, computes the streak scalars over all of it, and
+    uses the requested window only to (a) choose which entries the payload carries and (b) scope
+    <code>hit_rate</code> and the five status counts. <code>computeHabitStats</code> gains an
+    optional window argument for exactly that (§6.1).
+  </p>
+  <p class="why">
+    <b>Why:</b> D6 makes <code>met_days_total</code> and the formation stage cumulative-forever
+    figures, and D8 says the endpoint returns them — so anything less than full history is a wrong
+    number, and ALF-147 §5.4 explicitly parks the problem here ("Slice 5 introduces the precomputed
+    scalars … that is the ticket where the distinction starts to matter"). Hit rate is the one
+    figure the epic scopes to the window (§3.1), because "how am I doing <i>lately</i>" is the
+    question it answers. Both bases in one payload is fine as long as the contract says which is
+    which — §4.4 and the primer table both do.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S4</span>The entry read is paged, and truncation is a loud failure</h3>
+  <p>
+    <code>habit_entries</code> is read in pages of <code>PAGE_SIZE = 1000</code> via
+    <code>.range()</code> until a short page arrives. A run that never terminates within
+    <code>MAX_PAGES</code> returns <code>500</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> PostgREST caps rows per response (Supabase's project-level <i>Max rows</i>, 1000 by
+    default) and the cap <i>silently truncates</i> — a <code>.limit(50000)</code> does not lift it.
+    One daily habit crosses 1000 entries at about two years nine months, and the symptom would be a
+    quietly shrinking <code>met_days_total</code> and <code>longest_streak</code>: numbers the coach
+    then states to the owner with full confidence. That is the worst failure this endpoint can have,
+    so the loop is not an optimization to defer. The <code>MAX_PAGES</code> guard exists so the one
+    remaining way to lose rows — a backend that never returns a short page — <b>fails</b> rather
+    than truncating.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>The app's read path does not change</h3>
+  <p>
+    The shell still seeds <code>HabitsProvider</code> from <code>lib/data/habits.ts</code>'s
+    120-day window (ALF-147 S2). Nothing in the app calls this route, and no all-history scalar is
+    plumbed into the store.
+  </p>
+  <p class="why">
+    <b>Why:</b> nothing renders those scalars until slice 9 (the stats rail), and ALF-147 §5.4 is
+    explicit — "do not build a second, unused scalar channel now". What ALF-148 <i>does</i> owe
+    slice 9 is a reader it can reuse: <code>getHabitsWithHistory</code> (§5) takes an injected
+    client and surfaces errors, so slice 9 wires it into the seed without writing new logic.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S6</span>The payload is a projection, not a row dump</h3>
+  <p>
+    Entries carry <code>{ date, status, results, note }</code>. Row <code>id</code>,
+    <code>habit_id</code>, <code>created_at</code> and <code>updated_at</code> stay server-side. The
+    habit object carries the epic's fields and no more.
+  </p>
+  <p class="why">
+    <b>Why:</b> the payload is a published contract read by a consumer outside this repo, so every
+    key in it is a key that can't change quietly. Row identity is internal — the coach addresses a
+    day by <code>(habit id, date)</code>, which is exactly what the upsert route takes — and at a
+    few hundred entries per habit, dropping four columns is real bytes too. §4.3 is the shape;
+    ALF-146 §5's sketch is where it comes from.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S7</span>The primer documents the write path too, and says the key got wider</h3>
+  <p>
+    <code>docs/productivity-coach-primer.md</code> gains <b>two</b> endpoint sections — the read
+    (this story) and <code>PUT /api/habits/[id]/entries</code> (ALF-147's) — plus a reference script
+    each, and a plain statement that <code>INGEST_API_KEY</code> now also reads and writes habit
+    data.
+  </p>
+  <p class="why">
+    <b>Why:</b> the primer's own framing is "everything the coach needs is here", and a coach that
+    can read a streak but can't log the morning it just heard about closes nothing. The two arrived
+    in different tickets; the document has no reason to reflect that. The key's widened blast radius
+    is called out because the primer currently tells the reader the key "cannot read tasks, plans,
+    or anything else" — after this it can read and write habits, and ALF-146 §7 asks for that to be
+    stated plainly rather than drifting.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S8</span>A bad zone falls back; a future <code>to</code> clamps; both are echoed</h3>
+  <p>
+    An unrecognized <code>tz</code> resolves to UTC without erroring, and a <code>to</code> after
+    today is pulled back to today. The response echoes the <code>timezone</code> and the
+    <code>window</code> it actually used. Contradictory input — <code>from</code> after
+    <code>to</code>, or a span over <code>MAX_WINDOW_DAYS</code> — is a <code>400</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> the fallback is the established convention (<code>pr-ratio</code> does it, and the
+    primer already documents it, so a second rule would be a second thing to learn). Clamping rather
+    than erroring on a future <code>to</code> keeps the obvious call — "give me this quarter" past
+    quarter-end — working. Echoing is what makes both honest: a caller that got UTC or a shortened
+    window can see it in the response instead of misreading the numbers. Erroring on
+    <code>from &gt; to</code> is different in kind — there is no sensible window to guess at.
+  </p>
+</div>
+
+<h2>3 · The shape of the change</h2>
+
+<svg viewBox="0 0 940 300" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">Data flow for GET /api/habits</title>
+  <desc id="flow-desc">
+    The coach calls GET /api/habits with the ingest key. The route resolves a Supabase client,
+    reads every habit and every entry in pages, computes statistics with the pure lib/habits
+    module, serializes a payload and returns JSON. Below it, greyed out, the unchanged app path:
+    the shell layout seeds the habits store from lib/data over a 120-day window.
+  </desc>
+
+  <!-- coach -->
+  <rect class="fbox-a" x="8" y="30" width="150" height="52" rx="8"/>
+  <text class="ftext" x="24" y="52">coach · Shortcut</text>
+  <text class="fsub" x="24" y="69">x-api-key</text>
+
+  <path class="farrow" d="M158 56 H200" marker-end="url(#ah)"/>
+
+  <!-- route -->
+  <rect class="fbox-a" x="200" y="18" width="200" height="76" rx="8"/>
+  <text class="ftext" x="216" y="40">GET /api/habits</text>
+  <text class="fsub" x="216" y="57">resolveIngestClient</text>
+  <text class="fsub" x="216" y="73">parseQueryParams · tz/from/to</text>
+  <text class="fdim" x="216" y="88">route.ts — beside POST</text>
+
+  <path class="farrow" d="M400 56 H448" marker-end="url(#ah)"/>
+
+  <!-- data layer -->
+  <rect class="fbox" x="448" y="18" width="212" height="76" rx="8"/>
+  <text class="ftext" x="464" y="40">getHabitsWithHistory()</text>
+  <text class="fsub" x="464" y="57">lib/data/habits.ts · injected client</text>
+  <text class="fsub" x="464" y="73">every entry, paged 1000 at a time</text>
+
+  <path class="farrow" d="M660 56 H706" marker-end="url(#ah)"/>
+  <rect class="fbox" x="706" y="18" width="150" height="76" rx="8"/>
+  <text class="ftext" x="722" y="40">Supabase</text>
+  <text class="fsub" x="722" y="57">habits</text>
+  <text class="fsub" x="722" y="73">habit_entries</text>
+
+  <!-- down into lib/habits -->
+  <path class="farrow" d="M554 94 V132" marker-end="url(#ah)"/>
+  <rect class="fbox-a" x="368" y="132" width="372" height="70" rx="8"/>
+  <text class="ftext" x="384" y="154">lib/habits — the one engine (D8, D9)</text>
+  <text class="fsub" x="384" y="171">computeHabitStats(habit, allEntries, today, window)</text>
+  <text class="fsub" x="384" y="187">toHabitsPayload() — snake_case, rounded, projected</text>
+
+  <path class="farrow" d="M368 167 H300 V98" marker-end="url(#ah)"/>
+  <path class="farrow" d="M214 94 V124 H80 V86" marker-end="url(#ah)"/>
+  <text class="fsub" x="96" y="118">JSON payload</text>
+
+  <!-- ghost app lane -->
+  <rect class="fghostbox" x="8" y="228" width="932" height="60" rx="8"/>
+  <text class="fdim" x="24" y="250">unchanged by this story (S5)</text>
+  <text class="fdim" x="24" y="268">browser → (shell) layout → lib/data seed (120 days) → HabitsProvider → /habits</text>
+
+  <defs>
+    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="currentColor" style="color:var(--muted)"/>
+    </marker>
+  </defs>
+</svg>
+<p class="diagram-cap">
+  One read, one engine, one payload — and the app's path deliberately left alone.
+</p>
+
+<h3>3.1 Files touched, at a glance</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:20rem">Path</th><th>What</th></tr></thead>
+  <tbody>
+    <tr><td><code>frontend/app/api/habits/route.ts</code></td><td><b>add <code>GET</code></b> beside ALF-147's <code>POST</code> — same file, same module comment block</td></tr>
+    <tr><td><code>frontend/lib/api/schemas.ts</code></td><td><code>habitsQuerySchema</code> (§4.2)</td></tr>
+    <tr><td><code>frontend/lib/data/habits.ts</code></td><td><b>add</b> <code>getHabitsWithHistory(supabase, …)</code> — injected client, errors surfaced, paged (§5)</td></tr>
+    <tr><td><code>frontend/lib/habits/streaks.ts</code></td><td><code>computeHabitStats</code> gains an optional <code>window</code> argument (§6.1)</td></tr>
+    <tr><td><code>frontend/lib/habits/dates.ts</code></td><td><b>add</b> <code>resolveTimezone()</code> and <code>resolveWindow()</code>; <code>todayIn</code> routes through the former (§6.2)</td></tr>
+    <tr><td><code>frontend/lib/habits/payload.ts</code></td><td><b>new</b> — <code>toHabitsPayload()</code>, the snake_case/rounding/projection serializer (§6.3)</td></tr>
+    <tr><td><code>frontend/lib/habits/index.ts</code></td><td>barrel re-exports for the above</td></tr>
+    <tr><td><code>frontend/scripts/mock-supabase.mjs</code></td><td>only if ALF-147 left a gap: the E2E mock must serve <code>habits</code> / <code>habit_entries</code> reads with <code>order</code> + <code>limit</code>/<code>offset</code> (it already implements both) and accept them in <code>__mock__/seed</code></td></tr>
+    <tr><td><code>docs/productivity-coach-primer.md</code></td><td>two endpoint sections, two reference scripts, the widened-key note (§7)</td></tr>
+    <tr><td><code>docs/demos/&lt;folder&gt;/…</code></td><td>the demo doc (§9)</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">
+  <b>No migration.</b> The schema is ALF-147's and this story does not touch it — nothing to add to
+  <code>database/migrations-applied.log</code>, and <code>database.types.ts</code> stays as
+  generated.
+</p>
+
+<h3>3.2 Build from the shared layer</h3>
+<p>
+  Every piece of this route already has a primitive. Read the
+  <code>frontend-architecture</code> and <code>data-flow</code> skills first; where this spec and an
+  existing helper disagree, the helper wins.
+</p>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:16rem">What you're building</th><th>Reuse</th><th>Not</th></tr></thead>
+  <tbody>
+    <tr><td>Dual auth + the client</td><td><code>resolveIngestClient</code> (S2)</td><td><code>withSessionOrApiKey</code>, which hands back no client</td></tr>
+    <tr><td>Query parsing</td><td><code>parseQueryParams</code> + a zod schema in <code>lib/api/schemas.ts</code></td><td><code>new URL(request.url)</code> and hand-rolled validation in the handler</td></tr>
+    <tr><td>Responses</td><td><code>jsonOk</code> / <code>jsonError</code> — the <code>{ error }</code> envelope</td><td><code>Response.json</code> with an ad-hoc body</td></tr>
+    <tr><td>Database failures</td><td><code>mapSupabaseError</code></td><td>a flat <code>500</code>, or swallowing to <code>[]</code></td></tr>
+    <tr><td>Zone + calendar dates</td><td><code>lib/habits/dates</code> (<code>todayIn</code>, <code>addDays</code>, <code>eachDay</code>)</td><td><code>lib/github/week.ts</code> — it resolves <i>instants with offsets</i> for a GitHub query, which is the coupling D11 warns about</td></tr>
+    <tr><td>Every derived number</td><td><code>computeHabitStats</code></td><td>a second derivation "just for the API" — the exact thing D8 exists to prevent</td></tr>
+    <tr><td>Request types</td><td><code>z.infer</code> off the schema</td><td>a parallel hand-written interface</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>4 · <code>GET /api/habits</code></h2>
+
+<h3>4.1 Auth</h3>
+<p>
+  Session <b>or</b> <code>INGEST_API_KEY</code>, via <code>resolveIngestClient</code> (S2, D7). The
+  precedence rules are <code>validateApiKey</code>'s and are inherited, not re-implemented: a
+  present <code>x-api-key</code> wins outright (so a wrong one fails even beside a correct bearer
+  token), and an empty value is a mismatch rather than an absent header. Failure is
+  <code>401 {"error":"Unauthorized"}</code>.
+</p>
+
+<h3>4.2 Query parameters</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:9rem">Param</th><th style="width:11rem">Shape</th><th>Default &amp; rules</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>tz</code></td><td>IANA zone string</td>
+      <td><code>UTC</code>. Unrecognized → UTC, never an error (S8). Decides <i>today</i>, which decides the default window, the future-clamp and the today-exemption in the streak walk.</td>
+    </tr>
+    <tr>
+      <td><code>from</code></td><td><code>z.iso.date()</code></td>
+      <td><code>to − (DEFAULT_WINDOW_DAYS − 1)</code>, i.e. a trailing quarter. Bounds the entries returned and the <code>hit_rate</code>/counts window only.</td>
+    </tr>
+    <tr>
+      <td><code>to</code></td><td><code>z.iso.date()</code></td>
+      <td><i>today</i> in <code>tz</code>. A later date clamps back to today (S8).</td>
+    </tr>
+    <tr>
+      <td><code>include_archived</code></td><td><code>'true' | 'false'</code></td>
+      <td><code>false</code>. Anything else is a <code>400</code> — <b>not</b> <code>z.coerce.boolean()</code>, under which <code>Boolean('false') === true</code> and the caller silently gets the opposite of what they asked for.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<pre><code>// lib/api/schemas.ts — beside prRatioQuerySchema
+export const habitsQuerySchema = z
+  .object({
+    tz: z.string().optional(),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    include_archived: z.enum(['true', 'false']).optional(),
+  })
+  // Only the both-present case is decidable here; the rest of the window rules need `today`,
+  // so they live in resolveWindow() where they can be table-tested (§6.2).
+  .refine((q) =&gt; q.from === undefined || q.to === undefined || q.from &lt;= q.to, {
+    message: '`from` must not be after `to`',
+  });</code></pre>
+
+<p class="small">
+  <code>DEFAULT_WINDOW_DAYS = 90</code> — a quarter, matching the epic's own framing of a habit's
+  horizon (§6.2's card shows one) and the review cadence that reads it.
+  <code>MAX_WINDOW_DAYS = 366</code> bounds the response; a longer span is a <code>400</code> naming
+  the cap rather than a silently trimmed answer. Neither cap touches the scalars — those are always
+  all-history (S3).
+</p>
+
+<h3>4.3 What the handler does, in order</h3>
+<ol class="tight">
+  <li><code>resolveIngestClient(request)</code> → early-return the <code>Response</code> it may hand back.</li>
+  <li><code>parseQueryParams(request, habitsQuerySchema)</code> → early-return its <code>400</code>.</li>
+  <li><code>zone = resolveTimezone(query.tz ?? 'UTC')</code>; <code>today = todayIn(zone)</code>. The resolved zone — not the requested one — is what the payload echoes (S8).</li>
+  <li><code>resolveWindow(query, today)</code> → <code>{ from, to }</code> or a validation failure → <code>400</code> (§6.2).</li>
+  <li><code>getHabitsWithHistory(supabase, { includeArchived })</code> → habits in display order plus every entry, grouped by habit (§5). A <code>PostgrestError</code> goes through <code>mapSupabaseError</code>.</li>
+  <li>Per habit: <code>computeHabitStats(habit, entries, today, window)</code>, then project the entries inside the window, newest first.</li>
+  <li><code>jsonOk(toHabitsPayload({ today, timezone: zone, window, habits }))</code>.</li>
+</ol>
+<p class="small">
+  No caching layer, and no <code>revalidate</code>/<code>dynamic</code> export: the handler reads
+  cookies or headers for auth on every call, which already makes it dynamic, and unlike
+  <code>pr-ratio</code> there is no rate-limited upstream to protect — the numbers come from our own
+  database and must be current the moment a day is logged.
+</p>
+
+<h3>4.4 The payload</h3>
+<pre><code>GET /api/habits?tz=America/New_York&amp;from=2026-05-01
+x-api-key: &lt;INGEST_API_KEY&gt;
+
+{
+  "today": "2026-07-28",
+  "timezone": "America/New_York",
+  "window": { "from": "2026-05-01", "to": "2026-07-28" },
+  "habits": [
+    {
+      "id": "6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
+      "name": "Morning routine",
+      "notes": null,
+      "criteria": [
+        { "key": "wake",  "label": "Up by 6:15",        "kind": "time", "target": 375, "comparator": "lte" },
+        { "key": "light", "label": "Outside for light", "kind": "boolean" }
+      ],
+      "active_days": [1, 2, 3, 4, 5, 6, 7],
+      "allowance": 1,
+      "started_on": "2026-06-15",
+      "archived_at": null,
+      "stats": {
+        "current_streak": 33,
+        "longest_streak": 33,
+        "average_streak": 14,
+        "allowance_remaining": 1,
+        "hit_rate": 0.94,
+        "met_days_total": 47,
+        "stage": "nearing_automaticity",
+        "met": 47, "partial": 2, "missed": 1, "skipped": 0, "unknown": 0
+      },
+      "entries": [
+        { "date": "2026-07-28", "status": "met",     "results": { "wake": 364, "light": true },  "note": null },
+        { "date": "2026-07-27", "status": "partial", "results": { "wake": 362, "light": false }, "note": null },
+        { "date": "2026-07-26", "status": "skipped", "results": null,                            "note": "travel" }
+      ]
+    }
+  ]
+}</code></pre>
+
+<p>
+  <b>Key names and layout follow ALF-146 §5's sketch verbatim</b> — including the counts sitting
+  flat inside <code>stats</code> — so the contract the epic advertised is the contract that ships.
+  What the sketch could not say is which figure is measured over what, and mixing the two bases in
+  one object is precisely where a consumer goes wrong:
+</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:12rem">Field</th><th style="width:8rem">Basis</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>current_streak</code></td><td class="basis-all">all history</td><td>Counts <b>met</b> days, not elapsed days — a run bridged over a forgiven day reads one lower than the calendar span (ALF-146 §3.1).</td></tr>
+    <tr><td><code>longest_streak</code></td><td class="basis-all">all history</td><td></td></tr>
+    <tr><td><code>average_streak</code></td><td class="basis-all">all history</td><td>Mean of <b>completed</b> runs, excluding the one in progress. <code>null</code> until a run has ended. Rounded to 1 dp.</td></tr>
+    <tr><td><code>allowance_remaining</code></td><td class="basis-all">trailing 7 days</td><td>Its own fixed window by definition (D4) — unaffected by <code>from</code>/<code>to</code>.</td></tr>
+    <tr><td><code>met_days_total</code></td><td class="basis-all">all history</td><td>What the formation stage is keyed to (D6). Never decreases.</td></tr>
+    <tr><td><code>stage</code></td><td class="basis-all">all history</td><td>One of <code>fully_deliberate</code> · <code>gaining_momentum</code> · <code>nearing_automaticity</code> · <code>possibly_established</code>.</td></tr>
+    <tr><td><code>hit_rate</code></td><td class="basis-win">window</td><td><code>met / (met + partial + missed)</code>; unknown and skipped days are on neither side (D5). <code>null</code> when the denominator is 0. Rounded to 3 dp.</td></tr>
+    <tr><td><code>met</code> … <code>unknown</code></td><td class="basis-win">window</td><td>Applicable days only. <code>unknown</code> = applicable, in-window, no entry — so it is well-defined only because the window is explicit.</td></tr>
+    <tr><td><code>entries</code></td><td class="basis-win">window</td><td>Newest first. Only days with a row; a day with no entry simply isn't there.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p class="small">
+  <b>Rounding is the serializer's job, not the engine's</b> (§6.3): <code>computeHabitStats</code>
+  keeps full precision for the store, and the payload rounds so the coach can quote a figure without
+  re-deriving it — the same reason <code>pr-ratio</code> pre-rounds its percentages.
+</p>
+
+<p class="small">
+  <b>Deliberately absent:</b> the per-day calendar <code>buildHabitCalendar</code> produces. It
+  exists to drive the grid's connectors, it inflates the payload by every non-applicable and unknown
+  day in the range, and no consumer outside the UI can do anything with a <code>link</code> value.
+</p>
+
+<h3>4.5 Statuses</h3>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:5rem">Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>200</code></td><td>The payload above. <b>No habits is a <code>200</code> with <code>habits: []</code></b> — a real answer, not an error.</td></tr>
+    <tr><td><code>400</code></td><td>Unparseable <code>from</code>/<code>to</code>, <code>from</code> after <code>to</code>, a span over <code>MAX_WINDOW_DAYS</code>, or an <code>include_archived</code> that isn't <code>true</code>/<code>false</code>. Carries <code>details</code> from zod where zod rejected it.</td></tr>
+    <tr><td><code>401</code></td><td>Missing, empty or wrong key, and no session.</td></tr>
+    <tr><td><code>500</code></td><td>The database read failed, or paging hit <code>MAX_PAGES</code> (S4). Never an empty list standing in for a failure.</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">
+  There is no <code>501</code>/<code>502</code> here — those exist on <code>pr-ratio</code> because
+  it depends on configuration and on GitHub. This route depends on neither.
+</p>
+
+<h2>5 · The read layer</h2>
+
+<pre><code>// frontend/lib/data/habits.ts — alongside ALF-147's getHabits() / getHabitEntries()
+
+/**
+ * Every habit (optionally including archived ones) plus its ENTIRE entry history.
+ *
+ * Takes the client rather than creating one: this serves a dual-auth route, where a keyed
+ * caller has no cookie session and must read through the admin client (S2).
+ *
+ * Surfaces the error rather than falling back to `[]` like the shell seeders do: a seed
+ * failure must not blank the app, but an API that answers "no habits" when the database is
+ * unreachable tells the coach the owner did nothing this week.
+ */
+export async function getHabitsWithHistory(
+  supabase: SupabaseClient&lt;Database&gt;,
+  options: { includeArchived: boolean },
+): Promise&lt;{ habits: Habit[]; entriesByHabit: Map&lt;string, HabitEntry[]&gt;; error: PostgrestError | null }&gt;;</code></pre>
+
+<ul class="tight">
+  <li>
+    <b>Order:</b> <code>archived_at</code> nulls first, then <code>sort_order</code> (nulls last),
+    then <code>created_at</code> — so the active habits come back in exactly the order the app shows
+    them, whether or not archived ones are included, and the coach lists them the way the owner sees
+    them.
+  </li>
+  <li>
+    <b>Entries:</b> one query filtered by the habit ids just read, ordered
+    <code>(habit_id, entry_date desc)</code> — a deterministic order is what makes paging safe —
+    then grouped into the map. <b>Skip the query entirely when there are no habits</b> rather than
+    sending an empty <code>in.()</code>.
+  </li>
+  <li>
+    <b>Paging (S4):</b> <code>.range(offset, offset + PAGE_SIZE - 1)</code> in a loop; stop when a
+    page comes back shorter than <code>PAGE_SIZE</code>; return an error after
+    <code>MAX_PAGES</code>. Keep the loop in a small named helper so it can be unit-tested against a
+    stub that returns a full page then a short one.
+  </li>
+  <li>
+    <b>No window filter.</b> The scalars need all of it (S3), and the route slices for the payload.
+    Revisit only if entry volume ever makes the full read expensive — at which point the answer is a
+    SQL rollup of the all-history scalars, not a truncated read.
+  </li>
+</ul>
+
+<h2>6 · <code>lib/habits</code> additions</h2>
+
+<h3>6.1 <code>computeHabitStats</code> takes an optional window</h3>
+<pre><code>export interface StatsWindow { from: string; to: string }   // inclusive, YYYY-MM-DD
+
+export function computeHabitStats(
+  habit: Habit,
+  entries: HabitEntry[],      // all history — order-independent
+  today: string,
+  window?: StatsWindow,       // NEW: scopes hitRate + counts only
+): HabitStats;</code></pre>
+<ul class="tight">
+  <li><code>currentStreak</code>, <code>longestStreak</code>, <code>averageStreak</code>, <code>allowanceRemaining</code>, <code>metDaysTotal</code>, <code>stage</code> — computed over every entry passed, <b>ignoring</b> <code>window</code>.</li>
+  <li><code>counts</code> and <code>hitRate</code> — over applicable days in <code>window</code>, intersected with <code>[started_on, today]</code> so a window reaching before the habit existed or past today adds no phantom <code>unknown</code> days.</li>
+  <li>Omitting <code>window</code> keeps ALF-147's behaviour exactly, so the store's 3-argument call sites are untouched.</li>
+</ul>
+<p class="small">
+  If the implementation session finds ALF-147 shipped a different arity or an options object, adapt
+  to what is there — the requirement is the semantics above, not the signature.
+</p>
+
+<h3>6.2 Two date helpers</h3>
+<pre><code>/** The zone that will actually be used: the argument, or 'UTC' when it isn't a valid IANA zone. */
+export function resolveTimezone(timezone: string): string;
+
+/** Resolve + validate the requested window against `today`. */
+export function resolveWindow(
+  query: { from?: string; to?: string },
+  today: string,
+): { from: string; to: string } | { error: string };</code></pre>
+<p>
+  <code>todayIn</code> is refactored to call <code>resolveTimezone</code> — no behaviour change,
+  but the route can now <i>report</i> the zone it fell back to instead of echoing a bad one back at
+  the caller (S8). <code>resolveWindow</code> owns the rules that need <code>today</code>: default
+  <code>to</code>, clamp a future <code>to</code>, default <code>from</code> from
+  <code>DEFAULT_WINDOW_DAYS</code>, reject <code>from</code> after the <i>clamped</i> <code>to</code>,
+  reject a span over <code>MAX_WINDOW_DAYS</code>. It is pure and table-tested; the handler stays a
+  list of early returns.
+</p>
+
+<h3>6.3 <code>toHabitsPayload</code></h3>
+<p>
+  The camelCase-to-snake_case, round, and project step (§4.4) in one pure function, so the published
+  contract has a single place it is produced and a single place it is tested. It is the only code
+  that knows the payload's key names; the route just calls it.
+</p>
+
+<h2>7 · The coach primer (slice 12)</h2>
+<p>
+  <code>docs/productivity-coach-primer.md</code> is the contract the coach's <code>alfred</code>
+  skill is generated from. Match its existing voice and structure exactly — numbered endpoint
+  sections, a "Statuses to handle" table each, a reading-the-payload list, and a bundled script
+  with hardcoded placeholders. Additions:
+</p>
+<ul class="tight">
+  <li><b>The intro list</b> gains two capabilities: read habit data, and log a habit day.</li>
+  <li>
+    <b>Endpoint 3 — <code>GET /api/habits</code>.</b> Request example with <code>tz</code> and a
+    window; the payload from §4.4; the <b>all-history vs window</b> table (§4.4) restated in the
+    primer's own terms, because that is the one thing a consumer cannot infer; the status table from
+    §4.5.
+  </li>
+  <li>
+    <b>Endpoint 4 — <code>PUT /api/habits/[id]/entries</code></b> (ALF-147, previously undocumented).
+    The evidence-not-verdict rule (ALF-147 S3): send <code>results</code> and let the server derive
+    the status; <code>"skipped"</code> is the only status a caller may state, and it requires a
+    non-empty reason in <code>note</code> (S6 there). <code>date</code> omitted means today in
+    <code>tz</code>; a future date or one before <code>started_on</code> is a <code>400</code>;
+    re-writing a day is the correction path.
+  </li>
+  <li>
+    <b>Two reference scripts</b> in the shape of the existing pair — hardcoded
+    <code>ALFRED_BASE_URL</code>/<code>ALFRED_API_KEY</code>, <code>set -euo pipefail</code>,
+    <code>curl --fail-with-body --silent --show-error</code> so a 4xx still prints alfred's
+    <code>error</code> envelope:
+    <pre><code>habits.sh   [IANA timezone] [from] [to]    # GET /api/habits
+log-habit.sh &lt;habit-id&gt; &lt;results-json&gt; [date]  # PUT /api/habits/&lt;id&gt;/entries</code></pre>
+  </li>
+  <li>
+    <b>Reading notes the coach will otherwise get wrong.</b> The streak counts met days, not elapsed
+    days. <code>unknown</code> is a day never logged and costs allowance exactly like a miss (D5) —
+    but sits in neither side of the hit rate. <code>skipped</code> is excused and costs nothing.
+    <code>stage</code> is <b>deliberately approximate</b>: report "Possibly Established", never
+    "Established" (D6).
+  </li>
+  <li>
+    <b>The key's blast radius.</b> The primer currently says the key "cannot read tasks, plans, or
+    anything else". After this it reads <i>and writes</i> habit data — say so where the key is
+    introduced (ALF-146 §7).
+  </li>
+  <li>
+    <b>Out of scope, updated.</b> Creating, editing or archiving a habit is session-only — the coach
+    logs days against habits the owner defined in the app.
+  </li>
+</ul>
+<p class="small">
+  Regenerating the coach's own skill from the updated primer happens in the coach's chat, not in
+  this repo — this story ships the document that makes it possible.
+</p>
+
+<h2>8 · Tests</h2>
+<p>
+  Every requirement in §11 must be pinned somewhere. The route test carries most of it; the window
+  and paging rules are table-tested where they live.
+</p>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:19rem">File</th><th>Pins</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>app/api/habits/route.test.ts</code></td>
+      <td>
+        All three auth paths for <code>GET</code> (session; valid key with no session; neither →
+        401), plus a present-but-wrong <code>x-api-key</code> beside a correct bearer token still
+        being 401. A keyed call reads through the <b>admin</b> client (S2 — assert which client was
+        used, not just the status). Query rejections: bad date, <code>from</code> after
+        <code>to</code>, an over-cap span, a junk <code>include_archived</code>. Defaults: no params
+        → trailing <code>DEFAULT_WINDOW_DAYS</code> ending today. Clamping: a future <code>to</code>
+        comes back as today in the echoed <code>window</code>. An unknown <code>tz</code> echoes
+        <code>UTC</code>. <code>include_archived</code> both ways. Entry projection carries exactly
+        the four keys, newest first. Empty database → <code>200</code> + <code>habits: []</code>. A
+        <code>PostgrestError</code> → <code>500</code>, never <code>[]</code>.
+      </td>
+    </tr>
+    <tr>
+      <td><code>lib/habits/streaks.test.ts</code> (extend)</td>
+      <td>
+        The window argument scopes <code>hitRate</code> and <code>counts</code> and leaves every
+        scalar identical — <b>the same fixture computed with two different windows returns the same
+        <code>currentStreak</code>, <code>longestStreak</code> and <code>metDaysTotal</code></b>.
+        A window reaching before <code>started_on</code> or past <code>today</code> adds no
+        <code>unknown</code>. Omitting the window reproduces ALF-147's numbers.
+      </td>
+    </tr>
+    <tr>
+      <td><code>lib/habits/dates.test.ts</code> (extend)</td>
+      <td>
+        <code>resolveTimezone</code> passes a valid zone through and maps an unknown one to UTC
+        without throwing. <code>resolveWindow</code>: both defaults, the future-<code>to</code>
+        clamp, <code>from</code> after the <i>clamped</i> <code>to</code> rejected, the span cap at
+        its boundary (366 accepted, 367 rejected).
+      </td>
+    </tr>
+    <tr>
+      <td><code>lib/habits/payload.test.ts</code></td>
+      <td>Key names and nesting match §4.4 exactly; <code>hit_rate</code> 3 dp and <code>average_streak</code> 1 dp; <code>null</code>s survive as <code>null</code>; no row <code>id</code>/<code>habit_id</code>/timestamps leak into <code>entries</code>.</td>
+    </tr>
+    <tr>
+      <td><code>lib/data/habits.test.ts</code> (extend)</td>
+      <td>The paging loop: a full page followed by a short page yields both pages' rows; an exactly-<code>PAGE_SIZE</code> history costs one extra empty request and still returns everything; <code>MAX_PAGES</code> returns an error rather than a truncated list. No entries query is issued when there are no habits. Ordering and the <code>includeArchived</code> filter.</td>
+    </tr>
+    <tr>
+      <td><code>e2e/habits-api.spec.ts</code></td>
+      <td>
+        The whole stack, keyed only (<code>storageState</code> cleared, so it proves the coach's
+        path rather than the browser's): seed <b>the epic's §3.2 worked example</b> — seven days,
+        <code>allowance: 1</code>, Wednesday <code>partial</code> — then <code>GET</code> with
+        <code>x-api-key</code> and assert <code>current_streak: 6</code> and
+        <code>allowance_remaining: 0</code>. Then <code>PUT</code> a day through the entries route
+        and re-read: the entry appears and the streak moves. That round-trip is the coach's actual
+        loop and the reason both endpoints are documented together (S7).
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p class="small">
+  The E2E seed goes through the in-memory mock backend (<code>scripts/mock-supabase.mjs</code>,
+  <code>__mock__/seed</code>), which already implements <code>order</code> and
+  <code>limit</code>/<code>offset</code> — the params <code>.range()</code> sends. Extend its seed
+  payload with habits and entries if ALF-147 hasn't. The mock does not emulate PostgREST's row cap,
+  which is why S4's paging is pinned in a unit test rather than there.
+</p>
+
+<h2>9 · Demo doc</h2>
+<p>
+  <code>docs/demos/&lt;feature-folder&gt;/&lt;name&gt;.md</code>, created with
+  <code>npm run demo -- init</code> so the branch lands in front matter (what <code>demo-lint</code>'s
+  <code>branch-folder</code> rule reads). <b>Follow the <code>showboat</code> skill's evidence
+  rules</b> — this change has no visual surface, so they make real request/response capture the
+  primary evidence; don't re-derive the policy here, and never put test output in the doc.
+</p>
+<p>It must exercise every line of §11, so at minimum, against a real <code>next dev</code> server
+  seeded with the reference habit:</p>
+<ul class="tight">
+  <li>A keyed <code>curl</code> returning the full payload — the shape a reviewer can read against §4.4.</li>
+  <li>The same habit at two windows: <code>entries</code> and <code>hit_rate</code> move, the streak scalars and <code>met_days_total</code> do not (S3, the property most worth showing).</li>
+  <li><code>tz</code> changing the resolved <code>today</code>, and a junk zone echoing <code>UTC</code>.</li>
+  <li>Each rejection: no key → 401, <code>from</code> after <code>to</code> → 400, an over-cap span → 400.</li>
+  <li><code>include_archived</code> on and off.</li>
+  <li>The write→read loop: <code>PUT …/entries</code>, then the re-read showing the day and the moved streak.</li>
+  <li>The primer's <code>habits.sh</code> run <b>verbatim</b> — the script is a deliverable, so the demo is where it is proven to work.</li>
+</ul>
+<p>Confirm with <code>npm run demo -- verify</code>.</p>
+
+<h2>10 · Out of scope &amp; open questions</h2>
+<p>Everything ALF-146 §7 rules out stays ruled out. Beyond that:</p>
+<ul class="tight">
+  <li><b>Habit CRUD by key.</b> <code>POST</code> stays session-only and <code>PATCH</code>/<code>DELETE</code> remain unbuilt (slice 4). D7 widened the key for <i>logging</i>, not for defining entities.</li>
+  <li><b>The stats rail.</b> Slice 9 still owns rendering these numbers in the app; this story only makes them correct over all history and reusable (S5).</li>
+  <li><b>Response pagination.</b> The window caps the payload; there is no cursor. If a caller ever needs multi-year entry data in one response, that is a paging contract to design, not a cap to quietly raise.</li>
+  <li><b>Caching.</b> None (§4.3). <code>pr-ratio</code> caches because GitHub rate-limits; our database doesn't.</li>
+</ul>
+<h4>Open questions</h4>
+<ul class="tight">
+  <li>
+    <b>Is a windowed <code>hit_rate</code> the right default?</b> The epic scopes it to the window
+    (§3.1) and this ships that, but the coach's most natural question — "how has this gone since I
+    started?" — is an all-history rate it must get by asking for a wide window. If real reviews keep
+    widening the window just for that, add an all-history rate beside it rather than changing this
+    one's meaning.
+  </li>
+  <li>
+    <b>Does the coach eventually want a digest?</b> S1 says one route now. The signal to revisit is
+    the coach repeatedly fetching a quarter of entries to state three numbers.
+  </li>
+  <li>
+    <b>Is 90 days the right default window?</b> Chosen to match the epic's quarter framing. A weekly
+    review arguably wants 7–14 days by default and a quarter on request; cheap to change, and the
+    demo is where it will first feel wrong.
+  </li>
+</ul>
+
+<h2>11 · Acceptance criteria</h2>
+
+<p class="acgroup">Endpoint</p>
+<ul class="ac">
+  <li><b><code>GET /api/habits</code> returns definitions, a window of entries and every derived statistic in one payload</b>, for a browser session <i>or</i> a valid <code>INGEST_API_KEY</code>; neither is <code>401 {"error":"Unauthorized"}</code>.</li>
+  <li><b>A keyed call reads through the admin client</b> — a key with no session returns the owner's real data, not an RLS-empty list (S2).</li>
+  <li><b>A present-but-wrong <code>x-api-key</code> fails</b> even alongside a correct bearer token, and an empty value is a mismatch — the precedence the primer documents.</li>
+  <li><b><code>tz</code> decides the day boundary</b>; an unrecognized zone falls back to UTC without erroring, and the response echoes the zone actually used.</li>
+  <li><b><code>from</code>/<code>to</code> bound the entries returned</b>, <code>to</code> clamps to today, the default is the trailing <code>DEFAULT_WINDOW_DAYS</code>, and the effective window is echoed.</li>
+  <li><b>Contradictory or oversized windows are <code>400</code></b>: <code>from</code> after <code>to</code>, or a span over <code>MAX_WINDOW_DAYS</code> — named in the message, never silently trimmed.</li>
+  <li><b><code>include_archived</code> defaults to false</b>, includes archived habits (with <code>archived_at</code> set) when true, and rejects any other value rather than coercing it.</li>
+  <li><b>Habits come back in the app's display order</b>, and entries newest-first carrying only <code>date</code>, <code>status</code>, <code>results</code>, <code>note</code>.</li>
+  <li><b>No habits is a <code>200</code> with <code>habits: []</code></b>; a database failure is a <code>5xx</code> through <code>mapSupabaseError</code> and never an empty list.</li>
+  <li><b>The route lives beside <code>POST</code> in <code>app/api/habits/route.ts</code></b> and adds no migration and no schema change.</li>
+</ul>
+
+<p class="acgroup">The numbers</p>
+<ul class="ac">
+  <li><b>Streak scalars, <code>met_days_total</code> and <code>stage</code> are computed over all history</b> — proved by two calls with different windows returning identical values.</li>
+  <li><b><code>hit_rate</code> and the five counts are over the effective window</b>, with unknown and skipped days on neither side of the rate, and no phantom <code>unknown</code> days outside <code>[started_on, today]</code>.</li>
+  <li><b>The endpoint's numbers are the app's numbers</b> — one <code>lib/habits</code> engine, no second derivation (D8).</li>
+  <li><b>A history longer than one PostgREST page comes back whole</b>, and the paging guard fails loudly rather than truncating (S4).</li>
+  <li><b><code>hit_rate</code> and <code>average_streak</code> are pre-rounded</b> so a consumer can quote them directly, and the engine's own precision is unchanged.</li>
+</ul>
+
+<p class="acgroup">Coach integration</p>
+<ul class="ac">
+  <li><b>The primer documents both endpoints</b> — <code>GET /api/habits</code> and <code>PUT /api/habits/[id]/entries</code> — in its existing voice, each with a request example, payload, statuses table and reference script.</li>
+  <li><b>The primer states which figures are all-history and which are windowed</b>, and the reading notes cover met-days-not-elapsed-days, unknown vs skipped, and the deliberately approximate stage label.</li>
+  <li><b>The primer states the key's widened blast radius</b> — it now reads and writes habit data (ALF-146 §7).</li>
+  <li><b>Both scripts run as written</b>, printing alfred's <code>error</code> envelope on failure and exiting non-zero.</li>
+</ul>
+
+<p class="acgroup">Gates</p>
+<ul class="ac">
+  <li><b><code>npm run check</code> is green</b> — no config weakened, no ignore directive added.</li>
+  <li><b>A demo doc</b> exercises every criterion above and passes <code>npm run demo -- verify</code>.</li>
+</ul>
+
+<p class="small" style="margin-top:2.5rem">
+  Story specs live in <code>docs/specs/</code> and are archived to <code>docs/specs/archive/</code>
+  once shipped. The durable context for this work is the epic —
+  <code>docs/specs/epics/ALF-146.html</code> — which is never archived.
+</p>
+
+</div>
+</body>
+</html>
