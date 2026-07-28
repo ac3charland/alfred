@@ -183,6 +183,112 @@ export const updateFolderSchema = z.object({
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>;
 
 // ---------------------------------------------------------------------------
+// Habits
+// ---------------------------------------------------------------------------
+
+/**
+ * A criterion's stable key: lowercase, underscore-separated, ≤ 32 chars. Stable, URL-safe, and
+ * readable in a stored `results` blob. Generated from the label by the form, never typed —
+ * renaming a criterion later leaves history intact because the key doesn't move.
+ */
+const criterionKey = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/, {
+  message: 'Key must start with a lowercase letter, then lowercase letters, digits or underscores',
+});
+
+/**
+ * One criterion. The `kind` decides the fields: `boolean` is a bare yes/no and takes neither a
+ * target nor a comparator; the three measured kinds require both. A discriminated union is what
+ * makes "a boolean carrying a target" a validation error rather than a silently ignored field.
+ */
+const habitCriterionSchema = z.discriminatedUnion('kind', [
+  // Strict, not stripping: a `target` sent on a boolean is a caller believing something the
+  // model will never honour, and silently dropping it hides that until the day is scored.
+  z.strictObject({
+    key: criterionKey,
+    label: z.string().trim().min(1),
+    kind: z.literal('boolean'),
+  }),
+  z.strictObject({
+    key: criterionKey,
+    label: z.string().trim().min(1),
+    kind: z.enum(['time', 'count', 'duration']),
+    /** Minutes after local midnight for `time` (375 = 06:15); a plain count otherwise. */
+    target: z.number().int(),
+    comparator: z.enum(['lte', 'gte', 'eq']),
+  }),
+]);
+
+/** ISO weekdays, 1 = Monday … 7 = Sunday — the numbering `habits.active_days` stores. */
+const activeDays = z
+  .array(z.number().int().min(1).max(7))
+  .min(1)
+  .refine((days) => new Set(days).size === days.length, {
+    message: 'active_days must not repeat a weekday',
+  });
+
+/**
+ * Body for POST /api/habits. Omitted `active_days` / `allowance` / `started_on` fall through to
+ * the column defaults (all seven days, no allowance, today).
+ */
+export const createHabitSchema = z.object({
+  name: z.string().trim().min(1),
+  notes: z.string().nullable().optional(),
+  criteria: z
+    .array(habitCriterionSchema)
+    .min(1)
+    .refine((criteria) => new Set(criteria.map((c) => c.key)).size === criteria.length, {
+      // Duplicate keys would make a `results` blob ambiguous — two criteria, one slot.
+      message: 'criteria keys must be unique within a habit',
+    }),
+  active_days: activeDays.optional(),
+  // A rolling window is 7 days, so forgiving 8 is meaningless rather than merely generous.
+  allowance: z.number().int().min(0).max(7).optional(),
+  started_on: z.iso.date().optional(),
+});
+
+// Plain `z.infer`, NOT `ExactOptional`: `name` and `criteria` are required here, and that
+// mapped type turns every property optional — which would let a caller omit them.
+export type CreateHabitInput = z.infer<typeof createHabitSchema>;
+
+/** The validated criterion shape (one element of the `criteria` JSONB column). */
+export type HabitCriterionInput = z.infer<typeof habitCriterionSchema>;
+
+/**
+ * Body for PUT /api/habits/[id]/entries — logging or correcting one day.
+ *
+ * A caller sends EVIDENCE, not a verdict: `results` are scored server-side and the derived
+ * status is stored alongside them. `status` therefore accepts exactly one value — `skipped`,
+ * which isn't a judgement about the criteria at all but a statement that the day shouldn't be
+ * scored. Honouring any other stated status would let a row read `met` while carrying evidence
+ * of a miss, with nothing downstream able to tell which was true.
+ */
+export const upsertHabitEntrySchema = z
+  .object({
+    /** The day being logged. Omitted ⇒ today, resolved through `tz`. */
+    date: z.iso.date().optional(),
+    /**
+     * IANA zone used to resolve "today" when `date` is omitted. Deliberately a bare string:
+     * an unrecognized zone degrades to UTC rather than 400-ing, exactly as `pr-ratio` does.
+     */
+    tz: z.string().optional(),
+    results: z.record(z.string(), z.union([z.boolean(), z.number()])).optional(),
+    status: z.literal('skipped').optional(),
+    note: z.string().nullable().optional(),
+  })
+  .refine((body) => body.results !== undefined || body.status !== undefined, {
+    message: 'Either "results" or "status" is required — there is nothing to record',
+    path: ['results'],
+  })
+  .refine((body) => body.status !== 'skipped' || (body.note ?? '').trim() !== '', {
+    // Skipping is the only way to keep a chain alive at no cost, so it takes a reason: a
+    // frictionless skip is a button that launders a broken streak into an intact one.
+    message: 'Skipping a day requires a non-empty "note" — the reason',
+    path: ['note'],
+  });
+
+export type UpsertHabitEntryInput = ExactOptional<z.infer<typeof upsertHabitEntrySchema>>;
+
+// ---------------------------------------------------------------------------
 // Software Factory — projects / epics / code stories (the gate)
 // ---------------------------------------------------------------------------
 
