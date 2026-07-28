@@ -9,11 +9,13 @@
 // (derived from the Zod schemas via z.infer); re-export them so existing importers of
 // `@/lib/api-client` keep working without re-declaring the shapes here.
 import type {
+  CreateHabitInput,
   CreateItemInput,
   CreateProjectInput,
   ListItemsQuery,
   UpdateEpicInput,
   UpdateItemInput,
+  UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
 import type {
   CodeFactoryState,
@@ -21,6 +23,8 @@ import type {
   CodeStory,
   Epic,
   Folder,
+  Habit,
+  HabitEntry,
   Item,
   PrRatioResponse,
   Project,
@@ -146,6 +150,36 @@ export function updateFolder(id: string, name: string): Promise<Folder> {
 
 export function deleteFolder(id: string): Promise<{ success: true }> {
   return apiRequest<{ success: true }>(`/api/folders/${id}`, { method: 'DELETE' });
+}
+
+// ---------------------------------------------------------------------------
+// Habits
+// ---------------------------------------------------------------------------
+
+/** Define a habit. Session-only on the server; the app is the only caller. */
+export function createHabit(input: CreateHabitInput): Promise<Habit> {
+  return apiRequest<Habit>('/api/habits', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Log or correct one day. The server scores `results` against the habit's criteria and returns
+ * the row with the status it froze — so the caller never states a verdict, only what happened.
+ * `skipped` is the exception, and it carries its reason in `note`.
+ *
+ * There is no habit READER here: the app reads habits through the shell seed like every other
+ * entity, so a client fetch would be a second read path with no caller.
+ */
+export function upsertHabitEntry(
+  habitId: string,
+  input: UpsertHabitEntryInput,
+): Promise<HabitEntry> {
+  return apiRequest<HabitEntry>(`/api/habits/${habitId}/entries`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -377,9 +411,11 @@ export function fetchWeeklyPlan(id: string): Promise<WeeklyPlan> {
 }
 
 export {
+  type CreateHabitInput,
   type CreateItemInput,
   type CreateProjectInput,
   type ListItemsQuery,
   type UpdateEpicInput,
   type UpdateItemInput,
+  type UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
