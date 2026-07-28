@@ -10,6 +10,7 @@ import {
   ListOrdered,
   ListTodo,
   type LucideIcon,
+  Repeat,
   Search,
   UserCheck,
 } from 'lucide-react';
@@ -38,6 +39,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   inbox: Inbox,
   priority: ListOrdered,
   plan: CalendarRange,
+  habits: Repeat,
   completed: Check,
   code: Code2,
   backlog: ListOrdered,

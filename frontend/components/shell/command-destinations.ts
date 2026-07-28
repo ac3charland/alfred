@@ -22,6 +22,7 @@ export type DestinationIcon =
   | 'inbox'
   | 'priority'
   | 'plan'
+  | 'habits'
   | 'completed'
   | 'code'
   | 'backlog'
@@ -58,6 +59,7 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
   { id: 'go-inbox', group: 'go', label: 'Inbox', href: '/?view=inbox', icon: 'inbox' },
   { id: 'go-priority', group: 'go', label: 'Priority', href: '/priority', icon: 'priority' },
   { id: 'go-plan', group: 'go', label: 'Week Plan', href: '/plan', icon: 'plan' },
+  { id: 'go-habits', group: 'go', label: 'Habits', href: '/habits', icon: 'habits' },
   { id: 'go-completed', group: 'go', label: 'Completed', href: '/completed', icon: 'completed' },
   { id: 'go-code', group: 'go', label: 'Code', href: '/code', icon: 'code' },
   { id: 'go-backlog', group: 'go', label: 'Backlog', href: '/code/backlog', icon: 'backlog' },

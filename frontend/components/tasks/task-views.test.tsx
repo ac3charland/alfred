@@ -25,6 +25,11 @@ jest.mock('./completed-view', () => ({
     return <div data-testid="completed-view" />;
   },
 }));
+jest.mock('@/components/habits/habits-view', () => ({
+  HabitsView: function MockHabitsView() {
+    return <div data-testid="habits-view" />;
+  },
+}));
 
 const mockPathname = jest.mocked(usePathname);
 const mockSearchParams = jest.mocked(useSearchParams);
@@ -62,6 +67,14 @@ describe('TaskViews', () => {
     render(<TaskViews />);
 
     expect(screen.getByTestId('folder-view')).toHaveAttribute('data-folder-id', 'f1');
+    expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
+  });
+
+  it('renders the habits view on /habits', () => {
+    setLocation('/habits');
+    render(<TaskViews />);
+
+    expect(screen.getByTestId('habits-view')).toBeInTheDocument();
     expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
   });
 

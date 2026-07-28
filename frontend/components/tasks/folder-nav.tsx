@@ -1,6 +1,14 @@
 'use client';
 
-import { CalendarRange, Check, FolderOpen, ListOrdered, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  CalendarRange,
+  Check,
+  FolderOpen,
+  ListOrdered,
+  MoreHorizontal,
+  Plus,
+  Repeat,
+} from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
@@ -18,6 +26,7 @@ import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
 import { ViewLink } from '@/components/tasks/view-link';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
+import { useUnloggedTodayCount } from '@/lib/stores/habits-store';
 import { useFolderBadgeCounts } from '@/lib/stores/tasks-store';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
 import { cn } from '@/lib/utils';
@@ -45,6 +54,7 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const router = useRouter();
   const folders = useFolders();
   const badgeCountsByFolder = useFolderBadgeCounts();
+  const unloggedHabits = useUnloggedTodayCount();
   const { addFolder, renameFolder, removeFolder } = useFolderActions();
 
   // Create stays on plain local state (an empty initial value, its own optimistic add +
@@ -124,6 +134,17 @@ export function FolderNav({ onClose }: FolderNavProperties) {
         <ViewLink href="/plan" className={navLinkClass(isActive('/plan'))} {...closeProperty}>
           <CalendarRange size={15} className="shrink-0" />
           <span>Week Plan</span>
+        </ViewLink>
+        {/* Habits sits directly beneath Week Plan, carrying the count of today's applicable-
+            but-unlogged habits — hidden at zero, exactly like the folder badges. */}
+        <ViewLink href="/habits" className={navLinkClass(isActive('/habits'))} {...closeProperty}>
+          <Repeat size={15} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">Habits</span>
+          <FolderCountBadge
+            tone="attention"
+            count={unloggedHabits}
+            label={(count) => `${String(count)} not logged today`}
+          />
         </ViewLink>
       </div>
 
