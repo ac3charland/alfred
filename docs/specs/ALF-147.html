@@ -944,7 +944,8 @@ interface HabitsActions {
   survives). Week three is a real break: a forgiven <code>missed</code> on Thursday, then an unlogged
   Friday — two spent days in one rolling window exceeds the allowance, so no link leaves Thursday.
   The live run then goes from that Saturday to today, straight through a <code>skipped</code>
-  Wednesday in week four whose links stay <b>fully lit</b> — see below.
+  Wednesday in week four whose links stay <b>fully lit</b> — because a skip costs nothing (D5),
+  unlike the two grey-linked days above it. The three cases sit side by side below.
 </p>
 
 <div class="settled">
@@ -975,29 +976,28 @@ interface HabitsActions {
   </div>
 </div></div>
 
-<h4>Skipped is not forgiven — and the connector is what says so</h4>
+<h4>The three non-<code>met</code> days, and what each costs</h4>
 
 <p class="small">
-  Both keep a run alive without adding to the count, so they are easy to conflate. They cost
-  different things, and the <b>links</b> are the only place that difference is visible. Same streak
-  number below; different price.
+  All three survive a run of <code>allowance: 1</code> and none adds to the count, so they are easy
+  to conflate — but they do <b>not</b> cost the same. <code>missed</code> and <code>partial</code>
+  each spend the allowance; <code>skipped</code> spends nothing (D5). The <b>links</b> are the only
+  place that difference is visible. Three independent runs below, same streak of 3:
 </p>
 
 <div class="app v2" style="padding:1.1rem 1.2rem;margin:1rem 0">
-  <div style="display:flex;gap:2.6rem;flex-wrap:wrap">
+  <div style="display:flex;gap:2.4rem;flex-wrap:wrap">
     <div>
-      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem">
-        <b>Skipped</b> — excused by hand</div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem"><b>Missed</b></div>
       <div class="gq mini">
-        <i class="m lk"></i><i class="sk lk">–</i><i class="m lk"></i><i class="m"></i>
+        <i class="m lk bridge"></i><i class="x lk bridge"></i><i class="m lk"></i><i class="m"></i>
       </div>
       <div style="color:#8a96a8;font-size:.68rem;margin-top:.6rem;line-height:1.5">
-        links stay <b style="color:#34d399">lit</b><br />streak 3 · allowance <b>untouched</b>
+        links go <b style="color:#8a96a8">grey</b><br />streak 3 · <b>1 allowance spent</b>
       </div>
     </div>
     <div>
-      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem">
-        <b>Forgiven</b> — a spent day the allowance absorbed</div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem"><b>Partial</b></div>
       <div class="gq mini">
         <i class="m lk bridge"></i><i class="p lk bridge"></i><i class="m lk"></i><i class="m"></i>
       </div>
@@ -1005,16 +1005,33 @@ interface HabitsActions {
         links go <b style="color:#8a96a8">grey</b><br />streak 3 · <b>1 allowance spent</b>
       </div>
     </div>
+    <div>
+      <div class="small" style="color:#e8edf5;margin-bottom:.55rem;font-size:.78rem"><b>Skipped</b></div>
+      <div class="gq mini">
+        <i class="m lk"></i><i class="sk lk">–</i><i class="m lk"></i><i class="m"></i>
+      </div>
+      <div style="color:#8a96a8;font-size:.68rem;margin-top:.6rem;line-height:1.5">
+        links stay <b style="color:#34d399">lit</b><br />streak 3 · allowance <b>untouched</b>
+      </div>
+    </div>
   </div>
 </div>
 
+<p class="small">
+  An <b>unlogged</b> day is a fourth case and behaves exactly like <code>missed</code> here — it spends
+  the allowance and greys its links (D5). It has no cell of its own in this comparison because it has
+  no row: it is simply the absence of one.
+</p>
+
 <div class="callout">
   <b>Do not render a skipped day's links as a grey bridge.</b> Grey means exactly one thing — <i>this
-  run survived only because the allowance absorbed a spent day</i>. A skipped day spends nothing
-  (D5), so greying its links would report an allowance charge that never happened, and the "misses
-  left" figure the owner reads would contradict the chain they're looking at. A skipped day emits
-  <code>link: 'streak'</code> like any other continuation; it is the <b>cell</b> that reads as
-  excused, never the connector.
+  run survived only because the allowance absorbed a spent day</i>. Per D5, <code>skipped</code> is
+  transparent: it neither extends the streak nor spends anything, and §3.1 lists only
+  <code>missed</code>, <code>partial</code> and <b>unknown</b> as spent days. Greying a skipped day's
+  links would therefore report an allowance charge that never happened, and the "misses left" figure
+  the owner reads would contradict the chain in front of them. A skipped day emits
+  <code>link: 'streak'</code> like any other continuation; the excusing is carried by the
+  <b>cell</b>, never the connector.
 </div>
 
 <div class="callout">
