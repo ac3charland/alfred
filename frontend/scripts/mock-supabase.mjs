@@ -17,7 +17,8 @@
  *     GET  /auth/v1/user                                      → the single user
  *     POST /auth/v1/logout                                    → 204
  *   Data (PostgREST):
- *     GET|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans}
+ *     GET|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans,
+ *                                     habits,habit_entries}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
@@ -70,6 +71,10 @@ let epics = [];
 let codeItems = [];
 /** @type {Record<string, unknown>[]} */
 let weeklyPlans = [];
+/** @type {Record<string, unknown>[]} */
+let habits = [];
+/** @type {Record<string, unknown>[]} */
+let habitEntries = [];
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -124,22 +129,41 @@ function wantsRepresentation(req) {
 // ── PostgREST filtering ──────────────────────────────────────────────────────
 
 /**
- * Apply the `column=op.value` filters from the query string. alfred only uses
- * `eq` (e.g. id=eq.x, folder_id=eq.x, status=eq.active) and `is` (folder_id=is.null).
+ * Apply the `column=op.value` filters from the query string: `eq` (id=eq.x), `is`
+ * (folder_id=is.null), and the `gte`/`lte` range the habit-entry window read uses — dates are
+ * `YYYY-MM-DD`, which compares correctly as a string.
  */
 function applyFilters(rows, searchParameters) {
   let result = rows;
-  const nonFilterKeys = new Set(['select', 'order', 'limit', 'offset']);
+  const nonFilterKeys = new Set(['select', 'order', 'limit', 'offset', 'on_conflict']);
   for (const [key, raw] of searchParameters.entries()) {
     if (nonFilterKeys.has(key)) continue;
     const dot = raw.indexOf('.');
     const op = raw.slice(0, dot);
     const value = raw.slice(dot + 1);
-    if (op === 'is') {
-      const target = value === 'null' ? null : value === 'true';
-      result = result.filter((row) => row[key] === target);
-    } else if (op === 'eq') {
-      result = result.filter((row) => String(row[key]) === value);
+    switch (op) {
+      case 'is': {
+        const target = value === 'null' ? null : value === 'true';
+        result = result.filter((row) => row[key] === target);
+
+        break;
+      }
+      case 'eq': {
+        result = result.filter((row) => String(row[key]) === value);
+
+        break;
+      }
+      case 'gte': {
+        result = result.filter((row) => String(row[key]) >= value);
+
+        break;
+      }
+      case 'lte': {
+        result = result.filter((row) => String(row[key]) <= value);
+
+        break;
+      }
+      // No default
     }
   }
   return result;
@@ -175,16 +199,25 @@ function applyRange(rows, searchParameters) {
   return Number.isNaN(count) ? rows.slice(start) : rows.slice(start, start + count);
 }
 
+/**
+ * Apply PostgREST's `order`, which may carry several comma-separated terms
+ * (`order=sort_order.asc,created_at.asc`). Later terms are applied first and each sort is
+ * stable, so the leftmost term ends up dominant — the same precedence the server gives them.
+ */
 function applyOrder(rows, searchParameters) {
   const order = searchParameters.get('order');
   if (!order) return rows;
-  const [column, direction] = order.split('.');
-  const sorted = rows.toSorted((a, b) => {
-    const av = String(a[column] ?? '');
-    const bv = String(b[column] ?? '');
-    return av < bv ? -1 : av > bv ? 1 : 0;
-  });
-  return direction === 'desc' ? sorted.toReversed() : sorted;
+  let result = rows;
+  for (const term of order.split(',').toReversed()) {
+    const [column, direction] = term.split('.');
+    const sorted = result.toSorted((a, b) => {
+      const av = String(a[column] ?? '');
+      const bv = String(b[column] ?? '');
+      return av < bv ? -1 : av > bv ? 1 : 0;
+    });
+    result = direction === 'desc' ? sorted.toReversed() : sorted;
+  }
+  return result;
 }
 
 function tableFor(name) {
@@ -194,6 +227,8 @@ function tableFor(name) {
   if (name === 'epics') return epics;
   if (name === 'code_items') return codeItems;
   if (name === 'weekly_plans') return weeklyPlans;
+  if (name === 'habits') return habits;
+  if (name === 'habit_entries') return habitEntries;
   return;
 }
 
@@ -235,6 +270,37 @@ function newWeeklyPlan(input) {
     id: input.id ?? randomUUID(),
     html: input.html ?? '',
     uploaded_at: input.uploaded_at ?? new Date().toISOString(),
+  };
+}
+
+/** A habit definition (migration 0023): its criteria blob plus its cadence and allowance. */
+function newHabit(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    name: input.name ?? '',
+    notes: input.notes ?? null,
+    criteria: input.criteria ?? [],
+    active_days: input.active_days ?? [1, 2, 3, 4, 5, 6, 7],
+    allowance: input.allowance ?? 0,
+    started_on: input.started_on ?? new Date().toISOString().slice(0, 10),
+    archived_at: input.archived_at ?? null,
+    sort_order: input.sort_order ?? null,
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** One logged day: the raw results AND the status the route derived and froze from them. */
+function newHabitEntry(input) {
+  const now = new Date().toISOString();
+  return {
+    id: input.id ?? randomUUID(),
+    habit_id: input.habit_id ?? null,
+    entry_date: input.entry_date ?? now.slice(0, 10),
+    status: input.status ?? 'missed',
+    results: input.results ?? null,
+    note: input.note ?? null,
+    created_at: input.created_at ?? now,
+    updated_at: input.updated_at ?? now,
   };
 }
 
@@ -351,6 +417,8 @@ function rowConstructorFor(name) {
   if (name === 'epics') return newEpic;
   if (name === 'code_items') return newCodeItem;
   if (name === 'weekly_plans') return newWeeklyPlan;
+  if (name === 'habits') return newHabit;
+  if (name === 'habit_entries') return newHabitEntry;
   return;
 }
 
@@ -757,7 +825,25 @@ function handleRest(req, res, url, body) {
   if (req.method === 'POST') {
     const construct = rowConstructorFor(rest);
     const inputs = Array.isArray(body) ? body : [body];
+    // An upsert arrives as a POST carrying `Prefer: resolution=merge-duplicates` and the
+    // conflict target in `on_conflict` — that is how supabase-js sends `.upsert()`, and it is
+    // the entries route's entire write path (log a day, correct a day: same call).
+    const merge = (req.headers['prefer'] ?? '').includes('resolution=merge-duplicates');
+    const conflictColumns = (url.searchParams.get('on_conflict') ?? '')
+      .split(',')
+      .map((column) => column.trim())
+      .filter(Boolean);
     const created = inputs.map((input) => {
+      const existing =
+        merge && conflictColumns.length > 0
+          ? table.find((row) =>
+              conflictColumns.every((column) => String(row[column]) === String(input[column])),
+            )
+          : undefined;
+      if (existing !== undefined) {
+        Object.assign(existing, input);
+        return existing;
+      }
       const row = construct === undefined ? { ...input } : construct(input);
       table.push(row);
       return row;
@@ -840,6 +926,18 @@ function deleteRows(rest, matched) {
   if (rest === 'weekly_plans') {
     const removeRows = new Set(matched);
     weeklyPlans = weeklyPlans.filter((plan) => !removeRows.has(plan));
+    return;
+  }
+  if (rest === 'habits') {
+    // The FK cascades a habit's entries with it (migration 0023).
+    const removeIds = new Set(matched.map((row) => row.id));
+    habitEntries = habitEntries.filter((entry) => !removeIds.has(entry.habit_id));
+    habits = habits.filter((habit) => !removeIds.has(habit.id));
+    return;
+  }
+  if (rest === 'habit_entries') {
+    const removeRows = new Set(matched);
+    habitEntries = habitEntries.filter((entry) => !removeRows.has(entry));
   }
 }
 
@@ -855,6 +953,8 @@ function handleControl(req, res, url, body) {
     epics = [];
     codeItems = [];
     weeklyPlans = [];
+    habits = [];
+    habitEntries = [];
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -869,13 +969,35 @@ function handleControl(req, res, url, body) {
     weeklyPlans = Array.isArray(body?.weeklyPlans)
       ? body.weeklyPlans.map((w) => newWeeklyPlan(w))
       : [];
+    habits = Array.isArray(body?.habits) ? body.habits.map((h) => newHabit(h)) : [];
+    habitEntries = Array.isArray(body?.habitEntries)
+      ? body.habitEntries.map((e) => newHabitEntry(e))
+      : [];
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
-    sendJson(res, 200, { folders, items, projects, epics, codeItems, weeklyPlans });
+    sendJson(res, 200, {
+      folders,
+      items,
+      projects,
+      epics,
+      codeItems,
+      weeklyPlans,
+      habits,
+      habitEntries,
+    });
     return;
   }
   if (url.pathname === '/__mock__/state' && req.method === 'GET') {
-    sendJson(res, 200, { folders, items, projects, epics, codeItems, weeklyPlans });
+    sendJson(res, 200, {
+      folders,
+      items,
+      projects,
+      epics,
+      codeItems,
+      weeklyPlans,
+      habits,
+      habitEntries,
+    });
     return;
   }
   sendJson(res, 404, { message: `No control route: ${req.method} ${url.pathname}` });
