@@ -118,11 +118,17 @@ uploads or counts as green — a red run triggers GitHub's failed-scheduled-run 
 owner):
 
 1. **Dump** — `supabase db dump` writes schema only by default, so the script takes a schema dump
-   plus a `--data-only` dump and concatenates them into one gzip: a **full logical dump** that
-   restores standalone with no migration replay. A size floor rejects an empty/truncated dump.
-2. **Verify** — restores the fresh dump into a throwaway Postgres (an Actions service container),
-   seeding the Supabase-provided roles/publication first (as the integration suite does), and
-   asserts the core tables (`items`, `folders`, `projects`) are present.
+   plus a `--data-only` dump and assembles one gzip: the schema, then the data loaded with
+   `session_replication_role = replica`. That guard matters — `items.parent_id` is a self-referential
+   (circular) FK, so a plain data-only load fails on row ordering; disabling FK/trigger checks during
+   the COPY (the source data is already consistent) is what lets the artifact restore standalone. A
+   size floor rejects an empty/truncated dump.
+2. **Verify** — rebuilds the schema in a throwaway Postgres (an Actions service container) from the
+   committed migrations — which restore cleanly on vanilla Postgres, unlike the dump's own DDL, which
+   references the hosted Supabase `extensions` schema — then loads the dump's **data** into it with the
+   same FK guard and asserts the core tables (`items`, `folders`, `projects`) are present. The data is
+   the irreplaceable asset (the schema lives in git), so proving it reloads into the canonical schema
+   is the check that matters.
 3. **Upload** — copies the SAME verified gzip to two keys: `daily/<instance>/YYYY-MM-DD.sql.gz` (one
    slot per UTC day; a same-day re-run overwrites) and `monthly/<instance>/YYYY-MM.sql.gz` (one slot
    per month; each daily run overwrites it, so it settles to the month's last good backup and freezes
