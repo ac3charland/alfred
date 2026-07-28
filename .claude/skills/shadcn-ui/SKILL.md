@@ -145,6 +145,15 @@ Use this when:
   (unified), not `import * as DialogPrimitive from "@radix-ui/react-dialog"`. Mixing both causes
   duplicate instances and broken state.
 
+- **One popover over many targets: anchor it with `Popover.Anchor`'s `virtualRef`, not by moving
+  an `asChild` anchor onto the open element.** Wrapping only the open item in `<PopoverAnchor asChild>`
+  changes that item's element type when it opens or closes, so React unmounts and recreates its DOM
+  node — any ref you captured to restore focus afterwards then points at a detached element and
+  `.focus()` does nothing. A `virtualRef` (a stable object whose `getBoundingClientRect()` delegates
+  to the open element) positions the popover while every target's markup stays untouched. A virtual
+  anchor is not a trigger, so Radix restores focus to nothing: `preventDefault()` in
+  `onCloseAutoFocus` and focus the element yourself.
+
 - **Always** add `"use client"` to any file that uses a Radix-based shadcn component, `useState`,
   `useEffect`, event handlers, or browser APIs. In alfred's Next.js App Router context (`isRSC: true`),
   this is most UI component files. Forgetting it produces a hydration mismatch or a runtime error.

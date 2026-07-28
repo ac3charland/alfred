@@ -51,3 +51,7 @@ step.
 - [ ] `frontend/lib/code/status.test.ts` — the "omits non-status fields" test asserts
       whole-object equality to sidestep sorting the key list; once `toSorted` type-checks,
       a `Object.keys(patch).toSorted()` assertion is the more direct expression if preferred.
+- [ ] `frontend/components/habits/habit-format.ts` — `orderedDays()` filters a canonical
+      `[1..7]` list to put a habit's weekday set in calendar order, because
+      `activeDays.toSorted((a, b) => a - b)` doesn't type-check. The filter also dedupes, so
+      it may be worth keeping; if it isn't, the clean form is a plain sorted copy.
