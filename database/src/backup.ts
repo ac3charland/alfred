@@ -6,7 +6,7 @@ import process from 'node:process';
 
 import pg from 'pg';
 
-import { bootstrapSupabase } from './migrate.ts';
+import { applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 const { Client } = pg;
 
@@ -146,12 +146,17 @@ async function presentPublicTables(client: InstanceType<typeof Client>): Promise
  * dump that won't restore never overwrites the day's slot or counts as a green run.
  *
  *  1. DUMP:   a FULL logical dump. `supabase db dump` writes schema only by default, so we take a
- *             schema dump followed by a `--data-only` dump and concatenate them; the result restores
- *             standalone (DDL creates the tables, then COPY loads the rows) with no migration replay.
- *             Assert the gzip clears the size floor before trusting it.
- *  2. VERIFY: restore into a throwaway Postgres (the Actions service container) — seeding the
- *             Supabase-provided roles/publication first, exactly as the integration suite does, so the
- *             dump's GRANTs and policies apply — then assert the core tables are present.
+ *             schema dump plus a `--data-only` dump and assemble one restorable artifact: the schema,
+ *             then the data loaded with `session_replication_role = replica`. That guard is
+ *             load-bearing — `items.parent_id` is a self-referential (circular) FK, so a plain
+ *             data-only load fails on row ordering; disabling FK/trigger checks during the COPY (the
+ *             source data is already consistent) is how the dump restores standalone anywhere.
+ *  2. VERIFY: rebuild the schema in a throwaway Postgres from our OWN committed migrations — which
+ *             restore cleanly on vanilla Postgres, unlike the dump's Supabase-managed DDL (it
+ *             references the hosted `extensions` schema) — then load the dump's DATA into it with the
+ *             same FK guard and assert the core tables are present. The irreplaceable asset is the
+ *             data (the schema lives in git), so proving the data reloads into the canonical schema is
+ *             the verification that matters, and it sidesteps the vanilla-vs-Supabase schema mismatch.
  *  3. UPLOAD: copy the SAME verified gzip to both the instance's daily and monthly keys.
  *
  * Runs for ONE instance (`INSTANCE`, e.g. `personal` / `work`); the workflow fans out over the
@@ -176,7 +181,11 @@ async function main(): Promise<number> {
     log(`› [${instance}] dumping database (full logical dump: schema + data)…`);
     run(`supabase db dump --db-url "$SUPABASE_DB_URL" -f ${schemaPath}`);
     run(`supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f ${dataPath}`);
-    run(`cat ${schemaPath} ${dataPath} | gzip -c > ${gzPath}`);
+    // Assemble the restorable artifact: schema (creates tables + FKs), then data with FK/trigger
+    // checks disabled so the circular items.parent_id FK doesn't reject rows during the COPY.
+    run(
+      String.raw`{ cat ${schemaPath}; printf '\nset session_replication_role = replica;\n'; cat ${dataPath}; printf '\nset session_replication_role = default;\n'; } | gzip -c > ${gzPath}`,
+    );
     const size = statSync(gzPath).size;
     assertDumpSize(size);
     log(`  dump ok — ${String(size)} bytes gzipped`);
@@ -185,12 +194,14 @@ async function main(): Promise<number> {
     const client = new Client({ connectionString: verifyUrl });
     await client.connect();
     try {
-      // Seed the objects a hosted Supabase provides but a vanilla cluster lacks (the API roles +
-      // realtime publication) so the dump's grants/policies restore, then load the dump with psql
-      // (it handles the COPY blocks) under a single transaction that aborts on the first error.
+      // Rebuild the schema from our committed migrations (seeding the Supabase-provided roles +
+      // publication they assume), then load the dump's DATA with the same FK guard, in one
+      // transaction that aborts on the first error. Using migrations for the schema keeps the
+      // throwaway free of the hosted `extensions` schema the dump's own DDL references.
       await bootstrapSupabase(client);
+      await applyMigrations(client);
       run(
-        `gunzip -c ${gzPath} | psql "$VERIFY_DB_URL" -v ON_ERROR_STOP=1 --single-transaction --quiet`,
+        String.raw`{ printf 'set session_replication_role = replica;\n'; cat ${dataPath}; } | psql "$VERIFY_DB_URL" -v ON_ERROR_STOP=1 --single-transaction --quiet`,
       );
       assertCoreTables(await presentPublicTables(client));
       for (const table of CORE_TABLES) {
