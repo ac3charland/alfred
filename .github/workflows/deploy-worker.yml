@@ -1,0 +1,55 @@
+name: Deploy Worker
+
+# The Software Factory webhook Worker used to reach production only when someone remembered to
+# run `wrangler deploy` by hand. ALF-130 added the `epic-refinement` phase, merged, and was never
+# deployed — so for three days GitHub kept POSTing epic PRs at a Worker that had never heard of
+# the phase, which answered `200 {"ignored":"no alfred frontmatter block"}` and dropped them.
+# Merging IS deploying now; that gap cannot reopen.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # redeploy on demand (e.g. after rotating a secret)
+
+# The job only reads the repo; Cloudflare auth comes from a secret.
+permissions:
+  contents: read
+
+# Serialize deploys so two quick merges can't race and leave the OLDER commit live.
+# cancel-in-progress: false — a half-cancelled `wrangler deploy` is worse than a queued one.
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      # Installs the repo-PINNED wrangler (workers/package.json devDependency) so a deploy uses
+      # the same version the package was developed against — `npx wrangler` with no install would
+      # fetch whatever is latest that day.
+      - name: Install dependencies
+        run: npm ci
+
+      # NOTE: deliberately NOT filtered by `paths:`. A path filter is one more way for a change to
+      # reach main without reaching production — exactly the failure this workflow exists to close.
+      # A no-op deploy costs ~20s, so every main push simply deploys.
+      #
+      # `--var WORKER_VERSION:<sha>` stamps the build onto `GET /`, so
+      # `curl <worker-url>/` can be diffed against `git rev-parse origin/main` to prove what is
+      # live. Secrets set with `wrangler secret put` persist across deploys and are NOT re-uploaded
+      # here.
+      - name: Deploy to Cloudflare
+        run: npx wrangler deploy --var WORKER_VERSION:"$GITHUB_SHA"
+        working-directory: workers
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Only needed when the token can see more than one account; an unset secret resolves to
+          # an empty string, which wrangler ignores.
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
