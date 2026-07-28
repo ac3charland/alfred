@@ -249,6 +249,11 @@ action closures can fire it without it becoming a memo dep.
   would wipe optimistic state on navigation. (The code store additionally patches itself from
   `code_items` Realtime for out-of-band Worker writes, but it still seeds once — see "Realtime:
   the code module's one push path".)
+- **A debounced write inside a closable surface must be flushed on unmount.**
+  `useDebouncedCallback` cancels its pending timer when the component unmounts, so a change made
+  in a popover or dialog and closed on top of (tap a checkbox, press Escape) is silently dropped.
+  Keep the owed value in a ref and fire it from a cleanup effect: closing the surface is not a
+  reason to lose what the owner just recorded.
 - **Selector hooks memoize on the store + scope fields** (`useMemo([items, scopeType,
   folderId])`), and take a small, serializable scope (`TaskViews` builds it from the URL).
 

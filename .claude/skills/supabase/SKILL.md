@@ -151,6 +151,11 @@ useEffect(() => {
 
 - **Never run recursive subtask queries in a JS loop.** Fetching children level-by-level results in N+1 queries. Use a `WITH RECURSIVE` CTE in a Postgres function and call it via `supabase.rpc()`.
 
+- **A `check` constraint over an array must use `cardinality()`, not `array_length(col, 1)`.**
+  `array_length` returns **NULL** for an empty array, and a check constraint evaluating to NULL is
+  SATISFIED — so `check (array_length(days, 1) >= 1)` accepts `'{}'` silently. `cardinality(days) >= 1`
+  returns 0 and rejects it. Only the real-Postgres integration suite catches this; the JS mock can't.
+
 - **Reading a view that returns a known-non-null row shape? Override the generated type with `.overrideTypes<Row[]>()`.** Postgres views carry no NOT NULL metadata, so `supabase gen types` types **every** view column as nullable — even a `select t.*` passthrough view whose rows are always full table rows. The result is a cryptic `Type 'string | null' is not assignable to type 'string'` on assignment to the table's `Row` type. Chain `.overrideTypes<Item[]>()` **after** the terminal builder method (e.g. `.order(...)`), not before — it's a type-only passthrough. (alfred's `task_items` view reads this way; see `lib/data/items.ts`.) Note `.overrideTypes` only fixes the **query result**; the shared alias for the view row (e.g. `CodeStory = Views['v_code_stories']['Row']`) stays all-nullable, so code consuming that alias (store actions, components) must still coalesce/narrow before passing a field to a `string`-typed param or template literal — else the same `string | null` error resurfaces away from the query.
 
 - **Always use `await supabase.auth.getUser()` in middleware** (not `getSession()`). The middleware is where the access token is refreshed. Calling `getSession()` in middleware skips the refresh, causing Server Components to receive a stale or expired token.
@@ -336,10 +341,13 @@ into `database.types.ts`, burying the additive diff. The local cluster is built 
 2. Parity stub for the graphql section: `create schema graphql_public;` plus a
    `graphql_public.graphql("operationName" text default null, query text default null,
    variables jsonb default null, extensions jsonb default null) returns jsonb` stub function.
-3. **`npm i @supabase/postgres-meta@0.95.2`** — pin it, outside the repo (a scratch dir), so no
-   dependency lands in the lockfile. The version sets the *template*, not just the data: 0.96.x
-   emits `X extends (Y extends …)` parens and different union wrapping, so its output churns ~50
-   lines against the committed file even with no schema change. Run `PG_META_DB_URL=<url> node
+3. **`npm i @supabase/postgres-meta@0.95.2`, pinning `prettier` to the repo's version** — install
+   both outside the repo (a scratch dir) so nothing lands in the lockfile. Two versions decide the
+   *template*, not just the data. postgres-meta itself: 0.96.x emits different union wrapping.
+   And its **`prettier` dependency is a caret range**, so a fresh install resolves the latest —
+   3.9.x adds `X extends (Y extends …)` parens the committed file doesn't have, churning ~30 lines
+   with no schema change. Pin it in the scratch `package.json`:
+   `"overrides": { "prettier": "<the repo's version>" }`. Run `PG_META_DB_URL=<url> node
    node_modules/@supabase/postgres-meta/dist/server/server.js`, then GET
    `/generators/typescript?included_schemas=public,graphql_public&detect_one_to_one_relationships=true&postgrest_version=14.5`
    (match `postgrest_version` to the committed file's `__InternalSupabase.PostgrestVersion`).
