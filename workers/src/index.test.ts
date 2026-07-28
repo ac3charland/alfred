@@ -36,6 +36,7 @@ function toBase64Utf8(text: string): string {
 /** Invoke the Worker, collecting any waitUntil background work so tests can await it. */
 async function invoke(
   request: Request,
+  envOverride: Env = env,
 ): Promise<{ response: Response; background: Promise<unknown> }> {
   const tasks: Promise<unknown>[] = [];
   const ctx = {
@@ -44,7 +45,7 @@ async function invoke(
     },
   } as unknown as FetchArgs[2];
 
-  const response = await worker.fetch(request, env, ctx);
+  const response = await worker.fetch(request, envOverride, ctx);
   return { response, background: Promise.all(tasks) };
 }
 
@@ -121,10 +122,24 @@ function githubCalls(spy: jest.SpyInstance): string[] {
 }
 
 describe('worker.fetch', () => {
-  it('GET / returns the health response', async () => {
+  it('GET / names the build it is running, so a stale deploy is visible', async () => {
+    // The whole point of the stamp (ALF-149): comparing this against `git rev-parse origin/main`
+    // answers "is production current?" in one curl. Without it a Worker running month-old code
+    // is indistinguishable from a fresh one.
+    const { response } = await invoke(new Request('https://worker.dev/'), {
+      ...env,
+      WORKER_VERSION: 'abc1234',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('alfred workers ok (build abc1234)');
+  });
+
+  it('GET / reports an UNSTAMPED build when no version was injected at deploy', async () => {
+    // A hand-run `wrangler deploy` passes no --var, so it lands unstamped. That is itself the
+    // signal — the deploy did not come from CI, so nothing vouches for which commit it carries.
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('alfred workers ok');
+    expect(await response.text()).toBe('alfred workers ok (build unstamped)');
   });
 
   it('404s an unknown route', async () => {
