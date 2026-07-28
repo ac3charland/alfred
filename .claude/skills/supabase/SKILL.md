@@ -421,6 +421,10 @@ project:
   replica;` first (superuser only) to disable FK/trigger checks during the COPY — the source data is
   already consistent. The uploaded backup artifact bakes this guard in around its data section so the
   restore works anywhere. `database/src/backup.ts` is the worked example.
+- **`--data-only` dumps every non-excluded schema, not just `public`.** It includes Supabase's managed
+  `auth`/`storage` data (e.g. `COPY "auth"."audit_log_entries"`), which fails to restore into a cluster
+  that only has your `public` schema (`ERROR: schema "auth" does not exist`). Scope both dumps with
+  `--schema public` so the artifact is just the app's own data.
 - **Match the restore server's major version to Supabase's.** Supabase runs **Postgres 17**, whose
   `pg_dump` writes PG17-only GUCs into the dump preamble (e.g. `SET transaction_timeout = 0;`). Loading
   that into an older server fails with `unrecognized configuration parameter "transaction_timeout"` and
