@@ -56,22 +56,25 @@ export function HistoryCell({ day, previousLink, name, onOpen }: HistoryCellProp
   // A Monday inherits the tone of the link that reached it from the preceding Sunday.
   const inTone = isoWeekday(day.date) === 1 && previousLink !== 'none' ? previousLink : undefined;
 
+  const shape = CELL_SHAPE[day.status];
+
   const plate = (
     <span
       className={cn(
-        'block h-full w-full rounded-md',
+        'relative block h-full w-full rounded-md',
         CELL_PLATE[day.status],
         day.isToday && CELL_TODAY,
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn('flex h-full w-full items-center justify-center', CELL_SHAPE[day.status])}
-      >
-        {day.status === 'skipped' && (
-          <span className="text-[13px] leading-none text-muted-foreground">–</span>
-        )}
-      </span>
+      {shape !== '' && <span aria-hidden="true" className={cn('absolute', shape)} />}
+      {day.status === 'skipped' && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 flex items-center justify-center text-[13px] leading-none text-muted-foreground"
+        >
+          –
+        </span>
+      )}
     </span>
   );
 

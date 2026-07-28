@@ -29,13 +29,20 @@ export const CELL_PLATE: Record<CellStatus, string> = {
 
 /**
  * The non-colour cue layered over the plate, so met / partial / missed / skipped / unknown stay
- * apart in greyscale: a uniform face, a lighter diagonal half, an inner ring, a centred dash,
- * and nothing at all.
+ * apart in greyscale: a uniform face, a half-filled one, an inner ring, a centred dash, and
+ * nothing at all.
+ *
+ * Each cue is an ABSOLUTE overlay inside the plate, positioned by `inset-*`. A margin-based
+ * inset on a `w-full` element measures 100% of the plate and then pushes itself off it, which
+ * is how the inner ring ended up hanging past two of the plate's edges.
  */
 export const CELL_SHAPE: Record<CellStatus, string> = {
   met: '',
-  partial: 'bg-[linear-gradient(135deg,transparent_50%,rgba(255,255,255,0.22)_50%)]',
-  missed: 'ring-1 ring-inset ring-accent-red/50 m-[5px] rounded-[2px]',
+  // Half the face filled, reading as half the day earned. The tint is the status colour, so
+  // the SHAPE — full vs half — is what carries the meaning with no colour at all.
+  partial:
+    'inset-0 rounded-md bg-[linear-gradient(to_top,var(--color-accent-amber)_50%,transparent_50%)] opacity-45',
+  missed: 'inset-[5px] rounded-[3px] ring-1 ring-accent-red/60',
   skipped: '',
   unknown: '',
   not_applicable: '',
