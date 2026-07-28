@@ -11,6 +11,12 @@ compatibility_flags = ["nodejs_compat"]
 # matched in code. Add a `routes`/`route` entry here only when fronting it with a
 # custom domain.
 
+# ── Vars (non-secret, injected at deploy time) ───────────────────────────────
+# WORKER_VERSION — the commit the running build came from, set by the Deploy Worker workflow
+#   (`wrangler deploy --var WORKER_VERSION:<sha>`) and reported by `GET /`. Deliberately NOT
+#   declared with a default here: a deploy that carries no stamp should say so ("unstamped"),
+#   because nothing vouches for which commit it holds.
+
 # ── Secrets (set with `wrangler secret put <NAME>`, never committed) ──────────────
 # These back the typed `Env` in src/index.ts. For local `wrangler dev`, put the
 # same keys in a gitignored `.dev.vars` file (dotenv format).

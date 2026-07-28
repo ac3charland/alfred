@@ -23,7 +23,19 @@ export interface Env {
   GITHUB_TOKEN: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  /**
+   * The commit this Worker was built from — a plain `[vars]` binding, NOT a secret, injected by
+   * the deploy workflow (`--var WORKER_VERSION:<sha>`). Optional because a hand-run
+   * `wrangler deploy` passes none.
+   */
+  WORKER_VERSION?: string;
 }
+
+/**
+ * What `GET /` reports when nothing stamped the build. Deploying by hand leaves this, which is
+ * the useful reading: no CI run vouches for which commit is live.
+ */
+const UNSTAMPED = 'unstamped';
 
 /** The `pull_request` payload fields we read (a tiny subset of GitHub's event). */
 interface PullRequestPayload {
@@ -50,9 +62,11 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    // Health check (keep the skeleton's default 200).
+    // Health check — and the deploy's receipt. It names the commit the running code was built
+    // from so "is production current?" is one curl plus a `git rev-parse`, rather than the
+    // guesswork that let a Worker sit three phases behind main for days (ALF-149).
     if (request.method === 'GET' && url.pathname === '/') {
-      return new Response('alfred workers ok');
+      return new Response(`alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED})`);
     }
 
     if (request.method === 'POST' && url.pathname === '/github/webhook') {
