@@ -39,6 +39,7 @@ describe('buildDestinations', () => {
       'Inbox',
       'Priority',
       'Week Plan',
+      'Habits',
       'Completed',
       'Code',
       'Backlog',
@@ -56,6 +57,7 @@ describe('buildDestinations', () => {
       Inbox: '/?view=inbox',
       Priority: '/priority',
       'Week Plan': '/plan',
+      Habits: '/habits',
       Completed: '/completed',
       Code: '/code',
       Backlog: '/code/backlog',
@@ -128,7 +130,7 @@ describe('flattenDestinations', () => {
     );
     const flat = flattenDestinations(grouped);
     expect(flat.map((d) => d.group)).toEqual([
-      ...Array.from({ length: 8 }, () => 'go'),
+      ...Array.from({ length: 9 }, () => 'go'),
       'folders',
       'projects',
     ]);

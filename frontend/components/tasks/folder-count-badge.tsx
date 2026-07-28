@@ -11,6 +11,12 @@ interface FolderCountBadgeProperties {
   count: number;
   /** Amber `attention` (high-priority / due today) or red `overdue` (past due). */
   tone: FolderCountTone;
+  /**
+   * Overrides the accessible label when the tally isn't a folder's. The tone carries the
+   * urgency, not the meaning — the Habits link borrows `attention` for today's unlogged
+   * habits, which are neither high-priority nor due.
+   */
+  label?: (count: number) => string;
 }
 
 /**
@@ -38,11 +44,15 @@ const TONE: Record<FolderCountTone, { className: string; label: (count: number) 
  * `aria-label` names the meaning, not just the number, so a folder link reads as "Work, 2
  * high-priority or due today, 1 overdue".
  */
-export function FolderCountBadge({ count, tone }: FolderCountBadgeProperties) {
+export function FolderCountBadge({ count, tone, label }: FolderCountBadgeProperties) {
   if (count <= 0) return null;
-  const { className, label } = TONE[tone];
+  const { className, label: toneLabel } = TONE[tone];
   return (
-    <Badge variant="plain" className={cn(className, 'font-medium')} aria-label={label(count)}>
+    <Badge
+      variant="plain"
+      className={cn(className, 'font-medium')}
+      aria-label={(label ?? toneLabel)(count)}
+    >
       {count}
     </Badge>
   );

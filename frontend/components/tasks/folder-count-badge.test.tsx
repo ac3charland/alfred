@@ -50,4 +50,18 @@ describe('FolderCountBadge', () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('takes a caller-supplied label when the tally is not a folder’s', () => {
+    // The Habits link borrows the amber tone for today's unlogged habits, which are neither
+    // high-priority nor due — the tone carries the urgency, the label carries the meaning.
+    render(
+      <FolderCountBadge
+        count={2}
+        tone="attention"
+        label={(n) => `${String(n)} not logged today`}
+      />,
+    );
+
+    expect(screen.getByLabelText('2 not logged today')).toHaveTextContent('2');
+  });
 });

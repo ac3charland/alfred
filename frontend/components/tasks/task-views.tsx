@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { HabitsView } from '@/components/habits/habits-view';
 import { CompletedView } from '@/components/tasks/completed-view';
 import { FolderView } from '@/components/tasks/folder-view';
 import { InboxScreen } from '@/components/tasks/inbox-screen';
@@ -30,6 +31,10 @@ export function TaskViews() {
 
   if (pathname === '/plan') {
     return <WeeklyPlanView />;
+  }
+
+  if (pathname === '/habits') {
+    return <HabitsView />;
   }
 
   if (pathname === '/completed') {

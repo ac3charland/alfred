@@ -448,6 +448,48 @@ describe('FolderNav', () => {
     expect(hrefs.indexOf('/plan')).toBeLessThan(hrefs.indexOf('/folders/f1'));
   });
 
+  it('renders a Habits link pointing to /habits, directly under Week Plan', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /habits/i })).toHaveAttribute('href', '/habits');
+
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    expect(hrefs.indexOf('/habits')).toBe(hrefs.indexOf('/plan') + 1);
+    expect(hrefs.indexOf('/habits')).toBeLessThan(hrefs.indexOf('/folders/f1'));
+  });
+
+  it('shows no habit badge when nothing is outstanding today', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.queryByLabelText(/not logged today/)).not.toBeInTheDocument();
+  });
+
+  it('counts today’s applicable-but-unlogged habits on the Habits link', () => {
+    renderWithProviders(<FolderNav />, {
+      folders: FOLDERS,
+      habits: {
+        habits: [
+          {
+            id: 'habit-1',
+            name: 'Morning routine',
+            notes: null,
+            criteria: [{ key: 'light', label: 'Outside', kind: 'boolean' }],
+            active_days: [1, 2, 3, 4, 5, 6, 7],
+            allowance: 1,
+            started_on: '2026-07-01',
+            archived_at: null,
+            sort_order: null,
+            created_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+        entries: [],
+        today: '2026-07-28',
+      },
+    });
+
+    expect(screen.getByLabelText('1 not logged today')).toHaveTextContent('1');
+  });
+
   it('highlights the Week Plan link when on /plan', () => {
     mockPathname.mockReturnValue('/plan');
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
