@@ -188,6 +188,20 @@ npm run demo -- verify "$DOC"        # confirm it reproduces before you commit
 Commit the doc under its feature-named folder in `docs/demos/` and add a **live, clickable
 link** to it in the PR description (see *Linking the demo in the PR* below).
 
+### Booting the app inside the block, to curl a route
+
+An API demo needs the app running against the in-memory Supabase mock (`frontend/scripts/mock-supabase.mjs`
+— see the `playwright` skill). `docs/demos/habit-read-endpoint/` is the worked example; two
+things bite, and both surface as every route answering `{"error":"TypeError: fetch failed"}`:
+
+- **Build after exporting the mock's URL, unconditionally.** Next inlines `NEXT_PUBLIC_*` at
+  **build** time, so a `[ -d .next ] || npm run build` guard silently reuses a build pointing at
+  whatever port the last build used (the E2E harness rebuilds on its own port every run).
+- **`npm run start` spawns `next-server` as a child**, so a trap killing only the npm PID leaves
+  it holding the port — and the *next* run's requests are answered by that stale server, still
+  pointed at the old mock. Kill the child (`pkill -P "$APP"`), and `pkill -f next-server` before
+  re-running a block that died.
+
 ## Screenshotting the UI (the evidence for any visual change)
 
 Reuse the Playwright-managed Chromium the E2E suite installs (`npm run setup:chromium`,
