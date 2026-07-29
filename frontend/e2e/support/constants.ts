@@ -31,6 +31,9 @@ export const E2E_USER = {
   password: 'demo-password-123',
 };
 
+/** The ingest key this deployment is configured with — the credential a keyed caller sends. */
+export const INGEST_API_KEY = 'mock_ingest_key';
+
 /** A seed payload: the rows the mock should hold for a test. */
 export interface SeedState {
   folders?: Folder[];

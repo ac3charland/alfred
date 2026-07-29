@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-import { AUTH_FILE, E2E_USER, MOCK_PORT, MOCK_URL } from './e2e/support/constants';
+import { AUTH_FILE, E2E_USER, INGEST_API_KEY, MOCK_PORT, MOCK_URL } from './e2e/support/constants';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 
@@ -15,7 +15,7 @@ const mockEnvironment: Record<string, string> = {
   NEXT_PUBLIC_SUPABASE_URL: MOCK_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_mock',
   SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_mock',
-  INGEST_API_KEY: 'mock_ingest_key',
+  INGEST_API_KEY,
   E2E_USER_EMAIL: E2E_USER.email,
   E2E_USER_PASSWORD: E2E_USER.password,
 };
