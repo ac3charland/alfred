@@ -80,7 +80,7 @@ describe('PATCH /api/folders/[id]', () => {
     expect(mockSupabase.from).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when name is missing', async () => {
+  it('returns 400 when the body carries neither a name nor a rank', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
@@ -148,6 +148,61 @@ describe('PATCH /api/folders/[id]', () => {
     expect(mockSupabase.from).toHaveBeenCalledWith('folders');
     expect(chain.update).toHaveBeenCalledWith({ name: 'Renamed' });
     expect(chain.eq).toHaveBeenCalledWith('id', TEST_ID);
+  });
+
+  it('reorders a folder by writing only its manual rank, leaving the name alone', async () => {
+    const reordered = { ...TEST_FOLDER, sort_order: 1.5 };
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: reordered, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ sort_order: 1.5 }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toStrictEqual(reordered);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ sort_order: 1.5 });
+  });
+
+  it('accepts a fractional rank — the midpoint between two neighbours', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_FOLDER, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Renamed', sort_order: 0.0625 }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({
+      name: 'Renamed',
+      sort_order: 0.0625,
+    });
+  });
+
+  it('returns 400 when sort_order is not a number', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ sort_order: 'first' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
   });
 
   it('returns 500 when Supabase returns an error on update', async () => {

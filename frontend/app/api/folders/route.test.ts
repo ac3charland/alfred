@@ -69,7 +69,7 @@ describe('GET /api/folders', () => {
     expect(body).toStrictEqual(folders);
   });
 
-  it('queries the "folders" table with select(*) and ascending order by created_at', async () => {
+  it('queries the "folders" table with select(*) in ascending manual-rank order', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
@@ -78,7 +78,7 @@ describe('GET /api/folders', () => {
     const chain = mockSupabase._chain;
     expect(mockSupabase.from).toHaveBeenCalledWith('folders');
     expect(chain.select).toHaveBeenCalledWith('*');
-    expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(chain.order).toHaveBeenCalledWith('sort_order', { ascending: true });
   });
 
   it('returns 500 on Supabase error', async () => {
