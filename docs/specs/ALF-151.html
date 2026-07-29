@@ -92,72 +92,115 @@
   .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
               padding: .5rem .85rem; border-bottom: 1px solid var(--line);
               background: var(--bg); font-weight: 600; font-size: .8rem; }
-  .mock-body { padding: 1rem; }
-  .hname { font-weight: 600; font-size: .85rem; }
-  .hmeta { color: var(--faint); font-size: .72rem; font-weight: 400; }
-  .cap { color: var(--muted); font-size: .8rem; margin: .55rem 0 0; }
+  /* The mockup canvas IS the app: every value below is lifted from
+     frontend/app/globals.css and the atoms, so a mockup reads in alfred's real dark
+     palette whichever mode this document is being read in. */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-fg: #e8edf5;
+    --a-muted: #8a96a8; --a-input: #1e2a3f; --a-teal: #4fd1e0; --a-red: #f87171;
+    --a-green: #34d399; --a-amber: #f0b429; --a-pop: #0d1320; --a-pop-line: #25324a;
+    --a-unknown: #141d2e; --a-bridge: #48566e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+  }
+  /* An annotation's inline code sits on the app canvas, so it takes the app's plate. */
+  .mock-body code { background: var(--a-unknown); color: var(--a-fg); }
+  .hname { font-weight: 600; font-size: .85rem; color: var(--a-fg); }
+  .hmeta { color: var(--a-muted); font-size: .72rem; font-weight: 400; }
+  .cap { color: var(--a-muted, var(--muted)); font-size: .78rem; margin: .7rem 0 0; }
 
-  /* ── App-surface primitives, mirroring what already ships ───── */
-  .dlg { border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
-         padding: .9rem 1rem; max-width: 460px; }
-  .dlg-t { font-weight: 700; font-size: .88rem; margin: 0; }
-  .dlg-s { color: var(--muted); font-size: .76rem; margin: .2rem 0 .8rem; }
-  .field { border: 1px solid var(--line); border-radius: 7px; background: var(--card);
-           padding: .35rem .6rem; font-size: .8rem; }
-  .field.ph { color: var(--faint); }
-  .sentence { font-size: .82rem; line-height: 2.2; margin: .75rem 0 0; }
-  .slot { border-bottom: 2px dashed var(--accent); color: var(--accent);
-          padding: 0 .2rem; white-space: nowrap; }
+  /* ── App primitives, mirroring what already ships ───────────── */
+  /* FormDialog: rounded-2xl, border-border, bg-surface, p-6 */
+  .dlg { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+         padding: 1.05rem 1.1rem; max-width: 450px; }
+  .dlg-t { font-weight: 600; font-size: .88rem; margin: 0; color: var(--a-fg); }
+  .dlg-s { color: var(--a-muted); font-size: .76rem; margin: .22rem 0 .85rem; }
+  /* TextField: rounded-sm, border-border, bg-input */
+  .field { border: 1px solid var(--a-border); border-radius: 4px; background: var(--a-input);
+           color: var(--a-fg); padding: .38rem .6rem; font-size: .8rem; }
+  .sentence { font-size: .82rem; line-height: 2.3; margin: .8rem 0 0; color: var(--a-fg); }
+  /* The dashed-underline slot, straight off new-habit-dialog's SLOT_CLASS. */
+  .slot { border-bottom: 2px dashed var(--a-teal); color: var(--a-teal);
+          padding: 0 .22rem; white-space: nowrap; }
   .slot.add { font-weight: 700; padding: 0 .4rem; }
-  .slot.lock { border-bottom: 1px solid var(--na-line); color: var(--faint);
-               background: var(--na); border-radius: 4px; padding: .1rem .35rem; }
-  .chip2 { border: 1px solid var(--accent); background: var(--accent-bg); color: var(--accent);
-           border-radius: 999px; padding: .1rem .55rem; font-size: .76rem; white-space: nowrap; }
-  .lockline { color: var(--faint); font-size: .72rem; margin: .7rem 0 0;
+  .slot.lock { border-bottom: 1px solid var(--a-border); color: var(--a-muted);
+               background: var(--a-unknown); border-radius: 4px; padding: .14rem .4rem; }
+  /* Chip + CHIP_CLASS: rounded-[9px], accent-teal border on a 10% teal fill. */
+  .chip2 { border: 1px solid var(--a-teal); background: rgb(79 209 224 / .1); color: var(--a-teal);
+           border-radius: 9px; padding: .14rem .55rem; font-size: .76rem; font-weight: 500;
+           white-space: nowrap; }
+  .lockline { color: var(--a-muted); font-size: .72rem; margin: .8rem 0 0;
               display: flex; align-items: center; gap: .35rem; }
-  .dlg-actions { display: flex; justify-content: flex-end; gap: .4rem; margin-top: 1rem; }
-  .b { border: 1px solid var(--line); border-radius: 7px; padding: .2rem .6rem;
-       font-size: .74rem; color: var(--muted); background: var(--bg); display: inline-block; }
-  .b.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
-  .b.bad { border-color: var(--missed); color: var(--missed); }
-  .b.bad.on { background: var(--missed); border-color: var(--missed); color: #fff; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: .4rem; margin-top: 1.05rem; }
+  /* Button size sm: h-8 rounded-sm px-3 text-xs. */
+  .b { border: 1px solid var(--a-border); border-radius: 4px; padding: .24rem .6rem;
+       font-size: .72rem; color: var(--a-fg); background: transparent; display: inline-block; }
+  .b.on { background: var(--a-teal); border-color: var(--a-teal); color: #0a0e17; font-weight: 600; }
+  .b.bad { border-color: rgb(248 113 113 / .45); color: var(--a-red); }
+  .b.bad.on { background: var(--a-red); border-color: var(--a-red); color: #0a0e17; font-weight: 600; }
   .ico { width: 11px; height: 11px; vertical-align: -1px; flex: none; }
   .ico.lg { width: 13px; height: 13px; }
 
-  .menu { border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
-          padding: .25rem; width: 190px; font-size: .76rem; }
-  .menu div { padding: .28rem .5rem; border-radius: 5px; color: var(--fg); }
-  .menu div.sep { padding: 0; margin: .25rem .3rem; border-top: 1px solid var(--line); }
-  .menu div.bad { color: var(--missed); }
+  /* DropdownMenuContent: rounded-md, border-border, bg-surface, p-1, shadow-md. */
+  .menu { border: 1px solid var(--a-border); border-radius: 6px; background: var(--a-surface);
+          padding: .25rem; width: 190px; font-size: .76rem;
+          box-shadow: 0 4px 10px -2px rgb(0 0 0 / .55); }
+  .menu div { padding: .3rem .5rem; border-radius: 4px; color: var(--a-fg); }
+  .menu div.sep { padding: 0; margin: .25rem .3rem; border-top: 1px solid var(--a-border); }
+  .menu div.bad { color: var(--a-red); }
 
-  .pop2 { border: 1px solid var(--accent); border-radius: 9px; background: var(--bg);
-          padding: .6rem .7rem; width: 260px; font-size: .76rem; }
-  .pop2 .pt { font-weight: 700; font-size: .76rem; margin: 0 0 .4rem; color: var(--fg);
-              display: flex; align-items: center; gap: .3rem; }
-  .pop2 p { margin: 0 0 .5rem; color: var(--muted); font-size: .72rem; line-height: 1.5; }
+  /* PopoverContent: rounded-xl on #0d1320 with a #25324a rim and a deep drop shadow. */
+  .pop2 { border: 1px solid var(--a-pop-line); border-radius: 12px; background: var(--a-pop);
+          padding: .7rem .75rem; width: 262px; font-size: .76rem;
+          box-shadow: 0 18px 40px -12px rgb(0 0 0 / .7); }
+  .pop2 .pt { font-weight: 600; font-size: .76rem; margin: 0 0 .45rem; color: var(--a-fg);
+              display: flex; align-items: center; gap: .35rem; }
+  .pop2 p { margin: 0 0 .5rem; color: var(--a-muted); font-size: .72rem; line-height: 1.5; }
   .pop2 p:last-child { margin-bottom: 0; }
 
-  .hcard { border: 1px solid var(--line); border-radius: 9px; background: var(--card);
-           padding: .7rem .8rem; }
+  /* HabitCard: rounded-lg border-border bg-surface/40 p-4. */
+  .hcard { border: 1px solid var(--a-border); border-radius: 8px;
+           background: rgb(15 22 38 / .4); padding: .85rem .9rem; }
   .hcard-head { display: flex; align-items: baseline; gap: .4rem; }
   .hcard-head .grow { flex: 1; }
+  .seclab { margin: 1rem 0 .35rem; font-size: .68rem; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--a-muted); }
+  .seclab.bad { color: var(--a-red); }
 
-  .arow { display: flex; align-items: center; gap: .5rem; padding: .4rem .5rem;
-          border: 1px solid var(--line); border-radius: 7px; background: var(--bg);
-          font-size: .78rem; }
+  .arow { display: flex; align-items: center; gap: .5rem; padding: .45rem .55rem;
+          border: 1px solid var(--a-border); border-radius: 6px; background: var(--a-surface);
+          font-size: .78rem; color: var(--a-fg); }
   .arow .grow { flex: 1; min-width: 0; }
   .disc { display: flex; align-items: center; gap: .35rem; font-size: .78rem;
-          color: var(--muted); font-weight: 600; padding: .25rem 0; }
+          color: var(--a-muted); font-weight: 600; padding: .25rem 0; }
 
-  /* Day cells, so a "history is untouched" mockup reads like the real grid. */
-  i.c { position: relative; display: inline-flex; align-items: center; justify-content: center;
-        width: 20px; height: 20px; border-radius: 5px; background: var(--unknown);
-        font-style: normal; font-size: 0; }
-  i.c.m { background: var(--met-soft); }
-  i.c.p { background: var(--partial-soft); }
-  i.c.x { background: var(--missed-soft); }
-  i.c.n { background: var(--na); border: 1px dashed var(--na-line); }
-  .strip { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  /* ── The history grid, at its real geometry (CELL_SIZE_PX 26 / CELL_GAP_PX 6) ──
+     Dim tinted plates with a 1px inset rim; the CONNECTOR carries the light. */
+  .hgrid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 26px);
+           gap: 6px; width: max-content; padding: 7px 0; }
+  i.c { position: relative; display: block; width: 26px; height: 26px; border-radius: 6px;
+        background: var(--a-unknown); font-style: normal; font-size: 0; }
+  i.c.m { background: rgb(52 211 153 / .2);  box-shadow: inset 0 0 0 1px rgb(52 211 153 / .75); }
+  i.c.p { background: rgb(240 180 41 / .2);  box-shadow: inset 0 0 0 1px rgb(240 180 41 / .75); }
+  i.c.x { background: rgb(248 113 113 / .2); box-shadow: inset 0 0 0 1px rgb(248 113 113 / .75); }
+  i.c.s { box-shadow: inset 0 0 0 1px var(--a-border); }
+  i.c.n { background: none; border: 1px dashed var(--a-border); }
+  i.c.t { box-shadow: inset 0 0 0 1px rgb(52 211 153 / .75), 0 0 0 2px var(--a-teal); }
+  /* The lit filament between two days the streak links; grey and unlit when forgiven. */
+  i.c.lk::after, i.c.wo::after {
+    content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    width: 10px; height: 7px; background: var(--a-green); border-radius: 0 0 3px 3px;
+    box-shadow: 0 0 10px 2px rgb(52 211 153 / .5);
+  }
+  i.c.wi::before {
+    content: ''; position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%);
+    width: 10px; height: 7px; background: var(--a-green); border-radius: 3px 3px 0 0;
+    box-shadow: 0 0 10px 2px rgb(52 211 153 / .5);
+  }
+  i.c.bridge::after, i.c.bridge::before { background: var(--a-bridge); box-shadow: none; }
+  .dowq { display: grid; grid-template-rows: repeat(7, 26px); gap: 6px; padding: 7px 4px 0 0;
+          font-size: .6rem; color: var(--a-muted); text-align: right; }
+  .dowq span { line-height: 26px; }
+  .gridwrap { display: flex; align-items: flex-start; }
 
   /* ── The option switcher: pure CSS, no script ────────────────── */
   .switch { margin: 1rem 0 .5rem; }
@@ -739,16 +782,21 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
             <span class="grow"></span>
             <span class="b">⋯</span>
           </div>
-          <p style="margin:.5rem 0 0" class="strip">
+          <p style="margin:.6rem 0 0;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
             <span class="chip2">be up by 06:15</span>
             <span class="chip2">get outside for light</span>
             <span class="slot add">+</span>
             <span class="hmeta">·</span>
             <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> every day · 1 miss a week</span>
           </p>
-          <div class="strip" style="margin-top:.7rem">
-            <i class="c m"></i><i class="c m"></i><i class="c p"></i><i class="c m"></i>
-            <i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c n"></i>
+          <div class="gridwrap" style="margin-top:.5rem">
+            <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+            <div class="hgrid">
+              <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+              <i class="c m wi lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+              <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c"></i><i class="c m lk"></i><i class="c m wo"></i>
+              <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i>
+            </div>
           </div>
         </div>
         <p class="cap">
@@ -783,21 +831,21 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
           <p class="dlg-s">Started 12 June · 63 days logged</p>
           <div class="field">Morning routine</div>
 
-          <p style="margin:.9rem 0 .3rem;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">What counts as a day</p>
+          <p class="seclab">What counts as a day</p>
           <div style="display:flex;flex-direction:column;gap:.3rem">
             <span class="arow"><span class="grow">be up by <b>06:15</b></span><span class="b">Edit</span><span class="b bad">Remove</span></span>
             <span class="arow"><span class="grow">get outside for light</span><span class="b">Edit</span><span class="b bad">Remove</span></span>
-            <span class="arow" style="justify-content:center;color:var(--accent)">+ Add a criterion</span>
+            <span class="arow" style="justify-content:center;color:var(--a-teal)">+ Add a criterion</span>
           </div>
 
-          <p style="margin:.9rem 0 .3rem;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Cadence</p>
+          <p class="seclab">Cadence</p>
           <span class="arow">
             <svg class="ico lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <span class="grow">Every day · forgiving 1 miss a week<br />
               <span class="hmeta">Fixed — 63 days are already logged against these.</span></span>
           </span>
 
-          <p style="margin:.9rem 0 .3rem;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--missed)">Danger zone</p>
+          <p class="seclab bad">Danger zone</p>
           <div style="display:flex;gap:.4rem">
             <span class="b">Archive habit</span><span class="b bad">Delete habit…</span>
           </div>
@@ -874,7 +922,7 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
       <p class="sentence" style="margin:0 0 .6rem">
         Every <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> day</span>
         I will <span class="chip2">be up by 06:15</span> <span class="slot add">+</span><br />
-        forgiving <span class="slot lock" style="box-shadow:0 0 0 2px var(--accent)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 1 miss a week</span>.
+        forgiving <span class="slot lock" style="box-shadow:0 0 0 2px var(--a-teal)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 1 miss a week</span>.
       </p>
       <div class="pop2">
         <p class="pt">
@@ -954,9 +1002,14 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
         <span class="grow"></span>
         <span class="b">⋯</span>
       </div>
-      <div class="strip" style="margin-top:.7rem">
-        <i class="c m"></i><i class="c m"></i><i class="c p"></i><i class="c m"></i>
-        <i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c n"></i>
+      <div class="gridwrap" style="margin-top:.4rem">
+        <div class="dowq"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+        <div class="hgrid">
+          <i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+          <i class="c m wi lk"></i><i class="c m lk bridge"></i><i class="c p lk bridge"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m lk"></i><i class="c m wo"></i>
+          <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c"></i><i class="c m lk"></i><i class="c m wo"></i>
+          <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i>
+        </div>
       </div>
     </div>
     <div style="margin-top:.8rem" class="menu">
