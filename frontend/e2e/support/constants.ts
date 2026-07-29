@@ -72,6 +72,9 @@ export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folde
     id: overrides.id ?? crypto.randomUUID(),
     name,
     created_at: overrides.created_at ?? nextCreatedAt(),
+    // Increasing rank, so a seeded folder list defaults to creation order in the sidebar
+    // (ALF-153) — matching the DB backfill (row_number over created_at).
+    sort_order: overrides.sort_order ?? nextSortOrder(),
   };
 }
 

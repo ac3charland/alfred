@@ -81,6 +81,9 @@ let nextPriority = 1;
 // The subtask sort_order sequence (migration 0018's `item_sort_order_seq`): parked high so an
 // item created without an explicit sort_order (a new subtask) appends below every seeded row.
 let nextSortOrder = 1_000_000;
+// The folder sort_order sequence (migration 0024's `folder_sort_order_seq`): likewise parked
+// high, so a folder created without an explicit rank appends at the bottom of the sidebar.
+let nextFolderSortOrder = 1_000_000;
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -286,6 +289,8 @@ function newFolder(input) {
     id: input.id ?? randomUUID(),
     created_at: input.created_at ?? new Date().toISOString(),
     name: input.name ?? '',
+    // Manual sidebar rank (migration 0024): explicit when seeded, else the next sequence value.
+    sort_order: input.sort_order ?? nextFolderSortOrder++,
   };
 }
 
