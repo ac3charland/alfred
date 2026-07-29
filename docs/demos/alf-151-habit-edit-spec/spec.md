@@ -6,7 +6,7 @@ branch: claude/alf-151-patch-delete-spec-vft598
 
 *2026-07-29T18:18:28.127Z*
 
-This is a **refinement** branch: its deliverable is the spec at `docs/specs/ALF-151.html`, not app behavior. That spec asks the owner to pick between options, so it carries two CSS-only tab strips — the evidence below is that those work in a plain browser, with every option's mockup drawn.
+This is a **refinement** branch: its deliverable is the spec at `docs/specs/ALF-151.html`, not app behavior. That spec asks the owner to pick between options, so it carries two CSS-only tab strips — the evidence below is that those work in a plain browser, with every option's mockup drawn. The mockups use alfred's own dark palette, lifted value-for-value from `frontend/app/globals.css` and the atoms, so an option is judged in the colours it would actually ship in.
 
 The interactivity is pure CSS — radio inputs plus `:checked ~` sibling rules — so the page needs no script and no network, which is what makes it render faithfully through the PR's htmlpreview link.
 
