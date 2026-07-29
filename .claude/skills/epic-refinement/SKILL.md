@@ -74,6 +74,11 @@ path when it does), **revise that file in place** — record what changed and wh
 document reads as the epic's current state with its history intact. A second document just splits
 the context every story session is supposed to read from one place.
 
+**A round that settles something invalidates the earlier drawings too.** Sweep the whole document
+for mockups and captions still illustrating the old answer, not just the section you're editing —
+an epic states its rules more than once, and a stale illustration outlives the prose that once
+justified it. Downstream story sessions read the picture and re-state what it shows.
+
 ## The PR
 
 Open a pull request whose description carries the machine-readable `alfred` block, so the Worker can
@@ -109,6 +114,12 @@ where it is, forever. Nothing archives it, and no later session should move it �
 - **No per-story specs.** Stories are refined in their own sessions.
 - **Ask when the context is thin.** This session is more open-ended than a story refinement, which
   makes guessing both easier and more costly — a guess here propagates to every story in the epic.
+- **A visual constraint no epic mockup draws propagates.** The
+  [`refinement`](../refinement/SKILL.md) rule applies — a requirement the picture doesn't show was
+  never signed off — and it bites harder at this altitude: story sessions inherit the constraint and
+  re-state it, often more forcefully than the epic did, while still pointing at a mockup that never
+  drew it. So if the epic asserts what a surface looks like, draw it in the epic's own mockup, or
+  leave it as an open question for the story that owns that surface.
 - **Not actually an epic? Say so.** If it's really a single story, or two unrelated bodies of work
   wearing one name, stop and tell the human — propose the split instead of forcing one document to
   cover both.
