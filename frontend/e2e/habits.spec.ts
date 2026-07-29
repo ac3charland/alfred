@@ -1,4 +1,4 @@
-import { makeHabit, makeHabitEntry } from './support/constants';
+import { localDaysAgo, localToday, makeHabit, makeHabitEntry } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -8,23 +8,6 @@ import { expect, test } from './support/fixtures';
  * Everything here goes through the real routes and the real store — the only thing faked is
  * the database behind them.
  */
-
-/** The browser's own today, which is the day the grid highlights and the badge counts. */
-function localToday(): string {
-  const now = new Date();
-  return `${String(now.getFullYear())}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
-    now.getDate(),
-  ).padStart(2, '0')}`;
-}
-
-/** A local calendar date `count` days behind today — the same arithmetic the grid walks. */
-function daysAgo(count: number): string {
-  const then = new Date();
-  then.setDate(then.getDate() - count);
-  return `${String(then.getFullYear())}-${String(then.getMonth() + 1).padStart(2, '0')}-${String(
-    then.getDate(),
-  ).padStart(2, '0')}`;
-}
 
 test('creates a habit, logs today, and keeps it across a reload', async ({ page, seed }) => {
   await seed({});
@@ -145,7 +128,7 @@ test('filling a day behind the start date moves the habit back to it, and it sti
   await seed({ habits: [habit] });
   await page.goto('/habits');
 
-  const backfill = daysAgo(3);
+  const backfill = localDaysAgo(3);
   await expect(page.locator(`[data-date="${backfill}"]`)).toHaveAttribute(
     'data-status',
     'not_applicable',
@@ -162,11 +145,11 @@ test('filling a day behind the start date moves the habit back to it, and it sti
   // they read as unlogged now, which is the whole point: they are days it was running.
   await page.reload();
   await expect(page.locator(`[data-date="${backfill}"]`)).toHaveAttribute('data-status', 'met');
-  await expect(page.locator(`[data-date="${daysAgo(2)}"]`)).toHaveAttribute(
+  await expect(page.locator(`[data-date="${localDaysAgo(2)}"]`)).toHaveAttribute(
     'data-status',
     'unknown',
   );
-  await expect(page.locator(`[data-date="${daysAgo(4)}"]`)).toHaveAttribute(
+  await expect(page.locator(`[data-date="${localDaysAgo(4)}"]`)).toHaveAttribute(
     'data-status',
     'not_applicable',
   );

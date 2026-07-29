@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 
 import { VISUAL_TARGET, withVisualFrame } from '@/components/atoms/visual-test';
 import type { Habit, HabitDayStatus, HabitEntry } from '@/lib/types';
@@ -60,6 +60,19 @@ function metRun(overrides: HabitEntry[] = []): Record<string, HabitEntry> {
   }
   for (const override of overrides) rows[override.entry_date] = override;
   return rows;
+}
+
+/**
+ * A fixed-width box around the grid, so a baseline can show what it does with a width it does
+ * NOT choose. Every other story renders inside the shrink-wrapped visual frame, which is
+ * exactly the columns' own width — the one width at which neither anchoring rule can show.
+ */
+function withWidth(widthClass: string): Decorator {
+  return (Story) => (
+    <div className={widthClass}>
+      <Story />
+    </div>
+  );
 }
 
 const meta = {
@@ -124,4 +137,24 @@ export const WeekdaysOnly: Story = {
     habit: { ...HABIT, active_days: [1, 2, 3, 4, 5] },
     entries: metRun(),
   },
+};
+
+/**
+ * Given more width than it needs, the grid pushes to the right edge rather than the left: the
+ * newest column is the one the owner came to see, so it is the one the eye lands on.
+ */
+export const HugsTheRightEdge: Story = {
+  decorators: [withWidth('w-[420px]')],
+  args: { entries: metRun() },
+};
+
+/**
+ * Given less, it scrolls — and opens on the newest end. A quarter in a phone-width box: the
+ * lit run and today's teal ring are what's on screen, with the untracked weeks before the
+ * habit began pushed off to the left, one gesture away. The evidence is what is NOT drawn
+ * here: a strip that opened at the oldest week would be a wall of dashed squares.
+ */
+export const OpensOnTheNewestWeek: Story = {
+  decorators: [withWidth('w-[280px]')],
+  args: { entries: metRun(), windowDays: 84 },
 };

@@ -156,6 +156,44 @@ describe('HistoryGrid — what is reachable', () => {
   });
 });
 
+/** The strip the columns scroll inside — everything outside it stays put. */
+function scroller(): HTMLElement {
+  return screen.getByTestId('history-scroll');
+}
+
+describe('HistoryGrid — landing on the most recent week', () => {
+  it('scrolls the squares alone, leaving the weekday labels outside the scrolling strip', () => {
+    renderGrid({});
+
+    // The labels are the fixed edge the columns slide past: scrolling back through a quarter
+    // must not take the row legend with it.
+    expect(scroller()).toContainElement(
+      screen.getByRole('group', { name: 'Morning routine history' }),
+    );
+    expect(scroller()).not.toContainElement(screen.getByTestId('history-weekdays'));
+  });
+
+  it('opens on the newest end, with the columns still running oldest to newest', () => {
+    renderGrid({});
+
+    // A right-to-left scroll container starts at its RIGHT edge, so the browser lands the view
+    // on today without a line of script — and keeps doing it as the box is resized.
+    expect(scroller()).toHaveAttribute('dir', 'rtl');
+    // The squares themselves stay left-to-right, so May is still drawn left of July.
+    expect(screen.getByRole('group', { name: 'Morning routine history' })).toHaveAttribute(
+      'dir',
+      'ltr',
+    );
+  });
+
+  it('hugs the right edge when the history is too short to fill the space it is given', () => {
+    renderGrid({});
+
+    // Nothing to scroll here, so the newest column is kept on the right by the layout instead.
+    expect(scroller().parentElement).toHaveClass('justify-end');
+  });
+});
+
 describe('HistoryGrid — the connectors', () => {
   it('lights the link between two earned days', () => {
     renderGrid(allMet('2026-07-13', 18));
