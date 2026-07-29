@@ -202,6 +202,24 @@
   .dowq span { line-height: 26px; }
   .gridwrap { display: flex; align-items: flex-start; }
 
+  /* The stats rail ALF-150 shipped, beside the grid behind a left rule. */
+  .rail { display: flex; flex-direction: column; gap: .6rem; margin-left: 1rem;
+          border-left: 1px solid var(--a-border); padding: .3rem 0 .3rem .9rem; }
+  .fig { display: flex; flex-direction: column; }
+  .fig b { font-size: .78rem; font-weight: 600; color: var(--a-fg); font-variant-numeric: tabular-nums; }
+  .fig b.lg { font-size: 1rem; }
+  .fig b.hot { color: var(--a-green); }
+  .fig small { font-size: .6rem; color: var(--a-muted); }
+  .figpair { display: flex; align-items: flex-start; gap: .4rem; }
+  .figpair .dot { font-size: .78rem; color: var(--a-muted); }
+  /* Badge variant="accent": rounded-full, teal on a 15% teal fill. */
+  .badge-acc { display: inline-block; border-radius: 999px; padding: .1rem .5rem;
+               font-size: .66rem; font-weight: 500; background: rgb(79 209 224 / .15);
+               color: var(--a-teal); }
+  .meterbar { height: 6px; width: 150px; border-radius: 999px; background: var(--a-unknown);
+              overflow: hidden; }
+  .meterbar > span { display: block; height: 100%; background: var(--a-teal); }
+
   /* ── The option switcher: pure CSS, no script ────────────────── */
   .switch { margin: 1rem 0 .5rem; }
   .switch > input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -496,8 +514,10 @@
   <tr><td colspan="3"><b>Data &amp; store</b></td></tr>
   <tr>
     <td><code>frontend/lib/data/habits.ts</code></td><td>edit</td>
-    <td><code>getHabits()</code> stops filtering <code>archived_at is null</code> and orders
-      active-first (S3). <code>getHabitsWithHistory</code> is untouched.</td>
+    <td><code>getHabitSeed()</code> asks for <code>includeArchived: true</code>, and its
+      <code>getHabits()</code> fallback stops filtering (S3). One flag: the seeder already scores
+      every habit over its whole life before windowing the entries, so an archived habit arrives
+      with exact all-history figures and no second query (§7.3).</td>
   </tr>
   <tr>
     <td><code>frontend/lib/stores/habits-store.tsx</code></td><td>edit</td>
@@ -797,6 +817,16 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
               <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c"></i><i class="c m lk"></i><i class="c m wo"></i>
               <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i>
             </div>
+            <div class="rail">
+              <span class="fig"><b class="lg hot">33</b><small>current streak</small></span>
+              <span class="figpair"><span class="fig"><b>33</b><small>longest</small></span><span class="dot">·</span><span class="fig"><b>14</b><small>average</small></span></span>
+              <span class="figpair"><span class="fig"><b>94%</b><small>hit rate</small></span><span class="dot">·</span><span class="fig"><b>1</b><small>misses left</small></span></span>
+              <span style="display:flex;flex-direction:column;align-items:flex-start;gap:.3rem">
+                <span class="badge-acc">Nearing Automaticity</span>
+                <span class="meterbar"><span style="width:71%"></span></span>
+                <span style="font-size:.62rem;color:var(--a-muted)">47 of ~66 banked days</span>
+              </span>
+            </div>
           </div>
         </div>
         <p class="cap">
@@ -807,9 +837,9 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
     </div>
 
     <table>
-      <tr><th style="width:26%">Cost</th><td>No new dialog, but the card grows edit state, and the chips push the card past one band tall — which is the layout ALF-150's stats rail is being designed <i>into</i>.</td></tr>
+      <tr><th style="width:26%">Cost</th><td>No new dialog, but the card grows edit state, and the chips push it past the one-band-tall layout the shipped stats rail is built around.</td></tr>
       <tr><th>Why it might win</th><td>Fastest possible rename, and edits happen where the consequence is visible: retarget a criterion and the grid is right there, unchanged, proving frozen history at a glance.</td></tr>
-      <tr><th>Cost of it</th><td>Editing controls sitting permanently in a reading surface, no atomic save (three edits are three writes and three chances to half-apply), and a collision risk with ALF-150's rail for the same horizontal space. The kind-first <code>+</code> menu also opens from a hover-revealed chip, which is a weaker discovery path than a labelled dialog.</td></tr>
+      <tr><th>Cost of it</th><td>Editing controls sitting permanently in a reading surface, no atomic save (three edits are three writes and three chances to half-apply), and a real contest with the stats rail for the card's horizontal space — the rail is shipped now, not hypothetical, and it already wraps under the grid below <code>sm</code>. The kind-first <code>+</code> menu also opens from a hover-revealed chip, which is a weaker discovery path than a labelled dialog.</td></tr>
     </table>
   </div>
 
@@ -1010,6 +1040,16 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
           <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m lk bridge"></i><i class="c x"></i><i class="c"></i><i class="c m lk"></i><i class="c m wo"></i>
           <i class="c m wi lk"></i><i class="c m lk"></i><i class="c m t"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i><i class="c n"></i>
         </div>
+        <div class="rail">
+          <span class="fig"><b class="lg hot">33</b><small>current streak</small></span>
+          <span class="figpair"><span class="fig"><b>33</b><small>longest</small></span><span class="dot">·</span><span class="fig"><b>14</b><small>average</small></span></span>
+          <span class="figpair"><span class="fig"><b>94%</b><small>hit rate</small></span><span class="dot">·</span><span class="fig"><b>1</b><small>misses left</small></span></span>
+          <span style="display:flex;flex-direction:column;align-items:flex-start;gap:.3rem">
+            <span class="badge-acc">Nearing Automaticity</span>
+            <span class="meterbar"><span style="width:71%"></span></span>
+            <span style="font-size:.62rem;color:var(--a-muted)">47 of ~66 banked days</span>
+          </span>
+        </div>
       </div>
     </div>
     <div style="margin-top:.8rem" class="menu">
@@ -1057,30 +1097,42 @@ export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</c
     <div style="display:flex;flex-direction:column;gap:.35rem;margin-top:.5rem;max-width:470px">
       <span class="arow">
         <span class="grow"><b>Evening pages</b><br />
-          <span class="hmeta">every day · no misses · ran 3 Feb – 18 May 2026</span></span>
+          <span class="hmeta">every day · no misses · ran 3 Feb – 18 May 2026</span><br />
+          <span class="hmeta">longest <b style="color:var(--a-fg)">41</b> · banked <b style="color:var(--a-fg)">88</b></span>
+          <span class="badge-acc" style="margin-left:.3rem">Possibly Established</span></span>
         <span class="b">Unarchive</span><span class="b">⋯</span>
       </span>
       <span class="arow">
         <span class="grow"><b>Cold shower</b><br />
-          <span class="hmeta">weekdays · 1 miss / rolling week · ran 6 Jan – 2 Feb 2026</span></span>
+          <span class="hmeta">weekdays · 1 miss / rolling week · ran 6 Jan – 2 Feb 2026</span><br />
+          <span class="hmeta">longest <b style="color:var(--a-fg)">9</b> · banked <b style="color:var(--a-fg)">17</b></span>
+          <span class="badge-acc" style="margin-left:.3rem">Gaining Momentum</span></span>
         <span class="b">Unarchive</span><span class="b">⋯</span>
       </span>
     </div>
     <p class="cap">
       One row per retired habit: name, the cadence summary the card already renders
-      (<code>habitSummary()</code>), and the span it ran. <b>Unarchive</b> is a first-class button;
-      the <code>⋯</code> carries <b>Delete habit…</b> only.
+      (<code>habitSummary()</code>), the span it ran, and the three all-history figures it finished
+      on — reusing the rail's own <code>STAGE_LABEL</code> badge rather than a second vocabulary for
+      the same ladder. <b>Unarchive</b> is a first-class button; the <code>⋯</code> carries
+      <b>Delete habit…</b> only.
     </p>
   </div>
 </div>
 
 <p>
-  <b>No grid and no statistics on an archived row</b>, and that is deliberate rather than
-  minimalism. The shell seeds a 120-day entry window, so a habit that ran last February has no
-  entries in the store at all — a "longest streak" rendered here would read <code>0</code> and be a
-  lie. The date span comes from <code>started_on</code> and <code>archived_at</code>, which are on
-  the row itself and always true. <span class="small">Once ALF-150's server-seeded all-history
-  baseline lands, enriching this row is a small additive follow-up — noted, not assumed.</span>
+  <b>No grid, but the figures are real.</b> The seed carries a <b>window</b> of entries (120 days),
+  so a habit that ran last February has no entries in the store and no grid can be drawn for it —
+  but <code>getHabitSeed()</code> computes each habit's stats over its <i>whole life</i> before
+  windowing the entries, so <b>longest</b>, <b>banked days</b> and the <b>formation stage</b> it
+  finished on are exact, not window-derived. The row shows those three plus the span it ran, from
+  <code>started_on</code> and <code>archived_at</code>.
+</p>
+<p class="small">
+  <b>Not shown:</b> current streak, misses left, hit rate. The first two are statements about
+  <i>now</i> and read <code>0</code> for anything retired; the hit rate is scoped to the grid's
+  window, which an archived habit has fallen out of. Showing a figure whose basis has quietly
+  changed is the trust bug this section exists to avoid.
 </p>
 
 <p class="small">
@@ -1180,6 +1232,12 @@ useArchivedHabits()  <span class="small">// the rest, most recently archived fir
   re-run every memo downstream of it — including the grid's calendar build. Both selectors derive
   through <code>React.useMemo</code> over the state object, as <code>useUnloggedTodayCount</code>
   already does.
+</p>
+<p class="small">
+  <b>The rail's baseline comes along free.</b> <code>baselineStats</code> is keyed by habit id and
+  seeded from the same read, so flipping <code>includeArchived</code> populates it for archived
+  habits too — <code>useHabitStats</code> needs no change, and §7.3's figures are already in the
+  store when the Archived section renders.
 </p>
 <p class="small">
   <b>The badge needs no change.</b> <code>useUnloggedTodayCount</code> reads the whole habit list,
@@ -1321,9 +1379,10 @@ useArchivedHabits()  <span class="small">// the rest, most recently archived fir
     <td>Session-only, both of them (epic D7). The primer is untouched.</td>
   </tr>
   <tr>
-    <td><b>Stats on an archived row</b></td>
-    <td>Blocked on ALF-150's all-history baseline; showing window-derived figures there would
-      print zeroes (§7.3).</td>
+    <td><b>A grid on an archived row</b></td>
+    <td>Its entries are outside the seeded window, so there is nothing to draw. The all-history
+      figures are shown instead (§7.3); pulling old entries on demand is a follow-up nobody has
+      asked for.</td>
   </tr>
   <tr>
     <td><b>Moving a start date <i>forward</i></b></td>
@@ -1382,7 +1441,8 @@ useArchivedHabits()  <span class="small">// the rest, most recently archived fir
   <li class="h">Archive &amp; delete</li>
   <li>The card carries a <code>⋯</code> menu with Edit, Archive and a destructive Delete, named <code>Options for &lt;habit&gt;</code>.</li>
   <li>Archiving removes the card immediately, offers Undo, and drops the habit out of the sidebar's unlogged count.</li>
-  <li>Archived habits appear in a collapsed <b>Archived</b> section showing name, cadence and the span they ran; the section is absent when empty.</li>
+  <li>Archived habits appear in a collapsed <b>Archived</b> section showing name, cadence, the span they ran, and the all-history figures they finished on (longest · banked · stage); the section is absent when empty.</li>
+  <li>Those figures are the seeder's whole-life stats, not window-derived — an archived habit older than the seeded window still reads its real longest streak, never <code>0</code>.</li>
   <li>Unarchive returns the habit to the list with its full history intact.</li>
   <li>Delete is gated by a confirm naming the habit and, accurately, how many logged days go with it — never overstating certainty for a habit older than the seeded window.</li>
   <li>A failed delete restores the habit to its original position <b>with its logged days</b>, and shows a toast.</li>
