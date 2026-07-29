@@ -288,6 +288,16 @@
     minutes ago has no history to restate, and forcing a delete-and-recreate for a fat-fingered
     allowance would be silly. The moment there is one day to protect, the lock comes down.
   </p>
+  <p class="why">
+    <b><code>started_on</code> already has a better path, and this leaves it alone.</b> The entry
+    route moves the start back when a day behind it is logged — the definition follows the
+    evidence, and the store mirrors the same rule optimistically. So "I actually started earlier"
+    is answered by <i>logging the day</i>, with an entry justifying every day the move makes
+    scorable. Locking the field on <code>PATCH</code> takes nothing away; it only refuses the
+    version of the move that has no evidence behind it. <b>The two must not be wired together:</b>
+    the backfill writes <code>habits.started_on</code> directly and is reachable with the ingest
+    key, and routing it through this story's guard would break a shipped feature (§12).
+  </p>
 </div>
 
 <div class="dec">
@@ -520,8 +530,10 @@
 <p class="small">
   <b>Not touched, deliberately:</b> the migration (<code>0023</code> already has every column this
   story writes), <code>lib/habits/streaks.ts</code>, the history grid, the day editor,
-  <code>GET /api/habits</code>, and <code>docs/productivity-coach-primer.md</code> — both new
-  routes are session-only, so the coach's contract is unchanged.
+  <code>GET /api/habits</code>, <b><code>PUT /api/habits/[id]/entries</code></b> — including its
+  start-moving backfill, which stays exactly as it is (S1) — and
+  <code>docs/productivity-coach-primer.md</code>, since both new routes are session-only and the
+  coach's contract is unchanged.
 </p>
 
 <h3>3.2 Build from the shared layer</h3>
@@ -1157,6 +1169,15 @@ useArchivedHabits()  <span class="small">// the rest, most recently archived fir
     </td>
   </tr>
   <tr>
+    <td><code>app/api/habits/[id]/entries/route.test.ts</code></td>
+    <td>
+      <b>A regression guard, not a new behaviour:</b> backfilling a day behind
+      <code>started_on</code> still moves the start on a habit that already has entries. The
+      existing coverage asserts the move; this adds the case that makes the interaction with S1
+      explicit, so nobody later routes the backfill through the PATCH lock.
+    </td>
+  </tr>
+  <tr>
     <td><code>lib/stores/habits-store.test.tsx</code></td>
     <td>
       Update reconciles and rolls back; archive moves a habit between the two selectors and back;
@@ -1252,6 +1273,13 @@ useArchivedHabits()  <span class="small">// the rest, most recently archived fir
       print zeroes (§7.3).</td>
   </tr>
   <tr>
+    <td><b>Moving a start date <i>forward</i></b></td>
+    <td>The backfill moves <code>started_on</code> backwards on evidence; there is no path — and
+      this story adds none — for pushing it later, which would strand the entries behind it
+      outside the habit's own life. A start set too early on a habit with history is a
+      delete-and-recreate.</td>
+  </tr>
+  <tr>
     <td><b>Bulk actions</b></td>
     <td>Archive / delete act on one habit. At a handful of habits, a selection model is unearned.</td>
   </tr>
@@ -1287,6 +1315,7 @@ useArchivedHabits()  <span class="small">// the rest, most recently archived fir
   <li>Changing a locked field on a habit with <b>≥ 1</b> entry returns <code>409</code>, and the message names the field and the number of logged days.</li>
   <li><code>{ "archived": true }</code> stamps <code>archived_at</code> server-side; <code>false</code> clears it. No caller can supply the timestamp.</li>
   <li>An unknown id returns <code>404</code>, a malformed id <code>400</code>, an empty body <code>400</code>.</li>
+  <li>The lock does not reach the entry route: logging a day behind <code>started_on</code> still moves the start back, on a habit with history, exactly as it does today.</li>
   <li><code>DELETE /api/habits/[id]</code> removes the habit and cascades every entry.</li>
   <li>Both routes reject a request carrying a valid <code>x-api-key</code> but no session, with <code>401</code>.</li>
 
