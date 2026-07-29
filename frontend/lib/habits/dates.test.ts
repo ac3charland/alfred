@@ -1,7 +1,9 @@
 import {
+  APP_WINDOW_DAYS,
   DEFAULT_WINDOW_DAYS,
   MAX_WINDOW_DAYS,
   addDays,
+  appWindow,
   daysBetween,
   eachDay,
   isoWeekday,
@@ -168,5 +170,23 @@ describe('resolveWindow', () => {
       from: TODAY,
       to: TODAY,
     });
+  });
+});
+
+describe('appWindow', () => {
+  const TODAY = '2026-07-28';
+
+  it('spans exactly APP_WINDOW_DAYS days and ends on today', () => {
+    // An off-by-one here silently shifts every window figure the rail shows, and the grid
+    // beside it, so the span is counted rather than eyeballed against a literal date.
+    const window = appWindow(TODAY);
+
+    expect(window.to).toBe(TODAY);
+    expect(eachDay(window.from, window.to)).toHaveLength(APP_WINDOW_DAYS);
+    expect(daysBetween(window.from, window.to)).toBe(APP_WINDOW_DAYS - 1);
+  });
+
+  it('crosses a year end without losing a day', () => {
+    expect(appWindow('2027-01-05').from).toBe(addDays('2027-01-05', -(APP_WINDOW_DAYS - 1)));
   });
 });
