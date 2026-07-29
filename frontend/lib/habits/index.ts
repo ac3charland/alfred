@@ -9,13 +9,31 @@ export {
   parseCriteria,
   parseResults,
 } from '@/lib/habits/criteria';
-export { addDays, daysBetween, eachDay, isoWeekday, todayIn } from '@/lib/habits/dates';
+export {
+  DEFAULT_WINDOW_DAYS,
+  MAX_WINDOW_DAYS,
+  addDays,
+  daysBetween,
+  eachDay,
+  isoWeekday,
+  resolveTimezone,
+  resolveWindow,
+  todayIn,
+} from '@/lib/habits/dates';
+export { toHabitsPayload } from '@/lib/habits/payload';
 export {
   buildHabitCalendar,
   computeHabitStats,
   formationStage,
   isApplicableDay,
 } from '@/lib/habits/streaks';
+export type { DateWindow } from '@/lib/habits/dates';
+export type {
+  HabitEntryPayload,
+  HabitPayload,
+  HabitStatsPayload,
+  HabitsPayload,
+} from '@/lib/habits/payload';
 export type {
   BooleanCriterion,
   CellStatus,
