@@ -4,6 +4,8 @@ import { parseRequestBody } from '@/lib/api/parsing';
 import { jsonError, jsonOk } from '@/lib/api/responses';
 import { updateFolderSchema } from '@/lib/api/schemas';
 import { mapSupabaseError } from '@/lib/api/supabase-errors';
+import { toUpdatePayload } from '@/lib/api/updates';
+import type { FolderUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // PATCH /api/folders/[id]
@@ -19,9 +21,14 @@ export const PATCH = withSession(
     const input = await parseRequestBody(request, updateFolderSchema);
     if (input instanceof Response) return input;
 
+    // PATCH semantics: only set the fields the caller actually provided, so a rename leaves the
+    // manual order alone and a reorder leaves the name alone. Building from defined-only fields
+    // also satisfies exactOptionalPropertyTypes (zod `.optional()` yields `T | undefined`).
+    const updates = toUpdatePayload<FolderUpdate>(input, ['name', 'sort_order']);
+
     const { data, error } = await supabase
       .from('folders')
-      .update({ name: input.name })
+      .update(updates)
       .eq('id', id)
       .select()
       .single();

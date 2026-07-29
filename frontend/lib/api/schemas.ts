@@ -174,11 +174,19 @@ export const createFolderSchema = z.object({
 export type CreateFolderInput = z.infer<typeof createFolderSchema>;
 
 /**
- * Body for PATCH /api/folders/[id] — name required (rename only).
+ * Body for PATCH /api/folders/[id] — every field optional (a rename, a reorder, or both).
+ * `sort_order` is the manual sidebar rank (ALF-153): a bare double, since it's a fractional
+ * position rather than a bounded value.
  */
-export const updateFolderSchema = z.object({
-  name: z.string().min(1),
-});
+export const updateFolderSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    sort_order: z.number().optional(),
+  })
+  .refine((data) => data.name !== undefined || data.sort_order !== undefined, {
+    message: 'Either "name" or "sort_order" is required',
+    path: ['name'],
+  });
 
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>;
 
