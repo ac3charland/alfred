@@ -130,8 +130,8 @@ function wantsRepresentation(req) {
 
 /**
  * Apply the `column=op.value` filters from the query string: `eq` (id=eq.x), `is`
- * (folder_id=is.null), and the `gte`/`lte` range the habit-entry window read uses — dates are
- * `YYYY-MM-DD`, which compares correctly as a string.
+ * (folder_id=is.null), `in` (habit_id=in.(a,b)), and the `gte`/`lte` range the habit-entry
+ * window read uses — dates are `YYYY-MM-DD`, which compares correctly as a string.
  */
 function applyFilters(rows, searchParameters) {
   let result = rows;
@@ -150,6 +150,20 @@ function applyFilters(rows, searchParameters) {
       }
       case 'eq': {
         result = result.filter((row) => String(row[key]) === value);
+
+        break;
+      }
+      case 'in': {
+        // `in.("a","b")` — supabase-js quotes each element, so strip the wrapping parens and
+        // any quotes before comparing.
+        const members = new Set(
+          value
+            .replace(/^\(/, '')
+            .replace(/\)$/, '')
+            .split(',')
+            .map((element) => element.replace(/^"/, '').replace(/"$/, '')),
+        );
+        result = result.filter((row) => members.has(String(row[key])));
 
         break;
       }
@@ -203,19 +217,30 @@ function applyRange(rows, searchParameters) {
  * Apply PostgREST's `order`, which may carry several comma-separated terms
  * (`order=sort_order.asc,created_at.asc`). Later terms are applied first and each sort is
  * stable, so the leftmost term ends up dominant — the same precedence the server gives them.
+ *
+ * A term may also carry an explicit null placement (`sort_order.asc.nullslast`), which is
+ * honoured by partitioning the nulls out — comparing them as `''` would sort them first and
+ * silently ignore what the caller asked for. Without a marker they keep sorting as `''`.
  */
 function applyOrder(rows, searchParameters) {
   const order = searchParameters.get('order');
   if (!order) return rows;
   let result = rows;
   for (const term of order.split(',').toReversed()) {
-    const [column, direction] = term.split('.');
-    const sorted = result.toSorted((a, b) => {
+    const [column, direction, nulls] = term.split('.');
+    const rank = nulls === undefined ? result : result.filter((row) => row[column] != null);
+    const sorted = rank.toSorted((a, b) => {
       const av = String(a[column] ?? '');
       const bv = String(b[column] ?? '');
       return av < bv ? -1 : av > bv ? 1 : 0;
     });
-    result = direction === 'desc' ? sorted.toReversed() : sorted;
+    const ordered = direction === 'desc' ? sorted.toReversed() : sorted;
+    if (nulls === undefined) {
+      result = ordered;
+      continue;
+    }
+    const missing = result.filter((row) => row[column] == null);
+    result = nulls === 'nullsfirst' ? [...missing, ...ordered] : [...ordered, ...missing];
   }
   return result;
 }
