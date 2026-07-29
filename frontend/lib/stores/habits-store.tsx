@@ -3,8 +3,16 @@
 import * as React from 'react';
 
 import { type CreateHabitInput, createHabit, upsertHabitEntry } from '@/lib/api-client';
-import { deriveDayStatus, isApplicableDay, parseCriteria, todayIn } from '@/lib/habits';
-import type { HabitResults } from '@/lib/habits';
+import {
+  appWindow,
+  computeHabitStats,
+  deriveDayStatus,
+  isApplicableDay,
+  parseCriteria,
+  statsWithBaseline,
+  todayIn,
+} from '@/lib/habits';
+import type { HabitResults, HabitStats } from '@/lib/habits';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
@@ -27,6 +35,10 @@ export interface HabitsState {
   entries: Record<string, Record<string, HabitEntry>>;
   /** The owner's local today, corrected on mount (see {@link HabitsProvider}). */
   today: string;
+  /** The entries exactly as seeded — the reference the rail measures in-session edits against. */
+  seedEntries: Record<string, Record<string, HabitEntry>>;
+  /** Server-computed all-history stats per habit id. Absent for a habit created this session. */
+  baselineStats: Record<string, HabitStats>;
 }
 
 export interface HabitsActions {
@@ -55,6 +67,9 @@ type HabitsAction =
 /**
  * Pure reducer over the store. `putEntry` is keyed by date, so an optimistic write and the
  * server row that follows it land in the same slot — reconcile is a replace, not an insert.
+ *
+ * No action touches `seedEntries` or `baselineStats`: they are seed-time constants that live in
+ * state only because the stats selector needs them beside the mutable entries.
  */
 export function habitsReducer(state: HabitsState, action: HabitsAction): HabitsState {
   switch (action.type) {
@@ -116,19 +131,30 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 export function HabitsProvider({
   initialHabits,
   initialEntries,
+  initialStats,
   serverToday,
   children,
 }: {
   initialHabits: Habit[];
   initialEntries: HabitEntry[];
+  /**
+   * The server's all-history stats per habit id — the baseline the rail's banked / longest /
+   * average figures rest on, since the client only ever holds a trailing window of entries.
+   */
+  initialStats: Record<string, HabitStats>;
   /** The server's UTC date — first paint has to match it, whatever zone the browser is in. */
   serverToday: string;
   children: React.ReactNode;
 }) {
+  // One grouping serves both slots: the reducer only ever replaces, never mutates, so `entries`
+  // moves away from the shared object on the first write and `seedEntries` keeps the seed.
+  const seeded = groupEntries(initialEntries);
   const [state, dispatch] = React.useReducer(habitsReducer, {
     habits: initialHabits,
-    entries: groupEntries(initialEntries),
+    entries: seeded,
     today: serverToday,
+    seedEntries: seeded,
+    baselineStats: initialStats,
   });
 
   // Whose "today"? The shell renders on the server, which doesn't know the browser's zone, so
@@ -295,6 +321,30 @@ export function useHabitEntries(habitId: string): Record<string, HabitEntry> {
 /** The owner's local today, as `YYYY-MM-DD`. */
 export function useHabitsToday(): string {
   return useStateValue('useHabitsToday').today;
+}
+
+/**
+ * One habit's figures for the stats rail: the server's all-history baseline, nudged by whatever
+ * the owner has changed since the page loaded.
+ *
+ * Two walks over the same window — the entries as seeded and the entries as they are now — and
+ * a splice. Re-walking rather than applying a delta on write is what lets a correction in the
+ * middle of a run break the streak, and it is the same walk the grid draws its connectors from,
+ * so the two can never disagree. The walks are the memo's cost: every store change re-walks
+ * every habit, which at a handful of habits is far below the grid's own per-cell rendering.
+ */
+export function useHabitStats(habit: Habit): HabitStats {
+  const state = useStateValue('useHabitStats');
+  return React.useMemo(() => {
+    const window = appWindow(state.today);
+    const walk = (rows: Record<string, HabitEntry> | undefined) =>
+      computeHabitStats(habit, Object.values(rows ?? {}), state.today, window);
+    return statsWithBaseline(
+      state.baselineStats[habit.id],
+      walk(state.seedEntries[habit.id]),
+      walk(state.entries[habit.id]),
+    );
+  }, [habit, state]);
 }
 
 /** The habit mutation actions. Throws outside a HabitsProvider. */

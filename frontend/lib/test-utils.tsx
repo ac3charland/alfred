@@ -2,6 +2,7 @@ import { type RenderOptions, render } from '@testing-library/react';
 import * as React from 'react';
 
 import { ToastViewport } from '@/components/shell/toast-viewport';
+import type { HabitStats } from '@/lib/habits';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
@@ -41,8 +42,17 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   stories?: CodeStory[];
   /** The weekly plan archive: the picker index plus the latest plan's document. */
   weeklyPlans?: { index: WeeklyPlanSummary[]; latest: WeeklyPlan | undefined };
-  /** The habit definitions, their logged days, and the date the store treats as today. */
-  habits?: { habits: Habit[]; entries: HabitEntry[]; today: string };
+  /**
+   * The habit definitions, their logged days, and the date the store treats as today.
+   * `stats` are the server's all-history baselines; leaving them out takes the same path a
+   * habit created in-session does, where the window walk is the whole truth.
+   */
+  habits?: {
+    habits: Habit[];
+    entries: HabitEntry[];
+    today: string;
+    stats?: Record<string, HabitStats>;
+  };
 }
 
 export function renderWithProviders(
@@ -79,6 +89,7 @@ export function renderWithProviders(
                         <HabitsProvider
                           initialHabits={habits.habits}
                           initialEntries={habits.entries}
+                          initialStats={habits.stats ?? {}}
                           serverToday={habits.today}
                         >
                           {children}
