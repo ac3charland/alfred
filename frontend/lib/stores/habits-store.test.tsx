@@ -3,6 +3,7 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { todayIn } from '@/lib/habits';
+import type { HabitStats } from '@/lib/habits';
 import type { Habit, HabitEntry } from '@/lib/types';
 
 import {
@@ -11,6 +12,7 @@ import {
   habitsReducer,
   useHabitActions,
   useHabitEntries,
+  useHabitStats,
   useHabits,
   useHabitsToday,
   useUnloggedTodayCount,
@@ -70,10 +72,19 @@ function makeEntry(overrides: Partial<HabitEntry> = {}): HabitEntry {
   };
 }
 
-function makeWrapper(habits: Habit[], entries: HabitEntry[] = []) {
+function makeWrapper(
+  habits: Habit[],
+  entries: HabitEntry[] = [],
+  stats: Record<string, HabitStats> = {},
+) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <HabitsProvider initialHabits={habits} initialEntries={entries} serverToday={TODAY}>
+      <HabitsProvider
+        initialHabits={habits}
+        initialEntries={entries}
+        initialStats={stats}
+        serverToday={TODAY}
+      >
         {children}
       </HabitsProvider>
     );
@@ -86,6 +97,7 @@ function useStoreTest() {
     entries: useHabitEntries(MORNING.id),
     today: useHabitsToday(),
     unlogged: useUnloggedTodayCount(),
+    stats: useHabitStats(MORNING),
     actions: useHabitActions(),
   };
 }
@@ -112,7 +124,7 @@ beforeEach(() => {
 });
 
 describe('habitsReducer', () => {
-  const empty = { habits: [], entries: {}, today: TODAY };
+  const empty = { habits: [], entries: {}, today: TODAY, seedEntries: {}, baselineStats: {} };
 
   it('inserts, replaces and removes a habit', () => {
     const inserted = habitsReducer(empty, { type: 'insertHabit', habit: MORNING });
@@ -431,5 +443,89 @@ describe('today', () => {
       expect(result.current.today).toBe(tokyoToday);
     });
     jest.restoreAllMocks();
+  });
+});
+
+describe('useHabitStats', () => {
+  /** The server's all-history answer for a habit far older than the seeded window. */
+  const BASELINE: HabitStats = {
+    currentStreak: 33,
+    longestStreak: 40,
+    averageStreak: 14,
+    allowanceRemaining: 1,
+    hitRate: 0.9,
+    metDaysTotal: 47,
+    stage: 'nearing_automaticity',
+    counts: { met: 47, partial: 2, missed: 3, skipped: 0, unknown: 0 },
+  };
+
+  it('shows the server’s all-history figures at rest, not the window-truncated ones', () => {
+    // The window holds nothing, so a walk on its own would report a longest streak of 0 and
+    // demote the habit to the bottom rung — the exact failure the baseline exists to prevent.
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([MORNING], [], { [MORNING.id]: BASELINE }),
+    });
+
+    expect(result.current.stats.longestStreak).toBe(40);
+    expect(result.current.stats.metDaysTotal).toBe(47);
+    expect(result.current.stats.averageStreak).toBe(14);
+    expect(result.current.stats.stage).toBe('nearing_automaticity');
+  });
+
+  it('moves the figures optimistically, before the API resolves', async () => {
+    const write = deferred<HabitEntry>();
+    mockUpsertHabitEntry.mockReturnValue(write.promise);
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([MORNING], [], { [MORNING.id]: BASELINE }),
+    });
+
+    let pending: Promise<void> | undefined;
+    act(() => {
+      pending = result.current.actions.logDay(MORNING.id, TODAY, { wake: 364, light: true });
+    });
+
+    // Both criteria pass → a met day, so one more banked day and one more of streak, with no
+    // refetch and nothing waiting on the server.
+    expect(result.current.stats.metDaysTotal).toBe(48);
+    expect(result.current.stats.currentStreak).toBe(34);
+
+    await act(async () => {
+      write.resolve(makeEntry());
+      await pending;
+    });
+
+    expect(result.current.stats.metDaysTotal).toBe(48);
+  });
+
+  it('rolls the figures back with the entry when the write fails', async () => {
+    mockUpsertHabitEntry.mockRejectedValue(new Error('nope'));
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([MORNING], [], { [MORNING.id]: BASELINE }),
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.logDay(MORNING.id, TODAY, { wake: 364, light: true }),
+      ).rejects.toThrow('nope');
+    });
+
+    expect(result.current.stats.metDaysTotal).toBe(47);
+    expect(result.current.stats.currentStreak).toBe(33);
+  });
+
+  it('gives a habit created this session pure window stats, with no baseline at all', async () => {
+    mockUpsertHabitEntry.mockResolvedValue(makeEntry());
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    expect(result.current.stats.metDaysTotal).toBe(0);
+    expect(result.current.stats.stage).toBe('fully_deliberate');
+    expect(result.current.stats.averageStreak).toBeNull();
+
+    await act(async () => {
+      await result.current.actions.logDay(MORNING.id, TODAY, { wake: 364, light: true });
+    });
+
+    expect(result.current.stats.metDaysTotal).toBe(1);
+    expect(result.current.stats.currentStreak).toBe(1);
   });
 });
