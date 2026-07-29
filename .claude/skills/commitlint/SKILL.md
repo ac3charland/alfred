@@ -169,6 +169,8 @@ env:
 
 **body-empty and footer-empty default to `'never'` in config-conventional** — meaning the base config REQUIRES a body and footer. Alfred's overrides flip this to `[2, 'always']` to forbid them. Any commit with a blank line followed by content will fail if these overrides are missing.
 
+**Trailers count as a body.** `Co-Authored-By:`, `Claude-Session:` and friends sit after a blank line, so commitlint parses them as body/footer and `body-empty` rejects the commit — including the trailers an agent harness appends by default. Commits here are **subject-only**: drop the trailers rather than reaching for `--no-verify`.
+
 **`scope-case` is `'lower-case'`, NOT `'kebab-case'`.** commitlint's `kebab-case` check runs the scope through `lodash.kebabCase`, which inserts boundaries between letters and digits — so `kebabCase('e2e') === 'e-2-e'` and a scope of `e2e` (or `web3`, `oauth2`, …) is **rejected** with "scope must be kebab-case", demanding the absurd `e-2-e`. `lower-case` only checks `scope === scope.toLowerCase()`, so it accepts `e2e` and `back-pressure` alike while still rejecting `camelCase`/`PascalCase`/`UPPER`. The casing we actually care about is "not uppercased"; digit-as-boundary was never the intent. (This is the casing we want for scopes; subject already uses `lower-case` for the same reason.)
 
 **husky v9 hook files are plain shell — no shebang required** but they must be executable. If `git commit` throws `permission denied` on a hook, run `chmod +x .husky/commit-msg`.
