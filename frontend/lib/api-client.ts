@@ -14,6 +14,7 @@ import type {
   CreateProjectInput,
   ListItemsQuery,
   UpdateEpicInput,
+  UpdateFolderInput,
   UpdateItemInput,
   UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
@@ -141,10 +142,11 @@ export function createFolder(name: string): Promise<Folder> {
   });
 }
 
-export function updateFolder(id: string, name: string): Promise<Folder> {
+/** Patch a folder: a rename (`{ name }`), a reorder (`{ sort_order }`), or both. */
+export function updateFolder(id: string, input: UpdateFolderInput): Promise<Folder> {
   return apiRequest<Folder>(`/api/folders/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(input),
   });
 }
 

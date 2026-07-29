@@ -13,18 +13,21 @@ import type { Folder } from '@/lib/types';
  * via lib/api-client.
  */
 
-/** All folders, oldest first (the sidebar's display order). */
+/**
+ * All folders in the sidebar's display order: the manual rank (ALF-153), which the migration
+ * seeded from `created_at` so an untouched list still reads oldest-first.
+ */
 export async function getFolders(): Promise<Folder[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('folders')
     .select('*')
-    .order('created_at', { ascending: true });
+    .order('sort_order', { ascending: true });
   return data ?? [];
 }
 
 /**
- * The GET /api/folders read: all folders, oldest first, returning the raw Supabase
+ * The GET /api/folders read: all folders in display order, returning the raw Supabase
  * `{ data, error }` so the route can map the error to a status. Parallel to `getFolders`
  * (the layout's graceful `[]`-fallback seed reader) — the API path needs the error, the
  * seed path swallows it, so they stay separate readers.
@@ -34,5 +37,5 @@ export async function getFolderList(): Promise<{
   error: PostgrestError | null;
 }> {
   const supabase = await createClient();
-  return supabase.from('folders').select('*').order('created_at', { ascending: true });
+  return supabase.from('folders').select('*').order('sort_order', { ascending: true });
 }
