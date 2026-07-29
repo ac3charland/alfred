@@ -942,6 +942,39 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const folderSortOrderResult = await attempt(
+    'folders: authenticated can create one (the sequence-default grant class of 0008) and reorder it to a midpoint rank (ALF-153)',
+    async () => {
+      return asRole(client, 'authenticated', async () => {
+        // No explicit sort_order: the column default calls nextval(), which needs USAGE on the
+        // sequence as `authenticated` — the exact grant 0008 was written to fix.
+        const inserted = await client.query<{ id: string; sort_order: string }>(
+          `insert into folders (name) values ('Work'), ('Home')
+             returning id, sort_order::text as sort_order`,
+        );
+        const [first, second] = inserted.rows;
+        if (first === undefined || second === undefined)
+          throw new Error('expected two folders back');
+        if (Number(first.sort_order) >= Number(second.sort_order))
+          throw new Error('a fresh folder must append below the previous one');
+
+        // A reorder is one UPDATE to a fractional rank — no neighbour is renumbered.
+        const midpoint = (Number(first.sort_order) + Number(second.sort_order)) / 2;
+        await client.query(`update folders set sort_order = $1 where id = $2`, [
+          midpoint,
+          second.id,
+        ]);
+        const { rows } = await client.query<{ name: string }>(
+          `select name from folders order by sort_order asc`,
+        );
+        const order = rows.map((row) => row.name).join(' → ');
+        if (order !== 'Work → Home')
+          throw new Error(`expected the midpoint rank to leave Home below Work, got ${order}`);
+        return `authenticated inserted ranks ${first.sort_order}, ${second.sort_order}; midpoint ${String(midpoint)} keeps ${order}`;
+      });
+    },
+  );
+
   const habitAnonResult = await attempt(
     'anon sees zero habits despite rows existing (RLS read)',
     async () => {
@@ -1011,6 +1044,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     habitEntryUniqueResult,
     habitCascadeResult,
     habitGrantsResult,
+    folderSortOrderResult,
     habitAnonResult,
     anonInsertResult,
     anonReadResult,
