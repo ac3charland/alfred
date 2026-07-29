@@ -20,9 +20,9 @@ jest.mock('@/lib/stores/toast-store', () => ({
   useToastActions: () => ({ showToast: mockShowToast, dismissToast: jest.fn() }),
 }));
 
-const WORK: Folder = { id: 'f-1', name: 'Work', created_at: '2025-01-01T00:00:00Z' };
-const HOME: Folder = { id: 'f-2', name: 'Home', created_at: '2025-01-02T00:00:00Z' };
-const PLAY: Folder = { id: 'f-3', name: 'Play', created_at: '2025-01-03T00:00:00Z' };
+const WORK: Folder = { id: 'f-1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 };
+const HOME: Folder = { id: 'f-2', name: 'Home', created_at: '2025-01-02T00:00:00Z', sort_order: 2 };
+const PLAY: Folder = { id: 'f-3', name: 'Play', created_at: '2025-01-03T00:00:00Z', sort_order: 3 };
 
 function makeWrapper(initialFolders: Folder[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -122,7 +122,12 @@ describe('addFolder', () => {
   });
 
   it('reconciles the temp folder to the saved server row (replaces temp id and fields)', async () => {
-    const saved: Folder = { id: 'server-1', name: 'Projects', created_at: '2025-02-01T00:00:00Z' };
+    const saved: Folder = {
+      id: 'server-1',
+      name: 'Projects',
+      created_at: '2025-02-01T00:00:00Z',
+      sort_order: 4,
+    };
     mockCreateFolder.mockResolvedValue(saved);
     const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([]) });
 
@@ -281,6 +286,82 @@ describe('renameFolder', () => {
 // ---------------------------------------------------------------------------
 // removeFolder
 // ---------------------------------------------------------------------------
+
+describe('reorderFolder', () => {
+  it('reads the list in manual-rank order, whatever order it was seeded in', () => {
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([PLAY, WORK, HOME]) });
+
+    expect(result.current.folders.map((f) => f.id)).toStrictEqual(['f-1', 'f-2', 'f-3']);
+  });
+
+  it('re-sorts the list optimistically, before the request resolves', () => {
+    mockUpdateFolder.mockReturnValue(new Promise<Folder>(() => {}));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK, HOME, PLAY]) });
+
+    // Drop "Play" between "Work" (1) and "Home" (2).
+    act(() => {
+      void result.current.actions.reorderFolder('f-3', 1.5);
+    });
+
+    expect(result.current.folders.map((f) => f.id)).toStrictEqual(['f-1', 'f-3', 'f-2']);
+    expect(mockUpdateFolder).toHaveBeenCalledWith('f-3', { sort_order: 1.5 });
+  });
+
+  it('reconciles to the saved row', async () => {
+    const saved: Folder = { ...PLAY, sort_order: 1.5 };
+    mockUpdateFolder.mockResolvedValue(saved);
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK, HOME, PLAY]) });
+
+    await act(async () => {
+      await result.current.actions.reorderFolder('f-3', 1.5);
+    });
+
+    expect(result.current.folders).toStrictEqual([WORK, saved, HOME]);
+  });
+
+  it('rolls the folder back to its previous rank when the request fails', async () => {
+    mockUpdateFolder.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK, HOME, PLAY]) });
+
+    await act(async () => {
+      await result.current.actions.reorderFolder('f-3', 1.5).catch(() => {});
+    });
+
+    expect(result.current.folders.map((f) => f.id)).toStrictEqual(['f-1', 'f-2', 'f-3']);
+  });
+
+  it('toasts "Couldn\'t move folder" on failure', async () => {
+    mockUpdateFolder.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK, HOME]) });
+
+    await act(async () => {
+      await result.current.actions.reorderFolder('f-2', 0.5).catch(() => {});
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't move folder");
+  });
+
+  it('ignores an unknown folder', async () => {
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK]) });
+
+    await act(async () => {
+      await result.current.actions.reorderFolder('missing', 5);
+    });
+
+    expect(mockUpdateFolder).not.toHaveBeenCalled();
+  });
+
+  it('ignores a folder that has not reconciled yet (its temp id would 404)', async () => {
+    const pending: Folder = { ...WORK, id: 'temp-abc' };
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([pending]) });
+
+    await act(async () => {
+      await result.current.actions.reorderFolder('temp-abc', 5);
+    });
+
+    expect(mockUpdateFolder).not.toHaveBeenCalled();
+  });
+});
 
 describe('removeFolder', () => {
   it('removes optimistically', () => {
