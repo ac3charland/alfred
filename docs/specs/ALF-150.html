@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-150 — Habit tracker: the stats rail</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --met: #2ea36b; --met-soft: #b6e3ca; --partial: #d99b2b; --partial-soft: #f6e0b4;
+    --missed: #d1544a; --missed-soft: #f2c4c0; --unknown: #e9edf3; --na-line: #dfe4ec;
+    --dim: #aeb7c2; --teal: #0d7d7d;
+    /* The app's own dark canvas, for the mockups only — they draw the real UI. */
+    --app-bg: #0b1220; --app-surface: #0f1626; --app-fg: #e8edf7; --app-muted: #8d9bb5;
+    --app-line: #23304a; --app-teal: #4fd1e0; --app-green: #34d399; --app-amber: #f0b429;
+    --app-red: #f87171; --app-unknown: #141d2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --met: #3fbf82; --met-soft: #1e4936; --partial: #e0ab48; --partial-soft: #45330f;
+      --missed: #e8776a; --missed-soft: #4a2320; --unknown: #232a33; --na-line: #2b323c;
+      --dim: #55606d; --teal: #46c9c9;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+         overflow-wrap: break-word; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+             padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+             border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent); }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: -.2rem; }
+  ul.tight li, ol.tight li { margin-bottom: .3rem; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--met); border: 1px solid var(--met);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Acceptance checklist ────────────────────────────────────── */
+  .ac { list-style: none; padding: 0; margin: 1rem 0; }
+  .ac li { position: relative; padding-left: 1.9rem; margin-bottom: .55rem; font-size: .93rem; }
+  .ac li::before { content: '☐'; position: absolute; left: .35rem; top: -.05rem;
+                   color: var(--accent); font-size: 1.05rem; }
+  .acgroup { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+             color: var(--faint); margin: 1.3rem 0 .4rem; font-weight: 700; }
+
+  /* ── Flow diagram ────────────────────────────────────────────── */
+  .fbox { fill: var(--card); stroke: var(--line); }
+  .fbox-a { fill: var(--accent-bg); stroke: var(--accent); }
+  .ftext { fill: var(--fg); font: 600 11px ui-monospace, monospace; }
+  .fsub { fill: var(--muted); font: 10px -apple-system, system-ui, sans-serif; }
+  .farrow { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .fghost { stroke: var(--dim); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+
+  .basis-all { color: var(--met); font-weight: 600; }
+  .basis-win { color: var(--accent); font-weight: 600; }
+
+  /* ── Mockups: the real UI, on the app's dark canvas ──────────── */
+  .mock { border: 1px solid var(--app-line); border-radius: 10px; background: var(--app-bg);
+          color: var(--app-fg); padding: 1rem; margin: 1rem 0;
+          font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .mock-card { border: 1px solid var(--app-line); border-radius: 8px;
+               background: color-mix(in srgb, var(--app-surface) 40%, transparent); padding: .85rem; }
+  .mock-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; margin-bottom: .5rem; }
+  .mock-head b { font-size: .82rem; }
+  .mock-head span { font-size: .72rem; color: var(--app-muted); }
+  .mock-row { display: flex; gap: 1.1rem; align-items: flex-start; }
+  .mock-row.stack { flex-direction: column; gap: .8rem; }
+
+  .gridm { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 16px);
+           gap: 4px; width: max-content; }
+  .gridm i { display: block; width: 16px; height: 16px; border-radius: 4px; }
+  .gridm i.m { background: color-mix(in srgb, var(--app-green) 20%, transparent);
+               box-shadow: inset 0 0 0 1px var(--app-green); }
+  .gridm i.p { background: color-mix(in srgb, var(--app-amber) 20%, transparent);
+               box-shadow: inset 0 0 0 1px var(--app-amber); }
+  .gridm i.x { background: color-mix(in srgb, var(--app-red) 20%, transparent);
+               box-shadow: inset 0 0 0 1px var(--app-red); }
+  .gridm i.u { background: var(--app-unknown); }
+  .gridm i.n { border: 1px dashed var(--app-line); }
+  .gridm i.t { box-shadow: inset 0 0 0 1px var(--app-green), 0 0 0 2px var(--app-teal); }
+
+  /* The rail itself — a left rule on wide, a top rule when it wraps. */
+  .rail { display: flex; flex-direction: column; gap: .65rem; flex: none;
+          border-left: 1px solid var(--app-line); padding-left: .9rem; }
+  .rail.wrapped { border-left: 0; border-top: 1px solid var(--app-line);
+                  padding-left: 0; padding-top: .7rem; width: 100%; }
+  .figs { display: flex; gap: .9rem; }
+  .fig { display: flex; flex-direction: column; min-width: 44px; }
+  .fig b { font-size: 1.15rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .fig b.hot { color: var(--app-green); }
+  .fig b.off { color: var(--app-muted); }
+  .fig small { font-size: .58rem; text-transform: uppercase; letter-spacing: .05em;
+               color: var(--app-muted); margin-top: .1rem; }
+  .stagebadge { display: inline-block; border-radius: 999px; padding: .1rem .55rem;
+                font-size: .68rem; font-weight: 500;
+                background: color-mix(in srgb, var(--app-teal) 15%, transparent);
+                color: var(--app-teal); }
+  .meter { height: 6px; border-radius: 999px; background: var(--app-line);
+           overflow: hidden; width: 176px; max-width: 100%; margin: .4rem 0 .25rem; }
+  .meter > span { display: block; height: 100%; background: var(--app-teal); }
+  .banked { font-size: .63rem; color: var(--app-muted); }
+  .phone { max-width: 300px; }
+  .mockcap { font-size: .8rem; color: var(--muted); margin: .2rem 0 1.4rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p style="margin:0 0 .5rem">
+  <span class="pill">Story</span>
+  <span class="pill">Tasks module</span>
+  <span class="pill">UI · store · seed</span>
+  <span class="pill">Epic ALF-146 · slice 9</span>
+</p>
+
+<h1>ALF-150 — Habit tracker: the stats rail</h1>
+<p class="sub">
+  The six figures beside each habit's history grid, plus the formation badge and its meter — and
+  the seed plumbing that makes the all-history figures true rather than window-shaped.
+</p>
+
+<div class="callout">
+  <b>Read the epic first.</b>
+  <a href="epics/ALF-146.html"><code>docs/specs/epics/ALF-146.html</code></a> carries the settled
+  decisions this story implements — <b>D13</b> (the six figures are a first-class part of the view),
+  <b>D6</b> (the formation ladder), <b>§6</b> (<i>stats: side rail</i>), and <b>§3.1</b> (what each
+  figure means). Nothing here re-takes those decisions; the <b>S</b>-decisions below are the ones
+  this refinement had to make on top of them.
+</div>
+
+<h2>1 · What this story is</h2>
+
+<p>
+  Slice 9 of the habit-tracker epic. Everything it needs already exists and is merged:
+</p>
+
+<ul class="tight">
+  <li><code>lib/habits</code> — <code>computeHabitStats()</code> already returns all six figures plus
+    the formation stage (slice 3), and already takes an optional window that scopes the hit rate and
+    the counts without touching the all-history scalars.</li>
+  <li><code>HabitsProvider</code> — the optimistic store seeded by the shell, holding the habit
+    definitions, a trailing window of entries and the owner's local <i>today</i> (slice 7).</li>
+  <li><code>HabitCard</code> — renders the name, the cadence summary and the history grid, inside a
+    flex row whose comment says in as many words that it is laid out <i>for the rail's arrival</i>
+    (slice 8).</li>
+</ul>
+
+<p>
+  So the visible half of this story is small: one presentational component in the gap the card
+  already leaves. The other half is the reason the story isn't trivial — <b>three of the six figures
+  are all-history figures, and the client only holds 120 days.</b> Handed that window,
+  <code>computeHabitStats</code> reads every day before it as unlogged, so a habit older than the
+  window would show a truncated longest streak and a <i>demoted</i> formation stage. Shipping the
+  rail without fixing that would ship a number that quietly becomes wrong on day 121 — which is
+  precisely the figure ("how much have I banked") the epic added the stage to protect.
+</p>
+
+<h4>Out of the box, in one line</h4>
+<p>
+  Log a day and the streak beside the grid moves in the same frame; reload and the server agrees
+  with what the tap already showed.
+</p>
+
+<h2>2 · Decisions locked during this refinement</h2>
+
+<p class="small">
+  <span class="owner">owner</span> marks the two the owner chose in the refinement session; the rest
+  follow from those plus the epic and existing repo convention.
+</p>
+
+<div class="dec">
+  <h3><span class="n">S1</span>The all-history figures come from a server-seeded baseline<span class="owner">owner</span></h3>
+  <p>
+    The shell seeds, alongside the windowed entries, a per-habit <code>HabitStats</code> computed on
+    the server over <b>all</b> history. The store holds it untouched as a baseline; the rail shows it
+    at rest and nudges it as the owner edits days in-session.
+  </p>
+  <p class="why">
+    <b>Why:</b> this is what epic §4.3 pencils in ("the read endpoint returns them as precomputed
+    scalars alongside the windowed entries, and the optimistic store adjusts them locally on a write
+    rather than recomputing from the window"). The two alternatives were put to the owner and
+    declined: <b>widening the seed to all history</b> reverses the epic's bounded-window decision and
+    grows without bound, and <b>computing from the window only</b> ships a stage that silently demotes
+    the habit after four months — the one thing D6 exists to prevent.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span>Hit rate and misses-left cover the grid's window, not all history<span class="owner">owner</span></h3>
+  <p>
+    The two window figures are computed over exactly the span the grid draws, so a reviewer can count
+    the squares and arrive at the rail's percentage. Both figures name their span in their
+    <code>title</code> / accessible description ("hit rate over the last 120 days").
+  </p>
+  <p class="why">
+    <b>Why:</b> epic §6.2 states the property plainly — <i>"every number in the rail is derived from
+    the grid beside it, so the two can be checked against each other."</i> A lifetime hit rate is more
+    stable but unfalsifiable from the screen. <code>allowanceRemaining</code> is a trailing-7-day
+    figure and is therefore inside any window at all; it is a "window figure" only in the sense that
+    the local walk owns it.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>Two walks and a splice — whichever walk knows more wins the streak</h3>
+  <p>
+    The rail runs <code>computeHabitStats</code> twice over the seeded window: once over the entries
+    <b>as seeded</b> (<code>atSeed</code>) and once over the entries <b>as they are now</b>
+    (<code>live</code>). A pure <code>statsWithBaseline(baseline, atSeed, live)</code> then splices
+    the three (§4.2). The current streak takes <code>max(live, baseline + drift)</code>.
+  </p>
+  <p class="why">
+    <b>Why two walks and not a delta on write:</b> a delta can express "+1 met day" but not "you just
+    corrected a day in the middle of the run and broke it". Re-walking the window is the same code
+    path the grid already runs, so the rail and the connectors beside it can never disagree.
+    <br />
+    <b>Why <code>max</code> for the current streak:</b> the two estimates are wrong in opposite,
+    non-overlapping directions. The <i>live</i> walk under-reports only when the run is longer than
+    the window; the <i>baseline</i> under-reports only when the server's UTC "today" is a day ahead of
+    the owner's (the store already corrects <i>today</i> on mount for exactly this reason — see §4.4),
+    in which case the server counts the owner's unlogged current day as spent and the local walk
+    doesn't. Taking the larger picks the walk that saw more, in both cases.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S4</span>The average streak is the baseline's, unadjusted in-session</h3>
+  <p>
+    <code>averageStreak</code> is taken from the baseline whenever there is one, falling back to the
+    live walk otherwise. It refreshes on the next load rather than moving with an edit.
+  </p>
+  <p class="why">
+    <b>Why:</b> it is a mean of <i>ended</i> runs over all history — deltas don't compose on a mean,
+    and reconstructing one would need the run lengths the baseline deliberately doesn't carry. It is
+    also the figure least sensitive to a single day: the current run is excluded from it by
+    definition (§3.1), so logging today can only change it by ending a run, and the number it would
+    move to is visible one reload later. The fallback matters for a habit created in-session, whose
+    whole life is inside the window.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>Six figures, six labels — the pairing is visual only</h3>
+  <p>
+    Each figure is its own element with its own visible label and its own
+    <code>data-figure</code> hook. Two figures share a line to keep the card one band tall, separated
+    by an <code>aria-hidden</code> "·" — the epic's compact <i>"33 · 14 / longest · average"</i>
+    rendered as two labelled columns rather than one string.
+  </p>
+  <p class="why">
+    <b>Why:</b> read aloud, "33 · 14, longest · average" is not a sentence, and the rail is the one
+    place in the view where the answer to "how is this going?" lives. Two columns keep the picture
+    (§5) and give a screen reader "33, longest. 14, average." The <code>data-figure</code> attributes
+    mirror the grid's <code>data-date</code> / <code>data-status</code> convention, so the E2E can
+    address a figure without matching on a number that changes with the calendar.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S6</span>The hedge is in the words the owner reads, not only in the docs</h3>
+  <p>
+    Stage labels are <b>Fully Deliberate</b>, <b>Gaining Momentum</b>, <b>Nearing Automaticity</b>,
+    <b>Possibly Established</b>, and the meter's caption reads <code>47 of ~66 banked days</code> —
+    tilde included. Past the marker it reads <code>82 banked days · past ~66</code>.
+  </p>
+  <p class="why">
+    <b>Why:</b> D6 requires it — 66 is the <i>median</i> of an 18–254 day range, so the ladder "must be
+    labelled as approximate in the UI". These four strings are new; nothing in the app renders a stage
+    today (the API returns the raw <code>possibly_established</code> enum, which stays as it is).
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S7</span>One seeder, one read — the window read folds into the history read</h3>
+  <p>
+    <code>getHabits()</code> + <code>getHabitEntries()</code> become a single
+    <code>getHabitSeed()</code> that reads every habit and its whole entry history once, computes the
+    baseline stats, and hands the client only the windowed slice of entries.
+  </p>
+  <p class="why">
+    <b>Why:</b> the baseline needs all history, so keeping a separate 120-day entry read would issue a
+    second query for rows the first already returned. One read is strictly less work than the shell
+    does today, and it keeps the window in one place instead of two. The cost is that the shell now
+    pages the full entry history on every load — accepted at single-user scale, with the escape hatch
+    already named in <code>lib/data/habits.ts</code> ("if entry volume ever makes this expensive the
+    answer is a SQL rollup of those scalars, not a truncated read").
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S8</span>A seed failure degrades to the window walk, never to a blank shell</h3>
+  <p>
+    If the entry read fails, <code>getHabitSeed()</code> falls back to the existing
+    <code>getHabits()</code> and returns no entries and no baselines. The rail then renders the live
+    walk verbatim — right for every habit younger than the window, understated for older ones, and
+    never absent.
+  </p>
+  <p class="why">
+    <b>Why:</b> the existing seeders already swallow their error ("a seed failure must not blank the
+    whole shell"), and the same reasoning applies harder to a derived rail: a habit card with no
+    numbers beside it is a better failure than a habit view that doesn't render. The "no baseline"
+    path is not a rare branch, either — every habit created in-session takes it.
+  </p>
+</div>
+
+<h2>3 · The shape of the change</h2>
+
+<h3>3.1 Files touched, at a glance</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:38%">File</th><th style="width:12%">Kind</th><th>What changes</th></tr>
+  <tr><td><code>frontend/lib/habits/dates.ts</code></td><td>edit</td>
+      <td><code>APP_WINDOW_DAYS = 120</code> and <code>appWindow(today)</code> — the single definition of the span the app holds, beside the existing API window constants.</td></tr>
+  <tr><td><code>frontend/lib/habits/baseline.ts</code></td><td>new</td>
+      <td><code>statsWithBaseline(baseline, atSeed, live)</code> — the pure splice (§4.2).</td></tr>
+  <tr><td><code>frontend/lib/habits/baseline.test.ts</code></td><td>new</td>
+      <td>Table tests for every splice rule.</td></tr>
+  <tr><td><code>frontend/lib/habits/index.ts</code></td><td>edit</td>
+      <td>Re-export the two new symbols and the window helper.</td></tr>
+  <tr><td><code>frontend/lib/data/habits.ts</code></td><td>edit</td>
+      <td><code>getHabitSeed()</code> replaces <code>getHabitEntries()</code>; <code>getHabits()</code> stays as the degraded fallback (S8).</td></tr>
+  <tr><td><code>frontend/app/(shell)/layout.tsx</code></td><td>edit</td>
+      <td>One seed call instead of two; passes <code>initialStats</code> to the provider.</td></tr>
+  <tr><td><code>frontend/lib/stores/habits-store.tsx</code></td><td>edit</td>
+      <td><code>initialStats</code> prop, frozen <code>seedEntries</code> + <code>baselineStats</code> in state, and the <code>useHabitStats(habit)</code> selector.</td></tr>
+  <tr><td><code>frontend/components/habits/stats-rail.tsx</code></td><td>new</td>
+      <td>The rail. Presentational — takes a <code>HabitStats</code>, renders six figures + the stage block.</td></tr>
+  <tr><td><code>frontend/components/habits/habit-card.tsx</code></td><td>edit</td>
+      <td>Renders <code>&lt;StatsRail&gt;</code> in the flex row it already left for it, and wraps it on narrow screens.</td></tr>
+  <tr><td><code>frontend/components/habits/habit-format.ts</code></td><td>edit</td>
+      <td><code>STAGE_LABEL</code>, <code>formatHitRate</code>, <code>formatStreakLength</code>, <code>formatBanked</code>.</td></tr>
+  <tr><td><code>frontend/lib/test-utils.tsx</code></td><td>edit</td>
+      <td>The <code>habits</code> render option gains an optional <code>stats</code>.</td></tr>
+  <tr><td colspan="3" style="background:var(--card)"><b>Tests &amp; evidence</b> — <code>stats-rail.test.tsx</code>, <code>stats-rail.stories.tsx</code> + committed baselines, and edits to <code>habit-format.test.ts</code>, <code>habits-view.test.tsx</code>, <code>habits-store.test.tsx</code>, <code>lib/data/habits.test.ts</code>, <code>e2e/habits.spec.ts</code>. See §7.</td></tr>
+</table>
+</div>
+
+<h3>3.2 Build from the shared layer</h3>
+
+<p class="small">
+  Per the <code>frontend-architecture</code> skill: reach for what exists before adding anything.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">Reuse</th><th>For</th></tr>
+  <tr><td><code>computeHabitStats()</code> (<code>lib/habits</code>)</td>
+      <td>Both walks. It already takes the optional window S2 needs — no new arithmetic in this story.</td></tr>
+  <tr><td><code>formationStage()</code> (<code>lib/habits</code>)</td>
+      <td>Re-deriving the stage after the banked-days splice. The ladder stays in one place.</td></tr>
+  <tr><td><code>getHabitsWithHistory()</code> (<code>lib/data/habits</code>)</td>
+      <td>The seed's all-history read — the same paged reader <code>GET /api/habits</code> uses, so the shell and the coach can't diverge on what "all history" means.</td></tr>
+  <tr><td><code>&lt;RatioBar&gt;</code> (<code>components/atoms</code>)</td>
+      <td>The formation meter: a banked segment plus a transparent remainder, over the atom's own track. It already renders <code>role="img"</code> with a caller-supplied label and drops zero-value segments.</td></tr>
+  <tr><td><code>&lt;Badge variant="accent"&gt;</code> (<code>components/atoms</code>)</td>
+      <td>The stage pill — the teal-tinted pill the epic draws, already a variant.</td></tr>
+  <tr><td><code>createContextPair</code> / the existing store</td>
+      <td>The selector hook, following <code>useUnloggedTodayCount</code>'s shape: read state, derive in a <code>useMemo</code>, never store derived values in the reducer.</td></tr>
+</table>
+</div>
+
+<h4>What is genuinely new</h4>
+<ul class="tight">
+  <li><b>The splice</b> — <code>statsWithBaseline</code>, ~20 lines of pure arithmetic in
+    <code>lib/habits</code> because it is domain logic, not a component concern, and because it is
+    the only part of this story with real edge cases.</li>
+  <li><b>The rail component</b> — a card-local component under <code>components/habits/</code>. It
+    is not an atom: the figure/label stack is a two-element flex column with no options, and
+    extracting it would create a primitive with one consumer.</li>
+  <li><b>Four stage strings and three formatters</b> — in <code>habit-format.ts</code>, beside the
+    other strings the view shows, so they are unit-tested rather than asserted through a render.</li>
+</ul>
+
+<h2>4 · Where each figure comes from</h2>
+
+<h3>4.1 The basis of each figure</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:20%">Figure</th><th style="width:14%">Basis</th><th>How the rail gets it</th></tr>
+  <tr><td><b>current streak</b></td><td class="basis-all">all history</td>
+      <td><code>max(live.currentStreak, baseline.currentStreak + drift)</code>, floored at 0, where <code>drift = live.currentStreak − atSeed.currentStreak</code> (S3).</td></tr>
+  <tr><td><b>longest</b></td><td class="basis-all">all history</td>
+      <td><code>max(baseline.longestStreak, live.longestStreak, currentStreak)</code> — a growing run can overtake the record without a reload.</td></tr>
+  <tr><td><b>average</b></td><td class="basis-all">all history</td>
+      <td><code>baseline.averageStreak ?? live.averageStreak</code> (S4). <code>null</code> renders as <code>—</code>.</td></tr>
+  <tr><td><b>hit rate</b></td><td class="basis-win">window</td>
+      <td><code>live.hitRate</code> — met / (met + partial + missed) over the drawn window. <code>null</code> (nothing rated yet) renders as <code>—</code>.</td></tr>
+  <tr><td><b>misses left</b></td><td class="basis-win">trailing 7</td>
+      <td><code>live.allowanceRemaining</code>. Always inside the window, so the local walk is exact.</td></tr>
+  <tr><td><b>banked days<br />→ stage</b></td><td class="basis-all">all history</td>
+      <td><code>max(0, baseline.metDaysTotal + (live.counts.met − atSeed.counts.met))</code>, then <code>formationStage()</code> of that. The two counts share a window, so the difference is exactly what the owner has changed since the page loaded.</td></tr>
+</table>
+</div>
+
+<h3>4.2 <code>statsWithBaseline</code></h3>
+
+<pre><code>// frontend/lib/habits/baseline.ts
+
+/**
+ * The rail's figures for a client that holds a trailing window of entries plus the server's
+ * all-history baseline.
+ *
+ * `atSeed` is the window walked over the entries AS SEEDED; `live` is the same window walked
+ * over the entries as they are now. At rest the two are identical, so the rail shows the
+ * server's numbers exactly; every in-session edit moves the rail by the amount it moved the
+ * window walk. Without a baseline the live walk IS the whole truth — a habit created this
+ * session has no history outside the window.
+ */
+export function statsWithBaseline(
+  baseline: HabitStats | undefined,
+  atSeed: HabitStats,
+  live: HabitStats,
+): HabitStats {
+  if (baseline === undefined) return live;
+
+  // Whichever walk saw more: `live` is short only when the run outruns the window, the
+  // baseline only when the server's UTC today ran ahead of the owner's (§4.4).
+  const currentStreak = Math.max(
+    0,
+    live.currentStreak,
+    baseline.currentStreak + (live.currentStreak - atSeed.currentStreak),
+  );
+  const metDaysTotal = Math.max(0, baseline.metDaysTotal + (live.counts.met - atSeed.counts.met));
+
+  return {
+    currentStreak,
+    longestStreak: Math.max(baseline.longestStreak, live.longestStreak, currentStreak),
+    averageStreak: baseline.averageStreak ?? live.averageStreak,
+    allowanceRemaining: live.allowanceRemaining,
+    hitRate: live.hitRate,
+    metDaysTotal,
+    stage: formationStage(metDaysTotal),
+    counts: live.counts,
+  };
+}</code></pre>
+
+<h4>Worked example — the reference habit, mid-session</h4>
+<p class="small">
+  A habit 190 days old, unbroken for 33 met days, 47 banked. The window is the trailing 120 days.
+</p>
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Moment</th><th>baseline</th><th>atSeed</th><th>live</th><th>rail shows</th></tr>
+  <tr><td>Page load</td><td>33 / 47</td><td>33 / 30</td><td>33 / 30</td><td><b>33 · 47</b> — drift is 0, so the server's numbers show through untouched.</td></tr>
+  <tr><td>Owner logs today <code>met</code></td><td>33 / 47</td><td>33 / 30</td><td>34 / 31</td><td><b>34 · 48</b> — both move by exactly one.</td></tr>
+  <tr><td>Owner corrects yesterday to <code>missed</code>, exhausting the allowance</td><td>33 / 47</td><td>33 / 30</td><td>1 / 30</td><td><b>1 · 47</b> — the chain broke; <code>max(1, 33 + (1−33)) = 1</code>.</td></tr>
+  <tr><td>Same, but the run is <b>longer than the window</b> (155 met days)</td><td>155 / 170</td><td>120 / 110</td><td>1 / 110</td><td><b>36</b> — the known corner (§9, Q3): <code>max(1, 155 − 119)</code> over-reports until the next load, which returns the true 1.</td></tr>
+</table>
+</div>
+
+<h3>4.3 The path, end to end</h3>
+
+<svg viewBox="0 0 900 330" role="img" aria-label="The shell reads all habit history once, seeds windowed entries plus an all-history baseline into the store, and a selector hook walks the window twice and splices the two into the rail's figures.">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="var(--muted)" />
+    </marker>
+  </defs>
+
+  <rect class="fbox" x="10" y="18" width="176" height="86" rx="8" />
+  <text class="ftext" x="24" y="42">Supabase</text>
+  <text class="fsub"  x="24" y="61">habits</text>
+  <text class="fsub"  x="24" y="77">habit_entries — all history</text>
+  <text class="fsub"  x="24" y="93">(paged read, unchanged)</text>
+
+  <rect class="fbox-a" x="232" y="10" width="212" height="102" rx="8" />
+  <text class="ftext" x="246" y="34">getHabitSeed()  server</text>
+  <text class="fsub"  x="246" y="54">habits</text>
+  <text class="fsub"  x="246" y="70">entries → windowed to 120d</text>
+  <text class="fsub"  x="246" y="86">stats  → computeHabitStats</text>
+  <text class="fsub"  x="246" y="102">         over ALL history</text>
+
+  <rect class="fbox" x="492" y="10" width="230" height="102" rx="8" />
+  <text class="ftext" x="506" y="34">HabitsProvider</text>
+  <text class="fsub"  x="506" y="54">entries   — mutable, optimistic</text>
+  <text class="fsub"  x="506" y="70">seedEntries  — frozen at seed</text>
+  <text class="fsub"  x="506" y="86">baselineStats — frozen at seed</text>
+  <text class="fsub"  x="506" y="102">today — corrected on mount</text>
+
+  <rect class="fbox-a" x="492" y="150" width="230" height="112" rx="8" />
+  <text class="ftext" x="506" y="174">useHabitStats(habit)</text>
+  <text class="fsub"  x="506" y="194">live   = walk(entries,     window)</text>
+  <text class="fsub"  x="506" y="210">atSeed = walk(seedEntries, window)</text>
+  <text class="fsub"  x="506" y="230">statsWithBaseline(</text>
+  <text class="fsub"  x="506" y="246">   baseline, atSeed, live)</text>
+
+  <rect class="fbox" x="770" y="150" width="120" height="112" rx="8" />
+  <text class="ftext" x="784" y="174">StatsRail</text>
+  <text class="fsub"  x="784" y="194">six figures</text>
+  <text class="fsub"  x="784" y="210">stage badge</text>
+  <text class="fsub"  x="784" y="226">+ meter</text>
+  <text class="fsub"  x="784" y="246">presentational</text>
+
+  <rect class="fbox" x="232" y="186" width="212" height="76" rx="8" />
+  <text class="ftext" x="246" y="210">DayEditor → logDay()</text>
+  <text class="fsub"  x="246" y="230">optimistic putEntry</text>
+  <text class="fsub"  x="246" y="248">→ entries change → walk again</text>
+
+  <path class="farrow" marker-end="url(#ar)" d="M186,61 L226,61" />
+  <path class="farrow" marker-end="url(#ar)" d="M444,61 L486,61" />
+  <path class="farrow" marker-end="url(#ar)" d="M607,112 L607,144" />
+  <path class="farrow" marker-end="url(#ar)" d="M722,206 L764,206" />
+  <path class="farrow" marker-end="url(#ar)" d="M444,224 L486,224" />
+  <path class="fghost" marker-end="url(#ar)" d="M186,95 L206,95 L206,300 L860,300 L860,268" />
+  <text class="fsub" x="470" y="316">a reload replaces every nudge with the server's own answer</text>
+</svg>
+<p class="diagram-cap">
+  One read on the server; two walks and a splice on the client. The grid and the rail run the same
+  walk over the same entries, so a link the grid draws and the streak the rail counts are the same
+  fact rendered twice.
+</p>
+
+<h3>4.4 The two "today"s, and why <code>max</code> is load-bearing</h3>
+
+<p>
+  The store already carries a wrinkle this story inherits: the shell renders on the server, which
+  cannot know the browser's zone, so <code>today</code> is seeded as the <b>UTC</b> date and corrected
+  in a mount effect. The baseline is computed with the server's UTC today; both client walks use the
+  corrected local today.
+</p>
+<p>
+  That matters in one window of the day. An owner in <code>America/New_York</code> at 21:00 on the
+  29th is living the 29th; UTC has already rolled to the 30th. The server's walk therefore treats the
+  29th as a <i>past, unlogged</i> day — a spent day — and can report a broken streak for a habit the
+  owner simply hasn't logged yet this evening. The local walk exempts today correctly and reports the
+  run alive. <b>Taking the larger of the two is what keeps that evening from showing a false zero</b>,
+  and it costs nothing in the ordinary case where the walks agree.
+</p>
+
+<div class="callout">
+  <b>Don't "fix" this by passing the browser's zone into the seed.</b> The server render has no access
+  to it — that is the whole reason the store corrects <i>today</i> in an effect — and rendering a
+  zone-resolved date server-side is a hydration mismatch. The splice is the fix.
+</div>
+
+<h2>5 · The rail</h2>
+
+<p class="small">
+  Drawn on the app's own dark canvas, at the real sizes. Behaviour and layout intent — padding, radius
+  and exact type scale are the implementation's; <b>everything present here is present in the build</b>.
+</p>
+
+<h3>5.1 A habit with history</h3>
+
+<div class="mock">
+  <div class="mock-card">
+    <div class="mock-head">
+      <b>Morning routine</b><span>· every day · 1 miss / rolling week</span>
+    </div>
+    <div class="mock-row">
+      <div class="gridm">
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="p"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m t"></i><i class="n"></i><i class="n"></i><i class="n"></i>
+      </div>
+      <div class="rail">
+        <div class="figs">
+          <span class="fig"><b class="hot">33</b><small>current streak</small></span>
+        </div>
+        <div class="figs">
+          <span class="fig"><b>33</b><small>longest</small></span>
+          <span class="fig"><b>14</b><small>average</small></span>
+        </div>
+        <div class="figs">
+          <span class="fig"><b>94%</b><small>hit rate</small></span>
+          <span class="fig"><b>1</b><small>misses left</small></span>
+        </div>
+        <div>
+          <span class="stagebadge">Nearing Automaticity</span>
+          <div class="meter"><span style="width:71%"></span></div>
+          <span class="banked">47 of ~66 banked days</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">
+  The grid is cropped for the mockup — the real one draws the full 120-day window, and the figures are
+  derived from all of it. The rail is separated from the grid by a 1px rule and never scrolls with it:
+  the grid keeps its own horizontal overflow so a long history can't push the numbers off-screen.
+</p>
+
+<h3>5.2 A habit with nothing banked yet</h3>
+
+<p class="small">
+  Day one. Three of the six figures have no value to show, and each renders an em dash rather than a
+  zero — "no runs have ended yet" and "an average of zero" are different claims.
+</p>
+
+<div class="mock">
+  <div class="mock-card">
+    <div class="mock-head">
+      <b>Evening wind-down</b><span>· weekdays · no misses</span>
+    </div>
+    <div class="mock-row">
+      <div class="gridm">
+        <i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i>
+        <i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i>
+        <i class="u"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i><i class="n"></i>
+      </div>
+      <div class="rail">
+        <div class="figs">
+          <span class="fig"><b class="off">0</b><small>current streak</small></span>
+        </div>
+        <div class="figs">
+          <span class="fig"><b>0</b><small>longest</small></span>
+          <span class="fig"><b>—</b><small>average</small></span>
+        </div>
+        <div class="figs">
+          <span class="fig"><b>—</b><small>hit rate</small></span>
+          <span class="fig"><b>0</b><small>misses left</small></span>
+        </div>
+        <div>
+          <span class="stagebadge">Fully Deliberate</span>
+          <div class="meter"><span style="width:0"></span></div>
+          <span class="banked">0 of ~66 banked days</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">
+  A strict habit (<code>allowance: 0</code>) still shows <b>misses left</b>, at 0 — D13 makes the six
+  figures non-optional, and a rail whose shape changes per habit is harder to read at a glance than a
+  constant zero. Flagged as Q1 in §9 in case the owner would rather it disappeared.
+</p>
+
+<h3>5.3 Narrow screens</h3>
+
+<p class="small">
+  Below the <code>sm</code> breakpoint the rail wraps under the grid, and its left rule becomes a top
+  rule. The three figure rows stay as they are — they already fit a phone — so the wrap changes the
+  card's height, not its content.
+</p>
+
+<div class="mock phone">
+  <div class="mock-card">
+    <div class="mock-head"><b>Morning routine</b><span>· every day · 1 miss</span></div>
+    <div class="mock-row stack">
+      <div class="gridm">
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="p"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i><i class="m"></i>
+        <i class="m"></i><i class="m"></i><i class="m"></i><i class="m t"></i><i class="n"></i><i class="n"></i><i class="n"></i>
+      </div>
+      <div class="rail wrapped">
+        <div class="figs">
+          <span class="fig"><b class="hot">33</b><small>current streak</small></span>
+          <span class="fig"><b>33</b><small>longest</small></span>
+          <span class="fig"><b>14</b><small>average</small></span>
+        </div>
+        <div class="figs">
+          <span class="fig"><b>94%</b><small>hit rate</small></span>
+          <span class="fig"><b>1</b><small>misses left</small></span>
+        </div>
+        <div>
+          <span class="stagebadge">Nearing Automaticity</span>
+          <div class="meter"><span style="width:71%"></span></div>
+          <span class="banked">47 of ~66 banked days</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">
+  Wrapped, the first row carries three figures rather than one — the vertical stack that keeps a wide
+  card one band tall has nothing to buy on a phone.
+</p>
+
+<h3>5.4 Markup, tokens and accessibility</h3>
+
+<pre><code>&lt;div role="group" aria-label={`${habit.name} stats`} className="… border-t sm:border-t-0 sm:border-l …"&gt;
+  &lt;div data-figure="current-streak"&gt;
+    &lt;b className="text-lg font-semibold tabular-nums text-accent-green"&gt;33&lt;/b&gt;
+    &lt;small className="text-[10px] uppercase tracking-wide text-muted-foreground"&gt;current streak&lt;/small&gt;
+  &lt;/div&gt;
+  …
+  &lt;Badge variant="accent"&gt;Nearing Automaticity&lt;/Badge&gt;
+  &lt;RatioBar
+    segments={[
+      { label: 'banked',    value: Math.min(metDaysTotal, ESTABLISHED_DAYS), tone: 'bg-accent-teal' },
+      { label: 'remaining', value: Math.max(0, ESTABLISHED_DAYS - metDaysTotal), tone: 'bg-transparent' },
+    ]}
+    ariaLabel="47 of about 66 banked days"
+    className="h-1.5 w-44"
+  /&gt;
+  &lt;p className="text-[11px] text-muted-foreground"&gt;47 of ~66 banked days&lt;/p&gt;
+&lt;/div&gt;</code></pre>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Concern</th><th>Requirement</th></tr>
+  <tr><td><b>Tokens only</b></td>
+      <td>Existing named accents: <code>text-accent-green</code> for a live streak,
+        <code>text-muted-foreground</code> for a zero one and every label,
+        <code>bg-accent-teal</code> for the meter fill and the stage badge (via
+        <code>Badge variant="accent"</code>), <code>border-border</code> for the rules. No new colour
+        token, and nothing hard-coded.</td></tr>
+  <tr><td><b>Numerals</b></td>
+      <td><code>tabular-nums</code> on every figure, so a streak ticking 9 → 10 doesn't shift the
+        label under it.</td></tr>
+  <tr><td><b>Group</b></td>
+      <td>The rail is a <code>role="group"</code> named <code>"&lt;habit&gt; stats"</code>, matching the
+        grid's <code>"&lt;habit&gt; history"</code>, so a screen-reader user can tell two stacked habits
+        apart.</td></tr>
+  <tr><td><b>Spans are stated</b></td>
+      <td>Hit rate and misses-left carry a <code>title</code> naming their span ("over the last 120
+        days" / "in the last 7 days") — the figures whose meaning is otherwise ambiguous (S2).</td></tr>
+  <tr><td><b>The meter is not the message</b></td>
+      <td>The meter is decorative reinforcement of the caption beside it; its
+        <code>ariaLabel</code> spells the same sentence out ("47 of about 66 banked days" — "about",
+        not a tilde, which reads as noise aloud).</td></tr>
+  <tr><td><b>Contrast</b></td>
+      <td>Labels are <code>text-muted-foreground</code> at 10–11px on the surface — check against the
+        dark-canvas floor (SPEC §5.4) rather than assuming; bump the label colour, never the size,
+        if it fails.</td></tr>
+  <tr><td><b>Motion</b></td>
+      <td>No transition on the figures. A number that animates while the owner is reading it is
+        noise, and the tap already repaints the cell beside it.</td></tr>
+</table>
+</div>
+
+<h3>5.5 The strings</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:30%">Helper (<code>habit-format.ts</code>)</th><th>Renders</th></tr>
+  <tr><td><code>STAGE_LABEL</code></td>
+      <td><code>fully_deliberate</code> → "Fully Deliberate", <code>gaining_momentum</code> → "Gaining
+        Momentum", <code>nearing_automaticity</code> → "Nearing Automaticity",
+        <code>possibly_established</code> → "Possibly Established" (S6).</td></tr>
+  <tr><td><code>formatHitRate(rate)</code></td>
+      <td><code>0.9375</code> → <code>94%</code> (rounded to a whole percent, matching the
+        pre-rounded percentages <code>/api/code/pr-ratio</code> established); <code>null</code> →
+        <code>—</code>.</td></tr>
+  <tr><td><code>formatStreakLength(n)</code></td>
+      <td><code>14</code> → <code>14</code>; <code>5.5</code> → <code>5.5</code> (one decimal, trailing
+        <code>.0</code> dropped); <code>null</code> → <code>—</code>.</td></tr>
+  <tr><td><code>formatBanked(metDays)</code></td>
+      <td><code>47</code> → <code>47 of ~66 banked days</code>; <code>82</code> → <code>82 banked days
+        · past ~66</code>; <code>66</code> → the "past" form (the marker is reached, not pending).</td></tr>
+</table>
+</div>
+
+<h2>6 · The seed</h2>
+
+<pre><code>// frontend/lib/data/habits.ts
+
+/**
+ * The shell's habit seed: every habit, the trailing {@link APP_WINDOW_DAYS} of entries, and the
+ * all-history stats the rail's banked / longest / average figures need.
+ *
+ * ONE read backs all three (S7): the baseline needs full history, so windowing the entry read as
+ * well would re-fetch rows this read already returned. The window is applied in TS afterwards.
+ */
+export async function getHabitSeed(): Promise&lt;{
+  habits: Habit[];
+  entries: HabitEntry[];
+  stats: Record&lt;string, HabitStats&gt;;
+}&gt; {
+  const supabase = await createClient();
+  const today = todayIn('UTC');
+  const { habits, entriesByHabit, error } = await getHabitsWithHistory(supabase, {
+    includeArchived: false,
+  });
+
+  // Degrade in layers, never to a blank shell (S8): without entries the rail falls back to the
+  // live window walk, which is right for every habit younger than the window.
+  if (error) return { habits: await getHabits(), entries: [], stats: {} };
+
+  const from = appWindow(today).from;
+  const entries: HabitEntry[] = [];
+  const stats: Record&lt;string, HabitStats&gt; = {};
+  for (const habit of habits) {
+    const all = entriesByHabit.get(habit.id) ?? [];
+    stats[habit.id] = computeHabitStats(habit, all, today);   // no window ⇒ all history
+    entries.push(...all.filter((entry) =&gt; entry.entry_date &gt;= from));
+  }
+  return { habits, entries, stats };
+}</code></pre>
+
+<ul class="tight">
+  <li><b>Display order is preserved.</b> <code>getHabitsWithHistory</code> orders by
+    <code>archived_at</code>, <code>sort_order</code>, <code>created_at</code>; with archived habits
+    excluded that is the order <code>getHabits()</code> produces today. Pin it with a test rather
+    than an assumption.</li>
+  <li><b>The window bound is <code>appWindow(today).from</code></b>, i.e. <code>today − 119</code>,
+    computed against the <i>server's</i> UTC today. The old seeder deliberately reached one day
+    further back so a browser west of UTC still has its local today; keep that generosity by leaving
+    <code>getHabitSeed</code>'s filter at <code>today − APP_WINDOW_DAYS</code> and letting the client
+    walk the narrower <code>appWindow(localToday)</code> inside it. The invariant to hold: <b>the
+    client's window is always a subset of the seeded entries</b>, in either direction of the
+    date line.</li>
+  <li><b><code>getHabitEntries()</code> goes away</b> along with its tests; <code>getHabits()</code>
+    stays, now with two callers (the seed's fallback path and its own tests).</li>
+  <li><b>The layout</b> drops two entries from its <code>Promise.all</code> and adds one, then passes
+    <code>initialStats={seed.stats}</code> to <code>HabitsProvider</code>.</li>
+</ul>
+
+<h2>7 · Store additions</h2>
+
+<pre><code>export interface HabitsState {
+  habits: Habit[];
+  entries: Record&lt;string, Record&lt;string, HabitEntry&gt;&gt;;
+  today: string;
+  /** The entries exactly as seeded — the reference the rail measures in-session edits against. */
+  seedEntries: Record&lt;string, Record&lt;string, HabitEntry&gt;&gt;;
+  /** Server-computed all-history stats per habit id. Absent for a habit created this session. */
+  baselineStats: Record&lt;string, HabitStats&gt;;
+}</code></pre>
+
+<ul class="tight">
+  <li><b>No action touches either new field.</b> They are seed-time constants that live in state
+    because the selector needs them; the reducer's existing cases pass them through untouched, and
+    <code>assertNever</code> keeps the switch exhaustive as before.</li>
+  <li><b>The selector</b> follows <code>useUnloggedTodayCount</code>: read state, derive in a
+    <code>React.useMemo</code>, return a plain value.
+
+<pre><code>export function useHabitStats(habit: Habit): HabitStats {
+  const state = useStateValue('useHabitStats');
+  return React.useMemo(() =&gt; {
+    const window = appWindow(state.today);
+    const walk = (rows: Record&lt;string, HabitEntry&gt; | undefined) =&gt;
+      computeHabitStats(habit, Object.values(rows ?? {}), state.today, window);
+    return statsWithBaseline(
+      state.baselineStats[habit.id],
+      walk(state.seedEntries[habit.id]),
+      walk(state.entries[habit.id]),
+    );
+  }, [habit, state]);
+}</code></pre>
+  </li>
+  <li><b>Cost:</b> two extra 120-day walks per habit per state change, memoized. At the epic's
+    expected volume (a handful of habits) that is far below the grid's own per-cell rendering — but
+    the memo's dependency on the whole <code>state</code> object means every store change re-walks
+    every habit. Acceptable, and the same tradeoff <code>useUnloggedTodayCount</code> already makes.</li>
+  <li><b><code>test-utils</code></b> gains <code>habits.stats</code> (default <code>{}</code>), so a
+    test that doesn't care about the baseline gets the live-walk path — the same path a
+    freshly-created habit takes.</li>
+</ul>
+
+<h2>8 · Tests</h2>
+
+<p class="small">
+  Red/green TDD, per <code>CLAUDE.md</code>. The splice is where the edge cases live and gets the
+  bulk of the coverage; the rail gets a render test for its states and committed baselines for its
+  finish; one E2E proves the optimistic number and the server's number agree.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:32%">File</th><th>Covers</th></tr>
+  <tr><td><code>lib/habits/baseline.test.ts</code> <i>(new)</i></td>
+      <td>Table-driven, one row per rule: no baseline → <code>live</code> verbatim · at rest
+        (<code>atSeed === live</code>) → the baseline's all-history figures exactly · logging today
+        <code>met</code> → current streak and banked days each +1 · a banked day crossing 13→14 →
+        the stage promotes · correcting a met day away → both figures fall, floored at 0 · the live
+        walk knowing more (the UTC-today case) → <code>max</code> takes it · the baseline knowing
+        more (a run longer than the window) → <code>max</code> takes it · longest never below
+        current · average from the baseline, and from <code>live</code> when the baseline has none ·
+        hit rate / misses-left / counts always <code>live</code>'s.</td></tr>
+  <tr><td><code>lib/habits/dates.test.ts</code></td>
+      <td><code>appWindow(today)</code> spans exactly <code>APP_WINDOW_DAYS</code> days and ends on
+        <code>today</code> (an off-by-one here silently shifts every window figure).</td></tr>
+  <tr><td><code>lib/data/habits.test.ts</code></td>
+      <td><code>getHabitSeed</code>: windows the entries while scoring on all of them (an entry older
+        than the window is absent from <code>entries</code> yet counted in <code>stats</code>) ·
+        preserves display order · returns <code>{}</code> stats for no habits · on an entry-read
+        error falls back to <code>getHabits()</code> with empty entries and stats.</td></tr>
+  <tr><td><code>lib/stores/habits-store.test.tsx</code></td>
+      <td><code>useHabitStats</code> returns the seeded baseline at rest · <code>logDay</code> moves
+        it optimistically, before the API resolves · a failed write rolls the figures back with the
+        entry · a habit added in-session (no baseline) gets pure window stats.</td></tr>
+  <tr><td><code>components/habits/stats-rail.test.tsx</code> <i>(new)</i></td>
+      <td>All six figures render with their labels and <code>data-figure</code> hooks · em dash for a
+        null average and a null hit rate · the stage label and the meter's accessible name · a strict
+        habit shows <code>0</code> misses left · the group is named for its habit.</td></tr>
+  <tr><td><code>components/habits/habit-format.test.ts</code></td>
+      <td><code>STAGE_LABEL</code> covers every <code>FormationStage</code> (exhaustive, so a fifth
+        rung can't ship unlabelled) · the three formatters at their boundaries, including
+        <code>formatBanked</code> at 65 / 66 / 67.</td></tr>
+  <tr><td><code>components/habits/habits-view.test.tsx</code></td>
+      <td>Each card renders its own rail — two stacked habits produce two distinctly-named groups.</td></tr>
+  <tr><td><code>components/habits/stats-rail.stories.tsx</code> <i>(new)</i></td>
+      <td>Committed image baselines for the states the eye has to tell apart: <b>Established</b> (the
+        §5.1 numbers), <b>BrandNew</b> (the em-dash state, §5.2), <b>PastTheMarker</b> (a full meter
+        and the "past ~66" caption). Three, deliberately — every baseline is a PNG in git, and a
+        fourth state that differs only in a digit buys nothing.</td></tr>
+  <tr><td><code>e2e/habits.spec.ts</code></td>
+      <td>Extend the existing "creates a habit, logs today, and keeps it across a reload" flow: after
+        logging today <code>met</code>, the rail's <code>current-streak</code> figure reads
+        <code>1</code> <i>before</i> any reload, and still reads <code>1</code> after one — which is
+        the only test that proves the optimistic splice and the server baseline agree.</td></tr>
+</table>
+</div>
+
+<h2>9 · Demo doc</h2>
+
+<p>
+  A user-visible change, so it lands with a demo doc. Follow the <code>showboat</code> skill for the
+  command set, the folder layout <code>demo-lint</code> enforces, and the evidence rules — those stay
+  the source of truth rather than being restated here. What this story's demo has to actually show:
+</p>
+
+<ul class="tight">
+  <li>The rail beside a seeded habit with real history — the §5.1 state, screenshotted from the
+    running app.</li>
+  <li>The same habit after logging today: the current streak and the banked-days caption moved, in a
+    second screenshot, with no reload between them.</li>
+  <li>The empty-state rail (§5.2), so the em dashes are shown rather than described.</li>
+  <li>The narrow layout (§5.3) at a phone viewport.</li>
+  <li>The Storybook baselines added, and — if the card's flex change moves the grid's committed
+    snapshots at all — the auto-emitted diff images, before the baselines are re-approved.</li>
+</ul>
+
+<h2>10 · Out of scope</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">Not in this story</th><th>Where it belongs</th></tr>
+  <tr><td>Editing, archiving or reordering a habit</td><td>Slice 11. The rail renders whatever the habit's definition implies and offers no controls.</td></tr>
+  <tr><td>Any API change</td><td><code>GET /api/habits</code> already returns every figure; the coach's payload is untouched, and no route is added or edited.</td></tr>
+  <tr><td>Any schema or migration change</td><td>None needed — every figure is derived.</td></tr>
+  <tr><td>Rendering archived habits</td><td>The seed still excludes them; nothing in the app lists them yet.</td></tr>
+  <tr><td>A SQL rollup of the scalars</td><td>The named escape hatch if the full-history read ever gets expensive (S7). At current volume it isn't.</td></tr>
+  <tr><td>Trend, sparkline or week-over-week deltas</td><td>Not in the epic. The rail states the six figures D13 names and nothing more.</td></tr>
+  <tr><td>Changing what a figure <i>means</i></td><td>§3.1 of the epic is settled. This story renders those definitions; it does not adjust the streak walk, the ladder, or the allowance rule.</td></tr>
+</table>
+</div>
+
+<h3>Open questions</h3>
+
+<ol class="tight">
+  <li>
+    <b>Q1 — Should a strict habit (<code>allowance: 0</code>) still show "misses left 0"?</b> The
+    spec keeps it (D13 makes the six non-optional, and a rail whose shape varies per habit is harder
+    to scan). If the owner would rather it disappeared, that is a one-line change and the mockup in
+    §5.2 is the one to re-sign-off.
+  </li>
+  <li>
+    <b>Q2 — Should the hit rate's span be visible rather than only in the <code>title</code>?</b>
+    "94% · hit rate" reads clean; "94% · hit rate, 120d" is honest but noisier. Deferred until the
+    rail has been lived with — the answer depends on whether the owner ever wonders what it covers.
+  </li>
+  <li>
+    <b>Q3 — The one corner the splice gets wrong.</b> Breaking a run <i>longer than the window</i>
+    during a session over-reports the current streak until the next load (§4.2, last row). Correcting
+    it would need either unbounded entries in the client (rejected — it's the epic's window decision)
+    or a re-fetch on write (rejected — the app deliberately reads only through the shell seed, per
+    ALF-147 S2). Flagged, not fixed; the number self-heals on reload and the situation requires a
+    120-day run plus a same-session correction.
+  </li>
+</ol>
+
+<h2>11 · Acceptance criteria</h2>
+
+<p class="acgroup">The figures</p>
+<ul class="ac">
+  <li>Every habit card shows <b>six figures</b> beside its grid — current streak, longest, average,
+    hit rate, misses left, and the formation stage with its banked-days meter.</li>
+  <li>Each figure has its <b>own visible label</b> and its own <code>data-figure</code> attribute; no
+    figure's meaning depends on a neighbouring one.</li>
+  <li><b>Null renders as an em dash</b>, never as zero, for the average streak and the hit rate.</li>
+  <li>The <b>stage label is hedged</b> ("Possibly Established") and the meter caption carries the
+    <code>~66</code> tilde.</li>
+  <li>The <b>hit rate and misses-left name their span</b> in a <code>title</code>.</li>
+</ul>
+
+<p class="acgroup">Correctness</p>
+<ul class="ac">
+  <li>At rest, the rail shows the <b>server's all-history figures exactly</b> — a habit with 200 days
+    of history shows its true longest streak and banked-day count, not a window-truncated one.</li>
+  <li>Logging or correcting a day <b>moves the rail in the same frame as the cell</b>, with no
+    refetch and no <code>router.refresh()</code>.</li>
+  <li>A <b>failed write rolls the figures back</b> along with the entry.</li>
+  <li>A habit <b>created in-session</b> renders a correct rail with no baseline at all.</li>
+  <li>The <b>hit rate reconciles with the grid</b>: it covers exactly the window the grid draws.</li>
+  <li>An evening in a zone behind UTC does <b>not</b> show a false zero current streak (§4.4).</li>
+  <li>A <b>seed failure</b> renders the view with live-walk figures rather than blanking it.</li>
+</ul>
+
+<p class="acgroup">Layout &amp; accessibility</p>
+<ul class="ac">
+  <li>The rail sits <b>beside</b> the grid on a wide screen and <b>wraps beneath it</b> on a narrow
+    one, with the divider rule following (§5.1, §5.3).</li>
+  <li>The grid keeps its own horizontal scroll — <b>a long history never pushes the rail off-screen
+    or squeezes it</b>.</li>
+  <li>The rail is a <code>role="group"</code> named for its habit, and the meter carries a spelled-out
+    accessible name.</li>
+  <li>Figures use <b>tabular numerals</b> and existing colour tokens only.</li>
+</ul>
+
+<p class="acgroup">Plumbing</p>
+<ul class="ac">
+  <li>The shell issues <b>one</b> habit-entry read, not two, and seeds the baseline alongside the
+    windowed entries.</li>
+  <li><code>APP_WINDOW_DAYS</code> is the <b>single definition</b> of the app's window — the grid, the
+    seed and the rail all read it.</li>
+  <li>The client's stats window is <b>always a subset of the seeded entries</b>, whichever side of
+    UTC the browser sits on.</li>
+</ul>
+
+<p class="acgroup">Evidence</p>
+<ul class="ac">
+  <li><code>npm run check</code> is green, with no new lint/format suppressions and no config
+    weakened.</li>
+  <li>Every rule in §4.2 has a test in <code>baseline.test.ts</code>; the three Storybook baselines
+    are committed.</li>
+  <li>The E2E asserts the rail's current streak <b>before and after</b> a reload.</li>
+  <li>A demo doc under <code>docs/demos/</code> reproduces via <code>npm run demo -- verify</code> and
+    shows the states listed in §9.</li>
+</ul>
+
+<hr style="border:0;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+<p class="small">
+  Story spec for <b>ALF-150</b>, slice 9 of epic
+  <a href="epics/ALF-146.html">ALF-146 — Habit Tracker</a>. Refinement iterates in comments on the
+  PR that carries this file.
+</p>
+
+</div>
+</body>
+</html>
