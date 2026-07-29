@@ -498,3 +498,26 @@ export const prRatioQuerySchema = z.object({
 });
 
 export type PrRatioQuery = z.infer<typeof prRatioQuerySchema>;
+
+/**
+ * Validated shape for GET /api/habits query string. `tz` is the IANA zone "today" is resolved
+ * in — a bare string for the same reason `pr-ratio`'s is: an unrecognized zone degrades to UTC.
+ *
+ * `include_archived` is an explicit `'true' | 'false'` enum rather than `z.coerce.boolean()`,
+ * under which `Boolean('false') === true` and a caller asking to exclude archived habits gets
+ * the opposite of what they asked for.
+ */
+export const habitsQuerySchema = z
+  .object({
+    tz: z.string().optional(),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    include_archived: z.enum(['true', 'false']).optional(),
+  })
+  // Only the both-present case is decidable here; the rest of the window rules need today's
+  // date, so they live in `resolveWindow` where they can be table-tested.
+  .refine((query) => query.from === undefined || query.to === undefined || query.from <= query.to, {
+    message: '`from` must not be after `to`',
+  });
+
+export type HabitsQuery = z.infer<typeof habitsQuerySchema>;
