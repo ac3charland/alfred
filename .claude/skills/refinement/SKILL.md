@@ -84,6 +84,17 @@ once the scope is clear do you write the spec below.
 - **Ask when context is thin.** If the title + notes don't pin down scope or acceptance, ask the
   human in this session *before* writing the spec — don't guess. Putting a guess in the spec just
   defers the error to the implementation session.
+- **A visual requirement the mockup doesn't draw isn't settled.** The human signs off on the
+  picture, not the prose beside it — a cue, glyph or state that exists only in a prose table was
+  never agreed to, and building it ships something they've never seen and will read as invented.
+  So before a UI section is done, take every sentence that changes what appears on screen and find
+  it in the mockup: draw it, or demote it to an open question. (Prose the picture can't carry —
+  API contracts, arithmetic, validation — needs no drawing; the test is whether the human would
+  *see* it.) Three ways this slips: alternatives you offer them to pick between must each carry
+  the requirements already written, because the pick **is** the sign-off; the **legend is part of
+  the mockup**, so reconcile it against the state list it explains; and a *"behaviour and layout
+  intent, not a pixel spec"* caveat licenses departures in **fidelity** — padding, radius, hover —
+  never in **presence**.
 - **Not a clean one-story spec? Say so.** If the story is too big for a single spec, isn't
   actually a story (a question, a bug report, a duplicate of existing behavior), or can't be
   scoped from what you have, stop and tell the human — propose a split or a next step instead of
