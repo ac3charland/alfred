@@ -17,8 +17,7 @@ description: >
 > alfred uses the **stable** dnd-kit line (`@dnd-kit/core`, `@dnd-kit/sortable`,
 > `@dnd-kit/utilities`, `@dnd-kit/modifiers`). **Not** the ground-up rewrite published as
 > `@dnd-kit/react` (still 0.x). See **Version Gotchas** — getting these crossed is the #1 way
-> to waste an hour here. dnd-kit is **not installed yet**; add it with
-> `npm i @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities @dnd-kit/modifiers -w frontend`.
+> to waste an hour here.
 
 ---
 
@@ -44,8 +43,8 @@ Three nested pieces:
 
 - `useSortable` is `useDraggable` **and** `useDroppable` fused — every sortable item is both a
   drag source and a drop target, which is what makes reordering work.
-- `useDroppable` alone = a **non-sortable drop zone** (alfred's sidebar folders: you drop *onto*
-  a folder, you don't reorder folders).
+- `useDroppable` alone = a **non-sortable drop zone** (a sidebar folder as a "file it here"
+  target — alfred reorders that same list through gap droppables instead, see below).
 - **The id is everything.** Every draggable/droppable needs a stable, unique `id`. Use the
   item's real `id`. dnd-kit reports drags purely as `active.id` / `over.id` — you map those back
   to your data.
@@ -69,9 +68,13 @@ Three nested pieces:
 Reordering items WITHIN one flat list (drag row 2 above row 5)?
   → SortableContext + useSortable. Persist with a reorder store action (needs an order column).
 
-Dropping an item ONTO a fixed target that isn't itself reorderable (a sidebar folder, Inbox)?
+Reordering a list whose rows are ALSO drop targets for something else (alfred's subtasks and
+sidebar folders — a row means "re-parent"/"file here", a boundary means "insert here")?
+  → NOT SortableContext. Keep the rows as plain droppables and add a thin GAP droppable at each
+    boundary, its id encoding the slot; resolve the drop to a fractional rank (see below).
+
+Dropping an item ONTO a fixed target (a sidebar folder, Inbox)?
   → useDroppable on each target + useDraggable on the row. On drop, call moveTask(id, folderId).
-    (No SortableContext — folders aren't a sorted list.)
 
 Moving an item across containers AND reordering (Trello columns)?
   → Multiple SortableContexts inside ONE DndContext; reconcile in onDragOver/onDragEnd.
@@ -136,16 +139,27 @@ drop zone, `useDraggable` on `TaskRow`, and `onDragEnd → moveTask(active.id, o
 Re-parenting a subtask is the same idea against `parent_id` (a `reparentTask` action you'd add
 following the optimistic recipe).
 
-**Reorder is NOT free — there is no order column yet.** `items` has `created_at` but no
-`position`/`sort_order`, and `buildTree`'s `sortForest` orders by **`created_at`**: **roots
-descending** (newest first) and **subtasks ascending** (chronological — oldest first, at every
-depth). A manual drag-reorder therefore has nothing to persist to and nothing to sort by.
-To support it you must, as one deliberate task: (1) add an ordering column to `items`
-(migration in `database/`) — prefer a **fractional rank** (e.g. a `numeric`/string key set to
-the midpoint between neighbours) so one move is **one** row UPDATE, not a renumber of the list;
-(2) change `sortForest` to order by it; (3) add a `reorderTask` store action + an
-`/api/items/:id` PATCH; (4) call it from `onDragEnd` with `arrayMove` to compute the local order.
-Treat reorder as a follow-up to drag-to-folder, not a prerequisite.
+**Reorder rides on a fractional rank, not `arrayMove`.** Both reorderable lists carry a
+`double precision sort_order` — `items` (subtasks, migration 0018) and `folders` (the sidebar,
+0024) — and a drop writes the **midpoint of the two neighbours** it landed between, so one move
+is **one** row UPDATE and no sibling is renumbered. The shape is the same in both: a
+`lib/dnd/reorder-*.ts` module owning the id encoding and a **pure** `resolve*` function
+(jsdom can't drive a drag — this is the unit-test target), gap droppables rendered as
+absolutely-positioned children of each row, `TaskDndProvider.onDragEnd` translating the
+rendered gap index into the neighbour pair, and an optimistic store action doing the PATCH.
+Copy that pipeline for a third list rather than reaching for `SortableContext`.
+
+**A row that is entirely link + buttons needs a handle.** The row sensors refuse to lift from
+an interactive target (`isInteractiveTarget`), so a sidebar folder — a `<ViewLink>` filling the
+row plus its kebab — has no draggable surface at all. Give it a grip that sits **outside** the
+anchor (alfred's is absolutely positioned over the folder icon, which fades out under it on
+hover), `aria-hidden` and unfocusable: the drag is pointer-only, and the row menu's "Move up" /
+"Move down" is the keyboard/touch path.
+
+**One drag context, two families of draggable → prefix the ids.** A folder is already
+registered as a droppable under its bare id (drop a task to file it there), so it *drags*
+under `__folder__<id>`. `onDragEnd` branches on the prefix before any task logic; anything a
+folder drag lands on other than a folder gap is a no-op.
 
 **Never drag an unreconciled item.** A just-captured task carries a `temp-…` id
 (`isTempId`, `lib/tree.ts`) until the server reconciles it. PATCHing a temp id 404s. Set
@@ -191,6 +205,10 @@ keyboard-focus + a11y floor with almost no work. To get them you must:
   height on drag-start shoves the rows (and the targets you're aiming at) down under the
   cursor. Reserve the **top** zone's height at all times (invisible until needed); let the
   **bottom** zone grow into the empty space below the list, which moves nothing.
+- **The `DragOverlay` is sized from the DRAGGABLE node's box, not the activator's.** With a
+  handle, `useDraggable`'s `setNodeRef` belongs on the **row** and `setActivatorNodeRef` +
+  `{...listeners}` on the handle. Hang the hook off the handle itself and the drag still works —
+  but the floating ghost is a ~14px sliver of clipped row, which reads as a rendering bug.
 - **Never render the `useSortable` component inside `<DragOverlay>`.** Two mounts share one id →
   `useDraggable` id collision → glitchy drags. Split into a **presentational** row (pure props,
   no hook) rendered in the overlay, and a sortable wrapper that renders the presentational one.
