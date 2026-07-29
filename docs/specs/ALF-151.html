@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-151 — Habit tracker: editing, archiving and deleting a habit</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --met: #2ea36b; --met-soft: #b6e3ca;
+    --missed: #d1544a; --missed-soft: #f2c4c0;
+    --partial: #d99b2b; --partial-soft: #f6e0b4;
+    --unknown: #e9edf3; --na: #f4f6fa; --na-line: #dfe4ec;
+    --bridge: #b3bcc8; --future: #f0f3f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --met: #3fbf82; --met-soft: #1e4936;
+      --missed: #e8776a; --missed-soft: #4a2320;
+      --partial: #e0ab48; --partial-soft: #45330f;
+      --unknown: #232a33; --na: #1a1f26; --na-line: #2b323c;
+      --bridge: #55606d; --future: #191e25;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+
+  /* ── Decision blocks (same vocabulary as the epic) ───────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-body { padding: 1rem; }
+  .hname { font-weight: 600; font-size: .85rem; }
+  .hmeta { color: var(--faint); font-size: .72rem; font-weight: 400; }
+  .cap { color: var(--muted); font-size: .8rem; margin: .55rem 0 0; }
+
+  /* ── App-surface primitives, mirroring what already ships ───── */
+  .dlg { border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+         padding: .9rem 1rem; max-width: 460px; }
+  .dlg-t { font-weight: 700; font-size: .88rem; margin: 0; }
+  .dlg-s { color: var(--muted); font-size: .76rem; margin: .2rem 0 .8rem; }
+  .field { border: 1px solid var(--line); border-radius: 7px; background: var(--card);
+           padding: .35rem .6rem; font-size: .8rem; }
+  .field.ph { color: var(--faint); }
+  .sentence { font-size: .82rem; line-height: 2.2; margin: .75rem 0 0; }
+  .slot { border-bottom: 2px dashed var(--accent); color: var(--accent);
+          padding: 0 .2rem; white-space: nowrap; }
+  .slot.add { font-weight: 700; padding: 0 .4rem; }
+  .slot.lock { border-bottom: 1px solid var(--na-line); color: var(--faint);
+               background: var(--na); border-radius: 4px; padding: .1rem .35rem; }
+  .chip2 { border: 1px solid var(--accent); background: var(--accent-bg); color: var(--accent);
+           border-radius: 999px; padding: .1rem .55rem; font-size: .76rem; white-space: nowrap; }
+  .lockline { color: var(--faint); font-size: .72rem; margin: .7rem 0 0;
+              display: flex; align-items: center; gap: .35rem; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: .4rem; margin-top: 1rem; }
+  .b { border: 1px solid var(--line); border-radius: 7px; padding: .2rem .6rem;
+       font-size: .74rem; color: var(--muted); background: var(--bg); display: inline-block; }
+  .b.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .b.bad { border-color: var(--missed); color: var(--missed); }
+  .b.bad.on { background: var(--missed); border-color: var(--missed); color: #fff; }
+  .ico { width: 11px; height: 11px; vertical-align: -1px; flex: none; }
+  .ico.lg { width: 13px; height: 13px; }
+
+  .menu { border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+          padding: .25rem; width: 190px; font-size: .76rem; }
+  .menu div { padding: .28rem .5rem; border-radius: 5px; color: var(--fg); }
+  .menu div.sep { padding: 0; margin: .25rem .3rem; border-top: 1px solid var(--line); }
+  .menu div.bad { color: var(--missed); }
+
+  .pop2 { border: 1px solid var(--accent); border-radius: 9px; background: var(--bg);
+          padding: .6rem .7rem; width: 260px; font-size: .76rem; }
+  .pop2 .pt { font-weight: 700; font-size: .76rem; margin: 0 0 .4rem; color: var(--fg);
+              display: flex; align-items: center; gap: .3rem; }
+  .pop2 p { margin: 0 0 .5rem; color: var(--muted); font-size: .72rem; line-height: 1.5; }
+  .pop2 p:last-child { margin-bottom: 0; }
+
+  .hcard { border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+           padding: .7rem .8rem; }
+  .hcard-head { display: flex; align-items: baseline; gap: .4rem; }
+  .hcard-head .grow { flex: 1; }
+
+  .arow { display: flex; align-items: center; gap: .5rem; padding: .4rem .5rem;
+          border: 1px solid var(--line); border-radius: 7px; background: var(--bg);
+          font-size: .78rem; }
+  .arow .grow { flex: 1; min-width: 0; }
+  .disc { display: flex; align-items: center; gap: .35rem; font-size: .78rem;
+          color: var(--muted); font-weight: 600; padding: .25rem 0; }
+
+  /* Day cells, so a "history is untouched" mockup reads like the real grid. */
+  i.c { position: relative; display: inline-flex; align-items: center; justify-content: center;
+        width: 20px; height: 20px; border-radius: 5px; background: var(--unknown);
+        font-style: normal; font-size: 0; }
+  i.c.m { background: var(--met-soft); }
+  i.c.p { background: var(--partial-soft); }
+  i.c.x { background: var(--missed-soft); }
+  i.c.n { background: var(--na); border: 1px dashed var(--na-line); }
+  .strip { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+  /* ── The option switcher: pure CSS, no script ────────────────── */
+  .switch { margin: 1rem 0 .5rem; }
+  .switch > input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .tabs { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .9rem; }
+  .tabs label {
+    border: 1px solid var(--line); border-radius: 999px; padding: .3rem .85rem;
+    font-size: .78rem; color: var(--muted); background: var(--bg); cursor: pointer;
+    user-select: none;
+  }
+  .tabs label:hover { border-color: var(--accent); color: var(--accent); }
+  .pane { display: none; }
+  #ed-a:checked ~ .pane.p-ed-a,
+  #ed-b:checked ~ .pane.p-ed-b,
+  #ed-c:checked ~ .pane.p-ed-c,
+  #lk-a:checked ~ .pane.p-lk-a,
+  #lk-b:checked ~ .pane.p-lk-b,
+  #lk-c:checked ~ .pane.p-lk-c { display: block; }
+  #ed-a:checked ~ .tabs label[for="ed-a"],
+  #ed-b:checked ~ .tabs label[for="ed-b"],
+  #ed-c:checked ~ .tabs label[for="ed-c"],
+  #lk-a:checked ~ .tabs label[for="lk-a"],
+  #lk-b:checked ~ .tabs label[for="lk-b"],
+  #lk-c:checked ~ .tabs label[for="lk-c"] {
+    background: var(--accent-bg); border-color: var(--accent); color: var(--accent); font-weight: 700;
+  }
+  #ed-a:focus-visible ~ .tabs label[for="ed-a"],
+  #ed-b:focus-visible ~ .tabs label[for="ed-b"],
+  #ed-c:focus-visible ~ .tabs label[for="ed-c"],
+  #lk-a:focus-visible ~ .tabs label[for="lk-a"],
+  #lk-b:focus-visible ~ .tabs label[for="lk-b"],
+  #lk-c:focus-visible ~ .tabs label[for="lk-c"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .rec { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; color: var(--met); margin-left: .35rem; }
+  /* Printing or PDF-ing the spec must not hide the options nobody clicked. */
+  @media print { .pane { display: block !important; } .tabs { display: none; } }
+
+  .ac { list-style: none; padding: 0; margin: 1rem 0; }
+  .ac li { position: relative; padding: .35rem 0 .35rem 1.9rem; font-size: .9rem;
+           border-bottom: 1px solid var(--line); }
+  .ac li::before {
+    content: ''; position: absolute; left: .3rem; top: .62rem; width: 12px; height: 12px;
+    border: 1.5px solid var(--faint); border-radius: 3px;
+  }
+  .ac li.h { font-weight: 700; padding-left: 0; border-bottom: 0; margin-top: .8rem; color: var(--muted);
+             font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; }
+  .ac li.h::before { content: none; }
+
+  @media (max-width: 560px) { .wrap { padding: 1.25rem .9rem 3rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-151 — Habit tracker: editing, archiving and deleting a habit</h1>
+<p class="sub">
+  <span class="pill">Story</span>
+  <span class="pill">ALF-146 · slices 4 &amp; 11</span>
+  <span class="pill">API · Store · UI</span>
+  Spec only — no implementation. Epic context:
+  <a href="epics/ALF-146.html"><code>docs/specs/epics/ALF-146.html</code></a>.
+</p>
+
+<div class="callout">
+  <b>Two things in this document are still a choice, and the pick is the sign-off.</b>
+  §5 (the edit surface) and §6 (how a locked field reads) each offer three fully-drawn options
+  behind a tab strip — click through them. Everything else is settled. Leave your pick as a PR
+  comment; the implementation session builds exactly what is drawn in the selected tab.
+</div>
+
+<h2>1 · What this story is</h2>
+
+<p>
+  The habit tracker works end to end — you can define a habit, log every day, watch the chain,
+  and the coach can read and write through the keyed API. What you <b>cannot</b> do is change
+  your mind. A habit today is <b>write-once</b>:
+</p>
+
+<ul class="tight">
+  <li>A typo in the name is permanent.</li>
+  <li>A criterion's target can't move — so the wind-down that ALF-146 was built for
+    (wake ≤ 07:00 in month one, ≤ 06:15 by month three) has nowhere to happen.</li>
+  <li>A habit you've finished with can't be retired: <code>archived_at</code> exists in the
+    schema, and nothing can set it.</li>
+  <li>A habit created by mistake sits on <code>/habits</code> forever.</li>
+</ul>
+
+<p>
+  The epic anticipated all of this — <code>PATCH</code> and <code>DELETE /api/habits/[id]</code>
+  are in its API table (§5), and slice 11 is the edit form — but ALF-147 shipped only
+  <code>POST</code> and the create dialog. This story closes both halves: the two missing
+  route handlers, and an edit surface built out of the visual language the create sentence,
+  the day editor and the folder menu already established.
+</p>
+
+<h4>In one line</h4>
+<p>
+  <b>In:</b> <code>PATCH</code> + <code>DELETE /api/habits/[id]</code>; an edit surface for the
+  name and the criteria; a frozen-cadence rule with an honest explanation on screen; archive +
+  an Archived section with unarchive; hard delete behind a confirm.
+  <b>Out:</b> anything that re-scores or re-shapes history (§11).
+</p>
+
+<h2>2 · Decisions locked during this refinement</h2>
+
+<div class="dec">
+  <h3><span class="n">S1</span>Criteria are editable; cadence is frozen once a day is logged<span class="owner">owner</span></h3>
+  <p>
+    <code>name</code>, <code>notes</code> and <code>criteria</code> (labels, targets,
+    comparators, adding and removing) can be changed at any time. <code>active_days</code>,
+    <code>allowance</code> and <code>started_on</code> can be changed only while the habit has
+    <b>zero</b> logged entries — after the first day is logged they are frozen for the habit's
+    life.
+  </p>
+  <p class="why">
+    <b>Why the split isn't arbitrary — it's exactly where the retroactivity lives.</b> Epic
+    <b>D12</b> freezes each day's <i>status</i> at write time, so editing a criterion is
+    genuinely inert for history: a June day that was <code>met</code> against a 07:00 target
+    stays <code>met</code> when the target tightens to 06:15, and every statistic reads back off
+    those stored statuses. The other three fields are <b>not</b> stored per day —
+    <code>isApplicableDay()</code> and the rolling walk read the habit's <i>current</i>
+    <code>active_days</code>, <code>allowance</code> and <code>started_on</code> on every render.
+    Dropping Saturday from the set, or raising the allowance, silently restates months of chain
+    the owner already earned. Locking the three that restate, and leaving free the ones that
+    don't, is the smallest rule that makes "edit your habit" safe.
+    <br />
+    <b>Why zero-entries is the boundary:</b> a habit you got wrong in the create dialog five
+    minutes ago has no history to restate, and forcing a delete-and-recreate for a fat-fingered
+    allowance would be silly. The moment there is one day to protect, the lock comes down.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span>The lock is enforced by the route, and only on a real change</h3>
+  <p>
+    <code>PATCH</code> reads the stored row first and compares. A locked field that arrives with
+    the value it already has is a no-op, not an error; a locked field that arrives <i>different</i>
+    on a habit with entries is a <code>409</code>. <code>active_days</code> compares as a set, so
+    <code>[1,2,3]</code> and <code>[3,1,2]</code> are the same cadence.
+  </p>
+  <p class="why">
+    <b>Why in the route and not only the form:</b> the invariant protects stored history, so it
+    belongs where the write happens — a form-only guard is one <code>curl</code> away from being
+    bypassed, and the whole point of the rule is that the number on screen stays true.
+    <b>Why compare rather than reject on presence:</b> whichever edit surface §5 picks, the form
+    naturally submits the fields it rendered. Rejecting a <i>mention</i> of <code>allowance</code>
+    would make every save fail; rejecting a <i>change</i> keeps <code>PATCH</code> idempotent and
+    lets the client stay dumb.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>Archived habits get a surface, and unarchive is one click<span class="owner">owner</span></h3>
+  <p>
+    A collapsed <b>Archived</b> disclosure at the bottom of <code>/habits</code>, listing each
+    retired habit as one compact row with the span it ran and an <b>Unarchive</b> action (§7.3).
+    The shell seed stops filtering archived rows; the view splits them.
+  </p>
+  <p class="why">
+    <b>Why:</b> archive currently means "gone" — <code>getHabits()</code> filters
+    <code>archived_at is null</code> and nothing renders the rest, so an accidental archive is
+    unrecoverable without SQL. Making archiving reversible is what lets it be the safe default the
+    epic wants it to be, and the cost is one line in the reader: entries are seeded by date window
+    across <i>all</i> habits already, so no extra query appears.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S4</span>Hard delete ships in the UI, behind a confirm that names the cost<span class="owner">owner</span></h3>
+  <p>
+    A destructive item in the habit's <code>⋯</code> menu opening a confirm dialog that names the
+    habit, when it started and how many days go with it (§7.4). The row cascades to every
+    <code>habit_entries</code> row.
+  </p>
+  <p class="why">
+    <b>Why:</b> the epic's line is "archiving is the expected path; delete is for mistakes" — and a
+    mistake is precisely the case a user hits five minutes after the create dialog, when going to
+    the API is absurd. The confirm is what keeps it a deliberate act; it mirrors the existing
+    destructive item in <code>FolderNav</code>'s menu, with a confirm step added because a folder
+    delete only re-homes its items while this one destroys data.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>The wire says <code>archived: boolean</code>, not a timestamp</h3>
+  <p>
+    <code>PATCH</code> accepts <code>{ "archived": true | false }</code>; the route stamps
+    <code>archived_at = now()</code> or <code>null</code>. The column is never set directly by a
+    caller.
+  </p>
+  <p class="why">
+    <b>Why:</b> <code>archived_at</code> is not a preference, it is a fact about when something
+    happened — and it is load-bearing, because <code>isApplicableDay()</code> stops scoring days on
+    or after it. A caller free to post an arbitrary instant can retroactively un-score a fortnight
+    by archiving "as of" a past date. A boolean removes that class of input entirely and keeps the
+    "when" server-authoritative, the same way the entry route derives rather than accepts a status.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S6</span>The create sentence is extracted and shared, never copied</h3>
+  <p>
+    <code>NewHabitForm</code>'s body moves to <code>components/habits/habit-sentence-form.tsx</code>
+    as <code>HabitSentenceForm</code>, taking optional initial values, a
+    <code>lockCadence</code> flag and a submit label. <code>NewHabitDialog</code> and
+    <code>EditHabitDialog</code> become thin wrappers around it.
+  </p>
+  <p class="why">
+    <b>Why:</b> a second copy of the sentence is a second place criterion keys get minted, and key
+    minting is the one piece of this form that history depends on (D10). The
+    <code>frontend-architecture</code> skill's rule — extract on the second caller, not the third —
+    lands exactly here, and <code>CriterionEditor</code> is already built this way ("adding a
+    criterion and editing one are the same surface with different initial values").
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S7</span>Delete is optimistic, and its rollback restores position <i>and</i> entries</h3>
+  <p>
+    The card disappears on click and comes back in its old slot, with its logged days, if the
+    request fails.
+  </p>
+  <p class="why">
+    <b>Why it needs saying:</b> the store's existing <code>removeHabit</code> drops the habit
+    <i>and</i> its whole entry bucket, and <code>insertHabit</code> appends. Reusing that pair as a
+    rollback would silently resurrect the habit at the bottom of the list with an empty grid —
+    which looks exactly like data loss. This story adds a <code>restoreHabit</code> action carrying
+    the row, its index and its entries, following the position-aware rollback
+    <code>FoldersProvider</code> already uses.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S8</span>No field ships without a caller</h3>
+  <p>
+    <code>sort_order</code> stays off the update schema, and no reorder affordance ships.
+    <code>notes</code> stays on the schema (it is on <code>POST</code> already) but gains no form
+    field, because nothing renders it.
+  </p>
+  <p class="why">
+    <b>Why:</b> the epic's slice-11 sketch lists "reorder" — but a manual-order drag with no
+    ordering problem to solve (a handful of habits) is a feature looking for a user, and an
+    endpoint field with no caller is untested surface area. Both are listed in §11 so the omission
+    is a decision rather than an oversight.
+  </p>
+</div>
+
+<h2>3 · The shape of the change</h2>
+
+<h3>3.1 Files touched, at a glance</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:38%">File</th><th style="width:10%"></th><th>What changes</th></tr>
+
+  <tr><td colspan="3"><b>API</b></td></tr>
+  <tr>
+    <td><code>frontend/app/api/habits/[id]/route.ts</code></td><td>new</td>
+    <td><code>PATCH</code> + <code>DELETE</code>, both <code>withSession</code> (§4).</td>
+  </tr>
+  <tr>
+    <td><code>frontend/app/api/habits/[id]/route.test.ts</code></td><td>new</td>
+    <td>Both handlers, every status in the §4.3 table.</td>
+  </tr>
+  <tr>
+    <td><code>frontend/lib/api/schemas.ts</code></td><td>edit</td>
+    <td><code>updateHabitSchema</code> beside <code>createHabitSchema</code>, reusing the same
+      <code>habitCriterionSchema</code> and <code>activeDays</code> pieces.</td>
+  </tr>
+
+  <tr><td colspan="3"><b>Pure logic</b></td></tr>
+  <tr>
+    <td><code>frontend/lib/habits/edits.ts</code> <span class="small">(+ test)</span></td><td>new</td>
+    <td><code>lockedFieldsChanged()</code> and <code>applyHabitUpdate()</code> — the comparison S2
+      turns on, and the optimistic row the store paints. Pure, so both are table-tested rather
+      than asserted through a route.</td>
+  </tr>
+  <tr>
+    <td><code>frontend/lib/habits/index.ts</code></td><td>edit</td>
+    <td>Re-export the two new helpers.</td>
+  </tr>
+
+  <tr><td colspan="3"><b>Data &amp; store</b></td></tr>
+  <tr>
+    <td><code>frontend/lib/data/habits.ts</code></td><td>edit</td>
+    <td><code>getHabits()</code> stops filtering <code>archived_at is null</code> and orders
+      active-first (S3). <code>getHabitsWithHistory</code> is untouched.</td>
+  </tr>
+  <tr>
+    <td><code>frontend/lib/stores/habits-store.tsx</code></td><td>edit</td>
+    <td><code>restoreHabit</code> action; <code>updateHabit</code> / <code>setArchived</code> /
+      <code>deleteHabit</code> actions; <code>useHabits()</code> returns active only and
+      <code>useArchivedHabits()</code> joins it (§8).</td>
+  </tr>
+  <tr>
+    <td><code>frontend/lib/api-client.ts</code></td><td>edit</td>
+    <td><code>updateHabit(id, input)</code>, <code>deleteHabit(id)</code>.</td>
+  </tr>
+  <tr>
+    <td><code>frontend/lib/types.ts</code></td><td>edit</td>
+    <td><code>HabitUpdate</code> from the generated <code>Database</code> types.</td>
+  </tr>
+
+  <tr><td colspan="3"><b>UI</b></td></tr>
+  <tr>
+    <td><code>components/habits/habit-sentence-form.tsx</code></td><td>new</td>
+    <td>The shared sentence, extracted from <code>new-habit-dialog.tsx</code> (S6).</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/new-habit-dialog.tsx</code></td><td>edit</td>
+    <td>Shrinks to a wrapper. Its public <code>NewHabitDialog</code> and every label the existing
+      tests and E2E specs query stay identical.</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/edit-habit-dialog.tsx</code></td><td>new*</td>
+    <td>The edit wrapper. <span class="small">* exists only if §5 picks E1 or E3.</span></td>
+  </tr>
+  <tr>
+    <td><code>components/habits/habit-menu.tsx</code></td><td>new</td>
+    <td>The card's <code>⋯</code>: Edit / Archive / Delete (§7.1).</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/delete-habit-dialog.tsx</code></td><td>new</td>
+    <td>The confirm (§7.4).</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/archived-habits.tsx</code></td><td>new</td>
+    <td>The Archived disclosure and its rows (§7.3).</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/habit-card.tsx</code></td><td>edit</td>
+    <td>The header grows the <code>⋯</code> trigger. The grid below it is untouched.</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/habits-view.tsx</code></td><td>edit</td>
+    <td>Renders active habits, then the Archived section, and hosts the edit / delete dialogs.</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/habit-format.ts</code></td><td>edit</td>
+    <td><code>lockedReason()</code>, <code>archivedSpan()</code>, <code>deleteConfirmLine()</code> —
+      every new string, unit-tested where the other habit strings already are.</td>
+  </tr>
+
+  <tr><td colspan="3"><b>Tests &amp; docs</b></td></tr>
+  <tr>
+    <td><code>frontend/e2e/habits.spec.ts</code></td><td>edit</td>
+    <td>One new spec: retarget a criterion, archive, unarchive, delete (§9).</td>
+  </tr>
+  <tr>
+    <td><code>components/habits/*.stories.tsx</code></td><td>new</td>
+    <td>One story + image baseline for the locked slot treatment §6 picks.</td>
+  </tr>
+  <tr>
+    <td><code>docs/demos/alf-151-habit-editing/</code></td><td>new</td>
+    <td>The demo doc (§10).</td>
+  </tr>
+</table>
+</div>
+
+<p class="small">
+  <b>Not touched, deliberately:</b> the migration (<code>0023</code> already has every column this
+  story writes), <code>lib/habits/streaks.ts</code>, the history grid, the day editor,
+  <code>GET /api/habits</code>, and <code>docs/productivity-coach-primer.md</code> — both new
+  routes are session-only, so the coach's contract is unchanged.
+</p>
+
+<h3>3.2 Build from the shared layer</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">Need</th><th>Already exists — use it</th></tr>
+  <tr><td>Session auth on a dynamic route</td><td><code>withSession</code> + <code>parseUUID</code>, exactly as <code>app/api/folders/[id]/route.ts</code> does.</td></tr>
+  <tr><td>Body validation</td><td><code>parseRequestBody</code> + a zod schema in <code>lib/api/schemas.ts</code>.</td></tr>
+  <tr><td>Partial column payload</td><td><code>toUpdatePayload(input, [...])</code> from <code>lib/api/updates.ts</code>.</td></tr>
+  <tr><td>Error envelope</td><td><code>jsonOk</code> / <code>jsonError</code> / <code>mapSupabaseError</code>.</td></tr>
+  <tr><td>Optimistic write + rollback + toast</td><td><code>runOptimisticMutation</code>, the pattern every store action in the repo already repeats.</td></tr>
+  <tr><td>The <code>⋯</code> menu with a destructive item</td><td><code>IconButton</code> + <code>DropdownMenu*</code>, with <code>variant="destructive"</code> — the same composition as <code>FolderNav</code>.</td></tr>
+  <tr><td>A modal with a form and a pending state</td><td><code>FormDialog</code> + <code>useFormSubmit</code>, as the create dialog uses.</td></tr>
+  <tr><td>Criterion add / edit / remove</td><td><code>CriterionEditor</code>, unchanged — it already takes <code>initial</code> and an <code>onRemove</code>.</td></tr>
+  <tr><td>Expand / collapse for the Archived section</td><td><code>DisclosureToggle</code> + <code>AnimatedHeightCollapse</code>.</td></tr>
+  <tr><td>Inline rename in place</td><td><code>InlineEditField</code> / <code>useInlineEdit</code> <span class="small">(only if §5 picks E2)</span>.</td></tr>
+</table>
+</div>
+
+<h4>What is genuinely new</h4>
+<ul class="tight">
+  <li>The <b>frozen-cadence comparison</b> (<code>lib/habits/edits.ts</code>) and the 409 it drives.</li>
+  <li>The <b>locked slot</b> treatment — the one piece of visual language this story invents (§6).</li>
+  <li>The <b>Archived</b> section (§7.3).</li>
+</ul>
+
+<h2>4 · API surface</h2>
+
+<h3>4.1 <code>PATCH /api/habits/[id]</code> — session only</h3>
+
+<pre><code>PATCH /api/habits/8f2a…  ·  Content-Type: application/json
+
+{
+  "name": "Morning routine",
+  "criteria": [
+    { "key": "wake",  "label": "be up by", "kind": "time",
+      "target": 375, "comparator": "lte" },
+    { "key": "light", "label": "get outside for light", "kind": "boolean" }
+  ]
+}
+
+→ 200  the full updated habit row (same shape POST returns)</code></pre>
+
+<p>The schema sits beside <code>createHabitSchema</code> and reuses its pieces:</p>
+
+<pre><code>export const updateHabitSchema = z
+  .object({
+    name:        z.string().trim().min(1).optional(),
+    notes:       z.string().nullable().optional(),
+    criteria:    <span class="small">/* the same array + unique-key refine as create */</span>.optional(),
+    active_days: activeDays.optional(),
+    allowance:   z.number().int().min(0).max(7).optional(),
+    started_on:  z.iso.date().optional(),
+    <span class="small">// S5: a boolean, never a timestamp. The route stamps the instant.</span>
+    archived:    z.boolean().optional(),
+  })
+  .refine((body) =&gt; Object.keys(body).length &gt; 0, {
+    message: 'No fields to update',
+  });</code></pre>
+
+<h4>The handler, in order</h4>
+<ol class="tight">
+  <li><code>parseUUID</code> the segment → <code>400</code> on a malformed id.</li>
+  <li><code>parseRequestBody(request, updateHabitSchema)</code> → <code>400</code> on a bad body.</li>
+  <li>Read the current row with <code>.maybeSingle()</code>. <b>Null → <code>404</code>.</b>
+    <span class="small">(Not <code>.single()</code>: <code>mapSupabaseError</code> has no
+    <code>PGRST116</code> case, so a missing row would surface as a <code>500</code>. The shared
+    mapper is deliberately left alone — widening it would change every other route's behaviour,
+    which is not this story's business.)</span></li>
+  <li><code>lockedFieldsChanged(current, input)</code>. If it returns nothing, skip to 6.</li>
+  <li>Count this habit's entries (<code>head: true, count: 'exact'</code>). If <code>&gt; 0</code> →
+    <b><code>409</code></b> naming the fields and the count.</li>
+  <li><code>toUpdatePayload(input, ['name','notes','criteria','active_days','allowance','started_on'])</code>,
+    plus <code>archived_at</code> derived from <code>archived</code> when present.</li>
+  <li><code>.update(...).eq('id', id).select().single()</code> → <code>200</code> with the row.</li>
+</ol>
+
+<pre><code><span class="small">// lib/habits/edits.ts — pure, so the rule is table-tested, not route-tested.</span>
+export const LOCKED_FIELDS = ['active_days', 'allowance', 'started_on'] as const;
+
+<span class="small">/** Which frozen fields this body actually CHANGES. Order-insensitive for active_days. */</span>
+export function lockedFieldsChanged(
+  current: Habit,
+  input: UpdateHabitInput,
+): (typeof LOCKED_FIELDS)[number][]</code></pre>
+
+<div class="callout">
+  <b>The 409 is a real answer, not a failure.</b> Its message is read by a human — it is what the
+  §6 explanation quotes. Shape it as a sentence:
+  <code>"allowance is fixed once a habit has history — Morning routine has 63 logged days"</code>.
+</div>
+
+<h3>4.2 <code>DELETE /api/habits/[id]</code> — session only</h3>
+
+<pre><code>DELETE /api/habits/8f2a…      →  200  { "success": true }</code></pre>
+<p class="small">
+  <code>parseUUID</code>, then <code>.delete().eq('id', id)</code>. Entries go with it through the
+  migration's <code>on delete cascade</code> — no second statement, and no orphan sweep. Deleting an
+  id that doesn't exist is a successful no-op, matching <code>DELETE /api/folders/[id]</code>.
+</p>
+
+<h3>4.3 Status codes</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:12%">Status</th><th style="width:20%">When</th><th>Body</th></tr>
+  <tr><td><code>200</code></td><td>Updated / deleted</td><td>The habit row · <code>{ success: true }</code></td></tr>
+  <tr><td><code>400</code></td><td>Bad UUID, unparseable body, empty body, criteria with duplicate keys, <code>allowance</code> outside 0–7</td><td><code>{ error: … }</code></td></tr>
+  <tr><td><code>401</code></td><td>No session</td><td><code>{ error: 'Unauthorized' }</code> — via <code>withSession</code>. <b>An API key does not open these routes</b> (epic D7: the key logs days, it doesn't define or destroy things).</td></tr>
+  <tr><td><code>404</code></td><td><code>PATCH</code> on an id that isn't there</td><td><code>{ error: 'Habit not found' }</code></td></tr>
+  <tr><td><code>409</code></td><td>A locked field actually changed on a habit with ≥ 1 entry</td><td><code>{ error: 'allowance is fixed once a habit has history — …' }</code></td></tr>
+  <tr><td><code>500</code></td><td>Anything Postgres says otherwise</td><td>Via <code>mapSupabaseError</code>.</td></tr>
+</table>
+</div>
+
+<h3>4.4 <code>lib/api-client.ts</code></h3>
+<pre><code>export function updateHabit(id: string, input: UpdateHabitInput): Promise&lt;Habit&gt;;
+export function deleteHabit(id: string): Promise&lt;{ success: boolean }&gt;;</code></pre>
+
+<h2>5 · The edit surface — <span style="color:var(--accent)">pick one</span></h2>
+
+<p>
+  All three do the same job and satisfy the same requirements: rename, add / edit / remove a
+  criterion, show the locked cadence honestly, and reach archive and delete. They differ in how
+  much new surface they introduce. Click a tab.
+</p>
+
+<div class="switch">
+  <input type="radio" name="edit-surface" id="ed-a" checked />
+  <input type="radio" name="edit-surface" id="ed-b" />
+  <input type="radio" name="edit-surface" id="ed-c" />
+  <div class="tabs">
+    <label for="ed-a">E1 · The same sentence, prefilled<span class="rec">recommended</span></label>
+    <label for="ed-b">E2 · Inline on the card</label>
+    <label for="ed-c">E3 · A habit detail dialog</label>
+  </div>
+
+  <!-- ── E1 ─────────────────────────────────────────────────── -->
+  <div class="pane p-ed-a">
+    <h3>E1 · The same sentence, prefilled</h3>
+    <p>
+      <code>⋯ → Edit habit…</code> opens the create dialog's sentence with this habit's values in
+      it. Criterion chips open the existing <code>CriterionEditor</code> popover (which already
+      carries <b>Remove</b>); <code>+</code> adds one through the same kind-first menu. The two
+      cadence slots render locked (§6). <b>Save changes</b> sends one <code>PATCH</code>.
+    </p>
+
+    <div class="mock">
+      <div class="mock-bar"><span>Edit habit</span><span class="hmeta">one dialog, one PATCH</span></div>
+      <div class="mock-body">
+        <div class="dlg">
+          <p class="dlg-t">Edit habit</p>
+          <p class="dlg-s">Change what counts as a good day.</p>
+          <div class="field">Morning routine</div>
+          <p class="sentence">
+            Every
+            <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> day</span>
+            I will <span class="chip2">be up by 06:15</span> and
+            <span class="chip2">get outside for light</span>
+            <span class="slot add">+</span><br />
+            forgiving
+            <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 1 miss a week</span>.
+          </p>
+          <p class="lockline">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Your days and slack are fixed — 63 days are already logged against them.
+          </p>
+          <div class="dlg-actions"><span class="b">Cancel</span><span class="b on">Save changes</span></div>
+        </div>
+        <p class="cap">
+          Archive and delete are <b>not</b> in this dialog — they live in the card's
+          <code>⋯</code> menu (§7.1), one level up, where the habit itself is the object being
+          acted on.
+        </p>
+      </div>
+    </div>
+
+    <table>
+      <tr><th style="width:26%">Cost</th><td>One new wrapper component. <code>HabitSentenceForm</code> gains <code>initial</code>, <code>lockCadence</code> and <code>submitLabel</code> props; nothing else moves.</td></tr>
+      <tr><th>Why it wins</th><td>The owner already learned this sentence when they created the habit — reading it back is recognition, not a new form. Every control, popover and keyboard path is one that already ships and is already tested. It is the only option where "what a habit is" is described in exactly one place in the codebase.</td></tr>
+      <tr><th>Cost of it</th><td>A modal for a one-word rename is slightly heavy. Mitigated by the menu item being one click from the card.</td></tr>
+    </table>
+  </div>
+
+  <!-- ── E2 ─────────────────────────────────────────────────── -->
+  <div class="pane p-ed-b">
+    <h3>E2 · Inline on the card</h3>
+    <p>
+      No dialog. The card's title becomes an <code>InlineEditField</code> on click; the summary line
+      renders the criteria as chips that open <code>CriterionEditor</code> directly, with a
+      <code>+</code> chip revealed on hover / focus. The cadence sits in the same line, locked.
+      There is no Save button — each popover's <b>Done</b> fires its own <code>PATCH</code>, the
+      way the day editor already commits.
+    </p>
+
+    <div class="mock">
+      <div class="mock-bar"><span>/habits — a card in edit mode</span><span class="hmeta">no modal, per-control PATCH</span></div>
+      <div class="mock-body">
+        <div class="hcard">
+          <div class="hcard-head">
+            <span class="field" style="padding:.15rem .4rem">Morning routine</span>
+            <span class="grow"></span>
+            <span class="b">⋯</span>
+          </div>
+          <p style="margin:.5rem 0 0" class="strip">
+            <span class="chip2">be up by 06:15</span>
+            <span class="chip2">get outside for light</span>
+            <span class="slot add">+</span>
+            <span class="hmeta">·</span>
+            <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> every day · 1 miss a week</span>
+          </p>
+          <div class="strip" style="margin-top:.7rem">
+            <i class="c m"></i><i class="c m"></i><i class="c p"></i><i class="c m"></i>
+            <i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c n"></i>
+          </div>
+        </div>
+        <p class="cap">
+          Archive and delete stay in the <code>⋯</code> menu (§7.1). The criteria chips replace the
+          plain-text summary line the card shows today.
+        </p>
+      </div>
+    </div>
+
+    <table>
+      <tr><th style="width:26%">Cost</th><td>No new dialog, but the card grows edit state, and the chips push the card past one band tall — which is the layout ALF-150's stats rail is being designed <i>into</i>.</td></tr>
+      <tr><th>Why it might win</th><td>Fastest possible rename, and edits happen where the consequence is visible: retarget a criterion and the grid is right there, unchanged, proving frozen history at a glance.</td></tr>
+      <tr><th>Cost of it</th><td>Editing controls sitting permanently in a reading surface, no atomic save (three edits are three writes and three chances to half-apply), and a collision risk with ALF-150's rail for the same horizontal space. The kind-first <code>+</code> menu also opens from a hover-revealed chip, which is a weaker discovery path than a labelled dialog.</td></tr>
+    </table>
+  </div>
+
+  <!-- ── E3 ─────────────────────────────────────────────────── -->
+  <div class="pane p-ed-c">
+    <h3>E3 · A habit detail dialog</h3>
+    <p>
+      A conventional sectioned dialog: name field, a <b>What counts as a day</b> list with one row
+      per criterion (edit / remove) and an <b>Add</b> row, a <b>Cadence</b> block showing the locked
+      values with their explanation, and a <b>Danger zone</b> carrying archive and delete. One
+      surface owns everything about a habit.
+    </p>
+
+    <div class="mock">
+      <div class="mock-bar"><span>Habit settings</span><span class="hmeta">everything in one place</span></div>
+      <div class="mock-body">
+        <div class="dlg">
+          <p class="dlg-t">Morning routine</p>
+          <p class="dlg-s">Started 12 June · 63 days logged</p>
+          <div class="field">Morning routine</div>
+
+          <p style="margin:.9rem 0 .3rem;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">What counts as a day</p>
+          <div style="display:flex;flex-direction:column;gap:.3rem">
+            <span class="arow"><span class="grow">be up by <b>06:15</b></span><span class="b">Edit</span><span class="b bad">Remove</span></span>
+            <span class="arow"><span class="grow">get outside for light</span><span class="b">Edit</span><span class="b bad">Remove</span></span>
+            <span class="arow" style="justify-content:center;color:var(--accent)">+ Add a criterion</span>
+          </div>
+
+          <p style="margin:.9rem 0 .3rem;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Cadence</p>
+          <span class="arow">
+            <svg class="ico lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="grow">Every day · forgiving 1 miss a week<br />
+              <span class="hmeta">Fixed — 63 days are already logged against these.</span></span>
+          </span>
+
+          <p style="margin:.9rem 0 .3rem;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--missed)">Danger zone</p>
+          <div style="display:flex;gap:.4rem">
+            <span class="b">Archive habit</span><span class="b bad">Delete habit…</span>
+          </div>
+
+          <div class="dlg-actions"><span class="b">Cancel</span><span class="b on">Save changes</span></div>
+        </div>
+        <p class="cap">
+          The card's <code>⋯</code> menu shrinks to a single <b>Habit settings…</b> item, since
+          everything else moved inside.
+        </p>
+      </div>
+    </div>
+
+    <table>
+      <tr><th style="width:26%">Cost</th><td>The largest build: a new sectioned dialog, a criterion row component, and a second way to express a criterion list that has to stay in step with the create sentence.</td></tr>
+      <tr><th>Why it might win</th><td>Roomiest — it has space to say <i>why</i> the cadence is locked without crowding, and it keeps archive and delete adjacent to the thing they act on.</td></tr>
+      <tr><th>Cost of it</th><td>It abandons the sentence, so alfred would teach a habit two different ways depending on whether you are making one or changing one — and the sentence is the thing that makes the criteria model legible in the first place. It is also the option most likely to drift from the create form over time.</td></tr>
+    </table>
+  </div>
+</div>
+
+<h2>6 · The locked slot — <span style="color:var(--accent)">pick one</span></h2>
+
+<p>
+  S1 freezes days, slack and start date once a habit has history. This is how that reads on
+  screen. The stakes are specific: a control that simply doesn't respond gets clicked again, and
+  then reported as a bug.
+</p>
+
+<div class="switch">
+  <input type="radio" name="lock-style" id="lk-a" />
+  <input type="radio" name="lock-style" id="lk-b" checked />
+  <input type="radio" name="lock-style" id="lk-c" />
+  <div class="tabs">
+    <label for="lk-a">L1 · Static, with a footnote</label>
+    <label for="lk-b">L2 · Explains on click<span class="rec">recommended</span></label>
+    <label for="lk-c">L3 · Explains, and offers a replacement</label>
+  </div>
+
+  <div class="pane p-lk-a">
+    <h3>L1 · Static, with a footnote</h3>
+    <p>
+      The slot loses its dashed underline and its button role entirely: plain muted text on a faint
+      plate with a padlock, out of the tab order. One line under the sentence explains the rule
+      once.
+    </p>
+    <div class="mock"><div class="mock-body">
+      <p class="sentence" style="margin:0">
+        Every <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> day</span>
+        I will <span class="chip2">be up by 06:15</span> <span class="slot add">+</span><br />
+        forgiving <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 1 miss a week</span>.
+      </p>
+      <p class="lockline">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Your days and slack are fixed — 63 days are already logged against them.
+      </p>
+    </div></div>
+    <p class="small">
+      <b>Cheapest and calmest.</b> Nothing to build beyond a style branch. The footnote carries the
+      whole explanation, so a screen-reader user meets it in document order rather than having to
+      go looking. The risk: the footnote is easy to skim past, and then the slot looks broken.
+    </p>
+  </div>
+
+  <div class="pane p-lk-b">
+    <h3>L2 · Explains on click</h3>
+    <p>
+      The slot stays a real button with a padlock and a muted plate. Clicking opens a popover —
+      the same popover the editable slots use — that states the rule, the count, and what to do
+      instead. Its accessible name starts with "Locked", so the state is announced before the
+      value. No footnote is needed.
+    </p>
+    <div class="mock"><div class="mock-body">
+      <p class="sentence" style="margin:0 0 .6rem">
+        Every <span class="slot lock"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> day</span>
+        I will <span class="chip2">be up by 06:15</span> <span class="slot add">+</span><br />
+        forgiving <span class="slot lock" style="box-shadow:0 0 0 2px var(--accent)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 1 miss a week</span>.
+      </p>
+      <div class="pop2">
+        <p class="pt">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Fixed for this habit
+        </p>
+        <p>
+          63 days are already logged. Changing your slack would rewrite what those days counted
+          for, so the streak you earned stays the streak you see.
+        </p>
+        <p>You can still change <b>what counts as a good day</b> — edit a criterion above.</p>
+      </div>
+    </div></div>
+    <p class="small">
+      <b>Why this is the recommendation.</b> The click is going to happen; the only question is
+      whether it answers. It reuses the popover the sentence is already built from, so it is a
+      content change rather than a new pattern, and it puts the reason next to the control instead
+      of in a footnote — which is also where the 409's message can be quoted verbatim if the route
+      ever refuses a save.
+    </p>
+  </div>
+
+  <div class="pane p-lk-c">
+    <h3>L3 · Explains, and offers a replacement</h3>
+    <p>
+      L2's popover, plus an action: <b>Start a replacement habit</b> opens the create dialog
+      prefilled with this habit's name (suffixed), its criteria and its cadence, so the new terms
+      begin today with a fresh chain — and offers to archive the old one on save.
+    </p>
+    <div class="mock"><div class="mock-body">
+      <div class="pop2">
+        <p class="pt">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Fixed for this habit
+        </p>
+        <p>
+          63 days are already logged. Changing your slack would rewrite what those days counted
+          for, so the streak you earned stays the streak you see.
+        </p>
+        <p>You can still change what counts as a good day — edit a criterion above.</p>
+        <span class="b on" style="display:block;text-align:center;margin-top:.6rem">Start a replacement habit</span>
+      </div>
+      <p class="cap">
+        The replacement opens as a normal create sentence — every slot editable, because a habit
+        with no history has nothing to protect.
+      </p>
+    </div></div>
+    <p class="small">
+      <b>The most useful, and the most build.</b> It turns a dead end into a path: a genuine cadence
+      change ("I need two misses now") gets an answer today rather than waiting for effective-dated
+      goals (§11). It costs prefill plumbing through <code>HabitSentenceForm</code>, a naming rule
+      for the copy, and an archive-the-old-one decision at save time — which is the part most likely
+      to want its own conversation.
+    </p>
+  </div>
+</div>
+
+<div class="callout">
+  <b>Whatever §6 picks, this holds:</b> a locked field is locked <i>only</i> once the habit has an
+  entry. A habit created two minutes ago and not yet logged shows all its slots normally and can be
+  fixed freely — the create dialog's own behaviour, unchanged.
+</div>
+
+<h2>7 · The settled surfaces</h2>
+
+<p>These are not options. They ship as drawn, alongside whichever tabs §5 and §6 select.</p>
+
+<h3>7.1 The card menu</h3>
+
+<div class="mock">
+  <div class="mock-bar"><span>Habit card header</span><span class="hmeta">the ⋯ is the only new thing on the card</span></div>
+  <div class="mock-body">
+    <div class="hcard" style="max-width:430px">
+      <div class="hcard-head">
+        <span class="hname">Morning routine</span>
+        <span class="hmeta">· every day · 1 miss / rolling week</span>
+        <span class="grow"></span>
+        <span class="b">⋯</span>
+      </div>
+      <div class="strip" style="margin-top:.7rem">
+        <i class="c m"></i><i class="c m"></i><i class="c p"></i><i class="c m"></i>
+        <i class="c m"></i><i class="c x"></i><i class="c m"></i><i class="c n"></i>
+      </div>
+    </div>
+    <div style="margin-top:.8rem" class="menu">
+      <div>Edit habit…</div>
+      <div>Archive</div>
+      <div class="sep"></div>
+      <div class="bad">Delete habit…</div>
+    </div>
+    <p class="cap">
+      <code>IconButton</code> + <code>DropdownMenu</code>, accessible name
+      <code>Options for Morning routine</code> — the same composition and naming
+      <code>FolderNav</code> uses. Both trailing ellipses are load-bearing: those two items open a
+      further step, <b>Archive</b> acts immediately.
+    </p>
+  </div>
+</div>
+
+<p class="small">
+  <b>Always visible, not hover-revealed.</b> <code>FolderNav</code> reveals its menu on hover
+  because a sidebar row is small and dense; a habit card is a large surface with one menu on it,
+  and hover-only controls are a mobile dead end. The trigger is a muted icon button that gains
+  contrast on hover / focus.
+</p>
+
+<h3>7.2 Archive is immediate, and reversible</h3>
+<p>
+  <b>Archive</b> takes no confirm: it is the reversible action, and adding a dialog to it would put
+  the same friction on the safe path as the destructive one. The card leaves the list, the Archived
+  count next to the disclosure goes up by one, and a toast offers <b>Undo</b>.
+</p>
+<p class="small">
+  Two consequences worth stating, because both are silent: archiving stops "today" being an
+  applicable day for that habit, so the sidebar's unlogged badge drops — that is
+  <code>isApplicableDay()</code> working as written, not a bug. And a habit archived by mistake and
+  restored has lost nothing: <code>archived_at</code> going back to <code>null</code> restores every
+  day exactly as it was.
+</p>
+
+<h3>7.3 The Archived section</h3>
+
+<div class="mock">
+  <div class="mock-bar"><span>/habits — bottom of the view</span><span class="hmeta">collapsed by default</span></div>
+  <div class="mock-body">
+    <div class="disc">▸ Archived (2)</div>
+    <div style="display:flex;flex-direction:column;gap:.35rem;margin-top:.5rem;max-width:470px">
+      <span class="arow">
+        <span class="grow"><b>Evening pages</b><br />
+          <span class="hmeta">every day · no misses · ran 3 Feb – 18 May 2026</span></span>
+        <span class="b">Unarchive</span><span class="b">⋯</span>
+      </span>
+      <span class="arow">
+        <span class="grow"><b>Cold shower</b><br />
+          <span class="hmeta">weekdays · 1 miss / rolling week · ran 6 Jan – 2 Feb 2026</span></span>
+        <span class="b">Unarchive</span><span class="b">⋯</span>
+      </span>
+    </div>
+    <p class="cap">
+      One row per retired habit: name, the cadence summary the card already renders
+      (<code>habitSummary()</code>), and the span it ran. <b>Unarchive</b> is a first-class button;
+      the <code>⋯</code> carries <b>Delete habit…</b> only.
+    </p>
+  </div>
+</div>
+
+<p>
+  <b>No grid and no statistics on an archived row</b>, and that is deliberate rather than
+  minimalism. The shell seeds a 120-day entry window, so a habit that ran last February has no
+  entries in the store at all — a "longest streak" rendered here would read <code>0</code> and be a
+  lie. The date span comes from <code>started_on</code> and <code>archived_at</code>, which are on
+  the row itself and always true. <span class="small">Once ALF-150's server-seeded all-history
+  baseline lands, enriching this row is a small additive follow-up — noted, not assumed.</span>
+</p>
+
+<p class="small">
+  <b>Ordering and empty state:</b> most-recently-archived first. With no archived habits the
+  disclosure is not rendered at all. With <i>only</i> archived habits the existing "No habits yet"
+  empty state still shows above it — which is accurate: there are no active ones.
+</p>
+
+<h3>7.4 The delete confirm</h3>
+
+<div class="mock">
+  <div class="mock-body">
+    <div class="dlg" style="max-width:400px">
+      <p class="dlg-t">Delete “Morning routine”?</p>
+      <p class="dlg-s" style="margin-bottom:.8rem">
+        This destroys the habit and every day logged against it — 63 days since 12 June. It cannot
+        be undone. <b>Archive it instead</b> to keep the record.
+      </p>
+      <div class="dlg-actions"><span class="b">Cancel</span><span class="b bad on">Delete habit</span></div>
+    </div>
+    <p class="cap">
+      <code>FormDialog</code>, focus on <b>Cancel</b>, Escape cancels. No typed confirmation — the
+      named count and the destructive styling carry the weight, matching the skip flow's "second
+      step, not a bigger button".
+    </p>
+  </div>
+</div>
+
+<h4>Getting the count right</h4>
+<p>
+  The store only holds a 120-day window, so a blunt <code>entries.length</code> understates a habit
+  older than that — and understating what you are about to destroy is the one direction this
+  sentence must not be wrong in. <code>deleteConfirmLine()</code> therefore branches on whether the
+  habit's <code>started_on</code> falls inside the seeded window:
+</p>
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">Habit started…</th><th>Reads</th></tr>
+  <tr><td>inside the window <span class="small">(the count is complete)</span></td><td>“…every day logged against it — <b>63 days since 12 June</b>.”</td></tr>
+  <tr><td>before the window <span class="small">(the count is partial)</span></td><td>“…every day logged against it — <b>at least 118 days, since 3 February</b>.”</td></tr>
+  <tr><td>with nothing logged</td><td>“…this habit. Nothing has been logged against it yet.”</td></tr>
+</table>
+</div>
+<p class="small">Pure, and unit-tested beside the other habit strings.</p>
+
+<h2>8 · Store additions</h2>
+
+<p>
+  The reducer already has almost everything: <code>replaceHabit</code> covers every update and both
+  archive directions, and <code>removeHabit</code> covers delete. Only the delete rollback needs a
+  new action (S7).
+</p>
+
+<pre><code>type HabitsAction =
+  | …existing…
+  | { type: 'restoreHabit'; habit: Habit; index: number;
+      entries: Record&lt;string, HabitEntry&gt; };   <span class="small">// NEW — rollback for delete</span>
+
+interface HabitsActions {
+  addHabit:     (input: CreateHabitInput) =&gt; Promise&lt;Habit&gt;;      <span class="small">// unchanged</span>
+  logDay:       …;  skipDay: …;                                    <span class="small">// unchanged</span>
+  updateHabit:  (id: string, input: UpdateHabitInput) =&gt; Promise&lt;Habit&gt;;
+  setArchived:  (id: string, archived: boolean) =&gt; Promise&lt;Habit&gt;;
+  deleteHabit:  (id: string) =&gt; Promise&lt;void&gt;;
+}</code></pre>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:20%">Action</th><th style="width:30%">Optimistic</th><th>Rollback · toast</th></tr>
+  <tr>
+    <td><code>updateHabit</code></td>
+    <td><code>replaceHabit</code> with <code>applyHabitUpdate(habit, input, now)</code> — the same
+      pure merge the route's payload builder mirrors.</td>
+    <td>Replace with the captured pre-mutation row · “Couldn't save that habit”.</td>
+  </tr>
+  <tr>
+    <td><code>setArchived</code></td>
+    <td><code>replaceHabit</code> with <code>archived_at</code> set or cleared — the card moves
+      between the list and the Archived section on the click.</td>
+    <td>Same restore · “Couldn't archive that habit” / “Couldn't restore that habit”.</td>
+  </tr>
+  <tr>
+    <td><code>deleteHabit</code></td>
+    <td><code>removeHabit</code> (drops the row <i>and</i> its entry bucket).</td>
+    <td><code>restoreHabit</code> with the captured row, its index and its entries ·
+      “Couldn't delete that habit”.</td>
+  </tr>
+</table>
+</div>
+
+<h4>Selectors</h4>
+<pre><code>useHabits()          <span class="small">// active only  — archived_at === null, memoized on state</span>
+useArchivedHabits()  <span class="small">// the rest, most recently archived first  (NEW)</span></code></pre>
+<p class="small">
+  <b>Memoize, don't filter inline.</b> <code>useHabits()</code> returns <code>state.habits</code>
+  directly today; a bare <code>.filter()</code> would hand out a fresh array every render and
+  re-run every memo downstream of it — including the grid's calendar build. Both selectors derive
+  through <code>React.useMemo</code> over the state object, as <code>useUnloggedTodayCount</code>
+  already does.
+</p>
+<p class="small">
+  <b>The badge needs no change.</b> <code>useUnloggedTodayCount</code> reads the whole habit list,
+  and <code>isApplicableDay()</code> already returns <code>false</code> for a habit archived on or
+  before today — so archived habits entering the store cannot inflate it. Worth an explicit test
+  rather than an assumption.
+</p>
+
+<h2>9 · Tests</h2>
+
+<p>
+  Per the repo's rule, every behavioural change lands with a test. The riskiest logic here is the
+  frozen-cadence comparison, and it is pure — so it is table-tested rather than reached through a
+  route.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:30%">File</th><th>Covers</th></tr>
+  <tr>
+    <td><code>lib/habits/edits.test.ts</code></td>
+    <td>
+      <code>lockedFieldsChanged</code>: each locked field changed alone and together; each present
+      but <b>unchanged</b> (→ empty); <code>active_days</code> reordered (→ unchanged);
+      <code>active_days</code> with a different membership (→ changed); an unlocked-only body
+      (→ empty); an empty body. <code>applyHabitUpdate</code>: partial merges, <code>archived</code>
+      → <code>archived_at</code> both ways, and that an absent key leaves its column alone.
+    </td>
+  </tr>
+  <tr>
+    <td><code>app/api/habits/[id]/route.test.ts</code></td>
+    <td>
+      <b>PATCH</b> — 200 rename; 200 criteria replace; 200 when a locked field is resent
+      <i>unchanged</i> on a habit with entries; 200 when a locked field <i>changes</i> on a habit
+      with <b>zero</b> entries; 409 when it changes with entries (and the message names the field);
+      200 archive stamps a timestamp and 200 unarchive nulls it; 400 bad UUID; 400 empty body;
+      400 duplicate criterion keys; 404 unknown id; 401 no session; <b>401 with a valid API key</b>
+      (these routes are session-only).
+      <b>DELETE</b> — 200 success; 400 bad UUID; 401 no session.
+    </td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/habits-store.test.tsx</code></td>
+    <td>
+      Update reconciles and rolls back; archive moves a habit between the two selectors and back;
+      delete removes optimistically and <b>restores row, index and entries</b> on failure; the
+      unlogged badge ignores archived habits; each failure path fires its toast.
+    </td>
+  </tr>
+  <tr>
+    <td><code>components/habits/*.test.tsx</code> (RTL)</td>
+    <td>
+      The edit surface §5 picks: opens prefilled from the habit; a locked slot behaves as §6 picks
+      (not focusable / explains on click) and never emits a cadence change; adding, editing and
+      removing a criterion; save calls <code>updateHabit</code> with only what changed.
+      The menu's three items. The delete confirm's three sentences (§7.4 table) and that Cancel
+      writes nothing. The Archived section: hidden when empty, unarchive calls the action.
+    </td>
+  </tr>
+  <tr>
+    <td><code>components/habits/*.stories.tsx</code></td>
+    <td>One story for the locked slot treatment, with an image baseline — §6 is a
+      <b>visual</b> requirement, so a snapshot is the evidence that keeps it from drifting. No
+      existing baseline changes: the grid is untouched.</td>
+  </tr>
+  <tr>
+    <td><code>e2e/habits.spec.ts</code></td>
+    <td>
+      One new spec through the real stack: create a habit, log a day, <b>retarget a criterion and
+      assert the logged day's status did not move</b> (D12 made visible), archive it and find it in
+      the Archived section, unarchive it back into the list, then delete it through the confirm and
+      reload to prove it stayed gone.
+    </td>
+  </tr>
+</table>
+</div>
+
+<h2>10 · Demo doc</h2>
+
+<p>
+  A user-visible change, so it lands with a demo doc at
+  <code>docs/demos/alf-151-habit-editing/</code> per the <code>showboat</code> skill — which stays
+  the source of truth for how evidence is captured and what <code>verify</code> must reproduce.
+  What this story's doc has to show:
+</p>
+<ol class="tight">
+  <li>The card <code>⋯</code> menu, and the edit surface open and prefilled.</li>
+  <li>A criterion retargeted (07:00 → 06:15) — <b>with the grid before and after in the same
+    doc</b>, unchanged. That screenshot pair is the whole argument for S1.</li>
+  <li>The locked slot, and its explanation, as §6 draws it.</li>
+  <li>An <code>exec</code> block: <code>PATCH</code> changing <code>allowance</code> on a habit with
+    history returning <code>409</code>, and the same call succeeding on a fresh habit.</li>
+  <li>Archive → the Archived section → unarchive.</li>
+  <li>The delete confirm, and the habit gone after a reload.</li>
+</ol>
+
+<h2>11 · Out of scope</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:32%">Not in this story</th><th>Why / what instead</th></tr>
+  <tr>
+    <td><b>Effective-dated goals</b></td>
+    <td>Per-period cadence rules, so history is walked against the terms in force that day, is the
+      real answer to "I need two misses now". It needs a migration, a revision of epic D12's
+      neighbourhood, and its own slice. S1 is the cheap correct thing until then.</td>
+  </tr>
+  <tr>
+    <td><b>Retroactive re-scoring</b></td>
+    <td>Unchanged from epic D12: a stored status is the historical verdict. Editing criteria never
+      rewrites a logged day.</td>
+  </tr>
+  <tr>
+    <td><b>Reorder / <code>sort_order</code></b></td>
+    <td>Named in the epic's slice-11 sketch, deliberately dropped (S8). No field on the schema, no
+      drag affordance. Additive later.</td>
+  </tr>
+  <tr>
+    <td><b>A notes field</b></td>
+    <td>On the schema, not on the form — nothing renders <code>habits.notes</code> yet (S8).</td>
+  </tr>
+  <tr>
+    <td><b>Criterion reordering</b></td>
+    <td>The sentence reads criteria in insertion order. Remove-and-re-add is the workaround, and it
+      costs the criterion's key — which is exactly why a drag affordance would need care, not a
+      quick addition.</td>
+  </tr>
+  <tr>
+    <td><b>Coach access to these routes</b></td>
+    <td>Session-only, both of them (epic D7). The primer is untouched.</td>
+  </tr>
+  <tr>
+    <td><b>Stats on an archived row</b></td>
+    <td>Blocked on ALF-150's all-history baseline; showing window-derived figures there would
+      print zeroes (§7.3).</td>
+  </tr>
+  <tr>
+    <td><b>Bulk actions</b></td>
+    <td>Archive / delete act on one habit. At a handful of habits, a selection model is unearned.</td>
+  </tr>
+</table>
+</div>
+
+<h3>Open questions</h3>
+<ol class="tight">
+  <li>
+    <b>Should S1 be folded back into ALF-146 as a decision?</b> The frozen-cadence rule is an
+    epic-level constraint discovered while refining this story — it constrains every future habit
+    story, not just this one. This spec deliberately does not edit the epic; the next revision of
+    ALF-146 is where it belongs.
+  </li>
+  <li>
+    <b>Does an archived habit's entry data ever get cleaned up?</b> Today it lives forever, invisible
+    to the grid and outside the shell's 120-day window. That is fine at this volume, and the
+    question only becomes real if the coach ever wants "everything I've ever tracked".
+  </li>
+  <li>
+    <b>If §6 picks L3, does saving a replacement archive the original?</b> Offering it is friendly;
+    doing it silently is not. Left open because the answer only matters if L3 is chosen.
+  </li>
+</ol>
+
+<h2>12 · Acceptance criteria</h2>
+
+<ul class="ac">
+  <li class="h">API</li>
+  <li><code>PATCH /api/habits/[id]</code> updates <code>name</code>, <code>notes</code> and <code>criteria</code> and returns the full updated row.</li>
+  <li>Sending a locked field (<code>active_days</code> / <code>allowance</code> / <code>started_on</code>) with the value it already has succeeds and changes nothing — including when <code>active_days</code> arrives in a different order.</li>
+  <li>Changing a locked field on a habit with <b>no</b> entries succeeds.</li>
+  <li>Changing a locked field on a habit with <b>≥ 1</b> entry returns <code>409</code>, and the message names the field and the number of logged days.</li>
+  <li><code>{ "archived": true }</code> stamps <code>archived_at</code> server-side; <code>false</code> clears it. No caller can supply the timestamp.</li>
+  <li>An unknown id returns <code>404</code>, a malformed id <code>400</code>, an empty body <code>400</code>.</li>
+  <li><code>DELETE /api/habits/[id]</code> removes the habit and cascades every entry.</li>
+  <li>Both routes reject a request carrying a valid <code>x-api-key</code> but no session, with <code>401</code>.</li>
+
+  <li class="h">Editing</li>
+  <li>A habit can be renamed, and a criterion added, edited (label, target, comparator) and removed, through the surface §5 selects.</li>
+  <li>An existing criterion keeps its <code>key</code> across a label change, so logged history stays attached to it.</li>
+  <li>Retargeting a criterion leaves every already-logged day's status, and every statistic derived from it, unchanged.</li>
+  <li>The locked slots render and behave exactly as §6 draws, and no edit path can emit a cadence change for a habit with history.</li>
+  <li>A habit with no logged days shows every slot editable.</li>
+
+  <li class="h">Archive &amp; delete</li>
+  <li>The card carries a <code>⋯</code> menu with Edit, Archive and a destructive Delete, named <code>Options for &lt;habit&gt;</code>.</li>
+  <li>Archiving removes the card immediately, offers Undo, and drops the habit out of the sidebar's unlogged count.</li>
+  <li>Archived habits appear in a collapsed <b>Archived</b> section showing name, cadence and the span they ran; the section is absent when empty.</li>
+  <li>Unarchive returns the habit to the list with its full history intact.</li>
+  <li>Delete is gated by a confirm naming the habit and, accurately, how many logged days go with it — never overstating certainty for a habit older than the seeded window.</li>
+  <li>A failed delete restores the habit to its original position <b>with its logged days</b>, and shows a toast.</li>
+
+  <li class="h">Repo rules</li>
+  <li>The create sentence exists in exactly one component, used by both dialogs.</li>
+  <li>Every new user-visible string is produced by a unit-tested pure helper in <code>habit-format.ts</code>.</li>
+  <li>The new visual state carries an image-snapshot baseline; no existing baseline changes.</li>
+  <li>A demo doc under <code>docs/demos/alf-151-habit-editing/</code> passes <code>npm run demo -- verify</code>, and shows the grid unchanged either side of a criterion retarget.</li>
+  <li><code>npm run check</code> is green, with no new lint suppressions and no config weakened.</li>
+</ul>
+
+<hr style="border:0;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+<p class="small">
+  Spec for ALF-151, one story of epic
+  <a href="epics/ALF-146.html">ALF-146 — Habit Tracker</a>. Refinement iterates in comments on the
+  PR that carries this file; the two option groups above are what needs a pick before build.
+</p>
+
+</div>
+</body>
+</html>
