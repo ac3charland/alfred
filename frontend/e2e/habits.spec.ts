@@ -85,11 +85,19 @@ test('creates a habit, logs today, and keeps it across a reload', async ({ page,
   await expect(page.locator(`[data-date="${today}"]`)).toHaveAttribute('data-status', 'met');
   await expect(page.getByLabel('1 not logged today')).toBeHidden();
 
+  // The rail beside the grid moved in the same frame as the cell — no refetch, no refresh.
+  const currentStreak = page.locator('[data-figure="current-streak"]');
+  await expect(currentStreak).toContainText('1');
+  await expect(page.getByRole('group', { name: 'Morning routine stats' })).toBeVisible();
+
   // A hard reload re-reads everything from the database.
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Morning routine' })).toBeVisible();
   await expect(page.locator(`[data-date="${today}"]`)).toHaveAttribute('data-status', 'met');
   await expect(page.getByLabel('1 not logged today')).toBeHidden();
+  // The number the tap painted and the number the server computes from all history are the
+  // same number — which is the whole point of splicing the two rather than picking one.
+  await expect(currentStreak).toContainText('1');
 });
 
 test('skipping a day takes a second step and a reason, and the reason survives in the grid', async ({

@@ -6,14 +6,18 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/atoms/popov
 import { DayEditor } from '@/components/habits/day-editor';
 import { beforeStartName, dayAccessibleName } from '@/components/habits/habit-format';
 import { HistoryCell } from '@/components/habits/history-cell';
-import { addDays, buildHabitCalendar, isoWeekday, parseCriteria, parseResults } from '@/lib/habits';
+import {
+  APP_WINDOW_DAYS,
+  addDays,
+  buildHabitCalendar,
+  isoWeekday,
+  parseCriteria,
+  parseResults,
+} from '@/lib/habits';
 import type { Habit, HabitEntry } from '@/lib/types';
 
 /** The row labels down the left edge — Monday at the top, every other day named. */
 const WEEKDAY_LABELS = ['M', '', 'W', '', 'F', '', 'S'];
-
-/** How far back the grid draws, matching the window the shell seeds. */
-export const GRID_WINDOW_DAYS = 120;
 
 interface HistoryGridProperties {
   habit: Habit;
@@ -42,7 +46,7 @@ export function HistoryGrid({
   habit,
   entries,
   today,
-  windowDays = GRID_WINDOW_DAYS,
+  windowDays = APP_WINDOW_DAYS,
 }: HistoryGridProperties) {
   const [openDate, setOpenDate] = React.useState<string | undefined>();
   const openCellRef = React.useRef<HTMLButtonElement | null>(null);

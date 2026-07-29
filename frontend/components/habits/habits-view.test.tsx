@@ -51,6 +51,14 @@ describe('HabitsView', () => {
     expect(screen.getByRole('group', { name: 'Evening wind-down history' })).toBeInTheDocument();
   });
 
+  it('gives every card its own stats rail, named for its own habit', () => {
+    renderView([MORNING, { ...MORNING, id: 'habit-2', name: 'Evening wind-down', allowance: 0 }]);
+
+    expect(screen.getByRole('group', { name: 'Morning routine stats' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Evening wind-down stats' })).toBeInTheDocument();
+    expect(screen.getAllByText('current streak')).toHaveLength(2);
+  });
+
   it('names every cell state in a legend, since six states are too many for hue alone', () => {
     renderView([MORNING]);
 
