@@ -54,7 +54,8 @@ no JS required, mobile-friendly, `<title>` and `<h1>` of `<EPIC-REF> — <epic n
 those mechanics; don't re-derive them, and don't let the two drift.
 
 Cover these, in whatever order and format reads best (tables for option matrices, an inline SVG for
-an architecture or data flow, a small mockup where UI is involved):
+an architecture or data flow, a small mockup where UI is involved — drawn in the app's own design
+system, per [`refinement`](../refinement/SKILL.md)):
 
 - **Problem space & why now** — what this epic is about and what makes it worth a body of work.
 - **Decisions, each with its rationale.** The heart of the document. A decision without its *why*
