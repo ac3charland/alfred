@@ -293,6 +293,15 @@ Run it through the harness (`npm run test:e2e -w frontend -- capture-flow.spec.t
 then embed each shot with `npm run demo -- image`. **Look at every PNG** (Read it)
 before embedding.
 
+**Re-shooting an existing doc: `path:` the committed PNGs directly, don't re-`image`.**
+`image` always *appends* — a fresh `<doc>-image-11.png` and a new embed at the bottom —
+leaving the doc's existing embeds pointing at the stale shots. So when a change makes a
+published demo's screenshots wrong, point the capture spec's `page.screenshot({ path })`
+at `docs/demos/<doc>/<doc>-image-<n>.png` and let it overwrite in place; the doc's markup
+needs no edit. Anchor the spec's fixtures to **today** rather than the dates the original
+run happened to fall on, or a recapture silently redraws a different calendar. Regenerate
+any `exec`-captured `.txt` the same way and re-run `demo -- verify`.
+
 **Wait for animations to settle before `page.screenshot()`.** Playwright's
 `toBeVisible()` / `waitFor()` count an element that's still fading or zooming in
 (opacity 0 mid-transition — a Radix dialog, a toast) as *visible*, so a shot fired the
