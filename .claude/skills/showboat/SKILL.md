@@ -164,6 +164,14 @@ run through the system shell; `node`/`js`/`javascript` run via `node -e`;
 `python`/`python3` via `python3 -c`. Prefer `bash` and `node` so `verify` works in
 every environment.
 
+**The `bash` tag is a syntax highlight, not an interpreter — the block runs under
+`/bin/sh`** (dash on Linux). A bashism prints `Bad substitution` *to the captured
+output* and the block carries on, so the doc ships a wall of errors and `verify`
+still passes because it reproduces them exactly. Array slicing (`"${@:2}"`), `+=(…)`
+on an array, and `<<<` are the ones that bite; `shift` + `"$@"`, functions,
+`${v:-default}` and `$( )` are all fine. A script the block *invokes* keeps its own
+`#!/usr/bin/env bash`, so only the block body is constrained.
+
 ## A typical demo (non-visual change — CLI evidence)
 
 For a change with **no visual surface** (here, an API endpoint), the evidence is a

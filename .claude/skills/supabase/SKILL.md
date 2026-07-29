@@ -149,6 +149,8 @@ useEffect(() => {
 
 - **Always add a `.eq()` (or other filter) to `.update()` and `.delete()`.** Without a filter, the operation targets every row in the table. RLS may partially protect you, but a missing filter is a correctness bug, not a security feature.
 
+- **PostgREST caps rows per response and TRUNCATES SILENTLY — `.limit(50_000)` does not lift it.** The cap is the project's *Max rows* setting (1000 by default) and a capped read returns a short array with no error, so a caller reading a growing table (habit entries, any per-day log) starts quietly losing the oldest rows. Page with `.range(offset, offset + PAGE_SIZE - 1)` until a page comes back shorter than `PAGE_SIZE`, under an order that is a **total** order (`.order('habit_id').order('entry_date')`) — without one, two pages can return the same row and never return another. Bound the loop and return an **error** when it doesn't terminate; a truncated history reads downstream as a shrinking streak/total, which is worse than a failure. (`lib/data/habits.ts`'s `readAllEntries` is the pattern.)
+
 - **Never run recursive subtask queries in a JS loop.** Fetching children level-by-level results in N+1 queries. Use a `WITH RECURSIVE` CTE in a Postgres function and call it via `supabase.rpc()`.
 
 - **A `check` constraint over an array must use `cardinality()`, not `array_length(col, 1)`.**
