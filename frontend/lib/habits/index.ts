@@ -26,6 +26,7 @@ export {
   computeHabitStats,
   formationStage,
   isApplicableDay,
+  isTrackableDay,
 } from '@/lib/habits/streaks';
 export type { DateWindow } from '@/lib/habits/dates';
 export type {

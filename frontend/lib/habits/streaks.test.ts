@@ -4,6 +4,7 @@ import {
   computeHabitStats,
   formationStage,
   isApplicableDay,
+  isTrackableDay,
 } from '@/lib/habits/streaks';
 import type { HabitDay } from '@/lib/habits/types';
 import type { Habit, HabitDayStatus, HabitEntry } from '@/lib/types';
@@ -89,6 +90,28 @@ describe('isApplicableDay', () => {
     expect(isApplicableDay(archived, '2026-07-28')).toBe(true);
     expect(isApplicableDay(archived, '2026-07-29')).toBe(false);
     expect(isApplicableDay(archived, '2026-07-30')).toBe(false);
+  });
+});
+
+describe('isTrackableDay', () => {
+  const habit = makeHabit({ started_on: '2026-07-27', active_days: [1, 2, 3, 4, 5] });
+
+  it('accepts a day before started_on, which backfilling can reach', () => {
+    // The one difference from `isApplicableDay`: the habit not having started yet is a fact
+    // about its definition, and the definition moves when a pre-start day is logged.
+    expect(isTrackableDay(habit, '2026-07-20')).toBe(true);
+    expect(isApplicableDay(habit, '2026-07-20')).toBe(false);
+  });
+
+  it('still excludes weekdays outside active_days — no start date makes a Saturday count', () => {
+    expect(isTrackableDay(habit, '2026-07-25')).toBe(false);
+    expect(isTrackableDay(habit, '2026-08-01')).toBe(false);
+  });
+
+  it('still excludes the archive date and everything after it', () => {
+    const archived = makeHabit({ archived_at: '2026-07-29T12:00:00Z' });
+    expect(isTrackableDay(archived, '2026-07-28')).toBe(true);
+    expect(isTrackableDay(archived, '2026-07-29')).toBe(false);
   });
 });
 
@@ -294,6 +317,30 @@ describe('non-applicable days', () => {
       'not_applicable', // tomorrow
       'not_applicable',
     ]);
+  });
+
+  it('offers a pre-start day for logging, but never a future or off-weekday one', () => {
+    const weekdays = makeHabit({ active_days: [1, 2, 3, 4, 5], started_on: '2026-07-27' });
+    const calendar = buildHabitCalendar(weekdays, log('2026-07-27', 'm'), {
+      from: '2026-07-24',
+      to: '2026-07-29',
+      today: '2026-07-27',
+    });
+
+    expect(calendar.map((day) => [day.date, day.canLog])).toEqual([
+      ['2026-07-24', true], // a Friday before the habit started — backfillable
+      ['2026-07-25', false], // Saturday: off the weekday set whatever the start date
+      ['2026-07-26', false], // Sunday, likewise
+      ['2026-07-27', true], // today, already logged
+      ['2026-07-28', false], // tomorrow hasn't happened
+      ['2026-07-29', false],
+    ]);
+  });
+
+  it('offers nothing on a day after the habit was archived', () => {
+    const archived = makeHabit({ started_on: '2026-07-27', archived_at: '2026-07-29T12:00:00Z' });
+    const calendar = calendarFor(archived, log('2026-07-27', 'mm'), '2026-07-28', '2026-07-30');
+    expect(calendar.map((day) => day.canLog)).toEqual([true, false, false]);
   });
 
   it('marks exactly one day as today', () => {
