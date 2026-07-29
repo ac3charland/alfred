@@ -323,7 +323,9 @@ The body's four fields:
 - **`results`** — one value per criterion key. Omitting a key means "not recorded", which is
   not the same as `false` and is never a pass. Required unless `status` is sent.
 - **`date`** — the day being logged, `YYYY-MM-DD`. Omitted means **today in `tz`**. Backfilling
-  an earlier day is fine.
+  an earlier day is fine. A date **before the habit's `started_on` moves that start back to it** —
+  the owner was already keeping the habit then. Say so when you do it: the days in between become
+  days the habit was running, and any of them left unlogged spends allowance.
 - **`tz`** — the IANA zone "today" is resolved in. Unrecognized falls back to UTC.
 - **`status`** — accepts exactly one value, `"skipped"`, the one verdict no evidence can
   produce. It **requires a non-empty `note`** giving the reason. Use it for illness or travel,
@@ -335,7 +337,7 @@ The body's four fields:
 | Status | Meaning |
 | --- | --- |
 | `200` | Logged. The response's `status` is the verdict — report that back, don't guess it from the results. |
-| `400` | A future `date`, a `date` before the habit's `started_on`, a `skipped` with no reason, or a body with neither `results` nor `status`. |
+| `400` | A future `date`, a `skipped` with no reason, or a body with neither `results` nor `status`. |
 | `401` | Missing, empty, or wrong key. |
 | `404` | No habit with that id. Re-read Endpoint 3 rather than retrying. |
 | `500` | The database rejected the write; the `error` string carries its message. |
