@@ -52,9 +52,6 @@ export async function PUT(
   const today = todayIn(input.tz ?? 'UTC');
   const entryDate = input.date ?? today;
   if (entryDate > today) return jsonError(400, 'Cannot log a day in the future');
-  if (entryDate < habit.started_on) {
-    return jsonError(400, 'Cannot log a day before the habit started');
-  }
 
   const results = input.results ?? null;
   const status =
@@ -81,6 +78,24 @@ export async function PUT(
   if (error) {
     const { status: errorStatus, message } = mapSupabaseError(error);
     return jsonError(errorStatus, message);
+  }
+
+  // A day behind `started_on` means the habit was already running then — the owner is entering
+  // history they kept, not inventing one. So the definition follows the evidence and the start
+  // moves back to it, which is also what makes the day scorable at all.
+  //
+  // Deliberately AFTER the upsert: an entry the habit has not reached yet is invisible and
+  // re-logging the day fixes it, whereas a start moved with no entry behind it turns the days
+  // in between into unlogged ones that spend allowance — a broken chain bought for nothing.
+  if (entryDate < habit.started_on) {
+    const { error: startError } = await supabase
+      .from('habits')
+      .update({ started_on: entryDate })
+      .eq('id', id);
+    if (startError) {
+      const { status: startStatus, message } = mapSupabaseError(startError);
+      return jsonError(startStatus, message);
+    }
   }
 
   return jsonOk(data);

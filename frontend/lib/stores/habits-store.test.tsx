@@ -151,6 +151,17 @@ describe('habitsReducer', () => {
     expect(reconciled.entries[MORNING.id]).toStrictEqual({ [TODAY]: saved });
   });
 
+  it('moves one habit’s start without touching the rest of its definition', () => {
+    const seeded = { ...empty, habits: [MORNING, { ...MORNING, id: 'habit-2' }] };
+    const after = habitsReducer(seeded, {
+      type: 'setHabitStart',
+      id: MORNING.id,
+      startedOn: '2026-06-20',
+    });
+    expect(after.habits[0]).toStrictEqual({ ...MORNING, started_on: '2026-06-20' });
+    expect(after.habits[1]?.started_on).toBe('2026-07-01');
+  });
+
   it('removes one day without disturbing the others', () => {
     const seeded = {
       ...empty,
@@ -252,6 +263,53 @@ describe('logDay', () => {
     expect(mockShowToast).toHaveBeenCalledWith("Couldn't save that day");
   });
 
+  it('moves the habit’s start back when the day logged is behind it', async () => {
+    const write = deferred<HabitEntry>();
+    mockUpsertHabitEntry.mockReturnValue(write.promise);
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    let pending: Promise<void> | undefined;
+    act(() => {
+      pending = result.current.actions.logDay(MORNING.id, '2026-06-20', { light: true });
+    });
+
+    // The same rule the route applies, run locally — so the days in between repaint as part of
+    // the habit's life on the tap, not a round-trip later.
+    expect(result.current.habits[0]?.started_on).toBe('2026-06-20');
+
+    await act(async () => {
+      write.resolve(makeEntry({ entry_date: '2026-06-20' }));
+      await pending;
+    });
+
+    expect(result.current.habits[0]?.started_on).toBe('2026-06-20');
+  });
+
+  it('puts the start back where it was when a backfill fails', async () => {
+    mockUpsertHabitEntry.mockRejectedValue(new Error('nope'));
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.logDay(MORNING.id, '2026-06-20', { light: true }),
+      ).rejects.toThrow('nope');
+    });
+
+    expect(result.current.habits[0]?.started_on).toBe('2026-07-01');
+    expect(result.current.entries['2026-06-20']).toBeUndefined();
+  });
+
+  it('leaves the start alone for a day the habit was already running on', async () => {
+    mockUpsertHabitEntry.mockResolvedValue(makeEntry());
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    await act(async () => {
+      await result.current.actions.logDay(MORNING.id, TODAY, { light: true });
+    });
+
+    expect(result.current.habits[0]?.started_on).toBe('2026-07-01');
+  });
+
   it('restores the row a failed CORRECTION replaced', async () => {
     const original = makeEntry();
     mockUpsertHabitEntry.mockRejectedValue(new Error('nope'));
@@ -285,6 +343,19 @@ describe('skipDay', () => {
       note: 'flu',
     });
     expect(result.current.entries[TODAY]).toStrictEqual(saved);
+  });
+
+  it('moves the start back for a pre-start skip too — the same rule as a logged day', async () => {
+    mockUpsertHabitEntry.mockResolvedValue(
+      makeEntry({ entry_date: '2026-06-20', status: 'skipped', results: null, note: 'travelling' }),
+    );
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    await act(async () => {
+      await result.current.actions.skipDay(MORNING.id, '2026-06-20', 'travelling');
+    });
+
+    expect(result.current.habits[0]?.started_on).toBe('2026-06-20');
   });
 
   it('rolls back and toasts when the skip fails', async () => {
