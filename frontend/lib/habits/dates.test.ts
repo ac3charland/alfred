@@ -1,4 +1,14 @@
-import { addDays, daysBetween, eachDay, isoWeekday, todayIn } from '@/lib/habits/dates';
+import {
+  DEFAULT_WINDOW_DAYS,
+  MAX_WINDOW_DAYS,
+  addDays,
+  daysBetween,
+  eachDay,
+  isoWeekday,
+  resolveTimezone,
+  resolveWindow,
+  todayIn,
+} from '@/lib/habits/dates';
 
 describe('todayIn', () => {
   it('resolves the calendar date in the named zone, not the machine zone', () => {
@@ -79,5 +89,84 @@ describe('daysBetween', () => {
     expect(daysBetween('2026-07-27', '2026-08-03')).toBe(7);
     expect(daysBetween('2026-08-03', '2026-07-27')).toBe(-7);
     expect(daysBetween('2026-07-27', '2026-07-27')).toBe(0);
+  });
+});
+
+describe('resolveTimezone', () => {
+  it('passes a valid IANA zone straight through', () => {
+    expect(resolveTimezone('America/New_York')).toBe('America/New_York');
+    expect(resolveTimezone('Asia/Tokyo')).toBe('Asia/Tokyo');
+    expect(resolveTimezone('UTC')).toBe('UTC');
+  });
+
+  it('maps an unrecognized or empty zone to UTC without throwing', () => {
+    expect(resolveTimezone('Mars/Olympus_Mons')).toBe('UTC');
+    expect(resolveTimezone('')).toBe('UTC');
+  });
+
+  it('reports the zone todayIn actually used', () => {
+    const instant = new Date('2026-07-28T03:30:00Z');
+    const zone = resolveTimezone('Mars/Olympus_Mons');
+    expect(todayIn('Mars/Olympus_Mons', instant)).toBe(todayIn(zone, instant));
+  });
+});
+
+describe('resolveWindow', () => {
+  const TODAY = '2026-07-28';
+
+  it('defaults to the trailing DEFAULT_WINDOW_DAYS ending today', () => {
+    expect(resolveWindow({}, TODAY)).toStrictEqual({
+      from: addDays(TODAY, -(DEFAULT_WINDOW_DAYS - 1)),
+      to: TODAY,
+    });
+  });
+
+  it('defaults only the end when a from is named, and only the start when a to is', () => {
+    expect(resolveWindow({ from: '2026-05-01' }, TODAY)).toStrictEqual({
+      from: '2026-05-01',
+      to: TODAY,
+    });
+    expect(resolveWindow({ to: '2026-07-01' }, TODAY)).toStrictEqual({
+      from: addDays('2026-07-01', -(DEFAULT_WINDOW_DAYS - 1)),
+      to: '2026-07-01',
+    });
+  });
+
+  it('clamps a to after today back to today', () => {
+    // "Give me this quarter", asked before quarter-end, keeps working.
+    expect(resolveWindow({ from: '2026-07-01', to: '2026-09-30' }, TODAY)).toStrictEqual({
+      from: '2026-07-01',
+      to: TODAY,
+    });
+  });
+
+  it('rejects a from after the CLAMPED to, not merely after the requested one', () => {
+    // Both ends are in the future; clamping alone would silently reverse the window.
+    const result = resolveWindow({ from: '2026-08-01', to: '2026-08-31' }, TODAY);
+    expect(result).toStrictEqual({ error: '`from` must not be after `to`' });
+  });
+
+  it('rejects a from after to', () => {
+    expect(resolveWindow({ from: '2026-07-28', to: '2026-07-27' }, TODAY)).toStrictEqual({
+      error: '`from` must not be after `to`',
+    });
+  });
+
+  it('accepts a span of exactly MAX_WINDOW_DAYS and rejects one day more', () => {
+    const at = addDays(TODAY, -(MAX_WINDOW_DAYS - 1));
+    expect(resolveWindow({ from: at, to: TODAY }, TODAY)).toStrictEqual({ from: at, to: TODAY });
+
+    const over = addDays(TODAY, -MAX_WINDOW_DAYS);
+    expect(resolveWindow({ from: over, to: TODAY }, TODAY)).toStrictEqual({
+      // The cap is named rather than the window silently trimmed to it.
+      error: `The window must not exceed ${String(MAX_WINDOW_DAYS)} days`,
+    });
+  });
+
+  it('accepts a single day', () => {
+    expect(resolveWindow({ from: TODAY, to: TODAY }, TODAY)).toStrictEqual({
+      from: TODAY,
+      to: TODAY,
+    });
   });
 });

@@ -6,6 +6,12 @@
 
 const MS_PER_DAY = 86_400_000;
 
+/** The trailing span a read covers when the caller names no `from`/`to` — a quarter. */
+export const DEFAULT_WINDOW_DAYS = 90;
+
+/** The widest span a caller may ask for. Beyond this the answer is refused, never trimmed. */
+export const MAX_WINDOW_DAYS = 366;
+
 /** `Intl.DateTimeFormat` throws on an unknown zone, which is exactly the validity test. */
 function isValidTimezone(timezone: string): boolean {
   if (timezone === '') return false;
@@ -18,13 +24,24 @@ function isValidTimezone(timezone: string): boolean {
 }
 
 /**
+ * The zone that will actually be used: `timezone` when it is a valid IANA zone, else `UTC`.
+ *
+ * Split out from {@link todayIn} so a caller can REPORT the fallback. Echoing the zone the
+ * request asked for would tell a caller who sent a typo that their days were bucketed in a
+ * zone they never got, which is exactly the misreading the fallback is meant to avoid.
+ */
+export function resolveTimezone(timezone: string): string {
+  return isValidTimezone(timezone) ? timezone : 'UTC';
+}
+
+/**
  * The calendar date it currently is in `timezone`, as `YYYY-MM-DD`. An unrecognized zone
  * degrades to UTC rather than throwing — a habit write must not 500 because a caller sent a
  * typo'd zone. `now` is injected so the boundary cases (either side of local midnight, a DST
  * transition) are testable without touching the clock.
  */
 export function todayIn(timezone: string, now: Date = new Date()): string {
-  const zone = isValidTimezone(timezone) ? timezone : 'UTC';
+  const zone = resolveTimezone(timezone);
   const parts = new Map(
     new Intl.DateTimeFormat('en-US', {
       timeZone: zone,
@@ -70,4 +87,37 @@ export function eachDay(from: string, to: string): string[] {
 /** Whole days from `from` to `to` (negative when `to` precedes `from`). */
 export function daysBetween(from: string, to: string): number {
   return Math.round((toUtcMillis(to) - toUtcMillis(from)) / MS_PER_DAY);
+}
+
+/** An inclusive span of calendar days, both ends `YYYY-MM-DD`. */
+export interface DateWindow {
+  from: string;
+  to: string;
+}
+
+/**
+ * Resolve a requested `[from, to]` against `today`, or explain why it can't be.
+ *
+ * Two rules bend and two refuse, and the split is deliberate. A `to` past today is pulled
+ * back, so the obvious "give me this quarter" call keeps working after quarter-end; an absent
+ * end or start defaults to today and the trailing {@link DEFAULT_WINDOW_DAYS}. But a `from`
+ * after `to` names no span at all, and one wider than {@link MAX_WINDOW_DAYS} names a span
+ * this read won't serve — guessing at either would answer a question nobody asked.
+ *
+ * `from` is checked against the CLAMPED `to`, so "from tomorrow to next week" is rejected
+ * rather than silently becoming a backwards window.
+ */
+export function resolveWindow(
+  query: { from?: string | undefined; to?: string | undefined },
+  today: string,
+): DateWindow | { error: string } {
+  const requestedTo = query.to ?? today;
+  const to = requestedTo > today ? today : requestedTo;
+  const from = query.from ?? addDays(to, -(DEFAULT_WINDOW_DAYS - 1));
+
+  if (from > to) return { error: '`from` must not be after `to`' };
+  if (daysBetween(from, to) + 1 > MAX_WINDOW_DAYS) {
+    return { error: `The window must not exceed ${String(MAX_WINDOW_DAYS)} days` };
+  }
+  return { from, to };
 }
