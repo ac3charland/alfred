@@ -23,7 +23,9 @@ jest.mock('./task-list', () => ({
   },
 }));
 
-const FOLDERS: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' }];
+const FOLDERS: Folder[] = [
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+];
 
 describe('FolderView', () => {
   describe('when the folder exists in the store', () => {

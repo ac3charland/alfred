@@ -31,8 +31,8 @@ const mockUpdateFolder = jest.mocked(apiClient.updateFolder);
 const mockDeleteFolder = jest.mocked(apiClient.deleteFolder);
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
-  { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 10 },
+  { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z', sort_order: 20 },
 ];
 
 /** A local YYYY-MM-DD due-date string offset from today (0 = today, -1 = yesterday). */
@@ -75,14 +75,33 @@ const openFolderMenu = async (user: ReturnType<typeof userEvent.setup>, folderNa
   await screen.findByRole('menu');
 };
 
-// Selects "Edit" (first item) from the currently open folder menu.
-const selectEdit = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.keyboard('[ArrowDown][Enter]');
+// Walks the open menu with ArrowDown until the named item is focused, then activates it.
+// The entry list varies per row — "Move up" / "Move down" appear only where the folder can
+// travel — so items are reached by name rather than by a fixed number of key presses.
+const selectMenuItem = async (user: ReturnType<typeof userEvent.setup>, name: string | RegExp) => {
+  const item = screen.getByRole('menuitem', { name });
+  const menuLength = screen.getAllByRole('menuitem').length;
+  for (let step = 0; step < menuLength && document.activeElement !== item; step += 1) {
+    await user.keyboard('[ArrowDown]');
+  }
+  await user.keyboard('[Enter]');
 };
 
-// Selects "Delete" (second item, past the separator) from the currently open folder menu.
+/** The folder names in the order the sidebar renders them. */
+const renderedFolders = () =>
+  screen
+    .getAllByRole('link')
+    .filter((link) => link.getAttribute('href')?.startsWith('/folders/'))
+    .map((link) => link.textContent);
+
+// Selects "Edit" from the currently open folder menu.
+const selectEdit = async (user: ReturnType<typeof userEvent.setup>) => {
+  await selectMenuItem(user, 'Edit');
+};
+
+// Selects "Delete" (below the separator) from the currently open folder menu.
 const selectDelete = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.keyboard('[ArrowDown][ArrowDown][Enter]');
+  await selectMenuItem(user, 'Delete');
 };
 
 describe('FolderNav', () => {
@@ -167,6 +186,7 @@ describe('FolderNav', () => {
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
+      sort_order: 30,
     });
 
     const user = userEvent.setup();
@@ -186,6 +206,7 @@ describe('FolderNav', () => {
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
+      sort_order: 30,
     });
 
     const user = userEvent.setup();
@@ -206,6 +227,7 @@ describe('FolderNav', () => {
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
+      sort_order: 30,
     });
 
     const user = userEvent.setup();
@@ -273,6 +295,7 @@ describe('FolderNav', () => {
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
+      sort_order: 30,
     });
 
     const user = userEvent.setup();
@@ -646,6 +669,7 @@ describe('FolderNav', () => {
       id: 'f1',
       name: 'Work Renamed',
       created_at: '2025-01-01T00:00:00Z',
+      sort_order: 10,
     });
 
     const user = userEvent.setup();
@@ -659,7 +683,7 @@ describe('FolderNav', () => {
     await user.click(screen.getByRole('button', { name: /save rename/i }));
 
     await waitFor(() => {
-      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', 'Work Renamed');
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', { name: 'Work Renamed' });
     });
   });
 
@@ -668,6 +692,7 @@ describe('FolderNav', () => {
       id: 'f1',
       name: 'Work Renamed',
       created_at: '2025-01-01T00:00:00Z',
+      sort_order: 10,
     });
 
     const user = userEvent.setup();
@@ -799,7 +824,7 @@ describe('FolderNav', () => {
 
     // On failure, the rename form should still be visible for retry
     await waitFor(() => {
-      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', 'Work Renamed');
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', { name: 'Work Renamed' });
     });
     // The form remains open after the failed rename
     expect(screen.queryByRole('button', { name: /save rename/i })).toBeInTheDocument();
@@ -858,6 +883,7 @@ describe('FolderNav', () => {
       id: 'f1',
       name: 'Work Renamed',
       created_at: '2025-01-01T00:00:00Z',
+      sort_order: 10,
     });
 
     const user = userEvent.setup();
@@ -871,7 +897,7 @@ describe('FolderNav', () => {
     await user.click(screen.getByRole('button', { name: /save rename/i }));
 
     await waitFor(() => {
-      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', 'Work Renamed');
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', { name: 'Work Renamed' });
     });
   });
 
@@ -913,12 +939,125 @@ describe('FolderNav', () => {
     expect(screen.getByRole('menuitem', { name: /delete/i })).toBeInTheDocument();
   });
 
+  describe('manual folder order', () => {
+    // Deliberately seeded out of rank order: the store, not the seed array, decides the
+    // sidebar's order.
+    /** The only folder in the sidebar — it can travel in neither direction. */
+    const LONE_FOLDER: Folder = {
+      id: 'f1',
+      name: 'Work',
+      created_at: '2025-01-01T00:00:00Z',
+      sort_order: 10,
+    };
+
+    const UNSORTED: Folder[] = [
+      { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 30 },
+      { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z', sort_order: 10 },
+      { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 20 },
+    ];
+
+    it('renders the folders by their manual rank, not the order they were seeded in', () => {
+      renderWithProviders(<FolderNav />, { folders: UNSORTED });
+
+      expect(renderedFolders()).toStrictEqual(['Personal', 'Someday', 'Work']);
+    });
+
+    it('hides Move up on the first folder and Move down on the last', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+      await openFolderMenu(user, 'Work');
+      expect(screen.queryByRole('menuitem', { name: 'Move up' })).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Move down' })).toBeInTheDocument();
+      await user.keyboard('{Escape}');
+
+      await openFolderMenu(user, 'Personal');
+      expect(screen.queryByRole('menuitem', { name: 'Move down' })).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Move up' })).toBeInTheDocument();
+    });
+
+    it('offers neither move entry when a lone folder has nowhere to go', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderNav />, { folders: [LONE_FOLDER] });
+
+      await openFolderMenu(user, 'Work');
+
+      expect(screen.queryByRole('menuitem', { name: 'Move up' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Move down' })).not.toBeInTheDocument();
+    });
+
+    it('Move down swaps the folder past the one below it, ranking it beyond that neighbour', async () => {
+      mockUpdateFolder.mockImplementation(() => new Promise<never>(() => {}));
+      const user = userEvent.setup();
+      renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+      await openFolderMenu(user, 'Work');
+      await selectMenuItem(user, 'Move down');
+
+      // Below "Personal" (20) with nothing after it → one rank past that edge.
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', { sort_order: 21 });
+      // The list re-sorts immediately, without waiting on the server.
+      expect(renderedFolders()).toStrictEqual(['Personal', 'Work']);
+    });
+
+    it('Move up lands the folder at the midpoint above its neighbour', async () => {
+      mockUpdateFolder.mockImplementation(() => new Promise<never>(() => {}));
+      const user = userEvent.setup();
+      renderWithProviders(<FolderNav />, {
+        folders: [
+          ...FOLDERS,
+          { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 30 },
+        ],
+      });
+
+      await openFolderMenu(user, 'Someday');
+      await selectMenuItem(user, 'Move up');
+
+      // Between "Work" (10) and "Personal" (20) → their midpoint, renumbering nothing.
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f3', { sort_order: 15 });
+      expect(renderedFolders()).toStrictEqual(['Work', 'Someday', 'Personal']);
+    });
+
+    it('restores the previous order when the reorder fails', async () => {
+      mockUpdateFolder.mockRejectedValue(new Error('Server error'));
+      const user = userEvent.setup();
+      renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+      await openFolderMenu(user, 'Work');
+      await selectMenuItem(user, 'Move down');
+
+      await waitFor(() => {
+        expect(renderedFolders()).toStrictEqual(['Work', 'Personal']);
+      });
+    });
+
+    it('gives each folder a drag handle that is hidden from assistive tech and from touch', () => {
+      renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+      const handles = document.querySelectorAll('[data-folder-drag-handle]');
+      expect(handles).toHaveLength(2);
+      // The pointer gesture is desktop-only (the menu is the touch/keyboard path), and the grip
+      // is not itself focusable — so it must not reach the accessibility tree.
+      expect(handles[0]).toHaveClass('hidden', 'md:block');
+      expect(handles[0]).toHaveAttribute('aria-hidden', 'true');
+      expect(handles[0]).not.toHaveAttribute('tabindex');
+    });
+
+    it('keeps the options button visible on touch, where there is no hover to reveal it', () => {
+      renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+      const actions = screen.getByRole('button', { name: /options for work/i }).parentElement;
+      expect(actions).toHaveClass('opacity-100', 'md:motion-safe:opacity-0');
+    });
+  });
+
   describe('rename form submit via keyboard', () => {
     it('submits rename on Enter key', async () => {
       mockUpdateFolder.mockResolvedValue({
         id: 'f1',
         name: 'Work Renamed',
         created_at: '2025-01-01T00:00:00Z',
+        sort_order: 10,
       });
 
       const user = userEvent.setup();
@@ -932,7 +1071,7 @@ describe('FolderNav', () => {
       await user.keyboard('{Enter}');
 
       await waitFor(() => {
-        expect(mockUpdateFolder).toHaveBeenCalledWith('f1', 'Work Renamed');
+        expect(mockUpdateFolder).toHaveBeenCalledWith('f1', { name: 'Work Renamed' });
       });
     });
   });
@@ -943,6 +1082,7 @@ describe('FolderNav', () => {
         id: 'f3',
         name: 'Projects',
         created_at: '2025-01-03T00:00:00Z',
+        sort_order: 30,
       });
 
       const user = userEvent.setup();

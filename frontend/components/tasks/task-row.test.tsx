@@ -73,7 +73,12 @@ const SECOND_ITEM: Item = {
 const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
 const COMPLETED_FOLDER_ITEM: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-1' };
 
-const FOLDER: Folder = { id: 'folder-1', name: 'Work', created_at: '2025-01-01T09:00:00Z' };
+const FOLDER: Folder = {
+  id: 'folder-1',
+  name: 'Work',
+  created_at: '2025-01-01T09:00:00Z',
+  sort_order: 1,
+};
 
 /**
  * Render rows through TaskList, seeding the flat item list into the store. Rows come from
@@ -1726,8 +1731,18 @@ describe('TaskRow', () => {
 
   describe('folder name in context label', () => {
     it('shows the correct folder name when multiple folders exist', () => {
-      const folderA: Folder = { id: 'folder-a', name: 'Alpha', created_at: '2025-01-01T00:00:00Z' };
-      const folderB: Folder = { id: 'folder-b', name: 'Beta', created_at: '2025-01-01T01:00:00Z' };
+      const folderA: Folder = {
+        id: 'folder-a',
+        name: 'Alpha',
+        created_at: '2025-01-01T00:00:00Z',
+        sort_order: 2,
+      };
+      const folderB: Folder = {
+        id: 'folder-b',
+        name: 'Beta',
+        created_at: '2025-01-01T01:00:00Z',
+        sort_order: 3,
+      };
       const itemInB: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-b' };
       renderTasks([itemInB], { ...COMPLETED, folders: [folderA, folderB] });
       // Should show 'Beta', NOT 'Alpha' (Alpha is first in the list)

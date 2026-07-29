@@ -12,9 +12,9 @@ const dueYMD = (offsetDays: number): string => {
 };
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
-  { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z' },
-  { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z' },
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+  { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z', sort_order: 2 },
+  { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 3 },
 ];
 
 const task = (overrides: Partial<Item>): Item => ({
