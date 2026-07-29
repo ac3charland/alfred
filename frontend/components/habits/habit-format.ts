@@ -1,5 +1,5 @@
-import { evaluateCriterion } from '@/lib/habits';
-import type { CellStatus, HabitCriterion, HabitResults } from '@/lib/habits';
+import { ESTABLISHED_DAYS, evaluateCriterion } from '@/lib/habits';
+import type { CellStatus, FormationStage, HabitCriterion, HabitResults } from '@/lib/habits';
 import type { Habit } from '@/lib/types';
 
 /**
@@ -170,6 +170,49 @@ export function formatAllowance(allowance: number): string {
 /** `every day · 1 miss / rolling week` — the line under a habit's name. */
 export function habitSummary(habit: Habit): string {
   return `${formatActiveDays(habit.active_days)} · ${formatAllowance(habit.allowance)}`;
+}
+
+/** What the rail shows for a figure with no value — "no runs have ended yet" is not "zero". */
+const NO_VALUE = '—';
+
+/**
+ * The formation ladder in the owner's own words. Every rung hedges, because the marker it
+ * counts toward is the median of a range wide enough (roughly 18 to 254 days) that a confident
+ * "Established" would be a claim the evidence doesn't support.
+ */
+export const STAGE_LABEL: Record<FormationStage, string> = {
+  fully_deliberate: 'Fully Deliberate',
+  gaining_momentum: 'Gaining Momentum',
+  nearing_automaticity: 'Nearing Automaticity',
+  possibly_established: 'Possibly Established',
+};
+
+/** `0.9375` → `94%`, rounded to a whole percent. Nothing rated yet reads as an em dash. */
+export function formatHitRate(rate: number | null): string {
+  return rate === null ? NO_VALUE : `${String(Math.round(rate * 100))}%`;
+}
+
+/** `14` → `14`, `5.5` → `5.5` — one decimal, with a trailing `.0` dropped. */
+export function formatStreakLength(length: number | null): string {
+  return length === null ? NO_VALUE : String(Math.round(length * 10) / 10);
+}
+
+/** `47 of ~66 banked days`, or `82 banked days · past ~66` once the marker is reached. */
+export function formatBanked(metDays: number): string {
+  return metDays >= ESTABLISHED_DAYS
+    ? `${String(metDays)} banked days · past ~${String(ESTABLISHED_DAYS)}`
+    : `${String(metDays)} of ~${String(ESTABLISHED_DAYS)} banked days`;
+}
+
+/**
+ * The meter's accessible name: the caption spelled out, with "about" in place of the tilde —
+ * which a screen reader reads as noise rather than as a hedge.
+ */
+export function bankedAccessibleName(metDays: number): string {
+  const marker = `about ${String(ESTABLISHED_DAYS)}`;
+  return metDays >= ESTABLISHED_DAYS
+    ? `${String(metDays)} banked days, past ${marker}`
+    : `${String(metDays)} of ${marker} banked days`;
 }
 
 /**

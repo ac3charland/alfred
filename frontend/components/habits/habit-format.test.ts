@@ -1,20 +1,26 @@
 import {
+  STAGE_LABEL,
+  bankedAccessibleName,
   beforeStartName,
   criterionKeyFrom,
   dayAccessibleName,
   formatActiveDays,
   formatAllowance,
   formatAllowanceSlot,
+  formatBanked,
   formatDaysSlot,
+  formatHitRate,
   formatLongDate,
   formatShortDate,
+  formatStreakLength,
   formatTarget,
   habitSummary,
   minutesToTime,
   timeToMinutes,
   weekdayName,
 } from '@/components/habits/habit-format';
-import type { HabitCriterion } from '@/lib/habits';
+import { ESTABLISHED_DAYS, formationStage } from '@/lib/habits';
+import type { FormationStage, HabitCriterion } from '@/lib/habits';
 import type { Habit } from '@/lib/types';
 
 const WAKE: HabitCriterion = {
@@ -172,5 +178,76 @@ describe('criterionKeyFrom', () => {
     const key = criterionKeyFrom('a'.repeat(80), []);
     expect(key).toHaveLength(32);
     expect(key).toMatch(/^[a-z][a-z0-9_]{0,31}$/);
+  });
+});
+
+describe('STAGE_LABEL', () => {
+  it('names every rung of the ladder, so a fifth can never ship unlabelled', () => {
+    const stages: FormationStage[] = [
+      'fully_deliberate',
+      'gaining_momentum',
+      'nearing_automaticity',
+      'possibly_established',
+    ];
+
+    // The Record's type makes a missing rung a type error; the count makes a stray key a test
+    // failure. Between them a fifth rung can't ship unlabelled.
+    expect(Object.keys(STAGE_LABEL)).toHaveLength(stages.length);
+    expect(stages.map((stage) => STAGE_LABEL[stage])).toStrictEqual([
+      'Fully Deliberate',
+      'Gaining Momentum',
+      'Nearing Automaticity',
+      'Possibly Established',
+    ]);
+  });
+
+  it('hedges the top rung rather than declaring the habit established', () => {
+    expect(STAGE_LABEL[formationStage(ESTABLISHED_DAYS)]).toBe('Possibly Established');
+  });
+});
+
+describe('formatHitRate', () => {
+  it('rounds to a whole percent', () => {
+    expect(formatHitRate(0.9375)).toBe('94%');
+    expect(formatHitRate(1)).toBe('100%');
+    expect(formatHitRate(0)).toBe('0%');
+  });
+
+  it('renders nothing-rated-yet as an em dash, never as zero', () => {
+    expect(formatHitRate(null)).toBe('—');
+  });
+});
+
+describe('formatStreakLength', () => {
+  it('shows one decimal, dropping a trailing zero', () => {
+    expect(formatStreakLength(14)).toBe('14');
+    expect(formatStreakLength(5.5)).toBe('5.5');
+    expect(formatStreakLength(5.04)).toBe('5');
+    expect(formatStreakLength(0)).toBe('0');
+  });
+
+  it('renders no-ended-runs as an em dash — "no average yet" is not "an average of zero"', () => {
+    expect(formatStreakLength(null)).toBe('—');
+  });
+});
+
+describe('formatBanked', () => {
+  it('counts toward the marker while it is still pending', () => {
+    expect(formatBanked(47)).toBe('47 of ~66 banked days');
+    expect(formatBanked(0)).toBe('0 of ~66 banked days');
+    expect(formatBanked(ESTABLISHED_DAYS - 1)).toBe('65 of ~66 banked days');
+  });
+
+  it('switches to the past form the day the marker is reached, not the day after', () => {
+    expect(formatBanked(ESTABLISHED_DAYS)).toBe('66 banked days · past ~66');
+    expect(formatBanked(ESTABLISHED_DAYS + 1)).toBe('67 banked days · past ~66');
+  });
+});
+
+describe('bankedAccessibleName', () => {
+  it('spells the hedge out, since a tilde reads as noise aloud', () => {
+    expect(bankedAccessibleName(47)).toBe('47 of about 66 banked days');
+    expect(bankedAccessibleName(82)).toBe('82 banked days, past about 66');
+    expect(bankedAccessibleName(47)).not.toContain('~');
   });
 });
