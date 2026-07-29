@@ -2,7 +2,9 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 import 'server-only';
 
 import type { Database } from '@/lib/database.types';
-import { addDays } from '@/lib/habits/dates';
+import { APP_WINDOW_DAYS, addDays, todayIn } from '@/lib/habits/dates';
+import { computeHabitStats } from '@/lib/habits/streaks';
+import type { HabitStats } from '@/lib/habits/types';
 import { createClient } from '@/lib/supabase/server';
 import type { Habit, HabitEntry } from '@/lib/types';
 
@@ -10,17 +12,11 @@ import type { Habit, HabitEntry } from '@/lib/types';
  * Server-only read layer for habits: the shell's seed for `HabitsProvider` below, and the
  * API's all-history read further down.
  *
- * Like the weekly-plan readers, the seeders deliberately load a BOUNDED slice rather than
- * everything: a daily habit grows a few hundred rows a year, which is the point at which the
- * shell's "fetch everything" default stops holding. Both swallow the Supabase error and fall
- * back to `[]` — a seed failure must not blank the whole shell.
+ * Like the weekly-plan readers, the seed deliberately hands the client a BOUNDED slice of
+ * entries rather than everything: a daily habit grows a few hundred rows a year, which is the
+ * point at which the shell's "fetch everything" default stops holding. It swallows the
+ * Supabase error and degrades in layers — a seed failure must not blank the whole shell.
  */
-
-/**
- * How far back the entry seed reaches. Computed in UTC on the server and deliberately
- * generous, so whichever side of midnight the browser's zone is on, today's row is inside it.
- */
-export const ENTRY_WINDOW_DAYS = 120;
 
 /** Active habits in display order. Archived ones are excluded — nothing renders them yet. */
 export async function getHabits(): Promise<Habit[]> {
@@ -34,18 +30,47 @@ export async function getHabits(): Promise<Habit[]> {
   return data ?? [];
 }
 
-/** Entries for every habit over the trailing {@link ENTRY_WINDOW_DAYS}, inclusive of today. */
-export async function getHabitEntries(
-  windowDays: number = ENTRY_WINDOW_DAYS,
-): Promise<HabitEntry[]> {
+/**
+ * The shell's habit seed: every habit, the trailing {@link APP_WINDOW_DAYS} of entries, and the
+ * all-history stats the rail's banked / longest / average figures need.
+ *
+ * ONE read backs all three: the stats are cumulative-forever figures and so need full history,
+ * which means windowing the entry read as well would re-fetch rows this read already returned.
+ * The window is applied in TS afterwards. If entry volume ever makes the full read expensive
+ * the answer is a SQL rollup of those scalars, not a truncated read (see
+ * {@link getHabitsWithHistory}).
+ *
+ * The seeded slice reaches one day FURTHER back than the window the client walks, so a browser
+ * west of UTC — whose local today is the server's yesterday — still holds every day of its own
+ * window. The invariant: the client's window is always a subset of what was seeded, whichever
+ * side of the date line the browser sits on.
+ */
+export async function getHabitSeed(): Promise<{
+  habits: Habit[];
+  entries: HabitEntry[];
+  stats: Record<string, HabitStats>;
+}> {
   const supabase = await createClient();
-  const from = addDays(new Date().toISOString().slice(0, 10), -windowDays);
-  const { data } = await supabase
-    .from('habit_entries')
-    .select('*')
-    .gte('entry_date', from)
-    .order('entry_date', { ascending: false });
-  return data ?? [];
+  const today = todayIn('UTC');
+  const { habits, entriesByHabit, error } = await getHabitsWithHistory(supabase, {
+    includeArchived: false,
+  });
+
+  // Degrade in layers, never to a blank shell: without entries the rail falls back to its live
+  // window walk, which is right for every habit younger than the window and understated — never
+  // absent — for older ones.
+  if (error) return { habits: await getHabits(), entries: [], stats: {} };
+
+  const from = addDays(today, -APP_WINDOW_DAYS);
+  const entries: HabitEntry[] = [];
+  const stats: Record<string, HabitStats> = {};
+  for (const habit of habits) {
+    const all = entriesByHabit.get(habit.id) ?? [];
+    // No window argument, so every figure is scored over the habit's whole life.
+    stats[habit.id] = computeHabitStats(habit, all, today);
+    entries.push(...all.filter((entry) => entry.entry_date >= from));
+  }
+  return { habits, entries, stats };
 }
 
 // ---------------------------------------------------------------------------

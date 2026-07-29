@@ -5,7 +5,7 @@ import { TaskDndProvider } from '@/components/tasks/task-dnd-provider';
 import { requireUser } from '@/lib/auth/require-user';
 import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
 import { getFolders } from '@/lib/data/folders';
-import { getHabitEntries, getHabits } from '@/lib/data/habits';
+import { getHabitSeed } from '@/lib/data/habits';
 import { getAllItems } from '@/lib/data/items';
 import { getLatestWeeklyPlan, getWeeklyPlanIndex } from '@/lib/data/weekly-plans';
 import { todayIn } from '@/lib/habits';
@@ -44,27 +44,20 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   // instance menu header, so keep the return rather than discarding it.
   const user = await requireUser();
 
-  const [
-    folders,
-    items,
-    projects,
-    epics,
-    stories,
-    weeklyPlanIndex,
-    latestWeeklyPlan,
-    habits,
-    habitEntries,
-  ] = await Promise.all([
-    getFolders(),
-    getAllItems(),
-    getProjects(),
-    getEpics(),
-    getCodeStories(),
-    getWeeklyPlanIndex(),
-    getLatestWeeklyPlan(),
-    getHabits(),
-    getHabitEntries(),
-  ]);
+  const [folders, items, projects, epics, stories, weeklyPlanIndex, latestWeeklyPlan, habitSeed] =
+    await Promise.all([
+      getFolders(),
+      getAllItems(),
+      getProjects(),
+      getEpics(),
+      getCodeStories(),
+      getWeeklyPlanIndex(),
+      getLatestWeeklyPlan(),
+      // One read backs the habit definitions, the windowed entries and the all-history stats the
+      // stats rail rests on — the baseline needs full history, so windowing the entry read too
+      // would re-fetch rows it already returned.
+      getHabitSeed(),
+    ]);
 
   return (
     // ToastProvider is the OUTERMOST provider so all three optimistic stores
@@ -93,8 +86,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                           {/* The server can't know the browser's zone, so today is seeded in
                               UTC and corrected in a mount effect (see the habits store). */}
                           <HabitsProvider
-                            initialHabits={habits}
-                            initialEntries={habitEntries}
+                            initialHabits={habitSeed.habits}
+                            initialEntries={habitSeed.entries}
+                            initialStats={habitSeed.stats}
                             serverToday={todayIn('UTC')}
                           >
                             <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
