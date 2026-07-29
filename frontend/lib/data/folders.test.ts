@@ -28,17 +28,17 @@ function mockClient(result: MockResult) {
   return client;
 }
 
-const FOLDER = { id: 'f-1', name: 'Work', created_at: '2025-01-01T00:00:00Z' };
+const FOLDER = { id: 'f-1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 };
 
 describe('getFolders', () => {
-  it('returns folders ordered by created_at ascending', async () => {
+  it("returns folders in the sidebar's manual-rank order", async () => {
     const client = mockClient({ data: [FOLDER] });
 
     const result = await getFolders();
 
     expect(client.from).toHaveBeenCalledWith('folders');
     expect(client._chain.select).toHaveBeenCalledWith('*');
-    expect(client._chain.order).toHaveBeenCalledWith('created_at', { ascending: true });
+    expect(client._chain.order).toHaveBeenCalledWith('sort_order', { ascending: true });
     expect(result).toStrictEqual([FOLDER]);
   });
 
