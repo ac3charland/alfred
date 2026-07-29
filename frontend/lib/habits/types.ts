@@ -50,6 +50,13 @@ export interface HabitDay {
   /** YYYY-MM-DD. */
   date: string;
   status: CellStatus;
+  /**
+   * Whether the day can be opened and recorded. Every day the habit has scored, plus the days
+   * BEFORE it started — logging one of those moves `started_on` back to it, so a grid that
+   * refused them would leave the owner unable to enter a history they actually kept. A future
+   * day, an off-weekday one, and anything past `archived_at` can never be logged.
+   */
+  canLog: boolean;
   isToday: boolean;
   /**
    * In the run the current streak is made of. The lit-filament grid carries the run in its

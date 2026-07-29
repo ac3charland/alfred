@@ -30,14 +30,23 @@ const LADDER: readonly { readonly from: number; readonly stage: FormationStage }
 const ROLLING_WINDOW_DAYS = 7;
 
 /**
+ * A date this habit could ever be scored on — on a weekday in `active_days`, and before
+ * `archived_at` if it has one. Deliberately silent about `started_on`: a start date is the one
+ * part of the definition that MOVES when the owner backfills a day behind it, so "the habit
+ * hadn't started yet" is a reason to offer the day rather than to rule it out.
+ */
+export function isTrackableDay(habit: Habit, date: string): boolean {
+  if (habit.archived_at !== null && date >= habit.archived_at.slice(0, 10)) return false;
+  return habit.active_days.includes(isoWeekday(date));
+}
+
+/**
  * A date the habit is scored on: on or after `started_on`, before `archived_at` if it has one,
  * and on a weekday in `active_days`. Anything else is never scored and appears in no
  * denominator — it is not a miss.
  */
 export function isApplicableDay(habit: Habit, date: string): boolean {
-  if (date < habit.started_on) return false;
-  if (habit.archived_at !== null && date >= habit.archived_at.slice(0, 10)) return false;
-  return habit.active_days.includes(isoWeekday(date));
+  return date >= habit.started_on && isTrackableDay(habit, date);
 }
 
 /** This habit's entries, keyed by date. Rows for other habits are ignored. */
@@ -171,6 +180,7 @@ export function buildHabitCalendar(
     calendar.push({
       date,
       status: cellStatus(habit, byDate, date, range.today),
+      canLog: date <= range.today && isTrackableDay(habit, date),
       isToday: date === range.today,
       inStreak: inCurrentRun.has(date),
       link: linkFrom(date),
