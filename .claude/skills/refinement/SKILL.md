@@ -38,17 +38,18 @@ once the scope is clear do you write the spec below.
      tables for option/field matrices, an inline **SVG** diagram for any data flow or state machine,
      annotated snippets of the key code a reviewer would want to see, and a small mockup where a UI
      is involved.
-   - **Draw mockups in the app's own design system, not default browser styling.** A screen drawn
-     in another visual language reads as a different product, and misleads both the human approving
-     the spec and the session that builds it. Copy the real values from `frontend/app/globals.css`
-     — navy canvas `#0a0e17`, surfaces/cards `#0f1626`, `--border` `#1e2a3f`, `--foreground`
-     `#e8edf5` / `--muted-foreground` `#8a96a8`, the teal `--accent-teal` `#4fd1e0` and its
-     green/blue/amber/red siblings, `--radius` `0.5rem` — plus Geist Sans body copy, Geist Mono for
-     code, `font-serif` headings, and the geometry of whatever atom you're drawing
-     (`frontend/components/atoms/`, e.g. `chip.tsx`: 9px radius, `px-3 py-1.5`, 13px text). The
-     *document's* own chrome — headings, tables, callouts — stays neutral and readable, so don't
-     lift a mockup palette from an older spec's stylesheet. It's the visual language that has to
-     match, not the pixels.
+   - **Mockups are drawn in the app's design system** — not default browser styling, and not the
+     document's own palette or an older spec's stylesheet. A mockup in another visual language
+     reads as a different product: it asks the human to sign off on a surface that will never
+     ship, and misleads the session that builds it. Scope the app's real tokens as CSS custom
+     properties on the mockup container — the surrounding prose keeps the document's own light/dark
+     chrome — and take every value from source rather than memory: colours, radii and fonts from
+     the app's global stylesheet (`frontend/app/globals.css`), each component's treatment from the
+     atom that renders it (lookalikes diverge — a popover's surface is not a dropdown menu's),
+     feature geometry from that feature's `*.styles.ts`. Restyle what's nested inside the canvas
+     too, inline `<code>` above all, or it flashes document styling onto the app's. It's the visual
+     language that has to match, not the pixels — and drawing it faithfully audits the design:
+     it's what catches a mockup depicting an arrangement the real component can't produce.
    - **Acceptance criteria:** a checklist a reviewer (and the implementation session) can verify.
    - **Never pin a sequence-allocated number** — a **migration number** above all. Other work
      merges while the spec waits, so the number you pick is stale by the time it's built: write
