@@ -124,6 +124,14 @@ export function dayAccessibleName(
   return `${when} — ${STATUS_WORD[status].toLowerCase()}.${clauses.map((clause) => ` ${clause}.`).join('')}`;
 }
 
+/**
+ * A pre-start day's name. It has no verdict to report — the habit wasn't running yet — so it
+ * names the offer instead: filling the day is what moves the start back to it.
+ */
+export function beforeStartName(date: string): string {
+  return `${formatLongDate(date)} — before this habit started. Log it to start the habit here`;
+}
+
 /** `every day`, `weekdays`, or the days themselves — the cadence half of a habit's summary. */
 export function formatActiveDays(activeDays: number[]): string {
   const days = orderedDays(activeDays);

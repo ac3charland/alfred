@@ -1,4 +1,5 @@
 import {
+  beforeStartName,
   criterionKeyFrom,
   dayAccessibleName,
   formatActiveDays,
@@ -92,6 +93,16 @@ describe('dayAccessibleName', () => {
   it('reads a reasonless skip without a dangling colon', () => {
     expect(dayAccessibleName('2026-07-14', 'skipped', [], {}, null)).toBe(
       'Tuesday 14 July — skipped',
+    );
+  });
+});
+
+describe('beforeStartName', () => {
+  it('says the habit had not started, and that the day can still be filled in', () => {
+    // A pre-start cell is reachable but carries no verdict, so its name has to offer the action
+    // instead of reporting an outcome — it is the only clue that the square does anything.
+    expect(beforeStartName('2026-06-20')).toBe(
+      'Saturday 20 June — before this habit started. Log it to start the habit here',
     );
   });
 });

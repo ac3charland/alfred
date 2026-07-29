@@ -53,6 +53,7 @@ function renderEditor(properties: Partial<React.ComponentProps<typeof DayEditor>
       criteria={[WAKE, LIGHT]}
       results={{}}
       isSkipped={false}
+      isBeforeStart={false}
       onClose={onClose}
       {...properties}
     />,
@@ -103,6 +104,19 @@ describe('DayEditor — the derived header', () => {
 
     await user.click(screen.getByRole('button', { name: 'Outside for light' }));
     expect(screen.getByText('Earned — costs nothing')).toBeInTheDocument();
+  });
+
+  it('names the start move ahead of the allowance on a day behind the habit’s start', () => {
+    // The bigger consequence, and the only one the owner has no other way to learn.
+    renderEditor({ isBeforeStart: true, results: { wake: 364 } });
+
+    expect(screen.getByText('Logging this moves the start back')).toBeInTheDocument();
+    expect(screen.queryByText("Spends this week's allowance")).not.toBeInTheDocument();
+  });
+
+  it('still derives the verdict on a pre-start day — the header is never blank', () => {
+    renderEditor({ isBeforeStart: true, results: { wake: 364, light: true } });
+    expect(screen.getByText('Met')).toBeInTheDocument();
   });
 });
 
@@ -163,6 +177,7 @@ describe('DayEditor — committing a day', () => {
         criteria={[WAKE, LIGHT]}
         results={{}}
         isSkipped={false}
+        isBeforeStart={false}
         onClose={jest.fn()}
       />,
       { habits: { habits: [HABIT], entries: [], today: DATE } },
