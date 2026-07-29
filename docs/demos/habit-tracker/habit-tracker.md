@@ -89,7 +89,9 @@ Weekdays down, ISO weeks across. The sidebar carries a **1** — today is scored
 
 ![](habit-tracker-image-5.png)
 
-Close up, the connectors are the streak walk made visible. A forgiven `partial` keeps the run alive but its links either side go **grey**; the `missed` day below it is followed by an unlogged one, and two spent days in one rolling week exceed the allowance, so **nothing crosses** — the run restarts underneath. The `skipped` day (the dash) costs nothing, so its links stay **lit**. Today carries the teal ring.
+Close up, the connectors are the streak walk made visible. A forgiven `partial` keeps the run alive but its links either side go **grey**; the `missed` day a column over is followed by an unlogged one, and two spent days in one rolling week exceed the allowance, so **nothing crosses** — the run restarts underneath. The `skipped` day costs nothing, so its links stay **lit**. Today carries the teal ring.
+
+Every square is a plain plate: each outcome has its own hue and its own legend swatch, so a mark layered on the face would only be one more thing to decode for a distinction the colour has already made. The one exception is the dash on the skipped day — excused and unlogged share a neutral plate, so that pair is the only one colour can't tell apart.
 
 ![](habit-tracker-image-6.png)
 
@@ -120,7 +122,7 @@ cat docs/demos/habit-tracker/skipped-cell-name.txt
 ```
 
 ```output
-Tuesday 28 July — skipped: flu, off all week
+Wednesday 29 July — skipped: flu, off all week
 ```
 
 ## The keyed write
