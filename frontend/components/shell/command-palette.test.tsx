@@ -9,7 +9,13 @@ import { ToastProvider } from '@/lib/stores/toast-store';
 import type { Folder, Project } from '@/lib/types';
 
 function makeFolder(overrides: Partial<Folder> = {}): Folder {
-  return { id: 'f1', name: 'A folder', created_at: '2025-01-01T00:00:00Z', ...overrides };
+  return {
+    id: 'f1',
+    name: 'A folder',
+    created_at: '2025-01-01T00:00:00Z',
+    sort_order: 1,
+    ...overrides,
+  };
 }
 
 function makeProject(overrides: Partial<Project> = {}): Project {

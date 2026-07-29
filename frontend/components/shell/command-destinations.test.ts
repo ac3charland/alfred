@@ -10,6 +10,7 @@ function makeFolder(overrides: Partial<Folder> = {}): Folder {
     id: 'f1',
     name: 'A folder',
     created_at: '2025-01-01T00:00:00Z',
+    sort_order: 1,
     ...overrides,
   };
 }

@@ -8,7 +8,9 @@ import { SearchProvider, useSearchActions } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
 import type { CodeStory, Folder, Item } from '@/lib/types';
 
-const FOLDERS: Folder[] = [{ id: 'f1', name: 'Software', created_at: '2025-01-01T00:00:00Z' }];
+const FOLDERS: Folder[] = [
+  { id: 'f1', name: 'Software', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+];
 
 const task = (overrides: Partial<Item>): Item => ({
   id: 'i1',

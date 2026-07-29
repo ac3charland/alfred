@@ -37,7 +37,9 @@ function makeItem(id: string, overrides: Partial<Item> = {}): Item {
   return { ...BASE, id, title: id, ...overrides };
 }
 
-const FOLDERS: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' }];
+const FOLDERS: Folder[] = [
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+];
 
 /** The Inbox in select mode: the header toggle, the selectable list, and the bulk bar. */
 function InboxHarness() {

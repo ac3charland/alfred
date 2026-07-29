@@ -155,7 +155,9 @@ describe('PriorityView', () => {
   });
 
   it('labels each row with its folder name, or "Inbox" when unfiled', () => {
-    const folders: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z' }];
+    const folders: Folder[] = [
+      { id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z', sort_order: 1 },
+    ];
     renderWithProviders(<PriorityView />, {
       folders,
       tasks: [
@@ -282,7 +284,9 @@ describe('PriorityView', () => {
 
   describe('clicking a row navigates to the task and focuses it (ALF-96)', () => {
     it('links each row to its containing view — folder, or the inbox when unfiled', () => {
-      const folders: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z' }];
+      const folders: Folder[] = [
+        { id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z', sort_order: 1 },
+      ];
       renderWithProviders(<PriorityView />, {
         folders,
         tasks: [
@@ -296,7 +300,9 @@ describe('PriorityView', () => {
     });
 
     it('on a plain click, switches to the folder view and fires the row-focus event', () => {
-      const folders: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z' }];
+      const folders: Folder[] = [
+        { id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z', sort_order: 1 },
+      ];
       const pushState = jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
       const focusIds: string[] = [];
       const listener = (event_: Event) => {

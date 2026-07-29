@@ -31,7 +31,9 @@ function makeItem(id: string, overrides: Partial<Item> = {}): Item {
   return { ...BASE, id, ...overrides };
 }
 
-const FOLDERS: Folder[] = [{ id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' }];
+const FOLDERS: Folder[] = [
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+];
 
 const UNCLASSIFIED: Item[] = [
   makeItem('u1', { title: 'Email the accountant about Q2' }),
