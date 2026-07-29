@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { CELL_PLATE, CELL_SHAPE, CELL_TODAY, LINK_TONE } from '@/components/habits/habits.styles';
+import { CELL_PLATE, CELL_TODAY, LINK_TONE } from '@/components/habits/habits.styles';
 import { isoWeekday } from '@/lib/habits';
 import type { HabitDay } from '@/lib/habits';
 import { cn } from '@/lib/utils';
@@ -56,8 +56,6 @@ export function HistoryCell({ day, previousLink, name, onOpen }: HistoryCellProp
   // A Monday inherits the tone of the link that reached it from the preceding Sunday.
   const inTone = isoWeekday(day.date) === 1 && previousLink !== 'none' ? previousLink : undefined;
 
-  const shape = CELL_SHAPE[day.status];
-
   const plate = (
     <span
       className={cn(
@@ -66,7 +64,9 @@ export function HistoryCell({ day, previousLink, name, onOpen }: HistoryCellProp
         day.isToday && CELL_TODAY,
       )}
     >
-      {shape !== '' && <span aria-hidden="true" className={cn('absolute', shape)} />}
+      {/* The only mark drawn on a face, and only because colour can't do this one: an excused
+          day and an unlogged one share the same neutral plate. Every other state has its own
+          hue and its own legend swatch, so its square is left plain. */}
       {day.status === 'skipped' && (
         <span
           aria-hidden="true"
