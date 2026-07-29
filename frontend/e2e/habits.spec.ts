@@ -17,6 +17,15 @@ function localToday(): string {
   ).padStart(2, '0')}`;
 }
 
+/** A local calendar date `count` days behind today — the same arithmetic the grid walks. */
+function daysAgo(count: number): string {
+  const then = new Date();
+  then.setDate(then.getDate() - count);
+  return `${String(then.getFullYear())}-${String(then.getMonth() + 1).padStart(2, '0')}-${String(
+    then.getDate(),
+  ).padStart(2, '0')}`;
+}
+
 test('creates a habit, logs today, and keeps it across a reload', async ({ page, seed }) => {
   await seed({});
   await page.goto('/priority');
@@ -116,6 +125,43 @@ test('skipping a day takes a second step and a reason, and the reason survives i
   await expect(
     page.locator(`[data-date="${today}"] button`).and(page.locator('[aria-label*="skipped: flu"]')),
   ).toBeVisible();
+});
+
+test('filling a day behind the start date moves the habit back to it, and it sticks', async ({
+  page,
+  seed,
+}) => {
+  // The shape that made this a bug: a habit defined today over a routine already being kept, so
+  // every day worth backfilling sits before `started_on`.
+  const habit = makeHabit('Morning routine', { started_on: localToday() });
+  await seed({ habits: [habit] });
+  await page.goto('/habits');
+
+  const backfill = daysAgo(3);
+  await expect(page.locator(`[data-date="${backfill}"]`)).toHaveAttribute(
+    'data-status',
+    'not_applicable',
+  );
+
+  await page.locator(`[data-date="${backfill}"] button`).click();
+  await expect(page.getByText('Logging this moves the start back')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Outside for light', exact: true }).click();
+  await expect(page.getByText('Met', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // The day is scored, and the days between it and the old start have joined the habit's life —
+  // they read as unlogged now, which is the whole point: they are days it was running.
+  await page.reload();
+  await expect(page.locator(`[data-date="${backfill}"]`)).toHaveAttribute('data-status', 'met');
+  await expect(page.locator(`[data-date="${daysAgo(2)}"]`)).toHaveAttribute(
+    'data-status',
+    'unknown',
+  );
+  await expect(page.locator(`[data-date="${daysAgo(4)}"]`)).toHaveAttribute(
+    'data-status',
+    'not_applicable',
+  );
 });
 
 test('a chain crosses a forgiven day in grey and breaks where the allowance runs out', async ({
