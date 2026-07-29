@@ -3,12 +3,13 @@
 import * as React from 'react';
 
 import { createFolder, deleteFolder, updateFolder } from '@/lib/api-client';
+import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { insertAt } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
-import { makeOptimisticFolder } from '@/lib/tree';
+import { isTempId, makeOptimisticFolder } from '@/lib/tree';
 import type { Folder } from '@/lib/types';
 
 /**
@@ -28,6 +29,12 @@ interface FolderActions {
   addFolder: (name: string) => Promise<void>;
   /** Optimistically rename a folder, rolling back the name on failure. */
   renameFolder: (id: string, name: string) => Promise<void>;
+  /**
+   * Optimistically move a folder to a new fractional rank in the sidebar list (ALF-153),
+   * rolling the rank back on failure. `sortOrder` is the slot's midpoint — the caller
+   * (a gap drop or a "Move up"/"Move down" menu action) computes it from the neighbours.
+   */
+  reorderFolder: (id: string, sortOrder: number) => Promise<void>;
   /** Optimistically remove a folder, restoring it at its position on failure. */
   removeFolder: (id: string) => Promise<void>;
 }
@@ -82,6 +89,15 @@ export function FoldersProvider({
 }) {
   const [folders, dispatch] = React.useReducer(foldersReducer, initialFolders);
 
+  // The sidebar's display order is the manual rank (ALF-153). Sorting HERE — rather than in
+  // each consumer — means an optimistic reorder re-sorts the list the instant it dispatches,
+  // and every reader (the sidebar, the row menu's "Move to…", the command palette) shows the
+  // same order. `stableSorted` leaves folders that tie in their seeded order.
+  const orderedFolders = React.useMemo(
+    () => stableSorted(folders, (a, b) => a.sort_order - b.sort_order),
+    [folders],
+  );
+
   // Latest state, readable inside the stable (never-rebuilt) action closures so they
   // can capture pre-mutation values for rollback without going stale. Synced via an
   // effect (not a render-body write, which react-hooks/refs forbids); actions fire
@@ -126,7 +142,7 @@ export function FoldersProvider({
           optimistic: () => {
             dispatch({ type: 'patch', id, patch: { name } });
           },
-          apiCall: () => updateFolder(id, name),
+          apiCall: () => updateFolder(id, { name }),
           reconcile: (saved) => {
             dispatch({ type: 'replace', id, folder: saved });
           },
@@ -135,6 +151,26 @@ export function FoldersProvider({
           },
           onError: () => {
             showToastRef.current("Couldn't rename folder");
+          },
+        });
+      },
+      async reorderFolder(id, sortOrder) {
+        const previous = foldersRef.current.find((folder) => folder.id === id);
+        // A folder that hasn't reconciled yet has no server row to PATCH (its temp id 404s).
+        if (previous === undefined || isTempId(id)) return;
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', id, patch: { sort_order: sortOrder } });
+          },
+          apiCall: () => updateFolder(id, { sort_order: sortOrder }),
+          reconcile: (saved) => {
+            dispatch({ type: 'replace', id, folder: saved });
+          },
+          rollback: () => {
+            dispatch({ type: 'patch', id, patch: { sort_order: previous.sort_order } });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't move folder");
           },
         });
       },
@@ -163,12 +199,12 @@ export function FoldersProvider({
 
   return (
     <ActionsContext.Provider value={actions}>
-      <StateContext.Provider value={folders}>{children}</StateContext.Provider>
+      <StateContext.Provider value={orderedFolders}>{children}</StateContext.Provider>
     </ActionsContext.Provider>
   );
 }
 
-/** Read the current folder list. Throws if used outside a FoldersProvider. */
+/** Read the folder list in display order (manual rank). Throws outside a FoldersProvider. */
 export function useFolders(): Folder[] {
   return useStateValue('useFolders');
 }
