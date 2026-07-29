@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { todayIn } from '@/lib/habits';
 import type { Habit, HabitEntry } from '@/lib/types';
 
 import {
@@ -32,7 +33,12 @@ function noop(): void {
   return undefined;
 }
 
-const TODAY = '2026-07-28';
+/**
+ * Derived from the clock, never a literal: the provider corrects `today` to the BROWSER's date
+ * in a mount effect, so a hard-coded fixture silently stops matching the moment the real date
+ * rolls past it — the test would pass all day and fail after midnight.
+ */
+const TODAY = todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 const MORNING: Habit = {
   id: 'habit-1',
