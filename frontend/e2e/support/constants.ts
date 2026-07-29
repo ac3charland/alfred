@@ -170,6 +170,28 @@ export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
 
 // ── Habit seed builders. ──
 
+/**
+ * The browser's own today — the day the grid rings and the sidebar badge counts. Local, not
+ * UTC: a habit's day is the owner's calendar day, so a UTC date would name yesterday's square
+ * for anyone west of Greenwich.
+ */
+export function localToday(): string {
+  return formatLocal(new Date());
+}
+
+/** A local calendar date `count` days behind today — the same arithmetic the grid walks. */
+export function localDaysAgo(count: number): string {
+  const then = new Date();
+  then.setDate(then.getDate() - count);
+  return formatLocal(then);
+}
+
+function formatLocal(date: Date): string {
+  return `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+}
+
 /** A habit definition. Defaults to the reference habit's cadence: every day, one miss a week. */
 export function makeHabit(name: string, overrides: Partial<Habit> = {}): Habit {
   return {
