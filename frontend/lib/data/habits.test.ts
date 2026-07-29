@@ -1,12 +1,14 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
-import { addDays } from '@/lib/habits/dates';
-import type { HabitEntry } from '@/lib/types';
+import { APP_WINDOW_DAYS, addDays, todayIn } from '@/lib/habits/dates';
+import * as supabaseServer from '@/lib/supabase/server';
+import type { Habit, HabitEntry } from '@/lib/types';
 
-import { MAX_PAGES, PAGE_SIZE, getHabitsWithHistory } from './habits';
+import { MAX_PAGES, PAGE_SIZE, getHabitSeed, getHabitsWithHistory } from './habits';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
+const mockCreateClient = jest.mocked(supabaseServer.createClient);
 
 const HABITS = [
   { id: 'habit-1', name: 'Morning routine', archived_at: null, sort_order: 1 },
@@ -99,6 +101,12 @@ function makeClient(results: { habits: Result; habit_entries?: Result[] }) {
   });
 
   return { client: { from } as never, from, calls };
+}
+
+/** Point the server-only `createClient` at a stand-in holding `rows` — the seed's whole world. */
+function seedFrom(rows: { habits: Result; habit_entries?: Result[] }): void {
+  const { client } = makeClient(rows);
+  mockCreateClient.mockResolvedValue(client);
 }
 
 describe('getHabitsWithHistory', () => {
@@ -251,5 +259,106 @@ describe('getHabitsWithHistory', () => {
       expect(result.entriesByHabit.size).toBe(0);
       expect(calls.habit_entries).toHaveLength(MAX_PAGES);
     });
+  });
+});
+
+/**
+ * The shell's seed. `today` is derived from the clock rather than pinned to a literal, because
+ * the seed computes its own UTC today — a fixture date would drift out of the window the
+ * moment the real calendar moved past it.
+ */
+describe('getHabitSeed', () => {
+  const TODAY = todayIn('UTC');
+
+  /** A daily habit that has been running far longer than the window the client holds. */
+  function habit(id: string, name: string, sortOrder: number): Habit {
+    return {
+      id,
+      name,
+      notes: null,
+      criteria: [{ key: 'done', label: 'Done', kind: 'boolean' }],
+      active_days: [1, 2, 3, 4, 5, 6, 7],
+      allowance: 1,
+      started_on: addDays(TODAY, -300),
+      archived_at: null,
+      sort_order: sortOrder,
+      created_at: '2025-01-01T00:00:00Z',
+    };
+  }
+
+  const MORNING = habit('habit-1', 'Morning routine', 1);
+  const EVENING = habit('habit-2', 'Evening wind-down', 2);
+
+  /** A met entry `daysAgo` before today. */
+  function met(habitId: string, daysAgo: number): HabitEntry {
+    return entry(habitId, addDays(TODAY, -daysAgo));
+  }
+
+  it('windows the entries it hands the client while scoring on all of them', async () => {
+    // The one figure this story exists to protect: a day older than the window is absent from
+    // the entries yet still banked in the stats.
+    seedFrom({
+      habits: { data: [MORNING], error: null },
+      habit_entries: [{ data: [met(MORNING.id, 200), met(MORNING.id, 1)], error: null }],
+    });
+
+    const seed = await getHabitSeed();
+
+    expect(seed.entries.map((row) => row.entry_date)).toStrictEqual([addDays(TODAY, -1)]);
+    expect(seed.stats[MORNING.id]?.metDaysTotal).toBe(2);
+  });
+
+  it('reaches one day further back than the window the client walks', async () => {
+    // A browser west of UTC walks a window ending on the server's YESTERDAY, so the seed has to
+    // hold one extra day for that window to stay a subset of what was sent.
+    seedFrom({
+      habits: { data: [MORNING], error: null },
+      habit_entries: [
+        {
+          data: [met(MORNING.id, APP_WINDOW_DAYS), met(MORNING.id, APP_WINDOW_DAYS + 1)],
+          error: null,
+        },
+      ],
+    });
+
+    const seed = await getHabitSeed();
+
+    expect(seed.entries.map((row) => row.entry_date)).toStrictEqual([
+      addDays(TODAY, -APP_WINDOW_DAYS),
+    ]);
+  });
+
+  it('preserves the display order the view renders habits in', async () => {
+    seedFrom({
+      habits: { data: [MORNING, EVENING], error: null },
+      habit_entries: [{ data: [], error: null }],
+    });
+
+    const seed = await getHabitSeed();
+
+    expect(seed.habits.map((row) => row.id)).toStrictEqual([MORNING.id, EVENING.id]);
+    expect(Object.keys(seed.stats)).toStrictEqual([MORNING.id, EVENING.id]);
+  });
+
+  it('answers with nothing at all when there are no habits', async () => {
+    seedFrom({ habits: { data: [], error: null } });
+
+    const seed = await getHabitSeed();
+
+    expect(seed).toStrictEqual({ habits: [], entries: [], stats: {} });
+  });
+
+  it('degrades to the habits alone when the entry read fails, never to a blank shell', async () => {
+    // The rail then renders its live window walk — understated for an old habit, but present.
+    seedFrom({
+      habits: { data: [MORNING], error: null },
+      habit_entries: [{ data: null, error: { message: 'entries exploded' } }],
+    });
+
+    const seed = await getHabitSeed();
+
+    expect(seed.habits).toStrictEqual([MORNING]);
+    expect(seed.entries).toStrictEqual([]);
+    expect(seed.stats).toStrictEqual({});
   });
 });
