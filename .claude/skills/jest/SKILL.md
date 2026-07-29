@@ -181,6 +181,12 @@ transform: {
 
 ## Common Pitfalls
 
+**Never hard-code a date a component resolves from the real clock.** A fixture pinned to
+`'2026-07-28'` passes all day and fails after midnight — a time bomb that lands on whoever commits
+next, with no connection to their change. Where the code under test derives "today" itself (the
+habits store corrects its seeded date to the browser's in a mount effect), derive the fixture the
+same way rather than asserting against a literal.
+
 **Never commit `test.only`, `it.only`, `describe.only`, `fit`, or `fdescribe`.** eslint-plugin-jest's `no-focused-tests` rule fires as an error in alfred. The ESLint gate in `check:fast` will block the commit.
 
 **Never commit `test.skip` or `it.skip`.** alfred's ESLint config treats `no-disabled-tests` as an error. Fix or delete the test.
