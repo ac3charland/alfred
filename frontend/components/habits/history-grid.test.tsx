@@ -91,6 +91,13 @@ function connector(date: string, place: 'out' | 'wrap-in'): Element | null {
   return cell(date).querySelector(`[data-connector="${CSS.escape(place)}"]`);
 }
 
+/** Everything drawn INSIDE a day's square, ignoring the connectors that sit outside it. */
+function decorations(date: string): Element[] {
+  const button = cell(date).querySelector('button');
+  if (button === null) throw new Error(`no button rendered for ${date}`);
+  return [...button.querySelectorAll('[aria-hidden="true"]')];
+}
+
 describe('HistoryGrid — what is reachable', () => {
   it('gives every scored day a button carrying its date, status and recorded values', () => {
     renderGrid(Object.fromEntries([entry('2026-07-13', 'met')]));
@@ -202,6 +209,25 @@ describe('HistoryGrid — the connectors', () => {
     renderGrid(allMet('2026-07-13', 18));
     expect(connector(TODAY, 'out')).toBeNull();
     expect(connectorTone(TODAY, 'out')).toBeUndefined();
+  });
+});
+
+describe('HistoryGrid — what a square carries', () => {
+  it('draws nothing inside a partial or a missed square — the plate and the legend say it', () => {
+    renderGrid(Object.fromEntries([entry('2026-07-14', 'partial'), entry('2026-07-15', 'missed')]));
+
+    // Each of these has its own hue and its own legend swatch, so a mark on the face is one
+    // more thing to decode for a distinction the colour already draws.
+    expect(decorations('2026-07-14')).toHaveLength(0);
+    expect(decorations('2026-07-15')).toHaveLength(0);
+  });
+
+  it('keeps the dash on a skipped square, which shares its neutral plate with an unlogged day', () => {
+    renderGrid(Object.fromEntries([entry('2026-07-14', 'skipped', { note: 'flu' })]));
+
+    // The one pair colour CANNOT separate: excused and unlogged are the same neutral plate.
+    expect(decorations('2026-07-14')).toHaveLength(1);
+    expect(decorations('2026-07-15')).toHaveLength(0);
   });
 });
 

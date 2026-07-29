@@ -5,9 +5,13 @@ import type { CellStatus } from '@/lib/habits';
  * are unit-testable and every cell state is declared in one place.
  *
  * Cells are dim tinted plates with a 1px accent rim; the CONNECTOR carries the light. That
- * puts the emphasis on the unbroken run rather than on individual days — and it means the hue
- * is doing less work than a solid fill would, so every state also carries a SHAPE cue (see
- * {@link CELL_SHAPE}) and stays distinguishable with no colour at all.
+ * puts the emphasis on the unbroken run rather than on individual days.
+ *
+ * The plate is the WHOLE of a cell's treatment — nothing is drawn on its face. Each outcome has
+ * its own hue and its own legend swatch, so a mark layered on top only adds something to decode
+ * for a distinction the colour has already made. The single exception lives in the cell itself:
+ * `skipped` and `unknown` share one neutral plate, so that pair — and only that pair — is told
+ * apart by a rim and a centred dash.
  */
 
 /** Cell geometry — the square and the gap the connectors bridge, shared by grid and cell. */
@@ -25,27 +29,6 @@ export const CELL_PLATE: Record<CellStatus, string> = {
   unknown: 'bg-habit-unknown',
   // Before the habit started, off its weekday set, or still ahead.
   not_applicable: 'border border-dashed border-border',
-};
-
-/**
- * The non-colour cue layered over the plate, so met / partial / missed / skipped / unknown stay
- * apart in greyscale: a uniform face, a half-filled one, an inner ring, a centred dash, and
- * nothing at all.
- *
- * Each cue is an ABSOLUTE overlay inside the plate, positioned by `inset-*`. A margin-based
- * inset on a `w-full` element measures 100% of the plate and then pushes itself off it, which
- * is how the inner ring ended up hanging past two of the plate's edges.
- */
-export const CELL_SHAPE: Record<CellStatus, string> = {
-  met: '',
-  // Half the face filled, reading as half the day earned. The tint is the status colour, so
-  // the SHAPE — full vs half — is what carries the meaning with no colour at all.
-  partial:
-    'inset-0 rounded-md bg-[linear-gradient(to_top,var(--color-accent-amber)_50%,transparent_50%)] opacity-45',
-  missed: 'inset-[5px] rounded-[3px] ring-1 ring-accent-red/60',
-  skipped: '',
-  unknown: '',
-  not_applicable: '',
 };
 
 /** Today's marker: the teal ring the epic reserves for "you are here". */
