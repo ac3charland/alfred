@@ -62,3 +62,5 @@ refinement PR. Neither of the two prior refinement PRs (ALF-123, ALF-130) carrie
 
 - [ ] `docs/demos/alf-131-pr-ratio-spec/` — delete the folder (doc + PNG); a spec-only refinement
       branch owes no demo, and the spec is already linked from the PR via htmlpreview.
+- [ ] `docs/demos/alf-151-habit-edit-spec/` — same shape, same cause (a `commitlint` SKILL.md note
+      on a spec-only branch). Delete the folder; the spec is linked from the PR via htmlpreview.
