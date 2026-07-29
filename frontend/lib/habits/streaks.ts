@@ -1,4 +1,4 @@
-import { addDays, isoWeekday } from '@/lib/habits/dates';
+import { type DateWindow, addDays, isoWeekday } from '@/lib/habits/dates';
 import type { CellStatus, FormationStage, HabitDay, HabitStats } from '@/lib/habits/types';
 import type { Habit, HabitEntry } from '@/lib/types';
 
@@ -13,9 +13,9 @@ import type { Habit, HabitEntry } from '@/lib/types';
  * WINDOW LIMITATION: `metDaysTotal` and `longestStreak` are all-history figures, but the shell
  * seeds a bounded trailing window of entries. Handed that window, this module reads every day
  * before it as unlogged, so those two (and any run reaching back past the window) are figures
- * over the entries supplied, not over all history. Nothing renders them yet; the read endpoint
- * that returns precomputed all-history scalars is the ticket where the distinction starts to
- * matter.
+ * over the entries supplied, not over all history. `GET /api/habits` therefore hands it EVERY
+ * entry and passes the requested span as the optional `window` argument, which scopes the hit
+ * rate and the counts without touching the scalars.
  */
 
 /** The D6 ladder, keyed to cumulative met days. It never decreases — banked days don't unbank. */
@@ -182,19 +182,35 @@ export function buildHabitCalendar(
 /**
  * The scalars beside the grid. Measured over `[started_on, today]` — see the module's window
  * limitation for what that means when the caller holds a bounded window of entries.
+ *
+ * `window` scopes ONLY `hitRate` and `counts`, to the applicable days inside it. Every other
+ * figure stays all-history: the formation stage is keyed to cumulative met days, so a windowed
+ * `metDaysTotal` would demote a habit for the crime of being asked about a short span. Because
+ * the window is intersected with the days actually walked, one reaching before `started_on` or
+ * past `today` adds no phantom `unknown` days. Omitting it counts every applicable day.
  */
-export function computeHabitStats(habit: Habit, entries: HabitEntry[], today: string): HabitStats {
+export function computeHabitStats(
+  habit: Habit,
+  entries: HabitEntry[],
+  today: string,
+  window?: DateWindow,
+): HabitStats {
   const byDate = entriesByDate(habit, entries);
   const { days, spent, broken } = walkFacts(habit, byDate, habit.started_on, today, today);
   const runs = runsFrom(days, broken);
   const last = days.at(-1);
   const currentRun = runs.find((run) => last !== undefined && run.includes(last));
 
+  const countedDays =
+    window === undefined ? days : days.filter((date) => date >= window.from && date <= window.to);
+
   const counts = { met: 0, partial: 0, missed: 0, skipped: 0, unknown: 0 };
-  for (const date of days) {
+  for (const date of countedDays) {
     const status = byDate.get(date)?.status ?? 'unknown';
     counts[status] += 1;
   }
+
+  const metDaysTotal = days.filter((date) => byDate.get(date)?.status === 'met').length;
 
   const runLengths = runs.map((run) => metDaysIn(run, byDate));
   // Only ENDED runs feed the average, so a long healthy streak doesn't drag it down while it
@@ -217,8 +233,8 @@ export function computeHabitStats(habit: Habit, entries: HabitEntry[], today: st
         : endedLengths.reduce((total, length) => total + length, 0) / endedLengths.length,
     allowanceRemaining: Math.max(0, habit.allowance - spentThisWeek),
     hitRate: rated === 0 ? null : counts.met / rated,
-    metDaysTotal: counts.met,
-    stage: formationStage(counts.met),
+    metDaysTotal,
+    stage: formationStage(metDaysTotal),
     counts,
   };
 }

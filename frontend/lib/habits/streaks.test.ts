@@ -338,6 +338,67 @@ describe('the scalars', () => {
   });
 });
 
+describe('the optional stats window', () => {
+  // Two full weeks from a Monday: a solid first week, a ragged second one.
+  const habit = makeHabit({ allowance: 0, started_on: '2026-07-27' });
+  const entries = log('2026-07-27', 'mmmmmmm' + 'mxp.mms');
+  const TODAY = '2026-08-09';
+
+  it('scopes the counts and the hit rate to the window', () => {
+    const firstWeek = computeHabitStats(habit, entries, TODAY, {
+      from: '2026-07-27',
+      to: '2026-08-02',
+    });
+    expect(firstWeek.counts).toEqual({ met: 7, partial: 0, missed: 0, skipped: 0, unknown: 0 });
+    expect(firstWeek.hitRate).toBe(1);
+
+    const secondWeek = computeHabitStats(habit, entries, TODAY, {
+      from: '2026-08-03',
+      to: '2026-08-09',
+    });
+    expect(secondWeek.counts).toEqual({ met: 3, partial: 1, missed: 1, skipped: 1, unknown: 1 });
+    // 3 met of 5 rated; the skipped and unlogged days sit on neither side.
+    expect(secondWeek.hitRate).toBeCloseTo(0.6);
+  });
+
+  it('leaves every all-history scalar identical whatever the window', () => {
+    const wide = computeHabitStats(habit, entries, TODAY, { from: '2026-07-27', to: TODAY });
+    const narrow = computeHabitStats(habit, entries, TODAY, {
+      from: '2026-08-08',
+      to: '2026-08-09',
+    });
+
+    for (const stats of [wide, narrow]) {
+      expect(stats.currentStreak).toBe(2);
+      expect(stats.longestStreak).toBe(8);
+      expect(stats.metDaysTotal).toBe(10);
+      expect(stats.averageStreak).toBe(8);
+      expect(stats.allowanceRemaining).toBe(0);
+      expect(stats.stage).toBe('fully_deliberate');
+    }
+  });
+
+  it('adds no phantom unknown days outside [started_on, today]', () => {
+    const stats = computeHabitStats(habit, entries, TODAY, {
+      from: '2026-01-01',
+      to: '2026-12-31',
+    });
+    // The window is a whole year; only the fourteen tracked days are counted.
+    const total = Object.values(stats.counts).reduce((sum, count) => sum + count, 0);
+    expect(total).toBe(14);
+    expect(stats.counts.unknown).toBe(1);
+  });
+
+  it('omitting the window counts every applicable day', () => {
+    const windowless = computeHabitStats(habit, entries, TODAY);
+    const everything = computeHabitStats(habit, entries, TODAY, {
+      from: '2026-07-27',
+      to: TODAY,
+    });
+    expect(windowless).toStrictEqual(everything);
+  });
+});
+
 describe('formationStage', () => {
   it.each([
     [0, 'fully_deliberate'],
