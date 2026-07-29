@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/atoms/popover';
 import { DayEditor } from '@/components/habits/day-editor';
-import { dayAccessibleName } from '@/components/habits/habit-format';
+import { beforeStartName, dayAccessibleName } from '@/components/habits/habit-format';
 import { HistoryCell } from '@/components/habits/history-cell';
 import { addDays, buildHabitCalendar, isoWeekday, parseCriteria, parseResults } from '@/lib/habits';
 import type { Habit, HabitEntry } from '@/lib/types';
@@ -92,21 +92,27 @@ export function HistoryGrid({
                 key={day.date}
                 day={day}
                 previousLink={calendar[index - 1]?.link ?? 'none'}
-                name={dayAccessibleName(
-                  day.date,
-                  day.status,
-                  criteria,
-                  parseResults(entries[day.date]?.results ?? null),
-                  entries[day.date]?.note ?? null,
-                )}
-                {...(day.status === 'not_applicable'
-                  ? {}
-                  : {
+                name={
+                  // A loggable day with no verdict is a pre-start one: `canLog` already ruled
+                  // out the future, the off-weekday and the archived.
+                  day.status === 'not_applicable'
+                    ? beforeStartName(day.date)
+                    : dayAccessibleName(
+                        day.date,
+                        day.status,
+                        criteria,
+                        parseResults(entries[day.date]?.results ?? null),
+                        entries[day.date]?.note ?? null,
+                      )
+                }
+                {...(day.canLog
+                  ? {
                       onOpen: (event: React.MouseEvent<HTMLButtonElement>) => {
                         openCellRef.current = event.currentTarget;
                         setOpenDate(day.date);
                       },
-                    })}
+                    }
+                  : {})}
               />
             ))}
           </div>
@@ -130,6 +136,7 @@ export function HistoryGrid({
             criteria={criteria}
             results={parseResults(openEntry?.results ?? null)}
             isSkipped={openEntry?.status === 'skipped'}
+            isBeforeStart={openDate < habit.started_on}
             onClose={() => {
               setOpenDate(undefined);
             }}

@@ -44,6 +44,8 @@ interface DayEditorProperties {
   results: HabitResults;
   /** Whether the day is currently excused — the header says so instead of a derived verdict. */
   isSkipped: boolean;
+  /** Whether the day predates the habit's start, so recording it will move the start back. */
+  isBeforeStart: boolean;
   onClose: () => void;
 }
 
@@ -152,6 +154,18 @@ function MeasuredField({
 }
 
 /**
+ * The footer line, naming what recording this day costs the habit — or, behind its start, what
+ * it moves. The start line comes first because it is the bigger consequence and the one the
+ * owner has no other way to learn: the days between here and the old start become part of the
+ * habit's life, and an unlogged one there spends allowance like any other.
+ */
+function costLine(status: DerivedStatus, isSkipped: boolean, isBeforeStart: boolean): string {
+  if (isBeforeStart) return 'Logging this moves the start back';
+  if (isSkipped) return 'Excused — costs nothing';
+  return status === 'met' ? 'Earned — costs nothing' : "Spends this week's allowance";
+}
+
+/**
  * The day editor: one row per criterion, and a verdict in the header that is COMPUTED, never
  * typed. Because the header re-derives on every change it cannot be made to disagree with the
  * criteria beneath it — that is what "derived only" buys.
@@ -166,6 +180,7 @@ export function DayEditor({
   criteria,
   results,
   isSkipped,
+  isBeforeStart,
   onClose,
 }: DayEditorProperties) {
   const { logDay, skipDay } = useHabitActions();
@@ -246,11 +261,7 @@ export function DayEditor({
       <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-border pt-1.5">
         {/* Named in the owner's terms, and only when there is a cost to name. */}
         <span className="text-[11px] text-muted-foreground">
-          {isSkipped
-            ? 'Excused — costs nothing'
-            : status === 'met'
-              ? 'Earned — costs nothing'
-              : "Spends this week's allowance"}
+          {costLine(status, isSkipped, isBeforeStart)}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

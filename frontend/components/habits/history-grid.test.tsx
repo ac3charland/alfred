@@ -129,11 +129,23 @@ describe('HistoryGrid — what is reachable', () => {
     expect(cell('2026-07-31').querySelector('button')).toBeNull();
   });
 
-  it('leaves a day before the habit started out of the tab order too', () => {
+  it('offers a day before the habit started, naming what filling it will do', () => {
     const later: Habit = { ...HABIT, started_on: '2026-07-20' };
     renderGrid({}, later);
-    expect(cell('2026-07-13').querySelector('button')).toBeNull();
-    expect(cell('2026-07-20').querySelector('button')).not.toBeNull();
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Monday 13 July — before this habit started. Log it to start the habit here',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves a day off the weekday set out of the tab order, whatever the start date', () => {
+    // No start date makes a Saturday count, so there is nothing to offer on one.
+    const weekdays: Habit = { ...HABIT, active_days: [1, 2, 3, 4, 5], started_on: '2026-07-20' };
+    renderGrid({}, weekdays);
+    expect(cell('2026-07-18').querySelector('button')).toBeNull();
+    expect(cell('2026-07-13').querySelector('button')).not.toBeNull();
   });
 
   it('renders one cell per day of the padded window, so every column is a whole week', () => {
@@ -241,6 +253,19 @@ describe('HistoryGrid — opening the editor', () => {
     expect(screen.getByText('Mon 13 Jul')).toBeInTheDocument();
     expect(screen.getByLabelText('Up by 6:15')).toHaveValue('06:04');
     expect(screen.getByRole('button', { name: 'Outside for light' })).toBeInTheDocument();
+  });
+
+  it('opens a pre-start day, saying that recording it will move the start here', async () => {
+    const user = userEvent.setup();
+    const later: Habit = { ...HABIT, started_on: '2026-07-20' };
+    renderGrid({}, later);
+
+    await user.click(screen.getByRole('button', { name: /Monday 13 July/ }));
+
+    expect(screen.getByText('Mon 13 Jul')).toBeInTheDocument();
+    // The consequence is named where the cost of an ordinary day is named — the owner should
+    // not have to discover that a backfill rewrote the habit's start.
+    expect(screen.getByText('Logging this moves the start back')).toBeInTheDocument();
   });
 
   it('opens on Enter from the keyboard and returns focus to the cell on Escape', async () => {
