@@ -29,6 +29,8 @@ interface Options {
   habit?: unknown;
   loadError?: { message: string; code?: string } | undefined;
   upsertError?: { message: string; code?: string } | undefined;
+  /** The habits UPDATE that moves `started_on` back behind a backfilled day. */
+  startMoveError?: { message: string; code?: string } | undefined;
 }
 
 /**
@@ -40,11 +42,17 @@ function makeMockSupabase({
   habit = HABIT,
   loadError,
   upsertError,
+  startMoveError,
 }: Options = {}) {
+  const moveStart = jest.fn().mockResolvedValue({ error: startMoveError });
   const habits = {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     maybeSingle: jest.fn().mockResolvedValue({ data: habit, error: loadError }),
+    // The start move ends in its own `.eq()`, so it gets its own chain rather than sharing the
+    // read's `mockReturnThis` one.
+    update: jest.fn<unknown, [Record<string, unknown>]>(() => ({ eq: moveStart })),
+    _moveStart: moveStart,
   };
   const entries = {
     upsert: jest.fn<unknown, [Record<string, unknown>, unknown]>().mockReturnThis(),
@@ -238,16 +246,53 @@ describe('PUT /api/habits/[id]/entries — which day it means', () => {
     expect(supabase._entries.upsert).not.toHaveBeenCalled();
   });
 
-  it('rejects a date before the habit started with 400', async () => {
+  it('accepts a date before the habit started, moving the start back to it', async () => {
     const supabase = signedIn();
 
     const response = await PUT(put({ date: '2026-06-30', results: { light: true } }), context());
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toStrictEqual({
-      error: 'Cannot log a day before the habit started',
+    expect(response.status).toBe(200);
+    expect(upserted(supabase)['entry_date']).toBe('2026-06-30');
+    // The definition follows the evidence: a day the owner kept is a day the habit was running.
+    expect(supabase._habits.update).toHaveBeenCalledWith({ started_on: '2026-06-30' });
+    expect(supabase._habits._moveStart).toHaveBeenCalledWith('id', HABIT_ID);
+  });
+
+  it('moves the start for a pre-start SKIP too — one rule, whatever the verdict', async () => {
+    const supabase = signedIn();
+
+    const response = await PUT(
+      put({ date: '2026-06-30', status: 'skipped', note: 'travelling' }),
+      context(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(supabase._habits.update).toHaveBeenCalledWith({ started_on: '2026-06-30' });
+  });
+
+  it('leaves the start alone for a day the habit was already running on', async () => {
+    const supabase = signedIn();
+
+    const response = await PUT(put({ date: '2026-07-01', results: { light: true } }), context());
+
+    expect(response.status).toBe(200);
+    expect(supabase._habits.update).not.toHaveBeenCalled();
+  });
+
+  it('writes the entry BEFORE moving the start, and surfaces a failed move', async () => {
+    // The safe order: a stored entry the habit has not reached yet is invisible and re-logging
+    // fixes it, whereas a moved start with no entry breaks a chain in exchange for nothing.
+    const supabase = signedIn({
+      startMoveError: { message: 'permission denied for table habits' },
     });
-    expect(supabase._entries.upsert).not.toHaveBeenCalled();
+
+    const response = await PUT(put({ date: '2026-06-30', results: { light: true } }), context());
+
+    expect(supabase._entries.upsert).toHaveBeenCalled();
+    expect(response.status).toBe(500);
+    expect(await response.json()).toStrictEqual({
+      error: 'permission denied for table habits',
+    });
   });
 
   it('rejects an id that is not a UUID with 400', async () => {

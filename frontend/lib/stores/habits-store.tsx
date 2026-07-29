@@ -47,6 +47,7 @@ type HabitsAction =
   | { type: 'insertHabit'; habit: Habit }
   | { type: 'replaceHabit'; id: string; habit: Habit }
   | { type: 'removeHabit'; id: string }
+  | { type: 'setHabitStart'; id: string; startedOn: string }
   | { type: 'putEntry'; habitId: string; entry: HabitEntry }
   | { type: 'removeEntry'; habitId: string; date: string }
   | { type: 'setToday'; today: string };
@@ -69,6 +70,14 @@ export function habitsReducer(state: HabitsState, action: HabitsAction): HabitsS
     case 'removeHabit': {
       const { [action.id]: _dropped, ...entries } = state.entries;
       return { ...state, habits: state.habits.filter((habit) => habit.id !== action.id), entries };
+    }
+    case 'setHabitStart': {
+      return {
+        ...state,
+        habits: state.habits.map((habit) =>
+          habit.id === action.id ? { ...habit, started_on: action.startedOn } : habit,
+        ),
+      };
     }
     case 'putEntry': {
       const forHabit = {
@@ -154,9 +163,15 @@ export function HabitsProvider({
       errorMessage: string,
     ): Promise<void> => {
       const previous = stateRef.current.entries[habitId]?.[optimistic.entry_date];
+      // Recording a day behind the habit's start moves the start back to it — the same rule the
+      // route runs, applied locally so the whole stretch in between repaints on the tap.
+      const previousStart = stateRef.current.habits.find((row) => row.id === habitId)?.started_on;
+      const movesStart = previousStart !== undefined && optimistic.entry_date < previousStart;
       await runOptimisticMutation({
         optimistic: () => {
           dispatch({ type: 'putEntry', habitId, entry: optimistic });
+          if (movesStart)
+            dispatch({ type: 'setHabitStart', id: habitId, startedOn: optimistic.entry_date });
         },
         apiCall: () => upsertHabitEntry(habitId, input),
         reconcile: (saved) => {
@@ -167,6 +182,8 @@ export function HabitsProvider({
           if (previous === undefined)
             dispatch({ type: 'removeEntry', habitId, date: optimistic.entry_date });
           else dispatch({ type: 'putEntry', habitId, entry: previous });
+          if (movesStart)
+            dispatch({ type: 'setHabitStart', id: habitId, startedOn: previousStart });
         },
         onError: () => {
           showToastRef.current(errorMessage);
