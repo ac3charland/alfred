@@ -253,12 +253,17 @@ export function tempId(): string {
   return `${TEMP_ID_PREFIX}${crypto.randomUUID()}`;
 }
 
-/** Build an optimistic folder row (a temp id until the server row reconciles). */
+/**
+ * Build an optimistic folder row (a temp id until the server row reconciles). Its `sort_order`
+ * is the large append value, so a new folder shows at the bottom of the sidebar list until the
+ * server's real (sequence) value — which also appends — reconciles in.
+ */
 export function makeOptimisticFolder(name: string): Folder {
   return {
     id: tempId(),
     name,
     created_at: new Date().toISOString(),
+    sort_order: OPTIMISTIC_APPEND_SORT_ORDER,
   };
 }
 
