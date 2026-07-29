@@ -18,9 +18,16 @@ import type { Habit, HabitEntry } from '@/lib/types';
  * rate and the counts without touching the scalars.
  */
 
-/** The D6 ladder, keyed to cumulative met days. It never decreases — banked days don't unbank. */
+/**
+ * The met-day count at which a habit is called possibly established — the top rung of the
+ * ladder, and the marker the rail's meter fills toward. It is the MEDIAN of a wide observed
+ * range (roughly 18 to 254 days), which is why every string the owner reads hedges it.
+ */
+export const ESTABLISHED_DAYS = 66;
+
+/** The formation ladder, keyed to cumulative met days. It never decreases — banked days don't unbank. */
 const LADDER: readonly { readonly from: number; readonly stage: FormationStage }[] = [
-  { from: 66, stage: 'possibly_established' },
+  { from: ESTABLISHED_DAYS, stage: 'possibly_established' },
   { from: 42, stage: 'nearing_automaticity' },
   { from: 14, stage: 'gaining_momentum' },
   { from: 0, stage: 'fully_deliberate' },

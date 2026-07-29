@@ -3,6 +3,7 @@
  * `lib/priority`. Every export is a pure function of (habit definition, entries, today); no
  * fetching, no clock, no `Date` arithmetic on instants.
  */
+export { statsWithBaseline } from '@/lib/habits/baseline';
 export {
   deriveDayStatus,
   evaluateCriterion,
@@ -10,9 +11,11 @@ export {
   parseResults,
 } from '@/lib/habits/criteria';
 export {
+  APP_WINDOW_DAYS,
   DEFAULT_WINDOW_DAYS,
   MAX_WINDOW_DAYS,
   addDays,
+  appWindow,
   daysBetween,
   eachDay,
   isoWeekday,
@@ -22,6 +25,7 @@ export {
 } from '@/lib/habits/dates';
 export { toHabitsPayload } from '@/lib/habits/payload';
 export {
+  ESTABLISHED_DAYS,
   buildHabitCalendar,
   computeHabitStats,
   formationStage,

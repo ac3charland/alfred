@@ -12,6 +12,14 @@ export const DEFAULT_WINDOW_DAYS = 90;
 /** The widest span a caller may ask for. Beyond this the answer is refused, never trimmed. */
 export const MAX_WINDOW_DAYS = 366;
 
+/**
+ * The trailing span the app itself holds: the shell seeds this many days of entries, the grid
+ * draws them, and the stats rail's window figures are measured over exactly them. One
+ * definition for all three, so a reviewer can count the squares beside a hit rate and arrive at
+ * the rail's percentage.
+ */
+export const APP_WINDOW_DAYS = 120;
+
 /** `Intl.DateTimeFormat` throws on an unknown zone, which is exactly the validity test. */
 function isValidTimezone(timezone: string): boolean {
   if (timezone === '') return false;
@@ -93,6 +101,14 @@ export function daysBetween(from: string, to: string): number {
 export interface DateWindow {
   from: string;
   to: string;
+}
+
+/**
+ * The app's own trailing window ending on `today` — {@link APP_WINDOW_DAYS} days, inclusive of
+ * both ends. Handed a browser's local today it names exactly the span the grid draws.
+ */
+export function appWindow(today: string): DateWindow {
+  return { from: addDays(today, -(APP_WINDOW_DAYS - 1)), to: today };
 }
 
 /**
