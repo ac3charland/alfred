@@ -135,7 +135,17 @@ commit by commit — lift the tree you already validated:
 ```bash
 git checkout -B linearize origin/main
 git checkout <merge-sha> -- .              # the exact validated tree, nothing re-derived
+git rm <path>                              # only for a file the merge tree DELETED — see below
 git diff <merge-sha> --exit-code           # prove it — no output means identical
 # re-commit by concern, then move the branch and:
 git push --force-with-lease -u origin <branch>
 ```
+
+`git checkout <sha> -- .` only writes files; it never removes one the merge tree dropped, so a
+`git mv` lands as a copy with the original still sitting at its old path. The `git diff
+--exit-code` is what catches it — `git rm` the leftover and re-check until the diff is silent.
+
+**A force-push turns auto-merge off.** GitHub disables it whenever the head branch is
+force-pushed, so the branch you just made mergeable will sit there forever unless you re-enable
+it — `gh pr merge --auto --rebase`, or the `enable_pr_auto_merge` MCP tool in the web sandbox.
+Re-enabling is part of the linearize, not a follow-up.
