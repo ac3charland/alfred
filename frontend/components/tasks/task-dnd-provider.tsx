@@ -10,16 +10,24 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
+import { FolderOpen } from 'lucide-react';
 import * as React from 'react';
 
 import { INBOX_DROP_ID, resolveFolderDrop } from '@/lib/dnd/drag-to-folder';
 import { RowKeyboardSensor } from '@/lib/dnd/keyboard-sensor';
 import { RowMouseSensor, RowTouchSensor } from '@/lib/dnd/pointer-sensor';
 import { isPromoteZone, resolvePromoteToRoot } from '@/lib/dnd/promote-to-root';
+import {
+  isFolderDrag,
+  isFolderGap,
+  parseFolderDragId,
+  parseFolderGapId,
+  resolveFolderReorder,
+} from '@/lib/dnd/reorder-folder';
 import { isReorderGap, parseReorderGapId, resolveReorder } from '@/lib/dnd/reorder-subtask';
 import { resolveReparent } from '@/lib/dnd/reparent';
 import { stableSorted } from '@/lib/sort';
-import { useFolders } from '@/lib/stores/folders-store';
+import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { collectSubtree, getItemDepth, isTempId } from '@/lib/tree';
 import type { Item } from '@/lib/types';
@@ -40,6 +48,12 @@ interface TaskDragState {
    * highlight refuses a cross-family re-parent (a code item never nests under a task).
    */
   activeDragItemType: Item['item_type'] | null;
+  /**
+   * The id of the FOLDER being dragged, or null when the drag is a task (or nothing is
+   * dragged). A folder drag reorders the sidebar list, so the folder gaps enable themselves
+   * on it and the folder rows stop offering themselves as task drop targets.
+   */
+  activeDragFolderId: string | null;
 }
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
@@ -49,6 +63,7 @@ const TaskDragContext = React.createContext<TaskDragState>({
   draggedSubtreeIds: EMPTY_IDS,
   activeDragIsChild: false,
   activeDragItemType: null,
+  activeDragFolderId: null,
 });
 
 /** Read the in-progress drag state. Safe outside a provider (unit tests, stories). */
@@ -78,12 +93,15 @@ const pointerWithinVisible: CollisionDetection = (args) => {
     }
     return true;
   });
-  // Test the reorder-gap strips FIRST (ALF-117): a gap straddles a row boundary, so a hover near
-  // the edge overlaps both the gap and the row body. Preferring the gap makes a boundary hover
-  // read as "reorder into this slot" rather than "re-parent onto this row"; the ~24px of row body
-  // left uncovered between gaps still resolves to the row for re-parenting. (Gaps are `disabled`
-  // unless a subtask is being dragged, so they don't intercept a root drag or a folder drop.)
-  const gapContainers = visibleContainers.filter((container) => isReorderGap(String(container.id)));
+  // Test the reorder-gap strips FIRST — both the subtask gaps (ALF-117) and the sidebar folder
+  // gaps (ALF-153): a gap straddles a row boundary, so a hover near the edge overlaps both the
+  // gap and the row body. Preferring the gap makes a boundary hover read as "reorder into this
+  // slot" rather than "re-parent onto this row" (or, in the sidebar, "file into this folder");
+  // the row body left uncovered between gaps still resolves to the row. (Each gap kind is
+  // `disabled` unless its own kind of drag is in flight, so neither intercepts the other.)
+  const gapContainers = visibleContainers.filter(
+    (container) => isReorderGap(String(container.id)) || isFolderGap(String(container.id)),
+  );
   const gapHits = pointerWithin({ ...args, droppableContainers: gapContainers });
   if (gapHits.length > 0) return gapHits;
   return pointerWithin({ ...args, droppableContainers: visibleContainers });
@@ -98,6 +116,8 @@ const pointerWithinVisible: CollisionDetection = (args) => {
  * - Drop a task onto a sidebar folder (or Inbox) → file it there via `moveTask`.
  * - Drop a child task onto the list's top/bottom edge → pull it out to a top-level task
  *   (`reparentTask(id, null)`).
+ * - Drag a sidebar folder into a gap between two folders → move it there (`reorderFolder`).
+ *   A folder lifts under a prefixed id, so its drag never mixes with a task's.
  *
  * Every active, reconciled task row is both a drag source and a drop target. A drop shows
  * instantly and reconciles / rolls back on its own (see the data-flow + dnd-kit skills).
@@ -108,6 +128,7 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
   const tasks = useTasks();
   const folders = useFolders();
   const { moveTask, reparentTask, reorderSubtask } = useTaskActions();
+  const { reorderFolder } = useFolderActions();
   const [activeId, setActiveId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
@@ -129,6 +150,11 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
   // A child can be pulled out to the top level; a task that's already a root can't.
   const activeDragIsChild = activeTask !== undefined && activeTask.parent_id !== null;
 
+  // A sidebar folder drags under a PREFIXED id (its bare id is already registered as the
+  // droppable a task is filed into), so the prefix is what tells the two drags apart.
+  const activeDragFolderId = parseFolderDragId(activeId);
+  const activeFolder = folders.find((folder) => folder.id === activeDragFolderId);
+
   // Depth of the dragged task — drives the DragOverlay indent so title text aligns with the row.
   const activeDragDepth = React.useMemo(
     () => (activeId === null ? 0 : getItemDepth(tasks, activeId)),
@@ -145,14 +171,57 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
     setActiveId(String(event.active.id));
   };
 
+  /**
+   * Land a dragged folder in the gap it was dropped on. The rendered gap index counts the
+   * dragged folder itself, while `resolveFolderReorder` works in a list EXCLUDING it, so drop
+   * one when the gap sits below the folder's current position.
+   */
+  const handleFolderDrop = (activeDragId: string, overId: string) => {
+    const folderId = parseFolderDragId(activeDragId);
+    if (folderId === null || !isFolderGap(overId)) return;
+    const gapIndex = parseFolderGapId(overId);
+    if (gapIndex === null) return;
+    const draggedPosition = folders.findIndex((folder) => folder.id === folderId);
+    const dragged = folders[draggedPosition];
+    if (dragged === undefined) return;
+
+    const otherFolders = folders
+      .filter((folder) => folder.id !== folderId)
+      .map((folder) => ({ id: folder.id, sortOrder: folder.sort_order }));
+    const insertIndex = gapIndex > draggedPosition ? gapIndex - 1 : gapIndex;
+
+    const reorder = resolveFolderReorder({
+      draggedId: folderId,
+      draggedSortOrder: dragged.sort_order,
+      otherFolders,
+      insertIndex,
+    });
+    if (reorder === null) return;
+    void (async () => {
+      try {
+        await reorderFolder(reorder.folderId, reorder.sortOrder);
+      } catch {
+        // The optimistic store already rolled the folder back.
+      }
+    })();
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
     if (over === null) return;
+    const overId = String(over.id);
+
+    // A dragged FOLDER only ever reorders the sidebar list (ALF-153) — it is never filed,
+    // re-parented or promoted, so every other target is a no-op.
+    if (isFolderDrag(String(active.id))) {
+      handleFolderDrop(String(active.id), overId);
+      return;
+    }
+
     const dragged = tasks.find((item) => item.id === active.id);
     if (dragged === undefined) return;
     const draggedId = String(active.id);
-    const overId = String(over.id);
 
     // A reorder-gap strip places the dragged subtask at that slot (ALF-117) — tested before the
     // folder / promote / reparent branches so a boundary hover reorders rather than re-parents.
@@ -258,6 +327,7 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
         draggedSubtreeIds,
         activeDragIsChild,
         activeDragItemType: activeTask?.item_type ?? null,
+        activeDragFolderId: activeFolder?.id ?? null,
       }}
     >
       <DndContext
@@ -284,6 +354,14 @@ export function TaskDndProvider({ children }: { children: React.ReactNode }) {
               <div aria-hidden="true" className="h-5 w-5 shrink-0" />
               <div aria-hidden="true" className="h-4 w-4 shrink-0 rounded border border-border" />
               <span className="min-w-0 flex-1 truncate text-foreground">{activeTask.title}</span>
+            </div>
+          ) : null}
+          {activeFolder ? (
+            // The folder ghost mirrors the sidebar row (icon + name) in the same translucent,
+            // neutral-outlined treatment, so the teal insertion line stays the only drop signal.
+            <div className="flex items-center gap-2.5 rounded-sm bg-surface/70 px-3 py-2 text-sm ring-1 ring-inset ring-border backdrop-blur-sm shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]">
+              <FolderOpen size={14} className="shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-foreground">{activeFolder.name}</span>
             </div>
           ) : null}
         </DragOverlay>

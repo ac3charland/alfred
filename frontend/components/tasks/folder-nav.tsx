@@ -1,35 +1,18 @@
 'use client';
 
-import {
-  CalendarRange,
-  Check,
-  FolderOpen,
-  ListOrdered,
-  MoreHorizontal,
-  Plus,
-  Repeat,
-} from 'lucide-react';
+import { CalendarRange, Check, ListOrdered, Plus, Repeat } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { FolderCountBadge } from '@/components/tasks/folder-count-badge';
-import { FolderDropZone } from '@/components/tasks/folder-drop-zone';
+import { FolderNavRow } from '@/components/tasks/folder-nav/folder-nav-row';
 import { ViewLink } from '@/components/tasks/view-link';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { useUnloggedTodayCount } from '@/lib/stores/habits-store';
-import { useFolderBadgeCounts } from '@/lib/stores/tasks-store';
 import { navLinkClass } from '@/lib/ui/nav-link-class';
-import { cn } from '@/lib/utils';
 
 interface FolderNavProperties {
   /** Called after a nav link is clicked (e.g. to close the mobile drawer). */
@@ -53,7 +36,6 @@ export function FolderNav({ onClose }: FolderNavProperties) {
   const pathname = usePathname();
   const router = useRouter();
   const folders = useFolders();
-  const badgeCountsByFolder = useFolderBadgeCounts();
   const unloggedHabits = useUnloggedTodayCount();
   const { addFolder, renameFolder, removeFolder } = useFolderActions();
 
@@ -68,9 +50,11 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
   const isActive = (path: string) => pathname === path;
 
-  // exactOptionalPropertyTypes: only spread onClick if onClose is defined,
-  // otherwise `(() => void) | undefined` is not assignable to `MouseEventHandler`.
+  // exactOptionalPropertyTypes: only spread the handler if onClose is defined, otherwise
+  // `(() => void) | undefined` is not assignable to `MouseEventHandler` (or to the row's
+  // optional prop).
   const closeProperty = onClose ? { onClick: onClose } : {};
+  const rowCloseProperty = onClose ? { onClose } : {};
 
   const handleCreateFolder = async () => {
     const name = newFolderName.trim();
@@ -183,12 +167,18 @@ export function FolderNav({ onClose }: FolderNavProperties) {
           />
         )}
 
-        {/* Folder list */}
+        {/* Folder list — manually ordered (drag a row's grip, or use its menu's Move up /
+            Move down); the store keeps the list sorted by that rank. */}
         <div className="mt-1 flex flex-col gap-0.5">
-          {folders.map((folder) => (
-            <FolderDropZone key={folder.id} id={folder.id}>
-              <div className="group/folder flex items-center gap-1 pr-1">
-                {editingFolderId === folder.id ? (
+          {folders.map((folder, index) => (
+            <FolderNavRow
+              key={folder.id}
+              folder={folder}
+              index={index}
+              isLast={index === folders.length - 1}
+              {...rowCloseProperty}
+              renameField={
+                editingFolderId === folder.id ? (
                   <InlineEditField
                     value={renameEdit.draft}
                     onChange={renameEdit.setDraft}
@@ -201,67 +191,18 @@ export function FolderNav({ onClose }: FolderNavProperties) {
                     confirmLabel="Save rename"
                     className="flex-1 px-3"
                   />
-                ) : (
-                  <>
-                    <ViewLink
-                      href={`/folders/${folder.id}`}
-                      className={cn(
-                        navLinkClass(isActive(`/folders/${folder.id}`)),
-                        'flex-1 min-w-0',
-                      )}
-                      {...closeProperty}
-                    >
-                      <FolderOpen size={14} className="shrink-0" />
-                      <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                      {/* Attention (amber: high-priority / due today) + overdue (red: past due)
-                          counts — right-aligned at the trailing edge so a long name truncates
-                          before them (badges are shrink-0); each hidden at zero. Overdue sits
-                          last (nearest the edge) as the most urgent. */}
-                      <FolderCountBadge
-                        tone="attention"
-                        count={badgeCountsByFolder[folder.id]?.attention ?? 0}
-                      />
-                      <FolderCountBadge
-                        tone="overdue"
-                        count={badgeCountsByFolder[folder.id]?.overdue ?? 0}
-                      />
-                    </ViewLink>
-
-                    {/* Folder actions — on hover */}
-                    <div className="shrink-0 opacity-0 group-hover/folder:opacity-100 transition-opacity duration-100 motion-reduce:opacity-100">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <IconButton size="sm" aria-label={`Options for ${folder.name}`}>
-                            <MoreHorizontal size={12} />
-                          </IconButton>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setEditingFolderId(folder.id);
-                              // Seed the draft directly (not via begin(), whose closure would
-                              // read the pre-update editingFolder name).
-                              renameEdit.setDraft(folder.name);
-                            }}
-                          >
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() => {
-                              void handleDeleteFolder(folder.id);
-                            }}
-                          >
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </>
-                )}
-              </div>
-            </FolderDropZone>
+                ) : undefined
+              }
+              onEdit={() => {
+                setEditingFolderId(folder.id);
+                // Seed the draft directly (not via begin(), whose closure would read the
+                // pre-update editingFolder name).
+                renameEdit.setDraft(folder.name);
+              }}
+              onDelete={() => {
+                void handleDeleteFolder(folder.id);
+              }}
+            />
           ))}
         </div>
       </div>
