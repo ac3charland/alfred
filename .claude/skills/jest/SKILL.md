@@ -187,6 +187,8 @@ next, with no connection to their change. Where the code under test derives "tod
 habits store corrects its seeded date to the browser's in a mount effect), derive the fixture the
 same way rather than asserting against a literal.
 
+**Mock a supabase-js query builder as a real Promise, not an object with a `then` key.** The builder is thenable — a chain ends by being awaited, and the terminal method varies (`.single()`, `.order()`, `.range()`) — but `unicorn/no-thenable` errors on `then` in an object literal. `Object.assign(Promise.resolve(result), { select: …, order: …, … })` with each method returning the builder awaits correctly and passes lint. Annotate it (`const builder: Builder = …`) or TS7022 fires on the self-reference. A per-page result (a `.range()` paging loop) just needs a fresh builder per `from()` call, since the loop re-enters `from()` each iteration.
+
 **Never commit `test.only`, `it.only`, `describe.only`, `fit`, or `fdescribe`.** eslint-plugin-jest's `no-focused-tests` rule fires as an error in alfred. The ESLint gate in `check:fast` will block the commit.
 
 **Never commit `test.skip` or `it.skip`.** alfred's ESLint config treats `no-disabled-tests` as an error. Fix or delete the test.
