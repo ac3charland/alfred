@@ -37,6 +37,13 @@ interface HistoryGridProperties {
  * forward to the Sunday that ends the current one (so today never sits on the trailing edge).
  * The padding days fall outside the habit's life and render as untracked.
  *
+ * The newest column is anchored to the RIGHT edge, because the days worth seeing on arrival
+ * are the recent ones. Two things get it there and history stays one gesture away:
+ * `justify-end` when the quarter fits, and — when it doesn't — a right-to-left scroll strip,
+ * whose start edge IS its right one, so the browser opens on today with no script and re-lands
+ * there on every resize. Only the squares scroll; the weekday labels sit outside the strip and
+ * stay put however far back the columns are pushed.
+ *
  * One popover serves the whole grid, positioned against whichever cell is open through a
  * VIRTUAL anchor. That keeps a quarter's worth of cells from each mounting their own popover,
  * and — because no cell's markup changes when the editor opens — the button the editor came
@@ -74,19 +81,21 @@ export function HistoryGrid({
         if (!open) setOpenDate(undefined);
       }}
     >
-      <div className="overflow-x-auto">
-        <div className="flex items-start gap-1.5">
+      <div className="flex items-start justify-end gap-1.5">
+        <div
+          aria-hidden="true"
+          data-testid="history-weekdays"
+          className="grid shrink-0 grid-rows-[repeat(7,26px)] gap-1.5 py-2 pr-1 text-right text-[10px] text-muted-foreground"
+        >
+          {WEEKDAY_LABELS.map((label, index) => (
+            <span key={index} className="leading-[26px]">
+              {label}
+            </span>
+          ))}
+        </div>
+        <div data-testid="history-scroll" dir="rtl" className="overflow-x-auto">
           <div
-            aria-hidden="true"
-            className="grid grid-rows-[repeat(7,26px)] gap-1.5 py-2 pr-1 text-right text-[10px] text-muted-foreground"
-          >
-            {WEEKDAY_LABELS.map((label, index) => (
-              <span key={index} className="leading-[26px]">
-                {label}
-              </span>
-            ))}
-          </div>
-          <div
+            dir="ltr"
             role="group"
             aria-label={`${habit.name} history`}
             className="grid w-max grid-flow-col grid-rows-[repeat(7,26px)] gap-1.5 py-2"
