@@ -166,9 +166,15 @@ function epicContextLines(story: CodeStory): string[] {
  * refinement skill so every project gets it without the instruction being copy-pasted into — and
  * drifting between — every repo's own skill file. Owner/repo come from the project row; the head
  * branch and spec path are the agent's to fill, since only it knows where the spec landed.
+ *
+ * Both cases are spelled out because htmlpreview fetches through raw.githubusercontent.com
+ * unauthenticated, so it 404s on a private repo — there the best a reviewer can get is the file
+ * itself to download and open. We don't store repo visibility, but the session is running inside
+ * the repo and can tell.
  */
 function htmlPreviewStep(project: Project): string {
-  return `If the spec is an HTML file, also put a rendered-preview link in the description — GitHub serves a committed \`.html\` as raw source, so a reviewer who clicks the spec gets markup instead of the plan. Point it at this PR's head branch (the spec isn't on main yet): \`https://htmlpreview.github.io/?https://github.com/${project.repo_owner}/${project.repo_name}/blob/<head-branch>/<spec-path>\``;
+  const blobUrl = `https://github.com/${project.repo_owner}/${project.repo_name}/blob/<head-branch>/<spec-path>`;
+  return `If the spec is an HTML file, also link it in the description so a reviewer can read the plan rather than the markup — GitHub serves a committed \`.html\` as raw source. On a public repo, route it through htmlpreview: \`https://htmlpreview.github.io/?${blobUrl}\`. htmlpreview can't reach a private repo — if this one is private, link the file directly instead (\`${blobUrl}\`) so the reviewer can download and open it. Either way point at this PR's head branch; the spec isn't on main yet.`;
 }
 
 /** Assemble the final claude.ai/code URL with the repo + the URL-encoded prompt. */
