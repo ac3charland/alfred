@@ -8,7 +8,8 @@ import { nextBlockedFrom } from '@/lib/code/blocked';
 import type { CodeItemUpdate } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// PATCH /api/code/[ref] — edit a code story's sidecar: its factory state and/or its epic
+// PATCH /api/code/[ref] — edit a code story's sidecar: its factory state, its epic, and/or
+// whether it still needs refinement
 //
 // The keyed lookup is by `ref` (the human id, KEY-N) — refs are unique per project by
 // construction, so a single ref names one story. `ref` is NOT a UUID, so it is NOT
@@ -46,12 +47,14 @@ export const PATCH = withSession(
     }
 
     // Build the update from whichever fields the body carried (all optional): `factory_state`
-    // and its `blocked_reason` companion exactly as before, plus `epic_id` when moving. A
-    // present key — even null — is forwarded; an absent one is untouched.
+    // and its `blocked_reason` companion exactly as before, plus `epic_id` when moving and
+    // `requires_refinement` when marking. A present key — even null — is forwarded; an absent
+    // one is untouched.
     const updates: CodeItemUpdate = toUpdatePayload<CodeItemUpdate>(input, [
       'factory_state',
       'blocked_reason',
       'epic_id',
+      'requires_refinement',
     ]);
 
     // `blocked_from` — the swimlane a blocked story keeps its card in (ALF-136) — is derived HERE

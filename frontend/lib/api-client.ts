@@ -301,8 +301,10 @@ export function enterCodeModule(
 
 /**
  * Create a brand-new code story from the project view (no inbox item required). Calls
- * `create_code_story`, which inserts a fresh `items` row AND its `code_items` sidecar at
- * `needs_refinement` with a server-allocated ref, returning the sidecar row.
+ * `create_code_story`, which inserts a fresh `items` row AND its `code_items` sidecar with a
+ * server-allocated ref, returning the sidecar row. `requiresRefinement` is the dialog's "Needs
+ * refinement" checkbox: `true` lands the story at `needs_refinement`, `false` straight in
+ * `ready_for_dev` with no spec.
  *
  * Lives in `lib/` (the null-aware boundary): an empty notes field is sent as `null` — the
  * Postgres absent value — which component code can't mint (unicorn/no-null).
@@ -312,6 +314,7 @@ export function createCodeStory(
   epicId: string,
   title: string,
   notes: string | null,
+  requiresRefinement: boolean,
 ): Promise<CodeItem> {
   return apiRequest<CodeItem>('/api/code', {
     method: 'POST',
@@ -320,6 +323,7 @@ export function createCodeStory(
       notes: notes === '' ? null : notes,
       project_id: projectId,
       epic_id: epicId,
+      requires_refinement: requiresRefinement,
     }),
   });
 }
@@ -343,9 +347,13 @@ export function convertToCodeEpic(itemId: string, projectId: string): Promise<Co
   });
 }
 
-/** Optional extra fields a state transition may carry (e.g. Block sets `blocked_reason`). */
+/**
+ * Optional extra fields a state transition may carry: `blocked_reason` (Block) and
+ * `requires_refinement` (the refinement mark, which often rides an unchanged `factory_state`).
+ */
 export interface UpdateCodeStateExtra {
   blocked_reason?: string | null;
+  requires_refinement?: boolean;
 }
 
 /**
@@ -358,10 +366,15 @@ export function updateCodeState(
   factoryState: CodeFactoryState,
   extra: UpdateCodeStateExtra = {},
 ): Promise<CodeItem> {
-  const body: { factory_state: CodeFactoryState; blocked_reason?: string | null } = {
+  const body: {
+    factory_state: CodeFactoryState;
+    blocked_reason?: string | null;
+    requires_refinement?: boolean;
+  } = {
     factory_state: factoryState,
   };
   if (extra.blocked_reason !== undefined) body.blocked_reason = extra.blocked_reason;
+  if (extra.requires_refinement !== undefined) body.requires_refinement = extra.requires_refinement;
   return apiRequest<CodeItem>(`/api/code/${encodeURIComponent(ref)}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
