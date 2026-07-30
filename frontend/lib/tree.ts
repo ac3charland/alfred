@@ -327,6 +327,9 @@ export function makeOptimisticStory(
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    // Every entry point but the New Story dialog's unchecked box lands a story needing
+    // refinement, matching the column's `default true`; `createStory` overrides it.
+    requires_refinement: true,
     code_created_at: now,
     code_updated_at: now,
     title: item.title,

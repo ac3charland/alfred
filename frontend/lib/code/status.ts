@@ -2,13 +2,14 @@ import type { CodeStory } from '@/lib/types';
 
 /**
  * The status fields a code story carries: its `factory_state` (which swimlane / Backlog status
- * it sits in) plus the three companions that move with it — `lane`, `blocked_reason`, and
- * `blocked_from` (the swimlane a blocked story keeps its card in, so a story blocked in another
- * tab lands in the right lane on refetch rather than snapping to the fallback).
+ * it sits in) plus the companions that move with it — `lane`, `blocked_reason`, `blocked_from`
+ * (the swimlane a blocked story keeps its card in, so a story blocked in another tab lands in the
+ * right lane on refetch rather than snapping to the fallback), and `requires_refinement` (whether
+ * it still needs a spec, which the detail modal's toggle reads back).
  */
 export type CodeStoryStatus = Pick<
   CodeStory,
-  'factory_state' | 'lane' | 'blocked_reason' | 'blocked_from'
+  'factory_state' | 'lane' | 'blocked_reason' | 'blocked_from' | 'requires_refinement'
 >;
 
 /**
@@ -23,5 +24,6 @@ export function codeStoryStatusPatch(story: CodeStory): CodeStoryStatus {
     lane: story.lane,
     blocked_reason: story.blocked_reason,
     blocked_from: story.blocked_from,
+    requires_refinement: story.requires_refinement,
   };
 }

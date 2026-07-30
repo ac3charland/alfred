@@ -396,22 +396,29 @@ export const gateCodeSchema = z.object({
 
 /**
  * The **new-story** shape for POST /api/code: mint a brand-new story from the project view
- * via `create_code_story(project, epic, title, notes)`, which inserts a fresh item AND its
- * `code_items` sidecar in one step (no inbox row to admit). `title` is trimmed and required;
- * `notes` is optional (the lib/ layer maps empty → null). No `item_id` distinguishes it from
- * the gate shape.
+ * via `create_code_story(project, epic, title, notes, requires_refinement)`, which inserts a
+ * fresh item AND its `code_items` sidecar in one step (no inbox row to admit). `title` is
+ * trimmed and required; `notes` is optional (the lib/ layer maps empty → null). No `item_id`
+ * distinguishes it from the gate shape.
+ *
+ * `requires_refinement` is the New Story dialog's "Needs refinement" checkbox: omitted (or
+ * `true`) the story lands at `needs_refinement` as it always has; `false` lands it straight in
+ * `ready_for_dev`. Only this shape carries it — the gate has no such control, and an object
+ * schema strips the unknown key, so a gate body naming it can never reach the RPC.
  */
 export const newCodeStorySchema = z.object({
   title: z.string().trim().min(1),
   notes: z.string().nullable().optional(),
   project_id: uuid,
   epic_id: uuid,
+  requires_refinement: z.boolean().optional(),
 });
 
 /**
  * Body for POST /api/code — a union of the two creation shapes. The gate flips an existing
- * item; the new-story shape inserts a fresh one. Both produce a `code_items` sidecar at
- * `needs_refinement` and return that row, so they share one route (branch on `item_id`).
+ * item; the new-story shape inserts a fresh one. Both produce a `code_items` sidecar (at
+ * `needs_refinement`, unless the new-story shape clears `requires_refinement`) and return that
+ * row, so they share one route (branch on `item_id`).
  */
 export const createCodeSchema = z.union([gateCodeSchema, newCodeStorySchema]);
 
@@ -456,18 +463,27 @@ const codeFactoryState = z.enum([
  * `.refine` rejects an empty body so a PATCH must change something. `factory_state` drives
  * the state transition (the link-click write + the manual controls); `blocked_reason` is its
  * companion (nullable so it clears on any non-blocked hop); `epic_id` moves the story to a
- * different epic (the route guards same-project). `blocked_reason` is a companion only — it
- * never travels alone, so it doesn't satisfy the "something to update" check.
+ * different epic (the route guards same-project); `requires_refinement` records whether the
+ * story still needs a spec. `blocked_reason` is a companion only — it never travels alone, so it
+ * doesn't satisfy the "something to update" check, whereas `requires_refinement` does: marking a
+ * story that is already in the right lane changes nothing else, and that is a legitimate write.
  */
 export const updateCodeSchema = z
   .object({
     factory_state: codeFactoryState.optional(),
     blocked_reason: z.string().nullable().optional(),
     epic_id: uuid.optional(),
+    requires_refinement: z.boolean().optional(),
   })
-  .refine((data) => data.factory_state !== undefined || data.epic_id !== undefined, {
-    message: 'At least one of "factory_state" or "epic_id" is required',
-  });
+  .refine(
+    (data) =>
+      data.factory_state !== undefined ||
+      data.epic_id !== undefined ||
+      data.requires_refinement !== undefined,
+    {
+      message: 'At least one of "factory_state", "epic_id", or "requires_refinement" is required',
+    },
+  );
 
 export type UpdateCodeInput = z.infer<typeof updateCodeSchema>;
 

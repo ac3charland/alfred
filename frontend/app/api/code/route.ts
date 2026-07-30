@@ -25,11 +25,13 @@ export const GET = withSession(async () => {
 // - The **gate** (`{ item_id, project_id, epic_id }`) admits a pre-existing item via
 //   `enter_code_module`: it flips the item to `code`, clears its task-only fields (so
 //   converting a task with a due date / subtasks is safe), and creates the sidecar.
-// - **New story** (`{ title, notes?, project_id, epic_id }`, no `item_id`) mints a fresh
-//   item AND its sidecar in one step via `create_code_story` — no inbox row to admit.
+// - **New story** (`{ title, notes?, project_id, epic_id, requires_refinement? }`, no
+//   `item_id`) mints a fresh item AND its sidecar in one step via `create_code_story` — no
+//   inbox row to admit.
 //
-// Both land the `code_items` sidecar at `needs_refinement` with a server-allocated ref and
-// return that row.
+// Both land the `code_items` sidecar with a server-allocated ref and return that row. It
+// starts at `needs_refinement`, unless the new-story shape sends `requires_refinement: false`
+// — the "Needs refinement" checkbox, which lands the story straight in `ready_for_dev`.
 // ---------------------------------------------------------------------------
 
 export const POST = withSession(async (session, request) => {
@@ -53,6 +55,11 @@ export const POST = withSession(async (session, request) => {
           // p_notes is `string | undefined` (the RPC defaults a missing arg to NULL), so an
           // absent / null notes value omits the arg rather than passing null.
           ...(input.notes === null || input.notes === undefined ? {} : { p_notes: input.notes }),
+          // Same treatment for the refinement mark: omit the arg when the body didn't carry it
+          // so the RPC's own `default true` applies.
+          ...(input.requires_refinement === undefined
+            ? {}
+            : { p_requires_refinement: input.requires_refinement }),
         });
 
   const { data, error } = await rpc.single();

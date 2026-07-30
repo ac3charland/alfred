@@ -9,11 +9,12 @@ import { nextBlockedFrom } from '@/lib/code/blocked';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import {
   buildBypassUrl,
+  buildDevelopmentUrl,
   buildEpicRefinementUrl,
-  buildImplementationUrl,
   buildRefinementUrl,
   promptFromLaunchUrl,
 } from '@/lib/code/links';
+import { refinementMarkTarget } from '@/lib/code/refinement-mark';
 import { codeStoryStatusPatch } from '@/lib/code/status';
 import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
@@ -218,8 +219,15 @@ export interface CodeActions {
    * unlike the gate where the item already exists), then reconciles by swapping the temp row
    * for the saved one — replacing `item_id` (temp → server uuid) along with the allocated ref.
    * The target project is derived from the epic, so the caller passes only the epic.
+   * `requiresRefinement` is the dialog's checkbox: `false` lands the card in Ready for Dev
+   * instead of Needs Refinement, optimistically and on the server.
    */
-  createStory: (epicId: string, title: string, notes: string | null) => Promise<CodeStory>;
+  createStory: (
+    epicId: string,
+    title: string,
+    notes: string | null,
+    requiresRefinement: boolean,
+  ) => Promise<CodeStory>;
   /**
    * Edit an epic's header fields: `name` (inline rename), `notes` and `archived_at`
    * (set to archive, `null` to un-archive — archiving drops the epic off the active board).
@@ -253,6 +261,17 @@ export interface CodeActions {
     factoryState: CodeFactoryState,
     extra?: api.UpdateCodeStateExtra,
   ) => Promise<void>;
+  /**
+   * Record whether a story still needs a spec before it can be built — the "Needs refinement"
+   * toggle in the detail modal. The flag is persisted in its own column, so the judgement
+   * survives a state revert and a future automated dispatcher can query it.
+   *
+   * Clearing it also *moves* a story still sitting at `needs_refinement` into `ready_for_dev`
+   * (and re-setting it moves a spec-less story back) — `refinementMarkTarget` owns that rule.
+   * Unlike the "Skip to Development" launch, nothing opens: the story simply waits in Ready for
+   * Dev until someone starts it.
+   */
+  setRefinementRequired: (ref: string, requiresRefinement: boolean) => Promise<void>;
   /**
    * Move a code story to a different epic in the same project, keyed by its `ref`. The board
    * re-homes the card the instant `epic_id` changes (`buildEpicBoard` filters on it).
@@ -447,6 +466,7 @@ export function codeItemToStoryPatch(row: CodeItem): Partial<CodeStory> {
     implementation_pr_url: row.implementation_pr_url,
     blocked_reason: row.blocked_reason,
     blocked_from: row.blocked_from,
+    requires_refinement: row.requires_refinement,
     code_created_at: row.created_at,
     code_updated_at: row.updated_at,
     priority: row.priority,
@@ -678,6 +698,7 @@ export function CodeProvider({
         factory_state: previous.factory_state,
         blocked_reason: previous.blocked_reason,
         blocked_from: previous.blocked_from,
+        requires_refinement: previous.requires_refinement,
       };
       // Predict the server's `blocked_from` with the same rule the route applies, so the card
       // lands in (or leaves) the right lane on the optimistic pass rather than after the round-trip.
@@ -686,6 +707,9 @@ export function CodeProvider({
         blocked_from: nextBlockedFrom(previous, factoryState),
       };
       if (extra.blocked_reason !== undefined) optimistic.blocked_reason = extra.blocked_reason;
+      if (extra.requires_refinement !== undefined) {
+        optimistic.requires_refinement = extra.requires_refinement;
+      }
       await runOptimisticMutation({
         optimistic: () => {
           dispatch({ type: 'patchStory', itemId, patch: optimistic });
@@ -699,6 +723,7 @@ export function CodeProvider({
               factory_state: saved.factory_state,
               blocked_reason: saved.blocked_reason,
               blocked_from: saved.blocked_from,
+              requires_refinement: saved.requires_refinement,
               code_updated_at: saved.updated_at,
             },
           });
@@ -823,7 +848,7 @@ export function CodeProvider({
         });
         return result;
       },
-      async createStory(epicId, title, notes) {
+      async createStory(epicId, title, notes, requiresRefinement) {
         const { projects, epics } = stateRef.current;
         const epic = epics.find((e) => e.id === epicId);
         if (epic === undefined) {
@@ -837,16 +862,23 @@ export function CodeProvider({
         // the reconcile swaps for the real uuid (unlike the gate, where the item exists).
         const tempItemId = tempId();
         // Land the optimistic card at the top of its PROJECT (ALF-110), matching the server.
+        // An unchecked "Needs refinement" box lands it in Ready for Dev, so the card appears in
+        // the lane the server will confirm rather than jumping across the board on reconcile.
         const optimistic = {
           ...makeOptimisticStory({ id: tempItemId, title, notes, source_url: null }, project, epic),
           priority: topOfProjectPriority(stateRef.current.stories, epic.project_id),
+          requires_refinement: requiresRefinement,
+          factory_state: requiresRefinement
+            ? ('needs_refinement' as const)
+            : ('ready_for_dev' as const),
         };
         let reconciled: CodeStory = optimistic;
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({ type: 'insertStory', story: optimistic });
           },
-          apiCall: () => api.createCodeStory(epic.project_id, epicId, title, notes),
+          apiCall: () =>
+            api.createCodeStory(epic.project_id, epicId, title, notes, requiresRefinement),
           reconcile: (saved) => {
             // Reconcile the sidecar fields AND replace the temp item_id with the server uuid
             // (the temp-id row is keyed out via `replaceStory`'s itemId).
@@ -864,6 +896,21 @@ export function CodeProvider({
       },
       updateCodeState(ref, factoryState, extra = {}) {
         return transitionState(ref, factoryState, extra, "Couldn't update story");
+      },
+      async setRefinementRequired(ref, requiresRefinement) {
+        const story = stateRef.current.stories.find((s) => s.ref === ref);
+        if (story === undefined) {
+          throw new Error(`Code story ${ref} not found in the code store`);
+        }
+        // Reuse the one transition path rather than growing a parallel write. The target is
+        // usually the state the story is already in, so this is often a deliberate no-op write
+        // on `factory_state` — one code path for the moving and non-moving cases alike.
+        return transitionState(
+          ref,
+          refinementMarkTarget(story, requiresRefinement),
+          { requires_refinement: requiresRefinement },
+          "Couldn't update refinement",
+        );
       },
       async moveStoryToEpic(ref, epicId) {
         const story = stateRef.current.stories.find((s) => s.ref === ref);
@@ -1020,12 +1067,21 @@ export function CodeProvider({
         // the move is durable.
         const buildUrlForPhase: Record<LaunchPhase, () => string> = {
           refinement: () => buildRefinementUrl(project, story),
-          implementation: () => buildImplementationUrl(project, story),
+          // Which development prompt applies depends on whether a spec was ever committed, not
+          // on the lane alone — a story can reach `ready_for_dev` without one.
+          implementation: () => buildDevelopmentUrl(project, story),
           bypass: () => buildBypassUrl(project, story),
         };
         const url = buildUrlForPhase[phase]();
         const prompt = promptFromLaunchUrl(url);
-        await transitionState(ref, LAUNCH_TARGET_STATE[phase], {}, "Couldn't start session");
+        // Pressing "Skip to Development" IS declaring that no refinement is needed, so it
+        // records the same mark the modal toggle would — both routes leave identical rows.
+        await transitionState(
+          ref,
+          LAUNCH_TARGET_STATE[phase],
+          phase === 'bypass' ? { requires_refinement: false } : {},
+          "Couldn't start session",
+        );
         // The link prefills the prompt on web + desktop, but the mobile Claude app opens the
         // universal link with the composer EMPTY (it drops the `q` param). Copy the prompt to the
         // clipboard as a paste-fallback and confirm it with a toast so a phone user can just paste.
