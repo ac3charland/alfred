@@ -17,6 +17,7 @@ import {
   STATUS_WORD,
   formatShortDate,
   minutesToTime,
+  rescoreNotice,
   timeToMinutes,
 } from '@/components/habits/habit-format';
 import { SkipPanel } from '@/components/habits/skip-panel';
@@ -42,6 +43,12 @@ interface DayEditorProperties {
   criteria: HabitCriterion[];
   /** What the day already records, if anything. */
   results: HabitResults;
+  /**
+   * The verdict frozen on this day when it was written, if it is logged. Compared against what
+   * today's criteria would give the same results, so a definition that moved under a logged day
+   * is named rather than left to happen quietly on the next save.
+   */
+  storedStatus?: DerivedStatus | undefined;
   /** Whether the day is currently excused — the header says so instead of a derived verdict. */
   isSkipped: boolean;
   /** Whether the day predates the habit's start, so recording it will move the start back. */
@@ -179,6 +186,7 @@ export function DayEditor({
   date,
   criteria,
   results,
+  storedStatus,
   isSkipped,
   isBeforeStart,
   onClose,
@@ -238,6 +246,15 @@ export function DayEditor({
 
   const status = deriveDayStatus(criteria, draft);
 
+  // Measured against the STORED results, not the draft: an edit in progress is expected to move
+  // the verdict, while the same results scoring differently than they did means the criteria
+  // moved underneath this day. Only the second is worth saying.
+  const storedNow = deriveDayStatus(criteria, results);
+  const rescore =
+    !isSkipped && storedStatus !== undefined && storedStatus !== storedNow
+      ? rescoreNotice(storedStatus, storedNow)
+      : undefined;
+
   return (
     <div className="flex w-[265px] flex-col p-2">
       <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -257,6 +274,12 @@ export function DayEditor({
           }}
         />
       ))}
+
+      {rescore !== undefined && (
+        <p className="mt-1.5 border-t border-border pt-1.5 text-[11px] leading-snug text-accent-amber">
+          {rescore}
+        </p>
+      )}
 
       <div className="mt-1.5 flex items-center justify-between gap-3 border-t border-border pt-1.5">
         {/* Named in the owner's terms, and only when there is a cost to name. */}
