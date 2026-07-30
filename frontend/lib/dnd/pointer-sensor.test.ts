@@ -1,6 +1,11 @@
 import type { MouseEvent, TouchEvent } from 'react';
 
-import { RowMouseSensor, RowTouchSensor, isInteractiveTarget } from './pointer-sensor';
+import {
+  DRAG_SURFACE_ATTRIBUTE,
+  RowMouseSensor,
+  RowTouchSensor,
+  isInteractiveTarget,
+} from './pointer-sensor';
 
 /** Build a minimal React-style mousedown event for the mouse activator handler. */
 function makeMouseEvent(overrides: { button?: number; target?: EventTarget | null } = {}) {
@@ -135,5 +140,40 @@ describe('isInteractiveTarget', () => {
 
   it('returns false for non-Element event targets', () => {
     expect(isInteractiveTarget(new EventTarget())).toBe(false);
+  });
+
+  describe('the drag-surface opt-out', () => {
+    it('returns false for an interactive control marked as a drag surface', () => {
+      const card = document.createElement('button');
+      card.setAttribute(DRAG_SURFACE_ATTRIBUTE, '');
+      expect(isInteractiveTarget(card)).toBe(false);
+    });
+
+    it('returns false for content nested inside a marked control (the ref/title spans)', () => {
+      const card = document.createElement('button');
+      card.setAttribute(DRAG_SURFACE_ATTRIBUTE, '');
+      const title = document.createElement('span');
+      card.append(title);
+      expect(isInteractiveTarget(title)).toBe(false);
+    });
+
+    it('still returns true for an unmarked control INSIDE a marked one', () => {
+      // The nearest interactive ancestor decides, so a button that opts out never drags its
+      // own controls along with it.
+      const card = document.createElement('button');
+      card.setAttribute(DRAG_SURFACE_ATTRIBUTE, '');
+      const chip = document.createElement('button');
+      card.append(chip);
+      expect(isInteractiveTarget(chip)).toBe(true);
+    });
+
+    it('still returns true for a control that merely sits beside a marked one', () => {
+      const wrapper = document.createElement('div');
+      const card = document.createElement('button');
+      card.setAttribute(DRAG_SURFACE_ATTRIBUTE, '');
+      const chip = document.createElement('button');
+      wrapper.append(card, chip);
+      expect(isInteractiveTarget(chip)).toBe(true);
+    });
   });
 });
