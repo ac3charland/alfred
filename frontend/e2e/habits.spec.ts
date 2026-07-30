@@ -297,3 +297,37 @@ test('a cadence slot opened from the card menu stays open long enough to use', a
   await page.reload();
   await expect(page.getByText('· every day · 3 misses / rolling week')).toBeVisible();
 });
+
+test('the stats rail stays inside the card, and the grid takes the overflow', async ({
+  page,
+  seed,
+}) => {
+  // A layout regression guard, and it has to run in a real browser: the rail must not shrink (its
+  // figures would wrap) so the GRID is what has to give way. If the grid can't shrink below its
+  // 27 columns of squares, the row grows past the card and pushes the rail out through its right
+  // edge — which reads as the numbers hanging in space beside the card.
+  const habit = makeHabit('Morning routine', { started_on: '2026-01-01' });
+  await seed({ habits: [habit], habitEntries: [makeHabitEntry(habit.id, localDaysAgo(2))] });
+  await page.goto('/habits');
+
+  // Defaults chosen so a missing box FAILS the assertion rather than skipping it: an absent row
+  // collapses to zero width, an absent rail to an edge no container can contain.
+  const row = (await page.locator('section:has(h2) > div').first().boundingBox()) ?? {
+    x: 0,
+    width: 0,
+  };
+  const rail = (await page.getByRole('group', { name: 'Morning routine stats' }).boundingBox()) ?? {
+    x: Number.POSITIVE_INFINITY,
+    width: 0,
+  };
+
+  expect(rail.x + rail.width).toBeLessThanOrEqual(row.x + row.width + 1);
+
+  // And the overflow really did go to the grid's own scroller rather than nowhere.
+  const scroller = page.locator('[data-testid="history-scroll"]');
+  const { scrollWidth, clientWidth } = await scroller.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(scrollWidth).toBeGreaterThan(clientWidth);
+});
