@@ -308,3 +308,60 @@ describe('DayEditor — the skip flow', () => {
     expect(screen.getByText('Thu 23 Jul')).toBeInTheDocument();
   });
 });
+
+/**
+ * Editing a criterion never rewrites a logged day — but re-logging one is a write, and the route
+ * re-scores it against whatever the definition says NOW. So when a day's frozen verdict no longer
+ * matches its own results, the editor says so: the re-score stays available, it stops being silent.
+ */
+describe('DayEditor — a day the criteria moved under', () => {
+  it('names what a re-log would cost a day whose verdict no longer matches the terms', () => {
+    // 06:50 passed the old 07:00 target and was frozen `met` back when `wake` was the only
+    // criterion. The target is now 06:15 and a second criterion has since been added, so nothing
+    // on this day passes any more.
+    renderEditor({ results: { wake: 410 }, storedStatus: 'met' });
+
+    expect(
+      screen.getByText(
+        'Logged met under the earlier terms — changing this day now re-scores it as missed.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing when the stored verdict still matches the current terms', () => {
+    renderEditor({ results: { wake: 364, light: true }, storedStatus: 'met' });
+
+    expect(screen.queryByText(/under the earlier terms/)).not.toBeInTheDocument();
+  });
+
+  it('says nothing on a day that was never logged', () => {
+    renderEditor({ results: {} });
+
+    expect(screen.queryByText(/under the earlier terms/)).not.toBeInTheDocument();
+  });
+
+  // A skipped day carries no verdict about the criteria at all, so there is nothing to restate.
+  it('says nothing on an excused day', () => {
+    renderEditor({ results: { wake: 410 }, storedStatus: 'met', isSkipped: true });
+
+    expect(screen.queryByText(/under the earlier terms/)).not.toBeInTheDocument();
+  });
+
+  // A criterion added later has no value on any older day, so every one of them would drop.
+  it('names the drop when a newly added criterion has no value on this day', () => {
+    renderEditor({ results: { wake: 364 }, storedStatus: 'met' });
+
+    expect(screen.getByText(/re-scores it as partial/)).toBeInTheDocument();
+  });
+
+  it('still lets the day be re-recorded — the notice explains, it does not block', async () => {
+    const user = userEvent.setup();
+    renderEditor({ results: { wake: 410, light: true }, storedStatus: 'met' });
+
+    await user.click(screen.getByRole('button', { name: 'Outside for light' }));
+
+    await waitFor(() => {
+      expect(logDay).toHaveBeenCalled();
+    });
+  });
+});
