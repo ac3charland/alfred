@@ -11,6 +11,12 @@ export {
   parseResults,
 } from '@/lib/habits/criteria';
 export {
+  LOCKED_FIELDS,
+  applyHabitUpdate,
+  lockedFieldsChanged,
+  lockedFieldsMessage,
+} from '@/lib/habits/edits';
+export {
   APP_WINDOW_DAYS,
   DEFAULT_WINDOW_DAYS,
   MAX_WINDOW_DAYS,
@@ -33,6 +39,7 @@ export {
   isTrackableDay,
 } from '@/lib/habits/streaks';
 export type { DateWindow } from '@/lib/habits/dates';
+export type { LockedField } from '@/lib/habits/edits';
 export type {
   HabitEntryPayload,
   HabitPayload,
@@ -50,5 +57,6 @@ export type {
   HabitDay,
   HabitResults,
   HabitStats,
+  LoggedDays,
   MeasuredCriterion,
 } from '@/lib/habits/types';

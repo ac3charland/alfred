@@ -92,3 +92,15 @@ export interface HabitStats {
   stage: FormationStage;
   counts: { met: number; partial: number; missed: number; skipped: number; unknown: number };
 }
+
+/**
+ * How many days a habit has logged, and whether the client can claim that number is the whole
+ * truth. The store holds only a trailing window of entries, so a habit older than the window is
+ * a FLOOR rather than a total — and the sentences built from it must never round a floor up into
+ * a certainty, least of all the one naming what a delete destroys.
+ */
+export interface LoggedDays {
+  count: number;
+  /** True when the habit's whole life sits inside the seeded window. */
+  isExact: boolean;
+}

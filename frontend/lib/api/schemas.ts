@@ -234,6 +234,18 @@ const activeDays = z
     message: 'active_days must not repeat a weekday',
   });
 
+/** A habit's whole criteria list. Shared by create and update: one definition of what counts. */
+const habitCriteria = z
+  .array(habitCriterionSchema)
+  .min(1)
+  .refine((criteria) => new Set(criteria.map((c) => c.key)).size === criteria.length, {
+    // Duplicate keys would make a `results` blob ambiguous — two criteria, one slot.
+    message: 'criteria keys must be unique within a habit',
+  });
+
+/** A rolling window is 7 days, so forgiving 8 is meaningless rather than merely generous. */
+const habitAllowance = z.number().int().min(0).max(7);
+
 /**
  * Body for POST /api/habits. Omitted `active_days` / `allowance` / `started_on` fall through to
  * the column defaults (all seven days, no allowance, today).
@@ -241,18 +253,42 @@ const activeDays = z
 export const createHabitSchema = z.object({
   name: z.string().trim().min(1),
   notes: z.string().nullable().optional(),
-  criteria: z
-    .array(habitCriterionSchema)
-    .min(1)
-    .refine((criteria) => new Set(criteria.map((c) => c.key)).size === criteria.length, {
-      // Duplicate keys would make a `results` blob ambiguous — two criteria, one slot.
-      message: 'criteria keys must be unique within a habit',
-    }),
+  criteria: habitCriteria,
   active_days: activeDays.optional(),
-  // A rolling window is 7 days, so forgiving 8 is meaningless rather than merely generous.
-  allowance: z.number().int().min(0).max(7).optional(),
+  allowance: habitAllowance.optional(),
   started_on: z.iso.date().optional(),
 });
+
+/**
+ * Body for PATCH /api/habits/[id] — every field optional, at least one required.
+ *
+ * `archived` is a BOOLEAN, never the timestamp: `archived_at` is a fact about when a habit was
+ * retired, and it is load-bearing (scoring stops on or after it), so a caller free to post an
+ * arbitrary instant could retroactively un-score a fortnight. The route stamps the instant, the
+ * same way the entry route derives rather than accepts a status.
+ *
+ * `active_days` / `allowance` / `started_on` are accepted here but frozen once the habit has a
+ * logged day — the route compares against the stored row and only refuses a real CHANGE, so an
+ * idempotent resend of the values already on screen stays a no-op (see `lib/habits/edits`).
+ */
+export const updateHabitSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    notes: z.string().nullable().optional(),
+    criteria: habitCriteria.optional(),
+    active_days: activeDays.optional(),
+    allowance: habitAllowance.optional(),
+    started_on: z.iso.date().optional(),
+    archived: z.boolean().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'No fields to update',
+  });
+
+// Plain `z.infer`, NOT `ExactOptional`: this type is what the ROUTE receives from the parser, so
+// each optional field genuinely arrives as `T | undefined` — and that is exactly the shape
+// `toUpdatePayload` wants. `ExactOptional` is for types used to BUILD a DB `Update` payload.
+export type UpdateHabitInput = z.infer<typeof updateHabitSchema>;
 
 // Plain `z.infer`, NOT `ExactOptional`: `name` and `criteria` are required here, and that
 // mapped type turns every property optional — which would let a caller omit them.

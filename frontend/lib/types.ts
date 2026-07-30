@@ -21,6 +21,7 @@ export type HabitDayStatus = Database['public']['Enums']['habit_day_status'];
 
 export type Habit = Database['public']['Tables']['habits']['Row'];
 export type HabitInsert = Database['public']['Tables']['habits']['Insert'];
+export type HabitUpdate = Database['public']['Tables']['habits']['Update'];
 
 export type HabitEntry = Database['public']['Tables']['habit_entries']['Row'];
 export type HabitEntryInsert = Database['public']['Tables']['habit_entries']['Insert'];
