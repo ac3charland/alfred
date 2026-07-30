@@ -1,0 +1,15 @@
+ALF-7: Bump the wrangler compatibility date
+
+You are implementing the ticket ALF-7. This is a SKIP-REFINEMENT session: there is NO committed spec to read — settle the plan here, then build it directly in this one session.
+
+1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your work on the code that already exists.
+2. If the title and context below don't pin down the scope, ASK ME HERE before building rather than guessing — you don't need to guess, I'm in this tab. Once the plan is settled, go ahead.
+3. Implement the change directly, following the repo's own conventions (tests/TDD included) — pin each requirement with a test.
+4. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:
+
+```alfred
+alfred-ticket: ALF-7
+phase: implementation
+```
+
+5. Before opening the PR, confirm your changes satisfy the agreed plan and the block above is reproduced exactly.
