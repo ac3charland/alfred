@@ -3,13 +3,15 @@ import type { MouseSensorOptions, TouchSensorOptions } from '@dnd-kit/core';
 import type { MouseEvent, TouchEvent } from 'react';
 
 /**
- * Drag-and-drop from the whole task row, minus its controls (see the dnd-kit skill).
+ * Drag-and-drop from the whole row (or card), minus its controls (see the dnd-kit skill).
  *
- * The task row spreads the draggable listeners on its entire surface, so a press-and-drag
- * anywhere on it picks the row up. But the row also holds buttons (expand, complete, add
- * subtask, the kebab menu) and an inline edit input — a press on any of those must stay a
- * click / text selection, never the start of a drag. {@link RowMouseSensor} and
- * {@link RowTouchSensor} are the activation guards that make that distinction.
+ * A task row — and, on the Code board, a story card — spreads the draggable listeners on its
+ * entire surface, so a press-and-drag anywhere on it picks it up. But it also holds buttons
+ * (expand, complete, add subtask, the kebab menu; a card's launch chips) and an inline edit
+ * input — a press on any of those must stay a click / text selection, never the start of a
+ * drag. {@link RowMouseSensor} and {@link RowTouchSensor} are the activation guards that make
+ * that distinction, with {@link DRAG_SURFACE_ATTRIBUTE} as the opt-out for a control that IS
+ * the drag surface.
  *
  * A single unified pointer sensor can't behave differently for a mouse than for a finger:
  * its one activation constraint applies to every input. A `distance` threshold is right for
@@ -26,12 +28,30 @@ const INTERACTIVE_SELECTOR =
   'button, a, input, textarea, select, [role="button"], [role="menuitem"], [contenteditable="true"]';
 
 /**
+ * Opts one interactive control OUT of the guard below, marking it as part of the draggable's
+ * surface. Some draggables are interactive all the way across — a code story's card body is a
+ * button that opens its detail modal — so without an opt-out they'd have nowhere to lift from.
+ * The control keeps its click: a press that never travels far enough to clear the sensor's
+ * activation distance is still a plain click.
+ */
+export const DRAG_SURFACE_ATTRIBUTE = 'data-drag-surface';
+
+/** Spread onto the interactive element that IS the draggable's surface. */
+export const dragSurfaceProperty = { [DRAG_SURFACE_ATTRIBUTE]: '' };
+
+/**
  * True when `target` is, or sits inside, an interactive control (button, link, form field,
- * menu item). Walking up with `closest` covers nested content like the icon `<svg>` inside
- * a button. A drag must NOT start from one of these.
+ * menu item) that isn't marked as a {@link DRAG_SURFACE_ATTRIBUTE drag surface}. Walking up
+ * with `closest` covers nested content like the icon `<svg>` inside a button. A drag must NOT
+ * start from one of these.
+ *
+ * Only the NEAREST interactive ancestor decides, so a control inside a marked surface (a card's
+ * launch chip) still blocks the drag and keeps its own click.
  */
 export function isInteractiveTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
+  if (!(target instanceof Element)) return false;
+  const interactive = target.closest(INTERACTIVE_SELECTOR);
+  return interactive !== null && !interactive.hasAttribute(DRAG_SURFACE_ATTRIBUTE);
 }
 
 /**
