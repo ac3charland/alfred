@@ -26,10 +26,24 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 
 export type ToastVariant = 'default' | 'emphasis';
 
+/**
+ * A single inline action on a toast — the "Undo" beside a reversible change.
+ *
+ * It belongs on the toast rather than in the surface that fired it because the surface is
+ * usually gone by then: archiving a habit removes the card the menu hung off, so the toast is
+ * the only thing still on screen able to offer the way back.
+ */
+export interface ToastAction {
+  label: string;
+  onAction: () => void;
+}
+
 export interface Toast {
   id: string;
   message: string;
   variant: ToastVariant;
+  /** An inline control (e.g. Undo). Invoking it dismisses the toast. */
+  action?: ToastAction;
   /**
    * Optional client-side nav target. When set, the viewport renders the toast body as a link
    * (see `ToastItem`) so a click jumps there — e.g. a "Created ALF-42" toast deep-links to the
@@ -46,7 +60,7 @@ interface ToastActions {
    * `'default'`; pass `'emphasis'` for the louder, chime-playing treatment. Pass `href` to make
    * the toast body a link (a client-side nav that dismisses on click — see `ToastItem`).
    */
-  showToast: (message: string, variant?: ToastVariant, href?: string) => void;
+  showToast: (message: string, variant?: ToastVariant, href?: string, action?: ToastAction) => void;
   /** Dismiss a toast early (the close button / the auto-dismiss timer). Animates out first. */
   dismissToast: (id: string) => void;
 }
@@ -138,13 +152,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const actions = React.useMemo<ToastActions>(
     () => ({
-      showToast(message, variant = 'default', href) {
+      showToast(message, variant = 'default', href, action) {
         const id = crypto.randomUUID();
-        // Conditionally spread `href` (never assign it `undefined`) so the optional property
-        // stays absent under exactOptionalPropertyTypes when no nav target is given.
+        // Conditionally spread `href` / `action` (never assign them `undefined`) so the optional
+        // properties stay absent under exactOptionalPropertyTypes when no target is given.
         setToasts((current) => [
           ...current,
-          { id, message, variant, leaving: false, ...(href !== undefined && { href }) },
+          {
+            id,
+            message,
+            variant,
+            leaving: false,
+            ...(href !== undefined && { href }),
+            ...(action !== undefined && { action }),
+          },
         ]);
         // Fire the chime once, from this single imperative call (not a mount effect, which
         // StrictMode would double-invoke). `matchMedia` is always-defined client-side, so the

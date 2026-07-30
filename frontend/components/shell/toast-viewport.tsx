@@ -3,6 +3,7 @@
 import { X } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@/components/atoms/button';
 import { CloseButton } from '@/components/atoms/close-button';
 import { ViewLink } from '@/components/tasks/view-link';
 import { type Toast, useToastActions, useToasts } from '@/lib/stores/toast-store';
@@ -53,6 +54,20 @@ export function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () =>
         >
           {toast.message}
         </ViewLink>
+      )}
+      {toast.action !== undefined && (
+        <Button
+          variant="ghostAccent"
+          size="sm"
+          className="shrink-0"
+          onClick={() => {
+            // Act, then dismiss: the toast has served its purpose the moment it is taken up.
+            toast.action?.onAction();
+            onDismiss();
+          }}
+        >
+          {toast.action.label}
+        </Button>
       )}
       <CloseButton variant="icon" aria-label="Dismiss notification" onClick={onDismiss}>
         <X size={14} />
