@@ -77,6 +77,7 @@ const SIDECAR: CodeItem = {
   implementation_pr_url: null,
   blocked_reason: null,
   blocked_from: null,
+  requires_refinement: true,
   created_at: '2025-01-02T00:00:00Z',
   updated_at: '2025-01-02T00:00:00Z',
   priority: 1,
