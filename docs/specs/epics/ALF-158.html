@@ -275,19 +275,33 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D3</span>Structured outputs for the shape; code — not the prompt — for the closed world</h3>
-  <p>
-    The request sets <code>output_config.format</code> with a JSON schema, so the response shape is
-    guaranteed rather than parsed hopefully. <b>Separately</b>, every returned id is validated in the
-    Worker against the exact folder / project / epic sets that were sent in the prompt; anything not
-    in those sets is discarded to <code>null</code>, not written.
-  </p>
+  <h3><span class="n">D3</span>Constrain the values in the schema, re-validate in code, let the database have the last word</h3>
+  <p>Three layers, deliberately redundant:</p>
+  <ol style="font-size:.93rem; margin:.35rem 0">
+    <li><b>The schema carries the ids.</b> <code>output_config.format</code> is assembled per sweep
+      with the live folder / project / epic ids as <code>enum</code> values, not merely typed as
+      strings. Structured outputs constrain <i>generation</i>, so an id that isn't on the list is not
+      something the model can emit — a hallucinated folder becomes <b>impossible rather than
+      caught</b>.</li>
+    <li><b>The Worker re-validates anyway.</b> Every id is rechecked against the sets that were sent,
+      plus cross-field coherence (a <code>code</code> verdict carrying a due date, a
+      <code>task</code> verdict carrying a project). Anything failing drops to <code>null</code>.</li>
+    <li><b>The database rejects whatever survives.</b> The foreign keys and the CHECK constraints of
+      D7 will fail the write rather than store an incoherent row.</li>
+  </ol>
   <p class="why">
-    <b>Why both:</b> structured outputs constrain the <i>shape</i>, not the <i>values</i> — a
-    well-formed response can still name a folder that doesn't exist or one that was deleted between
-    prompt assembly and write-back. Telling the model "only choose from this list" is a prompt, and
-    prompts are not enforcement. The validation step is pure, deterministic, and the natural unit-test
-    seam (D12).
+    <b>Why layer 2 when layer 1 exists:</b> the enum closes the value space at generation time but not
+    the <i>time gap</i> — a folder can be deleted between prompt assembly and write-back, and only the
+    validation step notices. It is also where cross-field rules live, which an enum can't express
+    cleanly, and it is pure and deterministic, so it is the natural unit-test seam (D12).
+    <br />
+    <b>Why not just prompt for it:</b> "only choose from this list" is a request, not a constraint.
+    Layer 1 is the same instruction expressed somewhere it is actually enforced.
+    <br />
+    <b>The cost of a per-request schema:</b> a new schema pays a one-time compilation cost and then
+    caches for 24 hours. The id lists change only when a folder, project or epic is created, so in
+    practice the schema is stable for days and recompiles on the rare change — not a reason to hand
+    the model a free-text field.
   </p>
 </div>
 
@@ -484,16 +498,58 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D13</span>Every failure degrades to "unclassified", which is exactly today's behaviour</h3>
+  <h3><span class="n">D13</span>Degrade per field, retry only transport — and there is no conversational repair loop</h3>
   <p>
-    API error, rate limit, timeout, malformed response, budget ceiling, deploy gap — in all cases the
-    item stays unclassified and unmarked, and the next sweep tries again. A bounded attempt count
-    stops one pathological item from consuming the budget forever; after it, the item is marked as
-    attempted and left alone.
+    Each classification is <b>one stateless request</b>. The Worker never opens a second turn to tell
+    the model it got something wrong, never sends an error message back for another attempt, and
+    never holds a conversation. What happens instead depends on what failed:
   </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:38%">What went wrong</th><th>What the Worker does</th></tr>
+    <tr>
+      <td>An id fails validation — deleted between prompt and write-back (D3 layer 2)</td>
+      <td><b>That field drops to <code>null</code>.</b> The rest of the verdict is written and the item is marked classified. No retry.</td>
+    </tr>
+    <tr>
+      <td>Cross-field incoherence — a <code>code</code> verdict carrying a due date</td>
+      <td><b>The offending field is dropped</b>, the coherent core is written. No retry.</td>
+    </tr>
+    <tr>
+      <td><code>stop_reason: "max_tokens"</code> — response truncated mid-JSON</td>
+      <td>Nothing written, item left unmarked, next tick retries. Genuinely a config bug rather than model behaviour: the verdict is ~100 tokens, so <code>max_tokens</code> should be set with room to spare and this should never fire.</td>
+    </tr>
+    <tr>
+      <td><code>stop_reason: "refusal"</code></td>
+      <td>Nothing written; the attempt is counted. Re-sending the same prompt will not help, so it burns an attempt rather than looping.</td>
+    </tr>
+    <tr>
+      <td>429 / 5xx / timeout / network</td>
+      <td>Nothing written, unmarked, next tick. Transient blips are absorbed by the SDK's own retry inside the request.</td>
+    </tr>
+    <tr>
+      <td>Attempt or budget ceiling reached</td>
+      <td>The item is marked attempted and left alone — it goes on being an ordinary unclassified Inbox item, forever if need be.</td>
+    </tr>
+  </table>
+  </div>
   <p class="why">
-    <b>Why:</b> the feature is strictly additive, so its worst case must be the status quo, not a
-    broken Inbox. Nothing in this epic may block a capture, drop an item, or leave one in a state the
+    <b>Why no repair loop:</b> the error a repair loop exists to fix is precisely the one D3's first
+    layer designs out — you cannot usefully say "that folder doesn't exist, try again" about an id the
+    model was never able to emit. And for everything else, <b>abstention is already the right
+    answer</b> (D8): a dropped field yields a blank the owner fills in, which this epic already treats
+    as a perfectly good outcome. A repair turn would spend a second call, more latency and a retry
+    budget to convert that blank into a guess — moving in the exact opposite direction from the
+    precision D8 optimises for.
+    <br />
+    <b>Why transport failures need no code either:</b> D9's sweeper already retries them for free. An
+    item that failed is simply still unclassified on the next tick. That is the entire retry
+    mechanism — no queue, no backoff state, no dead-letter, nothing to test beyond the attempt
+    counter.
+    <br />
+    <b>What this buys:</b> cost stays flatly predictable at one call per item per attempt, with no
+    path where a bad response multiplies spend. And the worst case is the status quo — the feature is
+    strictly additive, so nothing here may block a capture, drop an item, or leave one in a state the
     UI can't render.
   </p>
 </div>
@@ -734,15 +790,17 @@
   "item_type":            "task" | "code" | null,
   "priority":             "high" | "medium" | "low" | null,   // task only
   "due_date":             "YYYY-MM-DD" | null,                // task only, only if stated
-  "folder_id":            &lt;id from the supplied list&gt; | null, // task only
-  "intended_project_id":  &lt;id from the supplied list&gt; | null, // code only
-  "intended_epic_id":     &lt;id from the supplied list&gt; | null  // code only
+  "folder_id":            enum(&lt;live folder ids&gt;)  | null,     // task only
+  "intended_project_id":  enum(&lt;live project ids&gt;) | null,     // code only
+  "intended_epic_id":     enum(&lt;live epic ids&gt;)    | null      // code only
 }</code></pre>
 
 <p class="small">
-  <code>null</code> for <code>item_type</code> means "leave it unclassified" — not an error. The
-  shape mirrors the CHECK constraints deliberately: a <code>code</code> verdict can never carry a due
-  date, so the coherent write in D7 is always legal.
+  The three id fields are <code>enum</code>s of the actual ids, rebuilt each sweep — that is D3's
+  first layer, and it is why an invented folder isn't a case the Worker has to handle.
+  <code>null</code> for <code>item_type</code> means "leave it unclassified", not an error. The shape
+  mirrors the CHECK constraints deliberately: a <code>code</code> verdict can never carry a due date,
+  so the coherent write in D7 is always legal.
 </p>
 
 <h2>4 · What the Inbox looks like</h2>
@@ -875,8 +933,8 @@
   </tr>
   <tr>
     <td><b>D</b></td>
-    <td>The Anthropic call — prompt assembly, structured-output schema, closed-world validation, coherent write, backoff and budget guard</td>
-    <td>The actual model integration. Lands behind everything above, so its blast radius is one swapped function.</td>
+    <td>The Anthropic call — prompt assembly, the enum'd output schema, re-validation, the coherent write, and the per-failure degradation table</td>
+    <td>The actual model integration. Lands behind everything above, so its blast radius is one swapped function. Note D13 leaves it with no retry code of its own beyond an attempt counter — the sweeper is the retry.</td>
   </tr>
   <tr>
     <td><b>E</b></td>
