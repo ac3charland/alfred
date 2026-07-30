@@ -81,7 +81,12 @@ export function HistoryGrid({
         if (!open) setOpenDate(undefined);
       }}
     >
-      <div className="flex items-start justify-end gap-1.5">
+      {/* `min-w-0` is what lets the grid give way to the stats rail beside it. As a flex item its
+          automatic minimum size is its content width — 27 columns of squares — so without this it
+          refuses to shrink, the row grows past the card, and the rail (which must not shrink, or
+          its figures would wrap) is pushed out through the card's right edge. Allowed to shrink,
+          the grid hands the overflow to its own scroller below. */}
+      <div className="flex min-w-0 items-start justify-end gap-1.5">
         <div
           aria-hidden="true"
           data-testid="history-weekdays"
