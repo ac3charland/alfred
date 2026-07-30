@@ -816,6 +816,50 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const requiresRefinementResult = await attempt(
+    'create_code_story keeps ONE signature after 0025 and honours p_requires_refinement (ALF-137)',
+    async () => {
+      // 0025 had to DROP the 4-arg signature before creating the 5-arg one. Adding a defaulted
+      // parameter instead would leave TWO candidate functions, and PostgREST's existing
+      // 4-named-arg call would match both — `function ... is not unique`, story creation 500s.
+      const { rows: signatures } = await client.query<{ count: string }>(
+        `select count(*)::text as count from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'create_code_story'`,
+      );
+      const count = signatures[0]?.count ?? '0';
+      if (count !== '1') throw new Error(`expected exactly 1 create_code_story, found ${count}`);
+
+      // The 4-named-arg call PostgREST already makes still resolves…
+      const legacy = await asRole(client, 'authenticated', () =>
+        client.query<{ factory_state: string; requires_refinement: boolean }>(
+          `select factory_state::text, requires_refinement
+             from create_code_story(p_project := $1, p_epic := $2, p_title := $3, p_notes := null)`,
+          [PROJECT, EPIC, 'four-named-args still resolves'],
+        ),
+      );
+      const legacyRow = legacy.rows[0];
+      if (legacyRow?.factory_state !== 'needs_refinement' || !legacyRow.requires_refinement)
+        throw new Error(`4-arg call landed at ${String(legacyRow?.factory_state)}`);
+
+      // …and clearing the flag lands the story straight in ready_for_dev.
+      const marked = await asRole(client, 'authenticated', () =>
+        client.query<{ factory_state: string; requires_refinement: boolean }>(
+          `select factory_state::text, requires_refinement
+             from create_code_story(p_project := $1, p_epic := $2, p_title := $3,
+                                    p_requires_refinement := false)`,
+          [PROJECT, EPIC, 'no spec needed'],
+        ),
+      );
+      const markedRow = marked.rows[0];
+      if (markedRow?.factory_state !== 'ready_for_dev' || markedRow.requires_refinement)
+        throw new Error(
+          `p_requires_refinement := false landed at ${String(markedRow?.factory_state)}`,
+        );
+      return `1 signature; 4-arg → needs_refinement, flag cleared → ready_for_dev`;
+    },
+  );
+
   const epicRealtimeResult = await attempt(
     'epics is in the supabase_realtime publication so a snapshot reaches an open board',
     async () => {
@@ -1039,6 +1083,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     codeStoryListReadResult,
     epicSpecColumnsResult,
     epicSpecViewResult,
+    requiresRefinementResult,
     epicRealtimeResult,
     habitSchemaResult,
     habitEntryUniqueResult,
