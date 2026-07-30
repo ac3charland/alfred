@@ -1,13 +1,16 @@
 import {
   STAGE_LABEL,
+  archivedSpan,
   bankedAccessibleName,
   beforeStartName,
   criterionKeyFrom,
   dayAccessibleName,
+  deleteConfirmLine,
   formatActiveDays,
   formatAllowance,
   formatAllowanceSlot,
   formatBanked,
+  formatDayMonth,
   formatDaysSlot,
   formatHitRate,
   formatLongDate,
@@ -15,6 +18,8 @@ import {
   formatStreakLength,
   formatTarget,
   habitSummary,
+  lockedReason,
+  lockedSlotName,
   minutesToTime,
   timeToMinutes,
   weekdayName,
@@ -249,5 +254,95 @@ describe('bankedAccessibleName', () => {
     expect(bankedAccessibleName(47)).toBe('47 of about 66 banked days');
     expect(bankedAccessibleName(82)).toBe('82 banked days, past about 66');
     expect(bankedAccessibleName(47)).not.toContain('~');
+  });
+});
+
+describe('formatDayMonth', () => {
+  it('drops the weekday, for a sentence that already has a subject', () => {
+    expect(formatDayMonth('2026-06-12')).toBe('12 June');
+  });
+});
+
+describe('lockedReason', () => {
+  it('names the count and what changing the slot would rewrite', () => {
+    expect(lockedReason('slack', { count: 63, isExact: true })).toBe(
+      '63 days are already logged. Changing your slack would rewrite what those days counted for, so the streak you earned stays the streak you see.',
+    );
+  });
+
+  it('names the days slot in the owner’s terms rather than the column’s', () => {
+    expect(lockedReason('days', { count: 63, isExact: true })).toContain(
+      'Changing which days count',
+    );
+  });
+
+  // A habit older than the seeded window is a floor, and the sentence has to say so.
+  it('hedges a count the window cannot vouch for', () => {
+    expect(lockedReason('slack', { count: 118, isExact: false })).toMatch(
+      /^at least 118 days are already logged\./,
+    );
+  });
+
+  it('agrees the verb with a single logged day', () => {
+    expect(lockedReason('slack', { count: 1, isExact: true })).toMatch(
+      /^1 day is already logged\./,
+    );
+  });
+});
+
+describe('lockedSlotName', () => {
+  it('puts the state before the value, so it is announced first', () => {
+    expect(lockedSlotName('Days:', 'day')).toBe('Locked: Days: day');
+  });
+});
+
+describe('archivedSpan', () => {
+  it('reads the span a habit ran for, with the year said once', () => {
+    const habit = {
+      started_on: '2026-02-03',
+      archived_at: '2026-05-18T09:00:00Z',
+    } as Habit;
+    expect(archivedSpan(habit)).toBe('ran 3 Feb – 18 May 2026');
+  });
+
+  it('says both years for a span that crosses New Year', () => {
+    const habit = {
+      started_on: '2025-11-30',
+      archived_at: '2026-02-02T09:00:00Z',
+    } as Habit;
+    expect(archivedSpan(habit)).toBe('ran 30 Nov 2025 – 2 Feb 2026');
+  });
+
+  it('falls back to the start alone for a habit that is not archived', () => {
+    const habit = { started_on: '2026-02-03', archived_at: null } as Habit;
+    expect(archivedSpan(habit)).toBe('started 3 Feb 2026');
+  });
+});
+
+describe('deleteConfirmLine', () => {
+  const habit = { started_on: '2026-06-12' } as Habit;
+
+  it('names the exact cost when the whole history is in hand', () => {
+    expect(deleteConfirmLine(habit, { count: 63, isExact: true })).toBe(
+      'This destroys the habit and every day logged against it — 63 days, since 12 June. It cannot be undone.',
+    );
+  });
+
+  it('never overstates certainty for a habit older than the window', () => {
+    const older = { started_on: '2026-02-03' } as Habit;
+    expect(deleteConfirmLine(older, { count: 118, isExact: false })).toBe(
+      'This destroys the habit and every day logged against it — at least 118 days, since 3 February. It cannot be undone.',
+    );
+  });
+
+  it('says plainly that nothing is at stake when nothing is logged', () => {
+    expect(deleteConfirmLine(habit, { count: 0, isExact: true })).toBe(
+      'This destroys this habit. Nothing has been logged against it yet.',
+    );
+  });
+
+  // A zero the window can't vouch for is not a "nothing logged" — there may be older days.
+  it('does not claim an empty habit when the count is only a floor', () => {
+    expect(deleteConfirmLine(habit, { count: 0, isExact: false })).toContain('at least 0 days');
   });
 });
