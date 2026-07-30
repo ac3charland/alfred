@@ -14,6 +14,7 @@ import { Badge } from '@/components/atoms/badge';
 import { IconButton } from '@/components/atoms/icon-button';
 import { StateChip } from '@/components/code/state-chip';
 import { ViewLink } from '@/components/tasks/view-link';
+import { storyBoardHref } from '@/lib/code/board-links';
 import { type ProjectColor, projectBadgeClasses } from '@/lib/code/project-color';
 import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
 import { MOVE_SYNC_DEBOUNCE_MS, useMoveBurst } from '@/lib/hooks/use-move-burst';
@@ -93,7 +94,7 @@ export const BacklogRow = React.forwardRef<HTMLLIElement, BacklogRowProperties>(
   ref,
 ) {
   const storyRef = story.ref;
-  const href = `/code/${story.project_id ?? ''}?story=${storyRef ?? ''}`;
+  const href = storyBoardHref(story.project_id ?? '', storyRef ?? '');
 
   // The reorder steps queued (in click order) for the burst currently in flight — flushed to the
   // server once the debounce settles, then cleared.

@@ -1,3 +1,4 @@
+import { storyBoardHref } from '@/lib/code/board-links';
 import { FACTORY_STATE_LABELS } from '@/lib/stores/code-store';
 import { resolveRoot, taskDestination } from '@/lib/tasks/task-location';
 import type { CodeStory, Folder, Item } from '@/lib/types';
@@ -148,7 +149,7 @@ export function buildResults(
         title: story.title ?? '(untitled)',
         ref: story.ref ?? '',
         subtitle: storySubtitle(story),
-        href: `/code/${story.project_id ?? ''}?story=${encodeURIComponent(story.ref ?? '')}`,
+        href: storyBoardHref(story.project_id ?? '', story.ref ?? ''),
         completed: isStoryTerminal(story),
         story,
       },

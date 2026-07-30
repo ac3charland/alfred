@@ -27,6 +27,7 @@ import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import { TypeBadge } from '@/components/tasks/type-badge';
 import type { ConvertedEpic } from '@/lib/api-client';
+import { projectBoardHref, storyBoardHref } from '@/lib/code/board-links';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
 import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
@@ -538,7 +539,7 @@ export function TaskRow({
     showToast(
       `Created ${result.epic.ref} · ${String(count)} ${count === 1 ? 'story' : 'stories'}`,
       'default',
-      `/code/${result.epic.project_id}`,
+      projectBoardHref(result.epic.project_id),
     );
   };
 
@@ -1170,10 +1171,8 @@ export function TaskRow({
           // story's board modal so a click jumps straight there (see board.tsx's `?story=` seam).
           const story = stories[0];
           const ref = story?.ref ?? '';
-          const href =
-            story?.project_id != null && ref !== ''
-              ? `/code/${story.project_id}?story=${ref}`
-              : undefined;
+          const projectId = story?.project_id ?? null;
+          const href = projectId === null ? undefined : storyBoardHref(projectId, ref);
           showToast(`Created ${ref}`, 'default', href);
         }}
       />

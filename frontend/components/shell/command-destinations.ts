@@ -1,3 +1,4 @@
+import { projectBoardHref } from '@/lib/code/board-links';
 import type { Folder, Project } from '@/lib/types';
 
 /**
@@ -132,7 +133,7 @@ function projectDestination(project: Project): Destination {
     id: `project-${project.id}`,
     group: 'projects',
     label: project.name,
-    href: `/code/${project.id}`,
+    href: projectBoardHref(project.id),
     icon: 'project',
     key: project.key,
   };
