@@ -41,6 +41,7 @@ Sources used:
 
 **References**
 - [`references/setup-and-wiring.md`](references/setup-and-wiring.md) — `playwright.config.ts` / `auth.setup.ts` reference, Storybook test-runner browser config, and gotchas hit wiring the integration suite
+- [`references/driving-realtime.md`](references/driving-realtime.md) — faking the Supabase realtime socket so a test can push a `postgres_changes` event
 
 ---
 
@@ -283,6 +284,9 @@ The suite never touches real Supabase. Every Supabase access in alfred is **serv
 
 - **Seed per test, not per build.** `e2e/support/fixtures.ts` adds a `seed` fixture that POSTs to `/__mock__/reset` (clean slate) then `/__mock__/seed` before `page.goto()`. The mock is in-memory and the config runs `workers: 1, fullyParallel: false`, so a shared store with per-test reset is deterministic. Build seed rows with `makeItem` / `makeFolder` from `e2e/support/constants.ts`.
 - **Adding an `items` column? Update the mock's `newItem` too.** The mock's row constructors (`newItem`/`newFolder`/… in `mock-supabase.mjs`) are an **explicit allowlist** — a field they don't copy is silently dropped from every seeded row, so it reads back `undefined`, not the DB default. A render guard like `field !== null && <Chip …/>` then lets `undefined` through and the component crashes in SSR. Adding a column means touching all four of: the migration, `database.types.ts`, `makeItem` in `e2e/support/constants.ts`, **and `newItem` in `mock-supabase.mjs`**.
+- **The mock has no realtime socket**, so a channel subscription never joins and nothing reacts to a
+  `postgres_changes` event. Push one from a fake `WebSocket` instead — see
+  [`references/driving-realtime.md`](references/driving-realtime.md).
 - **The mock implements the wire protocol, not the client API — a query shape it hasn't met yet
   fails as an opaque `500`.** `.select(…, { head: true, count: 'exact' })` is the one that bites:
   supabase-js sends it as an HTTP **HEAD** carrying `Prefer: count=exact` and reads the total back
