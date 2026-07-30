@@ -182,6 +182,18 @@ Use this when:
   this; scope its ref to the whole owning element (e.g. the task row) so the row's own ⋯ trigger
   isn't counted as outside.
 
+- **A menu item that opens a dialog needs `onCloseAutoFocus={(e) => e.preventDefault()}` on the
+  `DropdownMenuContent`.** Radix returns focus to the menu's trigger when the menu closes, and it
+  does so *asynchronously*, after the exit animation — so the jump lands ~200ms into the life of
+  the dialog the item just opened. Focus leaves the dialog, and any `Popover` inside it that
+  doesn't autofocus its own content closes on the resulting focus-out. It looks like a flaky
+  popover, not a focus bug: the popover opens, is briefly visible, then vanishes; in Playwright the
+  click fails with "element is not stable" / "detached from the DOM". Only popovers whose content
+  grabs focus on mount (a text field with an autofocus effect) are immune, which is why one popover
+  in the same dialog can work while its neighbour doesn't. Guard the suppression behind a "was
+  something picked?" ref so dismissing the menu with Escape still restores focus normally
+  (`components/habits/habit-menu.tsx`).
+
 - **An open Dropdown/Dialog is modal: it `aria-hidden`s the rest of the page.** Every role-based
   query behind it comes back empty — in RTL *and* Playwright — so a test that toggles a menu item
   and then asserts on the page still sees the old state, or worse passes a `queryBy…not.toBeInTheDocument`
