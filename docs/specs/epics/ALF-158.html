@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-158 — LLM processing</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a; --partial: #d99b2b;
+    /* app palette (SPEC §5.4) — used only inside .app mockups */
+    --a-bg: #0A0E17; --a-surface: #0F1626; --a-border: #1E2A3F;
+    --a-text: #E8EDF5; --a-muted: #8A96A8;
+    --a-teal: #4FD1E0; --a-green: #34D399; --a-blue: #60A5FA;
+    --a-amber: #F0B429; --a-red: #F87171;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a; --partial: #e0ab48;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── App-palette mockup ──────────────────────────────────────── */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1rem; margin: 1rem 0; color: var(--a-text); font-size: .84rem;
+  }
+  .app-head { display: flex; align-items: center; justify-content: space-between;
+              margin-bottom: .75rem; }
+  .eyebrow { font-size: .64rem; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--a-teal); font-weight: 700; }
+  .ghostbtn { border: 1px solid var(--a-border); border-radius: 6px; color: var(--a-muted);
+              padding: .15rem .55rem; font-size: .72rem; }
+  .row {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 10px;
+    padding: .6rem .75rem; margin-bottom: .5rem; display: flex; gap: .6rem; align-items: flex-start;
+  }
+  .row.sel { border-color: color-mix(in srgb, var(--a-teal) 55%, transparent);
+             box-shadow: 0 0 0 1px color-mix(in srgb, var(--a-teal) 22%, transparent); }
+  .box { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--a-muted);
+         flex: none; margin-top: .2rem; }
+  .box.on { background: var(--a-teal); border-color: var(--a-teal); }
+  .row-main { flex: 1; min-width: 0; }
+  .row-title { color: var(--a-text); margin-bottom: .35rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .chip { border-radius: 999px; padding: .05rem .5rem; font-size: .68rem; font-weight: 600;
+          border: 1px solid; white-space: nowrap; }
+  .c-task  { color: var(--a-teal);  border-color: color-mix(in srgb, var(--a-teal) 50%, transparent); }
+  .c-code  { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 50%, transparent); }
+  .c-hi    { color: var(--a-red);   border-color: color-mix(in srgb, var(--a-red) 50%, transparent); }
+  .c-med   { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 50%, transparent); }
+  .c-lo    { color: var(--a-blue);  border-color: color-mix(in srgb, var(--a-blue) 50%, transparent); }
+  .c-fold  { color: var(--a-green); border-color: color-mix(in srgb, var(--a-green) 50%, transparent); }
+  .c-due   { color: var(--a-muted); border-color: var(--a-border); }
+  .c-empty { color: var(--a-muted); border-color: var(--a-border); border-style: dashed; }
+  .bulkbar { background: var(--a-surface); border: 1px solid var(--a-teal); border-radius: 999px;
+             padding: .45rem .9rem; display: flex; gap: .8rem; align-items: center;
+             justify-content: center; font-size: .75rem; margin-top: .8rem;
+             box-shadow: 0 0 18px -6px var(--a-teal); }
+  .bulkbar b { color: var(--a-teal); }
+  .bulkbar span { color: var(--a-muted); }
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.4rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-158 — LLM processing</h1>
+<p class="sub">
+  <span class="pill">Epic spec</span>
+  Durable context for the epic. Read this before refining any story inside it.
+</p>
+
+<div class="card">
+  <b>The one-line shape.</b> A small model reads each item as it lands in the Inbox and fills in the
+  labels that are manual today — <i>task or code, priority, a due date if the text states one, a
+  folder for a task, a project and epic for code</i>. The guesses are written straight onto the
+  item's real fields and <b>wait in the Inbox</b>, unmarked. The owner scans, overwrites anything
+  wrong, multi-selects, and dispatches. The machine never routes anything; it only pre-fills — and
+  every override the owner makes is remembered and fed back, so the next batch guesses a little
+  better.
+</div>
+
+<h2>1 · Problem space &amp; why now</h2>
+
+<p>
+  <a href="../product/SPEC.md"><code>SPEC.md</code></a> has planned for this from the start. §2 names
+  Cloudflare Workers as the home for "LLM pre/post-processing", §4.2 sketches an LLM cleanup layer in
+  front of capture, §6 says <code>POST /api/items</code> is "the seam where the future LLM
+  capture-processing Worker slots in", and §11 Phase 6 is literally <i>(Future) LLM processing
+  layer</i>. This epic is that phase — narrowed to the highest-value slice.
+</p>
+
+<p>
+  The system is <b>capture-first by design</b>: an item lands with a title and nothing else, and the
+  owner is never ambushed with triage at capture time. That is the right trade, and it works — but it
+  pushes 100% of the classification cost into a later sitting. Every Inbox item currently needs the
+  owner to decide, by hand, up to five things that are usually obvious from the text itself:
+</p>
+
+<table>
+  <tr><th style="width:26%">Field</th><th>Set today by</th></tr>
+  <tr><td><code>item_type</code></td><td>the bulk bar's <b>Classify</b>, a row menu, or the <code>ALF:</code> capture prefix</td></tr>
+  <tr><td><code>priority</code></td><td><code>PrioritySelect</code>, by hand, per item</td></tr>
+  <tr><td><code>due_date</code></td><td>the calendar popover, by hand — even when the title says "friday"</td></tr>
+  <tr><td><code>folder_id</code></td><td>bulk <b>Move</b>, drag-to-folder, or a row menu</td></tr>
+  <tr><td>project / epic (code)</td><td>the <code>ALF:</code> prefix for the project; the epic only at the gate dialog</td></tr>
+</table>
+
+<p>
+  Most of these are not judgement calls. "Call the dentist friday" is a high-signal string: it is a
+  task, it has a date, and if there is a <b>Health</b> folder it belongs there. The owner is doing
+  work a small model does well and does instantly. Meanwhile the multi-select machinery to act on a
+  batch <b>already exists</b> — <code>InboxBulkBar</code> ships Classify / Move / Send-to-Code over a
+  selection. The missing half is that the items arrive blank, so a "batch" is still five decisions
+  per row.
+</p>
+
+<p>
+  <b>Why now:</b> the Inbox is the one surface where the owner still pays a per-item tax, the
+  destination surfaces it feeds (folders, the priority view, the code factory) are all built, and the
+  Worker package already exists with a deployed entrypoint and a Supabase service-role write path.
+  There is nothing left to build <i>around</i> this.
+</p>
+
+<h3>What this epic builds on</h3>
+
+<p>Three pieces of existing behaviour are load-bearing, and each is precedent for a decision below.</p>
+
+<ul>
+  <li>
+    <b>The <code>ALF:</code> capture prefix</b> (<code>lib/code/project-prefix.ts</code>, ALF-62). A
+    capture starting with a known project key or name is classified <code>code</code>, has
+    <code>intended_project_id</code> set, and <b>stays in the Inbox</b>. A deterministic
+    pre-classifier writing straight to the real fields already exists and is already trusted; this
+    epic generalises it, it does not invent it.
+  </li>
+  <li>
+    <b>Filing already classifies</b> (<code>moveTask</code>, ALF-72). Dropping an unclassified item
+    into a folder flips it to <code>task</code> in the same mutation, because "folders hold tasks" and
+    a bare move would strand it. Coupled multi-field writes are the house pattern.
+  </li>
+  <li>
+    <b>The <code>task_items</code> view</b> excludes only items that have a <code>code_items</code>
+    sidecar. Its own comment says it covers "code-classified-but-not-yet-sent items" — the Inbox is
+    already a place where a classified item waits.
+  </li>
+</ul>
+
+<h2>2 · Decisions</h2>
+
+<p class="small">
+  <b>D1, D2, D4, D5, D9</b> were settled with the owner in this session. The rest follow from those
+  plus what the repo already does. Each carries its rationale so a story session doesn't
+  re-litigate it.
+</p>
+
+<h3>Provider &amp; model</h3>
+
+<div class="dec">
+  <h3><span class="n">D1</span>The Anthropic API with a pay-as-you-go key — not the Claude subscription, not a self-hosted OSS model</h3>
+  <p>
+    The Worker calls <code>POST /v1/messages</code> with an <code>ANTHROPIC_API_KEY</code> held as a
+    Worker secret (<code>wrangler secret put</code>), alongside the secrets already declared in
+    <code>wrangler.toml</code>.
+  </p>
+  <p class="why">
+    <b>Why not the subscription + <code>claude -p</code>:</b> two independent blockers. Mechanically,
+    <code>-p</code> runs the Claude Code <i>CLI</i> — a Node process with a filesystem and an
+    OAuth credential on disk. A Worker is a V8 isolate: no subprocess, no filesystem, no way to
+    invoke a CLI. And separately, a Pro/Max subscription credential is for using Claude Code, not a
+    substitute API credential for a hosted service. There is no version of this that works from
+    inside a Worker.
+    <br />
+    <b>Why not a cheaper open-source model:</b> the cost this would save is real but tiny (D2), and a
+    second provider costs a second key, a second SDK, a second failure mode, and — the part that
+    actually matters — a materially weaker guarantee on constrained JSON and on picking correctly
+    from a closed list. A wrong-but-plausible folder is the expensive failure here, because it gets
+    rubber-stamped in review. <b>Re-open if</b> monthly spend ever exceeds ~$25, which at these rates
+    means volume has grown ~20×.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>Claude Haiku 4.5 by default; the model id is a Worker var, not a constant</h3>
+  <p>
+    Default <code>claude-haiku-4-5</code>, injected as a <code>[vars]</code> entry so it can be
+    changed at deploy without a code change. Escalation path is <code>claude-sonnet-5</code>.
+  </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr>
+      <th style="width:24%">Model</th><th>Rate</th><th>Per item<span class="small"> (~1.5k in / ~100 out)</span></th><th>Per month<span class="small"> @ 20/day</span></th>
+    </tr>
+    <tr><td><code>claude-haiku-4-5</code></td><td>$1 / $5 per MTok</td><td>~$0.002</td><td><b>~$1.20</b></td></tr>
+    <tr><td><code>claude-sonnet-5</code></td><td>$3 / $15 <span class="small">($2 / $10 intro to 2026-08-31)</span></td><td>~$0.006</td><td>~$3.60</td></tr>
+    <tr><td><code>claude-opus-5</code></td><td>$5 / $25 per MTok</td><td>~$0.010</td><td>~$6.00</td></tr>
+  </table>
+  </div>
+  <p class="why">
+    <b>Why:</b> at this volume every option is inside noise, so the choice is decided by fit, not
+    price — and Haiku 4.5 supports structured outputs (D3), which is the property that matters.
+    Making the id a var rather than a constant means "try Sonnet for a week" is a deploy flag, not a
+    story.
+    <br />
+    <b>Two facts worth not rediscovering:</b> Haiku 4.5's prompt-cache minimum is <b>4096 tokens</b>,
+    so a compact classify prompt will silently never cache — do not build a caching story around it
+    and do not read <code>cache_read_input_tokens: 0</code> as a bug. Haiku 4.5 also does not accept
+    the <code>effort</code> parameter; classification needs no thinking, so this costs nothing, but a
+    copied-in <code>output_config.effort</code> will error.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>Structured outputs for the shape; code — not the prompt — for the closed world</h3>
+  <p>
+    The request sets <code>output_config.format</code> with a JSON schema, so the response shape is
+    guaranteed rather than parsed hopefully. <b>Separately</b>, every returned id is validated in the
+    Worker against the exact folder / project / epic sets that were sent in the prompt; anything not
+    in those sets is discarded to <code>null</code>, not written.
+  </p>
+  <p class="why">
+    <b>Why both:</b> structured outputs constrain the <i>shape</i>, not the <i>values</i> — a
+    well-formed response can still name a folder that doesn't exist or one that was deleted between
+    prompt assembly and write-back. Telling the model "only choose from this list" is a prompt, and
+    prompts are not enforcement. The validation step is pure, deterministic, and the natural unit-test
+    seam (D12).
+  </p>
+</div>
+
+<h3>The write-through model — the heart of this epic</h3>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Guesses are written to the item's real fields, with no "suggested" marking</h3>
+  <p>
+    There is no suggestion sidecar, no confidence badge, no ghosted styling, no accept/reject
+    affordance. The classifier writes <code>item_type</code>, <code>priority</code>,
+    <code>due_date</code>, <code>folder_id</code>, <code>intended_project_id</code> exactly as a human
+    edit would, and a machine-set chip is <b>visually indistinguishable</b> from one the owner set.
+    The owner overwrites what they disagree with, using the editing controls already on the row.
+  </p>
+  <p class="why">
+    <b>Why (owner's call, and it holds up):</b> the point of the epic is that the labels are
+    <i>waiting</i> when you get there. A "suggested" state creates a second thing to do — approve —
+    on top of the thing you actually wanted, which is to glance and move on. It also doubles every
+    read path in the app: every store, selector, filter, count and view would need to know about
+    proposed-vs-real. The repo already write-throughs a machine guess in exactly this way (the
+    <code>ALF:</code> prefix), and nobody has wanted a badge for it.
+    <br />
+    <b>What this costs:</b> the interface can no longer tell a guess from a decision, so if the guess
+    is ever to be learned from it has to be recorded somewhere invisible — which is exactly what
+    <b>D15</b> does. Accepted, because the risk that remains — a confident wrong label that gets
+    rubber-stamped — is attacked by abstention (D8) rather than by badging.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>The Inbox stops meaning "no folder" and starts meaning "not yet dispatched"</h3>
+  <p>
+    Today Inbox membership is computed client-side as <code>item.folder_id === null</code>
+    (<code>lib/stores/tasks-store.tsx</code>), and a folder view is
+    <code>item.folder_id === folderId</code>. This epic introduces an explicit residency marker on
+    <code>items</code> — a nullable <code>dispatched_at timestamptz</code>, <code>null</code> meaning
+    <i>still in the Inbox</i> — and every Inbox / folder / count query reads it instead of inferring
+    residency from <code>folder_id</code>.
+  </p>
+  <ul>
+    <li><b>Inbox</b> = <code>dispatched_at is null</code> (top-level items), whatever <code>folder_id</code> holds.</li>
+    <li><b>Folder view</b> = <code>folder_id = X</code> <b>and</b> <code>dispatched_at is not null</code>.</li>
+    <li><b>Folder attention / overdue badges</b> must adopt the same <code>dispatched_at</code> guard, or an
+      undispatched item with a pre-filled folder will inflate that folder's counts from inside the Inbox.</li>
+    <li><b>Backfill:</b> every existing item with a non-null <code>folder_id</code> gets a non-null
+      <code>dispatched_at</code>; everything else stays null. No item changes view.</li>
+  </ul>
+  <p class="why">
+    <b>Why this is unavoidable:</b> it is the direct consequence of D4. The moment the classifier can
+    write <code>folder_id</code>, the current rule files the item away — it disappears from the Inbox
+    into a folder <i>before the owner has ever seen the guess</i>. That is the exact opposite of
+    "waiting for me to look at". Residency and location have to become two different facts.
+    <br />
+    <b>Why a timestamp rather than a boolean:</b> matches the repo's existing idiom
+    (<code>completed_at</code>, <code>archived_at</code>, <code>ref</code> conventions) and records
+    <i>when</i> triage happened, which is free and occasionally useful.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>Dispatch is a human action. The classifier never sets <code>dispatched_at</code>.</h3>
+  <p>
+    Only an explicit human act leaves the Inbox: the bulk bar's Move / Send-to-Code, a drag onto a
+    folder, a row-menu file, or entering the code factory via the gate. The classifier writes labels
+    and stops.
+  </p>
+  <p class="why">
+    <b>Why:</b> this is the invariant that makes D4 safe to live with. Because the machine cannot
+    move anything anywhere, the worst a bad guess can do is show you a wrong chip on a row you are
+    already looking at. Nothing is silently routed, nothing goes missing, and there is no
+    "where did that go?" failure mode. Every story in this epic should be checked against it.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>One coherent write per item — <code>item_type</code> and its type-specific fields go together</h3>
+  <p>
+    The classifier applies all of an item's guesses in a single <code>UPDATE</code>, never
+    field-by-field.
+  </p>
+  <p class="why">
+    <b>Why — the database will reject anything else.</b> <code>items_task_only_fields</code>
+    (last redefined in <code>0019_code_epics.sql</code>) requires <code>due_date is null</code> unless
+    <code>item_type = 'task'</code>, and <code>items_intended_project_code_only</code>
+    (<code>0013_intended_project.sql</code>) requires <code>item_type = 'code'</code> for
+    <code>intended_project_id</code>. Writing a due date before the type flips violates the CHECK and
+    fails the row. This isn't a style preference; it is the schema.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>Abstention is a first-class answer — every field may come back <code>null</code></h3>
+  <p>
+    The schema makes every field nullable and the prompt makes abstaining explicitly correct:
+  </p>
+  <ul>
+    <li><code>due_date</code> — only when the text actually states a date or a day. Never inferred from urgency.</li>
+    <li><code>folder_id</code> — only when one existing folder is a clear fit. <b>Never invent a folder.</b></li>
+    <li><code>priority</code> — only when the text signals it. No default guess.</li>
+    <li><code>item_type</code> — may stay <code>unclassified</code>, which is simply the item behaving as it does today.</li>
+    <li>project / epic — only from the sets supplied. <b>Never invent either.</b></li>
+  </ul>
+  <p class="why">
+    <b>Why:</b> given D4, the cost of the two error modes is wildly asymmetric. A blank field is a
+    field the owner was going to fill anyway — zero regression. A confident wrong label is worse than
+    nothing, because a row that looks done gets skimmed past and dispatched. Optimise the prompt and
+    the schema for <i>precision</i>, and accept low recall; the fallback for a blank is the status
+    quo, and the status quo is fine.
+  </p>
+</div>
+
+<h3>How and when it runs</h3>
+
+<div class="dec">
+  <h3><span class="n">D9</span>A scheduled Worker sweeps; capture is never coupled to the model</h3>
+  <p>
+    A cron trigger (order of every 1–2 minutes) fires a <code>scheduled</code> handler in the existing
+    <code>workers/</code> package. It selects undispatched, not-yet-classified Inbox items, classifies
+    them, and writes back with the service-role key it already holds. <code>wrangler.toml</code> gains
+    a <code>[triggers] crons</code> block — it has none today — and <code>src/index.ts</code> gains a
+    <code>scheduled</code> export beside its existing <code>fetch</code>.
+  </p>
+  <p class="why">
+    <b>Why a sweeper rather than firing from the capture route:</b> one code path covers every
+    ingress that exists or will exist — the in-app box, the Siri shortcut, anything later — instead of
+    each one having to remember to trigger it. Retry is free: a failed item is simply still unclassified
+    on the next tick, with no queue, no dead-letter, and no bespoke retry code. And capture stays
+    structurally incapable of being slowed down or broken by the model, which is the SPEC's first
+    guiding principle rather than an implementation detail.
+    <br />
+    <b>Why the latency is fine:</b> the entire premise is capture-now-refine-later. Nobody is
+    watching a row waiting for a chip to appear.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>A processed marker — the sweeper is idempotent and never re-guesses over you</h3>
+  <p>
+    <code>items</code> gains a marker recording that the classifier has run
+    (<code>classified_at</code>, plus enough provenance to tell which prompt/model version produced
+    it — and, per <b>D15</b>, the verdict itself). The sweep selects only unmarked items.
+    Re-classification is possible but always explicit —
+    a manual action, never automatic — and reads from <code>raw_capture</code>, which SPEC §3.2
+    preserves for exactly this.
+  </p>
+  <p class="why">
+    <b>Why:</b> without a marker the sweeper re-runs on every tick, burning budget and — far worse —
+    silently overwriting an edit the owner just made. "The machine changed my answer back" would end
+    trust in the feature immediately. The version stamp is what makes a future prompt change safely
+    replayable over old captures.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D11</span>Suggesting an epic requires a pre-factory epic hint, mirroring <code>intended_project_id</code></h3>
+  <p>
+    Projects already have a pre-factory home on <code>items</code>:
+    <code>intended_project_id</code> (ALF-62) — nullable, <code>on delete set null</code>, CHECK-gated
+    to <code>item_type = 'code'</code>. <b>Epics have no equivalent</b>; the epic is chosen only in the
+    gate dialog at send time. Suggesting one means adding <code>intended_epic_id</code> with the same
+    shape, and having <code>GateDialog</code> pre-select it.
+  </p>
+  <p class="why">
+    <b>Why record this here:</b> "suggest the epic too" reads like the same size of change as
+    "suggest the project", and it isn't — it is a migration, a constraint, a view recreation (see the
+    <code>0013</code> note: <code>task_items</code> freezes its column list at CREATE time and must be
+    recreated when a column is added to <code>items</code>), a store field, and a gate-dialog change.
+    It deserves its own story, and a story session that assumes parity with the project hint will be
+    surprised.
+  </p>
+</div>
+
+<h3>Quality, safety, cost</h3>
+
+<div class="dec">
+  <h3><span class="n">D12</span>The model's judgement is not a back-pressure gate; everything around it is</h3>
+  <p>Draw the line at the model boundary:</p>
+  <ul>
+    <li><b>Deterministic, and therefore gated</b> — prompt assembly from live folder/project/epic
+      lists; response-schema validation; the closed-world id check (D3); the coherent write (D7); the
+      sweep query and its marker (D10); the Inbox residency rule and every count that reads it (D5);
+      the dispatch-time diff and the example-block assembly (D15, D16); every failure path (D13). All
+      tested against a <b>stubbed</b> model response.</li>
+    <li><b>Non-deterministic, and therefore not gated</b> — whether the model picks the right folder.
+      Measured by a separate fixture set of real captures with expected labels, run on demand.</li>
+  </ul>
+  <p class="why">
+    <b>Why:</b> CLAUDE.md's rule is that every behaviour change touches at least one test, and the
+    obvious-but-wrong reading of that is to put a live API call in the suite. That would make
+    <code>check:fast</code> flaky, slow, network-dependent, and billable on every commit — and the
+    guardrails would lose their teeth within a week. Naming the boundary once, here, stops each story
+    session from re-deriving it and reaching a different answer.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D13</span>Every failure degrades to "unclassified", which is exactly today's behaviour</h3>
+  <p>
+    API error, rate limit, timeout, malformed response, budget ceiling, deploy gap — in all cases the
+    item stays unclassified and unmarked, and the next sweep tries again. A bounded attempt count
+    stops one pathological item from consuming the budget forever; after it, the item is marked as
+    attempted and left alone.
+  </p>
+  <p class="why">
+    <b>Why:</b> the feature is strictly additive, so its worst case must be the status quo, not a
+    broken Inbox. Nothing in this epic may block a capture, drop an item, or leave one in a state the
+    UI can't render.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D14</span>The key lives only in the Worker; captures leave the box, and that is a deliberate choice</h3>
+  <p>
+    <code>ANTHROPIC_API_KEY</code> is a Worker secret. It never reaches the browser, a Vercel env var,
+    or the Next.js layer — the frontend has no LLM code path at all. The Worker reads and writes
+    Supabase with the service-role key it already holds.
+  </p>
+  <p class="why">
+    <b>Why say it out loud:</b> captures are the owner's unfiltered personal thoughts, and this epic
+    sends every one of them to a third-party API. That is an accepted trade for a single-user system,
+    but it is a new property of the app and should be a recorded decision rather than something
+    rediscovered later. It is also the reason the capture path stays clean: adding an LLM call to
+    <code>POST /api/items</code> would put the key one refactor away from the client bundle.
+  </p>
+</div>
+
+<h3>Learning from corrections</h3>
+
+<div class="dec">
+  <h3><span class="n">D15</span>Every override is recorded — the diff is taken at dispatch, and it is never shown in the UI</h3>
+  <p>
+    The classifier stores its own verdict as an invisible snapshot on the item alongside
+    <code>classified_at</code> (D10). At <b>dispatch</b> — the one unambiguous "these labels are
+    final" event (D6) — the snapshot is diffed against the fields as they now stand, and each
+    disagreement is appended to a <code>classification_corrections</code> log: the captured text,
+    which field, what was guessed, what the owner actually chose.
+  </p>
+  <ul>
+    <li><b>All three directions count as corrections</b> — the owner <i>changed</i> a value, <i>filled
+      in</i> one the model left null (it could have known), or <i>blanked</i> one the model filled
+      (it should have abstained). The third is the most valuable, because precision is what D8 is
+      optimising for.</li>
+    <li><b>The captured text is denormalised into the log</b>, not referenced. The lesson has to outlive
+      the item, which may be completed, deleted, or edited beyond recognition.</li>
+    <li><b>Nothing about this is rendered.</b> D4 is unchanged: no badge, no "corrected" state, no
+      diff view. This is a write-only substrate.</li>
+  </ul>
+  <p class="why">
+    <b>Why at dispatch rather than on every edit:</b> an edit mid-triage may itself be revised twice
+    before you're done, and logging each keystroke's worth of intent would teach the model your
+    hesitation rather than your conclusion. Dispatch is already the commit point in this design, it
+    already exists as a distinct action, and it fires exactly once per item.
+    <br />
+    <b>Why a separate table rather than columns on <code>items</code>:</b> different cardinality
+    (several corrections per item), different lifetime (outlives the item), append-only, and read by
+    exactly one consumer. The same reasoning that kept <code>habit_entries</code> off
+    <code>items</code> in ALF-146.
+    <br />
+    <b>What this buys:</b> it turns the one genuine weakness of D4 into an asset. Because the guesses
+    live in the real fields, correcting one <i>is</i> just using the app — there's no separate
+    feedback gesture to remember, no thumbs-down button to ignore. The signal is collected for free
+    from work the owner was going to do anyway.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D16</span>Corrections feed back as few-shot examples in the prompt — nothing more clever than that</h3>
+  <p>
+    Each sweep reads the most recent <var>N</var> corrections and injects them into the classify
+    prompt as worked examples: <i>this text → the label the owner actually chose</i>. Bounded by
+    count, ordered by recency, and filtered through the same closed world as the output (D3) so a
+    correction naming a since-deleted folder is dropped rather than taught.
+  </p>
+  <p class="why">
+    <b>Why this and not something smarter:</b> it is the whole loop in one deterministic step — no
+    fine-tuning, no embedding store, no separate review surface, no second model call, and no human
+    in the loop. Prompt assembly is already a tested seam (D12), so an example block is a change of
+    input, not of architecture. It also degrades gracefully: an empty log is just today's prompt.
+    <br />
+    <b>What it costs:</b> input tokens per item. Twenty examples at ~40 tokens each is roughly +800
+    on a ~1.5k prompt — call it +50% input, which on D2's numbers is <b>under a dollar a month</b>.
+    A side effect worth knowing rather than chasing: a large enough example block could push the
+    prompt past Haiku 4.5's 4096-token cache floor and start caching, which would claw most of that
+    back.
+    <br />
+    <b>The trap to avoid:</b> examples must not be allowed to teach <i>away</i> abstention. A log
+    dominated by "you left this blank and I filled it in" nudges the model toward guessing more,
+    which is the failure D8 exists to prevent. Whatever selection rule story <b>H</b> lands on needs
+    to keep blanking corrections represented, not drown them.
+  </p>
+</div>
+
+<div class="callout">
+  <b>Distilling corrections into durable <i>rules</i> is a later epic, not this one.</b> The obvious
+  next move — compact the log into standing instructions ("anything mentioning the dentist goes in
+  Health") and keep them in a prompt document or skill — needs judgement, probably its own model
+  call, a review surface so bad rules can be retired, and an answer for how a rule and an example
+  disagree. That is a body of work. This epic builds the substrate that makes it possible and stops
+  at recency-ordered examples.
+</div>
+
+<h2>3 · Architecture</h2>
+
+<svg viewBox="0 0 900 430" role="img" aria-label="Data flow: capture writes an unclassified item; a cron-triggered Worker reads the item plus the folder, project and epic lists, calls the Anthropic API, validates the response against those lists, and writes labels back to the same row; the Inbox renders the labels and the owner dispatches.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" />
+    </marker>
+    <marker id="art" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)" />
+    </marker>
+  </defs>
+  <style>
+    .b { fill: var(--card); stroke: var(--line); stroke-width: 1.5; rx: 9; }
+    .bt { fill: var(--card); stroke: var(--accent); stroke-width: 1.5; rx: 9; }
+    .t { fill: var(--fg); font: 600 13px -apple-system, system-ui, sans-serif; }
+    .s { fill: var(--muted); font: 11px ui-monospace, monospace; }
+    .l { fill: var(--muted); font: 11px -apple-system, system-ui, sans-serif; }
+    .ln { stroke: var(--muted); stroke-width: 1.4; fill: none; marker-end: url(#ar); }
+    .lt { stroke: var(--accent); stroke-width: 1.6; fill: none; marker-end: url(#art); }
+    .zone { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; rx: 12; }
+  </style>
+
+  <rect class="zone" x="8" y="96" width="270" height="120" />
+  <text class="l" x="18" y="112">capture (unchanged)</text>
+  <rect class="b" x="24" y="126" width="112" height="42" />
+  <text class="t" x="42" y="152">Capture box</text>
+  <rect class="b" x="150" y="126" width="112" height="42" />
+  <text class="t" x="176" y="152">Siri shortcut</text>
+  <path class="ln" d="M80,168 L80,186 L200,186" />
+  <path class="ln" d="M206,168 L206,186" />
+  <text class="s" x="24" y="206">POST /api/items</text>
+
+  <rect class="b" x="330" y="120" width="200" height="72" />
+  <text class="t" x="352" y="148">items row</text>
+  <text class="s" x="352" y="167">item_type: unclassified</text>
+  <text class="s" x="352" y="182">dispatched_at: null</text>
+  <path class="ln" d="M266,190 L322,166" />
+
+  <rect class="zone" x="300" y="228" width="580" height="176" />
+  <text class="l" x="366" y="246">workers/ — scheduled handler, every 1–2 min</text>
+  <rect class="bt" x="318" y="258" width="150" height="60" />
+  <text class="t" x="336" y="282">1 · sweep</text>
+  <text class="s" x="336" y="300">unclassified,</text>
+  <text class="s" x="336" y="313">not yet classified</text>
+
+  <rect class="bt" x="488" y="258" width="150" height="60" />
+  <text class="t" x="506" y="282">2 · classify</text>
+  <text class="s" x="506" y="300">Haiku 4.5,</text>
+  <text class="s" x="506" y="313">structured output</text>
+
+  <rect class="bt" x="658" y="258" width="200" height="60" />
+  <text class="t" x="676" y="282">3 · validate + write</text>
+  <text class="s" x="676" y="300">closed-world ids,</text>
+  <text class="s" x="676" y="313">one coherent UPDATE</text>
+
+  <path class="lt" d="M468,288 L482,288" />
+  <path class="lt" d="M638,288 L652,288" />
+  <path class="lt" d="M340,258 L340,198" />
+  <path class="lt" d="M758,258 L758,206 L534,164" />
+
+  <rect class="b" x="318" y="336" width="300" height="52" />
+  <text class="t" x="338" y="358">folders · projects · epics</text>
+  <text class="s" x="338" y="376">the closed world, read fresh each sweep</text>
+  <path class="ln" d="M530,336 L552,322" />
+
+  <rect class="b" x="638" y="336" width="220" height="52" />
+  <text class="t" x="658" y="358">recent corrections</text>
+  <text class="s" x="658" y="376">few-shot examples (D16)</text>
+  <path class="ln" d="M680,336 L634,322" />
+
+  <rect class="b" x="600" y="26" width="280" height="76" />
+  <text class="t" x="622" y="52">Inbox — labels waiting, unmarked</text>
+  <text class="s" x="622" y="72">overwrite what's wrong,</text>
+  <text class="s" x="622" y="86">multi-select → dispatch</text>
+  <path class="ln" d="M530,140 L592,84" />
+  <text class="l" x="600" y="122">dispatch sets dispatched_at — human only (D6),</text>
+  <text class="l" x="600" y="138">and logs the guess-vs-chosen diff (D15)</text>
+  <path class="ln" d="M880,64 L892,64 L892,362 L864,362" />
+</svg>
+<p class="diagram-cap">
+  The capture path is untouched. Everything this epic adds hangs off the cron trigger, and the only
+  thing it does to an item is fill in fields. The loop on the right is the learning half: dispatching
+  records what you overrode, and the next sweep reads it back as examples.
+</p>
+
+<h3>Data model additions</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Column on <code>items</code></th><th style="width:22%">Shape</th><th>Purpose</th></tr>
+  <tr>
+    <td><code>dispatched_at</code></td>
+    <td><code>timestamptz</code>, null</td>
+    <td>Inbox residency (D5). Null = in the Inbox regardless of <code>folder_id</code>. Set only by a human dispatch (D6). Backfilled non-null for every item that currently has a folder.</td>
+  </tr>
+  <tr>
+    <td><code>classified_at</code> <span class="small">(+ version/provenance)</span></td>
+    <td><code>timestamptz</code>, null</td>
+    <td>The sweeper's idempotency marker (D10). Null = not yet attempted. The exact provenance columns are a story-level call.</td>
+  </tr>
+  <tr>
+    <td><code>intended_epic_id</code></td>
+    <td><code>uuid</code> → <code>epics(id)</code>, <code>on delete set null</code>, CHECK code-only</td>
+    <td>Pre-factory epic hint (D11), mirroring <code>intended_project_id</code>. Only needed by the epic-suggestion story.</td>
+  </tr>
+  <tr>
+    <td><code>classified_guess</code></td>
+    <td><code>jsonb</code>, null</td>
+    <td>The classifier's own verdict, kept so the dispatch-time diff has something to compare against (D15). Never read by the UI.</td>
+  </tr>
+</table>
+</div>
+
+<p>
+  Plus one new table, <code>classification_corrections</code> — append-only, one row per corrected
+  field: the denormalised captured text, the field, the guessed value, the chosen value, the
+  model/prompt version, and a nullable <code>item_id</code> (<code>on delete set null</code>) so a
+  lesson survives its item. Like every other table it needs <code>enable row level security</code>
+  plus the <code>authenticated full access</code> policy and explicit grants — the Worker writes it
+  with the service-role key, which bypasses RLS by design (SPEC §7).
+</p>
+
+<div class="callout">
+  <b>Migration gotcha, already paid for once.</b> <code>task_items</code> is
+  <code>select i.* from items i …</code>, and a view freezes its column list at CREATE time — a column
+  added to <code>items</code> afterwards <b>never appears in the view</b> until it is recreated.
+  <code>0013</code> hit this and documents the fix: <code>create or replace view</code> in the same
+  migration (no drop, so grants and <code>security_invoker</code> survive). Every migration in this
+  epic that adds an <code>items</code> column must do the same, or the frontend will read the row and
+  find the field missing.
+</div>
+
+<h3>What the model is asked for</h3>
+
+<p>
+  One call per item. Input: the item's <code>title</code>, <code>notes</code>,
+  <code>raw_capture</code>, and <code>source_url</code>; the current folder list; the current project
+  list; the current epic list; a reference date; and the recent-corrections example block (D16).
+  Output, schema-constrained, every field nullable:
+</p>
+
+<pre><code>{
+  "item_type":            "task" | "code" | null,
+  "priority":             "high" | "medium" | "low" | null,   // task only
+  "due_date":             "YYYY-MM-DD" | null,                // task only, only if stated
+  "folder_id":            &lt;id from the supplied list&gt; | null, // task only
+  "intended_project_id":  &lt;id from the supplied list&gt; | null, // code only
+  "intended_epic_id":     &lt;id from the supplied list&gt; | null  // code only
+}</code></pre>
+
+<p class="small">
+  <code>null</code> for <code>item_type</code> means "leave it unclassified" — not an error. The
+  shape mirrors the CHECK constraints deliberately: a <code>code</code> verdict can never carry a due
+  date, so the coherent write in D7 is always legal.
+</p>
+
+<h2>4 · What the Inbox looks like</h2>
+
+<p>
+  D4 asserts that a machine-filled chip is indistinguishable from a hand-set one, and D5 asserts an
+  item with a folder still sits in the Inbox. Both are visual claims, so here they are drawn. Row 1
+  was classified and given a folder — <b>and is still in the Inbox</b>. Row 2 is a code item with a
+  project and epic. Row 3 is an abstention: the model had nothing confident to say, so it looks
+  exactly like an Inbox row does today.
+</p>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Inbox</span>
+    <span><span class="ghostbtn">Collapse all</span> <span class="ghostbtn">Done</span></span>
+  </div>
+
+  <div class="row sel">
+    <span class="box on"></span>
+    <div class="row-main">
+      <div class="row-title">Call the dentist friday to reschedule the cleaning</div>
+      <div class="chips">
+        <span class="chip c-task">Task</span>
+        <span class="chip c-hi">High</span>
+        <span class="chip c-due">Fri 7 Aug</span>
+        <span class="chip c-fold">Health</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row sel">
+    <span class="box on"></span>
+    <div class="row-main">
+      <div class="row-title">Alfred should let me snooze an item until next week</div>
+      <div class="chips">
+        <span class="chip c-code">Code</span>
+        <span class="chip c-code">ALF</span>
+        <span class="chip c-code">ALF-104 · Inbox triage</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="box"></span>
+    <div class="row-main">
+      <div class="row-title">That thing Mark mentioned about the roof</div>
+      <div class="chips">
+        <span class="chip c-empty">no labels</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bulkbar">
+    <b>2 selected</b><span>·</span><span>Classify</span><span>Move to folder ▾</span><span>Send to Code</span><span>·</span><span>Esc to exit</span>
+  </div>
+</div>
+<p class="mockcap">
+  Every chip here is editable in place with the controls the row already has. Nothing on this surface
+  distinguishes a guess from a decision — that is D4, drawn. The bulk bar is today's
+  <code>InboxBulkBar</code>, unchanged in shape; only its enablement rules need revisiting (below).
+</p>
+
+<div class="callout">
+  <b>The bulk bar's gates were written for the opposite world.</b> Today <b>Classify</b> requires an
+  all-<code>unclassified</code> selection and <b>Move</b> requires an all-<code>task</code> one —
+  reasonable when Inbox items arrive blank. This epic inverts that default: most items will already
+  be <code>task</code> or <code>code</code> when you get there, so <b>Classify</b> would be disabled
+  on exactly the rows you most want to correct. Re-deriving those rules is real work inside this
+  epic, not a footnote — and the <i>shape</i> of the corrected bar is a story-level design question,
+  so it is deliberately not drawn above.
+</div>
+
+<h2>5 · Constraints &amp; non-goals</h2>
+
+<h4>Hard constraints</h4>
+<ul>
+  <li><b>Capture is never blocked, slowed, or made failable</b> by anything in this epic. <code>POST /api/items</code> gains no LLM call and no new dependency.</li>
+  <li><b>The machine never dispatches.</b> No item leaves the Inbox without a human act (D6).</li>
+  <li><b>The machine never creates.</b> No new folders, projects, or epics — it selects from what exists or abstains (D8).</li>
+  <li><b>No live model call in <code>check:fast</code> or <code>check:slow</code></b> (D12).</li>
+  <li><b>The API key never leaves the Worker</b> (D14).</li>
+  <li><b>Worst case equals today.</b> Any failure leaves an ordinary unclassified Inbox item (D13).</li>
+</ul>
+
+<h4>Deliberately out of scope — do not pull these in</h4>
+<ul>
+  <li><b>Rewriting captured text.</b> No de-rambling of voice input, no title tidying, no summarising.
+    Titles and notes stay byte-for-byte as captured. SPEC §4.2 anticipates a cleanup layer and
+    <code>raw_capture</code> is preserved for it, but it edits <i>content</i> rather than metadata,
+    needs its own undo story and its own accuracy bar, and belongs in its own epic.</li>
+  <li><b>Suggesting subtasks or structure.</b> No proposing a breakdown of a capture into children.</li>
+  <li><b>Recurrence.</b> The recurrence engine is not driven from captured text here.</li>
+  <li><b>Anything about <code>knowledge</code> items.</b> That destination type does not exist yet; the model must never return it.</li>
+  <li><b>Any other LLM feature in the SPEC §13 roadmap</b> — the Reader digest, the Communication Firewall, refinement generation inside the factory. This epic is Inbox triage only, even though it stands up the first Worker→LLM path they will all reuse.</li>
+  <li><b>Chat, or any conversational surface.</b> One call, one item, no turns.</li>
+  <li><b>Distilling corrections into standing rules.</b> D16 stops at recency-ordered examples. Compacting
+    the log into durable instructions in a prompt document or skill — and the review surface, conflict
+    resolution and extra model call that needs — is a later epic built on this one's substrate.</li>
+  <li><b>Any UI for the correction log.</b> No diff view, no "the model got this wrong" affordance, no
+    accuracy dashboard. D15 is write-only by design.</li>
+  <li><b>Retro-classifying the existing backlog.</b> The sweeper takes new captures. A one-off backfill over historical items is a separate decision with a separate cost.</li>
+</ul>
+
+<h2>6 · How the work splits into stories</h2>
+
+<p class="small">
+  A sketch of the slices and why they cut where they do — not specs. Each is refined in its own
+  session. The ordering matters: <b>A</b> is the enabling change and has no LLM in it at all, so it
+  can ship and be lived with before a single token is spent.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:6%">#</th><th style="width:30%">Slice</th><th>Why it's its own story</th></tr>
+  <tr>
+    <td><b>A</b></td>
+    <td>Inbox residency — <code>dispatched_at</code>, migration + backfill, store selectors, folder counts, dispatch actions</td>
+    <td>The load-bearing change (D5), and entirely independent of the model. Touches the store, every task view, the folder badges, and the E2E suite. Shipping it alone means the risky part is proven before anything non-deterministic exists.</td>
+  </tr>
+  <tr>
+    <td><b>B</b></td>
+    <td>Editing parity on the Inbox row — every field the classifier will write is editable in place from the Inbox</td>
+    <td>D4 only works if overwriting is as cheap as glancing. Some of these controls exist on Inbox rows today and some may not; the audit and the gaps are one story. Also the natural home for reworking the bulk bar's now-inverted enablement gates.</td>
+  </tr>
+  <tr>
+    <td><b>C</b></td>
+    <td>The sweeper skeleton — cron trigger, <code>scheduled</code> handler, sweep query, <code>classified_at</code> marker, service-role write, no model call</td>
+    <td>Proves the whole loop end to end with a deterministic stand-in (e.g. reuse the <code>ALF:</code> prefix rule as the "classifier"). First cron in the repo, so it carries the wrangler and deploy learning on its own.</td>
+  </tr>
+  <tr>
+    <td><b>D</b></td>
+    <td>The Anthropic call — prompt assembly, structured-output schema, closed-world validation, coherent write, backoff and budget guard</td>
+    <td>The actual model integration. Lands behind everything above, so its blast radius is one swapped function.</td>
+  </tr>
+  <tr>
+    <td><b>E</b></td>
+    <td><code>intended_epic_id</code> + gate pre-selection</td>
+    <td>A migration, a constraint, a view recreation, a store field and a dialog change (D11) — genuinely not the same size as the project hint it resembles.</td>
+  </tr>
+  <tr>
+    <td><b>F</b></td>
+    <td>Evaluation fixtures + an on-demand accuracy run</td>
+    <td>The non-gating half of D12. Needs real captures with expected labels, and is what makes "try Sonnet for a week" a measurable experiment rather than a vibe.</td>
+  </tr>
+  <tr>
+    <td><b>G</b></td>
+    <td>Manual re-classify from <code>raw_capture</code></td>
+    <td>The escape hatch once a prompt improves, and the reason D10 stamps a version. Small.</td>
+  </tr>
+  <tr>
+    <td><b>H</b></td>
+    <td>The correction loop — <code>classified_guess</code>, the dispatch-time diff, the <code>classification_corrections</code> table, and the few-shot block in the prompt</td>
+    <td>D15 + D16. Depends on <b>A</b> for the dispatch hook and <b>D</b> for a prompt to inject into, so it lands late — but it is the slice that makes the feature improve rather than plateau, and story <b>F</b>'s fixtures are how you tell whether it did. The selection rule (how many examples, how to keep blanking corrections represented) is the interesting decision inside it.</td>
+  </tr>
+</table>
+</div>
+
+<p class="small">
+  <b>A</b> → <b>B</b> are shippable and useful with no LLM in the repo at all. <b>C</b> → <b>D</b> is
+  the feature. <b>E</b>, <b>F</b>, <b>G</b>, <b>H</b> are independent of each other and can be
+  ordered by appetite.
+</p>
+
+<h2>7 · Open questions</h2>
+
+<ol>
+  <li>
+    <b>Reference timezone for date parsing.</b> "Friday" resolves against a wall clock the Worker
+    doesn't have. The architecture is settled — an IANA zone as a <code>[vars]</code> entry in
+    <code>wrangler.toml</code> — but the <i>value</i> needs the owner's answer, and story <b>D</b>
+    can't land without it.
+  </li>
+  <li>
+    <b>Does editing an item without dispatching it make it permanently yours?</b> Proposed:
+    <b>yes</b> — any human touch marks it and the sweeper never revisits. The alternative (re-run
+    when the title changes) is defensible for a capture you deliberately rewrote, but it reintroduces
+    the "the machine changed my answer back" failure D10 exists to prevent. Worth confirming before
+    story <b>C</b> fixes the sweep predicate.
+  </li>
+  <li>
+    <b>Is a spend ceiling worth building?</b> At ~$1–2/month the volume is self-limiting and a budget
+    guard is arguably ceremony. But a bug that loops the sweeper has no natural brake. Cheapest
+    honest answer is probably a hard per-sweep item cap rather than a dollar meter — decide in story
+    <b>C</b>.
+  </li>
+  <li>
+    <b>Which corrections earn their tokens as examples?</b> D15 records the whole diff, including the
+    fields the owner left alone. Feeding <i>every</i> correction is the obvious v1, but the prompt
+    budget is the scarce thing and the mix matters: examples are also the mechanism by which the
+    model could be taught to guess more and abstain less (D16's trap). Open: recency alone, or
+    recency balanced across fields and across the change / fill-in / blank directions? Confirmations
+    almost certainly aren't worth their tokens, but that's an assumption, not a measurement — story
+    <b>F</b>'s fixtures are what would settle it. Decide in story <b>H</b>.
+  </li>
+  <li>
+    <b>Does the correction log ever forget?</b> A lesson from a year ago about a folder you barely use
+    is still in the table competing for a slot, and a habit you've since changed your mind about is
+    worse than no example at all. Recency ordering handles this implicitly while the log is small and
+    stops handling it once it isn't. No action needed now — but a story session that reaches for
+    "just feed the whole table" should know this is why it won't stay fine.
+  </li>
+</ol>
+
+<h2>8 · Related reading</h2>
+<ul class="small">
+  <li><a href="../product/SPEC.md"><code>docs/specs/product/SPEC.md</code></a> — §2 (Workers for LLM processing), §3.2 (<code>raw_capture</code>), §4.2 (capture + the future cleanup layer), §6 (the <code>/api/items</code> seam), §7 (secrets &amp; RLS), §11 Phase 6, §13 (the module roadmap this path unlocks).</li>
+  <li><code>.claude/skills/anthropic-api/SKILL.md</code> — calling Claude from a Worker, tool/schema shapes, <code>stop_reason</code> handling.</li>
+  <li><code>.claude/skills/cloudflare-workers/SKILL.md</code> — typed <code>Env</code>, secrets vs vars, <code>wrangler.toml</code>, deploy.</li>
+  <li><code>.claude/skills/data-flow/SKILL.md</code> — the store/optimistic mechanics story <b>A</b> and <b>B</b> operate inside.</li>
+  <li><code>database/migrations/0013_intended_project.sql</code> — the pre-factory hint pattern D11 mirrors, and the view-recreation gotcha.</li>
+  <li><code>database/migrations/0019_code_epics.sql</code> — the current <code>items_task_only_fields</code> CHECK that forces D7.</li>
+</ul>
+
+</div>
+</body>
+</html>
