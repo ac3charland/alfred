@@ -458,10 +458,11 @@ column. **Stories are cards** in their state's swimlane, showing **ref**, **titl
 **phase-appropriate action** (the "open Claude Code" button, §11) when one applies. Columns are
 horizontally scrollable / condensable to fit the dense layout.
 
-- **Swimlanes are read-only in this module.** State changes come from links + webhook + the detail
-  modal's manual controls (§10) — that's good enough for now. **Drag-to-move between swimlanes is a
-  future enhancement**, explicitly out of scope here; if it's built later, reuse the existing
-  `dnd-kit` wiring and persist via the same PATCH the modal uses (see the `dnd-kit` skill).
+- **State changes** come from links + webhook + the detail modal's manual controls (§10), and —
+  since ALF-155 — from **dragging a card onto another of its epic's swimlanes**, which persists via
+  the same PATCH the modal uses (see the `dnd-kit` skill). The drag is state-only: another epic's
+  lanes are not drop targets, so re-homing a story stays the modal's job. It is pointer-only, with
+  the modal's status menu as the keyboard path.
 - Clicking a card opens the **detail modal** (§10).
 - **Archived epics are hidden by default** (§4.2 `archived_at`); a *Show archived* toggle reveals
   them. Archiving / un-archiving an epic is a **manual** action from the epic header — it does not
