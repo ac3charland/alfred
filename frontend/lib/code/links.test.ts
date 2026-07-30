@@ -210,6 +210,24 @@ describe('buildRefinementUrl', () => {
     expect(prompt).toMatch(/head branch/i);
   });
 
+  it('falls back to a direct file link on a private repo, which htmlpreview cannot reach', () => {
+    const prompt =
+      parse(
+        buildRefinementUrl(
+          makeProject({ repo_owner: 'octocat', repo_name: 'hello-world' }),
+          makeStory(),
+        ),
+      ).prompt ?? '';
+    // htmlpreview fetches through raw.githubusercontent.com unauthenticated, so it 404s on a
+    // private repo; the reviewer's best option there is the file itself.
+    expect(prompt).toMatch(/private/i);
+    expect(prompt).toMatch(/download/i);
+    // The blob URL must appear on its OWN as the private-repo link — not merely as the tail of
+    // the htmlpreview URL, which already ends with it.
+    const directLink = 'https://github.com/octocat/hello-world/blob/<head-branch>/<spec-path>';
+    expect(prompt.split(directLink)).toHaveLength(3);
+  });
+
   it('covers the preview link in the pre-PR self-check', () => {
     const prompt = parse(buildRefinementUrl(makeProject(), makeStory())).prompt ?? '';
     const selfCheck = prompt.split('\n').find((line) => line.startsWith('6. ')) ?? '';
@@ -539,6 +557,8 @@ describe('buildEpicRefinementUrl', () => {
     );
     expect(prompt).toMatch(/raw source/i);
     expect(prompt).toMatch(/head branch/i);
+    // Including the private-repo fallback — an epic spec is just as unreachable there.
+    expect(prompt).toMatch(/private/i);
   });
 
   it('covers the preview link in the pre-PR self-check', () => {
