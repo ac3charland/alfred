@@ -123,16 +123,16 @@ test.describe('inbox multi-edit', () => {
     await gate.getByRole('button', { name: /send to code module/i }).click();
     await expect(gate).toBeHidden();
 
-    // Both leave the Inbox and land on the board under Core in Needs Refinement.
+    // Both leave the Inbox…
     const inbox = page.getByRole('list', { name: 'Tasks' });
     await expect(inbox.getByText('Refactor the parser')).toBeHidden();
     await expect(inbox.getByText('Add retry to the worker')).toBeHidden();
 
-    await page.getByRole('link', { name: 'Code' }).click();
-    await page
-      .getByRole('navigation', { name: 'Projects' })
-      .getByRole('link', { name: /alfred/i })
-      .click();
+    // …and the confirmation toast is the way to them: it deep-links to the board they landed on,
+    // so one click gets there — no manual module switch.
+    await page.getByRole('link', { name: 'Sent 2 items to Code' }).click();
+    await expect(page).toHaveURL(`/code/${project.id}`);
+
     const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
     await expect(needsRefinement.getByText('Refactor the parser')).toBeVisible();
     await expect(needsRefinement.getByText('Add retry to the worker')).toBeVisible();
