@@ -240,6 +240,41 @@ never-resolving promise (`mockImplementation(() => new Promise(() => {}))`); for
 
 ---
 
+## Mocking `usePathname` When the Test Navigates
+
+`jest.mock('next/navigation', () => ({ usePathname: () => mockPathname() }))` is fine for a
+component that only *reads* the route. It is **not** enough when the interaction under test
+navigates: alfred's nav links call `history.pushState` (see the **`nextjs`** skill), which the
+real Next patches to re-render `usePathname` consumers — a plain `jest.fn` never re-renders, so
+the component stays frozen on the route it mounted with and a URL-derived swap looks broken.
+Back the mock with a tiny store and drive it from the `pushState` spy:
+
+```tsx
+const mockPathnameStore = {
+  pathname: '/',
+  listeners: new Set<() => void>(),
+  get: () => mockPathnameStore.pathname,
+  set: (next: string) => { mockPathnameStore.pathname = next; for (const l of mockPathnameStore.listeners) l(); },
+  subscribe: (l: () => void) => { mockPathnameStore.listeners.add(l); return () => { mockPathnameStore.listeners.delete(l); }; },
+};
+const mockUseSyncExternalStore = React.useSyncExternalStore;
+jest.mock('next/navigation', () => ({
+  usePathname: () =>
+    mockUseSyncExternalStore(mockPathnameStore.subscribe, mockPathnameStore.get, mockPathnameStore.get),
+}));
+
+beforeEach(() => {
+  mockPathnameStore.pathname = '/';
+  jest.spyOn(globalThis.history, 'pushState').mockImplementation((_s, _u, url) => {
+    mockPathnameStore.set(String(url));
+  });
+});
+```
+
+The factory may only reference identifiers starting with `mock` — hence `mockUseSyncExternalStore`
+— and only from **inside a function body**, since `jest.mock` is hoisted above the file's `const`
+declarations and a reference evaluated at factory-run time hits the TDZ.
+
 ## Mocking API Clients in alfred Tests
 
 The alfred frontend uses a thin `lib/api-client.ts` module. To avoid `@typescript-eslint/no-unsafe-return` errors in module factory functions, use the `jest.mocked()` pattern instead of inline arrow wrappers:
