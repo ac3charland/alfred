@@ -6,7 +6,7 @@ import * as api from '@/lib/api-client';
 import type { LaunchPhase } from '@/lib/code/launch';
 import { CodeProvider, useProjectBoard } from '@/lib/stores/code-store';
 import { ToastProvider } from '@/lib/stores/toast-store';
-import type { CodeStory, Epic, Project } from '@/lib/types';
+import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 
 import { StoryDetailModal } from './story-detail-modal';
 
@@ -77,6 +77,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: 'Wire up the webhook',
@@ -91,6 +92,31 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     epic_ref: 'ALF-1',
     epic_archived_at: null,
     epic_spec_path: null,
+    priority: 1,
+    ...overrides,
+  };
+}
+
+/** The saved `code_items` row the PATCH route returns, which the store reconciles with. */
+function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
+  return {
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 42,
+    ref: 'ALF-42',
+    factory_state: 'needs_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    blocked_from: null,
+    requires_refinement: true,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-02-02T00:00:00Z',
     priority: 1,
     ...overrides,
   };
@@ -363,6 +389,17 @@ describe('StoryDetailModal', () => {
       expect(dialog.queryByRole('button', { name: refineButton })).not.toBeInTheDocument();
     });
 
+    it('shows the subordinate Skip to Development button in needs_refinement', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const user = userEvent.setup();
+      const story = makeStory({ factory_state: 'needs_refinement' });
+      const { dialog } = renderModal(story, { onOpenSession });
+
+      await user.click(dialog.getByRole('button', { name: /skip to development/i }));
+
+      expect(onOpenSession).toHaveBeenCalledWith(story, 'bypass');
+    });
+
     it.each(['in_refinement', 'in_development', 'ready_for_review', 'done'] as const)(
       'hides the launch button in the %s state',
       (state) => {
@@ -371,6 +408,86 @@ describe('StoryDetailModal', () => {
         expect(dialog.queryByRole('button', { name: implementButton })).not.toBeInTheDocument();
       },
     );
+  });
+
+  describe('the "Needs refinement" mark', () => {
+    const mark = /needs refinement/i;
+
+    it('renders with the story’s current value', () => {
+      const checked = renderModal(makeStory({ requires_refinement: true }));
+      expect(checked.dialog.getByRole('checkbox', { name: mark })).toBeChecked();
+      checked.unmount();
+
+      const cleared = renderModal(
+        makeStory({ factory_state: 'ready_for_dev', requires_refinement: false }),
+      );
+      expect(cleared.dialog.getByRole('checkbox', { name: mark })).not.toBeChecked();
+    });
+
+    it('parks a needs_refinement story in Ready for Dev, with no tab opened', async () => {
+      mockUpdateCodeState.mockResolvedValue(
+        makeSidecar({ factory_state: 'ready_for_dev', requires_refinement: false }),
+      );
+      const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await user.click(dialog.getByRole('checkbox', { name: mark }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_dev', {
+        requires_refinement: false,
+      });
+      // The launch button behind the modal swaps from Refine to Implement…
+      await waitFor(() => {
+        expect(dialog.getByRole('button', { name: /implement in claude/i })).toBeInTheDocument();
+      });
+      // …and unlike Skip to Development, nothing opened.
+      expect(openSpy).not.toHaveBeenCalled();
+      openSpy.mockRestore();
+    });
+
+    it('re-checking it sends a spec-less ready_for_dev story back to Needs Refinement', async () => {
+      mockUpdateCodeState.mockResolvedValue(
+        makeSidecar({ factory_state: 'needs_refinement', requires_refinement: true }),
+      );
+      const user = userEvent.setup();
+      const { dialog } = renderModal(
+        makeStory({ factory_state: 'ready_for_dev', requires_refinement: false }),
+      );
+
+      await user.click(dialog.getByRole('checkbox', { name: mark }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'needs_refinement', {
+        requires_refinement: true,
+      });
+    });
+
+    it('records the mark without moving a story in another state', async () => {
+      mockUpdateCodeState.mockResolvedValue(
+        makeSidecar({ factory_state: 'ready_for_review', requires_refinement: false }),
+      );
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'ready_for_review' }));
+
+      await user.click(dialog.getByRole('checkbox', { name: mark }));
+
+      expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_review', {
+        requires_refinement: false,
+      });
+    });
+
+    it('restores the box when the write fails', async () => {
+      mockUpdateCodeState.mockRejectedValue(new Error('patch failed'));
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'needs_refinement' }));
+
+      await user.click(dialog.getByRole('checkbox', { name: mark }));
+
+      await waitFor(() => {
+        expect(dialog.getByRole('checkbox', { name: mark })).toBeChecked();
+      });
+      expect(dialog.getByRole('button', { name: /refine in claude/i })).toBeInTheDocument();
+    });
   });
 
   describe('the epic move dropdown', () => {

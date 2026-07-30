@@ -18,6 +18,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: 'Story i1',
@@ -38,12 +39,13 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
 }
 
 describe('codeStoryStatusPatch', () => {
-  it('projects the four status fields (factory_state, lane, blocked_reason, blocked_from)', () => {
+  it('projects the status fields (factory_state, lane, blocked_reason, blocked_from, requires_refinement)', () => {
     const story = makeStory({
       factory_state: 'blocked',
       lane: 'local',
       blocked_reason: 'checks failing',
       blocked_from: 'in_development',
+      requires_refinement: false,
     });
 
     expect(codeStoryStatusPatch(story)).toEqual({
@@ -51,6 +53,7 @@ describe('codeStoryStatusPatch', () => {
       lane: 'local',
       blocked_reason: 'checks failing',
       blocked_from: 'in_development',
+      requires_refinement: false,
     });
   });
 
@@ -65,6 +68,17 @@ describe('codeStoryStatusPatch', () => {
       lane: 'human',
       blocked_reason: null,
       blocked_from: null,
+      requires_refinement: true,
     });
+  });
+
+  // The navigation refetch (ALF-69) is how a mark set on another device reaches a story this
+  // tab already holds — the flag has to survive that projection or the toggle reads stale.
+  it('carries a cleared refinement mark through the refetch projection', () => {
+    const patch = codeStoryStatusPatch(
+      makeStory({ factory_state: 'ready_for_dev', requires_refinement: false }),
+    );
+
+    expect(patch.requires_refinement).toBe(false);
   });
 });

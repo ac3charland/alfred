@@ -73,6 +73,7 @@ function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
     priority: 1,
@@ -125,6 +126,7 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: `Story ${itemId}`,
@@ -828,8 +830,33 @@ describe('Board', () => {
       await user.click(screen.getByRole('button', { name: /^create$/i }));
 
       await waitFor(() => {
-        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'A fresh story', null);
+        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'A fresh story', null, true);
       });
+    });
+
+    it('threads an unchecked "Needs refinement" box through to the create call', async () => {
+      mockCreateCodeStory.mockResolvedValue(
+        makeSidecar({
+          item_id: 'new-2',
+          ref: 'ALF-13',
+          factory_state: 'ready_for_dev',
+          requires_refinement: false,
+        }),
+      );
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1', { name: 'Plumbing' })] });
+
+      await user.click(screen.getByRole('button', { name: /new story in plumbing/i }));
+      await user.type(screen.getByLabelText(/title/i), 'No spec needed');
+      await user.click(screen.getByRole('checkbox', { name: /needs refinement/i }));
+      await user.click(screen.getByRole('button', { name: /^create$/i }));
+
+      await waitFor(() => {
+        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'No spec needed', null, false);
+      });
+      // The card lands in Ready for Dev, not Needs Refinement — no tab, no launch.
+      const readyForDev = screen.getByRole('region', { name: 'Ready for Dev' });
+      expect(within(readyForDev).getByText('ALF-13')).toBeInTheDocument();
     });
   });
 

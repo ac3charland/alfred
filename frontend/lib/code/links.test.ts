@@ -2,6 +2,7 @@ import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import {
   buildBypassUrl,
+  buildDevelopmentUrl,
   buildEpicRefinementUrl,
   buildImplementationUrl,
   buildRefinementUrl,
@@ -42,6 +43,7 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: 'Verify the GitHub webhook HMAC signature',
@@ -335,6 +337,50 @@ describe('buildImplementationUrl', () => {
     // implementation prompt must not assume a single rendered HTML file.
     expect(prompt).not.toMatch(/self-contained HTML plan/i);
     expect(prompt).not.toMatch(/open it in a browser/i);
+  });
+});
+
+/**
+ * The development launch reads `spec_path`, not the lane: a story can sit in `ready_for_dev`
+ * with no committed spec — the refinement mark puts it there, and so does the Worker's revert of
+ * a closed-unmerged implementation PR.
+ */
+describe('buildDevelopmentUrl', () => {
+  it('builds the SKIP-REFINEMENT prompt when no spec was ever committed', () => {
+    const prompt =
+      parse(buildDevelopmentUrl(makeProject(), makeStory({ factory_state: 'ready_for_dev' })))
+        .prompt ?? '';
+
+    expect(prompt).toContain('SKIP-REFINEMENT');
+    expect(prompt).not.toMatch(/merged spec/i);
+    // Nothing to read and nothing to archive, so neither a spec path nor the archive step.
+    expect(prompt).not.toMatch(/docs\/specs\//);
+    expect(prompt).not.toMatch(/archive/i);
+  });
+
+  it('builds the spec-reading implementation prompt when a spec_path is recorded', () => {
+    const prompt =
+      parse(
+        buildDevelopmentUrl(
+          makeProject(),
+          makeStory({ factory_state: 'ready_for_dev', spec_path: 'docs/specs/ALF-42.html' }),
+        ),
+      ).prompt ?? '';
+
+    expect(prompt).toMatch(/merged spec/i);
+    expect(prompt).toContain('docs/specs/ALF-42.html');
+    expect(prompt).toContain('docs/specs/archive/ALF-42.html');
+    expect(prompt).not.toContain('SKIP-REFINEMENT');
+  });
+
+  it('carries the ref + title and the implementation block either way', () => {
+    for (const specPath of [null, 'docs/specs/ALF-42.html']) {
+      const prompt =
+        parse(buildDevelopmentUrl(makeProject(), makeStory({ spec_path: specPath }))).prompt ?? '';
+      expect(prompt.split('\n', 1)[0]).toBe('ALF-42: Verify the GitHub webhook HMAC signature');
+      expect(prompt).toContain('alfred-ticket: ALF-42');
+      expect(prompt).toContain('phase: implementation');
+    }
   });
 });
 
