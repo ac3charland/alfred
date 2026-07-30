@@ -149,12 +149,27 @@ absolutely-positioned children of each row, `TaskDndProvider.onDragEnd` translat
 rendered gap index into the neighbour pair, and an optimistic store action doing the PATCH.
 Copy that pipeline for a third list rather than reaching for `SortableContext`.
 
-**A row that is entirely link + buttons needs a handle.** The row sensors refuse to lift from
-an interactive target (`isInteractiveTarget`), so a sidebar folder — a `<ViewLink>` filling the
-row plus its kebab — has no draggable surface at all. Give it a grip that sits **outside** the
-anchor (alfred's is absolutely positioned over the folder icon, which fades out under it on
-hover), `aria-hidden` and unfocusable: the drag is pointer-only, and the row menu's "Move up" /
-"Move down" is the keyboard/touch path.
+**A row that is entirely link + buttons has no draggable surface** — the row sensors refuse to
+lift from an interactive target (`isInteractiveTarget`). Two ways out:
+
+- **A grip**, when the row is filled by a *link* (dragging must not fight navigation): a sidebar
+  folder's sits **outside** the anchor, absolutely positioned over the folder icon, which fades
+  out under it on hover; `aria-hidden` and unfocusable.
+- **Mark the control as the drag surface**, when its click is an in-page action: spread
+  `dragSurfaceProperty` (`lib/dnd/pointer-sensor`) onto it and the guard lets a drag lift from
+  there, while a press that never clears the activation distance is still a plain click. A code
+  story's card body — a `ClickableCard` button covering nearly the whole card — is the case;
+  only the **nearest** interactive ancestor decides, so the card's launch chips still block the
+  lift and keep their own clicks.
+
+Either way the drag is pointer-only; the keyboard/touch path is the row menu's "Move up" /
+"Move down", or (for a story card) the detail modal's status menu.
+
+**A second module's drags get their own nested `DndContext`, not a prefix.** `TaskDndProvider`
+wraps the whole shell, so the Code board's `BoardDndProvider` sits inside it — a draggable
+registers with the NEAREST context, which is what keeps board drags and task drags from ever
+seeing each other's ids. (Prefixing is for two families sharing ONE context, like folder vs.
+task above.)
 
 **One drag context, two families of draggable → prefix the ids.** A folder is already
 registered as a droppable under its bare id (drop a task to file it there), so it *drags*
@@ -279,6 +294,15 @@ Chromium), not unit tests:
   drop-state marker (e.g. a `data-drop-over` attr the droppable sets when `isOver`) before
   asserting or screenshotting. A throwaway demo-capture spec must be named `*.spec.ts` to match
   Playwright's `testMatch`.
+- **A target inside an auto-scrolling container moves out from under the pointer mid-drag.** The
+  board's swimlane row is `overflow-x-auto`, and dnd-kit auto-scrolls it while a card is dragged
+  near an edge — so a lane measured *before* the glide has shifted by the time the pointer
+  arrives, and the drop silently lands on a neighbouring lane. Two rules: **re-measure between
+  attempts** inside an `expect(async () => …).toPass()` and assert the SPECIFIC target's own
+  marker (`expect(target).toHaveAttribute('data-drop-over', 'true')`) — "some droppable lit up"
+  passes while the wrong one is armed — and then **release immediately**, since a
+  `waitForTimeout` before `mouse.up` gives auto-scroll time to slide a different target under
+  the pointer.
 - **A drag fired right after `goto` races hydration under load** (e.g. inside the pre-push
   `check:slow`, which runs the prod build): if React's handlers aren't attached yet, the
   press+move is a **text selection**, not a drag, and silently does nothing. Drags that first
