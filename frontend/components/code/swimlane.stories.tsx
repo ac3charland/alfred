@@ -63,12 +63,12 @@ type Story = StoryObj<typeof meta>;
 
 /** A lane with two story cards and its live count. */
 export const Filled: Story = {
-  args: { lane: FILLED },
+  args: { lane: FILLED, epicId: 'e1' },
 };
 
 /** An empty lane: the count reads 0 and a faint placeholder shows. */
 export const Empty: Story = {
-  args: { lane: { state: 'done', label: 'Done', stories: [] } },
+  args: { lane: { state: 'done', label: 'Done', stories: [] }, epicId: 'e1' },
 };
 
 /**
@@ -78,6 +78,7 @@ export const Empty: Story = {
  */
 export const DoneCollapsed: Story = {
   args: {
+    epicId: 'e1',
     lane: {
       state: 'done',
       label: 'Done',

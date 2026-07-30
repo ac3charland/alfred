@@ -75,20 +75,20 @@ function renderedRefs(lane: HTMLElement): (string | null)[] {
 
 describe('Swimlane', () => {
   it('renders the lane label as its accessible name', () => {
-    render(<Swimlane lane={LANE} />);
+    render(<Swimlane lane={LANE} epicId="e1" />);
 
     expect(screen.getByRole('region', { name: 'Needs Refinement' })).toBeInTheDocument();
   });
 
   it('shows the count of stories in the lane', () => {
-    render(<Swimlane lane={LANE} />);
+    render(<Swimlane lane={LANE} epicId="e1" />);
 
     const lane = screen.getByRole('region', { name: 'Needs Refinement' });
     expect(within(lane).getByText('2')).toBeInTheDocument();
   });
 
   it('renders a card per story showing ref + title', () => {
-    render(<Swimlane lane={LANE} />);
+    render(<Swimlane lane={LANE} epicId="e1" />);
 
     const lane = screen.getByRole('region', { name: 'Needs Refinement' });
     expect(within(lane).getByText('ALF-1')).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe('Swimlane', () => {
   });
 
   it('shows an empty placeholder when the lane has no stories', () => {
-    render(<Swimlane lane={{ state: 'done', label: 'Done', stories: [] }} />);
+    render(<Swimlane lane={{ state: 'done', label: 'Done', stories: [] }} epicId="e1" />);
 
     const lane = screen.getByRole('region', { name: 'Done' });
     expect(within(lane).getByText(/no stories/i)).toBeInTheDocument();
@@ -108,7 +108,7 @@ describe('Swimlane', () => {
   it('forwards card activation to onOpenStory', async () => {
     const onOpenStory = jest.fn();
     const user = userEvent.setup();
-    render(<Swimlane lane={LANE} onOpenStory={onOpenStory} />);
+    render(<Swimlane lane={LANE} epicId="e1" onOpenStory={onOpenStory} />);
 
     const lane = screen.getByRole('region', { name: 'Needs Refinement' });
     await user.click(within(lane).getByText('First story'));
@@ -120,7 +120,7 @@ describe('Swimlane', () => {
 
   describe('the Done lane collapse (ALF-81)', () => {
     it('shows only the latest 3 completed stories with a Show more control', () => {
-      render(<Swimlane lane={laneOf('done', 'Done', 10)} />);
+      render(<Swimlane lane={laneOf('done', 'Done', 10)} epicId="e1" />);
 
       const lane = screen.getByRole('region', { name: 'Done' });
       expect(renderedRefs(lane)).toEqual([
@@ -135,7 +135,7 @@ describe('Swimlane', () => {
 
     it('reveals 5 more per Show more click, then drops the control once all are shown', async () => {
       const user = userEvent.setup();
-      render(<Swimlane lane={laneOf('done', 'Done', 10)} />);
+      render(<Swimlane lane={laneOf('done', 'Done', 10)} epicId="e1" />);
 
       const lane = screen.getByRole('region', { name: 'Done' });
       expect(renderedRefs(lane)).toHaveLength(3);
@@ -151,7 +151,7 @@ describe('Swimlane', () => {
     });
 
     it('shows all Done stories without a Show more control when there are 3 or fewer', () => {
-      render(<Swimlane lane={laneOf('done', 'Done', 3)} />);
+      render(<Swimlane lane={laneOf('done', 'Done', 3)} epicId="e1" />);
 
       const lane = screen.getByRole('region', { name: 'Done' });
       expect(renderedRefs(lane)).toHaveLength(3);
@@ -161,7 +161,7 @@ describe('Swimlane', () => {
     });
 
     it('never collapses a non-Done lane, however many stories it holds', () => {
-      render(<Swimlane lane={laneOf('in_development', 'In Development', 10)} />);
+      render(<Swimlane lane={laneOf('in_development', 'In Development', 10)} epicId="e1" />);
 
       const region = screen.getByRole('region', { name: 'In Development' });
       expect(within(region).getAllByRole('button', { name: /^open /i })).toHaveLength(10);
