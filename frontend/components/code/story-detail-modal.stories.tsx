@@ -63,6 +63,7 @@ const STORY: CodeStory = {
   implementation_pr_url: null,
   blocked_reason: null,
   blocked_from: null,
+  requires_refinement: true,
   code_created_at: '2025-01-01T00:00:00Z',
   code_updated_at: '2025-01-01T00:00:00Z',
   title: 'Draft the inbound filter spec',
@@ -180,6 +181,27 @@ export const NeedsRefinement: Story = {
       spec_markdown: null,
       refinement_pr_url: null,
       title: 'Tweak the digest send time to 7am',
+    },
+  },
+};
+
+/**
+ * A `ready_for_dev` story that never had a spec — where clearing the "Needs refinement" mark
+ * parks a story, and where the Worker's revert of a closed-unmerged PR drops one. The mark reads
+ * unchecked, the spec body and PR links are absent, and the launch is still **Implement in
+ * Claude Code** (its prompt is the SKIP-REFINEMENT one, since no spec exists to read).
+ */
+export const ReadyForDevNoSpec: Story = {
+  args: {
+    story: {
+      ...STORY,
+      ref: 'ALF-51',
+      requires_refinement: false,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+      title: 'Bump the wrangler compatibility date',
     },
   },
 };
