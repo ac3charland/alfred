@@ -1,5 +1,12 @@
 import { ESTABLISHED_DAYS, evaluateCriterion } from '@/lib/habits';
-import type { CellStatus, FormationStage, HabitCriterion, HabitResults } from '@/lib/habits';
+import type {
+  CellStatus,
+  DerivedStatus,
+  FormationStage,
+  HabitCriterion,
+  HabitResults,
+  LoggedDays,
+} from '@/lib/habits';
 import type { Habit } from '@/lib/types';
 
 /**
@@ -51,6 +58,25 @@ export function formatShortDate(date: string): string {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
+  }).format(asUtcDate(date));
+}
+
+/** `12 June` — no weekday, for a sentence that already has a subject. */
+export function formatDayMonth(date: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+  }).format(asUtcDate(date));
+}
+
+/** `3 Feb 2026` — the end of a span, where the year is the point. */
+function formatDayMonthYear(date: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   }).format(asUtcDate(date));
 }
 
@@ -167,9 +193,79 @@ export function formatAllowance(allowance: number): string {
   return `${String(allowance)} ${allowance === 1 ? 'miss' : 'misses'} / rolling week`;
 }
 
+/**
+ * What a re-log would cost a day whose frozen verdict no longer matches the current criteria.
+ *
+ * Editing a criterion never rewrites a logged day — the status stored on that day IS the
+ * historical verdict. But re-logging one is a write, and the route re-scores it against whatever
+ * the definition says now, so a day that was `met` under a 07:00 target can quietly become
+ * `missed` under 06:15. This is the sentence that stops that being a surprise: the re-score
+ * stays available, it just stops being silent.
+ */
+export function rescoreNotice(stored: DerivedStatus, derived: DerivedStatus): string {
+  return `Logged ${STATUS_WORD[stored].toLowerCase()} under the earlier terms — changing this day now re-scores it as ${STATUS_WORD[derived].toLowerCase()}.`;
+}
+
 /** `every day · 1 miss / rolling week` — the line under a habit's name. */
 export function habitSummary(habit: Habit): string {
   return `${formatActiveDays(habit.active_days)} · ${formatAllowance(habit.allowance)}`;
+}
+
+/** `63 days` · `at least 118 days` — the count, hedged exactly as far as the window forces. */
+function loggedDaysPhrase({ count, isExact }: LoggedDays): string {
+  const days = `${String(count)} ${count === 1 ? 'day' : 'days'}`;
+  return isExact ? days : `at least ${days}`;
+}
+
+/** Which frozen slot is being explained. The sentence names the thing, not the column. */
+export type LockedSlot = 'days' | 'slack';
+
+const LOCKED_SLOT_PHRASE: Record<LockedSlot, string> = {
+  days: 'which days count',
+  slack: 'your slack',
+};
+
+/**
+ * Why a cadence slot won't open — the locked slot's explanation, next to the control rather
+ * than in a footnote, because the click is going to happen either way.
+ */
+export function lockedReason(slot: LockedSlot, logged: LoggedDays): string {
+  const verb = logged.count === 1 ? 'is' : 'are';
+  return `${loggedDaysPhrase(logged)} ${verb} already logged. Changing ${LOCKED_SLOT_PHRASE[slot]} would rewrite what those days counted for, so the streak you earned stays the streak you see.`;
+}
+
+/** The locked slot's accessible name — the STATE first, so it is announced before the value. */
+export function lockedSlotName(label: string, value: string): string {
+  return `Locked: ${label} ${value}`;
+}
+
+/** `ran 3 Feb – 18 May 2026` — the span an archived habit was alive for. */
+export function archivedSpan(habit: Habit): string {
+  const from = habit.started_on;
+  const to = habit.archived_at?.slice(0, 10);
+  if (to === undefined) return `started ${formatDayMonthYear(from)}`;
+  // The start drops its year only when the end already says it — a span across New Year needs both.
+  const sameYear = from.slice(0, 4) === to.slice(0, 4);
+  const start = sameYear
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'UTC',
+        day: 'numeric',
+        month: 'short',
+      }).format(asUtcDate(from))
+    : formatDayMonthYear(from);
+  return `ran ${start} – ${formatDayMonthYear(to)}`;
+}
+
+/**
+ * What a delete destroys, said plainly. Understating the cost is the one direction this sentence
+ * must not be wrong in, so a habit older than the seeded window reads as a floor rather than a
+ * number the client cannot actually vouch for.
+ */
+export function deleteConfirmLine(habit: Habit, logged: LoggedDays): string {
+  if (logged.count === 0 && logged.isExact) {
+    return 'This destroys this habit. Nothing has been logged against it yet.';
+  }
+  return `This destroys the habit and every day logged against it — ${loggedDaysPhrase(logged)}, since ${formatDayMonth(habit.started_on)}. It cannot be undone.`;
 }
 
 /** What the rail shows for a figure with no value — "no runs have ended yet" is not "zero". */
