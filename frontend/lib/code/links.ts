@@ -272,7 +272,9 @@ export function buildEpicRefinementUrl(project: Project, epic: Epic): string {
 export function buildImplementationUrl(project: Project, story: CodeStory): string {
   const ref = refOf(story);
   // Prefer the path the refinement PR declared; fall back to the conventional location so a
-  // not-yet-recorded path still yields a usable link.
+  // not-yet-recorded path still yields a usable link. The launch path no longer reaches that
+  // fallback — `buildDevelopmentUrl` routes a spec-less story to the bypass prompt instead — so
+  // it stands as belt-and-braces for any direct caller.
   const specPath = story.spec_path ?? specPathFor(story);
   const archivePath = archivePathFor(specPath);
   const prompt = [
@@ -296,6 +298,21 @@ export function buildImplementationUrl(project: Project, story: CodeStory): stri
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
+}
+
+/**
+ * The development-launch prompt for a story in `ready_for_dev`: the spec-reading implementation
+ * prompt when a refinement PR actually recorded a spec, and the SKIP-REFINEMENT prompt when it did
+ * not. `spec_path` is the only honest test — the Worker sets it when a refinement PR merges, so a
+ * null means no committed spec exists, however the story reached this lane. Two routes get it
+ * there without one: clearing the "Needs refinement" mark, and the Worker's revert of a
+ * closed-unmerged implementation PR. Both used to hand the agent an implementation prompt naming a
+ * spec file that was never written.
+ */
+export function buildDevelopmentUrl(project: Project, story: CodeStory): string {
+  return story.spec_path === null
+    ? buildBypassUrl(project, story)
+    : buildImplementationUrl(project, story);
 }
 
 /**
