@@ -11,10 +11,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { GateDialog, type GateItem } from '@/components/code/gate-dialog';
+import { projectBoardHref } from '@/lib/code/board-links';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import type { CodeStory } from '@/lib/types';
 
 import { bulkBarClass, bulkBarWrapperClass } from './inbox-bulk-bar.styles';
 
@@ -120,9 +122,19 @@ export function InboxBulkBar() {
     intendedProjectId: item.intended_project_id,
   }));
 
-  const handleGateComplete = () => {
+  // Settle the bulk send: the admitted items have left task_items, so drop them from the store
+  // and confirm with a toast. A batch has no single story to open, but the whole batch shares the
+  // gate's one project — so the toast deep-links to that project's board, where they all just
+  // landed. (`project_id` is `?? ''` only to satisfy the all-nullable view row type; a reconciled
+  // story always carries one.)
+  const handleGateComplete = (stories: CodeStory[]) => {
     for (const item of selectedItems) removeGatedItem(item.id);
-    showToast(`Sent ${String(count)} item${count === 1 ? '' : 's'} to Code`);
+    const projectId = stories[0]?.project_id ?? '';
+    showToast(
+      `Sent ${String(count)} item${count === 1 ? '' : 's'} to Code`,
+      'default',
+      projectId === '' ? undefined : projectBoardHref(projectId),
+    );
     exit();
   };
 

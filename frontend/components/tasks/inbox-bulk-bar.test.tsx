@@ -1,16 +1,17 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { renderWithProviders } from '@/lib/test-utils';
-import type { Folder, Item } from '@/lib/types';
+import type { CodeItem, Epic, Folder, Item, Project } from '@/lib/types';
 
 import { InboxBulkBar, InboxSelectToggle } from './inbox-bulk-bar';
 import { TaskList } from './task-list';
 
 jest.mock('@/lib/api-client');
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
+const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
 
 const BASE: Item = {
   id: 'item-1',
@@ -41,6 +42,55 @@ const FOLDERS: Folder[] = [
   { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
 ];
 
+const PROJECT: Project = {
+  id: 'p1',
+  name: 'Alfred',
+  key: 'ALF',
+  repo_owner: 'ac3charland',
+  repo_name: 'alfred',
+  github_url: null,
+  ref_seq: 0,
+  created_at: '2025-01-01T00:00:00Z',
+};
+
+const EPIC: Epic = {
+  id: 'e1',
+  project_id: 'p1',
+  name: 'Firewall',
+  notes: null,
+  ref_number: 1,
+  ref: 'ALF-1',
+  archived_at: null,
+  spec_path: null,
+  spec_sha: null,
+  spec_markdown: null,
+  refinement_pr_url: null,
+  created_at: '2025-01-01T00:00:00Z',
+};
+
+/** The sidecar row the gate's API call resolves with, one per admitted item. */
+function makeSidecar(itemId: string, refNumber: number): CodeItem {
+  return {
+    item_id: itemId,
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: refNumber,
+    ref: `ALF-${String(refNumber)}`,
+    factory_state: 'needs_refinement',
+    lane: 'human',
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    implementation_pr_url: null,
+    blocked_reason: null,
+    blocked_from: null,
+    created_at: '2025-01-02T00:00:00Z',
+    updated_at: '2025-01-02T00:00:00Z',
+    priority: 1,
+  };
+}
+
 /** The Inbox in select mode: the header toggle, the selectable list, and the bulk bar. */
 function InboxHarness() {
   return (
@@ -52,8 +102,17 @@ function InboxHarness() {
   );
 }
 
-function renderInbox(tasks: Item[], folders: Folder[] = FOLDERS) {
-  return renderWithProviders(<InboxHarness />, { tasks, folders });
+function renderInbox(
+  tasks: Item[],
+  folders: Folder[] = FOLDERS,
+  code: { projects?: Project[]; epics?: Epic[] } = {},
+) {
+  return renderWithProviders(<InboxHarness />, {
+    tasks,
+    folders,
+    projects: code.projects ?? [],
+    epics: code.epics ?? [],
+  });
 }
 
 /** Open a bar dropdown by clicking its trigger, then activate `item` via keyboard (Radix
@@ -228,5 +287,37 @@ describe('Inbox select mode', () => {
       expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('1 selected');
     });
     expect(screen.getByRole('button', { name: /deselect "u2"/i })).toBeInTheDocument();
+  });
+
+  it('Send to Code → the confirmation toast deep-links to the board it sent them to', async () => {
+    mockEnterCodeModule.mockImplementation((itemId) =>
+      Promise.resolve(makeSidecar(itemId, itemId === 'c1' ? 42 : 43)),
+    );
+    const user = userEvent.setup();
+    renderInbox(
+      [makeItem('c1', { item_type: 'code' }), makeItem('c2', { item_type: 'code' })],
+      [],
+      {
+        projects: [PROJECT],
+        epics: [EPIC],
+      },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('button', { name: /select "c1"/i }));
+    await user.click(screen.getByRole('button', { name: /select "c2"/i }));
+    await user.click(screen.getByRole('button', { name: /send to code/i }));
+
+    const gate = await screen.findByRole('dialog', { name: /send to code module/i });
+    await user.click(await within(gate).findByRole('option', { name: /alfred/i }));
+    await user.click(await within(gate).findByRole('option', { name: /firewall/i }));
+    await user.click(within(gate).getByRole('button', { name: /send to code module/i }));
+
+    // A batch has no single story to open, so the toast lands on the project's board — where
+    // all of them just arrived — rather than staying inert text.
+    expect(await screen.findByRole('link', { name: 'Sent 2 items to Code' })).toHaveAttribute(
+      'href',
+      '/code/p1',
+    );
   });
 });
