@@ -283,6 +283,16 @@ The suite never touches real Supabase. Every Supabase access in alfred is **serv
 
 - **Seed per test, not per build.** `e2e/support/fixtures.ts` adds a `seed` fixture that POSTs to `/__mock__/reset` (clean slate) then `/__mock__/seed` before `page.goto()`. The mock is in-memory and the config runs `workers: 1, fullyParallel: false`, so a shared store with per-test reset is deterministic. Build seed rows with `makeItem` / `makeFolder` from `e2e/support/constants.ts`.
 - **Adding an `items` column? Update the mock's `newItem` too.** The mock's row constructors (`newItem`/`newFolder`/… in `mock-supabase.mjs`) are an **explicit allowlist** — a field they don't copy is silently dropped from every seeded row, so it reads back `undefined`, not the DB default. A render guard like `field !== null && <Chip …/>` then lets `undefined` through and the component crashes in SSR. Adding a column means touching all four of: the migration, `database.types.ts`, `makeItem` in `e2e/support/constants.ts`, **and `newItem` in `mock-supabase.mjs`**.
+- **The mock implements the wire protocol, not the client API — a query shape it hasn't met yet
+  fails as an opaque `500`.** `.select(…, { head: true, count: 'exact' })` is the one that bites:
+  supabase-js sends it as an HTTP **HEAD** carrying `Prefer: count=exact` and reads the total back
+  off the `Content-Range` response header, so a mock routing only `GET` answers `405` and the route
+  above it returns `{"error":""}` — an empty message, because `mapSupabaseError` had nothing to
+  work with. Both halves are needed: route `HEAD` alongside `GET`, and emit `Content-Range`
+  (`0-<n-1>/<n>`, or `*/0` when empty) whenever `Prefer` asks for a count, or `count` reads back
+  `null` however many rows exist. A route using a query the mock doesn't cover passes its unit
+  tests (which mock Supabase directly) and only fails E2E.
+
 - **Auth via the real login + `storageState`.** `e2e/auth.setup.ts` drives the actual login form against the mock and saves the session; the `chromium` project reuses it via `storageState`. **Don't hand-craft the auth cookie** — `@supabase/ssr` derives its name (`sb-<ref>-auth-token`, ref = first URL host label, e.g. `sb-localhost-auth-token`) from `NEXT_PUBLIC_SUPABASE_URL`, and because the browser and the server use the *same* URL the names match and the cookie round-trips. Logging in for real sidesteps the whole derivation. Specs that need the logged-OUT state opt out with `test.use({ storageState: { cookies: [], origins: [] } })` (see `home.spec.ts`).
 - **The mock mints a long-lived session** (far-future `expires_at`) so it never expires mid-run and `getUser()` never tries to refresh.
 - **A throwaway capture spec (for a showboat demo) must be named `*.spec.ts`.** The `chromium` project uses Playwright's default `testMatch` (`*.@(spec|test).ts`); only the `setup` project overrides it. A file like `capture.flow.ts` is silently skipped with "No tests found" — name it `capture.flow.spec.ts`, run it, then delete it.
