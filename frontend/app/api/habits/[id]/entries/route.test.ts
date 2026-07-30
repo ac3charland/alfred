@@ -270,6 +270,24 @@ describe('PUT /api/habits/[id]/entries — which day it means', () => {
     expect(supabase._habits.update).toHaveBeenCalledWith({ started_on: '2026-06-30' });
   });
 
+  // A regression guard, not a new behaviour. `started_on` is frozen on PATCH once a habit has
+  // history, and this path deliberately sits outside that rule: it moves the start on EVIDENCE,
+  // with an entry justifying every day the move makes scorable. Wiring the two together would
+  // break backfilling a habit you have been keeping for months.
+  it('still moves the start on a habit that already has history, and never counts entries', async () => {
+    const supabase = signedIn();
+
+    const response = await PUT(put({ date: '2026-06-30', results: { light: true } }), context());
+
+    expect(response.status).toBe(200);
+    expect(supabase._habits.update).toHaveBeenCalledWith({ started_on: '2026-06-30' });
+    // It never asks HOW MANY days are logged — the count is what the PATCH guard turns its 409
+    // on, so not asking is what keeps this path outside the lock.
+    for (const [, options] of supabase._entries.select.mock.calls) {
+      expect(options).toBeUndefined();
+    }
+  });
+
   it('leaves the start alone for a day the habit was already running on', async () => {
     const supabase = signedIn();
 
