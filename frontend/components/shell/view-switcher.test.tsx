@@ -77,15 +77,6 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveClass('text-accent-teal');
   });
 
-  it('calls onNavigate when a segment is clicked', () => {
-    const onNavigate = jest.fn();
-    render(<ViewSwitcher onNavigate={onNavigate} />);
-
-    screen.getByRole('link', { name: 'Code' }).click();
-
-    expect(onNavigate).toHaveBeenCalledTimes(1);
-  });
-
   it('exposes a labelled group for the switcher', () => {
     render(<ViewSwitcher />);
 

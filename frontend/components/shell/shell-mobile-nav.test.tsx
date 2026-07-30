@@ -8,9 +8,32 @@ import { renderWithProviders } from '@/lib/test-utils';
 import { ShellMobileNav } from './shell-mobile-nav';
 
 // Mock next/navigation — the drawer reads the active route to pick which nav to render.
-const mockPathname = jest.fn<string, []>(() => '/');
+// The links inside the drawer navigate with `history.pushState`, which Next patches to
+// re-render `usePathname` consumers; this store reproduces that so the drawer re-derives
+// its module mid-interaction instead of being frozen at the route it opened on.
+const mockPathnameStore = {
+  pathname: '/',
+  listeners: new Set<() => void>(),
+  get: () => mockPathnameStore.pathname,
+  set: (next: string) => {
+    mockPathnameStore.pathname = next;
+    for (const listener of mockPathnameStore.listeners) listener();
+  },
+  subscribe: (listener: () => void) => {
+    mockPathnameStore.listeners.add(listener);
+    return () => {
+      mockPathnameStore.listeners.delete(listener);
+    };
+  },
+};
+const mockUseSyncExternalStore = React.useSyncExternalStore;
 jest.mock('next/navigation', () => ({
-  usePathname: () => mockPathname(),
+  usePathname: () =>
+    mockUseSyncExternalStore(
+      mockPathnameStore.subscribe,
+      mockPathnameStore.get,
+      mockPathnameStore.get,
+    ),
   useRouter() {
     return { push: jest.fn() };
   },
@@ -20,8 +43,10 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/lib/api-client');
 
 beforeEach(() => {
-  mockPathname.mockReturnValue('/');
-  jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
+  mockPathnameStore.pathname = '/';
+  jest.spyOn(globalThis.history, 'pushState').mockImplementation((_state, _unused, url) => {
+    mockPathnameStore.set(String(url));
+  });
 });
 
 function renderMobileNav() {
@@ -65,5 +90,44 @@ describe('ShellMobileNav', () => {
       await screen.findByRole('combobox', { name: 'Search tasks and stories' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
+  });
+
+  it('stays open when the switcher moves to the other module, swapping in its nav', async () => {
+    const user = userEvent.setup();
+    renderMobileNav();
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    expect(await screen.findByRole('navigation', { name: 'Navigation' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: 'Code' }));
+
+    // Switching modules is a move *within* the menu, so the drawer stays open and simply
+    // re-derives which module's nav it shows — the user keeps drilling in from there.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Projects' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Navigation' })).not.toBeInTheDocument();
+  });
+
+  it('stays open on a switcher tap that lands back on the module already showing', async () => {
+    const user = userEvent.setup();
+    renderMobileNav();
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await user.click(screen.getByRole('link', { name: 'Tasks' }));
+
+    // No segment of the switcher closes the drawer: only a destination inside a module's nav
+    // (or a search result) is an "arrived", so the rule stays simple to predict.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Navigation' })).toBeInTheDocument();
+  });
+
+  it('still closes when a destination inside the module nav is picked', async () => {
+    const user = userEvent.setup();
+    renderMobileNav();
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await user.click(await screen.findByRole('link', { name: /completed/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
