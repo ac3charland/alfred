@@ -22,8 +22,9 @@
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
- *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,convert_to_code_epic,
- *                         swap_code_priority,move_code_priority,move_code_priority_in_project}
+ *     POST /rest/v1/rpc/{next_code_ref,create_epic,enter_code_module,create_code_story,
+ *                         convert_to_code_epic,swap_code_priority,move_code_priority,
+ *                         move_code_priority_in_project}
  *                                                             → Software Factory RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
@@ -419,6 +420,9 @@ function newCodeItem(input) {
     implementation_pr_url: input.implementation_pr_url ?? null,
     blocked_reason: input.blocked_reason ?? null,
     blocked_from: input.blocked_from ?? null,
+    // Whether the story still needs a spec (migration 0025). `default true` in the DB, so a
+    // seeded/created row needs refinement unless it explicitly says otherwise.
+    requires_refinement: input.requires_refinement ?? true,
     created_at: input.created_at ?? now,
     updated_at: input.updated_at ?? now,
     // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
@@ -560,6 +564,7 @@ function codeStoryRows() {
       epic_ref: epic.ref,
       epic_archived_at: epic.archived_at,
       epic_spec_path: epic.spec_path ?? null,
+      requires_refinement: code.requires_refinement ?? true,
     });
   }
   return rows;
@@ -688,6 +693,36 @@ function handleRpc(req, res, fn, body) {
       epic_id: body?.p_epic,
       ref_number: n,
       ref: `${key}-${String(n)}`,
+    });
+    codeItems.push(code);
+    sendJson(res, 200, code);
+    return;
+  }
+
+  // Create a brand-new story from the board's `+` (migration 0004, extended by 0025): insert a
+  // fresh `items` row AND its sidecar in one step. `p_requires_refinement` decides where it
+  // lands — Needs Refinement when set (the default), Ready for Dev when the New Story dialog's
+  // checkbox is cleared.
+  if (fn === 'create_code_story' && req.method === 'POST') {
+    const project = projects.find((row) => String(row.id) === String(body?.p_project));
+    const key = project?.key ?? null;
+    const n = allocateRef(body?.p_project);
+    const item = newItem({
+      title: body?.p_title ?? '',
+      notes: body?.p_notes ?? null,
+      item_type: 'code',
+    });
+    items.push(item);
+    const requiresRefinement = body?.p_requires_refinement ?? true;
+    const code = newCodeItem({
+      item_id: item.id,
+      project_id: body?.p_project,
+      epic_id: body?.p_epic,
+      ref_number: n,
+      ref: `${key}-${String(n)}`,
+      requires_refinement: requiresRefinement,
+      factory_state: requiresRefinement ? 'needs_refinement' : 'ready_for_dev',
+      priority: topOfProjectPriority(body?.p_project),
     });
     codeItems.push(code);
     sendJson(res, 200, code);

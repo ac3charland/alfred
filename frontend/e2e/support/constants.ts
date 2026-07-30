@@ -165,6 +165,7 @@ export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
     implementation_pr_url: overrides.implementation_pr_url ?? null,
     blocked_reason: overrides.blocked_reason ?? null,
     blocked_from: overrides.blocked_from ?? null,
+    requires_refinement: overrides.requires_refinement ?? true,
     created_at: overrides.created_at ?? nextCreatedAt(),
     updated_at: overrides.updated_at ?? nextCreatedAt(),
     priority: overrides.priority ?? 1,

@@ -350,3 +350,119 @@ test('an epic with a snapshotted spec offers View spec, and its stories’ promp
   expect(prompt).toContain('docs/specs/epics/ALF-12.html');
   expect(prompt).toContain("don't edit, archive, or move it");
 });
+
+test('a story created with "Needs refinement" unchecked lands in Ready for Dev and launches the SKIP-REFINEMENT prompt', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    // The shared per-project ref counter stands at 6, so `create_code_story` allocates ALF-7.
+    ref_seq: 6,
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 6,
+    ref: 'ALF-6',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [], codeItems: [] });
+
+  await stubWindowOpen(page);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  // Create the story with the box cleared — the decision "this needs no spec", made up front.
+  await page.getByRole('button', { name: /new story in communication firewall/i }).click();
+  await page.getByLabel(/title/i).fill('Bump the wrangler compatibility date');
+  await page.getByRole('checkbox', { name: /needs refinement/i }).click();
+  // The dialog states the consequence before submitting. `exact` so this matches the
+  // description's trailing state, not the checkbox hint that also names the lane.
+  await expect(page.getByRole('dialog').getByText('Ready for Dev', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /^create$/i }).click();
+
+  // It appears in Ready for Dev, never in Needs Refinement…
+  const readyForDev = page.getByRole('region', { name: 'Ready for Dev' });
+  await expect(readyForDev.getByText('ALF-7')).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Needs Refinement' }).getByText('ALF-7'),
+  ).toBeHidden();
+  // …and, unlike Skip to Development, no tab was opened along the way.
+  expect(await getOpenedUrls(page)).toHaveLength(0);
+
+  // The launch is the normal Implement button, but its prompt is the skip-refinement one:
+  // there is no committed spec for the agent to read.
+  const launch = readyForDev.getByRole('button', { name: /implement in claude code/i });
+  await expect(launch).toBeVisible();
+  await launch.click();
+
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const opened = await getOpenedUrls(page);
+  const prompt = new URL(opened[0] ?? '').searchParams.get('q') ?? '';
+  expect(prompt).toContain('ALF-7: Bump the wrangler compatibility date');
+  expect(prompt).toContain('phase: implementation');
+  expect(prompt).toContain('SKIP-REFINEMENT');
+  expect(prompt).not.toMatch(/merged spec/i);
+});
+
+test('the detail modal marks an existing story dev-ready without opening a tab', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Bump the wrangler compatibility date', {
+    id: ITEM_ID,
+    item_type: 'code',
+  });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 8,
+    ref: 'ALF-8',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+
+  await stubWindowOpen(page);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  await page.getByRole('region', { name: 'Needs Refinement' }).getByText('ALF-8').click();
+  const dialog = page.getByRole('dialog');
+  const mark = dialog.getByRole('checkbox', { name: /needs refinement/i });
+  await expect(mark).toBeChecked();
+
+  await mark.click();
+
+  // Behind the modal the card has moved, and the launch swapped from Refine to Implement.
+  await expect(mark).not.toBeChecked();
+  await expect(dialog.getByRole('button', { name: /implement in claude code/i })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  await expect(
+    page.getByRole('region', { name: 'Ready for Dev' }).getByText('ALF-8'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Needs Refinement' }).getByText('ALF-8'),
+  ).toBeHidden();
+  // The whole point of the mark: the judgement is recorded with nothing launched.
+  expect(await getOpenedUrls(page)).toHaveLength(0);
+});
