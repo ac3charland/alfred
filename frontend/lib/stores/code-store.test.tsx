@@ -3287,6 +3287,29 @@ describe('code-store', () => {
         );
       });
 
+      // The Worker moves a story on each PR event of the implementation phase; those alerts are
+      // the ones that land while the user is elsewhere, so each has to be a way back to the card.
+      it.each([
+        ['ready_for_review', 'Ready for Review'],
+        ['done', 'Done'],
+      ] as const)('deep-links the toast for the PR-driven move to %s', (state, label) => {
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_development',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: state }));
+
+        expect(mockShowToast).toHaveBeenCalledWith(
+          `ALF-42 moved to ${label}`,
+          'emphasis',
+          '/code/p1?story=ALF-42',
+        );
+      });
+
       it('uses the escape-state label for a transition into Blocked', () => {
         const story = makeStory('i1', 'e1', 'p1', {
           ref: 'ALF-42',
