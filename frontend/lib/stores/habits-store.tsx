@@ -2,9 +2,17 @@
 
 import * as React from 'react';
 
-import { type CreateHabitInput, createHabit, upsertHabitEntry } from '@/lib/api-client';
+import {
+  type CreateHabitInput,
+  type UpdateHabitInput,
+  createHabit,
+  deleteHabit,
+  updateHabit,
+  upsertHabitEntry,
+} from '@/lib/api-client';
 import {
   appWindow,
+  applyHabitUpdate,
   computeHabitStats,
   deriveDayStatus,
   isApplicableDay,
@@ -12,10 +20,12 @@ import {
   statsWithBaseline,
   todayIn,
 } from '@/lib/habits';
-import type { HabitResults, HabitStats } from '@/lib/habits';
+import type { HabitResults, HabitStats, LoggedDays } from '@/lib/habits';
+import { stableSorted } from '@/lib/sort';
 import { assertNever } from '@/lib/stores/assert-never';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
+import { insertAt } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { tempId } from '@/lib/tree';
 import type { Habit, HabitEntry } from '@/lib/types';
@@ -53,12 +63,24 @@ export interface HabitsActions {
   ) => Promise<void>;
   /** Excuse a day. `reason` is required and lands in the entry's `note`. */
   skipDay: (habitId: string, date: string, reason: string) => Promise<void>;
+  /** Change a habit's definition — its name, or what counts as a good day. */
+  updateHabit: (id: string, input: UpdateHabitInput) => Promise<Habit>;
+  /** Retire a habit, or bring it back. The card moves between the list and Archived. */
+  setArchived: (id: string, archived: boolean) => Promise<Habit>;
+  /** Destroy a habit and every day logged against it. */
+  deleteHabit: (id: string) => Promise<void>;
 }
 
 type HabitsAction =
   | { type: 'insertHabit'; habit: Habit }
   | { type: 'replaceHabit'; id: string; habit: Habit }
   | { type: 'removeHabit'; id: string }
+  | {
+      type: 'restoreHabit';
+      habit: Habit;
+      index: number;
+      entries: Record<string, HabitEntry>;
+    }
   | { type: 'setHabitStart'; id: string; startedOn: string }
   | { type: 'putEntry'; habitId: string; entry: HabitEntry }
   | { type: 'removeEntry'; habitId: string; date: string }
@@ -85,6 +107,15 @@ export function habitsReducer(state: HabitsState, action: HabitsAction): HabitsS
     case 'removeHabit': {
       const { [action.id]: _dropped, ...entries } = state.entries;
       return { ...state, habits: state.habits.filter((habit) => habit.id !== action.id), entries };
+    }
+    case 'restoreHabit': {
+      // The exact inverse of `removeHabit`: the row goes back to the SLOT it left, with its
+      // logged days. Appending it with an empty grid instead would look like data loss.
+      return {
+        ...state,
+        habits: insertAt(state.habits, action.habit, action.index),
+        entries: { ...state.entries, [action.habit.id]: action.entries },
+      };
     }
     case 'setHabitStart': {
       return {
@@ -217,6 +248,40 @@ export function HabitsProvider({
       });
     };
 
+    /**
+     * The definition-write dance every PATCH shares. The optimistic row is built by the SAME
+     * pure merge the route's payload builder mirrors, so reconciling with the server row is a
+     * no-op in the normal case.
+     */
+    const writeHabit = async (
+      id: string,
+      input: UpdateHabitInput,
+      errorMessage: string,
+    ): Promise<Habit> => {
+      const previous = stateRef.current.habits.find((row) => row.id === id);
+      return runOptimisticMutation({
+        optimistic: () => {
+          if (previous !== undefined) {
+            dispatch({
+              type: 'replaceHabit',
+              id,
+              habit: applyHabitUpdate(previous, input, new Date().toISOString()),
+            });
+          }
+        },
+        apiCall: () => updateHabit(id, input),
+        reconcile: (saved) => {
+          dispatch({ type: 'replaceHabit', id, habit: saved });
+        },
+        rollback: () => {
+          if (previous !== undefined) dispatch({ type: 'replaceHabit', id, habit: previous });
+        },
+        onError: () => {
+          showToastRef.current(errorMessage);
+        },
+      });
+    };
+
     return {
       async addHabit(input) {
         const optimistic = makeOptimisticHabit(input);
@@ -253,6 +318,38 @@ export function HabitsProvider({
           { date, status: 'skipped', note: reason },
           "Couldn't skip that day",
         );
+      },
+      async updateHabit(id, input) {
+        return writeHabit(id, input, "Couldn't save that habit");
+      },
+      async setArchived(id, archived) {
+        return writeHabit(
+          id,
+          { archived },
+          archived ? "Couldn't archive that habit" : "Couldn't restore that habit",
+        );
+      },
+      async deleteHabit(id) {
+        const current = stateRef.current;
+        const index = current.habits.findIndex((row) => row.id === id);
+        const previous = current.habits[index];
+        // The entry bucket goes with the row, so rollback has to carry it back too.
+        const entries = current.entries[id] ?? {};
+        // No reconcile — on success the habit is gone, and there is nothing to swap.
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'removeHabit', id });
+          },
+          apiCall: () => deleteHabit(id),
+          rollback: () => {
+            if (previous !== undefined) {
+              dispatch({ type: 'restoreHabit', habit: previous, index, entries });
+            }
+          },
+          onError: () => {
+            showToastRef.current("Couldn't delete that habit");
+          },
+        });
       },
     };
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
@@ -303,9 +400,29 @@ function makeOptimisticEntry(
   };
 }
 
-/** The habit definitions, in display order. Throws outside a HabitsProvider. */
+/**
+ * The ACTIVE habit definitions, in display order. Throws outside a HabitsProvider.
+ *
+ * Derived through a memo rather than a bare `.filter()`: the latter hands out a fresh array
+ * every render, which re-runs every memo downstream of it — including the grid's calendar build.
+ */
 export function useHabits(): Habit[] {
-  return useStateValue('useHabits').habits;
+  const state = useStateValue('useHabits');
+  return React.useMemo(() => state.habits.filter((habit) => habit.archived_at === null), [state]);
+}
+
+/** The retired habits, most recently archived first — the Archived section's list. */
+export function useArchivedHabits(): Habit[] {
+  const state = useStateValue('useArchivedHabits');
+  return React.useMemo(
+    () =>
+      stableSorted(
+        state.habits.filter((habit) => habit.archived_at !== null),
+        // Most recently archived first; the timestamps are ISO, so a string compare is a date one.
+        (a, b) => (b.archived_at ?? '').localeCompare(a.archived_at ?? ''),
+      ),
+    [state],
+  );
 }
 
 // A shared empty map, so a habit with no entries returns a stable reference rather than a
@@ -321,6 +438,28 @@ export function useHabitEntries(habitId: string): Record<string, HabitEntry> {
 /** The owner's local today, as `YYYY-MM-DD`. */
 export function useHabitsToday(): string {
   return useStateValue('useHabitsToday').today;
+}
+
+/**
+ * A reader for any habit's logged-day count, and whether that count is the whole truth.
+ *
+ * The store holds a trailing window, so a habit that started before it may have days the client
+ * has never seen. Reporting that as a total would understate what a delete destroys, so the
+ * window's edge travels with the number rather than being quietly ignored.
+ *
+ * A function rather than a per-habit hook: its callers are the edit and delete dialogs, which
+ * render ONE habit at a time and can't call a hook per row to find it.
+ */
+export function useLoggedDaysReader(): (habit: Habit | undefined) => LoggedDays {
+  const state = useStateValue('useLoggedDaysReader');
+  return React.useCallback(
+    (habit: Habit | undefined) => ({
+      count: habit === undefined ? 0 : Object.keys(state.entries[habit.id] ?? {}).length,
+      // An absent habit means a closed dialog; nothing reads the flag, so `true` is the calm default.
+      isExact: habit === undefined || habit.started_on >= appWindow(state.today).from,
+    }),
+    [state],
+  );
 }
 
 /**
