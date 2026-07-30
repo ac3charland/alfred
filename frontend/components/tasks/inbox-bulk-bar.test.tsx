@@ -78,6 +78,7 @@ function makeSidecar(itemId: string, refNumber: number): CodeItem {
     ref: `ALF-${String(refNumber)}`,
     factory_state: 'needs_refinement',
     lane: 'human',
+    requires_refinement: true,
     spec_path: null,
     spec_sha: null,
     spec_markdown: null,
