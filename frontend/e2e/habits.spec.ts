@@ -191,3 +191,109 @@ test('a chain crosses a forgiven day in grey and breaks where the allowance runs
   // …and nothing at all across the break, where two spent days share one rolling week.
   await expect(page.locator('[data-date="2026-06-06"] [data-connector="out"]')).toHaveCount(0);
 });
+
+test('retargets a criterion without moving a logged day, then archives, restores and deletes', async ({
+  page,
+  seed,
+}) => {
+  // A habit with real history: the retarget has to be visibly inert for it, and the cadence
+  // slots have to be frozen because of it.
+  const habit = makeHabit('Morning routine', {
+    started_on: localDaysAgo(3),
+    criteria: [{ key: 'wake', label: 'be up by', kind: 'time', target: 420, comparator: 'lte' }],
+  });
+  const logged = localDaysAgo(3);
+  await seed({
+    habits: [habit],
+    habitEntries: [
+      // 06:50 met the original 07:00 target. It must still read met under 06:15.
+      makeHabitEntry(habit.id, logged, { status: 'met', results: { wake: 410 } }),
+    ],
+  });
+  await page.goto('/habits');
+
+  await expect(page.locator(`[data-date="${logged}"]`)).toHaveAttribute('data-status', 'met');
+
+  // ── Retarget 07:00 → 06:15 ────────────────────────────────────────────────
+  await page.getByRole('button', { name: 'Options for Morning routine' }).click();
+  await page.getByRole('menuitem', { name: 'Edit habit…' }).click();
+  await expect(page.getByLabel('Habit name')).toHaveValue('Morning routine');
+
+  // The cadence is frozen, and clicking it explains rather than doing nothing.
+  await page.getByRole('button', { name: /^Locked: Allowance:/ }).click();
+  await expect(page.getByText('Fixed for this habit')).toBeVisible();
+  await expect(page.getByText(/1 day is already logged/)).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: 'Edit criterion: be up by 07:00' }).click();
+  await page.getByLabel('No later than').fill('06:15');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+
+  // The definition moved; the day it was scored under did not. This is the whole argument for
+  // letting criteria be editable at all.
+  await expect(page.getByRole('button', { name: /^Options for/ })).toBeVisible();
+  await page.reload();
+  await expect(page.locator(`[data-date="${logged}"]`)).toHaveAttribute('data-status', 'met');
+
+  // ── Archive → the Archived section → unarchive ────────────────────────────
+  await page.getByRole('button', { name: 'Options for Morning routine' }).click();
+  await page.getByRole('menuitem', { name: 'Archive' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Morning routine' })).toBeHidden();
+  const archived = page.getByRole('button', { name: 'Archived (1)' });
+  await expect(archived).toBeVisible();
+  await archived.click();
+  await page.getByRole('button', { name: 'Unarchive' }).click();
+  await expect(page.getByRole('heading', { name: 'Morning routine' })).toBeVisible();
+
+  // The round trip through the database kept the day, and the archive flag really cleared.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Morning routine' })).toBeVisible();
+  await expect(page.locator(`[data-date="${logged}"]`)).toHaveAttribute('data-status', 'met');
+
+  // ── Delete, behind the confirm ────────────────────────────────────────────
+  await page.getByRole('button', { name: 'Options for Morning routine' }).click();
+  await page.getByRole('menuitem', { name: 'Delete habit…' }).click();
+  await expect(page.getByRole('heading', { name: 'Delete “Morning routine”?' })).toBeVisible();
+  await expect(page.getByText(/1 day, since/)).toBeVisible();
+
+  // Cancel first: the confirm is the gate, so backing out must leave the habit alone.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('heading', { name: 'Morning routine' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Options for Morning routine' }).click();
+  await page.getByRole('menuitem', { name: 'Delete habit…' }).click();
+  await page.getByRole('button', { name: 'Delete habit' }).click();
+
+  await expect(page.getByText('No habits yet')).toBeVisible();
+  // Gone for real: the cascade took the entry with it, and a reload proves the row is not there.
+  await page.reload();
+  await expect(page.getByText('No habits yet')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Archived/ })).toBeHidden();
+});
+
+test('a cadence slot opened from the card menu stays open long enough to use', async ({
+  page,
+  seed,
+}) => {
+  // A regression guard for a focus race, which is why it lives here rather than in jsdom: the
+  // card's ⋯ menu restores focus to its trigger asynchronously when it closes, and that late
+  // jump used to reach out of the dialog the menu had just opened and shut any popover inside it
+  // that doesn't autofocus its own content — the days and allowance slots.
+  const habit = makeHabit('Cold shower', { started_on: localToday(), allowance: 1 });
+  await seed({ habits: [habit] });
+  await page.goto('/habits');
+
+  await page.getByRole('button', { name: 'Options for Cold shower' }).click();
+  await page.getByRole('menuitem', { name: 'Edit habit…' }).click();
+
+  // Nothing is logged, so the cadence is still open for editing.
+  await page.getByRole('button', { name: /^Allowance:/ }).click();
+  await page.getByRole('button', { name: '3 misses a week', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Allowance: 3 misses a week' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await page.reload();
+  await expect(page.getByText('· every day · 3 misses / rolling week')).toBeVisible();
+});
