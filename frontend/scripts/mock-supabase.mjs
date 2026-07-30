@@ -17,7 +17,7 @@
  *     GET  /auth/v1/user                                      → the single user
  *     POST /auth/v1/logout                                    → 204
  *   Data (PostgREST):
- *     GET|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans,
+ *     GET|HEAD|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans,
  *                                     habits,habit_entries}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
@@ -89,7 +89,7 @@ let nextFolderSortOrder = 1_000_000;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,HEAD,POST,PATCH,DELETE,OPTIONS',
   // The browser login (createBrowserClient) is the one cross-origin caller; allow
   // every header the supabase client sends so the preflight passes.
   'Access-Control-Allow-Headers': '*',
@@ -127,6 +127,37 @@ function wantsObject(req) {
 
 function wantsRepresentation(req) {
   return (req.headers['prefer'] ?? '').includes('return=representation');
+}
+
+/**
+ * A `.select(…, { count: 'exact' })` request. PostgREST reports the total in a `Content-Range`
+ * header rather than the body, and supabase-js reads `count` back off that header — so a mock
+ * that omits it hands the caller `count: null` however many rows exist.
+ */
+function wantsCount(req) {
+  return (req.headers['prefer'] ?? '').includes('count=');
+}
+
+/**
+ * Answer a row read, attaching `Content-Range` when the caller asked for a count.
+ *
+ * `.select(…, { head: true })` arrives as an HTTP **HEAD**, whose response carries the count in
+ * that header and NO body at all — which is the whole point of `head: true`, and why a mock that
+ * only routes GET answers it `405` and surfaces as a bare `500` two layers up.
+ */
+function sendRows(req, res, rows, total) {
+  const headers = { ...CORS_HEADERS, 'Content-Type': 'application/json' };
+  if (wantsCount(req)) {
+    const count = total ?? rows.length;
+    headers['Content-Range'] = count === 0 ? `*/0` : `0-${String(count - 1)}/${String(count)}`;
+  }
+  if (req.method === 'HEAD') {
+    res.writeHead(200, headers);
+    res.end();
+    return;
+  }
+  res.writeHead(200, headers);
+  res.end(JSON.stringify(rows));
 }
 
 // ── PostgREST filtering ──────────────────────────────────────────────────────
@@ -840,15 +871,19 @@ function handleRest(req, res, url, body) {
     return;
   }
 
-  if (req.method === 'GET') {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    const matched = applyFilters(table, url.searchParams);
     const rows = applySelect(
-      applyRange(
-        applyOrder(applyFilters(table, url.searchParams), url.searchParams),
-        url.searchParams,
-      ),
+      applyRange(applyOrder(matched, url.searchParams), url.searchParams),
       url.searchParams,
     );
-    sendJson(res, 200, wantsObject(req) ? (rows[0] ?? null) : rows);
+    // A single-object read has no count to report, so it keeps the plain JSON path.
+    if (req.method === 'GET' && wantsObject(req)) {
+      sendJson(res, 200, rows[0] ?? null);
+      return;
+    }
+    // The count is of everything the FILTERS matched, before any range window.
+    sendRows(req, res, rows, matched.length);
     return;
   }
 
@@ -1045,7 +1080,8 @@ const server = createServer((req, res) => {
       return;
     }
 
-    const body = req.method === 'GET' || req.method === 'DELETE' ? undefined : await readBody(req);
+    const noBody = new Set(['GET', 'HEAD', 'DELETE']);
+    const body = noBody.has(req.method ?? '') ? undefined : await readBody(req);
 
     try {
       if (url.pathname.startsWith('/__mock__/')) {
