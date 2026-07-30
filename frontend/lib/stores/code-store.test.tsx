@@ -3252,7 +3252,39 @@ describe('code-store', () => {
           makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'ready_for_dev' }),
         );
 
-        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Ready for Dev', 'emphasis');
+        // The toast deep-links to the moved story's board modal, so the alert is the way there.
+        expect(mockShowToast).toHaveBeenCalledWith(
+          'ALF-42 moved to Ready for Dev',
+          'emphasis',
+          '/code/p1?story=ALF-42',
+        );
+      });
+
+      it('deep-links the toast to the story board of the project the row belongs to', () => {
+        // A move can land for a story on ANOTHER project's board (the subscription is global),
+        // so the link follows the incoming row's project, not the board being viewed.
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'in_refinement',
+        });
+        renderHook(() => useProjectBoard('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        emitUpdate(
+          makeSavedSidecar({
+            item_id: 'i1',
+            project_id: 'p9',
+            ref: 'ALF-42',
+            factory_state: 'ready_for_dev',
+          }),
+        );
+
+        expect(mockShowToast).toHaveBeenCalledWith(
+          'ALF-42 moved to Ready for Dev',
+          'emphasis',
+          '/code/p9?story=ALF-42',
+        );
       });
 
       it('uses the escape-state label for a transition into Blocked', () => {
@@ -3266,7 +3298,11 @@ describe('code-store', () => {
 
         emitUpdate(makeSavedSidecar({ item_id: 'i1', ref: 'ALF-42', factory_state: 'blocked' }));
 
-        expect(mockShowToast).toHaveBeenCalledWith('ALF-42 moved to Blocked', 'emphasis');
+        expect(mockShowToast).toHaveBeenCalledWith(
+          'ALF-42 moved to Blocked',
+          'emphasis',
+          '/code/p1?story=ALF-42',
+        );
       });
 
       describe('tab-title marker (backgrounded tab)', () => {

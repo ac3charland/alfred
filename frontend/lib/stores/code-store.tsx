@@ -6,6 +6,7 @@ import * as React from 'react';
 import * as api from '@/lib/api-client';
 import { copyToClipboard } from '@/lib/clipboard';
 import { nextBlockedFrom } from '@/lib/code/blocked';
+import { storyBoardHref } from '@/lib/code/board-links';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import {
   buildBypassUrl,
@@ -570,7 +571,15 @@ export function CodeProvider({
       if (!changedState) return;
 
       const label = FACTORY_STATE_LABELS[row.factory_state];
-      showToast(`${row.ref} moved to ${label}`, 'emphasis');
+      // Deep-link the alert to the story that moved (the same `?story=` seam the creation toast
+      // uses), so the notification IS the way to the card — a move often lands while the user is
+      // on another project's board, or in Tasks entirely. The link follows the incoming row's
+      // project, not whatever board is on screen.
+      showToast(
+        `${row.ref} moved to ${label}`,
+        'emphasis',
+        storyBoardHref(row.project_id, row.ref),
+      );
       // A glanceable marker for moves that arrive while the user is on another tab.
       if (document.hidden) {
         savedTitle ??= document.title;

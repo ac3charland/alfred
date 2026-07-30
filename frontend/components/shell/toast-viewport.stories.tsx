@@ -27,12 +27,14 @@ export const Default: Story = {
   },
 };
 
+// The realtime move alert, as it actually fires: emphasis + a deep link to the story that moved.
 export const Emphasis: Story = {
   args: {
     toast: {
       id: 'e',
       message: 'ALF-42 moved to Ready for Dev',
       variant: 'emphasis',
+      href: '/code/p1?story=ALF-42',
       leaving: false,
     },
   },
