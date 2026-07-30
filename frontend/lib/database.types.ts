@@ -54,6 +54,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url: string | null
+          requires_refinement: boolean
           spec_markdown: string | null
           spec_path: string | null
           spec_sha: string | null
@@ -75,6 +76,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url?: string | null
+          requires_refinement?: boolean
           spec_markdown?: string | null
           spec_path?: string | null
           spec_sha?: string | null
@@ -96,6 +98,7 @@ export type Database = {
           ref?: string
           ref_number?: number
           refinement_pr_url?: string | null
+          requires_refinement?: boolean
           spec_markdown?: string | null
           spec_path?: string | null
           spec_sha?: string | null
@@ -551,6 +554,7 @@ export type Database = {
           refinement_pr_url: string | null
           repo_name: string | null
           repo_owner: string | null
+          requires_refinement: boolean | null
           source_url: string | null
           spec_markdown: string | null
           spec_path: string | null
@@ -632,6 +636,7 @@ export type Database = {
           p_epic: string
           p_notes?: string
           p_project: string
+          p_requires_refinement?: boolean
           p_title: string
         }
         Returns: {
@@ -648,6 +653,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url: string | null
+          requires_refinement: boolean
           spec_markdown: string | null
           spec_path: string | null
           spec_sha: string | null
@@ -699,6 +705,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url: string | null
+          requires_refinement: boolean
           spec_markdown: string | null
           spec_path: string | null
           spec_sha: string | null
@@ -748,6 +755,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url: string | null
+          requires_refinement: boolean
           spec_markdown: string | null
           spec_path: string | null
           spec_sha: string | null
@@ -776,6 +784,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url: string | null
+          requires_refinement: boolean
           spec_markdown: string | null
           spec_path: string | null
           spec_sha: string | null
@@ -805,6 +814,7 @@ export type Database = {
           ref: string
           ref_number: number
           refinement_pr_url: string | null
+          requires_refinement: boolean
           spec_markdown: string | null
           spec_path: string | null
           spec_sha: string | null
