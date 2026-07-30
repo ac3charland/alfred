@@ -114,3 +114,41 @@ describe('ToastViewport', () => {
     pushState.mockRestore();
   });
 });
+
+/**
+ * A reversible change offers the way back on the toast, because by then the surface that fired it
+ * is usually gone — archiving a habit removes the card its menu hung off.
+ */
+describe('ToastItem — an inline action', () => {
+  it('renders no action button when the toast carries none', () => {
+    mockQueue = [makeToast()];
+    render(<ToastViewport />);
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Dismiss notification' })).toBeInTheDocument();
+  });
+
+  it('offers the action by its own label, beside the dismiss', () => {
+    mockQueue = [
+      makeToast({
+        message: 'Archived Morning routine',
+        action: { label: 'Undo', onAction: jest.fn() },
+      }),
+    ];
+    render(<ToastViewport />);
+
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
+
+  it('runs the action and then dismisses — the toast is spent once it is taken up', async () => {
+    const user = userEvent.setup();
+    const onAction = jest.fn();
+    mockQueue = [makeToast({ id: 'undo1', action: { label: 'Undo', onAction } })];
+    render(<ToastViewport />);
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(mockDismissToast).toHaveBeenCalledWith('undo1');
+  });
+});
