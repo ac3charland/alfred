@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { BoardDndProvider } from '@/components/code/board/board-dnd-provider';
 import { BoardToolbar } from '@/components/code/board/board-toolbar';
 import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic-block';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
@@ -32,8 +33,9 @@ export interface BoardProperties {
  * - **The header controls** live in `BoardToolbar`, which owns their responsive shape (the
  *   view filters fold into a ⋯ menu below `md`); the board keeps the state they act on.
  *
- * Swimlanes are read-only here. Clicking a card calls `onOpenStory` — a placeholder for
- * now; the detail modal hangs off it.
+ * Clicking a card opens the detail modal (`onOpenStory`); **dragging** one onto another of its
+ * epic's lanes moves the story to that state (ALF-155), through the same optimistic write the
+ * modal's status menu makes — see `BoardDndProvider`.
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
@@ -172,22 +174,27 @@ export function Board({ projectId }: BoardProperties) {
       </div>
 
       {hasAnyEpic ? (
-        <div className="flex flex-col gap-3">
-          {visibleEpics.map((board) => (
-            <EpicBlock
-              key={board.epic.id}
-              board={board}
-              collapsed={collapsed.has(board.epic.id)}
-              onToggleCollapse={() => {
-                toggleCollapse(board.epic.id);
-              }}
-              visibleStates={visibleStates}
-              showAbandoned={showAbandoned}
-              onOpenStory={handleOpenStory}
-              onOpenSession={handleOpenSession}
-            />
-          ))}
-        </div>
+        // The board's own drag context: dragging a card between this epic's lanes moves the
+        // story to that state (ALF-155). It nests inside the shell's task DndContext, which
+        // keeps the two modules' drags from ever seeing each other.
+        <BoardDndProvider>
+          <div className="flex flex-col gap-3">
+            {visibleEpics.map((board) => (
+              <EpicBlock
+                key={board.epic.id}
+                board={board}
+                collapsed={collapsed.has(board.epic.id)}
+                onToggleCollapse={() => {
+                  toggleCollapse(board.epic.id);
+                }}
+                visibleStates={visibleStates}
+                showAbandoned={showAbandoned}
+                onOpenStory={handleOpenStory}
+                onOpenSession={handleOpenSession}
+              />
+            ))}
+          </div>
+        </BoardDndProvider>
       ) : (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border p-10">
           <p className="max-w-sm text-center text-sm text-muted-foreground">

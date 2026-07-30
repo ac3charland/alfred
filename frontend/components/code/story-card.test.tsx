@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
+import { DRAG_SURFACE_ATTRIBUTE } from '@/lib/dnd/pointer-sensor';
 import type { CodeStory } from '@/lib/types';
 
 import { StoryCard } from './story-card';
@@ -95,6 +96,18 @@ describe('StoryCard', () => {
     render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
 
     expect(screen.getAllByRole('button')[0]).toHaveAttribute('data-factory-state', 'ready_for_dev');
+  });
+
+  it('marks the card body as the lane drag surface, but not its launch buttons', () => {
+    // The sensors refuse to lift a drag from a control unless it carries this marker, so
+    // without it on the body a card on the board has nowhere to be picked up (ALF-155) — and
+    // with it on a launch chip, pressing that chip would start a drag instead of launching.
+    render(<StoryCard story={makeStory({ factory_state: 'ready_for_dev' })} />);
+
+    const body = screen.getByRole('button', { name: /^open alf-42/i });
+    const launch = screen.getByRole('button', { name: /implement in claude code/i });
+    expect(body).toHaveAttribute(DRAG_SURFACE_ATTRIBUTE);
+    expect(launch).not.toHaveAttribute(DRAG_SURFACE_ATTRIBUTE);
   });
 
   describe('the "Open Claude Code" action', () => {

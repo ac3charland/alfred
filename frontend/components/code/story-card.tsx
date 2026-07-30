@@ -5,6 +5,7 @@ import { LaunchButton } from '@/components/atoms/launch-button';
 import { ReviewPrChip } from '@/components/atoms/review-pr-chip';
 import { type LaunchPhase, launchPhasesFor } from '@/lib/code/launch';
 import { reviewPrUrlFor } from '@/lib/code/review-pr';
+import { dragSurfaceProperty } from '@/lib/dnd/pointer-sensor';
 import { isEscapeState } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -60,6 +61,11 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
       <ClickableCard
         onClick={() => onOpen?.(story)}
         data-factory-state={story.factory_state ?? undefined}
+        // The card body is a button covering nearly the whole card, so on the board it doubles
+        // as the surface a lane drag lifts from (the sensors otherwise refuse to start a drag
+        // from a control). A press that stays put still opens the modal; only one that travels
+        // past the activation distance becomes a drag. See the dnd-kit skill.
+        {...dragSurfaceProperty}
         aria-label={`Open ${story.ref ?? ''} ${story.title ?? ''}`}
         className="px-3 py-2"
       >

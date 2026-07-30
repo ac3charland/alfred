@@ -321,6 +321,7 @@ export function EpicBlock({
               <Swimlane
                 key={lane.state}
                 lane={lane}
+                epicId={epic.id}
                 onOpenStory={onOpenStory}
                 onOpenSession={onOpenSession}
               />
