@@ -18,6 +18,7 @@ import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
 import { PrimaryAction } from '@/components/code/story-detail/primary-action';
 import { PriorityControls } from '@/components/code/story-detail/priority-controls';
+import { RefinementMark } from '@/components/code/story-detail/refinement-mark';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
 import type { LaunchPhase } from '@/lib/code/launch';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
@@ -211,8 +212,9 @@ function DetailBody({
         <DialogCloseButton />
       </div>
 
-      {/* The primary launch action sits in the header region. */}
-      <div className="mt-4 flex items-center gap-3">
+      {/* The primary launch action sits in the header region, alongside the PR links and the
+          refinement mark — the property that decides whether this story ever needs a spec. */}
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
         <PrimaryAction story={story} onOpenSession={onOpenSession} />
         {story.refinement_pr_url === null ? null : (
           <PrLink label="Refinement PR" url={story.refinement_pr_url} />
@@ -220,6 +222,7 @@ function DetailBody({
         {story.implementation_pr_url === null ? null : (
           <PrLink label="Implementation PR" url={story.implementation_pr_url} />
         )}
+        <RefinementMark story={story} />
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
@@ -259,7 +262,8 @@ export interface StoryDetailModalProperties {
  * `gate-dialog`, sized up) opened from a board card. Shows the ref + inline-editable title,
  * the Project › Epic breadcrumb, the factory-state chip, notes, the rendered spec (an HTML
  * plan in an isolated frame, or legacy markdown) with a "View in repo" link, PR links, the phase-appropriate
- * "Open Claude Code" launch button, the Backlog priority jumps, and the manual fallback controls.
+ * "Open Claude Code" launch button, the "Needs refinement" mark, the Backlog priority jumps, and
+ * the manual fallback controls.
  *
  * Must be mounted under a `CodeProvider` — it reads `useCodeActions` for the title edit, the
  * move-to-epic dropdown, the priority jumps, and the manual transitions, and `useEpics` for the

@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { CheckboxField } from '@/components/atoms/checkbox-field';
 import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/dialog';
 import { FieldLabel } from '@/components/atoms/field-label';
 import { TextField } from '@/components/atoms/text-field';
@@ -19,9 +20,14 @@ interface NewStoryDialogProperties {
   epicRef: string;
   /**
    * Persist the new story (the board wires this to `createStory(epic.id, …)`, which mints the
-   * item + sidecar at Needs Refinement). `notes` is `null` for an empty field.
+   * item + sidecar). `notes` is `null` for an empty field. `requiresRefinement` is the checkbox:
+   * `true` lands the story at Needs Refinement, `false` straight in Ready for Dev.
    */
-  onCreateStory: (title: string, notes: string | null) => Promise<CodeStory>;
+  onCreateStory: (
+    title: string,
+    notes: string | null,
+    requiresRefinement: boolean,
+  ) => Promise<CodeStory>;
 }
 
 /**
@@ -36,6 +42,9 @@ function NewStoryForm({
 }: Omit<NewStoryDialogProperties, 'open'>) {
   const [title, setTitle] = React.useState('');
   const [notes, setNotes] = React.useState('');
+  // Checked by default: a story needs refinement unless the author says otherwise, matching the
+  // column's `default true` and every other way a story enters the factory.
+  const [needsRefinement, setNeedsRefinement] = React.useState(true);
   const titleRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -44,7 +53,8 @@ function NewStoryForm({
 
   const { error, isPending, submit } = useFormSubmit({
     // Trim the title; map an empty notes field to null (the lib/ layer's null-aware boundary).
-    onSubmit: () => onCreateStory(title.trim(), notes.trim() === '' ? null : notes.trim()),
+    onSubmit: () =>
+      onCreateStory(title.trim(), notes.trim() === '' ? null : notes.trim(), needsRefinement),
     onSuccess: () => {
       onOpenChange(false);
     },
@@ -62,9 +72,14 @@ function NewStoryForm({
       <DialogTitle className="text-base font-semibold text-foreground">
         New story in <span className="text-accent-teal">{epicName}</span>
       </DialogTitle>
+      {/* The landing state follows the checkbox, so the consequence of unchecking it is
+          visible before submitting rather than only after the card appears. */}
       <DialogDescription className="mt-1 text-sm text-muted-foreground">
         It will be created in {epicRef === '' ? 'this epic' : epicRef} at{' '}
-        <span className="text-foreground">Needs Refinement</span>.
+        <span className="text-foreground">
+          {needsRefinement ? 'Needs Refinement' : 'Ready for Dev'}
+        </span>
+        .
       </DialogDescription>
 
       <div className="mt-5 flex flex-col gap-1.5">
@@ -99,6 +114,19 @@ function NewStoryForm({
         {error !== null && <p className="text-xs text-destructive">{error}</p>}
       </div>
 
+      <CheckboxField
+        className="mt-4"
+        label="Needs refinement"
+        checked={needsRefinement}
+        onCheckedChange={setNeedsRefinement}
+        disabled={isPending}
+        hint={
+          needsRefinement
+            ? 'Checked — the story waits for a spec before development starts.'
+            : 'Unchecked — creates the story straight in Ready for Dev, with no spec.'
+        }
+      />
+
       <div className="mt-6 flex justify-end gap-3">
         <Button
           variant="outline"
@@ -126,11 +154,12 @@ function NewStoryForm({
 }
 
 /**
- * The New-story sub-dialog: a required Title and optional Notes, scoped to the epic the `+`
- * was clicked on. On submit it calls `onCreateStory`, which mints a fresh item + `code_items`
- * sidecar at Needs Refinement with a server-allocated ref (the optimistic card appears on the
- * board immediately). The stateful body is a child that mounts fresh on open so the draft
- * resets — the established pattern in `gate-dialog` / `new-epic-dialog`.
+ * The New-story sub-dialog: a required Title, optional Notes, and the "Needs refinement"
+ * checkbox, scoped to the epic the `+` was clicked on. On submit it calls `onCreateStory`, which
+ * mints a fresh item + `code_items` sidecar with a server-allocated ref (the optimistic card
+ * appears on the board immediately) — at Needs Refinement, or straight in Ready for Dev when the
+ * box is unchecked. The stateful body is a child that mounts fresh on open so the draft resets —
+ * the established pattern in `gate-dialog` / `new-epic-dialog`.
  */
 export function NewStoryDialog({ open, onOpenChange, ...rest }: NewStoryDialogProperties) {
   return (
