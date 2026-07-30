@@ -10,6 +10,7 @@ import {
   HabitsProvider,
   groupEntries,
   habitsReducer,
+  useArchivedHabits,
   useHabitActions,
   useHabitEntries,
   useHabitStats,
@@ -21,6 +22,8 @@ import {
 jest.mock('@/lib/api-client');
 const mockCreateHabit = jest.mocked(apiClient.createHabit);
 const mockUpsertHabitEntry = jest.mocked(apiClient.upsertHabitEntry);
+const mockUpdateHabit = jest.mocked(apiClient.updateHabit);
+const mockDeleteHabit = jest.mocked(apiClient.deleteHabit);
 
 // Short-circuit the toast context so a failed write's message is assertable without a
 // ToastProvider wrapper — the pattern the other store tests use.
@@ -94,6 +97,7 @@ function makeWrapper(
 function useStoreTest() {
   return {
     habits: useHabits(),
+    archived: useArchivedHabits(),
     entries: useHabitEntries(MORNING.id),
     today: useHabitsToday(),
     unlogged: useUnloggedTodayCount(),
@@ -145,6 +149,23 @@ describe('habitsReducer', () => {
     expect(habitsReducer(seeded, { type: 'removeHabit', id: MORNING.id }).entries).toStrictEqual(
       {},
     );
+  });
+
+  it('restores a habit at its own slot, entries and all — the inverse of removeHabit', () => {
+    const first: Habit = { ...MORNING, id: 'habit-0' };
+    const last: Habit = { ...MORNING, id: 'habit-2' };
+    const entries = groupEntries([makeEntry()]);
+    const seeded = { ...empty, habits: [first, last] };
+
+    const after = habitsReducer(seeded, {
+      type: 'restoreHabit',
+      habit: MORNING,
+      index: 1,
+      entries: entries[MORNING.id] ?? {},
+    });
+
+    expect(after.habits.map((habit) => habit.id)).toStrictEqual(['habit-0', MORNING.id, 'habit-2']);
+    expect(after.entries[MORNING.id]).toStrictEqual(entries[MORNING.id]);
   });
 
   it('keys entries by date, so a reconcile replaces the optimistic row rather than adding one', () => {
@@ -385,6 +406,176 @@ describe('skipDay', () => {
   });
 });
 
+describe('updateHabit', () => {
+  it('paints the merged row before the request settles, then reconciles with the saved one', async () => {
+    const saved: Habit = { ...MORNING, name: 'Mornings' };
+    const write = deferred<Habit>();
+    mockUpdateHabit.mockReturnValue(write.promise);
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    let pending: Promise<Habit> | undefined;
+    act(() => {
+      pending = result.current.actions.updateHabit(MORNING.id, { name: 'Mornings' });
+    });
+
+    expect(result.current.habits[0]?.name).toBe('Mornings');
+
+    await act(async () => {
+      write.resolve(saved);
+      await pending;
+    });
+
+    expect(result.current.habits).toStrictEqual([saved]);
+  });
+
+  it('restores the pre-edit row and toasts when the write fails', async () => {
+    mockUpdateHabit.mockRejectedValue(new Error('nope'));
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    await act(async () => {
+      await expect(
+        result.current.actions.updateHabit(MORNING.id, { name: 'Mornings' }),
+      ).rejects.toThrow('nope');
+    });
+
+    expect(result.current.habits).toStrictEqual([MORNING]);
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't save that habit");
+  });
+
+  // Retargeting is the wind-down the whole tracker was built for, and it must be inert for
+  // history: the stored statuses are the verdicts, and nothing here re-scores them.
+  it('leaves every logged day exactly as it was when the criteria change', async () => {
+    const retargeted = [
+      {
+        key: 'wake',
+        label: 'Up by 6:15',
+        kind: 'time' as const,
+        target: 360,
+        comparator: 'lte' as const,
+      },
+    ];
+    mockUpdateHabit.mockResolvedValue({ ...MORNING, criteria: retargeted });
+    const entry = makeEntry({ status: 'met', results: { wake: 370, light: true } });
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([MORNING], [entry]),
+    });
+
+    await act(async () => {
+      await result.current.actions.updateHabit(MORNING.id, { criteria: retargeted });
+    });
+
+    // 370 would now FAIL the tightened 360 target, and the day still reads met.
+    expect(result.current.entries[TODAY]).toStrictEqual(entry);
+  });
+});
+
+describe('setArchived', () => {
+  it('moves the habit out of the list and into Archived on the click', async () => {
+    const write = deferred<Habit>();
+    mockUpdateHabit.mockReturnValue(write.promise);
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    let pending: Promise<Habit> | undefined;
+    act(() => {
+      pending = result.current.actions.setArchived(MORNING.id, true);
+    });
+
+    expect(result.current.habits).toStrictEqual([]);
+    expect(result.current.archived).toHaveLength(1);
+
+    await act(async () => {
+      write.resolve({ ...MORNING, archived_at: '2026-07-30T09:00:00Z' });
+      await pending;
+    });
+
+    expect(result.current.archived[0]?.archived_at).toBe('2026-07-30T09:00:00Z');
+  });
+
+  it('brings a habit back to the list, with its logged days intact', async () => {
+    const retired: Habit = { ...MORNING, archived_at: '2026-07-20T09:00:00Z' };
+    mockUpdateHabit.mockResolvedValue({ ...retired, archived_at: null });
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([retired], [makeEntry()]),
+    });
+
+    await act(async () => {
+      await result.current.actions.setArchived(MORNING.id, false);
+    });
+
+    expect(result.current.habits).toHaveLength(1);
+    expect(result.current.archived).toStrictEqual([]);
+    expect(result.current.entries[TODAY]).toBeDefined();
+  });
+
+  it('rolls back and toasts each direction with its own message', async () => {
+    mockUpdateHabit.mockRejectedValue(new Error('nope'));
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
+
+    await act(async () => {
+      await expect(result.current.actions.setArchived(MORNING.id, true)).rejects.toThrow('nope');
+    });
+
+    expect(result.current.habits).toStrictEqual([MORNING]);
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't archive that habit");
+
+    await act(async () => {
+      await expect(result.current.actions.setArchived(MORNING.id, false)).rejects.toThrow('nope');
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't restore that habit");
+  });
+
+  it('orders Archived most recently archived first', () => {
+    const older: Habit = { ...MORNING, id: 'habit-old', archived_at: '2026-02-18T09:00:00Z' };
+    const newer: Habit = { ...MORNING, id: 'habit-new', archived_at: '2026-05-18T09:00:00Z' };
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([older, newer]) });
+
+    expect(result.current.archived.map((habit) => habit.id)).toStrictEqual([
+      'habit-new',
+      'habit-old',
+    ]);
+  });
+});
+
+describe('deleteHabit', () => {
+  it('drops the habit and its entries immediately', async () => {
+    mockDeleteHabit.mockResolvedValue({ success: true });
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([MORNING], [makeEntry()]),
+    });
+
+    await act(async () => {
+      await result.current.actions.deleteHabit(MORNING.id);
+    });
+
+    expect(result.current.habits).toStrictEqual([]);
+    expect(result.current.entries).toStrictEqual({});
+  });
+
+  // Reusing insert-at-the-end + an empty grid as the rollback would look exactly like data loss.
+  it('restores the row at its original position, with its logged days, and toasts', async () => {
+    const first: Habit = { ...MORNING, id: 'habit-0', name: 'First' };
+    const last: Habit = { ...MORNING, id: 'habit-2', name: 'Last' };
+    const entry = makeEntry();
+    mockDeleteHabit.mockRejectedValue(new Error('nope'));
+    const { result } = renderHook(useStoreTest, {
+      wrapper: makeWrapper([first, MORNING, last], [entry]),
+    });
+
+    await act(async () => {
+      await expect(result.current.actions.deleteHabit(MORNING.id)).rejects.toThrow('nope');
+    });
+
+    expect(result.current.habits.map((habit) => habit.id)).toStrictEqual([
+      'habit-0',
+      MORNING.id,
+      'habit-2',
+    ]);
+    expect(result.current.entries[TODAY]).toStrictEqual(entry);
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't delete that habit");
+  });
+});
+
 describe('useUnloggedTodayCount', () => {
   it('counts a habit that runs today and has no row yet', () => {
     const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([MORNING]) });
@@ -408,6 +599,14 @@ describe('useUnloggedTodayCount', () => {
   it('does not count a habit that has not started yet', () => {
     const future: Habit = { ...MORNING, started_on: '2026-08-01' };
     const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([future]) });
+    expect(result.current.unlogged).toBe(0);
+  });
+
+  // Archived habits now reach the store, and the badge reads the WHOLE list — so this is the
+  // test that keeps them from inflating it, rather than an assumption that they can't.
+  it('does not count an archived habit, even though the store now holds one', () => {
+    const retired: Habit = { ...MORNING, archived_at: `${TODAY}T06:00:00Z` };
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([retired]) });
     expect(result.current.unlogged).toBe(0);
   });
 

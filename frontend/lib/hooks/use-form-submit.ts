@@ -7,8 +7,12 @@ interface UseFormSubmitOptions<T> {
   onSubmit: () => Promise<T>;
   /** Called with the result on success — typically closes the dialog / selects the row. */
   onSuccess: (result: T) => void;
-  /** The message shown when `onSubmit` rejects. */
-  errorMessage: string;
+  /**
+   * The message shown when `onSubmit` rejects. Pass a function to read the rejection itself —
+   * a refusal that already explains itself (an `ApiError`'s `detail`) is worth more to the
+   * reader than a generic retry prompt.
+   */
+  errorMessage: string | ((error: unknown) => string);
 }
 
 interface UseFormSubmit {
@@ -37,8 +41,8 @@ export function useFormSubmit<T>({
     try {
       const result = await onSubmit();
       onSuccess(result);
-    } catch {
-      setError(errorMessage);
+    } catch (error_) {
+      setError(typeof errorMessage === 'string' ? errorMessage : errorMessage(error_));
       setIsPending(false);
     }
   }, [onSubmit, onSuccess, errorMessage]);

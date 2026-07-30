@@ -18,13 +18,16 @@ import type { Habit, HabitEntry } from '@/lib/types';
  * Supabase error and degrades in layers — a seed failure must not blank the whole shell.
  */
 
-/** Active habits in display order. Archived ones are excluded — nothing renders them yet. */
+/**
+ * Every habit in display order, archived ones last — the view splits them, so a retired habit
+ * has to reach the client for its Archived row to exist at all.
+ */
 export async function getHabits(): Promise<Habit[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('habits')
     .select('*')
-    .is('archived_at', null)
+    .order('archived_at', { ascending: true, nullsFirst: true })
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true });
   return data ?? [];
@@ -52,8 +55,11 @@ export async function getHabitSeed(): Promise<{
 }> {
   const supabase = await createClient();
   const today = todayIn('UTC');
+  // Archived habits come along: the Archived section renders them, and this read already scores
+  // every habit over its whole life before windowing the entries — so a habit retired last
+  // February arrives with exact all-history figures and no second query.
   const { habits, entriesByHabit, error } = await getHabitsWithHistory(supabase, {
-    includeArchived: false,
+    includeArchived: true,
   });
 
   // Degrade in layers, never to a blank shell: without entries the rail falls back to its live

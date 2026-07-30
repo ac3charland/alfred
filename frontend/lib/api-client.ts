@@ -15,6 +15,7 @@ import type {
   ListItemsQuery,
   UpdateEpicInput,
   UpdateFolderInput,
+  UpdateHabitInput,
   UpdateItemInput,
   UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
@@ -36,6 +37,40 @@ import type {
 // helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * A failed request, carrying the pieces a caller can actually act on.
+ *
+ * Some refusals are real answers rather than faults — a `409` explaining that a habit's cadence
+ * is fixed is written to be read by the owner. A bare `Error` forces every form to show a
+ * generic "try again", which for those is a lie: retrying can't work. So the status and the
+ * server's own sentence travel with the throw.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** The `{ error }` sentence from the response envelope, when it carried one. */
+    readonly detail: string | undefined,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** Pull the `{ error }` sentence out of a failed response body, if it is one. */
+function readErrorDetail(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed === 'object' && parsed !== null && 'error' in parsed) {
+      const { error } = parsed;
+      if (typeof error === 'string' && error !== '') return error;
+    }
+  } catch {
+    // A non-JSON body (an HTML error page, an empty 502) has no sentence to quote.
+  }
+  return undefined;
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   // Build headers without spreading HeadersInit (which can be string[][] or Headers,
   // both of which cause @typescript-eslint/no-misused-spread if spread in an object).
@@ -49,8 +84,10 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text().catch(() => 'Unknown error');
-    throw new Error(
+    throw new ApiError(
       `API ${init?.method ?? 'GET'} ${path} failed: ${String(response.status)} ${text}`,
+      response.status,
+      readErrorDetail(text),
     );
   }
 
@@ -164,6 +201,22 @@ export function createHabit(input: CreateHabitInput): Promise<Habit> {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+/**
+ * Change a habit's definition. `archived` is a boolean here too — the server stamps the instant,
+ * so the client never states when something was retired.
+ */
+export function updateHabit(id: string, input: UpdateHabitInput): Promise<Habit> {
+  return apiRequest<Habit>(`/api/habits/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Destroy a habit and, by cascade, every day logged against it. */
+export function deleteHabit(id: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/api/habits/${id}`, { method: 'DELETE' });
 }
 
 /**
@@ -418,6 +471,7 @@ export {
   type CreateProjectInput,
   type ListItemsQuery,
   type UpdateEpicInput,
+  type UpdateHabitInput,
   type UpdateItemInput,
   type UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
