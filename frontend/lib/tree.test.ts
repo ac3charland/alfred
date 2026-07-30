@@ -516,4 +516,15 @@ describe('makeOptimisticStory', () => {
     expect(story.epic_name).toBe('Onboarding');
     expect(story.epic_ref).toBe('ALF-1');
   });
+
+  it('defaults to needing refinement, matching the column default', () => {
+    const story = makeOptimisticStory(
+      { id: 'item-1', title: 'Build the thing', notes: null, source_url: null },
+      PROJECT,
+      EPIC,
+    );
+    // Every entry point but the New Story dialog's unchecked box lands a story needing a spec;
+    // `createStory` is the one caller that overrides this.
+    expect(story.requires_refinement).toBe(true);
+  });
 });

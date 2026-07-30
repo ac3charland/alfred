@@ -133,6 +133,32 @@ describe('PATCH /api/code/[ref]', () => {
     expect(response.status).toBe(400);
   });
 
+  it('accepts a requires_refinement-only body and forwards just that column', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_STORY, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    // Marking a story that is already in the right lane changes nothing else, so the flag
+    // travels alone — and `blocked_from` stays untouched, since no state transition happened.
+    const response = await PATCH(patchRequest({ requires_refinement: false }), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ requires_refinement: false });
+  });
+
+  it('forwards requires_refinement alongside a state transition', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_STORY, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      patchRequest({ factory_state: 'ready_for_dev', requires_refinement: false }),
+      routeContext,
+    );
+
+    const payload = firstCallArg(mockSupabase._chain.update);
+    expect(payload['requires_refinement']).toBe(false);
+    expect(payload['factory_state']).toBe('ready_for_dev');
+  });
+
   it('updates the factory_state and returns the row on success', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_STORY, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);

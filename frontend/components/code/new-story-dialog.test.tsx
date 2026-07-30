@@ -29,7 +29,23 @@ describe('NewStoryDialog', () => {
     renderDialog();
     expect(screen.getByText(/new story in/i)).toBeInTheDocument();
     expect(screen.getByText('Communication Firewall')).toBeInTheDocument();
-    expect(screen.getByText(/needs refinement/i)).toBeInTheDocument();
+    expect(screen.getByText('Needs Refinement')).toBeInTheDocument();
+  });
+
+  it('checks "Needs refinement" by default', () => {
+    renderDialog();
+    expect(screen.getByRole('checkbox', { name: /needs refinement/i })).toBeChecked();
+  });
+
+  it('follows the checkbox with the state the story will be created in', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(screen.getByRole('checkbox', { name: /needs refinement/i }));
+
+    expect(screen.getByRole('checkbox', { name: /needs refinement/i })).not.toBeChecked();
+    expect(screen.getByText('Ready for Dev')).toBeInTheDocument();
+    expect(screen.queryByText('Needs Refinement')).not.toBeInTheDocument();
   });
 
   it('autofocuses the title field on open', () => {
@@ -59,7 +75,18 @@ describe('NewStoryDialog', () => {
     await user.type(screen.getByLabelText(/title/i), '  Ship it  ');
     await user.click(screen.getByRole('button', { name: /^create$/i }));
 
-    expect(onCreateStory).toHaveBeenCalledWith('Ship it', null);
+    expect(onCreateStory).toHaveBeenCalledWith('Ship it', null, true);
+  });
+
+  it('submits requiresRefinement=false when the box is unchecked', async () => {
+    const user = userEvent.setup();
+    const { onCreateStory } = renderDialog();
+
+    await user.type(screen.getByLabelText(/title/i), 'Bump the compat date');
+    await user.click(screen.getByRole('checkbox', { name: /needs refinement/i }));
+    await user.click(screen.getByRole('button', { name: /^create$/i }));
+
+    expect(onCreateStory).toHaveBeenCalledWith('Bump the compat date', null, false);
   });
 
   it('passes the trimmed notes when provided', async () => {
@@ -70,7 +97,7 @@ describe('NewStoryDialog', () => {
     await user.type(screen.getByLabelText(/notes/i), '  some detail  ');
     await user.click(screen.getByRole('button', { name: /^create$/i }));
 
-    expect(onCreateStory).toHaveBeenCalledWith('A story', 'some detail');
+    expect(onCreateStory).toHaveBeenCalledWith('A story', 'some detail', true);
   });
 
   it('closes on success', async () => {

@@ -221,6 +221,54 @@ describe('POST /api/code (new story)', () => {
     });
   });
 
+  it('forwards p_requires_refinement when the body carries the flag', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest({ ...NEW_BODY, requires_refinement: false }), STUB_CONTEXT);
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: 'Wire the webhook',
+      p_requires_refinement: false,
+    });
+  });
+
+  it('omits p_requires_refinement when absent (the RPC defaults it to true)', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(postRequest(NEW_BODY), STUB_CONTEXT);
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('create_code_story', {
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+      p_title: 'Wire the webhook',
+    });
+  });
+
+  it('never forwards the flag on a GATE body — that shape has no such control', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await POST(
+      postRequest({
+        item_id: ITEM_ID,
+        project_id: PROJECT_ID,
+        epic_id: EPIC_ID,
+        requires_refinement: false,
+      }),
+      STUB_CONTEXT,
+    );
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('enter_code_module', {
+      p_item: ITEM_ID,
+      p_project: PROJECT_ID,
+      p_epic: EPIC_ID,
+    });
+  });
+
   it('returns 400 when title (and item_id) are missing', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);

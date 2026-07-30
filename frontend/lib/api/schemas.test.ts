@@ -1,5 +1,6 @@
 import {
   convertCodeEpicSchema,
+  createCodeSchema,
   createFolderSchema,
   createItemSchema,
   createProjectSchema,
@@ -437,12 +438,81 @@ describe('updateCodeSchema optional fields + epic move', () => {
     expect(updateCodeSchema.safeParse({ epic_id: 'not-a-uuid' }).success).toBe(false);
   });
 
-  it('rejects an empty patch body (the refine requires factory_state or epic_id)', () => {
+  it('rejects an empty patch body (the refine requires factory_state, epic_id, or the mark)', () => {
     expect(updateCodeSchema.safeParse({}).success).toBe(false);
   });
 
   it('rejects a blocked_reason-only body (a companion never travels alone)', () => {
     expect(updateCodeSchema.safeParse({ blocked_reason: 'why' }).success).toBe(false);
+  });
+
+  it('accepts a requires_refinement-only body — the mark IS something to update', () => {
+    expect(updateCodeSchema.safeParse({ requires_refinement: false }).success).toBe(true);
+  });
+
+  it('accepts requires_refinement alongside a factory_state', () => {
+    expect(
+      updateCodeSchema.safeParse({ factory_state: 'ready_for_dev', requires_refinement: false })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects a non-boolean requires_refinement', () => {
+    expect(updateCodeSchema.safeParse({ requires_refinement: 'false' }).success).toBe(false);
+  });
+
+  it('names all three updatable fields in the empty-body message', () => {
+    const result = updateCodeSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(
+        'At least one of "factory_state", "epic_id", or "requires_refinement" is required',
+      );
+    }
+  });
+});
+
+describe('createCodeSchema (the gate / new-story union) and the refinement mark', () => {
+  const projectId = '123e4567-e89b-42d3-a456-426614174000';
+  const epicId = '223e4567-e89b-42d3-a456-426614174000';
+  const itemId = '323e4567-e89b-42d3-a456-426614174000';
+  const NEW_STORY = { title: 'Wire the webhook', project_id: projectId, epic_id: epicId };
+
+  it('accepts the flag on a new-story body', () => {
+    const result = createCodeSchema.safeParse({ ...NEW_STORY, requires_refinement: false });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toHaveProperty('requires_refinement', false);
+    }
+  });
+
+  it('accepts a new-story body without the flag (the RPC default applies)', () => {
+    const result = createCodeSchema.safeParse(NEW_STORY);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('requires_refinement');
+    }
+  });
+
+  it('rejects a non-boolean flag on a new-story body', () => {
+    expect(createCodeSchema.safeParse({ ...NEW_STORY, requires_refinement: 'nope' }).success).toBe(
+      false,
+    );
+  });
+
+  it('strips the flag off a GATE body — that shape has no such control', () => {
+    // The gate lands items at needs_refinement as it always has; the parsed value must carry
+    // no flag, so the route cannot forward one to `enter_code_module`.
+    const result = createCodeSchema.safeParse({
+      item_id: itemId,
+      project_id: projectId,
+      epic_id: epicId,
+      requires_refinement: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('requires_refinement');
+    }
   });
 });
 

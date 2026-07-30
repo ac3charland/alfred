@@ -164,6 +164,7 @@ function makeStory(
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     code_created_at: '2025-01-01T00:00:00Z',
     code_updated_at: '2025-01-01T00:00:00Z',
     title: `Story ${itemId}`,
@@ -200,6 +201,7 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     implementation_pr_url: null,
     blocked_reason: null,
     blocked_from: null,
+    requires_refinement: true,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-02-02T00:00:00Z',
     priority: 1,
@@ -887,6 +889,7 @@ describe('code-store', () => {
         implementation_pr_url: null,
         blocked_reason: null,
         blocked_from: null,
+        requires_refinement: true,
         created_at: '2025-01-04T00:00:00Z',
         updated_at: '2025-01-04T00:00:00Z',
         priority: 1,
@@ -1252,6 +1255,7 @@ describe('code-store', () => {
         implementation_pr_url: null,
         blocked_reason: null,
         blocked_from: null,
+        requires_refinement: true,
         created_at: '2025-01-05T00:00:00Z',
         updated_at: '2025-01-05T00:00:00Z',
         priority: 1,
@@ -1265,10 +1269,10 @@ describe('code-store', () => {
 
         let returned: CodeStory | undefined;
         await act(async () => {
-          returned = await result.current.actions.createStory('e1', 'Brand new story', null);
+          returned = await result.current.actions.createStory('e1', 'Brand new story', null, true);
         });
 
-        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'Brand new story', null);
+        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'Brand new story', null, true);
         expect(returned?.ref).toBe('ALF-12');
         expect(returned?.item_id).toBe('server-item');
         const lane = result.current.board.activeEpics[0]?.lanes.find(
@@ -1286,7 +1290,7 @@ describe('code-store', () => {
         });
 
         act(() => {
-          void result.current.actions.createStory('e1', 'Pending story', 'with notes');
+          void result.current.actions.createStory('e1', 'Pending story', 'with notes', true);
         });
 
         await waitFor(() => {
@@ -1310,9 +1314,9 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await expect(result.current.actions.createStory('e1', 'Doomed', null)).rejects.toThrow(
-            'create failed',
-          );
+          await expect(
+            result.current.actions.createStory('e1', 'Doomed', null, true),
+          ).rejects.toThrow('create failed');
         });
 
         const lane = result.current.board.activeEpics[0]?.lanes.find(
@@ -1338,7 +1342,7 @@ describe('code-store', () => {
         );
 
         act(() => {
-          void result.current.actions.createStory('e1', 'Newest story', null);
+          void result.current.actions.createStory('e1', 'Newest story', null, true);
         });
 
         await waitFor(() => {
@@ -1376,7 +1380,7 @@ describe('code-store', () => {
         );
 
         act(() => {
-          void result.current.actions.createStory('e1', 'Newest story', null);
+          void result.current.actions.createStory('e1', 'Newest story', null, true);
         });
 
         await waitFor(() => {
@@ -1416,7 +1420,7 @@ describe('code-store', () => {
         );
 
         act(() => {
-          void result.current.actions.createStory('e1', 'Newest story', null);
+          void result.current.actions.createStory('e1', 'Newest story', null, true);
         });
 
         await waitFor(() => {
@@ -1436,9 +1440,9 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await expect(result.current.createStory('missing', 'No epic', null)).rejects.toThrow(
-            /not found/i,
-          );
+          await expect(
+            result.current.createStory('missing', 'No epic', null, true),
+          ).rejects.toThrow(/not found/i);
         });
         expect(mockCreateCodeStory).not.toHaveBeenCalled();
       });
@@ -1451,11 +1455,211 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await expect(result.current.createStory('e9', 'Orphan', null)).rejects.toThrow(
+          await expect(result.current.createStory('e9', 'Orphan', null, true)).rejects.toThrow(
             /not found/i,
           );
         });
         expect(mockCreateCodeStory).not.toHaveBeenCalled();
+      });
+
+      it('lands the optimistic card in Ready for Dev when the box is unchecked', async () => {
+        // Never resolves, so the assertion reads the OPTIMISTIC placement — the card must
+        // appear in the right lane immediately rather than hopping across on reconcile.
+        mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        act(() => {
+          void result.current.actions.createStory('e1', 'No spec needed', null, false);
+        });
+
+        await waitFor(() => {
+          const lanes = result.current.board.activeEpics[0]?.lanes;
+          expect(
+            lanes?.find((l) => l.state === 'ready_for_dev')?.stories.map((s) => s.title),
+          ).toEqual(['No spec needed']);
+        });
+        const lanes = result.current.board.activeEpics[0]?.lanes;
+        expect(lanes?.find((l) => l.state === 'needs_refinement')?.stories).toEqual([]);
+        expect(
+          lanes?.find((l) => l.state === 'ready_for_dev')?.stories[0]?.requires_refinement,
+        ).toBe(false);
+        expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', 'No spec needed', null, false);
+      });
+    });
+
+    describe('setRefinementRequired (the mark — moves the card, opens nothing)', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      it('clears the mark and fast-forwards a needs_refinement story to Ready for Dev', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'ready_for_dev', requires_refinement: false }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.setRefinementRequired('ALF-42', false);
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_dev', {
+          requires_refinement: false,
+        });
+        expect(findStoryState(result.current.board)).toBe('ready_for_dev');
+        expect(findStory(result.current.board)?.requires_refinement).toBe(false);
+      });
+
+      it('patches the flag AND the lane optimistically, before the server resolves', async () => {
+        mockUpdateCodeState.mockImplementation(() => new Promise(() => {}));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        act(() => {
+          void result.current.actions.setRefinementRequired('ALF-42', false);
+        });
+
+        await waitFor(() => {
+          expect(findStoryState(result.current.board)).toBe('ready_for_dev');
+        });
+        expect(findStory(result.current.board)?.requires_refinement).toBe(false);
+      });
+
+      it('re-setting the mark rewinds a spec-less ready_for_dev story', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'needs_refinement', requires_refinement: true }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          requires_refinement: false,
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.setRefinementRequired('ALF-42', true);
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'needs_refinement', {
+          requires_refinement: true,
+        });
+        expect(findStoryState(result.current.board)).toBe('needs_refinement');
+      });
+
+      it('records the mark WITHOUT moving a story mid-flight', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'ready_for_review', requires_refinement: false }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_review',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.setRefinementRequired('ALF-42', false);
+        });
+
+        // The state it sends back is the state it is already in — a deliberate no-op write.
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_review', {
+          requires_refinement: false,
+        });
+        expect(findStoryState(result.current.board)).toBe('ready_for_review');
+        expect(findStory(result.current.board)?.requires_refinement).toBe(false);
+      });
+
+      it('never rewinds a story that already has a committed spec', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'ready_for_dev', requires_refinement: true }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          spec_path: 'docs/specs/ALF-42.html',
+          requires_refinement: false,
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.setRefinementRequired('ALF-42', true);
+        });
+
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_dev', {
+          requires_refinement: true,
+        });
+        expect(findStoryState(result.current.board)).toBe('ready_for_dev');
+      });
+
+      it('rolls BOTH the flag and the state back on failure', async () => {
+        mockUpdateCodeState.mockRejectedValue(new Error('patch failed'));
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+          requires_refinement: true,
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.setRefinementRequired('ALF-42', false),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(findStoryState(result.current.board)).toBe('needs_refinement');
+        expect(findStory(result.current.board)?.requires_refinement).toBe(true);
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't update refinement");
+      });
+
+      it('opens no tab — the mark is a judgement, not a launch', async () => {
+        const openSpy = jest.spyOn(globalThis, 'open').mockImplementation(() => null);
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'ready_for_dev', requires_refinement: false }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.setRefinementRequired('ALF-42', false);
+        });
+
+        expect(openSpy).not.toHaveBeenCalled();
+        openSpy.mockRestore();
+      });
+
+      it('throws when the story is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [] }),
+        });
+
+        await act(async () => {
+          await expect(result.current.setRefinementRequired('ALF-999', false)).rejects.toThrow(
+            /not found/i,
+          );
+        });
+        expect(mockUpdateCodeState).not.toHaveBeenCalled();
       });
     });
 
@@ -2281,6 +2485,81 @@ describe('code-store', () => {
         expect(openSpy).toHaveBeenCalledTimes(1);
       });
 
+      it('writes in_development AND records the mark for a bypass launch', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'in_development', requires_refinement: false }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          title: 'Bump the compat date',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'bypass');
+        });
+
+        // Skipping refinement IS the judgement the mark records, so both routes leave the
+        // same row — the chip just also opens a tab.
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_development', {
+          requires_refinement: false,
+        });
+        expect(findStoryState(result.current.board)).toBe('in_development');
+        expect(findStory(result.current.board)?.requires_refinement).toBe(false);
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(prompt).toContain('SKIP-REFINEMENT');
+      });
+
+      it('opens the SKIP-REFINEMENT prompt for a ready_for_dev story with no committed spec', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'in_development' }),
+        );
+        // The state the refinement mark leaves a story in: Ready for Dev, no spec.
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          spec_path: null,
+          requires_refinement: false,
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+        });
+
+        const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(prompt).toContain('SKIP-REFINEMENT');
+        expect(prompt).not.toMatch(/merged spec/i);
+      });
+
+      it('opens the spec-reading prompt for a ready_for_dev story that HAS a spec', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'in_development' }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          factory_state: 'ready_for_dev',
+          spec_path: 'docs/specs/ALF-42.html',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'implementation');
+        });
+
+        const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(prompt).toMatch(/merged spec/i);
+        expect(prompt).toContain('docs/specs/ALF-42.html');
+      });
+
       it('awaits the state write BEFORE opening the tab (order matters)', async () => {
         const calls: string[] = [];
         mockUpdateCodeState.mockImplementation(() => {
@@ -2560,7 +2839,7 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await expect(result.current.createStory('e1', 'New', null)).rejects.toThrow(
+          await expect(result.current.createStory('e1', 'New', null, true)).rejects.toThrow(
             'create failed',
           );
         });
@@ -2740,6 +3019,7 @@ describe('code-store', () => {
         implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/2',
         blocked_reason: 'checks failing',
         blocked_from: 'in_development',
+        requires_refinement: false,
         created_at: '2025-01-01T00:00:00Z',
         updated_at: '2025-02-02T00:00:00Z',
         priority: 9,
@@ -2757,6 +3037,7 @@ describe('code-store', () => {
         implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/2',
         blocked_reason: 'checks failing',
         blocked_from: 'in_development',
+        requires_refinement: false,
         code_created_at: '2025-01-01T00:00:00Z',
         code_updated_at: '2025-02-02T00:00:00Z',
         priority: 9,
