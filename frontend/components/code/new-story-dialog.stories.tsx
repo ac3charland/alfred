@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import { userEvent, within } from 'storybook/test';
 
 import type { CodeStory } from '@/lib/types';
 
@@ -31,3 +32,15 @@ type Story = StoryObj<typeof meta>;
  * field, with the Cancel / Create actions. Create is disabled until the title is non-empty.
  */
 export const Open: Story = {};
+
+/**
+ * The dialog with **Needs refinement** unchecked: the description's trailing state follows the
+ * box to *Ready for Dev*, and the hint spells out that the story is created with no spec.
+ */
+export const NoRefinementNeeded: Story = {
+  play: async () => {
+    // The dialog renders in a Radix portal (outside the canvas), so query the document body.
+    const box = await within(document.body).findByRole('checkbox', { name: /needs refinement/i });
+    await userEvent.click(box);
+  },
+};
