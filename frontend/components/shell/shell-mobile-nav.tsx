@@ -24,8 +24,11 @@ import { cn } from '@/lib/utils';
  * The shell's mobile hamburger nav — a Dialog-based slide-in drawer for narrow viewports.
  * Replaces the two per-module mobile-nav files: it carries the Tasks ⇄ Code switcher (the
  * switcher lives inside the hamburger on small screens) above the module's nav, which it
- * picks from the URL (`isCodePath`) — `ProjectNav` for Code, `FolderNav` for Tasks. Both the
- * switcher and the nav close the sheet on navigate.
+ * picks from the URL (`isCodePath`) — `ProjectNav` for Code, `FolderNav` for Tasks.
+ *
+ * The sheet closes when the user *arrives* somewhere — a module-nav destination or a search
+ * result — but NOT when the switcher flips module: that's still navigating the menu, so the
+ * drawer stays open and swaps in the other module's nav to keep drilling in from (ALF-157).
  */
 export function ShellMobileNav() {
   const [open, setOpen] = React.useState(false);
@@ -60,7 +63,9 @@ export function ShellMobileNav() {
           <DialogTitle className="sr-only">Navigation</DialogTitle>
           <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
             <span className="font-serif text-xl text-foreground">alfred</span>
-            <ViewSwitcher onNavigate={close} />
+            {/* No `onNavigate`: switching module is a move *within* this menu, not an arrival,
+                so the drawer stays open and just re-derives which module's nav it shows. */}
+            <ViewSwitcher />
             {/* The header bar is tight on mobile, so the search field is surfaced here. */}
             <SearchBox placement="mobile" className="w-full" onNavigate={close} />
           </div>

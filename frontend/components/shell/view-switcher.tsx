@@ -22,6 +22,9 @@ import { cn } from '@/lib/utils';
  * document reload, no `?_rsc=` round-trip — and every page renders the same URL-deriving
  * `ModuleRouter`, so the view follows the new URL. The segments stay real `<a href>`s:
  * modified/middle clicks and hard loads navigate natively, and keyboard users get real links.
+ *
+ * It takes no close/navigate callback: the mobile drawer deliberately STAYS open across a
+ * module switch (ALF-157), so there is nothing for a segment click to notify.
  */
 const segmentClass = (active: boolean) =>
   cn(
@@ -32,18 +35,10 @@ const segmentClass = (active: boolean) =>
       : 'text-muted-foreground hover:text-foreground',
   );
 
-interface ViewSwitcherProperties {
-  /** Called after a segment is clicked (e.g. to close the mobile drawer). */
-  onNavigate?: () => void;
-}
-
-export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
+export function ViewSwitcher() {
   const pathname = usePathname();
   const codeActive = isCodePath(pathname);
   const tasksActive = !codeActive;
-
-  // exactOptionalPropertyTypes: only forward onClick when a handler was given.
-  const navigateProperty = onNavigate ? { onClick: onNavigate } : {};
 
   return (
     <div
@@ -55,7 +50,6 @@ export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
         href="/priority"
         aria-current={tasksActive ? 'page' : undefined}
         className={segmentClass(tasksActive)}
-        {...navigateProperty}
       >
         Tasks
       </ViewLink>
@@ -63,7 +57,6 @@ export function ViewSwitcher({ onNavigate }: ViewSwitcherProperties) {
         href="/code"
         aria-current={codeActive ? 'page' : undefined}
         className={segmentClass(codeActive)}
-        {...navigateProperty}
       >
         Code
       </ViewLink>
