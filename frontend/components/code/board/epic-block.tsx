@@ -346,13 +346,16 @@ export function EpicBlock({
       )}
 
       {/* The new-story modal, scoped to this epic. Its optimistic insert drops the card into
-          the Needs Refinement lane immediately, then reconciles with the allocated ref. */}
+          the Needs Refinement lane immediately — or Ready for Dev when the author unchecks
+          "Needs refinement" — then reconciles with the allocated ref. */}
       <NewStoryDialog
         open={newStoryOpen}
         onOpenChange={setNewStoryOpen}
         epicName={epic.name}
         epicRef={epic.ref}
-        onCreateStory={(title, notes) => createStory(epic.id, title, notes)}
+        onCreateStory={(title, notes, requiresRefinement) =>
+          createStory(epic.id, title, notes, requiresRefinement)
+        }
       />
 
       {/* The read-only epic spec modal, scoped to this epic. */}
