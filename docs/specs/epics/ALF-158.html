@@ -442,11 +442,26 @@
   <p>
     <code>items</code> gains a marker recording that the classifier has run
     (<code>classified_at</code>, plus enough provenance to tell which prompt/model version produced
-    it — and, per <b>D15</b>, the verdict itself). The sweep selects only unmarked items.
-    Re-classification is possible but always explicit —
-    a manual action, never automatic — and reads from <code>raw_capture</code>, which SPEC §3.2
+    it — and, per <b>D15</b>, the verdict itself). Re-classification is possible but always explicit
+    — a manual action, never automatic — and reads from <code>raw_capture</code>, which SPEC §3.2
     preserves for exactly this.
   </p>
+  <p>The sweep predicate is roughly <code>parent_id is null and dispatched_at is null and classified_at is null</code>, which carries three consequences worth stating outright:</p>
+  <ul>
+    <li><b>No eligible rows means no API call at all.</b> The tick costs one database query and
+      nothing else. A steady state where everything is triaged is a steady state where the model is
+      never invoked.</li>
+    <li><b>Eligibility is <code>classified_at is null</code>, not <code>item_type = 'unclassified'</code>.</b>
+      These come apart precisely on abstentions: an item the model declined to judge (D8) keeps
+      <code>item_type = 'unclassified'</code> but <i>is</i> marked, so it is never swept again.
+      Keying on the type instead would re-ask the same question about the same text forever, burning
+      budget on exactly the items already known to be unjudgeable.</li>
+    <li><b>An item may arrive already partly populated, and the classifier fills gaps rather than
+      overwriting.</b> The <code>ALF:</code> prefix (live today) creates an item with
+      <code>item_type = 'code'</code> and a project already set but no <code>classified_at</code> — so
+      it is eligible, and should usefully gain an epic or priority guess. A field that already holds
+      a value was set by a human and is not the classifier's to change.</li>
+  </ul>
   <p class="why">
     <b>Why:</b> without a marker the sweeper re-runs on every tick, burning budget and — far worse —
     silently overwriting an edit the owner just made. "The machine changed my answer back" would end
