@@ -643,9 +643,21 @@
     <br />
     <b>What it costs:</b> input tokens per item. Twenty examples at ~40 tokens each is roughly +800
     on a ~1.5k prompt — call it +50% input, which on D2's numbers is <b>under a dollar a month</b>.
-    A side effect worth knowing rather than chasing: a large enough example block could push the
-    prompt past Haiku 4.5's 4096-token cache floor and start caching, which would claw most of that
-    back.
+    <br />
+    <b>A bigger prompt is not a cheaper one — do not chase the cache floor.</b> It is tempting to
+    read Haiku 4.5's 4096-token minimum as a target: grow the example block, unlock caching, save
+    money. Crossing it only makes caching <i>possible</i>. A cache write costs <b>1.25×</b> and a
+    read <b>0.1×</b>, so it pays only when at least two calls share the prefix inside the 5-minute
+    TTL — and this workload is bursty, usually nought or one eligible item per sweep (D10). At one
+    call per sweep the write expires before anything reads it, making caching a <b>25% loss</b>. It
+    wins on a burst (a Siri dump, a backlog) and only if those calls run sequentially, since
+    concurrent requests all miss a cache none of them has finished writing. Never pad the prompt to
+    reach the floor.
+    <br />
+    <b>If per-item cost ever did matter</b>, the lever is batching several items into one call — that
+    amortises the shared prefix directly, with no cache and no TTL to reason about. It costs D13's
+    clean per-item degradation, which at $1–2 a month is a bad trade. Recorded so the option is
+    visible rather than rediscovered.
     <br />
     <b>The trap to avoid:</b> examples must not be allowed to teach <i>away</i> abstention. A log
     dominated by "you left this blank and I filled it in" nudges the model toward guessing more,
