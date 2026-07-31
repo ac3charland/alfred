@@ -601,8 +601,11 @@
       in</i> one the model left null (it could have known), or <i>blanked</i> one the model filled
       (it should have abstained). The third is the most valuable, because precision is what D8 is
       optimising for.</li>
-    <li><b>The captured text is denormalised into the log</b>, not referenced. The lesson has to outlive
-      the item, which may be completed, deleted, or edited beyond recognition.</li>
+    <li><b>The captured text is copied into the log</b> (denormalised), not referenced by id. A
+      correction is a historical fact — <i>this text, at that moment, got that label</i> — so the
+      copy has to be frozen. Referencing would lose the text when the item is deleted, and would
+      pair the <i>current</i> title with a label chosen for the old one when the item is edited,
+      silently corrupting the example.</li>
     <li><b>Nothing about this is rendered.</b> D4 is unchanged: no badge, no "corrected" state, no
       diff view. This is a write-only substrate.</li>
   </ul>
