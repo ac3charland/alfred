@@ -654,10 +654,9 @@
     concurrent requests all miss a cache none of them has finished writing. Never pad the prompt to
     reach the floor.
     <br />
-    <b>If per-item cost ever did matter</b>, the lever is batching several items into one call — that
-    amortises the shared prefix directly, with no cache and no TTL to reason about. It costs D13's
-    clean per-item degradation, which at $1–2 a month is a bad trade. Recorded so the option is
-    visible rather than rediscovered.
+    <b>If per-item cost ever did matter</b>, the lever is batching several items into one call, which
+    amortises the shared prefix directly with no cache or TTL to reason about — and which D18 rejects
+    on failure-isolation grounds, not cost ones.
     <br />
     <b>The trap to avoid:</b> examples must not be allowed to teach <i>away</i> abstention. A log
     dominated by "you left this blank and I filled it in" nudges the model toward guessing more,
@@ -724,6 +723,46 @@
     as "needed by the epic-suggestion story". It is stronger than that: without a pre-factory home for
     the epic, a code item can never carry one before the gate, so it could never be bulk-dispatched at
     all. Dispatch for code items depends on that column existing.
+  </p>
+</div>
+
+<h3>Call shape</h3>
+
+<div class="dec">
+  <h3><span class="n">D18</span>One item, one request — sequential within a sweep, never a batch</h3>
+  <p>
+    A sweep that finds five eligible items makes <b>five requests</b>, each about one item, run one
+    after another rather than fanned out in parallel. It does not make one request asking about five
+    items. A per-sweep cap bounds how many it will take in one tick.
+  </p>
+  <p class="why">
+    <b>Why not batch, given the shared prefix is re-sent every time:</b> because what batching costs
+    is worth far more than what it saves.
+  </p>
+  <ul style="font-size:.93rem; margin:.35rem 0">
+    <li><b>Failure isolation.</b> D13's entire per-failure table assumes a bad response affects one
+      item. Batched, a truncation or a refusal takes out all five, and "which of these five do I
+      mark attempted?" becomes a real question with no good answer.</li>
+    <li><b>No id-echo to hallucinate.</b> A batched response is an array that must be mapped back to
+      items, which means the model echoes an item id per element — a brand-new class of wrong answer
+      in a design that just spent D3 eliminating exactly that.</li>
+    <li><b>No cross-item contamination.</b> Classifying items together invites the model to make them
+      rhyme — five captures nudged toward one folder because they arrived in the same tick. Separate
+      calls make each verdict genuinely independent.</li>
+  </ul>
+  <p class="why">
+    <b>And what it would save:</b> the shared prefix once instead of five times — on a five-item
+    burst, roughly <b>six tenths of a cent</b>. That is not a trade; it is a rounding error bought
+    with the failure model.
+    <br />
+    <b>Why sequential rather than parallel:</b> three small reasons that point the same way. Parallel
+    calls all miss the cache, because none has finished writing it (D16) — so a burst, the one case
+    where caching could pay, is exactly the case parallelism spoils. Parallel bursts are also more
+    likely to draw a 429. And wall time is irrelevant here: nobody is waiting on a tick.
+    <br />
+    <b>Why the cap:</b> it is the cheap brake on a runaway sweep, and a more honest one than a dollar
+    meter — items deferred by the cap are simply picked up next tick, which costs nothing because
+    they are still unmarked (D10).
   </p>
 </div>
 
@@ -862,7 +901,7 @@
 <h3>What the model is asked for</h3>
 
 <p>
-  One call per item. Input: the item's <code>title</code>, <code>notes</code>,
+  One call per item (D18). Input: the item's <code>title</code>, <code>notes</code>,
   <code>raw_capture</code>, and <code>source_url</code>; the current folder list; the current project
   list; the current epic list; a reference date; and the recent-corrections example block (D16).
   Output, schema-constrained, every field nullable:
