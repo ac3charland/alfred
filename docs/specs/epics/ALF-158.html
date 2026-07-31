@@ -364,7 +364,7 @@
 <div class="dec">
   <h3><span class="n">D6</span>Dispatch is a human action. The classifier never sets <code>dispatched_at</code>.</h3>
   <p>
-    Only an explicit human act leaves the Inbox: the bulk bar's Move / Send-to-Code, a drag onto a
+    Only an explicit human act leaves the Inbox: the new bulk <b>Dispatch</b> (D17), a drag onto a
     folder, a row-menu file, or entering the code factory via the gate. The classifier writes labels
     and stops.
   </p>
@@ -675,6 +675,58 @@
   at recency-ordered examples.
 </div>
 
+<h3>Dispatching</h3>
+
+<div class="dec">
+  <h3><span class="n">D17</span>One <b>Dispatch</b> action over a mixed selection, gated per item on readiness</h3>
+  <p>
+    Multi-select mode gains a single <b>Dispatch</b> action that sends each selected item to its own
+    destination, regardless of type. It does not require a homogeneous selection — tasks and code
+    items dispatch together in one press.
+  </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:20%">Type</th><th style="width:38%">Ready when</th><th>Dispatch does</th></tr>
+    <tr>
+      <td><b>Task</b></td>
+      <td><code>item_type = 'task'</code> and a <code>folder_id</code></td>
+      <td>Sets <code>dispatched_at</code>; the item appears in its folder.</td>
+    </tr>
+    <tr>
+      <td><b>Code</b></td>
+      <td><code>item_type = 'code'</code>, an <code>intended_project_id</code> and an <code>intended_epic_id</code></td>
+      <td><code>enter_code_module(item, project, epic)</code> — the existing RPC, which also takes it out of the Inbox.</td>
+    </tr>
+    <tr>
+      <td><b>Anything with children</b></td>
+      <td colspan="2">Excluded, as the current bulk send already excludes it (ALF-129) — an epic-shaped row goes through its own gate.</td>
+    </tr>
+  </table>
+  </div>
+  <p>
+    A selection where only some items are ready dispatches the ready ones and <b>keeps the rest
+    selected</b> — the same settle-on-partial-failure behaviour <code>InboxBulkBar</code> already
+    implements, so an unready item stays in front of you with whatever it's missing still to fill in.
+  </p>
+  <p class="why">
+    <b>Why:</b> this is the action the entire epic exists to enable. Pre-filled labels are only worth
+    having if acting on a whole batch is one press; routing a mixed selection through
+    Move-then-Send-to-Code, each demanding a homogeneous selection, would put the per-item tax
+    straight back. It is also the cleanest answer to the inverted-gates problem below: rather than
+    re-deriving when Classify should be enabled, add the action that doesn't care about type.
+    <br />
+    <b>Consequence — a task with no folder cannot be dispatched.</b> Under D5 a dispatched task with
+    no folder would be nowhere at all: gone from the Inbox, absent from every folder. So the folder
+    is genuinely required, and an unfiled task simply stays in the Inbox — exactly today's behaviour,
+    reached by a different rule.
+    <br />
+    <b>Consequence — D11 is a prerequisite, not a nicety.</b> <code>intended_epic_id</code> was framed
+    as "needed by the epic-suggestion story". It is stronger than that: without a pre-factory home for
+    the epic, a code item can never carry one before the gate, so it could never be bulk-dispatched at
+    all. Dispatch for code items depends on that column existing.
+  </p>
+</div>
+
 <h2>3 · Architecture</h2>
 
 <svg viewBox="0 0 900 430" role="img" aria-label="Data flow: capture writes an unclassified item; a cron-triggered Worker reads the item plus the folder, project and epic lists, calls the Anthropic API, validates the response against those lists, and writes labels back to the same row; the Inbox renders the labels and the owner dispatches.">
@@ -821,6 +873,7 @@
   "priority":             "high" | "medium" | "low" | null,   // task only
   "due_date":             "YYYY-MM-DD" | null,                // task only, only if stated
   "folder_id":            enum(&lt;live folder ids&gt;)  | null,     // task only
+  "recurrence_preset":    enum(&lt;REPEAT_PRESETS&gt;)   | null,     // task only, needs due_date
   "intended_project_id":  enum(&lt;live project ids&gt;) | null,     // code only
   "intended_epic_id":     enum(&lt;live epic ids&gt;)    | null      // code only
 }</code></pre>
@@ -832,6 +885,25 @@
   mirrors the CHECK constraints deliberately: a <code>code</code> verdict can never carry a due date,
   so the coherent write in D7 is always legal.
 </p>
+
+<div class="card">
+  <b>Recurrence rides the preset layer, not the rule format.</b> <code>items.recurrence</code> is a
+  <code>jsonb</code> <code>RecurrenceRule</code>, but nothing has to author one: the repo already has
+  <code>REPEAT_PRESETS</code> (<i>never, daily, weekdays, weekends, weekly, biweekly, monthly, every-3-months,
+  every-6-months, yearly</i>) and <code>ruleFromPreset(preset, anchorDate)</code> to expand a preset into
+  the persisted rule. So the model picks a <b>preset name from an enum</b>, exactly as it picks a folder
+  id, and existing tested code does the formatting. Three constraints follow:
+  <ul style="margin:.5rem 0 0">
+    <li><b>Never <code>custom</code>.</b> Anything the preset list can't express is an abstention (D8).</li>
+    <li><b>Coupled to the due date.</b> <code>ruleFromPreset</code> takes an anchor — Weekly and Biweekly
+      read the anchor's weekday — so a preset without a due date is meaningless. No due date, no
+      recurrence; they abstain together.</li>
+    <li><b>A higher cost of error than any other field.</b> A wrong folder mislabels one item; a wrong
+      recurrence <i>manufactures</i> items, because completing a recurring task spawns its successor
+      via <code>complete_and_spawn</code>. The Inbox review gate catches it before dispatch, but this
+      field should bias harder toward abstention than the rest.</li>
+  </ul>
+</div>
 
 <h2>4 · What the Inbox looks like</h2>
 
@@ -885,13 +957,17 @@
   </div>
 
   <div class="bulkbar">
-    <b>2 selected</b><span>·</span><span>Classify</span><span>Move to folder ▾</span><span>Send to Code</span><span>·</span><span>Esc to exit</span>
+    <span>2 selected</span><span>·</span><b>Dispatch</b><span>·</span><span>Classify</span><span>Move to folder ▾</span><span>Send to Code</span><span>·</span><span>Esc</span>
   </div>
 </div>
 <p class="mockcap">
   Every chip here is editable in place with the controls the row already has. Nothing on this surface
-  distinguishes a guess from a decision — that is D4, drawn. The bulk bar is today's
-  <code>InboxBulkBar</code>, unchanged in shape; only its enablement rules need revisiting (below).
+  distinguishes a guess from a decision — that is D4, drawn. <b>Dispatch</b> (D17) is the new action:
+  the two selected rows are ready — one a task with a folder, one a code item with a project and epic
+  — and one press sends each to its own destination despite being different types. The third row is
+  deliberately not dispatch-ready; had it been selected too, the other two would go and it would stay
+  selected. Whether the older per-type actions survive alongside Dispatch is a story-level call, so
+  they are drawn unchanged rather than removed.
 </p>
 
 <div class="callout">
@@ -899,9 +975,9 @@
   all-<code>unclassified</code> selection and <b>Move</b> requires an all-<code>task</code> one —
   reasonable when Inbox items arrive blank. This epic inverts that default: most items will already
   be <code>task</code> or <code>code</code> when you get there, so <b>Classify</b> would be disabled
-  on exactly the rows you most want to correct. Re-deriving those rules is real work inside this
-  epic, not a footnote — and the <i>shape</i> of the corrected bar is a story-level design question,
-  so it is deliberately not drawn above.
+  on exactly the rows you most want to correct. D17's Dispatch answers the routing half of this by
+  not caring about type at all; re-deriving the <i>correcting</i> actions' gates is still real work
+  inside this epic, not a footnote.
 </div>
 
 <h2>5 · Constraints &amp; non-goals</h2>
@@ -923,7 +999,9 @@
     <code>raw_capture</code> is preserved for it, but it edits <i>content</i> rather than metadata,
     needs its own undo story and its own accuracy bar, and belongs in its own epic.</li>
   <li><b>Suggesting subtasks or structure.</b> No proposing a breakdown of a capture into children.</li>
-  <li><b>Recurrence.</b> The recurrence engine is not driven from captured text here.</li>
+  <li><b>Custom recurrence rules.</b> Recurrence itself is <i>in</i> scope as a preset (see below), but
+    the model never emits a <code>custom</code> rule — anything the preset list can't express is an
+    abstention, not a hand-rolled <code>RecurrenceRule</code>.</li>
   <li><b>Anything about <code>knowledge</code> items.</b> That destination type does not exist yet; the model must never return it.</li>
   <li><b>Any other LLM feature in the SPEC §13 roadmap</b> — the Reader digest, the Communication Firewall, refinement generation inside the factory. This epic is Inbox triage only, even though it stands up the first Worker→LLM path they will all reuse.</li>
   <li><b>Chat, or any conversational surface.</b> One call, one item, no turns.</li>
@@ -969,7 +1047,7 @@
   <tr>
     <td><b>E</b></td>
     <td><code>intended_epic_id</code> + gate pre-selection</td>
-    <td>A migration, a constraint, a view recreation, a store field and a dialog change (D11) — genuinely not the same size as the project hint it resembles.</td>
+    <td>A migration, a constraint, a view recreation, a store field and a dialog change (D11) — genuinely not the same size as the project hint it resembles. <b>Blocks I</b>: code items can't be bulk-dispatched until they can carry an epic.</td>
   </tr>
   <tr>
     <td><b>F</b></td>
@@ -986,13 +1064,23 @@
     <td>The correction loop — <code>classified_guess</code>, the dispatch-time diff, the <code>classification_corrections</code> table, and the few-shot block in the prompt</td>
     <td>D15 + D16. Depends on <b>A</b> for the dispatch hook and <b>D</b> for a prompt to inject into, so it lands late — but it is the slice that makes the feature improve rather than plateau, and story <b>F</b>'s fixtures are how you tell whether it did. The selection rule (how many examples, how to keep blanking corrections represented) is the interesting decision inside it.</td>
   </tr>
+  <tr>
+    <td><b>I</b></td>
+    <td>The <b>Dispatch</b> bulk action — mixed selections, per-item readiness, partial settle</td>
+    <td>D17. Needs <b>A</b> (there is no <code>dispatched_at</code> to set before it) and <b>E</b> (code items can't carry an epic before it). The interesting work is the readiness predicate per type and telling you <i>why</i> an unready item didn't go, not the dispatch itself — which is <code>dispatched_at</code> for a task and the existing <code>enter_code_module</code> RPC for a code item.</td>
+  </tr>
+  <tr>
+    <td><b>J</b></td>
+    <td>Recurrence presets in the verdict</td>
+    <td>One more enum field, plus <code>ruleFromPreset</code> at the write. Small on its own, but it inherits the reference-timezone dependency through the due-date anchor, so it can't land before that's answered — and it's the field that most deserves an eval fixture (<b>F</b>) before being trusted, since a wrong guess manufactures items.</td>
+  </tr>
 </table>
 </div>
 
 <p class="small">
   <b>A</b> → <b>B</b> are shippable and useful with no LLM in the repo at all. <b>C</b> → <b>D</b> is
-  the feature. <b>E</b>, <b>F</b>, <b>G</b>, <b>H</b> are independent of each other and can be
-  ordered by appetite.
+  the feature. <b>I</b> is what makes a batch worth pre-filling, and wants <b>A</b> + <b>E</b> first.
+  <b>F</b>, <b>G</b>, <b>H</b>, <b>J</b> are independent of each other and can be ordered by appetite.
 </p>
 
 <h2>7 · Open questions</h2>
