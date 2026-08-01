@@ -1,5 +1,6 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { addDays, todayIn } from '@/lib/habits/dates';
+import { pinClock } from '@/lib/pin-clock';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { Habit, HabitEntry } from '@/lib/types';
@@ -11,6 +12,10 @@ import { GET, POST } from './route';
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
+
+// Pinned before TODAY below, which the route ALSO reads live via `todayIn('UTC')` with no
+// injected `now` — deterministic regardless of when the suite runs, not just correct today.
+pinClock('2026-07-28T12:00:00.000Z');
 
 const mockCreateClient = jest.mocked(createClient);
 const mockCreateAdminClient = jest.mocked(createAdminClient);

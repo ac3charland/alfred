@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as apiClient from '@/lib/api-client';
 import { todayIn } from '@/lib/habits';
 import type { HabitStats } from '@/lib/habits';
+import { pinClock, setClockNow } from '@/lib/pin-clock';
 import type { Habit, HabitEntry } from '@/lib/types';
 
 import {
@@ -39,10 +40,21 @@ function noop(): void {
 }
 
 /**
- * Derived from the clock, never a literal: the provider corrects `today` to the BROWSER's date
- * in a mount effect, so a hard-coded fixture silently stops matching the moment the real date
- * rolls past it — the test would pass all day and fail after midnight.
+ * The provider corrects `today` to the BROWSER's date in a mount effect, so the fixture has to
+ * agree with whatever `new Date()` resolves to at test time. Rather than derive it from the
+ * real clock (correct today, wrong again the moment the real date moves on) the clock itself is
+ * pinned to {@link FIXED_NOW} below, so `todayIn(...)` — here and inside the provider — always
+ * resolves to the same instant, forever. FIXED_NOW is a Tuesday, so the `active_days: [1]`
+ * (Mondays-only) fixture further down is genuinely testing non-applicability, not coincidence.
  */
+// 20:00 UTC, not noon: the `describe('today')` test below corrects `today` to the browser's
+// zone, and a UTC instant that's already tomorrow in Tokyo (UTC+9) is what makes that
+// correction actually fire during the test rather than being a same-day no-op.
+const FIXED_NOW = '2026-07-28T20:00:00.000Z';
+/** A Monday, for the one test that needs `active_days: [1]` to BE applicable. */
+const MONDAY_NOW = '2026-08-03T12:00:00.000Z';
+pinClock(FIXED_NOW);
+
 const TODAY = todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 const MORNING: Habit = {
@@ -590,13 +602,24 @@ describe('useUnloggedTodayCount', () => {
   });
 
   it('does not count a habit that today is not applicable to', () => {
-    // 2026-07-28 is a Tuesday; this habit only runs on Mondays.
+    // FIXED_NOW (2026-07-28) is a Tuesday; this habit only runs on Mondays.
     const mondays: Habit = { ...MORNING, active_days: [1] };
     const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([mondays]) });
     expect(result.current.unlogged).toBe(0);
   });
 
+  it('counts that same Mondays-only habit once the pinned clock actually IS a Monday', () => {
+    // The positive case for the test above: the day-of-week check isn't just coincidentally
+    // false on FIXED_NOW, it genuinely flips true on the day the habit runs.
+    setClockNow(MONDAY_NOW);
+    const mondays: Habit = { ...MORNING, active_days: [1] };
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([mondays]) });
+    expect(result.current.unlogged).toBe(1);
+  });
+
   it('does not count a habit that has not started yet', () => {
+    // Safe as a literal "the future" because the clock itself is pinned to FIXED_NOW
+    // (2026-07-28): this date stays after it forever, not just on the day this was written.
     const future: Habit = { ...MORNING, started_on: '2026-08-01' };
     const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([future]) });
     expect(result.current.unlogged).toBe(0);
