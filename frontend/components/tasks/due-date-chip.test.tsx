@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { pinClock } from '@/lib/pin-clock';
+
 import { DueDateChip } from './due-date-chip';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 /** Today's local YYYY-MM-DD — the date the chip should treat as the "due today" band. */
 function todayLocalYMD(): string {
