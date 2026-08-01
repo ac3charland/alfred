@@ -181,11 +181,30 @@ transform: {
 
 ## Common Pitfalls
 
-**Never hard-code a date a component resolves from the real clock.** A fixture pinned to
-`'2026-07-28'` passes all day and fails after midnight — a time bomb that lands on whoever commits
-next, with no connection to their change. Where the code under test derives "today" itself (the
-habits store corrects its seeded date to the browser's in a mount effect), derive the fixture the
-same way rather than asserting against a literal.
+**Pin the clock instead of deriving a fixture from it.** A fixture that reads `new Date()`,
+`Date.now()`, or calls `todayIn(...)` with no `now` argument is only as stable as the moment the
+suite happens to run — a "hasn't started yet" habit dated tomorrow, or a day-of-week check,
+silently flips the moment the real calendar catches up. Deriving the fixture from the clock the
+same way the code does (`todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone)`) only delays
+that failure, it doesn't remove it: the fixture is still correct today and wrong on some future
+date, not correct forever. Fake `Date` to a fixed instant for the whole file instead, so the code
+under test and the fixture always read the identical "now":
+`frontend/lib/pin-clock.ts`'s `pinClock('2026-07-28T12:00:00.000Z')` — call it once, right after
+the imports, before any module-level fixture reads the clock — and `setClockNow(iso)` to shift
+just one test (e.g. onto a specific weekday); the next test's `beforeEach` restores the pin. Once
+the clock is pinned, a literal like `started_on: '2026-08-01'` is safe forever, because "today"
+can never drift past the day it was written for.
+
+**Don't reach for `jest.useFakeTimers()` yourself to pin "now" — it also fakes
+`Intl.DateTimeFormat`.** Whenever `Intl` is present (jsdom always provides it), Jest's modern fake
+timers wrap `Intl.DateTimeFormat` too, and the fake implementation builds each formatter's
+`resolvedOptions`/`format` methods as OWN properties of the returned instance rather than on
+`Intl.DateTimeFormat.prototype`. A test that legitimately spies on that prototype — to force a
+specific browser timezone, say — silently stops intercepting anything the moment fake timers are
+active anywhere in the file: the spy still records as installed, but real code never consults it,
+so the test passes or fails on the UN-mocked zone instead. `pinClock` sidesteps this by faking
+`Date` alone through a `Proxy`, so `Intl` is never touched and a `resolvedOptions` spy keeps
+working.
 
 **Mock a supabase-js query builder as a real Promise, not an object with a `then` key.** The builder is thenable — a chain ends by being awaited, and the terminal method varies (`.single()`, `.order()`, `.range()`) — but `unicorn/no-thenable` errors on `then` in an object literal. `Object.assign(Promise.resolve(result), { select: …, order: …, … })` with each method returning the builder awaits correctly and passes lint. Annotate it (`const builder: Builder = …`) or TS7022 fires on the self-reference. A per-page result (a `.range()` paging loop) just needs a fresh builder per `from()` call, since the loop re-enters `from()` each iteration.
 
