@@ -2,8 +2,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { todayISODate } from '@/lib/date-utils';
+import { pinClock } from '@/lib/pin-clock';
 
 import { Calendar } from './calendar';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 describe('Calendar', () => {
   it('renders the seven weekday headers', () => {

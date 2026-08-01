@@ -3,10 +3,13 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { pinClock } from '@/lib/pin-clock';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { Folder, Item } from '@/lib/types';
 
 import { FolderNav } from './folder-nav';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 // Mock next/navigation
 const mockPathname = jest.fn<string, []>(() => '/');

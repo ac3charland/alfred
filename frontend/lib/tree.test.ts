@@ -1,3 +1,4 @@
+import { pinClock } from '@/lib/pin-clock';
 import type { Item } from '@/lib/types';
 
 import {
@@ -19,6 +20,8 @@ import {
   makeOptimisticStory,
   tempId,
 } from './tree';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 /** Narrow `T | undefined` to `T` without a cast or non-null assertion (both linted out). */
 function defined<T>(value: T | undefined): T {

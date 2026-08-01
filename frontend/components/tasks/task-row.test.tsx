@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { todayISODate } from '@/lib/date-utils';
+import { pinClock } from '@/lib/pin-clock';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree } from '@/lib/tree';
@@ -11,6 +12,8 @@ import type { Epic, Folder, Item, Project } from '@/lib/types';
 
 import { TaskList } from './task-list';
 import { TaskRow } from './task-row';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 // api-client is the seam the store calls; mock it so tests never hit the network.
 jest.mock('@/lib/api-client');

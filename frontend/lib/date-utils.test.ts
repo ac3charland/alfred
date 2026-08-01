@@ -1,3 +1,5 @@
+import { pinClock } from '@/lib/pin-clock';
+
 import {
   MONTHS,
   formatDueDate,
@@ -7,6 +9,8 @@ import {
   monthGridDays,
   toISODate,
 } from './date-utils';
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 // ---------------------------------------------------------------------------
 // Helpers

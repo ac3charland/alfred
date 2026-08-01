@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { pinClock } from '@/lib/pin-clock';
 import type { Item } from '@/lib/types';
 
 import {
@@ -29,6 +30,8 @@ jest.mock('@/lib/stores/toast-store', () => ({
   ...jest.requireActual<typeof import('@/lib/stores/toast-store')>('@/lib/stores/toast-store'),
   useToastActions: () => ({ showToast: mockShowToast, dismissToast: jest.fn() }),
 }));
+
+pinClock('2026-07-28T12:00:00.000Z');
 
 // ---------------------------------------------------------------------------
 // Fixtures (flat items)
