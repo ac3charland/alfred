@@ -1,4 +1,5 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
+import { pinClock } from '@/lib/pin-clock';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -6,6 +7,10 @@ import { PUT } from './route';
 
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
+
+// The route resolves "today" itself, via `todayIn(...)`'s default (live) `now` — pin the clock
+// so "defaults the date to today" and "rejects a future date" below stay deterministic.
+pinClock('2026-07-28T12:00:00.000Z');
 
 const mockCreateClient = jest.mocked(createClient);
 const mockCreateAdminClient = jest.mocked(createAdminClient);

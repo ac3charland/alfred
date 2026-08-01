@@ -1,5 +1,6 @@
 /** @jest-environment @stryker-mutator/jest-runner/jest-env/node */
 import { APP_WINDOW_DAYS, addDays, todayIn } from '@/lib/habits/dates';
+import { pinClock } from '@/lib/pin-clock';
 import * as supabaseServer from '@/lib/supabase/server';
 import type { Habit, HabitEntry } from '@/lib/types';
 
@@ -9,6 +10,9 @@ import { MAX_PAGES, PAGE_SIZE, getHabitSeed, getHabitsWithHistory } from './habi
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
 const mockCreateClient = jest.mocked(supabaseServer.createClient);
+
+// Pinned before `getHabitSeed`'s TODAY below, which is read live via `todayIn('UTC')`.
+pinClock('2026-07-28T12:00:00.000Z');
 
 const HABITS = [
   { id: 'habit-1', name: 'Morning routine', archived_at: null, sort_order: 1 },
@@ -263,9 +267,9 @@ describe('getHabitsWithHistory', () => {
 });
 
 /**
- * The shell's seed. `today` is derived from the clock rather than pinned to a literal, because
- * the seed computes its own UTC today — a fixture date would drift out of the window the
- * moment the real calendar moved past it.
+ * The shell's seed. `today` comes from `todayIn('UTC')` rather than a literal, because the seed
+ * computes its own UTC today — but the clock behind `todayIn` is pinned (see `pinClock` above),
+ * so this is deterministic, not just correct on the day it was written.
  */
 describe('getHabitSeed', () => {
   const TODAY = todayIn('UTC');
