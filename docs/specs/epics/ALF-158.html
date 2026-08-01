@@ -272,6 +272,28 @@
     the <code>effort</code> parameter; classification needs no thinking, so this costs nothing, but a
     copied-in <code>output_config.effort</code> will error.
   </p>
+  <p class="why">
+    <b>Another hosted provider is a live option, and the provider is a seam.</b> D1 rules out the
+    subscription and self-hosted OSS; it does <i>not</i> rule out a different hosted API. GPT-5.6
+    Luna, for one, sits at $0.20 / $1.20 per MTok after its July 2026 price cut — about <b>5× cheaper
+    per item</b> than Haiku 4.5, which at this volume is a saving of roughly <b>95¢ a month</b>. The
+    ratio is dramatic and the delta is immaterial, so cost decides nothing here; Haiku 4.5 stays the
+    default because the repo already carries an <code>anthropic-api</code> skill and SPEC §10.1 names
+    it, which is a thin reason but the only one either way.
+  </p>
+  <p class="why">
+    <b>What "keep it swappable" means concretely</b> — the point is to stay cheap to change, not to
+    build for change:
+  </p>
+  <ul style="font-size:.89rem; color:var(--muted); margin:.35rem 0">
+    <li><b>Do not build a provider abstraction.</b> Two SDKs, two structured-output dialects, two
+      error taxonomies and two retry behaviours is real complexity bought against a hypothetical.
+      Keep the classify call behind a narrow enough function that swapping it is a contained change,
+      and stop there.</li>
+    <li><b>Stamp the provider, not just the model.</b> D15's provenance should record
+      <i>provider + model + prompt version</i>. This is the load-bearing bit: it costs one column now
+      and it is what turns a future A/B into a query instead of a migration.</li>
+  </ul>
 </div>
 
 <div class="dec">
@@ -882,11 +904,22 @@
 <p>
   Plus one new table, <code>classification_corrections</code> — append-only, one row per corrected
   field: the denormalised captured text, the field, the guessed value, the chosen value, the
-  model/prompt version, and a nullable <code>item_id</code> (<code>on delete set null</code>) so a
-  lesson survives its item. Like every other table it needs <code>enable row level security</code>
-  plus the <code>authenticated full access</code> policy and explicit grants — the Worker writes it
-  with the service-role key, which bypasses RLS by design (SPEC §7).
+  <b>provider + model + prompt version</b> that produced the guess, and a nullable
+  <code>item_id</code> (<code>on delete set null</code>) so a lesson survives its item. Like every
+  other table it needs <code>enable row level security</code> plus the
+  <code>authenticated full access</code> policy and explicit grants — the Worker writes it with the
+  service-role key, which bypasses RLS by design (SPEC §7).
 </p>
+
+<div class="card">
+  <b>Why the provider belongs in that stamp.</b> Correction rate <i>is</i> the accuracy metric — an
+  override is the owner saying the guess was wrong, recorded automatically from work they were doing
+  anyway (D15). Stamp the provider alongside the model and a future provider A/B stops needing a
+  fixture harness at all: run both for a fortnight and compare corrections per item, on the real
+  taxonomy, from real captures. Leave the provider out and the same experiment needs a migration
+  first, because the corrections already logged can't be attributed. One column now, and the option
+  stays open for free.
+</div>
 
 <div class="callout">
   <b>Migration gotcha, already paid for once.</b> <code>task_items</code> is
@@ -1049,6 +1082,11 @@
     resolution and extra model call that needs — is a later epic built on this one's substrate.</li>
   <li><b>Any UI for the correction log.</b> No diff view, no "the model got this wrong" affordance, no
     accuracy dashboard. D15 is write-only by design.</li>
+  <li><b>A second provider, and A/B testing between providers.</b> Deferred, not dismissed — the
+    intent is to try one later and pick by <i>which produces fewer corrections</i>. Nothing is built
+    for it now beyond the two cheap disciplines in D2: keep the classify call behind a narrow
+    boundary, and stamp the provider into the provenance so the comparison is a query rather than a
+    migration.</li>
   <li><b>Retro-classifying the existing backlog.</b> The sweeper takes new captures. A one-off backfill over historical items is a separate decision with a separate cost.</li>
 </ul>
 
