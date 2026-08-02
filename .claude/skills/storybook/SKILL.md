@@ -166,6 +166,12 @@ cleanup (the returned function) always runs when navigating away — use this fo
 
 ## 5. Common Pitfalls
 
+- **A story depicting "today" reads the live clock — don't pin it.** The `jest` skill's
+  pin-the-clock rule is for tests, where a moving "now" makes a fixed assertion flaky; a story is a
+  depiction, so a literal renders the wrong thing the day after it is written. Use
+  `todayISODate()` for the case being shown, permanently-past/future literals (`2020-…` / `2099-…`)
+  elsewhere.
+
 - **Always import from `'storybook/test'`, never from `'@storybook/test'`.** The scoped package
   (`@storybook/test`) was the correct import in Storybook 8; it was consolidated into the core
   `storybook` package for v9+. Storybook 9+ requires `import { ... } from 'storybook/test'`.
