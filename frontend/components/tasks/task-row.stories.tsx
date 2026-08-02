@@ -221,9 +221,14 @@ export const WithDueDate: Story = {
 
 // Story used by the timezone-fix demo: a task due exactly today, which was displayed
 // one day early in negative-UTC timezones (CDT) before parseDueDate() was added.
+//
+// Reads the live clock deliberately, unlike the tests on this branch, which pin it. A test
+// asserts a fixed outcome, so a moving "now" makes it flaky; this story's whole subject IS
+// "due today", so a literal stops depicting that the day after it is written — as
+// '2026-06-16' had, rendering an overdue task under a name promising the opposite.
 export const DueDateToday: Story = {
   args: {
-    node: { ...BASE_NODE, due_date: '2026-06-16' },
+    node: { ...BASE_NODE, due_date: todayISODate() },
   },
 };
 
