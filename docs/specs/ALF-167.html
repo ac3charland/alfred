@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-167 — Add ability to auto-suggest projects for code items with leading ":"</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .new { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+         border-radius: 999px; padding: 0 .4rem; margin-left: .35rem; vertical-align: middle; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+  /* The mockup canvas IS the app: every value below is lifted from
+     frontend/app/globals.css and the atoms it renders, so the mockup reads in alfred's real
+     dark palette whichever mode this document is being read in.
+       bg/surface/border/fg/muted/secondary/teal  → globals.css
+       capture surface + textarea                 → capture-box.styles.ts
+       popover chrome (#0d1320 / #25324a / r12)   → atoms/popover.tsx (PopoverContent)
+       option row + active ring                   → shell/search-results-popover.tsx (OptionRow)
+       key pill                                   → atoms/badge.tsx + lib/code/project-color.ts
+       Capture button                             → atoms/button.tsx (variant accent, size sm) */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-fg: #e8edf5;
+    --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0; --a-blue: #60a5fa;
+    --a-amber: #f0b429; --a-green: #34d399; --a-pop: #0d1320; --a-pop-line: #25324a;
+    --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* An annotation's inline code sits on the app canvas, so it takes the app's plate. */
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); }
+
+  /* Capture surface — rounded-2xl, border-border, bg-surface; focus-within adds the teal
+     border + 24px teal glow (capture-box.styles.ts). */
+  .capbox { border: 1px solid var(--a-teal); border-radius: 16px; background: var(--a-surface);
+            box-shadow: 0 0 24px 0 rgba(79, 209, 224, .12); position: relative; }
+  /* Textarea: px-4 pt-4 pb-12, text-base (16px) on a transparent field. */
+  .captext { padding: 1rem 1rem 3rem; font-size: 15px; color: var(--a-fg); min-height: 4.6rem;
+             white-space: pre-wrap; word-break: break-word; }
+  .caret { display: inline-block; width: 1px; height: 1.05em; background: var(--a-fg);
+           vertical-align: -.16em; margin-left: 1px; }
+  .capfoot { position: absolute; right: .75rem; bottom: .75rem; display: flex; align-items: center; gap: .5rem; }
+  .caphint { color: rgba(138, 150, 168, .5); font-size: 11px; }
+  /* Button: variant accent (bg-accent-teal, text-background), size sm (h-8 rounded-sm px-3 text-xs). */
+  .capbtn { background: var(--a-teal); color: var(--a-bg); border-radius: 4px; padding: .3rem .6rem;
+            font-size: 11px; font-weight: 500; }
+  /* Popover — the atom's deep chrome: r12, #25324a line, #0d1320 fill, p-1, soft shadow. */
+  .pop { margin-top: 6px; border: 1px solid var(--a-pop-line); border-radius: 12px;
+         background: var(--a-pop); padding: 4px; box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); }
+  .opt { display: flex; align-items: center; gap: .5rem; border-radius: 6px; padding: .35rem .5rem;
+         font-size: 13px; color: var(--a-fg); border: 1px solid transparent; }
+  .opt.active { background: var(--a-secondary); border-color: var(--a-teal); }
+  .opt .oname { flex: 1; min-width: 0; }
+  .ico { width: 14px; height: 14px; flex: none; }
+  .okey { border-radius: 999px; padding: .05rem .45rem; font-size: 11px; font-weight: 500;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .okey.blue { background: rgb(96 165 250 / .15); color: var(--a-blue); }
+  .okey.amber { background: rgb(240 180 41 / .15); color: var(--a-amber); }
+  .okey.green { background: rgb(52 211 153 / .15); color: var(--a-green); }
+  .popfoot { display: flex; align-items: center; gap: .75rem; margin-top: 4px;
+             border-top: 1px solid var(--a-pop-line); padding: .35rem .5rem;
+             font-size: 11px; color: rgba(138, 150, 168, .7); }
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 720px) { .side { grid-template-columns: 1fr; } }
+
+  /* Inbox row (unchanged surface, drawn for the end state) — task-row chips. */
+  .row { display: flex; align-items: center; gap: .5rem; padding: .55rem .3rem;
+         border-bottom: 1px solid var(--a-border); }
+  .cbx { width: 15px; height: 15px; border: 1px solid var(--a-border); border-radius: 4px; flex: none; }
+  .rowtitle { flex: 1; min-width: 0; font-size: 13px; }
+  .pill-muted { border: 1px solid rgba(30, 42, 63, .7); color: var(--a-muted);
+                border-radius: 999px; padding: .05rem .45rem; font-size: 11px; font-weight: 500; }
+  .seclabel { color: rgba(138, 150, 168, .7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0 0 .4rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Refinement spec · Tasks module</p>
+  <h1>ALF-167 — Add ability to auto-suggest projects for code items with leading “:”</h1>
+  <p class="sub">
+    Start an Inbox capture with a bare <code>:</code> and alfred drops a list of your projects under
+    the box. Arrow to one, hit <kbd>↵</kbd>, and the box becomes <code>ALF: </code> — ready for the
+    title. The <strong>ALF-62</strong> prefix parse then classifies the capture exactly as it does
+    today; this story only makes the prefix easy to <em>type</em>.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+  <p>
+    <strong>ALF-62</strong> shipped the prefix grammar: text typed into the Inbox capture box is split
+    at the first colon, and if the part before it matches a project's <code>key</code> or
+    <code>name</code> (case-insensitively), the item is captured as
+    <code>item_type = 'code'</code> with <code>intended_project_id</code> set and the prefix stripped
+    from the title. That parse lives in
+    <code>frontend/lib/code/project-prefix.ts</code> and runs only where the Inbox box opts in
+    (<code>&lt;CaptureBox parseProjectPrefix /&gt;</code>).
+  </p>
+  <p>
+    The gap is <em>recall</em>. The grammar only fires on an <strong>exact</strong> key or name, so it
+    demands the owner remember which of them each repo carries — and it fails <strong>silently</strong>:
+    <code>ALFR: fix the toast</code> or <code>alfrd: fix the toast</code> looks like it worked, but
+    lands in the Inbox as a plain <code>unclassified</code> item with the prefix baked into its title.
+    Nothing on screen ever offers the list of projects at the moment the prefix is being typed, and
+    nothing tells you the prefix missed.
+  </p>
+  <p>
+    This story adds the missing affordance — an anchored, keyboard-driven project list under the
+    capture box, opened by a leading <code>:</code> — without touching the grammar, the schema, or the
+    API. It is a pure frontend change.
+  </p>
+
+  <h2>2 · Resolved scope <span class="owner">from refinement Q&amp;A</span></h2>
+  <div class="card teal">
+    <ul class="tight">
+      <li>
+        <strong>Trigger:</strong> a <strong>literal leading <code>:</code></strong> opens the list.
+        Typing an ordinary capture never summons a dropdown.
+      </li>
+      <li>
+        <strong>On select:</strong> the box's text becomes <code>&lt;KEY&gt;: </code> — plain,
+        editable text. No chip, no hidden state; the existing ALF-62 parse stays the one and only
+        classifier.
+      </li>
+      <li>
+        <strong>Surface:</strong> the <strong>Inbox capture box only</strong> — the same single
+        surface that already opts into prefix parsing. Folder boxes, inline subtask boxes and the
+        New Story dialog are untouched.
+      </li>
+    </ul>
+  </div>
+
+  <h2>3 · Decisions locked in this refinement</h2>
+
+  <div class="dec">
+    <h3><span class="n">D1</span>The trigger is a leading colon, not first-word typeahead<span class="owner">owner</span></h3>
+    <p>
+      The list opens when the capture box's first non-whitespace character is <code>:</code>, and only
+      then. Matching the first word of every capture against project names was considered and rejected.
+    </p>
+    <p class="why">
+      <b>Why:</b> the capture box is the app's hero surface and most captures are not code. A
+      dropdown that flickers open on “<code>b</code>” of “buy milk” taxes every capture to help a
+      minority of them. A leading <code>:</code> is a deliberate gesture: it costs one keystroke, it
+      is unambiguous, and it makes the feature's cost exactly zero for everything else.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D2</span>The query is the first token after the colon; the rest is preserved</h3>
+    <p>
+      Everything after the leading <code>:</code> up to the first whitespace is the <em>query</em>;
+      whatever follows is the <em>remainder</em> and survives selection. So
+      <code>:alf add dark mode</code> still resolves to Alfred and becomes
+      <code>ALF: add dark mode</code>.
+    </p>
+    <p class="why">
+      <b>Why:</b> the alternative — treating the whole tail as the query — collapses the moment the
+      user types the title before picking, leaving them in a dead end the parse can't rescue
+      (<code>:alf add dark mode</code> has an empty candidate prefix, so it captures as unclassified).
+      <b>Known limit:</b> a project whose <em>name</em> contains a space can't be typed in full as a
+      query; its key still matches, and it is always reachable with ↑↓ from the unfiltered list.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D3</span>Selection writes text, not state<span class="owner">owner</span></h3>
+    <p>
+      Choosing a project rewrites the box's value to <code>&lt;KEY&gt;: &lt;remainder&gt;</code>.
+      Nothing new is stored on the component, nothing new is sent to the API, and classification
+      still happens in <code>parseProjectPrefix</code> at submit time.
+    </p>
+    <p class="why">
+      <b>Why:</b> one code path stays authoritative. The user can edit or delete the prefix by hand
+      afterwards and the result is exactly what the text says — no invisible assignment that
+      disagrees with what's on screen. It also means this story adds <b>no</b> migration, route, or
+      store change.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D4</span>Zero matches closes the list — there is no “no matches” panel</h3>
+    <p>
+      While the trigger holds, the popover renders only when at least one project matches. A query
+      that matches nothing closes it; deleting back to a matching query reopens it.
+    </p>
+    <p class="why">
+      <b>Why:</b> a bare <code>:</code> always lists <em>every</em> project, so discovery is free and
+      the list disappearing is itself the “that's not a project” signal. The alternative leaves a
+      dead panel hovering under the box for the whole of a capture that legitimately starts with a
+      colon (<code>:thinking about X</code>) — obstructing the one surface that must never be
+      obstructed.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D5</span>While the list is open, ↵ selects and does not capture</h3>
+    <p>
+      <kbd>↵</kbd> commits the active suggestion; <kbd>Tab</kbd> does the same; <kbd>↑</kbd>/<kbd>↓</kbd>
+      move the active row; <kbd>Esc</kbd> dismisses the list for the rest of the trigger session
+      (it re-arms once the value stops starting with <code>:</code>). The box's text is never cleared
+      by <kbd>Esc</kbd>.
+    </p>
+    <p class="why">
+      <b>Why:</b> the list is open <em>only</em> in the <code>:query</code> state, where submitting
+      would capture junk (“<code>:alf</code>”) anyway — so ↵ has nothing valuable to override. This
+      is the same ↑↓/↵/Esc contract the ⌘P search field and the ⌘K palette already teach.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D6</span>The Inbox textarea becomes <code>role="combobox"</code>, and the queries that name it are updated</h3>
+    <p>
+      When suggestions are enabled the textarea carries the full combobox wiring —
+      <code>role="combobox"</code>, <code>aria-expanded</code>, <code>aria-controls</code>,
+      <code>aria-activedescendant</code>, <code>aria-autocomplete="list"</code> — keeping its
+      <code>aria-label="Capture box"</code>. Folder/subtask boxes are unchanged and stay textboxes.
+    </p>
+    <p class="why">
+      <b>Why:</b> <code>aria-expanded</code> is not supported on <code>textbox</code>, so the
+      lint gate's <code>jsx-a11y/role-supports-aria-props</code> rejects the half-measure — and the
+      house pattern for this control is already a combobox. <b>Cost, accepted:</b> the role changes
+      for the Inbox box, so the seven queries that ask for it by role must move to
+      <code>combobox</code> (§6.5) — three in <code>capture-box.test.tsx</code>'s prefix block and
+      four E2E specs. The other 26 queries in that file render <code>&lt;CaptureBox /&gt;</code>
+      without the prop and stay as they are.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D7</span>Built from the shared layer, not a fresh dropdown</h3>
+    <p>
+      The pure filter/rank layer goes in <code>lib/code/project-suggestions.ts</code> beside
+      <code>project-prefix.ts</code>; the panel is the <code>Popover</code> atom
+      (<code>PopoverAnchor</code> + <code>PopoverContent</code>); rows reuse
+      <code>Badge</code> and <code>lib/code/project-color.ts</code> (<code>projectColorFor</code>,
+      <code>projectBadgeClasses</code>, <code>projectTextClasses</code>) with the same
+      <code>GitBranch</code> glyph the ProjectNav and ⌘K palette use.
+    </p>
+    <p class="why">
+      <b>Why:</b> a suggestion row and the chip the captured item ends up wearing
+      (<code>ProjectKeyChip</code>) then share one colour rule, so “the amber one” means the same
+      thing in both places — and the popover's chrome, portal, animation and dismissal come from the
+      atom rather than a fourth hand-rolled panel.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D8</span>One flag still gates both halves</h3>
+    <p>
+      Suggestions ride the existing <code>parseProjectPrefix</code> prop — no second prop. Its
+      docstring is updated to say it now enables the suggestion list <em>and</em> the parse.
+    </p>
+    <p class="why">
+      <b>Why:</b> the dropdown must never appear where the parse doesn't run, or it promises a
+      classification the surface won't deliver. Keeping one flag makes that impossible to get wrong,
+      and avoids churning both call sites and the stories for a rename.
+    </p>
+  </div>
+
+  <h2>4 · The behaviour</h2>
+
+  <h3>4.1 · The trigger grammar</h3>
+  <p>
+    The trigger is derived from the box's raw value on every keystroke — there is no “suggestion mode”
+    to enter or leave. Leading whitespace is ignored, so a stray space before the colon still works.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Value in the box</th><th>Trigger?</th><th>Query</th><th>Remainder</th><th>What's on screen</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>:</code></td><td class="yes">yes</td><td><em>(empty)</em></td><td><em>(empty)</em></td><td>every project, in nav order</td></tr>
+      <tr><td><code>:al</code></td><td class="yes">yes</td><td><code>al</code></td><td><em>(empty)</em></td><td>projects matching <code>al</code></td></tr>
+      <tr><td><code>:ALF</code></td><td class="yes">yes</td><td><code>ALF</code></td><td><em>(empty)</em></td><td>Alfred (key match, case-insensitive)</td></tr>
+      <tr><td><code>:alf add dark mode</code></td><td class="yes">yes</td><td><code>alf</code></td><td><code>add dark mode</code></td><td>Alfred — the title is preserved through selection</td></tr>
+      <tr><td><code>&nbsp;&nbsp;:alf</code> (leading spaces)</td><td class="yes">yes</td><td><code>alf</code></td><td><em>(empty)</em></td><td>Alfred</td></tr>
+      <tr><td><code>:zzz</code></td><td class="yes">yes</td><td><code>zzz</code></td><td><em>(empty)</em></td><td><strong>nothing</strong> — no match, popover closed (D4)</td></tr>
+      <tr><td><code>ALF: add dark mode</code></td><td class="no">no</td><td>—</td><td>—</td><td>nothing — colon isn't leading; ALF-62 parses it at submit</td></tr>
+      <tr><td><code>Note: buy milk</code></td><td class="no">no</td><td>—</td><td>—</td><td>nothing</td></tr>
+      <tr><td><code>buy milk</code></td><td class="no">no</td><td>—</td><td>—</td><td>nothing</td></tr>
+      <tr><td><code>:alf</code>, no projects in the store</td><td class="yes">yes</td><td><code>alf</code></td><td><em>(empty)</em></td><td>nothing — an empty list never opens</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>Matching &amp; order</h4>
+  <ul class="tight">
+    <li>A project matches when the query is a <strong>prefix</strong> or a <strong>substring</strong>
+      of its <code>key</code> or its <code>name</code>, compared case-insensitively.</li>
+    <li>Ranking reuses the ladder in <code>command-destinations.ts</code>: prefix (0) before substring (1),
+      taking the better of the key and name rank. Ties keep the store's order (<code>getProjects</code> →
+      oldest first), which is also the order the colour palette is assigned in — so the list reads in the
+      same sequence as the ProjectNav.</li>
+    <li>An empty query keeps every project in that natural order. No cap, no “+N more”: the project
+      list is single-user small, and the panel scrolls if it ever isn't.</li>
+  </ul>
+
+  <h3>4.2 · What selection writes</h3>
+  <p>
+    Selection replaces the leading <code>:query</code> with the project's <strong>key</strong> — always
+    the key, even when the user typed the name, because the key is the canonical, 3-char, unique form
+    the parse prefers. The caret lands at the end of the value and focus never leaves the box.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Before</th><th>Chosen</th><th>After</th><th>Then ↵ captures…</th></tr></thead>
+    <tbody>
+      <tr><td><code>:</code></td><td>Alfred</td><td><code>ALF: </code></td><td>nothing — the box trims to a bare prefix, submit is a no-op</td></tr>
+      <tr><td><code>:al</code></td><td>Alfred</td><td><code>ALF: </code></td><td>—</td></tr>
+      <tr><td><code>:alfred</code></td><td>Alfred</td><td><code>ALF: </code></td><td>—</td></tr>
+      <tr><td><code>:alf add dark mode</code></td><td>Alfred</td><td><code>ALF: add dark mode</code></td><td>Code · project Alfred · title “Add dark mode”</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.3 · Keyboard &amp; pointer contract</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Input</th><th>List open</th><th>List closed (today's behaviour)</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>↓</kbd> / <kbd>↑</kbd></td><td>move the active row (clamped at both ends)</td><td>native caret movement</td></tr>
+      <tr><td><kbd>↵</kbd></td><td><strong>insert the active project's prefix</strong>; no capture</td><td>capture</td></tr>
+      <tr><td><kbd>Tab</kbd></td><td>insert the active project's prefix</td><td>native focus move</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>dismiss the list; text untouched; re-arms once the value stops starting with <code>:</code></td><td>nothing (full-mode box has no Escape handler)</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>↵</kbd></td><td>newline, list stays as it is</td><td>newline</td></tr>
+      <tr><td>Click / tap a row</td><td>insert that project's prefix, keep focus in the box</td><td>—</td></tr>
+      <tr><td>Hover a row</td><td>it becomes the active row (mouse and keyboard agree)</td><td>—</td></tr>
+      <tr><td>Click outside</td><td>dismiss; a pointer-down on the box itself is not “outside”</td><td>—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.4 · State machine</h3>
+  <svg viewBox="0 0 940 340" role="img" aria-label="Suggestion popover state machine: armed, open, dismissed, and prefix inserted">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a94a0"/>
+      </marker>
+      <style>
+        .box { fill: none; stroke: #8a94a0; stroke-width: 1.4; rx: 10; }
+        .box.on { stroke: #0d7d7d; stroke-width: 2; }
+        .t { font: 600 14px -apple-system, "Segoe UI", Roboto, sans-serif; fill: #5c6672; }
+        .t.hd { font-size: 15px; fill: #1b1f24; }
+        .lbl { font: 12px ui-monospace, Menlo, monospace; fill: #5c6672; }
+        .ln { stroke: #8a94a0; stroke-width: 1.3; fill: none; marker-end: url(#ar); }
+        @media (prefers-color-scheme: dark) {
+          .t { fill: #9aa5b1; } .t.hd { fill: #e6eaef; }
+          .lbl { fill: #9aa5b1; } .ln { stroke: #6b7682; } .box { stroke: #6b7682; }
+          .box.on { stroke: #46c9c9; }
+        }
+      </style>
+    </defs>
+
+    <rect class="box" x="20" y="120" width="180" height="66"/>
+    <text class="t hd" x="110" y="148" text-anchor="middle">ARMED</text>
+    <text class="t" x="110" y="170" text-anchor="middle" font-size="12">no popover</text>
+
+    <rect class="box on" x="340" y="120" width="200" height="66"/>
+    <text class="t hd" x="440" y="148" text-anchor="middle">OPEN</text>
+    <text class="t" x="440" y="170" text-anchor="middle" font-size="12">listbox under the box</text>
+
+    <rect class="box" x="700" y="30" width="220" height="66"/>
+    <text class="t hd" x="810" y="58" text-anchor="middle">PREFIX INSERTED</text>
+    <text class="t" x="810" y="80" text-anchor="middle" font-size="12">value = “ALF: …”, list gone</text>
+
+    <rect class="box" x="700" y="210" width="220" height="66"/>
+    <text class="t hd" x="810" y="238" text-anchor="middle">DISMISSED</text>
+    <text class="t" x="810" y="260" text-anchor="middle" font-size="12">stays shut while “:” leads</text>
+
+    <path class="ln" d="M 200 140 L 336 140"/>
+    <text class="lbl" x="268" y="110" text-anchor="middle">value starts “:”</text>
+    <text class="lbl" x="268" y="127" text-anchor="middle">&amp; ≥1 match</text>
+
+    <path class="ln" d="M 340 168 C 292 202, 232 202, 203 174"/>
+    <text class="lbl" x="270" y="219" text-anchor="middle">0 matches, or “:” dropped</text>
+
+    <path class="ln" d="M 540 132 C 618 110, 650 82, 696 67"/>
+    <text class="lbl" x="610" y="60" text-anchor="middle">↵ / Tab / click</text>
+
+    <path class="ln" d="M 812 98 C 800 162, 640 172, 546 152"/>
+    <text class="lbl" x="646" y="196" text-anchor="middle">back to “:” (edit / undo)</text>
+
+    <path class="ln" d="M 540 176 C 610 210, 650 226, 696 238"/>
+    <text class="lbl" x="622" y="232" text-anchor="middle">Esc</text>
+
+    <path class="ln" d="M 756 278 C 620 334, 320 338, 148 192"/>
+    <text class="lbl" x="386" y="272" text-anchor="middle">value stops starting with “:” → re-armed</text>
+  </svg>
+  <p class="small">
+    The whole machine is derived from the box's value plus one boolean (“dismissed”), so there is no
+    state to keep in sync with the text — deleting back to <code>:</code> reopens the list exactly as
+    typing it forward does, unless Esc dismissed this trigger session.
+  </p>
+
+  <h2>5 · The surface</h2>
+  <p>
+    Three projects are drawn below — Alfred (<code>ALF</code>), Relay (<code>RLP</code>), Sandbox
+    (<code>SBX</code>) — wearing the first three palette colours the positional rule assigns
+    (blue, amber, green), so the mockups double as a check that the colour rule carries into the list.
+  </p>
+
+  <h3>5.1 · Opened by a bare colon</h3>
+  <div class="mock">
+    <div class="mock-bar"><span>Inbox · the user has typed <code>:</code></span><span class="hmeta">desktop · 1280px</span></div>
+    <div class="mock-body">
+      <div class="capbox">
+        <div class="captext">:<span class="caret"></span></div>
+        <div class="capfoot">
+          <span class="caphint">Enter to capture · Shift+Enter for newline</span>
+          <span class="capbtn">Capture</span>
+        </div>
+      </div>
+      <div class="pop">
+        <div class="opt active">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span class="oname">Alfred</span><span class="okey blue">ALF</span>
+        </div>
+        <div class="opt">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#f0b429" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span class="oname">Relay</span><span class="okey amber">RLP</span>
+        </div>
+        <div class="opt">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span class="oname">Sandbox</span><span class="okey green">SBX</span>
+        </div>
+        <div class="popfoot"><span>↑↓ navigate</span><span>↵ insert</span><span>esc dismiss</span></div>
+      </div>
+      <p class="cap">
+        The panel spans the capture box's width, sits 6px below it, and takes the
+        <code>Popover</code> atom's chrome. Each row: the <code>GitBranch</code> glyph tinted with the
+        project's colour, the project name, and its key as a tinted mono pill — the same pill the
+        captured item wears in the Inbox. The first row is active on open; the footer names the three
+        keys, and nothing else appears in the panel.
+      </p>
+    </div>
+  </div>
+
+  <h3>5.2 · Filtering, and the two ways the list goes away</h3>
+  <div class="side">
+    <div class="mock">
+      <div class="mock-bar"><span>Typed <code>:al</code></span><span class="hmeta">one match</span></div>
+      <div class="mock-body">
+        <div class="capbox">
+          <div class="captext">:al<span class="caret"></span></div>
+          <div class="capfoot"><span class="caphint">Enter to capture · Shift+Enter for newline</span><span class="capbtn">Capture</span></div>
+        </div>
+        <div class="pop">
+          <div class="opt active">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            <span class="oname">Alfred</span><span class="okey blue">ALF</span>
+          </div>
+          <div class="popfoot"><span>↑↓ navigate</span><span>↵ insert</span><span>esc dismiss</span></div>
+        </div>
+        <p class="cap">Non-matches drop; the active row follows to the top of what's left.</p>
+      </div>
+    </div>
+    <div class="mock">
+      <div class="mock-bar"><span>Typed <code>:zzz</code></span><span class="hmeta">no match (D4)</span></div>
+      <div class="mock-body">
+        <div class="capbox">
+          <div class="captext">:zzz<span class="caret"></span></div>
+          <div class="capfoot"><span class="caphint">Enter to capture · Shift+Enter for newline</span><span class="capbtn">Capture</span></div>
+        </div>
+        <p class="cap">
+          No panel at all — not an empty one, and no “no matches” line. Backspacing to
+          <code>:z</code>…<code>:</code> brings the list straight back. <kbd>Esc</kbd> produces this
+          same picture with a matching query.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <h3>5.3 · After choosing Alfred, and what capture then produces</h3>
+  <div class="mock">
+    <div class="mock-bar"><span>↵ on the active row — then the title, then capture</span><span class="hmeta">unchanged downstream (ALF-62)</span></div>
+    <div class="mock-body">
+      <div class="capbox">
+        <div class="captext">ALF: add dark mode<span class="caret"></span></div>
+        <div class="capfoot">
+          <span class="caphint">Enter to capture · Shift+Enter for newline</span>
+          <span class="capbtn">Capture</span>
+        </div>
+      </div>
+      <p class="cap">
+        The panel is gone the instant the prefix lands (the value no longer starts with <code>:</code>),
+        the caret sits at the end, and the box is ordinary editable text again — backspacing over
+        <code>ALF: </code> simply un-does the choice.
+      </p>
+
+      <div style="margin-top:1.4rem">
+        <p class="seclabel">Inbox</p>
+        <div class="row">
+          <span class="cbx"></span>
+          <span class="rowtitle">Add dark mode</span>
+          <span class="pill-muted">Code</span>
+          <span class="okey blue">ALF</span>
+        </div>
+        <p class="cap">
+          Existing behaviour, drawn for the end-to-end picture: the ALF-62 parse classifies the item
+          as Code, assigns Alfred, and strips the prefix — the row's key pill is the same tinted mono
+          pill the suggestion row carried.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <p class="small cap doc">
+    Fidelity note: these are behaviour-and-layout mockups drawn from the app's real tokens — spacing
+    and type may sit a pixel or two off the build, but every element drawn here must exist, and
+    nothing beyond them is in scope for this surface.
+  </p>
+
+  <h2>6 · The shape of the change</h2>
+
+  <h3>6.1 · Files touched, at a glance</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>frontend/lib/code/project-suggestions.ts</code><span class="new">new</span></td>
+          <td>The pure layer: trigger parse, filter + rank, the value a selection produces, option DOM ids.</td></tr>
+      <tr><td><code>frontend/lib/code/project-suggestions.test.ts</code><span class="new">new</span></td>
+          <td>The full matrix of §4.1 / §4.2, in isolation from React.</td></tr>
+      <tr><td><code>frontend/components/tasks/project-suggest-popover.tsx</code><span class="new">new</span></td>
+          <td>The anchored <code>listbox</code> panel: rows, active styling, hover-follows-active, footer hints. Renders what it's handed; reads no store.</td></tr>
+      <tr><td><code>frontend/components/tasks/capture-box.tsx</code></td>
+          <td>Derive the trigger from <code>value</code>, own <code>activeIndex</code> + <code>dismissed</code>, extend <code>handleKeyDown</code>, apply a selection, wrap in <code>Popover</code>/<code>PopoverAnchor</code>, add the combobox ARIA (D6). Update the <code>parseProjectPrefix</code> docstring (D8).</td></tr>
+      <tr><td><code>frontend/components/tasks/capture-box.test.tsx</code></td>
+          <td>New <code>describe</code> for the suggestion behaviour; the three prefix-block queries move to <code>combobox</code>.</td></tr>
+      <tr><td><code>frontend/components/tasks/capture-box.stories.tsx</code></td>
+          <td>A second project or two in <code>PROJECTS</code> so the list has something to rank, plus the open-list story (§7).</td></tr>
+      <tr><td><code>frontend/e2e/inbox-project-suggest.spec.ts</code><span class="new">new</span></td>
+          <td>The real-keyboard arc (§7).</td></tr>
+      <tr><td><code>frontend/e2e/{inbox,inbox-epic,inbox-viewport,capture-ghost}.spec.ts</code></td>
+          <td>One line each: <code>getByRole('textbox', { name: 'Capture box' })</code> → <code>getByRole('combobox', …)</code>.</td></tr>
+      <tr><td><code>frontend/__image_snapshots__/…</code><span class="new">new</span></td>
+          <td>One generated baseline for the open-list story — written by <code>npm run test:storybook:update -w frontend</code>, never by hand.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout">
+    <strong>Nothing else moves.</strong> No migration, no <code>database/</code> change, no route
+    handler, no store action, no worker, no <code>lib/api-client.ts</code> change, and no change to
+    <code>project-prefix.ts</code> itself. If the implementation finds itself editing any of those,
+    the design has drifted from D3.
+  </div>
+
+  <h3>6.2 · The pure layer</h3>
+  <pre><code>// frontend/lib/code/project-suggestions.ts
+
+/** The live trigger, derived from the capture box's raw value. */
+export interface SuggestTrigger {
+  /** Text between the leading ':' and the first whitespace — '' right after ':'. */
+  query: string;
+  /** Everything after the query (trimmed) — preserved through a selection. */
+  remainder: string;
+}
+
+/** `:al add dark mode` → { query: 'al', remainder: 'add dark mode' }; no leading ':' → null. */
+export function parseSuggestTrigger(value: string): SuggestTrigger | null;
+
+/**
+ * Projects matching `query`, best first: prefix beats substring, key and name are both
+ * matched case-insensitively, and the better of the two ranks wins. Ties keep the given
+ * order (the store's nav order). An empty query returns every project, unfiltered.
+ */
+export function rankProjectSuggestions(
+  query: string,
+  projects: readonly Project[],
+): Project[];
+
+/** The box's next value once `project` is chosen: `ALF: ` or `ALF: add dark mode`. */
+export function applyProjectSuggestion(trigger: SuggestTrigger, project: Project): string;
+
+/** Stable DOM id for a row's `&lt;li role="option"&gt;` (the aria-activedescendant target). */
+export function projectSuggestionDomId(project: Project): string;</code></pre>
+  <p class="small">
+    The rank ladder is the one already written in <code>command-destinations.ts</code>
+    (<code>rankField</code>: prefix → 0, substring → 1, no match → null). Lift the rule, don't invent a
+    second one — if it's worth sharing, extract it to a common helper and adopt both call sites in the
+    same change, per the frontend-architecture skill's rule of two.
+  </p>
+
+  <h3>6.3 · Wiring in the capture box</h3>
+  <pre><code>// frontend/components/tasks/capture-box.tsx (full mode only)
+
+const trigger = parseProjectPrefix ? parseSuggestTrigger(value) : null;
+const suggestions = trigger ? rankProjectSuggestions(trigger.query, projects) : [];
+const suggestOpen = trigger !== null &amp;&amp; !dismissed &amp;&amp; suggestions.length > 0;
+
+// Reset the active row whenever the query changes — the derive-during-render pattern
+// (see search-box.tsx), never a setState effect. Clamp as the list shrinks.
+// Re-arm the dismissal when the value stops starting with ':' (trigger === null).</code></pre>
+  <ul class="tight">
+    <li><strong>Key handling</strong> extends the existing <code>handleKeyDown</code>: when
+      <code>suggestOpen</code>, ↑/↓/↵/Tab/Esc are consumed with <code>preventDefault()</code> and
+      return before the current Enter-submits branch; when it's closed the handler behaves exactly as
+      it does today.</li>
+    <li><strong>Applying a selection</strong> sets the value from
+      <code>applyProjectSuggestion</code> and then puts the caret at the end. Setting selection
+      inline is clobbered by the re-render, so flag it (a ref) and place the caret in a
+      <code>useLayoutEffect</code> that runs after the value commits — the same beat the ghost-array
+      effects already run on.</li>
+    <li><strong>Anchor</strong>: the capture surface <code>&lt;div&gt;</code> becomes the
+      <code>PopoverAnchor</code>, so the panel inherits the box's width via
+      <code>var(--radix-popover-trigger-width)</code>. The popover is non-modal and prevents
+      <code>onOpenAutoFocus</code> / <code>onCloseAutoFocus</code>, so the textarea never loses focus;
+      <code>onInteractOutside</code> ignores pointer-downs landing on the box itself. That contract is
+      already written in <code>search-results-popover.tsx</code> — mirror it.</li>
+    <li><strong>Ghost flourish, error text, spinner, in-flight counting and the serif prompt are
+      untouched.</strong> A capture made through a suggestion is an ordinary capture.</li>
+  </ul>
+
+  <h3>6.4 · Accessibility</h3>
+  <ul class="tight">
+    <li>Textarea (suggestions enabled only): <code>role="combobox"</code>,
+      <code>aria-label="Capture box"</code>, <code>aria-autocomplete="list"</code>,
+      <code>aria-expanded={suggestOpen}</code>, <code>aria-controls</code> pointing at the listbox id,
+      <code>aria-activedescendant</code> set to the active row's id while open.</li>
+    <li>Panel: <code>&lt;ul role="listbox" aria-label="Projects"&gt;</code> with
+      <code>&lt;li role="option" aria-selected&gt;</code> rows; glyphs are <code>aria-hidden</code>.</li>
+    <li>Rows keep focus in the field: <code>onMouseDown</code> is prevented, selection happens on
+      <code>click</code>; hover sets the active index so pointer and keyboard never disagree.</li>
+    <li>Motion follows the atom (<code>fade-in</code>/<code>zoom-in-95</code>, already carrying
+      <code>motion-reduce:animate-none</code>) — no new animation is introduced.</li>
+  </ul>
+
+  <h3>6.5 · The role change, precisely</h3>
+  <p>
+    Seven queries name the Inbox box by role and must move from <code>textbox</code> to
+    <code>combobox</code> (D6): <code>capture-box.test.tsx</code> lines 329 / 353 / 375 (the
+    <code>parseProjectPrefix</code> block), and one query each in <code>e2e/inbox.spec.ts</code>,
+    <code>e2e/inbox-epic.spec.ts</code>, <code>e2e/inbox-viewport.spec.ts</code>,
+    <code>e2e/capture-ghost.spec.ts</code>. Every other <code>getByRole('textbox', { name: /capture
+    box/i })</code> in that test file renders <code>&lt;CaptureBox /&gt;</code> without the prop and
+    must keep passing untouched — if one of those needs editing, the role was applied too broadly.
+  </p>
+
+  <h2>7 · Tests</h2>
+  <p>Red/green TDD, in this order — each layer proves something the others can't.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Layer</th><th>File</th><th>What it pins</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Unit (pure)</td>
+        <td><code>lib/code/project-suggestions.test.ts</code></td>
+        <td>Every row of §4.1 and §4.2: colon-leading vs not, leading whitespace, empty query, key vs
+            name match, case-insensitivity, prefix-before-substring order, ties keeping store order,
+            remainder preserved, empty project list, and each <code>applyProjectSuggestion</code> result.</td>
+      </tr>
+      <tr>
+        <td>Component (RTL)</td>
+        <td><code>components/tasks/capture-box.test.tsx</code></td>
+        <td>Typing <code>:</code> opens a listbox of every project; typing filters it; ↓ then ↵ writes
+            <code>ALF: </code> <em>and creates no item</em>; a click on a row does the same; Esc closes
+            it and a following ↵ captures the text verbatim; a no-match query closes it; a
+            <code>&lt;CaptureBox /&gt;</code> without the prop never opens one; and a capture completed
+            through a suggestion still lands as Code with the project assigned.</td>
+      </tr>
+      <tr>
+        <td>Storybook</td>
+        <td><code>components/tasks/capture-box.stories.tsx</code></td>
+        <td>An open-list story (a <code>play</code> function types <code>:</code>), carrying
+            <code>parameters.visualTest</code> so the panel's appearance is locked by a committed
+            baseline. Target <code>body</code>, not <code>#storybook-root</code> — the popover is
+            portaled out of the root and a root-tight crop would photograph an empty box.</td>
+      </tr>
+      <tr>
+        <td>E2E</td>
+        <td><code>e2e/inbox-project-suggest.spec.ts</code><span class="new">new</span></td>
+        <td>The real-browser arc against the mock backend: focus the box, press <code>:</code>, see the
+            listbox, <kbd>↓</kbd> <kbd>↵</kbd>, assert the field reads <code>ALF: </code>, type the
+            title, capture, and assert the new Inbox row carries the Code badge and the <code>ALF</code>
+            pill. This is the layer that proves ↵ was intercepted by a real key event rather than a
+            synthetic one.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">
+    Every requirement above must move at least one test — including the negatives (no dropdown without
+    the prop, no dropdown on <code>Note: buy milk</code>, no capture on ↵ while open).
+  </p>
+
+  <h2>8 · Demo evidence</h2>
+  <p>
+    User-visible change, so it needs a demo doc. Author it with the <strong><code>showboat</code>
+    skill</strong> and let that skill's rules govern — evidence-matching, folder-per-demo naming, and
+    the <code>verify</code> pass are its call, not this spec's. What this spec asks the demo to
+    <em>cover</em>:
+  </p>
+  <ul class="tight">
+    <li>The list opening on <code>:</code>, filtering, and the prefix landing in the box — as the
+      screenshot of the new Storybook story (Storybook is the reproducible surface: no auth, no seeding).</li>
+    <li>The keyboard arc end to end, from the E2E spec's run — including the captured row wearing the
+      Code badge and the project pill.</li>
+    <li>The pure matrix, as the unit run's output.</li>
+    <li>If the story's baseline moves an existing committed PNG, the auto-emitted 3-panel diff is the
+      evidence, and the baseline is then approved and committed per the <code>storybook</code> skill.</li>
+  </ul>
+  <p class="small">Link the doc in the PR description as a live blob link (<code>npm run demo -- pr-link …</code>).</p>
+
+  <h2>9 · Out of scope</h2>
+  <ul class="tight">
+    <li><strong>Epic suggestions.</strong> The colon suggests a <em>project</em> only. A pre-factory
+      epic hint is its own ticket (see the ALF-158 epic, D11).</li>
+    <li><strong>Suggesting on any other surface</strong> — folder and subtask capture boxes, the New
+      Story dialog, the gate dialog, the <code>POST /api/items</code> ingest path.</li>
+    <li><strong>Creating a project from the list</strong> (“no match → Create project ‘X’…”). The
+      list only ever offers what exists.</li>
+    <li><strong>Fuzzy / typo-tolerant matching</strong> (<code>:aflred</code>). Prefix + substring only,
+      matching the ⌘K ladder.</li>
+    <li><strong>Changing the ALF-62 grammar</strong>, the schema, or how a captured code item is
+      classified.</li>
+    <li><strong>A second trigger character</strong> for tasks, folders, or due dates.</li>
+  </ul>
+
+  <h3>Open questions</h3>
+  <ul class="tight">
+    <li>None blocking. The one deliberate limitation to watch in use: a multi-word project
+      <em>name</em> can't be typed as a query (D2) — if that starts to bite, the fix is a follow-up
+      that lets the query span spaces while the list still has matches.</li>
+  </ul>
+
+  <h2>10 · Acceptance criteria</h2>
+  <div class="card">
+    <ul class="tight">
+      <li>☐ Typing <code>:</code> as the first non-whitespace character of the <strong>Inbox</strong>
+        capture box opens a listbox of every project, first row active, anchored under the box at its
+        full width.</li>
+      <li>☐ Each row shows the project's <code>GitBranch</code> glyph in its assigned colour, its name,
+        and its key as a tinted mono pill; the footer reads <code>↑↓ navigate · ↵ insert · esc dismiss</code>.</li>
+      <li>☐ Typing after the colon filters the list: prefix matches before substring matches, key and
+        name both matched case-insensitively, ties in store order.</li>
+      <li>☐ A query with no matches closes the panel entirely — no empty panel and no “no matches”
+        line — and deleting back to a matching query reopens it.</li>
+      <li>☐ ↑/↓ move the active row and clamp at both ends; hovering a row makes it active.</li>
+      <li>☐ ↵ or <kbd>Tab</kbd> or a click on a row rewrites the value to <code>&lt;KEY&gt;: </code>
+        plus any remainder, leaves the caret at the end and focus in the box, and closes the panel —
+        <strong>without capturing anything</strong>.</li>
+      <li>☐ <kbd>Esc</kbd> closes the panel without altering the text; a following ↵ captures the text
+        verbatim; the panel re-arms once the value stops starting with <code>:</code>.</li>
+      <li>☐ Submitting <code>ALF: add dark mode</code> still produces a Code item assigned to Alfred
+        titled “Add dark mode” — the ALF-62 path, unchanged.</li>
+      <li>☐ No dropdown ever appears in a folder or subtask capture box, or for values that don't lead
+        with a colon (<code>Note: buy milk</code>, <code>buy milk</code>), or when the project list is
+        empty.</li>
+      <li>☐ The Inbox textarea exposes the combobox ARIA of §6.4; folder/subtask boxes are unchanged.</li>
+      <li>☐ Unit, RTL, Storybook and E2E coverage per §7 exists and <code>npm run check</code> is green.</li>
+      <li>☐ A demo doc per §8 is committed and linked from the PR description as a live link.</li>
+      <li>☐ The diff touches no file under <code>database/</code>, <code>workers/</code>, or
+        <code>frontend/app/api/</code>.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>
