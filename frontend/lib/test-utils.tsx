@@ -7,6 +7,7 @@ import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
+import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { HabitsProvider } from '@/lib/stores/habits-store';
 import { InboxSelectionProvider } from '@/lib/stores/inbox-selection-store';
@@ -82,19 +83,21 @@ export function renderWithProviders(
                     initialStories={stories}
                   >
                     <CodeFilterProvider>
-                      <WeeklyPlanProvider
-                        initialIndex={weeklyPlans.index}
-                        initialLatest={weeklyPlans.latest}
-                      >
-                        <HabitsProvider
-                          initialHabits={habits.habits}
-                          initialEntries={habits.entries}
-                          initialStats={habits.stats ?? {}}
-                          serverToday={habits.today}
+                      <FolderSortProvider>
+                        <WeeklyPlanProvider
+                          initialIndex={weeklyPlans.index}
+                          initialLatest={weeklyPlans.latest}
                         >
-                          {children}
-                        </HabitsProvider>
-                      </WeeklyPlanProvider>
+                          <HabitsProvider
+                            initialHabits={habits.habits}
+                            initialEntries={habits.entries}
+                            initialStats={habits.stats ?? {}}
+                            serverToday={habits.today}
+                          >
+                            {children}
+                          </HabitsProvider>
+                        </WeeklyPlanProvider>
+                      </FolderSortProvider>
                     </CodeFilterProvider>
                   </CodeProvider>
                 </InboxSelectionProvider>
