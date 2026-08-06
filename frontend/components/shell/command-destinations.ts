@@ -1,4 +1,5 @@
 import { projectBoardHref } from '@/lib/code/board-links';
+import { rankField } from '@/lib/rank-field';
 import type { Folder, Project } from '@/lib/types';
 
 /**
@@ -76,17 +77,6 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
 /** Trim + lowercase so matching is whitespace- and case-insensitive. */
 function normalize(query: string): string {
   return query.trim().toLowerCase();
-}
-
-/**
- * Rank a single field against the normalized query: prefix (0) beats substring (1); `null` means
- * no match. Mirrors the `search-results.ts` ladder, one field at a time.
- */
-function rankField(query: string, text: string): number | null {
-  const value = text.toLowerCase();
-  if (value.startsWith(query)) return 0;
-  if (value.includes(query)) return 1;
-  return null;
 }
 
 /**
