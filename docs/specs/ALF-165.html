@@ -121,10 +121,10 @@
   .f-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
                color: color-mix(in srgb, var(--a-muted) 70%, transparent); }
   .f-actions { display: flex; align-items: center; gap: .25rem; }
-  /* IconButton size="md": h-6 w-6 rounded, tone accent at rest = text-muted-foreground */
+  /* IconButton size="md", default (neutral) tone: h-6 w-6 rounded, text-muted-foreground —
+     the same treatment Collapse-all already uses. */
   .icbtn { width: 24px; height: 24px; border-radius: 4px; display: inline-flex;
            align-items: center; justify-content: center; color: var(--a-muted); }
-  .icbtn.teal { color: var(--a-teal); }
   /* CaptureBox compact: <form class="flex items-center gap-2"> */
   .cap-row { display: flex; align-items: center; gap: .5rem; padding: 4px; }
   /* TextField + "flex-1 px-3 py-1.5": rounded-sm, border-border, bg-input, text-sm */
@@ -231,7 +231,9 @@
 <div class="dec">
   <h3><span class="n">S1</span>The affordance is a "+" in the folder header, revealing the compact capture box<span class="owner">owner</span></h3>
   <p>
-    A teal-on-hover <code>IconButton</code> sits in the header's right cluster, left of Collapse-all.
+    An <code>IconButton</code> sits in the header's right cluster, left of Collapse-all, in the
+    <b>same grey treatment as Collapse-all</b> — the atom's default <code>neutral</code> tone, not
+    the teal <code>accent</code> one.
     Pressing it reveals a compact <code>CaptureBox</code> between the header and the list; pressing
     it again closes it. Drawn in §4.
   </p>
@@ -385,8 +387,10 @@
   <tr><td>The capture input</td><td><code>CaptureBox</code> with <code>compact</code> +
     <code>folderId</code> + <code>placeholder="Add task…"</code></td>
     <td>A new folder-specific input (it would re-derive submit / optimistic-clear / error restore)</td></tr>
-  <tr><td>The header "+"</td><td><code>IconButton</code> <code>size="md" tone="accent"</code> +
-    lucide <code>Plus</code></td><td>A raw <code>&lt;button&gt;</code> with hand-written hover classes</td></tr>
+  <tr><td>The header "+"</td><td><code>IconButton</code> <code>size="md"</code> (default
+    <code>neutral</code> tone, as Collapse-all) + lucide <code>Plus</code></td>
+    <td>A raw <code>&lt;button&gt;</code> with hand-written hover classes, or a
+    <code>tone</code> that makes it louder than its neighbour</td></tr>
   <tr><td>The reveal</td><td><code>AnimatedHeightReveal</code> + the derived
     <code>rendered</code> flag</td><td>A copied <code>grid-rows-[0fr↔1fr]</code> block</td></tr>
   <tr><td>Open/closed state</td><td><code>useActiveEditor</code> / <code>useActiveEditorActions</code> +
@@ -420,7 +424,7 @@
     <div class="f-hdr">
       <span class="f-eyebrow">Work</span>
       <span class="f-actions">
-        <span class="icbtn teal" title="Add task to Work">
+        <span class="icbtn" title="Add task to Work">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         </span>
         <span class="icbtn" title="Collapse all">
@@ -485,7 +489,7 @@
         <div class="f-hdr">
           <span class="f-eyebrow">Someday</span>
           <span class="f-actions">
-            <span class="icbtn teal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span class="icbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
             <span class="icbtn" style="opacity:.4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg></span>
           </span>
         </div>
@@ -507,7 +511,7 @@
         <div class="f-hdr">
           <span class="f-eyebrow">Someday</span>
           <span class="f-actions">
-            <span class="icbtn teal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span class="icbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
             <span class="icbtn" style="opacity:.4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg></span>
           </span>
         </div>
@@ -539,7 +543,7 @@
     <div class="f-hdr">
       <span class="f-eyebrow">Work</span>
       <span class="f-actions">
-        <span class="icbtn teal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+        <span class="icbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
         <span class="icbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg></span>
       </span>
     </div>
@@ -658,7 +662,7 @@ if (showCapture &amp;&amp; !captureRendered) setCaptureRendered(true);
 else if (!showCapture &amp;&amp; captureRendered &amp;&amp; prefersReducedMotion) setCaptureRendered(false);
 
 // header: eyebrow · [ + ] [ collapse-all ]
-&lt;IconButton size="md" tone="accent" aria-label={`Add task to ${folder.name}`} title="Add task"
+&lt;IconButton size="md" aria-label={`Add task to ${folder.name}`} title="Add task"
   aria-expanded={showCapture}
   onMouseDown={(e) =&gt; { if (showCapture) e.preventDefault(); }}
   onClick={() =&gt; { showCapture ? closeEditor(editor) : openEditor(editor); }}&gt;
@@ -904,6 +908,7 @@ else if (!showCapture &amp;&amp; captureRendered &amp;&amp; prefersReducedMotion
 <ul class="ac">
   <li class="h">The affordance</li>
   <li>A folder view header shows a "+" button named <code>Add task to &lt;folder&gt;</code>, left of Collapse-all, at every viewport width.</li>
+  <li>It carries the same grey icon-button treatment as Collapse-all — the <code>IconButton</code> default tone, at rest and on hover — so the pair reads as one cluster.</li>
   <li>Pressing it reveals a compact capture box between the header and the list, focused, placeholder <code>Add task…</code>; pressing it again closes it, with no re-open flicker.</li>
   <li>Escape, or focus leaving the box, dismisses it; opening any other inline editor (a row title edit, a row's add-subtask box) closes it, and opening it closes them.</li>
   <li>Under <code>prefers-reduced-motion</code> the box appears and disappears with no animation and is not stranded on screen.</li>
