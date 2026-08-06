@@ -146,21 +146,3 @@ export function rankByPriority(items: readonly Item[], showCompleted: boolean): 
       Date.parse(a.created_at) - Date.parse(b.created_at),
   );
 }
-
-/**
- * Rank the **top-level** nodes it's handed by priority → due date → `created_at` (ALF-37),
- * returning a new array in that order. Ranks each node by its **own** key (no subtree rollup).
- * Children are left **exactly as received** — the Folder view no longer reorders subtasks by
- * priority (ALF-117); a subtask group keeps the `sort_order` order `buildTree` already applied
- * (creation order by default, the manual order once dragged). Priority stays a display signal on
- * subtask rows — the row chip, folder badge counts, and the By-Priority view are all unchanged.
- * Used by the Folder view for its roots; the Inbox keeps capture order.
- */
-export function sortNodesByPriority<T extends Item & { children: T[] }>(nodes: readonly T[]): T[] {
-  return stableSorted(
-    nodes,
-    (a, b) =>
-      compareKey(ownKey(a), ownKey(b)) ||
-      (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0),
-  );
-}

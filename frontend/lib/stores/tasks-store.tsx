@@ -4,12 +4,13 @@ import * as React from 'react';
 
 import * as api from '@/lib/api-client';
 import { isDueDateOverdue, isDueTodayOrOverdue } from '@/lib/date-utils';
-import { rankByPriority, sortNodesByPriority } from '@/lib/priority';
+import { rankByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { DEFAULT_TASK_SORT, type TaskSortMode, sortNodesBy } from '@/lib/tasks/task-sort';
 import type { ItemNode } from '@/lib/tree';
 import { buildTree, collectSubtree, makeOptimisticItem, tempId } from '@/lib/tree';
 import type { Item, ItemType } from '@/lib/types';
@@ -732,8 +733,17 @@ export function useTasks(): Item[] {
   return useStateValue('useTasks');
 }
 
-/** Derive the forest for one view by filtering the store, then building the tree. */
-export function useScopedTasks(scope: TaskScope): ItemNode[] {
+/**
+ * Derive the forest for one view by filtering the store, then building the tree.
+ *
+ * `sortMode` orders a FOLDER's top-level rows — the only view that ranks its tasks (the Inbox
+ * keeps capture order and Completed keeps the tree as built). A caller that doesn't care about
+ * order — one reading the view's ids rather than rendering them — can leave it at the default.
+ */
+export function useScopedTasks(
+  scope: TaskScope,
+  sortMode: TaskSortMode = DEFAULT_TASK_SORT,
+): ItemNode[] {
   const items = useTasks();
   const scopeType = scope.type;
   // Stryker disable next-line ConditionalExpression: AT_CEILING — folderId is only read inside the scopeType==='folder' filter branch; for inbox/completed it is unused, so null vs undefined is unobservable.
@@ -754,10 +764,10 @@ export function useScopedTasks(scope: TaskScope): ItemNode[] {
     // A completed ROOT belongs to the Completed view, not here — drop it (and its subtree).
     // Completed items only surface in an active view as descendants of an active task.
     const activeRoots = forest.filter((node) => node.status === 'active');
-    // A folder ranks every level by priority → due date → created_at (ALF-37); the Inbox
+    // A folder ranks its roots by the chosen mode (priority-first or due-date-first); the Inbox
     // keeps buildTree's capture-first (newest) order.
-    return scopeType === 'folder' ? sortNodesByPriority(activeRoots) : activeRoots;
-  }, [items, scopeType, folderId]);
+    return scopeType === 'folder' ? sortNodesBy(activeRoots, sortMode) : activeRoots;
+  }, [items, scopeType, folderId, sortMode]);
 }
 
 /** A folder's two badge counts (ALF-84): the amber "attention" tally and the red "overdue" tally. */
