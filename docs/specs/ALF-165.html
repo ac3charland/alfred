@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-165 — Add ability to create task from folder view</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+
+  /* ── Decision blocks (the library's shared vocabulary) ───────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Acceptance-criteria checklist ───────────────────────────── */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .93rem; }
+  ul.ac li::before {
+    content: ""; position: absolute; left: 0; top: .25rem; width: 1rem; height: 1rem;
+    border: 1px solid var(--faint); border-radius: 3px;
+  }
+  ul.ac li.h {
+    padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  }
+  ul.ac li.h::before { content: none; }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar span { font-weight: 400; color: var(--muted); font-size: .74rem; }
+  /* The mockup canvas IS the app: every value below is lifted from
+     frontend/app/globals.css, the atoms it renders, and task-row.styles.ts — so the
+     drawing reads in alfred's real dark palette whichever mode this doc is read in. */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-fg: #e8edf5;
+    --a-muted: #8a96a8; --a-input: #1e2a3f; --a-teal: #4fd1e0; --a-red: #f87171;
+    --a-blue: #60a5fa; --a-amber: #f0b429; --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  /* Inline code sitting on the app canvas takes the app's plate, not the document's. */
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); font-size: .78em; }
+  .cap { color: var(--muted); font-size: .78rem; margin: .5rem 0 1.4rem; }
+  .cap b { color: var(--fg); }
+
+  /* ── App primitives, mirroring what already ships ────────────── */
+  /* FolderView header: mb-2 flex items-center justify-between gap-2 */
+  .f-hdr { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+           margin-bottom: .5rem; }
+  /* eyebrow: text-xs font-semibold tracking-widest uppercase text-muted-foreground/70 */
+  .f-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+               color: color-mix(in srgb, var(--a-muted) 70%, transparent); }
+  .f-actions { display: flex; align-items: center; gap: .25rem; }
+  /* IconButton size="md": h-6 w-6 rounded, tone accent at rest = text-muted-foreground */
+  .icbtn { width: 24px; height: 24px; border-radius: 4px; display: inline-flex;
+           align-items: center; justify-content: center; color: var(--a-muted); }
+  .icbtn.teal { color: var(--a-teal); }
+  /* CaptureBox compact: <form class="flex items-center gap-2"> */
+  .cap-row { display: flex; align-items: center; gap: .5rem; padding: 4px; }
+  /* TextField + "flex-1 px-3 py-1.5": rounded-sm, border-border, bg-input, text-sm */
+  .field { flex: 1; border: 1px solid var(--a-border); border-radius: 4px; background: var(--a-input);
+           color: var(--a-fg); padding: 6px 12px; font-size: 14px; }
+  .field.ph { color: var(--a-muted); }
+  .field.focus { outline: 2px solid var(--a-teal); outline-offset: 1px; }
+  /* Button size="sm" variant="ghost" + text-accent-teal (the compact box's submit) */
+  .btn-add { height: 32px; border-radius: 4px; padding: 0 12px; font-size: 12px; font-weight: 500;
+             color: var(--a-teal); display: inline-flex; align-items: center; }
+  .btn-add.dim { opacity: .5; }
+  .btn-add.tall { min-height: 44px; }
+  /* Button size="sm" variant="ghostAccent" (the empty-state action) */
+  .btn-ghost-accent { height: 32px; border-radius: 4px; padding: 0 12px; font-size: 12px;
+                      font-weight: 500; color: var(--a-teal); display: inline-flex;
+                      align-items: center; gap: .4rem; }
+  /* taskListContainerClass at md+: rounded-2xl border bg-surface divide-y */
+  .t-list { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+            overflow: hidden; }
+  .t-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 12px;
+           border-top: 1px solid color-mix(in srgb, var(--a-border) 50%, transparent); }
+  .t-row:first-child { border-top: 0; }
+  .t-chev { width: 16px; height: 16px; color: var(--a-muted); flex: none; margin-top: 1px; }
+  /* CheckboxButton + checkboxSizeClass (md:h-4 w-4) + checkboxIncompleteClass */
+  .t-box { width: 16px; height: 16px; border-radius: 4px; flex: none; margin-top: 2px;
+           border: 1px solid color-mix(in srgb, var(--a-muted) 50%, transparent); }
+  /* titleTextClass at md+: text-sm */
+  .t-title { flex: 1; font-size: 14px; line-height: 20px; min-width: 0; }
+  /* Badge: rounded-full px-2 py-0.5 text-xs */
+  .badge { border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 500; flex: none; }
+  .badge.due { border: 1px solid color-mix(in srgb, var(--a-blue) 50%, transparent); color: var(--a-blue); }
+  .badge.today { border: 1px solid color-mix(in srgb, var(--a-amber) 50%, transparent); color: var(--a-amber); }
+  .badge.hi { background: color-mix(in srgb, var(--a-red) 15%, transparent); color: var(--a-red); }
+  /* EmptyState: py-16, font-serif text-2xl muted/50 + mt-2 text-sm muted/40 */
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center;
+           padding: 64px 0; text-align: center; }
+  .empty-t { font-family: Georgia, "Times New Roman", serif; font-size: 24px;
+             color: color-mix(in srgb, var(--a-muted) 50%, transparent); }
+  .empty-d { margin-top: 8px; font-size: 14px;
+             color: color-mix(in srgb, var(--a-muted) 40%, transparent); }
+  .empty-a { margin-top: 16px; }
+  /* cardChromeClass (mobile): rounded-2xl border bg-surface p-1 */
+  .m-card { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+            padding: 4px; }
+  .m-row { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; }
+  .m-box { width: 24px; height: 24px; border-radius: 4px; flex: none;
+           border: 1px solid color-mix(in srgb, var(--a-muted) 50%, transparent); }
+  .m-title { font-size: 15px; line-height: 1.35; flex: 1; }
+  .phone { max-width: 330px; margin: 0 auto; }
+  .note { color: var(--a-muted); font-size: 12px; margin-top: .8rem; }
+  .note b { color: var(--a-fg); font-weight: 600; }
+  .side { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .side > * { flex: 1 1 320px; min-width: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-165 — Add ability to create task from folder view</h1>
+<p class="sub">
+  <span class="pill">Story</span><span class="pill">Tasks module</span><span class="pill">Frontend only</span>
+  Capture a task straight into the folder you are looking at, instead of capturing to the Inbox and
+  dragging it in afterwards.
+</p>
+
+<h2>1 · What this story is</h2>
+
+<p>
+  Every task in alfred is born in the Inbox. The hero <code>CaptureBox</code> lives on
+  <code>/</code>, and a folder view (<code>/folders/[id]</code>) is read-only: it renders an eyebrow
+  with the folder name, a Collapse-all button, and the folder's <code>TaskList</code>
+  (<code>frontend/components/tasks/folder-view.tsx</code>). So filing a thought you already know
+  belongs in <b>Work</b> costs a trip to <code>/</code>, a capture, a return to the folder, and a
+  drag — or a triage pass later.
+</p>
+
+<p>
+  This story gives the folder view its own capture affordance. Nothing about the Inbox flow changes;
+  this is the second door into the same store action.
+</p>
+
+<div class="card">
+  <p style="margin:0 0 .4rem"><b>The pieces already exist.</b> This is mostly wiring:</p>
+  <ul class="tight" style="margin:0">
+    <li><code>CaptureBox</code> already takes a <code>folderId</code> prop and already has a
+      <code>compact</code> single-line mode — that is exactly what the row-level "Add subtask"
+      affordance renders.</li>
+    <li><code>AnimatedHeightReveal</code> already owns the grow-in / shrink-out motion for that box.</li>
+    <li><code>ActiveEditorProvider</code> already owns the "only one inline input open at a time"
+      invariant.</li>
+    <li><code>useScopedTasks({ type: 'folder', folderId })</code> already picks up an optimistic
+      insert, so the new row appears with no refetch.</li>
+  </ul>
+</div>
+
+<p>
+  Two small gaps have to be closed for the wiring to be correct rather than merely present: a
+  top-level capture that carries a folder currently saves as <code>item_type: 'unclassified'</code>
+  (§6), and the shared empty state has nowhere to put an action (§5.3).
+</p>
+
+<h2>2 · Decisions locked during this refinement</h2>
+
+<div class="dec">
+  <h3><span class="n">S1</span>The affordance is a "+" in the folder header, revealing the compact capture box<span class="owner">owner</span></h3>
+  <p>
+    A teal-on-hover <code>IconButton</code> sits in the header's right cluster, left of Collapse-all.
+    Pressing it reveals a compact <code>CaptureBox</code> between the header and the list; pressing
+    it again closes it. Drawn in §4.
+  </p>
+  <p class="why">
+    <b>Why not an always-visible input:</b> the folder view is a reading surface — a second permanent
+    textbox competes with the Inbox hero for "the place you type". <b>Why not the full hero box:</b>
+    it would re-frame a folder as a capture screen and duplicate the one surface that is deliberately
+    singular. The toggle mirrors the row-level "Add subtask" +, and the epic block's "New story" +,
+    so it is the third instance of a pattern rather than a new one.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span>Open/closed lives in the <code>ActiveEditorProvider</code>, keyed by folder id</h3>
+  <p>
+    <code>ActiveEditor['kind']</code> gains <code>'folder-capture'</code>, and the folder box is
+    identified by <code>{ itemId: folderId, kind: 'folder-capture' }</code>.
+  </p>
+  <p class="why">
+    <b>Why not local <code>useState</code>:</b> the store exists precisely to keep one inline input
+    open at a time. With local state the folder box and a row's title edit (or another row's
+    add-subtask box) could be open simultaneously, each with its own draft — the exact thing that
+    store was introduced to prevent. Registering it also inherits the correct close semantics for
+    free (<code>closeEditor</code> no-ops when something else already took over). The Inbox hero box
+    stays exempt, as its store doc says: it is always-on and has no toggle.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>A new task lands wherever the folder's ranking puts it<span class="owner">owner</span></h3>
+  <p>
+    No pinning, no re-sort, no scroll. A folder ranks by priority → due date → <code>created_at</code>
+    (ALF-37), so a fresh task with neither priority nor due date appears at the end of the
+    unprioritised group.
+  </p>
+  <p class="why">
+    <b>Why:</b> pinning would introduce a second ordering rule that contradicts the one the view
+    advertises, and it would have to expire on some ill-defined event ("until you navigate away").
+    The capture box stays open and focused after each capture, so the feedback that the capture
+    landed is the box clearing and the count/badges updating — the same feedback the Inbox gives.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S4</span>A top-level capture into a folder is created as a <code>task</code>, not <code>unclassified</code></h3>
+  <p>
+    <code>addTask</code> resolves <code>item_type</code> to <code>'task'</code> when a parentless
+    capture carries a <code>folderId</code>. Today it would resolve to <code>'unclassified'</code>.
+  </p>
+  <p class="why">
+    <b>Why this is a bug, not a preference:</b> the store already encodes the rule — <code>moveTask</code>
+    classifies any still-unclassified item as a task when filing it into a folder, because "folders
+    hold tasks". An unclassified row rendered in a folder has <b>no completion checkbox</b>
+    (completion is task-only) and offers a Classify gate instead, so a task created from the folder
+    view could not be ticked off. Creating into a folder is filing; it classifies for the same reason.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>An empty folder gets an "Add task" action inside its empty state<span class="owner">owner</span></h3>
+  <p>
+    <code>EmptyState</code> gains an optional <code>action</code> slot; <code>TaskList</code> gains
+    <code>emptyDescription</code> / <code>emptyAction</code> passthroughs. The folder view fills both.
+  </p>
+  <p class="why">
+    <b>Why:</b> an empty folder's description reads "Capture something above." — copy that is true on
+    the Inbox and false in a folder, where there is nothing above. And an empty folder is exactly
+    when the header "+" is hardest to find, because the eye is on the centred empty state. The action
+    is only rendered while the box is closed, so it never sits under an open box as a dead control.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S6</span>No API, schema, or migration change</h3>
+  <p>
+    <code>POST /api/items</code> already accepts <code>folder_id</code> and an explicit
+    <code>item_type</code>. The classification rule of S4 is applied client-side in the store, where
+    the identical <code>moveTask</code> rule already lives. <b>No migration is added by this story.</b>
+  </p>
+  <p class="why">
+    <b>Why not enforce it in the route:</b> the route is a generic item factory shared with the Siri
+    ingest path (which never sends a folder); pushing a tasks-module product rule into it would split
+    the rule across two layers. <code>items_task_only_fields</code> does not constrain
+    <code>folder_id</code>, so nothing at the DB level is being worked around.
+  </p>
+</div>
+
+<h2>3 · The shape of the change</h2>
+
+<h3>3.1 Files touched, at a glance</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:38%">File</th><th>Change</th></tr>
+  <tr>
+    <td><code>components/tasks/folder-view.tsx</code></td>
+    <td>The header "+", the reveal + compact <code>CaptureBox</code>, and the empty-state action.
+      The only component with new behaviour.</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/empty-state.tsx</code></td>
+    <td>New optional <code>action?: React.ReactNode</code>, rendered under the description.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/task-list.tsx</code></td>
+    <td>New optional <code>emptyDescription?: string</code> (default: today's
+      <code>"Capture something above."</code>) and <code>emptyAction?: React.ReactNode</code>,
+      both passed straight to <code>EmptyState</code>.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/active-editor-store.tsx</code></td>
+    <td><code>kind</code> gains <code>'folder-capture'</code>; the <code>ActiveEditor</code> doc
+      comment notes that <code>itemId</code> carries a <b>folder</b> id for that kind.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/tasks-store.tsx</code></td>
+    <td><code>addTask</code>: a parentless capture carrying a folder resolves to
+      <code>item_type: 'task'</code> (S4). One expression, no new action.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/task-row.styles.ts</code><br /><code>components/tasks/task-row.tsx</code></td>
+    <td>Rename <code>addSubtaskRevealClass</code> → <code>captureRevealClass</code> and use it at
+      both reveal sites. It is the same need (ring clearance inside the reveal's
+      <code>overflow-hidden</code> clip, ALF-112); the folder box must not re-declare it.
+      <code>task-list.tsx</code> already imports from this file, so the import direction is established.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/folder-view.stories.tsx</code> <b>(new)</b></td>
+    <td>Three stories: folder with tasks (closed), capture open (<code>play</code> clicks the "+"),
+      empty folder. No <code>parameters.visualTest</code>, so no image-snapshot baseline is created
+      or moved.</td>
+  </tr>
+  <tr>
+    <td><code>e2e/folder-capture.spec.ts</code> <b>(new)</b></td>
+    <td>The end-to-end proof, including the persisted <code>item_type</code> (§7).</td>
+  </tr>
+  <tr>
+    <td>tests + demo doc</td>
+    <td><code>folder-view.test.tsx</code>, <code>empty-state.test.tsx</code>,
+      <code>tasks-store.test.tsx</code>, <code>active-editor-store.test.tsx</code>,
+      <code>task-row.styles.test.ts</code>, and a demo doc (§7, §8).</td>
+  </tr>
+</table>
+</div>
+
+<h3>3.2 Build from the shared layer</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:32%">Need</th><th>Use</th><th>Not</th></tr>
+  <tr><td>The capture input</td><td><code>CaptureBox</code> with <code>compact</code> +
+    <code>folderId</code> + <code>placeholder="Add task…"</code></td>
+    <td>A new folder-specific input (it would re-derive submit / optimistic-clear / error restore)</td></tr>
+  <tr><td>The header "+"</td><td><code>IconButton</code> <code>size="md" tone="accent"</code> +
+    lucide <code>Plus</code></td><td>A raw <code>&lt;button&gt;</code> with hand-written hover classes</td></tr>
+  <tr><td>The reveal</td><td><code>AnimatedHeightReveal</code> + the derived
+    <code>rendered</code> flag</td><td>A copied <code>grid-rows-[0fr↔1fr]</code> block</td></tr>
+  <tr><td>Open/closed state</td><td><code>useActiveEditor</code> / <code>useActiveEditorActions</code> +
+    <code>sameEditor</code></td><td>Local <code>useState</code> (S2)</td></tr>
+  <tr><td>The empty-state action</td><td><code>Button</code> <code>variant="ghostAccent" size="sm"</code>
+    in the new <code>EmptyState</code> slot</td><td>A bespoke link/button styled inline in the folder view</td></tr>
+  <tr><td>Reveal padding</td><td>the renamed <code>captureRevealClass</code></td>
+    <td>A second <code>px-1 py-1</code> literal</td></tr>
+</table>
+</div>
+
+<p class="small">
+  Read the <code>frontend-architecture</code>, <code>data-flow</code>, <code>motion</code> and
+  <code>react</code> skills before starting — the reveal's reduced-motion unmount and the
+  optimistic-insert reconcile are both documented gotchas there.
+</p>
+
+<h2>4 · The surface</h2>
+
+<p>
+  Drawn in the app's own tokens (<code>globals.css</code> + the atoms each element renders). This is
+  behaviour and layout intent, not a pixel spec — fidelity may drift, <b>presence may not</b>:
+  everything drawn ships, and nothing ships that isn't drawn.
+</p>
+
+<h3>4.1 A folder with tasks — capture box open</h3>
+
+<div class="mock">
+  <div class="mock-bar">A · <code>/folders/[id]</code> — desktop (md+), box open <span style="margin-left:auto">after pressing +</span></div>
+  <div class="mock-body">
+    <div class="f-hdr">
+      <span class="f-eyebrow">Work</span>
+      <span class="f-actions">
+        <span class="icbtn teal" title="Add task to Work">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </span>
+        <span class="icbtn" title="Collapse all">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg>
+        </span>
+      </span>
+    </div>
+
+    <div class="cap-row">
+      <span class="field ph focus">Add task…</span>
+      <span class="btn-add dim">Add</span>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="t-list">
+      <div class="t-row">
+        <span class="t-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        <span class="t-box"></span>
+        <span class="t-title">Ship the Q3 deck</span>
+        <span class="badge hi">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="m7 11 5-5 5 5M7 18l5-5 5 5"/></svg>
+        </span>
+        <span class="badge today">Today</span>
+      </div>
+      <div class="t-row">
+        <span class="t-chev"></span>
+        <span class="t-box"></span>
+        <span class="t-title">Review the budget spreadsheet</span>
+        <span class="badge due">Tomorrow</span>
+      </div>
+      <div class="t-row">
+        <span class="t-chev"></span>
+        <span class="t-box"></span>
+        <span class="t-title">Call the vendor back</span>
+      </div>
+    </div>
+
+    <p class="note">
+      The <b>+</b> is a toggle: it opens the box, and closes it again. It sits <b>left of
+      Collapse-all</b>, matching the row's <code>+</code>-before-<code>⋯</code> order. The box is the
+      same compact <code>CaptureBox</code> the add-subtask affordance renders — a
+      <code>TextField</code> plus a ghost <b>Add</b>, disabled until there is text. It grows in
+      (<code>AnimatedHeightReveal</code>) and is focused on mount, so the "+" press is the only click
+      needed before typing.
+    </p>
+  </div>
+</div>
+<p class="cap">
+  <b>A.</b> A capture here lands in this folder as an ordinary task. Per S3 it takes its natural
+  place in the ranking — <i>after</i> the three rows shown, since it has neither priority nor a due
+  date. The box stays open and focused so the next one can be typed straight away.
+</p>
+
+<h3>4.2 An empty folder — closed, then open</h3>
+
+<div class="side">
+  <div>
+    <div class="mock">
+      <div class="mock-bar">B · empty folder, box closed</div>
+      <div class="mock-body">
+        <div class="f-hdr">
+          <span class="f-eyebrow">Someday</span>
+          <span class="f-actions">
+            <span class="icbtn teal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span class="icbtn" style="opacity:.4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg></span>
+          </span>
+        </div>
+        <div class="empty">
+          <span class="empty-t">No tasks in Someday</span>
+          <span class="empty-d">Add your first task to this folder.</span>
+          <span class="empty-a"><span class="btn-ghost-accent">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Add task
+          </span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="mock">
+      <div class="mock-bar">C · empty folder, box open</div>
+      <div class="mock-body">
+        <div class="f-hdr">
+          <span class="f-eyebrow">Someday</span>
+          <span class="f-actions">
+            <span class="icbtn teal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            <span class="icbtn" style="opacity:.4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg></span>
+          </span>
+        </div>
+        <div class="cap-row">
+          <span class="field focus">Water the plants</span>
+          <span class="btn-add">Add</span>
+        </div>
+        <div class="empty">
+          <span class="empty-t">No tasks in Someday</span>
+          <span class="empty-d">Add your first task to this folder.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cap">
+  <b>B → C.</b> Three things change in the empty state: the description stops saying "Capture
+  something above." (there is nothing above), an <b>Add task</b> action appears beneath it, and that
+  action disappears while the box is open — it opens the same box the "+" does, so leaving it on
+  screen would be a control that does nothing. Collapse-all is disabled (nothing to collapse) in both,
+  exactly as today. The Inbox keeps today's "Capture something above." — the default is unchanged.
+</p>
+
+<h3>4.3 Mobile</h3>
+
+<div class="mock phone">
+  <div class="mock-bar">D · <code>/folders/[id]</code> — mobile, box open</div>
+  <div class="mock-body">
+    <div class="f-hdr">
+      <span class="f-eyebrow">Work</span>
+      <span class="f-actions">
+        <span class="icbtn teal"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+        <span class="icbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5M7 4l5 5 5-5"/></svg></span>
+      </span>
+    </div>
+    <div class="cap-row">
+      <span class="field ph focus">Add task…</span>
+      <span class="btn-add tall dim">Add</span>
+    </div>
+    <div style="height:10px"></div>
+    <div class="m-card">
+      <div class="m-row">
+        <span class="t-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        <span class="m-box"></span>
+        <span class="m-title">Ship the Q3 deck</span>
+      </div>
+    </div>
+    <p class="note">
+      The header "+" is present at <b>every</b> width. Unlike the row-level "+" (which hides below
+      <code>md</code> and folds into the row's <code>⋯</code> menu), the folder header has no overflow
+      menu to fold into and its actions are never hover-gated. The compact box's <b>Add</b> keeps its
+      existing ≥44px mobile target.
+    </p>
+  </div>
+</div>
+<p class="cap">
+  <b>D.</b> Below <code>md</code> the list becomes per-task cards — existing behaviour, unchanged by
+  this story. Only the header cluster and the revealed box are new.
+</p>
+
+<h2>5 · Open, close, and the states in between</h2>
+
+<h3>5.1 The state machine</h3>
+
+<svg viewBox="0 0 900 250" role="img" aria-label="Open/close state machine for the folder capture box">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="var(--muted)" />
+    </marker>
+  </defs>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="13">
+    <rect x="20" y="90" width="180" height="62" rx="10" fill="var(--card)" stroke="var(--line)" />
+    <text x="110" y="115" text-anchor="middle" fill="var(--fg)" font-weight="600">Closed</text>
+    <text x="110" y="134" text-anchor="middle" fill="var(--muted)" font-size="11">nothing rendered</text>
+
+    <rect x="350" y="90" width="200" height="62" rx="10" fill="var(--accent-bg)" stroke="var(--accent)" />
+    <text x="450" y="115" text-anchor="middle" fill="var(--fg)" font-weight="600">Open</text>
+    <text x="450" y="134" text-anchor="middle" fill="var(--muted)" font-size="11">box mounted + focused</text>
+
+    <rect x="700" y="90" width="180" height="62" rx="10" fill="var(--card)" stroke="var(--line)" />
+    <text x="790" y="112" text-anchor="middle" fill="var(--fg)" font-weight="600">Closing</text>
+    <text x="790" y="130" text-anchor="middle" fill="var(--muted)" font-size="11">shrinking out,</text>
+    <text x="790" y="144" text-anchor="middle" fill="var(--muted)" font-size="11">still mounted</text>
+
+    <path d="M200,110 L345,110" stroke="var(--muted)" fill="none" marker-end="url(#ar)" />
+    <text x="272" y="88" text-anchor="middle" fill="var(--fg)" font-size="11.5">press +</text>
+    <text x="272" y="102" text-anchor="middle" fill="var(--muted)" font-size="11">(or Add task)</text>
+
+    <path d="M550,110 L695,110" stroke="var(--muted)" fill="none" marker-end="url(#ar)" />
+    <text x="622" y="88" text-anchor="middle" fill="var(--fg)" font-size="11.5">press + · Esc · blur</text>
+    <text x="622" y="102" text-anchor="middle" fill="var(--muted)" font-size="11">· another editor opens</text>
+
+    <path d="M790,152 L790,195 L110,195 L110,155" stroke="var(--muted)" fill="none" marker-end="url(#ar)" />
+    <text x="450" y="212" text-anchor="middle" fill="var(--fg)" font-size="11.5">onExited (animationend) — or immediately, under prefers-reduced-motion</text>
+
+    <path d="M420,90 C420,40 480,40 480,90" stroke="var(--accent)" fill="none" marker-end="url(#ar)" />
+    <text x="450" y="34" text-anchor="middle" fill="var(--fg)" font-size="11.5">capture (Enter / Add) — box clears, stays open</text>
+  </g>
+</svg>
+
+<h3>5.2 The rules that machine encodes</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Trigger</th><th>Result</th></tr>
+  <tr><td>Press the header "+" while closed</td>
+      <td><code>openEditor({ itemId: folderId, kind: 'folder-capture' })</code>. Any other open
+        inline editor (a row title edit, another row's add-subtask box) closes — that is the
+        provider's existing behaviour.</td></tr>
+  <tr><td>Press the header "+" while open</td>
+      <td><code>closeEditor(…)</code>. The button also calls <code>preventDefault()</code> on
+        <code>mouseDown</code> while open, or the box's blur-dismiss fires first and the click
+        re-opens what it just closed — the trap already documented on the row's "+".</td></tr>
+  <tr><td>Press <b>Add task</b> in the empty state</td><td>Identical to pressing "+" while closed.</td></tr>
+  <tr><td>Enter, or the box's <b>Add</b></td>
+      <td>Captures. The box clears optimistically and <b>stays open and focused</b> so consecutive
+        thoughts can be typed. Inherited from <code>CaptureBox</code>, unchanged.</td></tr>
+  <tr><td>Escape, or focus leaving the box</td>
+      <td>Dismiss — <code>CaptureBox</code> calls <code>onDismiss</code>, which closes the editor.
+        Any typed draft is discarded (as with add-subtask).</td></tr>
+  <tr><td>Another inline editor opens</td>
+      <td>The folder box closes: <code>sameEditor</code> stops matching, so it animates out.</td></tr>
+  <tr><td>A save fails</td>
+      <td><code>CaptureBox</code>'s own path: the text is restored into the box unless the user has
+        started typing the next one, and the store's rollback removes the optimistic row and toasts
+        "Couldn't add task". Nothing new.</td></tr>
+  <tr><td><code>prefers-reduced-motion</code></td>
+      <td>No animation runs, so there is no <code>animationend</code> to wait on: the render flag is
+        dropped during render, exactly as <code>task-row</code> does for the add-subtask box and
+        <code>inbox-screen</code> for the list.</td></tr>
+  <tr><td>The folder id doesn't match a folder</td>
+      <td>Unchanged: "Folder not found", no header, no "+".</td></tr>
+</table>
+</div>
+
+<h3>5.3 The component, in outline</h3>
+
+<pre><code>// components/tasks/folder-view.tsx
+const editor = { itemId: folderId, kind: 'folder-capture' } as const;
+const showCapture = sameEditor(useActiveEditor(), editor);
+const { openEditor, closeEditor } = useActiveEditorActions();
+const prefersReducedMotion = usePrefersReducedMotion();
+
+// Keep the box mounted through its exit; drop it on the reveal's onExited — or during
+// render when there is no animation to wait for (the motion skill's reduced-motion rule).
+const [captureRendered, setCaptureRendered] = React.useState(showCapture);
+if (showCapture &amp;&amp; !captureRendered) setCaptureRendered(true);
+else if (!showCapture &amp;&amp; captureRendered &amp;&amp; prefersReducedMotion) setCaptureRendered(false);
+
+// header: eyebrow · [ + ] [ collapse-all ]
+&lt;IconButton size="md" tone="accent" aria-label={`Add task to ${folder.name}`} title="Add task"
+  aria-expanded={showCapture}
+  onMouseDown={(e) =&gt; { if (showCapture) e.preventDefault(); }}
+  onClick={() =&gt; { showCapture ? closeEditor(editor) : openEditor(editor); }}&gt;
+  &lt;Plus size={16} /&gt;
+&lt;/IconButton&gt;
+
+{captureRendered &amp;&amp; (
+  &lt;AnimatedHeightReveal open={showCapture} onExited={() =&gt; { setCaptureRendered(false); }}
+    className={captureRevealClass}&gt;
+    &lt;CaptureBox compact folderId={folderId} placeholder="Add task…"
+      onDismiss={() =&gt; { closeEditor(editor); }} /&gt;
+  &lt;/AnimatedHeightReveal&gt;
+)}
+
+&lt;TaskList
+  scope={{ type: 'folder', folderId }}
+  emptyMessage={`No tasks in ${folder.name}`}
+  emptyDescription="Add your first task to this folder."
+  {...(showCapture ? {} : { emptyAction: /* the ghostAccent "Add task" button */ })}
+/&gt;</code></pre>
+
+<div class="callout">
+  <code>exactOptionalPropertyTypes</code> is on: spread an optional prop conditionally (as above)
+  rather than passing <code>undefined</code>, the pattern <code>folder-nav.tsx</code> already uses.
+</div>
+
+<p>
+  <code>parseProjectPrefix</code> stays <b>off</b> here, as it is for the subtask box: a
+  <code>&lt;project&gt;:</code> prefix classifies a capture as Code and strips the folder, which is
+  the opposite of what this affordance is for. The Inbox box remains the only place it runs.
+</p>
+
+<h2>6 · What gets created</h2>
+
+<svg viewBox="0 0 900 320" role="img" aria-label="Data flow from the folder capture box to the folder list">
+  <defs>
+    <marker id="ar2" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="var(--muted)" />
+    </marker>
+    <marker id="ar3" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="var(--no)" />
+    </marker>
+  </defs>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12.5">
+    <rect x="15" y="20" width="205" height="58" rx="9" fill="var(--card)" stroke="var(--line)" />
+    <text x="117" y="43" text-anchor="middle" fill="var(--fg)" font-weight="600">CaptureBox (folder)</text>
+    <text x="117" y="62" text-anchor="middle" fill="var(--muted)" font-size="11">addTask({ text, folderId })</text>
+
+    <rect x="290" y="20" width="270" height="58" rx="9" fill="var(--accent-bg)" stroke="var(--accent)" />
+    <text x="425" y="41" text-anchor="middle" fill="var(--fg)" font-weight="600">tasks-store · addTask</text>
+    <text x="425" y="60" text-anchor="middle" fill="var(--muted)" font-size="11">parentless + folder ⇒ item_type: 'task'</text>
+
+    <rect x="630" y="20" width="255" height="58" rx="9" fill="var(--card)" stroke="var(--line)" />
+    <text x="757" y="41" text-anchor="middle" fill="var(--fg)" font-weight="600">optimistic insert</text>
+    <text x="757" y="60" text-anchor="middle" fill="var(--muted)" font-size="11">temp row in the shared store</text>
+
+    <rect x="630" y="130" width="255" height="58" rx="9" fill="var(--card)" stroke="var(--line)" />
+    <text x="757" y="151" text-anchor="middle" fill="var(--fg)" font-weight="600">POST /api/items</text>
+    <text x="757" y="170" text-anchor="middle" fill="var(--muted)" font-size="11">unchanged route</text>
+
+    <rect x="290" y="130" width="270" height="58" rx="9" fill="var(--card)" stroke="var(--line)" />
+    <text x="425" y="151" text-anchor="middle" fill="var(--fg)" font-weight="600">reconcile</text>
+    <text x="425" y="170" text-anchor="middle" fill="var(--muted)" font-size="11">saved row replaces the temp row</text>
+
+    <rect x="15" y="130" width="205" height="58" rx="9" fill="var(--card)" stroke="var(--line)" />
+    <text x="117" y="151" text-anchor="middle" fill="var(--fg)" font-weight="600">useScopedTasks</text>
+    <text x="117" y="170" text-anchor="middle" fill="var(--muted)" font-size="11">{ type: 'folder', folderId }</text>
+
+    <rect x="15" y="240" width="205" height="52" rx="9" fill="var(--card)" stroke="var(--line)" />
+    <text x="117" y="264" text-anchor="middle" fill="var(--fg)" font-weight="600">the row, ranked</text>
+    <text x="117" y="281" text-anchor="middle" fill="var(--muted)" font-size="11">priority → due → created_at</text>
+
+    <rect x="290" y="240" width="270" height="52" rx="9" fill="none" stroke="var(--no)" stroke-dasharray="4 3" />
+    <text x="425" y="264" text-anchor="middle" fill="var(--no)" font-weight="600">rollback on failure</text>
+    <text x="425" y="281" text-anchor="middle" fill="var(--muted)" font-size="11">temp row removed · toast</text>
+
+    <path d="M220,49 L285,49" stroke="var(--muted)" fill="none" marker-end="url(#ar2)" />
+    <path d="M560,49 L625,49" stroke="var(--muted)" fill="none" marker-end="url(#ar2)" />
+    <path d="M757,78 L757,125" stroke="var(--muted)" fill="none" marker-end="url(#ar2)" />
+    <path d="M630,159 L565,159" stroke="var(--muted)" fill="none" marker-end="url(#ar2)" />
+    <path d="M290,159 L225,159" stroke="var(--muted)" fill="none" marker-end="url(#ar2)" />
+    <path d="M117,188 L117,235" stroke="var(--muted)" fill="none" marker-end="url(#ar2)" />
+    <path d="M700,188 L700,215 L425,215 L425,235" stroke="var(--no)" fill="none" stroke-dasharray="4 3" marker-end="url(#ar3)" />
+    <text x="600" y="209" text-anchor="middle" fill="var(--no)" font-size="11">POST failed</text>
+  </g>
+</svg>
+
+<p>
+  The store's <code>item_type</code> expression is the only line of logic this story adds:
+</p>
+
+<pre><code>item_type:
+  parentId === undefined
+    ? (input.itemType ?? (folderId === undefined ? 'unclassified' : 'task'))  // ← S4
+    : parent?.item_type === 'code'
+      ? 'code'
+      : 'task',</code></pre>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">Capture</th><th style="width:22%"><code>item_type</code></th><th>Why</th></tr>
+  <tr><td>Inbox hero box</td><td><code>unclassified</code></td>
+      <td>Unchanged — no <code>folderId</code> is passed (<code>folderId: null</code> normalises to
+        <code>undefined</code>, so an explicit "Inbox" is still unclassified).</td></tr>
+  <tr><td>Inbox hero box, <code>&lt;project&gt;:</code> prefix matched</td><td><code>code</code></td>
+      <td>Unchanged — an explicit <code>itemType</code> still wins over the folder rule.</td></tr>
+  <tr><td><b>Folder box (new)</b></td><td><code>task</code></td>
+      <td>S4 — filing classifies, exactly as <code>moveTask</code> does.</td></tr>
+  <tr><td>Add-subtask box</td><td><code>task</code> / <code>code</code></td>
+      <td>Unchanged — the parent branch already decides, and it is evaluated first.</td></tr>
+</table>
+</div>
+
+<p>
+  Everything else about the created row is today's behaviour: <code>sort_order</code> one past the
+  largest root, <code>raw_capture</code> = the typed text, no due date, no priority, and the
+  folder's sidebar badges recompute from the same store (a new task with no due date and no priority
+  moves neither tally).
+</p>
+
+<h2>7 · Tests</h2>
+
+<p>
+  Red/Green TDD, per the repo rule — every behavioural change here is reachable from a test, and the
+  one persistence-shaped claim (S4) is asserted at both the store and the database.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">File</th><th>Covers</th></tr>
+  <tr>
+    <td><code>components/tasks/folder-view.test.tsx</code> (RTL)</td>
+    <td>
+      The "+" renders with the folder-specific name (<code>Add task to Work</code>) and
+      <code>aria-expanded</code> tracks the box; clicking it reveals a capture box wired with
+      <code>compact</code>, <code>folderId</code> and <code>placeholder="Add task…"</code> (assert via
+      a mocked <code>./capture-box</code>, the file's existing mock-and-inspect-props style); clicking
+      it again closes; <code>onDismiss</code> closes; opening <b>another</b> editor closes the box
+      (rendered alongside a probe that calls <code>openEditor</code>); under
+      <code>prefers-reduced-motion</code> the box unmounts with no <code>animationend</code>;
+      <code>TaskList</code> receives the folder empty description, receives an
+      <code>emptyAction</code> while closed and <b>none</b> while open, and that action opens the box;
+      the not-found branch renders no "+".
+    </td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/empty-state.test.tsx</code></td>
+    <td>The <code>action</code> node renders below the description when given, and nothing extra is
+      rendered when omitted (the Inbox/not-found callers must be untouched).</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/tasks-store.test.tsx</code></td>
+    <td>A parentless capture <b>with</b> a folder posts <code>item_type: 'task'</code> and the folder
+      id; <b>without</b> a folder still posts <code>'unclassified'</code>; an explicit
+      <code>itemType</code> ('code') still wins; a subtask under a task/code parent is unaffected.
+      Plus the existing reconcile/rollback assertions staying green.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/active-editor-store.test.tsx</code></td>
+    <td>A <code>folder-capture</code> editor is closed when a <code>title</code> editor opens, and a
+      stale <code>closeEditor</code> for it no-ops — the invariant S2 leans on.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/task-row.styles.test.ts</code></td>
+    <td>The renamed <code>captureRevealClass</code> keeps its locked value (<code>px-1 py-1</code>).</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/folder-view.stories.tsx</code></td>
+    <td>Three stories seeded through <code>parameters.store</code>; the <b>capture-open</b> story's
+      <code>play</code> presses the "+" and asserts the field is present and focused. No
+      <code>visualTest</code> parameter, so no image snapshot is written.</td>
+  </tr>
+  <tr>
+    <td><code>e2e/folder-capture.spec.ts</code> <b>(new)</b></td>
+    <td>
+      Seed a folder plus an existing task. Open the folder, press <b>Add task to Work</b>, type,
+      press Enter → the row appears in the folder's list and carries a completion checkbox
+      (<code>Mark "…" complete</code>) — the user-visible proof of S4. Read
+      <code>/__mock__/state</code> and assert the stored row has
+      <code>item_type === 'task'</code>, the folder's id, and <code>parent_id === null</code>
+      (mirroring <code>subtask-creation.spec.ts</code>). Assert it is <b>not</b> in
+      <code>/?view=inbox</code>. Then the empty-folder path: a second folder, its empty-state
+      <b>Add task</b>, one capture, and the empty state gone.
+    </td>
+  </tr>
+</table>
+</div>
+
+<h2>8 · Demo doc</h2>
+
+<p>
+  A user-visible change, so it lands with a demo doc under <code>docs/demos/</code> per the
+  <code>showboat</code> skill — which stays the source of truth for how evidence is captured, how the
+  folder is named, and what <code>npm run demo -- verify</code> must reproduce. What this story's doc
+  has to show:
+</p>
+<ol class="tight">
+  <li>The folder view before: header, no capture affordance.</li>
+  <li>The "+" pressed, the box open (screenshot), and a task captured into the folder — the new row
+    visible in the same folder.</li>
+  <li>The empty-folder path: the empty state with its <b>Add task</b> action, and the folder after
+    its first capture.</li>
+  <li>An <code>exec</code> block proving S4 — the created row's <code>item_type</code> is
+    <code>task</code>, not <code>unclassified</code>.</li>
+  <li>The captured task absent from the Inbox.</li>
+</ol>
+
+<h2>9 · Out of scope</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:36%">Not in this story</th><th>Why / what instead</th></tr>
+  <tr><td>The same affordance on <b>Priority</b>, <b>Completed</b>, or the weekly plan</td>
+      <td>Priority is a cross-folder ranking with no single destination folder; Completed is an
+        archive. Neither has an unambiguous "create here" target.</td></tr>
+  <tr><td>Setting a due date / priority / notes while capturing</td>
+      <td>Capture stays one line, as everywhere else in alfred. The row's detail panel is one click
+        away once it exists.</td></tr>
+  <tr><td>Creating a <b>subtask</b> from the folder header</td>
+      <td>Already exists per-row; a folder-level box only ever creates top-level tasks.</td></tr>
+  <tr><td>Project-prefix parsing in the folder box</td>
+      <td>Deliberately Inbox-only (§5.3) — it strips a capture out of the folder into the Code module.</td></tr>
+  <tr><td>A keyboard shortcut to open the box</td>
+      <td>No shortcut vocabulary exists for view-scoped affordances yet; the command palette is the
+        established fast path.</td></tr>
+  <tr><td>Returning focus to the "+" when the box dismisses</td>
+      <td>The row-level add-subtask box behaves the same way today. Worth fixing — for <b>both</b>
+        boxes, in <code>CaptureBox</code>, in its own change — rather than making the two diverge here.</td></tr>
+  <tr><td>Moving <code>CaptureBox</code>'s compact dismiss from blur to outside-pointerdown</td>
+      <td>Same reason: it is shared with add-subtask, so changing it is a change to that feature too.</td></tr>
+</table>
+</div>
+
+<h3>Open questions</h3>
+<p class="small">
+  None. The three decisions this story turned on — the affordance's shape, where a new task lands,
+  and what an empty folder offers — were settled with the owner during refinement and are recorded as
+  S1, S3 and S5.
+</p>
+
+<h2>10 · Acceptance criteria</h2>
+
+<ul class="ac">
+  <li class="h">The affordance</li>
+  <li>A folder view header shows a "+" button named <code>Add task to &lt;folder&gt;</code>, left of Collapse-all, at every viewport width.</li>
+  <li>Pressing it reveals a compact capture box between the header and the list, focused, placeholder <code>Add task…</code>; pressing it again closes it, with no re-open flicker.</li>
+  <li>Escape, or focus leaving the box, dismisses it; opening any other inline editor (a row title edit, a row's add-subtask box) closes it, and opening it closes them.</li>
+  <li>Under <code>prefers-reduced-motion</code> the box appears and disappears with no animation and is not stranded on screen.</li>
+  <li>The "Folder not found" view has no capture affordance.</li>
+
+  <li class="h">Capturing</li>
+  <li>Enter (or <b>Add</b>) creates a task in <b>that folder</b>; the row appears immediately, in the position the folder's priority → due → created_at ranking gives it.</li>
+  <li>The box clears and stays open and focused, so several tasks can be captured in a row.</li>
+  <li>The created item is persisted with <code>item_type = 'task'</code>, the folder's <code>folder_id</code>, and no parent — it has a completion checkbox and can be ticked off immediately.</li>
+  <li>It does not appear in the Inbox.</li>
+  <li>A failed save restores the text into the box, removes the optimistic row, and toasts — unchanged <code>CaptureBox</code> / store behaviour.</li>
+  <li>An Inbox capture is still created as <code>unclassified</code>, and a <code>&lt;project&gt;:</code>-prefixed one still as <code>code</code>.</li>
+
+  <li class="h">The empty folder</li>
+  <li>An empty folder reads "No tasks in &lt;folder&gt;" over "Add your first task to this folder." — never "Capture something above."</li>
+  <li>It offers an <b>Add task</b> action that opens the same box; the action is not rendered while the box is open.</li>
+  <li>The Inbox's empty state is unchanged, and so is "Folder not found".</li>
+
+  <li class="h">Repo rules</li>
+  <li>No new capture input, reveal, or open/close state machine is hand-rolled — the box, the reveal, the button, and the single-open invariant all come from the existing shared layer.</li>
+  <li>The reveal padding class exists once and is used by both the subtask box and the folder box.</li>
+  <li>No API route, schema, or migration change.</li>
+  <li>No image-snapshot baseline is added or changed.</li>
+  <li>A demo doc built with <code>npm run demo</code> passes <code>npm run demo -- verify</code> and shows both the populated and the empty-folder path.</li>
+  <li><code>npm run check</code> is green, with no new lint suppressions, no <code>--no-verify</code>, and no config weakened.</li>
+</ul>
+
+<hr style="border:0;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
+<p class="small">
+  Spec for ALF-165. Refinement iterates in comments on the PR that carries this file.
+</p>
+
+</div>
+</body>
+</html>
