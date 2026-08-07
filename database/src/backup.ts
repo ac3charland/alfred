@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -106,6 +106,136 @@ export function assertCoreTables(present: Iterable<string>): void {
   }
 }
 
+/** One table's column list exactly as a dump's `COPY … FROM stdin;` header declares it. */
+export interface CopiedTable {
+  readonly table: string;
+  readonly columns: readonly string[];
+}
+
+/**
+ * A dumped shape the verify schema has no home for: `columns` are the drifted ones, and `absent`
+ * marks the case where the table itself is missing rather than just some of its columns.
+ */
+export interface TableDrift {
+  readonly table: string;
+  readonly columns: readonly string[];
+  readonly absent: boolean;
+}
+
+// The Supabase CLI's pg_dump quotes every identifier (`COPY "public"."items" ("id", …)`) and a
+// plain pg_dump quotes none (`COPY public.items (id, …)`), so both forms have to parse.
+const COPY_HEADER = /^COPY\s+(?:"?public"?\.)?"?([^\s".]+)"?\s*\(([^)]*)\)\s+FROM\s+stdin;/;
+
+/** Strip one layer of double quotes from a dumped identifier. */
+function unquote(identifier: string): string {
+  return identifier.trim().replace(/^"(.*)"$/, '$1');
+}
+
+/**
+ * The tables a dump's data section loads, with the columns each COPY writes. Parsed rather than
+ * assumed, because the dump's own headers are the only statement of what production's schema
+ * actually held at the moment it was taken.
+ *
+ * Tracks COPY block boundaries (a lone `\.` ends one) so a data row that happens to begin with
+ * `COPY ` — a captured task can be titled anything — is read as data, not as a second header.
+ */
+export function copiedTables(dumpSql: string): CopiedTable[] {
+  const copied: CopiedTable[] = [];
+  let inCopyBlock = false;
+  for (const line of dumpSql.split('\n')) {
+    if (inCopyBlock) {
+      if (line === String.raw`\.`) inCopyBlock = false;
+      continue;
+    }
+    const match = COPY_HEADER.exec(line);
+    const table = match?.[1];
+    const columnList = match?.[2];
+    if (table === undefined || columnList === undefined) continue;
+    copied.push({ table, columns: columnList.split(',').map((column) => unquote(column)) });
+    inCopyBlock = true;
+  }
+  return copied;
+}
+
+/**
+ * Where production's shape outruns the schema rebuilt from `database/migrations` — the columns, or
+ * whole tables, the dump carries that the verify database has nowhere to put.
+ *
+ * ONE-DIRECTIONAL by design. The reverse — the repo declaring more than a dump carries — is normal
+ * and must never fail a backup: the two instances migrate independently, so `work` routinely dumps
+ * a column short of the repo and COPY simply leaves the rest at their defaults. Only
+ * production-ahead-of-repo can abort a load.
+ */
+export function schemaDrift(
+  dumped: readonly CopiedTable[],
+  present: ReadonlyMap<string, readonly string[]>,
+): TableDrift[] {
+  const drift: TableDrift[] = [];
+  for (const { table, columns } of dumped) {
+    const have = present.get(table);
+    if (have === undefined) {
+      drift.push({ table, columns: [...columns], absent: true });
+      continue;
+    }
+    const missing = columns.filter((column) => !have.includes(column));
+    if (missing.length > 0) drift.push({ table, columns: missing, absent: false });
+  }
+  return drift;
+}
+
+/** The operator-facing account of the drift: what is ahead, and which side needs the fix. */
+export function describeSchemaDrift(drift: readonly TableDrift[]): string {
+  return [
+    'production is AHEAD of database/migrations — the dump carries shapes the repo cannot build:',
+    ...drift.map(
+      ({ table, columns, absent }) =>
+        `      ${table}${absent ? ' (whole table)' : ''}: ${columns.join(', ')}`,
+    ),
+    '    The dump is sound; the VERIFIER is stale. Commit the missing migration(s) to',
+    '    database/migrations so the next run can rebuild production’s schema from the repo.',
+  ].join('\n');
+}
+
+/** Reject an identifier that could break out of its double quoting before it ever reaches SQL. */
+function quoteIdentifier(identifier: string): string {
+  if (identifier.length === 0 || identifier.includes('"')) {
+    throw new Error(`refusing to build SQL for identifier ${JSON.stringify(identifier)}`);
+  }
+  return `"${identifier}"`;
+}
+
+/**
+ * DDL giving the throwaway database somewhere to put the drifted data, typed `text` — enough to
+ * prove every row LOADS and can be counted, which is what this step exists to check. It is
+ * deliberately NOT an attempt to reproduce production's real types: the authoritative schema lives
+ * in git and the integration suite is what checks it.
+ *
+ * This widens what a backup run can survive without softening what it reports — the run still
+ * exits non-zero on drift, so the stale migrations still get chased.
+ */
+export function reconcileDriftStatements(drift: readonly TableDrift[]): string[] {
+  return drift.flatMap(({ table, columns, absent }) => {
+    const name = `public.${quoteIdentifier(table)}`;
+    if (absent) {
+      const declarations = columns.map((column) => `${quoteIdentifier(column)} text`).join(', ');
+      return [`create table ${name} (${declarations})`];
+    }
+    return columns.map(
+      (column) => `alter table ${name} add column ${quoteIdentifier(column)} text`,
+    );
+  });
+}
+
+/**
+ * The run's exit code once the dump has been verified and uploaded. Drift means the artifact is
+ * safe but the repo is behind production, and a red run is the only thing that chases that — so a
+ * drifted run reports failure even though the backup is in R2. Separated from {@link main} so the
+ * "uploaded AND red" pairing is stated once and can't be quietly unpicked.
+ */
+export function backupExitCode(drift: readonly TableDrift[]): number {
+  return drift.length > 0 ? 1 : 0;
+}
+
 /** Append a progress line to stdout (mirrors the integration runner's plain, greppable logging). */
 function log(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -141,6 +271,25 @@ async function presentPublicTables(client: InstanceType<typeof Client>): Promise
   return rows.map((row) => row.table_name);
 }
 
+/** The public schema's base-table columns, keyed by table, as the verify database now holds them. */
+async function presentPublicColumns(
+  client: InstanceType<typeof Client>,
+): Promise<Map<string, string[]>> {
+  const { rows } = await client.query<{ table_name: string; column_name: string }>(
+    `select c.table_name, c.column_name from information_schema.columns c
+       join information_schema.tables t
+         on t.table_schema = c.table_schema and t.table_name = c.table_name
+      where c.table_schema = 'public' and t.table_type = 'BASE TABLE'`,
+  );
+  const columns = new Map<string, string[]>();
+  for (const row of rows) {
+    const existing = columns.get(row.table_name);
+    if (existing === undefined) columns.set(row.table_name, [row.column_name]);
+    else existing.push(row.column_name);
+  }
+  return columns;
+}
+
 /**
  * Dump the Supabase database, prove the dump restores, then upload it — in that fixed order, so a
  * dump that won't restore never overwrites the day's slot or counts as a green run.
@@ -171,6 +320,9 @@ async function main(): Promise<number> {
   requireEnv('R2_BUCKET');
   requireEnv('R2_ENDPOINT');
   const keys = backupKeys(instance, new Date());
+
+  // Bound outside the try so the final exit code can still see it after the upload.
+  let drift: TableDrift[] = [];
 
   const work = mkdtempSync(path.join(tmpdir(), 'alfred-backup-'));
   const schemaPath = path.join(work, 'schema.sql');
@@ -205,6 +357,22 @@ async function main(): Promise<number> {
       // throwaway free of the hosted `extensions` schema the dump's own DDL references.
       await bootstrapSupabase(client);
       await applyMigrations(client);
+      // …but it also couples the verifier to repo↔production parity, and the normal order of
+      // operations breaks that: a migration is applied to the live database FIRST and committed
+      // afterwards. In that window the dump carries a column the repo cannot build, and the load
+      // aborts on a dump that is perfectly sound — costing the day's backup to a stale verifier.
+      // So name that case, give the data somewhere to land, and carry on to the upload; the run
+      // still ends red (see the drift exit below) so the uncommitted migration gets chased.
+      drift = schemaDrift(
+        copiedTables(readFileSync(dataPath, 'utf8')),
+        await presentPublicColumns(client),
+      );
+      if (drift.length > 0) {
+        log(`  ⚠ ${describeSchemaDrift(drift)}`);
+        for (const statement of reconcileDriftStatements(drift)) {
+          await client.query(statement);
+        }
+      }
       run(
         String.raw`{ printf 'set session_replication_role = replica;\n'; cat ${dataPath}; } | psql "$VERIFY_DB_URL" -v ON_ERROR_STOP=1 --single-transaction --quiet`,
       );
@@ -225,8 +393,13 @@ async function main(): Promise<number> {
       run(`aws s3 cp ${gzPath} "s3://$R2_BUCKET/${key}" --endpoint-url "$R2_ENDPOINT"`);
       log(`  uploaded ${key}`);
     }
-    log('✓ backup complete');
-    return 0;
+    // The backup exists either way; the exit code is what tells the owner the repo is behind.
+    log(
+      drift.length > 0
+        ? '✗ backup uploaded, but database/migrations is behind production — commit the migration'
+        : '✓ backup complete',
+    );
+    return backupExitCode(drift);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
