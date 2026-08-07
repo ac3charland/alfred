@@ -472,12 +472,25 @@ intended_epic_id:    nullableUuid.optional(),
     <code>detail-chips.tsx</code>. Adopting it in <code>RepeatChip</code> is preferred (it is the
     same shape) but not required by this story.
   </p>
+  <p>
+    <b>Every chip here is a trigger whether or not it holds a value.</b> Setting one never turns it
+    into a label: the neutral "No folder" / "No project" state and the filled state are the same
+    control wearing two tones, and pressing a filled chip reopens its picker with the current value
+    ticked (drawn in <b>§3.2</b>). This is already true of Due, Repeat and Priority; the four new
+    ones inherit it, and <b>S7</b> extends the same property to the label chips on the row.
+  </p>
   <p class="why">
-    <b>Why the panel and not the row:</b> a rail of placeholder chips on every Inbox row would put
-    six affordances on a surface whose job is to stay scannable, and most rows need none of them
-    touched. The panel is one press away from the row menu, already auto-saves every control it
-    hosts, and is where Due / Repeat / Priority already live — so this is the existing pattern
+    <b>Why the panel owns the <i>empty</i> state:</b> a rail of placeholder chips on every Inbox row
+    would put six affordances on a surface whose job is to stay scannable, and most rows need none
+    of them touched. The panel is one press away from the row menu, already auto-saves every control
+    it hosts, and is where Due / Repeat / Priority already live — so this is the existing pattern
     extended, not a new one.
+    <br />
+    <b>The split, stated once:</b> a field with no value shows nothing on the row and is filled from
+    the panel; a field with a value shows a chip on the row and is edited <i>there</i> (<b>S7</b>),
+    with the panel offering the same control. So the row never grows an affordance for a label it
+    isn't already carrying, and no label the owner can see is ever more than one press from being
+    corrected.
     <br />
     <b>Why <code>Folder</code> is task-only:</b> "folders hold tasks" is already the rule
     <code>moveTask</code> encodes (ALF-72 classifies an unclassified item on filing it), and the
@@ -557,7 +570,7 @@ intended_epic_id:    nullableUuid.optional(),
 <h3>What shows on the row</h3>
 
 <div class="dec">
-  <h3><span class="n">S7</span>Two new read-only row chips: the folder (Inbox only) and the epic</h3>
+  <h3><span class="n">S7</span>Two new row chips — the folder (Inbox only) and the epic. Shown only when set, editable whenever shown.</h3>
   <p>
     The row keeps its rule — <b>a chip appears only when its field is set</b> — and gains two:
   </p>
@@ -568,12 +581,43 @@ intended_epic_id:    nullableUuid.optional(),
       existing <code>ProjectKeyChip</code> and styled as its sibling (the epic's <code>ref</code>,
       in the project's colour).</li>
   </ul>
-  <p>Both are read-only on the row and edited in the panel, exactly like <code>ProjectKeyChip</code> is today.</p>
+  <p>
+    <b>All three label chips are clickable in place</b> — the two new ones and the existing
+    <code>ProjectKeyChip</code>, which stops being read-only. Each opens the same picker its panel
+    twin does (<b>S5</b>), auto-saves, and writes through the same store action. A chip never goes
+    inert once it holds a value: it is a trigger before and after.
+  </p>
+  <p>
+    They gain it the way <code>DueDateChip</code> and <code>PriorityChip</code> already do — an
+    optional handler prop, present at the call site that wants editing and omitted for a
+    display-only pill. <code>ProjectKeyChip</code> has exactly one call site
+    (<code>task-row.tsx</code>), so the prop is additive with nothing else to migrate.
+  </p>
+  <p>
+    <b>Two row elements stay read-only, deliberately.</b> <code>RecurrenceChip</code> is unchanged
+    (read-only on the row, edited in the panel — today's behaviour, untouched by this story), and
+    the <code>TypeBadge</code> of <b>S8</b> is a <code>Badge</code>, not a <code>Chip</code>: a type
+    change carries <b>S6</b>'s childless-root gate, and a badge that is silently inert on some rows
+    reads worse than the ⋯ menu's <b>Classify as…</b>, which simply isn't offered where it doesn't
+    apply.
+  </p>
   <p class="why">
     <b>Why they're not optional:</b> after ALF-168 an Inbox row can carry a folder and show nothing
     for it, and after <b>S1</b> the same is true of an epic. Both are inputs to Dispatch readiness
     (<b>S9</b>) — a label you cannot see is a label you cannot check, which makes the epic's
     "glance and move on" impossible and turns an unready row into a mystery.
+    <br />
+    <b>Why clickable and not just visible:</b> the row is where the owner reads the batch, so it is
+    where they notice a wrong label. Sending them to the panel to fix the folder while the due date
+    beside it takes one press would split the row into two classes of correction for no reason a
+    user could infer. ALF-94 already settled this shape — <i>the one chip, used in both places,
+    clickable in both</i> — and <code>ProjectKeyChip</code>'s read-only note ("the project is
+    chosen/changed through the gate") is a comment about a world where <b>S3</b> hadn't made the
+    field patchable yet.
+    <br />
+    <b>This does not reopen the placeholder-rail question.</b> The row still shows a chip
+    <i>only when its field is set</i>; filling an empty field is still the panel's job. What changes
+    is that a value already on screen is editable where it is shown.
   </p>
 </div>
 
@@ -835,8 +879,14 @@ intended_epic_id:    nullableUuid.optional(),
   <code>ALF</code> project chip. (iv) The bulk bar's <b>Dispatch</b> button, first and teal-filled
   (<b>S9</b>). (v) The readiness line beneath it (<b>S10</b>) — row 3 is a task with no folder, so
   pressing Dispatch sends rows 1 and 2 and leaves row 3 selected with the line still showing.
-  Everything else — the checkboxes, the due and priority badges, the ⋯ menu, the three older
-  actions, Done — is unchanged.
+  <br /><br />
+  <b>Every label chip drawn here is clickable in place</b> (<b>S7</b>): <b>Health</b>, <b>ALF</b>
+  and <b>ALF-104</b> open the same pickers §3.2 and §3.3 draw, ticked at their current value —
+  exactly as the <b>Fri 7 Aug</b> and <b>▲</b> chips beside them already do. The <b>Task</b> badge
+  is the one label here that isn't: a type change carries <b>S6</b>'s gate, so it stays with the ⋯
+  menu's <b>Classify as…</b>, which simply isn't offered where it doesn't apply. Everything else —
+  the checkboxes, the due and priority chips, the ⋯ menu, the three older bulk actions, Done — is
+  unchanged.
 </p>
 
 <h3>3.2 · The detail panel — a task, with the Folder picker open</h3>
@@ -1070,9 +1120,12 @@ intended_epic_id:    nullableUuid.optional(),
     <code>FolderChip</code>, <code>IntendedProjectChip</code>, <code>IntendedEpicChip</code>.</li>
   <li><code>task-row/task-detail-panel.tsx</code> — renders the per-type chip set of <b>S5</b> and
     wires each to its store action.</li>
-  <li><code>task-row.tsx</code> — the two new read-only row chips and the Inbox-scoped
+  <li><code>task-row.tsx</code> — the two new row chips and the Inbox-scoped
     <code>TypeBadge</code> (<b>S7</b>, <b>S8</b>); the type-change gate feeds
     <code>TaskRowMenu</code>'s <b>Classify as…</b> as well.</li>
+  <li><code>tasks/project-key-chip.tsx</code> — gains the optional change handler that makes it
+    clickable (<b>S7</b>), following <code>DueDateChip</code>'s handler-present-means-editable
+    convention. One call site, so nothing else migrates.</li>
   <li><code>lib/hooks/use-task-row-flags.ts</code> — one new flag, <code>canChangeType</code>
     (<b>S6</b>), so the row, its menu and the bulk bar can't disagree.</li>
   <li><code>inbox-bulk-bar.tsx</code> — the Dispatch button, the readiness line, the re-derived
@@ -1136,7 +1189,10 @@ intended_epic_id:    nullableUuid.optional(),
       the store, unready ids come back unsent and unfailed, a save failure settles separately.
       <code>canChangeType</code> on a root/leaf/parent/subtask. The panel renders the right chip set
       per type and each chip persists. The row shows the folder chip only while undispatched, the
-      epic chip when set, and the Task badge only in the Inbox. The bulk bar's four gates and its
+      epic chip when set, and the Task badge only in the Inbox — and renders nothing at all for an
+      unset field. Each rendered folder / project / epic chip opens its picker and persists a pick
+      from the row itself, through the same action the panel calls (the assertion that keeps
+      "shown ⇒ editable" from decaying as chips are added). The bulk bar's four gates and its
       readiness line. The gate pre-selects a unanimous epic, doesn't lock it, and clears it when the
       project changes.
     </td>
@@ -1218,6 +1274,12 @@ intended_epic_id:    nullableUuid.optional(),
   <li>An undispatched row with a folder shows a folder chip; a dispatched one does not.</li>
   <li>A row with an <code>intended_epic_id</code> shows the epic's ref beside its project chip.</li>
   <li>A <code>task</code> row shows the Task badge in the Inbox and nowhere else.</li>
+  <li><b>No chip renders for a field that is unset</b> — an item with no folder, project or epic
+    shows nothing in their place, on any view.</li>
+  <li><b>Every label chip that renders is editable where it renders:</b> pressing the folder,
+    project or epic chip opens its picker with the current value ticked, and picking auto-saves
+    through the same store action the detail panel uses. The <code>TypeBadge</code> and the
+    row's <code>RecurrenceChip</code> are the two documented exceptions.</li>
 </ul>
 
 <h4>Dispatch</h4>
@@ -1268,8 +1330,11 @@ intended_epic_id:    nullableUuid.optional(),
   <li><b>The Worker.</b> No cron trigger, no <code>scheduled</code> handler, no sweep query, no
     Anthropic call, no prompt, no <code>ANTHROPIC_API_KEY</code>. The <code>workers/</code> package
     is untouched by this story.</li>
-  <li><b>A rail of placeholder chips on the Inbox row.</b> Decided against in <b>S5</b>; the panel
-    owns editing. Revisit only if triage in practice proves the extra press expensive.</li>
+  <li><b>A rail of placeholder chips on the Inbox row.</b> Decided against in <b>S5</b>: an
+    <i>unset</i> field renders nothing on the row, and filling one is the panel's job. Note this is
+    only about the empty state — a field that <i>is</i> set shows a chip and that chip is editable
+    where it sits (<b>S7</b>). Revisit only if triage in practice proves the extra press to fill a
+    blank expensive.</li>
   <li><b>A single-row Dispatch entry in the ⋯ menu.</b> Both single-item paths already exist —
     <b>Move to…</b> files a task, <b>Send to Code module…</b> gates a code item — and each already
     stamps residency. A third would be a synonym.</li>
