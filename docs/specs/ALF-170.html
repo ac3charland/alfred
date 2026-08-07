@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-170 — Apply all updates to inbox and classification</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--good); font-weight: 600; }
+  .no  { color: var(--bad); font-weight: 600; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul, .dec ol { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* ══ App-design-system mockup canvas ════════════════════════════
+     Every value below is taken from source, not memory:
+       app/globals.css              → palette + accent tokens
+       components/atoms/chip.tsx    → radius 9, 6×12 pad, 13px, medium
+       components/atoms/badge.tsx   → rounded-full, 8×2 pad, text-xs
+       components/atoms/button.tsx  → sm = h-8, rounded-sm, 12px pad, text-xs
+       components/atoms/popover.tsx → #0d1320 fill, #25324a border, radius 12
+       components/atoms/option-button.tsx → 12×8 pad, 14px, selected = teal/15
+       task-row.styles.ts           → list = rounded-2xl surface panel, divide-y
+       task-row/task-detail-panel.tsx → radius 13, 18px pad, teal glow shadow
+       inbox-bulk-bar.styles.ts     → radius 12, teal border, surface/95 + shadow
+     The app ships dark-only (globals.css defines no light palette), so the
+     canvas stays dark whichever theme this document is read in.            */
+  .app {
+    --a-bg: #0A0E17; --a-surface: #0F1626; --a-border: #1E2A3F;
+    --a-fg: #E8EDF5; --a-muted: #8A96A8; --a-notes: #6b7689;
+    --a-teal: #4FD1E0; --a-green: #34D399; --a-blue: #60A5FA;
+    --a-amber: #F0B429; --a-red: #F87171;
+    --a-chip-line: #25324a; --a-popover: #0d1320;
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 14px;
+    padding: 1.1rem; margin: 1rem 0; color: var(--a-fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  /* Document chrome must not leak into the canvas — inline code above all. */
+  .app code {
+    background: rgba(37,50,74,.55); color: var(--a-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .82em; padding: .05rem .3rem; border-radius: 4px;
+  }
+  .app b { color: var(--a-fg); }
+  .app-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .6rem; }
+  .eyebrow { font-size: .69rem; letter-spacing: .16em; text-transform: uppercase;
+             color: rgba(138,150,168,.7); font-weight: 600; }
+
+  /* Buttons — atoms/button.tsx, size="sm" (h-8, rounded-sm, px-3, text-xs). */
+  .btn { display: inline-flex; align-items: center; gap: .35rem; height: 32px; padding: 0 12px;
+         border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .btn-ghost   { color: var(--a-fg); }
+  .btn-outline { border: 1px solid var(--a-border); color: var(--a-fg); background: transparent; }
+  .btn-accent  { background: var(--a-teal); color: var(--a-bg); font-weight: 600; }
+  .btn-dim     { opacity: .5; }
+
+  /* The task list — md+ shape: one rounded surface panel, rows divided. */
+  .list { border: 1px solid var(--a-border); background: var(--a-surface);
+          border-radius: 16px; overflow: hidden; }
+  .trow { display: flex; align-items: flex-start; gap: .5rem; padding: .5rem .5rem .5rem .6rem;
+          border-top: 1px solid rgba(30,42,63,.5); }
+  .trow:first-child { border-top: 0; }
+  .tbox { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid #3a465c;
+          flex: none; margin-top: 3px; }
+  .tbox.on { background: var(--a-teal); border-color: var(--a-teal); }
+  .tmain { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: .5rem;
+           flex-wrap: wrap; }
+  .ttitle { color: var(--a-fg); font-size: 14px; }
+  .tnotes { display: block; color: var(--a-notes); font-size: 12.5px; line-height: 1.35; }
+  .tmeta { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-left: auto; }
+  .dots { color: var(--a-muted); font-size: 13px; letter-spacing: 1px; padding-left: .3rem; }
+
+  /* Badges — atoms/badge.tsx (rounded-full, px-2 py-0.5, text-xs). */
+  .bdg { border-radius: 999px; padding: 1px 8px; font-size: 12px; white-space: nowrap; }
+  .b-muted { border: 1px solid rgba(30,42,63,.7); color: var(--a-muted); font-weight: 500; }
+  .b-due   { border: 1px solid rgba(96,165,250,.5); color: var(--a-blue); font-weight: 500; }
+  .b-proj-blue  { background: rgba(96,165,250,.15); color: var(--a-blue);
+                  font-family: ui-monospace, monospace; font-weight: 500; }
+  .b-proj-amber { background: rgba(240,180,41,.15); color: var(--a-amber);
+                  font-family: ui-monospace, monospace; font-weight: 500; }
+  .b-prio-high { color: var(--a-red); font-size: 12px; font-weight: 700; padding: 0 2px; }
+
+  /* Chips — atoms/chip.tsx (rounded-[9px], px-3 py-1.5, 13px, medium). */
+  .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px;
+          border: 1px solid; padding: 6px 12px; font-size: 13px; font-weight: 500; }
+  .c-neutral { border-color: var(--a-chip-line); color: var(--a-muted); }
+  .c-teal  { border-color: rgba(79,209,224,.3);  background: rgba(79,209,224,.10); color: var(--a-teal); }
+  .c-blue  { border-color: rgba(96,165,250,.3);  background: rgba(96,165,250,.08); color: var(--a-blue); }
+  .c-red   { border-color: rgba(248,113,113,.3); background: rgba(248,113,113,.12); color: var(--a-red); }
+  .c-green { border-color: rgba(52,211,153,.3);  background: rgba(52,211,153,.10); color: var(--a-green); }
+  .c-amber { border-color: rgba(240,180,41,.3);  background: rgba(240,180,41,.10); color: var(--a-amber); }
+  .c-dim   { opacity: .45; }
+
+  /* The inline detail panel — task-detail-panel.tsx. */
+  .panel { border: 1px solid var(--a-border); background: var(--a-surface);
+           border-radius: 13px; padding: 16px 18px 18px;
+           box-shadow: 0 0 28px -10px rgba(79,209,224,.18); }
+  .chiprow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .notes-label { display: block; margin-bottom: 8px; font-size: 10px; font-weight: 600;
+                 text-transform: uppercase; letter-spacing: .15em; color: #5A677C; }
+  .notes-body { font-size: 13.5px; line-height: 1.65; color: #c4cedd; min-height: 40px; }
+  .notes-body.empty { color: #5A677C; }
+
+  /* Popover — atoms/popover.tsx + atoms/option-button.tsx rows. */
+  .pop { display: inline-block; border: 1px solid var(--a-chip-line); background: var(--a-popover);
+         border-radius: 12px; padding: 4px; box-shadow: 0 18px 40px -12px rgba(0,0,0,.7);
+         min-width: 186px; }
+  .opt { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+         border-radius: 4px; padding: 8px 12px; font-size: 14px; color: var(--a-muted); }
+  .opt.sel { background: rgba(79,209,224,.15); color: var(--a-fg); }
+  .opt.act { color: var(--a-teal); justify-content: flex-start; }
+  .opt .tick { color: var(--a-teal); }
+  .opt .hint { color: rgba(138,150,168,.75); font-size: 12px; font-family: ui-monospace, monospace; }
+
+  /* The floating bulk bar — inbox-bulk-bar.styles.ts. */
+  .bulk { border: 1px solid var(--a-teal); border-radius: 12px; padding: 10px 12px;
+          background: rgba(15,22,38,.95); box-shadow: 0 18px 40px -12px rgba(0,0,0,.7);
+          margin-top: .9rem; }
+  .bulk-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .bulk-count { color: var(--a-teal); font-size: 14px; font-weight: 600; margin-right: 4px; }
+  .bulk-ready { margin-top: 8px; font-size: 12px; color: var(--a-muted); }
+  .bulk-ready b { color: var(--a-amber); font-weight: 600; }
+
+  /* Gate dialog fragments. */
+  .fieldlabel { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+                color: var(--a-muted); margin-bottom: 6px; display: block; }
+  .listbox { display: flex; flex-direction: column; gap: 2px; border-radius: 4px;
+             border: 1px solid var(--a-border); background: rgba(30,42,63,.4); padding: 4px; }
+
+  /* Toast — bottom-of-screen confirmation. */
+  .toast { display: inline-block; border: 1px solid var(--a-border); background: var(--a-surface);
+           border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--a-fg);
+           box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); }
+
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .35rem 0 1.5rem; }
+  .mockcap b { color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-170 — Apply all updates to inbox and classification</h1>
+<p class="sub">
+  <span class="pill">Story</span>
+  <span class="pill">Epic ALF-158 · slices B + E + I</span>
+  Database + frontend. No cron, no Worker, no model call anywhere in this story.
+</p>
+
+<div class="card">
+  <b>The one-line shape.</b> Everything the classifier needs on the other side of the wall, built by
+  hand first. An item gains a pre-factory <b>epic</b> hint to sit beside its project hint; the Inbox
+  row's detail panel becomes the one place <i>every</i> field a classifier would write is editable;
+  and the bulk bar gains <b>Dispatch</b>, which sends a mixed selection to each item's own
+  destination in one press. When it ships you can do by hand, for a batch, exactly what
+  <a href="epics/ALF-158.html">ALF-158</a> will later have a model pre-fill — and the story after
+  this one has no UI or schema work left in it.
+</div>
+
+<h2>1 · What this story is</h2>
+
+<p>
+  Epic <a href="epics/ALF-158.html">ALF-158</a> splits into ten slices. This story takes the three
+  that contain no model and no Worker — <b>B</b> (editing parity on the Inbox row), <b>E</b>
+  (<code>intended_epic_id</code> + gate pre-selection) and <b>I</b> (the bulk <b>Dispatch</b>
+  action) — and lands them together, because none of them is worth shipping without the others:
+</p>
+
+<ul>
+  <li><b>Dispatch (I) needs the epic hint (E).</b> A code item can't be dispatched without an epic,
+    and before this story it has nowhere to carry one before the gate.</li>
+  <li><b>Dispatch (I) needs editing parity (B).</b> An action that routes a pre-filled batch is
+    useless if filling those labels still means opening a dialog per item.</li>
+  <li><b>Editing parity (B) needs Dispatch (I).</b> Setting a folder from the Inbox stops meaning
+    "file it" (see <b>S4</b>), so without Dispatch there'd be a label you can set and no way to act
+    on it.</li>
+</ul>
+
+<h3>Prerequisite: ALF-168 must land first</h3>
+
+<p>
+  Slice <b>A</b> is already refined as <a href="ALF-168.html"><code>ALF-168</code></a> and is
+  <b>not part of this story</b>. It introduces <code>items.dispatched_at</code>, the backfill, the
+  <code>PATCH … { dispatched: boolean }</code> intent, the <code>lib/tasks/residency.ts</code>
+  helper, the store's residency-aware selectors and folder-badge guard, and the
+  <code>items_dispatched_needs_folder</code> CHECK. <b>Every one of those is assumed to exist
+  here.</b> This spec never re-specifies them; where it needs one it cites the ALF-168 decision by
+  number.
+</p>
+
+<div class="callout">
+  <b>If ALF-170 is picked up before ALF-168 has merged, stop and say so</b> rather than building a
+  reduced version. There is no <code>dispatched_at</code> for Dispatch to set, and <b>S4</b>'s
+  central distinction — that editing a label must not move the item — cannot even be expressed.
+</div>
+
+<h3>What the epic decides, and where it lands here</h3>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:12%">Epic</th><th style="width:44%">What it says</th><th>Where it lands in this story</th></tr>
+  <tr><td><b>D4</b></td><td>Guesses are written to real fields, with no "suggested" marking.</td>
+      <td>Nothing in this story renders provenance. The chips it adds show <i>values</i> only — see <b>S7</b>.</td></tr>
+  <tr><td><b>D6</b></td><td>Dispatch is a human action; the classifier never sets <code>dispatched_at</code>.</td>
+      <td><b>S4</b> (editing a label never moves an item) and <b>S9</b> (Dispatch is the press that does).</td></tr>
+  <tr><td><b>D7</b></td><td>One coherent write per item — <code>item_type</code> travels with its type-specific fields.</td>
+      <td><b>S6</b>: a type change is a single PATCH that clears whatever the new type forbids.</td></tr>
+  <tr><td><b>D11</b></td><td>Suggesting an epic needs a pre-factory epic hint mirroring <code>intended_project_id</code>.</td>
+      <td><b>S1</b> (the column) and <b>S2</b> (the coherence trigger the project hint never needed).</td></tr>
+  <tr><td><b>D17</b></td><td>One Dispatch action over a mixed selection, gated per item on readiness.</td>
+      <td><b>S9</b> + <b>S10</b>. One deliberate departure, flagged in <b>S9</b>.</td></tr>
+  <tr><td colspan="2"><b>§4 callout</b> — the bulk bar's gates were written for the opposite world.</td>
+      <td><b>S11</b> re-derives all three.</td></tr>
+</table>
+</div>
+
+<h2>2 · Decisions</h2>
+
+<h3>The epic hint</h3>
+
+<div class="dec">
+  <h3><span class="n">S1</span><code>intended_epic_id</code>, shaped exactly like <code>intended_project_id</code></h3>
+  <p>
+    <code>items</code> gains a nullable <code>intended_epic_id</code>, following
+    <code>0013_intended_project.sql</code> line for line — the same FK behaviour, the same
+    code-only CHECK, the same index, the same mandatory view recreation:
+  </p>
+<pre><code>alter table items
+  add column intended_epic_id uuid references epics (id) on delete set null;
+
+alter table items add constraint items_intended_epic_code_only check (
+  intended_epic_id is null or item_type = 'code'
+);
+
+create index items_intended_epic_id_idx on items (intended_epic_id);</code></pre>
+  <p class="why">
+    <b>Why <code>on delete set null</code>:</b> deleting an epic must not break an Inbox row — the
+    item loses its hint, keeps its project, and simply stops being dispatch-ready until an epic is
+    chosen. Deleting the <i>project</i> cascades its epics away
+    (<code>epics.project_id … on delete cascade</code>) and nulls both hints, which is the coherent
+    outcome with no extra code.
+    <br />
+    <b>Why the CHECK:</b> it mirrors <code>items_intended_project_code_only</code> so a task or
+    unclassified row can never carry a stale epic. It is also what makes <b>S6</b>'s clear-set
+    mandatory rather than merely tidy.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span>A trigger keeps the epic inside its project — the one place this story is <i>not</i> a copy of the project hint</h3>
+  <p>
+    An epic belongs to a project, so <code>intended_epic_id</code> and
+    <code>intended_project_id</code> can disagree. A CHECK can't see another table, so this is a
+    trigger — the same reasoning that made <code>enforce_subtask_shape</code> a trigger in
+    <code>0019</code> ("adjacency properties can't be a CHECK, hence the trigger"):
+  </p>
+<pre><code>create or replace function enforce_intended_epic_project() returns trigger
+language plpgsql security invoker as $$
+declare v_project uuid;
+begin
+  if new.intended_epic_id is null then return new; end if;
+  select project_id into v_project from epics where id = new.intended_epic_id;
+  if v_project is null then
+    raise exception 'epic % not found', new.intended_epic_id;
+  end if;
+  if new.intended_project_id is distinct from v_project then
+    raise exception 'intended epic % does not belong to intended project %',
+      new.intended_epic_id, new.intended_project_id;
+  end if;
+  return new;
+end; $$;
+
+create trigger items_intended_epic_project
+  before insert or update of intended_epic_id, intended_project_id on items
+  for each row execute function enforce_intended_epic_project();</code></pre>
+  <p class="why">
+    <b>Why bother:</b> <code>enter_code_module(p_item, p_project, p_epic)</code> validates neither
+    argument against the other. Dispatch (<b>S9</b>) feeds it the two hints straight off the row, so
+    an incoherent pair would create a story in one project filed under another project's epic —
+    silent, cross-project corruption in the factory, discovered much later. The trigger makes it a
+    loud immediate write error instead, which is ALF-168 <b>S7</b>'s trade taken again.
+    <br />
+    <b>It also removes a whole class of UI bug:</b> the picker in <b>S5</b> and the gate in
+    <b>S12</b> both clear the epic when the project changes, and this is what proves they do. An
+    <code>intended_epic_id</code> with no <code>intended_project_id</code> is rejected by the same
+    branch.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>Neither hint is patchable today — both join the update schema and the route's field list</h3>
+  <p>
+    <code>intended_project_id</code> is accepted by <code>createItemSchema</code> (the capture box's
+    <code>ALF:</code> prefix sets it at insert) but is <b>absent from <code>updateItemSchema</code>
+    and from the <code>toUpdatePayload</code> field list</b> in
+    <code>app/api/items/[id]/route.ts</code>. There is currently no way to change an item's project
+    after capture except by going through the gate. Both hints become patchable:
+  </p>
+<pre><code>// lib/api/schemas.ts — updateItemSchema
+intended_project_id: nullableUuid.optional(),
+intended_epic_id:    nullableUuid.optional(),
+
+// app/api/items/[id]/route.ts — toUpdatePayload field list
+'intended_project_id', 'intended_epic_id',</code></pre>
+  <p class="why">
+    <b>Worth calling out</b> because "add the epic beside the project" reads like a one-line
+    symmetry and isn't: the project's write path is insert-only, so this story builds the update
+    path for <i>both</i> fields, and <b>S5</b>'s Project picker is a genuinely new capability rather
+    than a second entry point to an existing one.
+    <br />
+    <b><code>createItemSchema</code> gains nothing.</b> No capture path chooses an epic — the
+    prefix parser resolves a project key and stops — so an insert-time epic would be an untested
+    field with no caller.
+  </p>
+</div>
+
+<h3>Editing an Inbox item</h3>
+
+<div class="dec">
+  <h3><span class="n">S4</span>Editing a label never moves the item. Filing does. One column, two verbs.</h3>
+  <p>
+    After ALF-168, <code>folder_id</code> is <i>where an item will land</i> and
+    <code>dispatched_at</code> is <i>whether it has landed</i>. This story splits the actions that
+    write them accordingly:
+  </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:34%">Action</th><th style="width:24%">Writes</th><th>Effect on an Inbox row</th></tr>
+    <tr>
+      <td><b>Folder picker</b> (detail panel, new)</td>
+      <td><code>folder_id</code> only, cascaded to the subtree</td>
+      <td>The row stays exactly where it is, now labelled.</td>
+    </tr>
+    <tr>
+      <td><b>Move to…</b> (row menu) · drag onto a folder · bulk <b>Move to folder</b></td>
+      <td><code>folder_id</code> + <code>dispatched_at</code> (ALF-168 <b>S3</b>)</td>
+      <td>The row leaves the Inbox and appears in the folder. Unchanged from today.</td>
+    </tr>
+    <tr>
+      <td><b>Dispatch</b> (bulk bar, new — <b>S9</b>)</td>
+      <td><code>dispatched_at</code> only</td>
+      <td>The row leaves the Inbox for whatever destination its labels already name.</td>
+    </tr>
+  </table>
+  </div>
+  <p>
+    A new store action, <code>setFolder(id, folderId)</code>, cascades <code>folder_id</code> across
+    the subtree and <b>never touches residency</b> — so it reads as "label this" on an undispatched
+    row and as "move this between folders" on a dispatched one, from one rule. <code>moveTask</code>
+    keeps its current meaning (file / un-file) untouched.
+  </p>
+  <p class="why">
+    <b>Why this is the load-bearing decision of the story:</b> it is D6 applied to the human. The
+    Inbox is a list you work down — correcting the folder on row three must not eject row three from
+    the list you are working through. If the picker filed, the batch you were assembling would
+    dissolve as you assembled it, and <b>Dispatch would only ever be reachable for labels a machine
+    wrote</b> — which is precisely the thing that doesn't exist yet.
+    <br />
+    <b>One constraint falls out of ALF-168's CHECK</b> (<code>dispatched_at is null or folder_id is
+    not null or item_type = 'code'</code>): a <i>dispatched</i> task must keep a folder. So the
+    Folder picker offers its <b>No folder</b> entry only while the row is undispatched; on a
+    dispatched task the entry is absent, and un-filing stays the row menu's <b>Move to… → Inbox</b>.
+    Drawn in <b>§3</b>.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>The detail panel becomes the one place every classifier-written field is editable</h3>
+  <p>
+    <code>TaskDetailPanel</code>'s chip row is Due · Repeat · Priority today. It gains <b>Type</b>,
+    <b>Folder</b>, <b>Project</b> and <b>Epic</b>, and the row shows the set relevant to the item's
+    type — so the panel is complete for every field the epic's verdict schema can write:
+  </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr>
+      <th style="width:16%">Chip</th><th style="width:22%">Shown when</th>
+      <th style="width:26%">Picker contents</th><th>Writes</th>
+    </tr>
+    <tr><td><b>Type</b></td><td>always (see <b>S6</b> for when it's enabled)</td>
+        <td>Task · Code</td><td><code>item_type</code> + the clear-set (<b>S6</b>)</td></tr>
+    <tr><td><b>Due</b></td><td><code>item_type = 'task'</code> <span class="small">(today)</span></td>
+        <td>calendar</td><td><code>due_date</code></td></tr>
+    <tr><td><b>Repeat</b></td><td>top-level task <span class="small">(today)</span></td>
+        <td><code>REPEAT_PRESETS</code> + Custom…</td><td><code>recurrence</code></td></tr>
+    <tr><td><b>Priority</b></td><td><code>item_type = 'task'</code> <span class="small">(today)</span></td>
+        <td>High · Medium · Low · clear</td><td><code>priority</code></td></tr>
+    <tr><td><b>Folder</b></td><td><code>item_type = 'task'</code></td>
+        <td>every folder, + <b>No folder</b> while undispatched (<b>S4</b>)</td>
+        <td><code>folder_id</code>, cascaded to the subtree</td></tr>
+    <tr><td><b>Project</b></td><td><code>item_type = 'code'</code></td>
+        <td>every project, + <b>No project</b></td>
+        <td><code>intended_project_id</code>, <b>and <code>intended_epic_id → null</code> whenever the project changes</b></td></tr>
+    <tr><td><b>Epic</b></td><td><code>item_type = 'code'</code></td>
+        <td>the selected project's epics, + <b>No epic</b>; disabled with a hint while no project is set</td>
+        <td><code>intended_epic_id</code></td></tr>
+  </table>
+  </div>
+  <p>
+    All four new chips are the same shape — a chip trigger opening a popover of single-select rows —
+    so they are built on one shared primitive, <code>components/atoms/picker-chip.tsx</code>, which
+    also absorbs the <code>PickerListItem</code> row currently private to
+    <code>detail-chips.tsx</code>. Adopting it in <code>RepeatChip</code> is preferred (it is the
+    same shape) but not required by this story.
+  </p>
+  <p class="why">
+    <b>Why the panel and not the row:</b> a rail of placeholder chips on every Inbox row would put
+    six affordances on a surface whose job is to stay scannable, and most rows need none of them
+    touched. The panel is one press away from the row menu, already auto-saves every control it
+    hosts, and is where Due / Repeat / Priority already live — so this is the existing pattern
+    extended, not a new one.
+    <br />
+    <b>Why <code>Folder</code> is task-only:</b> "folders hold tasks" is already the rule
+    <code>moveTask</code> encodes (ALF-72 classifies an unclassified item on filing it), and the
+    epic's own verdict schema marks <code>folder_id</code> task-only. Offering it on an unclassified
+    row would create a labelled row that can never be dispatched. Classify first, then file.
+    <br />
+    <b>Why the project change clears the epic:</b> <b>S2</b>'s trigger would otherwise reject the
+    write — and rightly. The gate already does exactly this (<code>selectProject</code> clears
+    <code>epicId</code>); the picker matches it.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S6</span>A type change is one coherent write, offered only on a childless root</h3>
+  <p>
+    <b>Which way, and what it clears.</b> Both directions violate a CHECK if written bare, so
+    <code>classifyItem</code> stops being a lone <code>item_type</code> patch and becomes the single
+    coherent PATCH D7 requires:
+  </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:22%">Change</th><th style="width:44%">The one PATCH</th><th>Why</th></tr>
+    <tr>
+      <td>→ <b>Code</b></td>
+      <td><code>{ item_type: 'code', due_date: null, recurrence: null }</code></td>
+      <td><code>items_task_only_fields</code> forbids a due date on a non-task; recurrence is
+          anchored to the due date (<code>ruleFromPreset</code> takes it as its anchor and
+          <code>complete_and_spawn</code> needs it), so a rule without one is inert. They go
+          together.</td>
+    </tr>
+    <tr>
+      <td>→ <b>Task</b></td>
+      <td><code>{ item_type: 'task', intended_project_id: null, intended_epic_id: null }</code></td>
+      <td><code>items_intended_project_code_only</code> and <b>S1</b>'s new twin both forbid a hint
+          on a non-code row.</td>
+    </tr>
+  </table>
+  </div>
+  <p>
+    <code>priority</code> is deliberately <b>not</b> cleared in either direction: no constraint
+    forbids it, the Priority chip simply stops rendering on a code row, and a mis-classification
+    corrected straight back keeps the level the owner set.
+  </p>
+  <p>
+    <b>Task and Code only.</b> The picker never offers a return to <code>unclassified</code>. That
+    value is what capture produces and what an abstention leaves behind — it is a starting state,
+    not a destination, and nothing in the app reads it as somewhere to go back to.
+  </p>
+  <p>
+    <b>Enabled only on a root with no children</b> — <code>parent_id === null &amp;&amp;
+    children.length === 0</code> — with the hint <i>"Only a top-level item with no subtasks can
+    change type"</i>. This gates the panel chip, the row menu's <b>Classify as…</b>, and the bulk
+    bar's (<b>S11</b>).
+  </p>
+  <p class="why">
+    <b>Why the shape gate, precisely:</b> <code>enforce_subtask_shape</code> fires
+    <code>before insert or update of parent_id, item_type</code> and validates the <i>updated</i>
+    row against its parent. Flipping a <b>subtask</b>'s type is therefore caught by the database
+    already (a code row under a task parent, or a task row under a code parent, both raise) — the UI
+    just shouldn't offer it. Flipping a <b>parent</b>'s type is the dangerous one: the trigger
+    returns early on <code>new.parent_id is null</code> and the untouched children are never
+    re-validated, so a code root would silently acquire task children. The database cannot catch
+    that one, so the UI must.
+    <br />
+    <b>This is not a regression.</b> Today's gate is <code>isUnclassified</code>, and an
+    unclassified item is always a leaf (<code>canAddSubtask</code> is
+    <code>isTask || isCodeRoot</code>, so nothing can nest under one). Every row reachable today is
+    already childless — the new gate only closes the hole that <i>widening</i> the control would
+    otherwise open.
+    <br />
+    <b>Changing a parent's family is already a supported action</b>, with its own path:
+    <b>Convert to Code Epic…</b>, which converts the parent and its children together through
+    <code>convert_to_code_epic</code>. Nothing is lost.
+  </p>
+</div>
+
+<h3>What shows on the row</h3>
+
+<div class="dec">
+  <h3><span class="n">S7</span>Two new read-only row chips: the folder (Inbox only) and the epic</h3>
+  <p>
+    The row keeps its rule — <b>a chip appears only when its field is set</b> — and gains two:
+  </p>
+  <ul>
+    <li><b>Folder chip</b>, rendered only on an <b>undispatched</b> row carrying a
+      <code>folder_id</code>. In a folder view it would restate the view you are in.</li>
+    <li><b>Epic chip</b>, rendered whenever <code>intended_epic_id</code> is set, beside the
+      existing <code>ProjectKeyChip</code> and styled as its sibling (the epic's <code>ref</code>,
+      in the project's colour).</li>
+  </ul>
+  <p>Both are read-only on the row and edited in the panel, exactly like <code>ProjectKeyChip</code> is today.</p>
+  <p class="why">
+    <b>Why they're not optional:</b> after ALF-168 an Inbox row can carry a folder and show nothing
+    for it, and after <b>S1</b> the same is true of an epic. Both are inputs to Dispatch readiness
+    (<b>S9</b>) — a label you cannot see is a label you cannot check, which makes the epic's
+    "glance and move on" impossible and turns an unready row into a mystery.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S8</span>The <b>Task</b> badge comes back — in the Inbox only</h3>
+  <p>
+    <code>TypeBadge</code> renders for <code>task</code> as well as <code>code</code> when the row is
+    <b>undispatched</b>. Everywhere else — folder views, By Priority, Completed — a task keeps
+    showing no badge, exactly as today.
+  </p>
+  <p class="why">
+    <b>Why reverse part of ALF-67:</b> ALF-67 removed the "Task" pill because in a world where
+    everything on screen is a task it carried no information. The Inbox stops being that world: it
+    now holds <code>unclassified</code>, <code>task</code> and <code>code</code> rows side by side,
+    and only two of the three can be dispatched. Without the badge an unclassified row and a
+    bare task row are pixel-identical while behaving differently under <b>Dispatch</b> — the owner
+    would press the button and be told something isn't ready with nothing on the row to explain it.
+    Scoping the badge to undispatched rows keeps ALF-67's judgement intact everywhere it was made
+    about.
+    <br />
+    <b>This is a visible reversal of a deliberate past decision</b>, so it is called out rather than
+    slipped in: if the reviewer would rather mark the <i>unclassified</i> state instead, say so on
+    the PR — the two are alternatives, not a pair.
+  </p>
+</div>
+
+<h3>Dispatching</h3>
+
+<div class="dec">
+  <h3><span class="n">S9</span><b>Dispatch</b>: one action over a mixed selection, gated per item, settling on partial</h3>
+  <p>
+    The bulk bar gains a <b>Dispatch</b> button — the primary action, first in the bar and the only
+    one styled <code>accent</code>. It sends each <i>ready</i> selected item to its own destination
+    regardless of type, in one press. Readiness is a pure predicate in a new
+    <code>frontend/lib/tasks/dispatch.ts</code>, mirroring ALF-168's <code>residency.ts</code>:
+  </p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:16%">Item</th><th style="width:34%">Ready when</th><th style="width:26%">Dispatch does</th><th>Blocker copy when not</th></tr>
+    <tr>
+      <td><b>Task</b></td>
+      <td><code>item_type = 'task'</code> and <code>folder_id</code> set</td>
+      <td><code>PATCH { dispatched: true }</code> on the row <b>and its whole subtree</b>
+          (ALF-168 <b>S3</b>)</td>
+      <td>needs a folder</td>
+    </tr>
+    <tr>
+      <td><b>Code</b></td>
+      <td><code>item_type = 'code'</code>, both hints set, <b>no children</b></td>
+      <td><code>enter_code_module(item, intended_project_id, intended_epic_id)</code> — the existing
+          RPC, via the store's <code>convertTaskToCode</code>, then <code>removeGatedItem</code></td>
+      <td>needs a project · needs an epic · convert from its own row menu</td>
+    </tr>
+    <tr>
+      <td><b>Unclassified</b></td>
+      <td colspan="2">Never ready.</td>
+      <td>needs a type</td>
+    </tr>
+    <tr>
+      <td><b>Unreconciled</b></td>
+      <td colspan="2">A row still carrying a temp id can't be PATCHed or passed to an RPC.</td>
+      <td>still saving</td>
+    </tr>
+  </table>
+  </div>
+  <p>
+    <b>Unready items are filtered out before the mutation runs</b> — they are not "failures". The
+    ready ones go, the unready ones <b>stay selected</b> so they're still in front of you, and the
+    readiness line (<b>S10</b>) keeps saying what each is missing. A genuine save failure settles
+    the way every other bulk action already does (<code>applyBulkSettled</code>: failed ids stay
+    selected, <code>N of M couldn't be dispatched</code>). Success toasts
+    <code>Dispatched N items</code> with no deep link — a mixed dispatch has no single destination
+    to link to, and the existing Send-to-Code toast keeps its board link unchanged.
+  </p>
+  <p>
+    The button is enabled when <b>at least one</b> selected item is ready; at zero it is disabled
+    with <i>"Nothing in the selection is ready to dispatch"</i>.
+  </p>
+  <div class="callout">
+    <b>One deliberate departure from D17.</b> The epic's table excludes "anything with children"
+    from Dispatch outright. That exclusion is kept for <b>code</b> items, where it is load-bearing —
+    an epic-shaped row converts through <code>convert_to_code_epic</code>, not
+    <code>enter_code_module</code> (ALF-129) — and <b>relaxed for tasks</b>: a task with subtasks is
+    dispatchable, cascading <code>dispatched: true</code> across its subtree exactly as bulk
+    <b>Move to folder</b> already cascades <code>folder_id</code>. Excluding it would make Dispatch
+    strictly weaker than the action it exists to subsume, and would silently refuse every decomposed
+    task in a batch. <b>Flagged rather than assumed</b> — if the reviewer wants D17 read literally,
+    the readiness predicate is one clause.
+  </div>
+  <p class="why">
+    <b>Why a code dispatch opens no dialog:</b> that <i>is</i> the feature. The gate exists to choose
+    a project and epic; an item that already carries both has nothing left to ask. The consequence is
+    that dispatching a code item is one-way (it enters the factory and leaves
+    <code>task_items</code>), which is the same one-way step <b>Send to Code…</b> takes — from a
+    confirm button instead of a picker.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S10</span>The bar says what the selection is missing <i>before</i> you press</h3>
+  <p>
+    Whenever the selection contains ≥1 unready item, the bulk bar renders a second line beneath its
+    actions, grouping the blockers by reason with counts:
+  </p>
+  <p style="margin:.5rem 0"><code>2 not ready — 1 needs a folder, 1 needs an epic</code></p>
+  <p>
+    It is derived live from the selection, so it updates as rows are selected, corrected in the panel,
+    or dropped — and after a partial dispatch it is simply what remains.
+  </p>
+  <p class="why">
+    <b>Why in the bar and not on the rows:</b> the epic names "telling you <i>why</i> an unready item
+    didn't go" as the interesting half of this slice. Answering it on the rows means new per-row
+    state that only ever appears mid-triage, on a surface <b>S7</b> just worked to keep quiet;
+    answering it in the bar puts it next to the button it is about, costs one line, and — the part
+    that matters — arrives <i>before</i> the press rather than as a post-mortem.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S11</span>The other three bulk actions get their gates re-derived</h3>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:20%">Action</th><th style="width:24%">Gate today</th><th style="width:28%">Gate after</th><th>Why</th></tr>
+    <tr>
+      <td><b>Classify as</b></td>
+      <td>every selected row <code>unclassified</code></td>
+      <td>every selected row is a childless root (<b>S6</b>)</td>
+      <td>Correcting a type is now the common case, and the old gate disables the control on
+          precisely the rows that carry a type to correct. The new gate is the one the database
+          enforces.</td>
+    </tr>
+    <tr>
+      <td><b>Move to folder</b></td>
+      <td>every selected row <code>task</code></td>
+      <td>every selected row is <code>task</code> or <code>unclassified</code></td>
+      <td>The smallest honest widening: <code>moveTask</code> already classifies an unclassified row
+          to <code>task</code> as it files it (ALF-72), so those rows were always legal targets. A
+          <code>code</code> row still can't be filed — folders hold tasks.</td>
+    </tr>
+    <tr>
+      <td><b>Send to Code…</b></td>
+      <td>no selected row has children</td>
+      <td><b>unchanged</b></td>
+      <td>It stays the "choose the project and epic now" path. Dispatch is the "use what's already
+          set" path. Neither subsumes the other.</td>
+    </tr>
+  </table>
+  </div>
+  <p class="why">
+    <b>Why keep all four buttons:</b> the two survivors do things Dispatch can't — <b>Move to
+    folder</b> files without a type decision and can also return a selection to the Inbox, and
+    <b>Send to Code…</b> is the only way to reach an epic that doesn't exist yet (it hosts the
+    "+ New epic…" row). Dropping either would trade a press for a dead end.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S12</span>The gate pre-selects a unanimous epic, and never locks it</h3>
+  <p>
+    <code>GateItem</code> gains <code>intendedEpicId</code>. <code>GateForm</code> pre-selects it by
+    the same unanimity rule it already applies to the project: when every item in the batch carries
+    the same non-null epic, that epic starts selected. The project's <b>lock</b> behaviour on a bulk
+    send is unchanged; the epic is never locked.
+  </p>
+  <p class="why">
+    <b>Why pre-select:</b> without it, dispatching through the gate would discard a hint the item is
+    already carrying and make the owner re-pick it — which would make <b>S1</b> pointless anywhere
+    except Dispatch.
+    <br />
+    <b>Why not lock it too:</b> the project lock exists because one project must apply to a whole
+    batch and re-assigning it silently would be destructive. The epic list is right there in the
+    dialog, and picking a different project already clears the epic, so a lock would only stop the
+    owner changing their mind in the one place they came to change it.
+  </p>
+</div>
+
+<h2>3 · The surface</h2>
+
+<p>
+  Everything this story puts on screen is drawn below, in the app's own design system (values taken
+  from <code>globals.css</code> and each atom's source, not from memory). Behaviour and layout
+  intent — treat padding, radii and hover states as indicative; treat <b>what is present</b> as the
+  specification.
+</p>
+
+<h3>3.1 · The Inbox, mid-triage</h3>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Inbox</span>
+    <span><span class="btn btn-ghost">Done</span> <span class="btn btn-ghost">Collapse all</span></span>
+  </div>
+
+  <div class="list">
+    <div class="trow">
+      <span class="tbox on"></span>
+      <div class="tmain">
+        <span class="ttitle">Call the dentist friday to reschedule the cleaning</span>
+        <span class="tmeta">
+          <span class="bdg b-muted">Task</span>
+          <span class="bdg b-muted">Health</span>
+          <span class="bdg b-due">Fri 7 Aug</span>
+          <span class="b-prio-high">▲</span>
+        </span>
+      </div>
+      <span class="dots">···</span>
+    </div>
+
+    <div class="trow">
+      <span class="tbox on"></span>
+      <div class="tmain">
+        <span class="ttitle">Alfred should let me snooze an item until next week</span>
+        <span class="tmeta">
+          <span class="bdg b-muted">Code</span>
+          <span class="bdg b-proj-blue">ALF</span>
+          <span class="bdg b-proj-blue">ALF-104</span>
+        </span>
+      </div>
+      <span class="dots">···</span>
+    </div>
+
+    <div class="trow">
+      <span class="tbox on"></span>
+      <div class="tmain">
+        <span class="ttitle">Book the van for the move</span>
+        <span class="tmeta">
+          <span class="bdg b-muted">Task</span>
+        </span>
+      </div>
+      <span class="dots">···</span>
+    </div>
+
+    <div class="trow">
+      <span class="tbox"></span>
+      <div class="tmain">
+        <span class="ttitle">That thing Mark mentioned about the roof</span>
+      </div>
+      <span class="dots">···</span>
+    </div>
+  </div>
+
+  <div class="bulk">
+    <div class="bulk-line">
+      <span class="bulk-count">3 selected</span>
+      <span class="btn btn-accent">Dispatch</span>
+      <span class="btn btn-outline">Classify as ⌄</span>
+      <span class="btn btn-outline">Move to folder ⌄</span>
+      <span class="btn btn-outline">Send to Code…</span>
+      <span class="btn btn-ghost" style="margin-left:auto">Done</span>
+    </div>
+    <div class="bulk-ready"><b>1 not ready</b> — 1 needs a folder</div>
+  </div>
+</div>
+<p class="mockcap">
+  <b>What is new here, and nothing else is.</b> (i) The <b>Task</b> badge on rows 1 and 3 — Inbox
+  only (<b>S8</b>); row 4 is unclassified and carries none. (ii) The <b>Health</b> folder chip on
+  row 1: it has a <code>folder_id</code> and is <i>still in the Inbox</i>, which is ALF-168's rule
+  and <b>S7</b>'s chip. (iii) The <b>ALF-104</b> epic chip on row 2, beside the existing
+  <code>ALF</code> project chip. (iv) The bulk bar's <b>Dispatch</b> button, first and teal-filled
+  (<b>S9</b>). (v) The readiness line beneath it (<b>S10</b>) — row 3 is a task with no folder, so
+  pressing Dispatch sends rows 1 and 2 and leaves row 3 selected with the line still showing.
+  Everything else — the checkboxes, the due and priority badges, the ⋯ menu, the three older
+  actions, Done — is unchanged.
+</p>
+
+<h3>3.2 · The detail panel — a task, with the Folder picker open</h3>
+
+<div class="app">
+  <div class="panel">
+    <div class="chiprow">
+      <span class="chip c-teal">◇ Task</span>
+      <span class="chip c-blue">🗓 Fri 7 Aug</span>
+      <span class="chip c-neutral">↻ Never</span>
+      <span class="chip c-red">▲ High</span>
+      <span class="chip c-green">🗀 Health</span>
+    </div>
+    <div style="margin-top:10px">
+      <span class="pop">
+        <span class="opt">No folder</span>
+        <span class="opt sel">Health <span class="tick">✓</span></span>
+        <span class="opt">Work</span>
+        <span class="opt">Home</span>
+        <span class="opt">Errands</span>
+      </span>
+    </div>
+    <div style="margin-top:16px">
+      <span class="notes-label">Notes</span>
+      <div class="notes-body empty">No notes yet.</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <span class="btn btn-ghost btn-dim" style="color:var(--a-teal)">Save</span>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">
+  The panel's chip row for a <b>task</b>: <b>Type</b> and <b>Folder</b> are new; Due, Repeat and
+  Priority are today's, unmoved. Each chip carries its value when set and the neutral slate treatment
+  when not (Repeat, here) — the tone convention the panel already uses. The open popover is the
+  Folder picker: single-select rows with a teal tick on the current value, and a <b>No folder</b>
+  entry that is <b>present only because this row is undispatched</b> (<b>S4</b>) — on a task already
+  filed in a folder that first row is absent. Picking auto-saves and closes, like every other chip
+  here.
+</p>
+
+<h3>3.3 · The detail panel — a code item</h3>
+
+<div class="app">
+  <div class="panel">
+    <div class="chiprow">
+      <span class="chip c-teal">◇ Code</span>
+      <span class="chip c-blue">◈ ALF</span>
+      <span class="chip c-blue">◱ ALF-104 · Inbox triage</span>
+    </div>
+    <div style="margin-top:16px">
+      <span class="notes-label">Notes</span>
+      <div class="notes-body">Snooze should hide it from the Inbox until the date, not set a due date.</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <span class="btn btn-ghost btn-dim" style="color:var(--a-teal)">Save</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:14px" class="panel">
+    <div class="chiprow">
+      <span class="chip c-teal">◇ Code</span>
+      <span class="chip c-neutral">◈ No project</span>
+      <span class="chip c-neutral c-dim">◱ No epic</span>
+    </div>
+    <div style="margin-top:16px">
+      <span class="notes-label">Notes</span>
+      <div class="notes-body empty">No notes yet.</div>
+    </div>
+  </div>
+</div>
+<p class="mockcap">
+  <b>Top:</b> a code item carrying both hints — Due / Repeat / Priority / Folder are absent, because
+  they are task-only. The Project and Epic chips wear the project's colour, matching the row's
+  <code>ProjectKeyChip</code>. <b>Bottom:</b> the same panel with nothing set. <b>Epic is dimmed and
+  non-interactive while no project is chosen</b> (hint: <i>"Pick a project first"</i>) — the epic
+  list is derived from the project, exactly as in the gate. Choosing a different project in the
+  Project picker clears the epic in the same write (<b>S5</b>), which is what keeps <b>S2</b>'s
+  trigger satisfied.
+</p>
+
+<h3>3.4 · The gate, and the dispatch confirmation</h3>
+
+<div class="app">
+  <div style="max-width:420px">
+    <span class="fieldlabel">Epic</span>
+    <div class="listbox">
+      <span class="opt sel">Inbox triage <span class="hint">ALF-104</span></span>
+      <span class="opt">LLM processing <span class="hint">ALF-158</span></span>
+      <span class="opt">Habits <span class="hint">ALF-146</span></span>
+      <span class="opt act">+ New epic…</span>
+    </div>
+  </div>
+
+  <div style="margin-top:18px">
+    <span class="toast">Dispatched 2 items</span>
+  </div>
+</div>
+<p class="mockcap">
+  <b>Left:</b> the gate's existing Epic listbox, with the batch's unanimous
+  <code>intended_epic_id</code> already selected on open (<b>S12</b>) — the only change to the
+  dialog. It stays interactive: unlike the project on a bulk send, the epic is never locked, and
+  "+ New epic…" is untouched. <b>Right:</b> the toast after a Dispatch that sent two of three
+  selected items — plain, no deep link, because a mixed dispatch has no single destination
+  (<b>S9</b>). The third row stays selected with the readiness line still naming what it needs.
+</p>
+
+<h2>4 · The change, layer by layer</h2>
+
+<svg viewBox="0 0 900 300" role="img" aria-label="Dispatch flow: the selection is split by a pure readiness predicate into ready tasks, ready code items, and unready items; ready tasks are PATCHed with dispatched true across their subtree, ready code items go through the enter_code_module RPC and leave the store, and unready items stay selected and feed the readiness line.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" />
+    </marker>
+    <marker id="art" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)" />
+    </marker>
+  </defs>
+  <style>
+    .b { fill: var(--card); stroke: var(--line); stroke-width: 1.5; rx: 9; }
+    .bt { fill: var(--card); stroke: var(--accent); stroke-width: 1.6; rx: 9; }
+    .t { fill: var(--fg); font: 600 13px -apple-system, system-ui, sans-serif; }
+    .s { fill: var(--muted); font: 11px ui-monospace, monospace; }
+    .l { fill: var(--muted); font: 11px -apple-system, system-ui, sans-serif; }
+    .ln { stroke: var(--muted); stroke-width: 1.4; fill: none; marker-end: url(#ar); }
+    .lt { stroke: var(--accent); stroke-width: 1.6; fill: none; marker-end: url(#art); }
+  </style>
+
+  <rect class="b" x="16" y="112" width="160" height="58" />
+  <text class="t" x="36" y="138">Selection</text>
+  <text class="s" x="36" y="156">inbox roots</text>
+
+  <rect class="bt" x="216" y="102" width="190" height="78" />
+  <text class="t" x="236" y="128">dispatchReadiness()</text>
+  <text class="s" x="236" y="147">lib/tasks/dispatch.ts</text>
+  <text class="s" x="236" y="164">pure · unit-tested</text>
+  <path class="ln" d="M176,141 L210,141" />
+
+  <rect class="bt" x="470" y="20" width="230" height="62" />
+  <text class="t" x="490" y="45">ready task</text>
+  <text class="s" x="490" y="64">PATCH { dispatched: true }</text>
+  <text class="s" x="490" y="78" style="font-size:10px">…across the subtree</text>
+
+  <rect class="bt" x="470" y="112" width="230" height="62" />
+  <text class="t" x="490" y="137">ready code</text>
+  <text class="s" x="490" y="156">enter_code_module(i, p, e)</text>
+  <text class="s" x="490" y="170" style="font-size:10px">…then removeGatedItem</text>
+
+  <rect class="b" x="470" y="204" width="230" height="62" />
+  <text class="t" x="490" y="229">not ready</text>
+  <text class="s" x="490" y="248">stays selected</text>
+  <text class="s" x="490" y="262" style="font-size:10px">…never sent, never "failed"</text>
+
+  <path class="lt" d="M406,128 L440,60 L464,55" />
+  <path class="lt" d="M406,141 L464,143" />
+  <path class="ln" d="M406,158 L440,225 L464,230" />
+
+  <rect class="b" x="756" y="66" width="128" height="62" />
+  <text class="t" x="776" y="91">its folder</text>
+  <text class="s" x="776" y="110">or the board</text>
+  <path class="ln" d="M700,51 L740,80" />
+  <path class="ln" d="M700,143 L740,110" />
+
+  <rect class="b" x="756" y="204" width="128" height="62" />
+  <text class="t" x="776" y="229">the bar's</text>
+  <text class="t" x="776" y="246">readiness line</text>
+  <path class="ln" d="M700,235 L750,235" />
+</svg>
+<p class="diagram-cap">
+  One press, three outcomes. The split is a pure function, which is why every row of <b>S9</b>'s
+  table is a unit test and nothing about readiness lives inside a component.
+</p>
+
+<h4>Database — one migration, <code>&lt;next&gt;_intended_epic.sql</code></h4>
+<p class="small">Take whatever number is free when you build it; do not reuse the one that was free when this spec was written.</p>
+<ul>
+  <li>The column, the code-only CHECK and the index (<b>S1</b>), plus a
+    <code>comment on column</code> naming it the pre-factory epic hint.</li>
+  <li>The coherence function + trigger (<b>S2</b>).</li>
+  <li><code>create or replace view task_items …</code> — <b>mandatory</b>. A <code>select i.*</code>
+    view freezes its column list at CREATE time, so <code>intended_epic_id</code> stays invisible to
+    <code>getAllItems()</code> until the view is recreated. Documented by <code>0011</code> and
+    <code>0013</code>; recreate with <code>create or replace</code> (no drop, so grants and
+    <code>security_invoker</code> survive).</li>
+  <li><code>notify pgrst, 'reload schema';</code></li>
+</ul>
+<p>
+  No RPC needs changing: <code>enter_code_module</code> leaves the hints alone and the row leaves
+  <code>task_items</code> anyway, and ALF-168 <b>S9</b> already handles the
+  <code>dispatched_at</code> stamp. Apply with <code>npm run migrate -w database &lt;n&gt;</code>,
+  commit the appended <code>migrations-applied.log</code> line, and regenerate
+  <code>frontend/lib/database.types.ts</code> with <code>supabase gen types</code> — committed
+  verbatim, never hand-edited.
+</p>
+
+<h4>API</h4>
+<ul>
+  <li><code>lib/api/schemas.ts</code> — <code>updateItemSchema</code> gains
+    <code>intended_project_id</code> and <code>intended_epic_id</code> (<b>S3</b>).
+    <code>createItemSchema</code> is untouched.</li>
+  <li><code>app/api/items/[id]/route.ts</code> — both names join the
+    <code>toUpdatePayload</code> field list.</li>
+</ul>
+
+<h4>Store — <code>frontend/lib/stores/tasks-store.tsx</code></h4>
+<ul>
+  <li><code>classifyItem(id, itemType)</code> — becomes the coherent write of <b>S6</b>, choosing its
+    clear-set from the row's <i>current</i> type. Same optimistic/reconcile/rollback shape.</li>
+  <li><code>bulkClassify(ids, itemType)</code> — same, per row (each row's clear-set depends on its
+    own current type, so the single shared patch object becomes a per-row one).</li>
+  <li><b>New</b> <code>setFolder(id, folderId)</code> — cascades <code>folder_id</code> over the
+    subtree (<code>collectSubtree</code>, as <code>moveTask</code> does) and never writes
+    residency (<b>S4</b>).</li>
+  <li><b>New</b> <code>setIntendedProject(id, projectId)</code> — writes
+    <code>{ intended_project_id, intended_epic_id: null }</code> in one PATCH when the project
+    changes.</li>
+  <li><b>New</b> <code>setIntendedEpic(id, epicId)</code>.</li>
+  <li><b>New</b> <code>dispatchItems(ids)</code> — filters by <code>dispatchReadiness</code>, runs
+    the task PATCHes (subtree-wide) and the code RPCs through the existing
+    <code>applyBulkSettled</code> machinery, drops gated rows from the store, and resolves with the
+    ids that should stay selected (unready ∪ failed).</li>
+  <li><code>moveTask</code> / <code>bulkMove</code> / <code>removeGatedItem</code> — unchanged.</li>
+</ul>
+
+<h4>Components</h4>
+<ul>
+  <li><b>New</b> <code>components/atoms/picker-chip.tsx</code> — the shared chip-plus-popover
+    single-select primitive, absorbing <code>PickerListItem</code> from
+    <code>task-row/detail-chips.tsx</code>.</li>
+  <li><code>task-row/detail-chips.tsx</code> — gains <code>TypeChip</code>,
+    <code>FolderChip</code>, <code>IntendedProjectChip</code>, <code>IntendedEpicChip</code>.</li>
+  <li><code>task-row/task-detail-panel.tsx</code> — renders the per-type chip set of <b>S5</b> and
+    wires each to its store action.</li>
+  <li><code>task-row.tsx</code> — the two new read-only row chips and the Inbox-scoped
+    <code>TypeBadge</code> (<b>S7</b>, <b>S8</b>); the type-change gate feeds
+    <code>TaskRowMenu</code>'s <b>Classify as…</b> as well.</li>
+  <li><code>lib/hooks/use-task-row-flags.ts</code> — one new flag, <code>canChangeType</code>
+    (<b>S6</b>), so the row, its menu and the bulk bar can't disagree.</li>
+  <li><code>inbox-bulk-bar.tsx</code> — the Dispatch button, the readiness line, the re-derived
+    gates and their hint copy (<b>S9</b>–<b>S11</b>).</li>
+  <li><code>code/gate-dialog.tsx</code> — <code>GateItem.intendedEpicId</code> + the unanimity
+    pre-select (<b>S12</b>); its two callers (<code>inbox-bulk-bar.tsx</code>,
+    <code>task-row.tsx</code>) pass the field through.</li>
+  <li><b>New</b> <code>lib/tasks/dispatch.ts</code> — the readiness predicate and the blocker
+    summary, pure.</li>
+</ul>
+
+<h4>The E2E mock backend — <code>frontend/scripts/mock-supabase.mjs</code></h4>
+<ul>
+  <li><code>newItem</code> defaults <code>intended_epic_id: input.intended_epic_id ?? null</code>,
+    so the column exists on every seeded row and the PATCH passthrough carries it like any other.</li>
+  <li><b>S2</b>'s trigger is deliberately <b>not</b> reproduced, for the same reason ALF-168 left its
+    CHECK out: it guards a write the app should never make, and the DB integration suite is where
+    that is proven.</li>
+</ul>
+
+<h4>Fixtures</h4>
+<p>
+  <code>Item</code> gains a field, so the compiler points at every builder. Add
+  <code>intended_epic_id: overrides.intended_epic_id ?? null</code> to
+  <code>e2e/support/constants.ts</code>'s <code>makeItem</code> and to the per-file
+  <code>task()</code> helpers in the Storybook stories. A flat <code>null</code> default is correct
+  here (unlike ALF-168's derived <code>dispatched_at</code>): no existing fixture carries an epic, so
+  nothing changes meaning.
+</p>
+
+<h2>5 · Back-pressure</h2>
+
+<p>
+  Every rule in this story is deterministic, so all of it is gated. No new kind of test is needed —
+  the existing suites get pointed at the new fields and the new action.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:22%">Suite</th><th>What it must prove</th></tr>
+  <tr>
+    <td><b>DB integration</b><br /><span class="small"><code>database</code> · <code>check:slow</code></span></td>
+    <td>
+      <code>intended_epic_id</code> exists, is nullable, and nulls on epic delete. The code-only
+      CHECK rejects the hint on a task and on an unclassified row. <b>S2</b>'s trigger rejects an
+      epic from another project, rejects an epic with no project set, and permits a matching pair —
+      on both insert and update. Deleting the project nulls both hints (via the epic cascade).
+      <code>select intended_epic_id from task_items</code> resolves — the view-recreation guard.
+    </td>
+  </tr>
+  <tr>
+    <td><b>Unit</b><br /><span class="small"><code>check:fast</code></span></td>
+    <td>
+      <code>dispatch.ts</code>: every row of <b>S9</b>'s readiness table, plus the blocker summary's
+      grouping and pluralisation. <code>updateItemSchema</code> accepts and rejects both hints, and
+      the PATCH route maps them into the payload (present / <code>null</code> / absent).
+      <code>classifyItem</code> and <code>bulkClassify</code> send the right clear-set in each
+      direction and leave <code>priority</code> alone. <code>setFolder</code> cascades the subtree
+      and writes no residency field. <code>setIntendedProject</code> nulls the epic on a change.
+      <code>dispatchItems</code>: tasks PATCH their whole subtree, code items call the RPC and leave
+      the store, unready ids come back unsent and unfailed, a save failure settles separately.
+      <code>canChangeType</code> on a root/leaf/parent/subtask. The panel renders the right chip set
+      per type and each chip persists. The row shows the folder chip only while undispatched, the
+      epic chip when set, and the Task badge only in the Inbox. The bulk bar's four gates and its
+      readiness line. The gate pre-selects a unanimous epic, doesn't lock it, and clears it when the
+      project changes.
+    </td>
+  </tr>
+  <tr>
+    <td><b>Storybook</b><br /><span class="small"><code>check:slow</code></span></td>
+    <td>
+      New stories for §3's four pictures: the Inbox mid-triage, the task panel, the code panel (both
+      states), and the bulk bar with its readiness line. <b>Expect existing baselines to move</b> —
+      any Inbox story seeded with a <code>task</code> row now renders a Task badge (<b>S8</b>), so
+      <code>tasks-inboxscreen--desktop-inbox.png</code> and its mobile twin will diff. That diff
+      <i>is</i> the evidence: capture it, then approve the new baseline and commit the regenerated
+      PNGs. Follow the <code>storybook</code> skill's capture-then-approve flow; never hand-edit a
+      baseline.
+    </td>
+  </tr>
+  <tr>
+    <td><b>E2E</b><br /><span class="small"><code>check:slow</code></span></td>
+    <td>
+      New: seed an Inbox task with a folder and a code item with both hints, select both plus an
+      unclassified row, press <b>Dispatch</b> — the task appears in its folder, the code item is on
+      the board, the third row is still selected and the readiness line still names its blocker.
+      Set a folder from the detail panel and assert the row <b>stays in the Inbox</b> (<b>S4</b>) —
+      the one behaviour a unit test can assert but a reviewer will want to see end to end. Existing
+      <code>inbox-multi-edit.spec.ts</code> / <code>inbox.spec.ts</code> / <code>task-row.spec.ts</code>
+      stay green; any edit needed to their bodies is a signal the gates were widened further than
+      <b>S11</b> says.
+    </td>
+  </tr>
+</table>
+</div>
+
+<h4>Demo evidence</h4>
+<p>
+  This change has a database surface, a live-UI surface and a moving visual snapshot, so pick the
+  evidence by the <code>showboat</code> skill's rules — those stay the source of truth, don't
+  re-derive them here. The three things worth showing are the migration + trigger (the integration
+  runner's output), the §3.1 claim in the running app (a mixed selection dispatched in one press,
+  with the unready row left behind), and the snapshot diff from <b>S8</b>.
+</p>
+
+<h2>6 · Acceptance criteria</h2>
+
+<h4>Schema</h4>
+<ul>
+  <li><code>items.intended_epic_id</code> exists as a nullable <code>uuid</code> referencing
+    <code>epics(id)</code> with <code>on delete set null</code>, carries a comment, and is indexed.</li>
+  <li>A non-<code>code</code> row carrying <code>intended_epic_id</code> is rejected by the database.</li>
+  <li>An <code>intended_epic_id</code> whose epic belongs to a different project than
+    <code>intended_project_id</code> — or that is set with no project at all — is rejected, on insert
+    and on update.</li>
+  <li>Deleting an epic nulls the hint and leaves the project hint intact; deleting a project nulls both.</li>
+  <li><code>task_items</code> exposes <code>intended_epic_id</code>, with its grants and
+    <code>security_invoker</code> intact.</li>
+  <li><code>frontend/lib/database.types.ts</code> is regenerated (not hand-edited) and
+    <code>migrations-applied.log</code> records the apply.</li>
+</ul>
+
+<h4>Editing</h4>
+<ul>
+  <li>The detail panel shows Type · Due · Repeat · Priority · Folder for a task, Type · Project ·
+    Epic for a code item, and Type alone for an unclassified one — each auto-saving.</li>
+  <li>Setting a folder from the panel leaves the item in the Inbox; the folder chip appears on the
+    row and the folder's badge count does not change.</li>
+  <li>The panel's Folder picker offers <b>No folder</b> only while the row is undispatched.</li>
+  <li>Changing a code item's project clears its epic in the same write, and the Epic picker is
+    non-interactive while no project is set.</li>
+  <li>Changing an item's type is a single PATCH that clears exactly what the new type forbids and
+    preserves <code>priority</code>; the control is offered only on a childless top-level row, and
+    never offers <code>unclassified</code>.</li>
+  <li>Every field the epic's verdict schema can write — <code>item_type</code>,
+    <code>priority</code>, <code>due_date</code>, <code>folder_id</code>,
+    <code>recurrence</code>, <code>intended_project_id</code>, <code>intended_epic_id</code> — is
+    settable from the Inbox without leaving it.</li>
+</ul>
+
+<h4>The row</h4>
+<ul>
+  <li>An undispatched row with a folder shows a folder chip; a dispatched one does not.</li>
+  <li>A row with an <code>intended_epic_id</code> shows the epic's ref beside its project chip.</li>
+  <li>A <code>task</code> row shows the Task badge in the Inbox and nowhere else.</li>
+</ul>
+
+<h4>Dispatch</h4>
+<ul>
+  <li>A mixed selection of a ready task and a ready code item dispatches both in one press: the task
+    appears in its folder, the code item on its project's board.</li>
+  <li>A task with subtasks dispatches with its whole subtree; a code item with children does not
+    dispatch at all.</li>
+  <li>Unready items are not sent, stay selected, and are not reported as failures.</li>
+  <li>The bar names what the selection is missing, grouped by reason with counts, and updates live as
+    the selection or its labels change.</li>
+  <li>Dispatch is disabled, with a hint, when nothing in the selection is ready.</li>
+  <li>Nothing leaves the Inbox without a human press — no code path in this story writes
+    <code>dispatched_at</code> other than the three actions in <b>S4</b>'s table.</li>
+</ul>
+
+<h4>The bulk bar and the gate</h4>
+<ul>
+  <li><b>Classify as</b> is enabled on a selection of childless top-level rows whatever their current
+    type; <b>Move to folder</b> on a selection of tasks and unclassified rows; <b>Send to Code…</b>
+    exactly as before.</li>
+  <li>The gate opens with a unanimous <code>intended_epic_id</code> already selected, still
+    interactive, and clears it when a different project is chosen.</li>
+</ul>
+
+<h4>Guardrails</h4>
+<ul>
+  <li>Every rule above is asserted by at least one test in the suite that owns it (§5), and
+    <code>check</code> is green with no new ignore directives, config edits, or skipped tests.</li>
+  <li>The only image-snapshot baselines that moved are the ones <b>S8</b> predicts, and each was
+    approved by regenerating it, never by editing a PNG.</li>
+  <li>The E2E mock backend carries <code>intended_epic_id</code>, so no existing E2E body needed
+    editing to stay green.</li>
+  <li>A demo doc exists, is linked from the PR as a live blob URL, and
+    <code>npm run demo -- verify</code> reproduces it.</li>
+</ul>
+
+<h2>7 · Out of scope</h2>
+<ul>
+  <li><b>Everything in ALF-168.</b> <code>dispatched_at</code>, the backfill, the residency helper,
+    the store selectors, the folder-badge guard, the insert and folder-delete triggers, the
+    <code>dispatched</code> PATCH intent and the <code>items_dispatched_needs_folder</code> CHECK are
+    that story's, and are assumed present.</li>
+  <li><b>Any classifier column.</b> No <code>classified_at</code>, no provenance stamp, no
+    <code>classified_guess</code>, no <code>classification_corrections</code> table, and no
+    dispatch-time diff. Epic slices <b>C</b>, <b>D</b> and <b>H</b> add each one alongside the code
+    that first writes it.</li>
+  <li><b>The Worker.</b> No cron trigger, no <code>scheduled</code> handler, no sweep query, no
+    Anthropic call, no prompt, no <code>ANTHROPIC_API_KEY</code>. The <code>workers/</code> package
+    is untouched by this story.</li>
+  <li><b>A rail of placeholder chips on the Inbox row.</b> Decided against in <b>S5</b>; the panel
+    owns editing. Revisit only if triage in practice proves the extra press expensive.</li>
+  <li><b>A single-row Dispatch entry in the ⋯ menu.</b> Both single-item paths already exist —
+    <b>Move to…</b> files a task, <b>Send to Code module…</b> gates a code item — and each already
+    stamps residency. A third would be a synonym.</li>
+  <li><b>Un-dispatching in bulk.</b> <b>Move to folder → Inbox</b> already returns a selection, and
+    ALF-168 <b>S8</b> defines what that clears.</li>
+  <li><b>Any rendering of <i>when</i> something was dispatched</b>, or of who set a field. D4 holds:
+    a machine-set value and a hand-set one are indistinguishable, and this story adds nothing that
+    could tell them apart.</li>
+  <li><b>Creating a folder, project or epic from the detail panel.</b> The pickers select from what
+    exists; "+ New epic…" stays a gate affordance. The machine will never create one either
+    (epic §5), so the panel matching that is deliberate.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+<ol>
+  <li>
+    <b>Does the Task badge earn its place, or should the <i>unclassified</i> state be marked
+    instead?</b> <b>S8</b> proposes the badge because it reuses an existing component and needs no
+    new vocabulary. The alternative — a dashed "Unclassified" chip — marks the rarer state and
+    leaves classified rows quieter, at the cost of a chip that exists nowhere else in the app. Worth
+    settling on this PR, since it is the one change here that reverses a previous deliberate
+    decision.
+  </li>
+  <li>
+    <b>Should Dispatch confirm before sending code items?</b> A code dispatch is one-way and
+    dialog-free by design (<b>S9</b>). Proposed: <b>no confirmation</b> — the readiness line already
+    states what will go, and adding a dialog re-introduces the per-batch friction the action exists
+    to remove. Raised because it is the only irreversible thing in this story that happens on a
+    single press.
+  </li>
+  <li>
+    <b>Does a folder chip on an Inbox row want a distinct treatment from a folder chip elsewhere?</b>
+    Proposed: <b>no</b> — <b>S7</b> renders it in the row's existing muted badge tone, and D4 says a
+    label is a label. Noted only because the folder chip is the first row element whose meaning is
+    "will land here" rather than "is here", and a future reader may reasonably expect it to look
+    different.
+  </li>
+</ol>
+
+<h2>9 · Related reading</h2>
+<ul class="small">
+  <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. D4
+    (write-through guesses), D6 (only humans dispatch), D7 (one coherent write), D11 (the epic hint),
+    D17 (Dispatch), §4's bulk-bar callout, §6 slices B / E / I.</li>
+  <li><a href="ALF-168.html"><code>docs/specs/ALF-168.html</code></a> — the prerequisite. S3
+    (residency travels with the subtree), S4 (the <code>dispatched</code> intent), S7 (the
+    dispatched-needs-folder CHECK), S8 (move-to-Inbox), S9 (the RPCs' stamp), S10
+    (<code>residency.ts</code>).</li>
+  <li><code>database/migrations/0013_intended_project.sql</code> — the hint pattern <b>S1</b> mirrors,
+    and the view-recreation gotcha (also in <code>0011</code>).</li>
+  <li><code>database/migrations/0019_code_epics.sql</code> — <code>items_task_only_fields</code>,
+    the <code>enforce_subtask_shape</code> trigger <b>S2</b> and <b>S6</b> both reason from, and
+    <code>convert_to_code_epic</code>.</li>
+  <li><code>database/migrations/0002_software_factory.sql</code>, <code>0014_project_scoped_priority.sql</code>
+    — the <code>epics</code> table and the current <code>enter_code_module</code> body.</li>
+  <li>Skills: <code>data-flow</code> (the optimistic store mechanics every new action obeys),
+    <code>frontend-architecture</code> (where a shared primitive like <code>PickerChip</code>
+    belongs), <code>supabase</code> (migrations, grants, regenerating types),
+    <code>storybook</code> (the capture-then-approve baseline flow <b>S8</b> triggers),
+    <code>showboat</code> (the demo evidence rules).</li>
+</ul>
+
+</div>
+</body>
+</html>
