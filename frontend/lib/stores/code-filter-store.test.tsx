@@ -37,6 +37,40 @@ describe('CodeFilterProvider', () => {
 
     expect(result.current.state.byKey.get('backlog')).toEqual([...DEFAULT, 'done']);
   });
+
+  it('holds the project selection on its own map, seeded from the passed default (ALF-156)', () => {
+    const { result } = renderHook(
+      () => ({ state: useCodeFilters(), actions: useCodeFilterActions() }),
+      { wrapper: CodeFilterProvider },
+    );
+
+    expect(result.current.state.projectsByKey.size).toBe(0);
+
+    act(() => {
+      result.current.actions.setProjectIds('backlog', ['p1', 'p2'], (current) =>
+        current.filter((id) => id !== 'p1'),
+      );
+    });
+
+    expect(result.current.state.projectsByKey.get('backlog')).toEqual(['p2']);
+  });
+
+  it('keeps the status and project selections of one key independent', () => {
+    const { result } = renderHook(
+      () => ({ state: useCodeFilters(), actions: useCodeFilterActions() }),
+      { wrapper: CodeFilterProvider },
+    );
+
+    act(() => {
+      result.current.actions.setStatuses('backlog', DEFAULT, ['done']);
+    });
+    act(() => {
+      result.current.actions.setProjectIds('backlog', ['p1', 'p2'], ['p2']);
+    });
+
+    expect(result.current.state.byKey.get('backlog')).toEqual(['done']);
+    expect(result.current.state.projectsByKey.get('backlog')).toEqual(['p2']);
+  });
 });
 
 /**

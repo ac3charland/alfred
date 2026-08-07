@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import * as React from 'react';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { CodeStory, Epic, Project } from '@/lib/types';
@@ -235,6 +236,27 @@ type Story = StoryObj<typeof meta>;
  * first row's Up and the last row's Down are disabled (the ends of the order).
  */
 export const Seeded: Story = {};
+
+/**
+ * The Backlog narrowed with **Filter by project** (ALF-156): the play function unchecks *Relay*,
+ * leaving only the Alfred stories listed and the trigger highlighted teal with its count. The
+ * remaining rows keep their global priority ranking — the filter hides work, it never re-ranks it.
+ */
+export const ProjectFiltered: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: /filter by project/i }));
+    // The menu is portal-rendered outside the canvas, and Radix sets pointer-events:none on the
+    // body while it's open — so find it on the body and drive it by keyboard.
+    const menu = await within(document.body).findByRole('menu');
+    await expect(within(menu).getByRole('menuitemcheckbox', { name: 'Relay' })).toBeInTheDocument();
+    // 2nd option = Relay (projects list in creation order), then close the menu again.
+    await userEvent.keyboard('[ArrowDown][ArrowDown][Enter][Escape]');
+    await waitFor(async () => {
+      await expect(canvas.queryByText('RLP-2')).not.toBeInTheDocument();
+    });
+  },
+};
 
 /**
  * One project per palette colour, so the full round-robin shows at once: the badges read
