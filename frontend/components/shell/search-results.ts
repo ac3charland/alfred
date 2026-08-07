@@ -1,5 +1,6 @@
 import { storyBoardHref } from '@/lib/code/board-links';
 import { FACTORY_STATE_LABELS } from '@/lib/stores/code-store';
+import { residentFolderId } from '@/lib/tasks/residency';
 import { resolveRoot, taskDestination } from '@/lib/tasks/task-location';
 import type { CodeStory, Folder, Item } from '@/lib/types';
 
@@ -69,12 +70,17 @@ function byRankThenRecency(a: { rank: number; createdAt: string }, b: typeof a):
   return a.rank - b.rank || b.createdAt.localeCompare(a.createdAt);
 }
 
-/** The location label shown under a task result (folder name / Inbox / Completed). */
+/**
+ * The location label shown under a task result (folder name / Inbox / Completed). Reads
+ * residency, not `folder_id`: an item awaiting triage says "Inbox" even when it already carries
+ * a folder, matching the view the result actually jumps to.
+ */
 function taskSubtitle(item: Item, byId: Map<string, Item>, folders: readonly Folder[]): string {
   const root = resolveRoot(item, byId);
   if (root.status === 'completed') return 'Completed';
-  if (root.folder_id !== null) {
-    return folders.find((folder) => folder.id === root.folder_id)?.name ?? 'Folder';
+  const folderId = residentFolderId(root);
+  if (folderId !== null) {
+    return folders.find((folder) => folder.id === folderId)?.name ?? 'Folder';
   }
   return 'Inbox';
 }

@@ -1,3 +1,4 @@
+import { residentFolderId } from '@/lib/tasks/residency';
 import type { Item } from '@/lib/types';
 
 /**
@@ -24,13 +25,15 @@ export function resolveRoot(item: Item, byId: Map<string, Item>): Item {
 
 /**
  * The client-side destination for a task: its containing view, derived from the top-level
- * ancestor's own fields. Completed → the Completed view; in a folder → that folder; otherwise
- * the Inbox (revealed via `?view=inbox`).
+ * ancestor's own fields. Completed → the Completed view; resident in a folder → that folder;
+ * otherwise the Inbox (revealed via `?view=inbox`). An item still awaiting triage routes to the
+ * Inbox even when it already carries a folder — that's where it actually renders.
  */
 export function taskDestination(item: Item, tasks: readonly Item[]): string {
   const byId = new Map(tasks.map((task) => [task.id, task] as const));
   const root = resolveRoot(item, byId);
   if (root.status === 'completed') return '/completed';
-  if (root.folder_id !== null) return `/folders/${root.folder_id}`;
+  const folderId = residentFolderId(root);
+  if (folderId !== null) return `/folders/${folderId}`;
   return '/?view=inbox';
 }

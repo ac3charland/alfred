@@ -1,6 +1,9 @@
 import { buildResults, flattenResults } from '@/components/shell/search-results';
 import type { CodeStory, Folder, Item } from '@/lib/types';
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2025-01-02T00:00:00Z';
+
 function makeItem(overrides: Partial<Item> = {}): Item {
   return {
     id: 'i1',
@@ -9,6 +12,9 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     status: 'active',
     item_type: 'task',
     folder_id: null,
+    // A fixture with a folder is a filed item, so it defaults to dispatched. `...overrides`
+    // lands last, so a fixture can still state `dispatched_at: null` for a foldered Inbox item.
+    dispatched_at: overrides.folder_id == null ? null : DISPATCHED_AT,
     parent_id: null,
     due_date: null,
     recurrence: null,
@@ -140,6 +146,15 @@ describe('subtitles', () => {
     const item = makeItem({ title: 'firewall', folder_id: 'f1' });
     const results = buildResults('firewall', [item], [], folders);
     expect(results.tasks[0]?.subtitle).toBe('Software');
+  });
+
+  it('says Inbox for an undispatched task, even one carrying a folder', () => {
+    // The subtitle names the view the result jumps to, and that view is the Inbox until a human
+    // dispatches the item — otherwise the label would send the user to a folder it isn't in.
+    const folders: Folder[] = [{ id: 'f1', name: 'Software' } as Folder];
+    const item = makeItem({ title: 'firewall', folder_id: 'f1', dispatched_at: null });
+    const results = buildResults('firewall', [item], [], folders);
+    expect(results.tasks[0]?.subtitle).toBe('Inbox');
   });
 
   it('shows a story epic and state', () => {

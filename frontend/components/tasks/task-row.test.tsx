@@ -28,6 +28,9 @@ const mockEnterCodeModule = jest.mocked(apiClient.enterCodeModule);
 // calls this endpoint under the hood.
 const mockConvertToCodeEpic = jest.mocked(apiClient.convertToCodeEpic);
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2025-01-01T11:00:00Z';
+
 const BASE_ITEM: Item = {
   id: 'item-1',
   title: 'Write tests',
@@ -40,6 +43,7 @@ const BASE_ITEM: Item = {
   status: 'active',
   completed_at: null,
   folder_id: null,
+  dispatched_at: null,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
@@ -74,7 +78,13 @@ const SECOND_ITEM: Item = {
 };
 
 const COMPLETED_ITEM: Item = { ...BASE_ITEM, status: 'completed' };
-const COMPLETED_FOLDER_ITEM: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-1' };
+// Filed AND dispatched — a fixture that carries a folder is one a human actually put there.
+const COMPLETED_FOLDER_ITEM: Item = {
+  ...BASE_ITEM,
+  status: 'completed',
+  folder_id: 'folder-1',
+  dispatched_at: DISPATCHED_AT,
+};
 
 const FOLDER: Folder = {
   id: 'folder-1',
@@ -509,6 +519,15 @@ describe('TaskRow', () => {
     expect(screen.getByText('Inbox')).toBeInTheDocument();
   });
 
+  it('shows "Inbox" under a completed root that carries a folder it was never dispatched to', () => {
+    renderTasks([{ ...COMPLETED_FOLDER_ITEM, dispatched_at: null }], {
+      ...COMPLETED,
+      folders: [FOLDER],
+    });
+    expect(screen.getByText('Inbox')).toBeInTheDocument();
+    expect(screen.queryByText('Work')).not.toBeInTheDocument();
+  });
+
   it('does not show parent label in the inbox view', () => {
     renderTasks([BASE_ITEM], { folders: [FOLDER] });
     expect(screen.queryByText('Work')).not.toBeInTheDocument();
@@ -680,7 +699,10 @@ describe('TaskRow', () => {
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledTimes(1);
       });
-      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+        folder_id: 'folder-1',
+        dispatched: true,
+      });
     });
 
     it('calls updateItem for parent and all descendants when moving to a folder', async () => {
@@ -696,9 +718,18 @@ describe('TaskRow', () => {
       await waitFor(() => {
         expect(mockUpdateItem).toHaveBeenCalledTimes(3);
       });
-      expect(mockUpdateItem).toHaveBeenCalledWith('item-3', { folder_id: 'folder-1' });
-      expect(mockUpdateItem).toHaveBeenCalledWith('item-2', { folder_id: 'folder-1' });
-      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-3', {
+        folder_id: 'folder-1',
+        dispatched: true,
+      });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-2', {
+        folder_id: 'folder-1',
+        dispatched: true,
+      });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+        folder_id: 'folder-1',
+        dispatched: true,
+      });
     });
 
     it('calls moveToInbox once when moving a leaf task to the inbox', async () => {
@@ -1694,6 +1725,7 @@ describe('TaskRow', () => {
         ...BASE_ITEM,
         status: 'completed',
         folder_id: 'folder-nonexistent',
+        dispatched_at: DISPATCHED_AT,
       };
       renderTasks([itemWithMissingFolder], COMPLETED);
       expect(screen.getByText('Unknown')).toBeInTheDocument();
@@ -1746,7 +1778,12 @@ describe('TaskRow', () => {
         created_at: '2025-01-01T01:00:00Z',
         sort_order: 3,
       };
-      const itemInB: Item = { ...BASE_ITEM, status: 'completed', folder_id: 'folder-b' };
+      const itemInB: Item = {
+        ...BASE_ITEM,
+        status: 'completed',
+        folder_id: 'folder-b',
+        dispatched_at: DISPATCHED_AT,
+      };
       renderTasks([itemInB], { ...COMPLETED, folders: [folderA, folderB] });
       // Should show 'Beta', NOT 'Alpha' (Alpha is first in the list)
       expect(screen.getByText('Beta')).toBeInTheDocument();
@@ -2216,7 +2253,7 @@ describe('TaskRow — classification & type-gating', () => {
     });
 
     it('shows no "Task" badge for a task filed in a folder', () => {
-      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1' }], {
+      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1', dispatched_at: DISPATCHED_AT }], {
         folders: [FOLDER],
         scope: { type: 'folder', folderId: 'folder-1' },
       });
@@ -2236,7 +2273,7 @@ describe('TaskRow — classification & type-gating', () => {
     });
 
     it('still shows the "Code" badge for a code item filed in a folder', () => {
-      renderTasks([{ ...CODE_ITEM, folder_id: 'folder-1' }], {
+      renderTasks([{ ...CODE_ITEM, folder_id: 'folder-1', dispatched_at: DISPATCHED_AT }], {
         folders: [FOLDER],
         scope: { type: 'folder', folderId: 'folder-1' },
       });
