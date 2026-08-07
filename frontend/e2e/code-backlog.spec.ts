@@ -222,6 +222,107 @@ test('filters the Backlog by status via the Filter by status dropdown', async ({
   await expect(rows.nth(1)).toContainText('ALF-6');
 });
 
+/**
+ * Two projects with interleaved global ranks (ALF-156), so narrowing to one project must hide the
+ * other's rows without touching the ranking of what's left.
+ */
+function seedTwoProjects() {
+  const project2 = makeProject('Relay', { id: 'p2', key: 'RLP' });
+  const epic2 = makeEpic('Routing', { id: 'e2', project_id: 'p2', ref_number: 1, ref: 'RLP-1' });
+  return {
+    projects: [project, project2],
+    epics: [epic, epic2],
+    items: [...items, makeItem('Extract newsletter insights', { id: 'i4', item_type: 'code' })],
+    codeItems: [
+      ...codeItems,
+      makeCodeStory({
+        item_id: 'i4',
+        project_id: 'p2',
+        epic_id: 'e2',
+        ref_number: 2,
+        ref: 'RLP-2',
+        // Ranked BETWEEN two Alfred stories, so hiding Relay closes a gap in the middle.
+        priority: 1.5,
+      }),
+    ],
+  };
+}
+
+test('filters the Backlog by project via the Filter by project dropdown (ALF-156)', async ({
+  page,
+  seed,
+}) => {
+  await seed(seedTwoProjects());
+  await page.goto('/code/backlog');
+
+  const rows = page.getByRole('listitem');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(1)).toContainText('RLP-2');
+
+  // Uncheck "Relay". The menu stays open for further toggles, so close it (Escape) before
+  // reading the rows it aria-hides while open.
+  await page.getByRole('button', { name: /filter by project/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.keyboard.press('Escape');
+
+  // Only the Alfred stories remain, still in global priority order, and the trigger counts the
+  // narrowed selection.
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText('ALF-3');
+  await expect(rows.nth(1)).toContainText('ALF-4');
+  await expect(rows.nth(2)).toContainText('ALF-5');
+  await expect(page.getByRole('button', { name: /filter by project/i })).toContainText('(1)');
+
+  // The chevrons act on the VISIBLE order: ALF-4's neighbour above is now ALF-3, even though
+  // RLP-2 still ranks between them globally.
+  const reorderSynced = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/code/reorder') && response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: 'Move ALF-4 up' }).click();
+  await expect(rows.nth(0)).toContainText('ALF-4');
+  await expect(rows.nth(1)).toContainText('ALF-3');
+  await reorderSynced;
+
+  // Re-check Relay: its story comes back, ranked by the same global priority it never lost.
+  await page.getByRole('button', { name: /filter by project/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(4);
+  // The swap EXCHANGED the two visible stories' global priorities (1 ↔ 2), so the hidden RLP-2
+  // (1.5) is still sitting between them — hiding a project never re-ranked it.
+  await expect(rows.nth(0)).toContainText('ALF-4');
+  await expect(rows.nth(1)).toContainText('RLP-2');
+  await expect(rows.nth(2)).toContainText('ALF-3');
+  await expect(rows.nth(3)).toContainText('ALF-5');
+});
+
+test('keeps the Backlog project filter active across SPA navigation (ALF-156)', async ({
+  page,
+  seed,
+}) => {
+  await seed(seedTwoProjects());
+  await page.goto('/code/backlog');
+
+  const rows = page.getByRole('listitem');
+  await page.getByRole('button', { name: /filter by project/i }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.keyboard.press('Escape');
+  await expect(rows).toHaveCount(3);
+
+  // Navigate to a project board and back, both client-side History pushes via the sidebar.
+  const projectNav = page.getByRole('navigation', { name: 'Projects' });
+  await projectNav.getByRole('link', { name: /relay/i }).click();
+  await expect(page).toHaveURL('/code/p2');
+
+  await projectNav.getByRole('link', { name: 'Backlog' }).click();
+  await expect(page).toHaveURL('/code/backlog');
+
+  // The project selection survived the round-trip, exactly like the status filter (ALF-79).
+  await expect(page.getByRole('listitem')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: /filter by project/i })).toContainText('(1)');
+});
+
 test('keeps the Backlog status filter active across SPA navigation (ALF-79)', async ({
   page,
   seed,

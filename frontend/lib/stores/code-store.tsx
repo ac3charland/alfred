@@ -1504,21 +1504,39 @@ export function useProjectBoard(projectId: string): ProjectBoard {
 /**
  * The flat, ranked, cross-project Backlog list (ALF-35): every story sorted by global `priority`
  * ascending, filtered to the `statuses` the caller wants visible (ALF-52's "Filter by status"
- * multi-select). Pass `DEFAULT_BACKLOG_STATUSES` for the outstanding-only default, or any subset
- * of `ALL_FACTORY_STATES`; an empty list yields an empty Backlog. Keep `statuses` referentially
- * stable (e.g. in component state) so the memo only recomputes when the selection actually
- * changes. Memoized on the stories slice + the selection, like `useProjectBoard`.
+ * multi-select) and, optionally, to `projectIds` (ALF-156's "Filter by project"). Pass
+ * `DEFAULT_BACKLOG_STATUSES` for the outstanding-only default, or any subset of
+ * `ALL_FACTORY_STATES`; an empty list yields an empty Backlog. Omit `projectIds` for every
+ * project — the Needs-human-action view takes that path, since only the Backlog offers the
+ * project control; an empty list, like an empty `statuses`, yields nothing.
+ *
+ * Keep both selections referentially stable (see `useStatusFilter` / `useProjectFilter`) so the
+ * memo only recomputes when a selection actually changes. Memoized on the stories slice + the
+ * selections, like `useProjectBoard`.
  */
-export function useBacklog({ statuses }: { statuses: readonly CodeFactoryState[] }): CodeStory[] {
+export function useBacklog({
+  statuses,
+  projectIds,
+}: {
+  statuses: readonly CodeFactoryState[];
+  projectIds?: readonly string[];
+}): CodeStory[] {
   const stories = useCodeStories();
 
   return React.useMemo<CodeStory[]>(() => {
     const allowed = new Set<CodeFactoryState>(statuses);
+    // No selection at all means "every project"; a selection filters by it, and a story with no
+    // project can't match one, so it drops out with the rest.
+    const allowedProjects = projectIds === undefined ? null : new Set<string>(projectIds);
     const visible = stories.filter(
-      (story) => story.factory_state !== null && allowed.has(story.factory_state),
+      (story) =>
+        story.factory_state !== null &&
+        allowed.has(story.factory_state) &&
+        (allowedProjects === null ||
+          (story.project_id !== null && allowedProjects.has(story.project_id))),
     );
     return stableSorted(visible, byPriorityAsc);
-  }, [stories, statuses]);
+  }, [stories, statuses, projectIds]);
 }
 
 /** Which extremes of the Backlog ranking a story already occupies — see {@link useStoryRankFlags}. */

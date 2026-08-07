@@ -614,6 +614,64 @@ describe('code-store', () => {
       });
       expect(result.current).toEqual([]);
     });
+
+    describe('project filter (ALF-156)', () => {
+      const filterStories = [
+        makeStory('i1', 'e1', 'p1', { priority: 10 }),
+        makeStory('i2', 'eX', 'p2', { priority: 20 }),
+        makeStory('i3', 'e1', 'p1', { priority: 30 }),
+      ];
+      const seed = { projects: [PROJECT_A, PROJECT_B], epics, stories: filterStories };
+
+      it('lists every project when no projectIds are passed', () => {
+        const { result } = renderHook(() => useBacklog({ statuses: ALL_FACTORY_STATES }), {
+          wrapper: makeWrapper(seed),
+        });
+        expect(result.current.map((s) => s.item_id)).toEqual(['i1', 'i2', 'i3']);
+      });
+
+      it('narrows the list to the selected projects, keeping global priority order', () => {
+        const { result } = renderHook(
+          () => useBacklog({ statuses: ALL_FACTORY_STATES, projectIds: ['p1'] }),
+          { wrapper: makeWrapper(seed) },
+        );
+        expect(result.current.map((s) => s.item_id)).toEqual(['i1', 'i3']);
+      });
+
+      it('returns an empty list when no projects are selected', () => {
+        const { result } = renderHook(
+          () => useBacklog({ statuses: ALL_FACTORY_STATES, projectIds: [] }),
+          { wrapper: makeWrapper(seed) },
+        );
+        expect(result.current).toEqual([]);
+      });
+
+      it('applies the status and project filters together', () => {
+        const stories = [
+          makeStory('i1', 'e1', 'p1', { priority: 10, factory_state: 'in_development' }),
+          makeStory('i2', 'e1', 'p1', { priority: 20, factory_state: 'done' }),
+          makeStory('i3', 'eX', 'p2', { priority: 30, factory_state: 'in_development' }),
+        ];
+        const { result } = renderHook(
+          () => useBacklog({ statuses: DEFAULT_BACKLOG_STATUSES, projectIds: ['p1'] }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A, PROJECT_B], epics, stories }) },
+        );
+        // p2's story is filtered out by project; p1's done story by status.
+        expect(result.current.map((s) => s.item_id)).toEqual(['i1']);
+      });
+
+      it('hides a story with no project when the filter is narrowed', () => {
+        const stories = [
+          makeStory('i1', 'e1', 'p1', { priority: 10 }),
+          makeStory('i2', 'e1', 'p1', { priority: 20, project_id: null }),
+        ];
+        const { result } = renderHook(
+          () => useBacklog({ statuses: ALL_FACTORY_STATES, projectIds: ['p1'] }),
+          { wrapper: makeWrapper({ projects: [PROJECT_A], epics, stories }) },
+        );
+        expect(result.current.map((s) => s.item_id)).toEqual(['i1']);
+      });
+    });
   });
 
   describe('useStoryRankFlags', () => {

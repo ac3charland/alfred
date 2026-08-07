@@ -2,11 +2,15 @@
 
 import * as React from 'react';
 
+import { type KeyedFilter, useKeyedFilter } from '@/lib/hooks/use-keyed-filter';
 import { useCodeFilterActions, useCodeFilters } from '@/lib/stores/code-filter-store';
 import type { CodeFactoryState } from '@/lib/types';
 
 /** The multi-select status filter state shared by the Backlog list and the project board. */
-export interface StatusFilter {
+export interface StatusFilter extends Pick<
+  KeyedFilter<CodeFactoryState>,
+  'toggle' | 'isFiltering'
+> {
   /** The currently-selected factory states (a subset of the caller's option list). */
   statuses: readonly CodeFactoryState[];
   /**
@@ -14,13 +18,6 @@ export interface StatusFilter {
    * time (the counterpart to `toggle`).
    */
   setStatuses: React.Dispatch<React.SetStateAction<readonly CodeFactoryState[]>>;
-  /** Toggle one state in or out of the selection. */
-  toggle: (state: CodeFactoryState) => void;
-  /**
-   * Whether the selection differs from its resting default — drives the trigger's teal + count
-   * treatment. `false` at the default (narrower OR wider), `true` for any other selection.
-   */
-  isFiltering: boolean;
 }
 
 /**
@@ -42,9 +39,7 @@ export function useStatusFilter(
   const { byKey } = useCodeFilters();
   const { setStatuses: setStored } = useCodeFilterActions();
 
-  const statuses = byKey.get(key) ?? defaultStatuses;
-
-  const setStatuses = React.useCallback<
+  const store = React.useCallback<
     React.Dispatch<React.SetStateAction<readonly CodeFactoryState[]>>
   >(
     (update) => {
@@ -53,22 +48,11 @@ export function useStatusFilter(
     [setStored, key, defaultStatuses],
   );
 
-  const toggle = React.useCallback(
-    (state: CodeFactoryState) => {
-      setStored(key, defaultStatuses, (current) =>
-        current.includes(state)
-          ? current.filter((candidate) => candidate !== state)
-          : [...current, state],
-      );
-    },
-    [setStored, key, defaultStatuses],
+  const { selected, setSelected, toggle, isFiltering } = useKeyedFilter(
+    byKey.get(key),
+    store,
+    defaultStatuses,
   );
 
-  // Flag the trigger only when the selection differs from the default. The default is the resting
-  // state (neither narrower nor wider), so compare length AND membership: any add or drop flips it.
-  const isFiltering =
-    statuses.length !== defaultStatuses.length ||
-    !defaultStatuses.every((state) => statuses.includes(state));
-
-  return { statuses, setStatuses, toggle, isFiltering };
+  return { statuses: selected, setStatuses: setSelected, toggle, isFiltering };
 }
