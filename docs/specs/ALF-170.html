@@ -102,7 +102,9 @@
     --a-amber: #F0B429; --a-red: #F87171;
     --a-chip-line: #25324a; --a-popover: #0d1320;
     background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 14px;
-    padding: 1.1rem; margin: 1rem 0; color: var(--a-fg);
+    /* The app's content column is `mx-auto w-full max-w-3xl px-4` (module-router.tsx) — 768px
+       with 16px gutters. The canvas matches it so chip density and row width read true. */
+    max-width: 768px; padding: 16px; margin: 1rem 0; color: var(--a-fg);
     font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   /* Document chrome must not leak into the canvas — inline code above all. */
@@ -130,15 +132,35 @@
   .trow { display: flex; align-items: flex-start; gap: .5rem; padding: .5rem .5rem .5rem .6rem;
           border-top: 1px solid rgba(30,42,63,.5); }
   .trow:first-child { border-top: 0; }
-  .tbox { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid #3a465c;
-          flex: none; margin-top: 3px; }
+  /* Checkbox: h-4 w-4 at md+, border muted-foreground/50 (task-row.styles.ts). */
+  .tbox { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(138,150,168,.5);
+          flex: none; margin-top: 2px; }
   .tbox.on { background: var(--a-teal); border-color: var(--a-teal); }
-  .tmain { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: .5rem;
+  .tmain { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px;
            flex-wrap: wrap; }
-  .ttitle { color: var(--a-fg); font-size: 14px; }
+  /* titleTextClass at md+: text-sm / leading-5. */
+  .ttitle { color: var(--a-fg); font-size: 14px; line-height: 20px; flex: 1; min-width: 0; }
   .tnotes { display: block; color: var(--a-notes); font-size: 12.5px; line-height: 1.35; }
-  .tmeta { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-left: auto; }
-  .dots { color: var(--a-muted); font-size: 13px; letter-spacing: 1px; padding-left: .3rem; }
+  /* metaFooterClass is `md:contents`, so each badge is a direct row child at gap-x-2 (8px);
+     the title wrapper is flex-1, which is what pushes the cluster right. */
+  .tmeta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dots { color: var(--a-muted); display: flex; align-items: center; padding-left: 4px; }
+  /* The md+ leading spacer an unclassified / code row shows where a task's checkbox sits. */
+  .tspacer { width: 16px; flex: none; }
+
+  /* SELECT MODE is a different render entirely (task-row.tsx `if (inSelectMode)`): the whole
+     row becomes ONE ghost Button — checkbox + truncated title + TypeBadge — with the ⋯ menu,
+     the notes preview, the subtree and (today) every other badge suppressed. A selected row
+     takes bg-accent-teal/5 and a 2px inset teal ring. */
+  .srow { display: flex; align-items: center; gap: 8px; width: 100%;
+          padding: 8px; border-radius: 4px; }
+  .srow.sel { background: rgba(79,209,224,.05); box-shadow: inset 0 0 0 2px var(--a-teal); }
+  .sbox { width: 16px; height: 16px; border-radius: 4px; flex: none;
+          border: 1px solid rgba(138,150,168,.5);
+          display: flex; align-items: center; justify-content: center; }
+  .sbox.on { background: var(--a-teal); border-color: var(--a-teal); color: var(--a-bg); }
+  .stitle { flex: 1; min-width: 0; font-size: 14px; color: var(--a-fg);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Badges — atoms/badge.tsx (rounded-full, px-2 py-0.5, text-xs). */
   .bdg { border-radius: 999px; padding: 1px 8px; font-size: 12px; white-space: nowrap; }
@@ -148,7 +170,11 @@
                   font-family: ui-monospace, monospace; font-weight: 500; }
   .b-proj-amber { background: rgba(240,180,41,.15); color: var(--a-amber);
                   font-family: ui-monospace, monospace; font-weight: 500; }
-  .b-prio-high { color: var(--a-red); font-size: 12px; font-weight: 700; padding: 0 2px; }
+  /* PriorityChip compact + symbolOnly: a Badge in the level's variant holding the level's
+     lucide glyph sized to the 16px text line-box, with no label (ALF-94). High =
+     badgeVariant "destructive" = bg-destructive/15 text-destructive. */
+  .b-prio { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 8px; }
+  .b-prio-high { background: rgba(248,113,113,.15); color: var(--a-red); }
 
   /* Chips — atoms/chip.tsx (rounded-[9px], px-3 py-1.5, 13px, medium). */
   .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px;
@@ -162,25 +188,51 @@
   .c-dim   { opacity: .45; }
 
   /* The inline detail panel — task-detail-panel.tsx. */
-  .panel { border: 1px solid var(--a-border); background: var(--a-surface);
+  .panel { position: relative; border: 1px solid var(--a-border); background: var(--a-surface);
            border-radius: 13px; padding: 16px 18px 18px;
            box-shadow: 0 0 28px -10px rgba(79,209,224,.18); }
+  /* Radix portals the popover, so it FLOATS over the content below rather than pushing it
+     down — drawn absolute here so the panel keeps its true height. */
+  .pop-layer { position: absolute; z-index: 2; }
+  /* Room for that floating layer inside the static canvas, so the doc doesn't clip it. */
+  .app.room { padding-bottom: 116px; }
   .chiprow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .notes-label { display: block; margin-bottom: 8px; font-size: 10px; font-weight: 600;
                  text-transform: uppercase; letter-spacing: .15em; color: #5A677C; }
   .notes-body { font-size: 13.5px; line-height: 1.65; color: #c4cedd; min-height: 40px; }
   .notes-body.empty { color: #5A677C; }
 
-  /* Popover — atoms/popover.tsx + atoms/option-button.tsx rows. */
+  /* Lucide icons — inline SVG, drawn from the real lucide-react paths at the real sizes.
+     Every glyph below is the icon the component actually imports; none is decorative. */
+  .app svg.ic { flex: none; display: inline-block; vertical-align: -0.12em; }
+  .ic-10 { width: 10px; height: 10px; }
+  .ic-13 { width: 13px; height: 13px; }
+  .ic-14 { width: 14px; height: 14px; }
+  .ic-16 { width: 16px; height: 16px; }
+
+  /* The chip pickers — atoms/popover.tsx shell + the PickerListItem row that RepeatChip
+     already uses (OptionButton with className="text-[13px] text-card-foreground").
+     NOTE: no selected-row fill here. The active row is marked by a trailing teal Check
+     ONLY — the teal wash belongs to the gate's OptionRow (.gopt), a different component. */
   .pop { display: inline-block; border: 1px solid var(--a-chip-line); background: var(--a-popover);
          border-radius: 12px; padding: 4px; box-shadow: 0 18px 40px -12px rgba(0,0,0,.7);
-         min-width: 186px; }
-  .opt { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-         border-radius: 4px; padding: 8px 12px; font-size: 14px; color: var(--a-muted); }
-  .opt.sel { background: rgba(79,209,224,.15); color: var(--a-fg); }
-  .opt.act { color: var(--a-teal); justify-content: flex-start; }
-  .opt .tick { color: var(--a-teal); }
-  .opt .hint { color: rgba(138,150,168,.75); font-size: 12px; font-family: ui-monospace, monospace; }
+         width: 186px; }
+  .popt { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          border-radius: 4px; padding: 8px 12px; font-size: 13px; color: var(--a-fg); }
+  .popt .lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .popt .tick { color: var(--a-teal); }
+
+  /* The gate's listbox rows — code/project-picker.tsx OptionRow. Distinct from .popt:
+     14px, muted until selected, a teal wash when selected, and a LEADING Check that is
+     always rendered (opacity 0 when unselected) so labels stay aligned. */
+  .gopt { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          border-radius: 4px; padding: 8px 12px; font-size: 14px; color: var(--a-muted); }
+  .gopt.sel { background: rgba(79,209,224,.15); color: var(--a-fg); }
+  .gopt.act { color: var(--a-teal); justify-content: flex-start; }
+  .gopt .lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .gopt .tick { color: var(--a-teal); }
+  .gopt .tick.off { opacity: 0; }
+  .gopt .hint { color: rgba(138,150,168,.7); font-size: 12px; font-family: ui-monospace, monospace; }
 
   /* The floating bulk bar — inbox-bulk-bar.styles.ts. */
   .bulk { border: 1px solid var(--a-teal); border-radius: 12px; padding: 10px 12px;
@@ -198,8 +250,11 @@
              border: 1px solid var(--a-border); background: rgba(30,42,63,.4); padding: 4px; }
 
   /* Toast — bottom-of-screen confirmation. */
-  .toast { display: inline-block; border: 1px solid var(--a-border); background: var(--a-surface);
-           border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--a-fg);
+  /* shell/toast-viewport.tsx default variant: max-w-xs, border-border, bg-surface,
+     px-4 py-3, text-sm — bottom-right of the viewport. */
+  .toast { display: inline-block; max-width: 320px; border: 1px solid var(--a-border);
+           background: var(--a-surface); border-radius: 10px; padding: 12px 16px;
+           font-size: 14px; color: var(--a-fg);
            box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); }
 
   .mockcap { color: var(--muted); font-size: .82rem; margin: .35rem 0 1.5rem; }
@@ -466,6 +521,31 @@ intended_epic_id:    nullableUuid.optional(),
   </table>
   </div>
   <p>
+    <b>Glyph and tone, so nothing is invented at build time.</b> The four new chips take their
+    treatment from what the repo already does, not from a new palette:
+  </p>
+  <div class="scroll">
+  <table style="margin:.5rem 0 .3rem">
+    <tr><th style="width:14%">Chip</th><th style="width:30%">Lucide glyph</th><th>Tone when set</th></tr>
+    <tr><td><b>Type</b></td><td>none — matches <code>DueDateChip</code>'s comfortable form, which is label-only</td>
+        <td>teal. Neutral, labelled <i>Unclassified</i>, before a type is chosen.</td></tr>
+    <tr><td><b>Folder</b></td><td><code>FolderOpen</code> — the command palette's <code>folder</code> glyph</td>
+        <td>teal (folders carry no colour of their own)</td></tr>
+    <tr><td><b>Project</b></td><td><code>GitBranch</code> — the glyph <code>ProjectNav</code> and the command palette both use</td>
+        <td>the project's palette colour, via <code>projectColorFor</code> — the same value <code>ProjectKeyChip</code> wears</td></tr>
+    <tr><td><b>Epic</b></td><td><b>none.</b> The repo has no epic glyph and this story does not invent one — the <code>ref</code> carries the identity, in <code>font-mono</code></td>
+        <td>the project's colour, as its sibling</td></tr>
+  </table>
+  </div>
+  <p class="small" style="margin-top:-.3rem">
+    The rule the table follows, stated once: <b>a chip with a value goes teal, unless that value
+    already owns a colour in the app</b> — priority levels, due-date urgency, the project palette —
+    <b>in which case it wears that colour.</b> Unset is always <code>comfortableNeutral</code>
+    (<code>border-[#25324a] text-[#8A96A8]</code>), which is what Due, Repeat and Priority already
+    do. Glyph sizes follow their neighbours: 13px inside a <code>Chip</code>, at the stroke width
+    the source uses (<code>Repeat</code> 2.2, the priority icons 2.6).
+  </p>
+  <p>
     All four new chips are the same shape — a chip trigger opening a popover of single-select rows —
     so they are built on one shared primitive, <code>components/atoms/picker-chip.tsx</code>, which
     also absorbs the <code>PickerListItem</code> row currently private to
@@ -476,7 +556,7 @@ intended_epic_id:    nullableUuid.optional(),
     <b>Every chip here is a trigger whether or not it holds a value.</b> Setting one never turns it
     into a label: the neutral "No folder" / "No project" state and the filled state are the same
     control wearing two tones, and pressing a filled chip reopens its picker with the current value
-    ticked (drawn in <b>§3.2</b>). This is already true of Due, Repeat and Priority; the four new
+    ticked (drawn in <b>§3.3</b>). This is already true of Due, Repeat and Priority; the four new
     ones inherit it, and <b>S7</b> extends the same property to the label chips on the row.
   </p>
   <p class="why">
@@ -586,6 +666,12 @@ intended_epic_id:    nullableUuid.optional(),
     <code>ProjectKeyChip</code>, which stops being read-only. Each opens the same picker its panel
     twin does (<b>S5</b>), auto-saves, and writes through the same store action. A chip never goes
     inert once it holds a value: it is a trigger before and after.
+  </p>
+  <p>
+    <b>This decision is about the ordinary row.</b> The Inbox's other state — select mode — renders
+    through a different branch that makes the whole row one button, so the same chips appear there
+    as read-only spans. That is <b>S13</b>, and the reason is structural rather than a change of
+    heart.
   </p>
   <p>
     They gain it the way <code>DueDateChip</code> and <code>PriorityChip</code> already do — an
@@ -794,6 +880,40 @@ intended_epic_id:    nullableUuid.optional(),
   </p>
 </div>
 
+<div class="dec">
+  <h3><span class="n">S13</span>Select mode keeps the label chips — read-only, because the row is a single button</h3>
+  <p>
+    Select mode is <b>a different render, not a decoration</b>. <code>task-row.tsx</code> branches on
+    <code>inSelectMode</code> and returns a whole other tree: one ghost <code>Button</code> carrying
+    a checkbox, the <b>truncated title</b>, and <code>TypeBadge</code> — with the ⋯ menu, the notes
+    preview, the subtree, the due chip, the priority chip and the project chip all suppressed, so
+    the row has exactly one meaning.
+  </p>
+  <p>
+    That branch gains the same metadata cluster the ordinary row shows — type, folder, due,
+    priority, project, epic — rendered as <b>non-interactive spans</b>.
+  </p>
+  <p class="why">
+    <b>Why this is required, not a nicety:</b> it is the state you dispatch from. As it stands you
+    would enter select mode, watch every label the decision rests on vanish, and press
+    <b>Dispatch</b> on four titles — with <b>S10</b>'s readiness line as the only evidence of what
+    is about to happen. Two of this story's three slices assume the labels are visible while you act
+    on a batch, and in the one mode where you act on a batch, they aren't.
+    <br />
+    <b>Why read-only here specifically, when <b>S7</b> just made them clickable:</b> the DOM
+    forbids the alternative. The select-mode row <i>is</i> a <code>&lt;button&gt;</code>, and an
+    interactive control nested inside a button is invalid HTML with genuinely undefined
+    activation behaviour. It is also the right interaction: in this mode a click anywhere on the row
+    means "toggle selection", and a chip that stole that click would make the row's one meaning
+    two. Correct a label in the ordinary view (§3.1), select in this one (§3.2).
+    <br />
+    <b>Found by drawing it.</b> The first draft of §3.1 showed checkboxes <i>and</i> a full chip
+    cluster <i>and</i> ⋯ menus — an arrangement the component cannot produce in either branch. Worth
+    recording, because an implementation session reading only the prose would have built the chips
+    into the ordinary row, seen them disappear in select mode, and had no decision to point at.
+  </p>
+</div>
+
 <h2>3 · The surface</h2>
 
 <p>
@@ -803,31 +923,42 @@ intended_epic_id:    nullableUuid.optional(),
   specification.
 </p>
 
-<h3>3.1 · The Inbox, mid-triage</h3>
+<h3>3.1 · The Inbox while reviewing (select mode off)</h3>
+
+<p>
+  The Inbox has two states and they render through <b>different branches of the same component</b>,
+  so both are drawn. This is the ordinary one: rows carry their metadata cluster and their ⋯ menu,
+  and the label chips are the editing surface (<b>S7</b>).
+</p>
 
 <div class="app">
   <div class="app-head">
     <span class="eyebrow">Inbox</span>
-    <span><span class="btn btn-ghost">Done</span> <span class="btn btn-ghost">Collapse all</span></span>
+    <span><span class="btn btn-ghost">Select</span> <span class="btn btn-ghost">Collapse all</span></span>
   </div>
 
   <div class="list">
     <div class="trow">
-      <span class="tbox on"></span>
+      <span class="tbox"></span>
       <div class="tmain">
         <span class="ttitle">Call the dentist friday to reschedule the cleaning</span>
         <span class="tmeta">
           <span class="bdg b-muted">Task</span>
           <span class="bdg b-muted">Health</span>
-          <span class="bdg b-due">Fri 7 Aug</span>
-          <span class="b-prio-high">▲</span>
+          <span class="bdg b-due">Aug 7</span>
+          <span class="b-prio b-prio-high" title="Priority: High">
+            <!-- lucide ChevronsUp — PRIORITY_OPTIONS.high.icon -->
+            <svg class="ic ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>
+          </span>
         </span>
       </div>
-      <span class="dots">···</span>
+      <span class="dots">
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      </span>
     </div>
 
     <div class="trow">
-      <span class="tbox on"></span>
+      <span class="tspacer"></span>
       <div class="tmain">
         <span class="ttitle">Alfred should let me snooze an item until next week</span>
         <span class="tmeta">
@@ -836,26 +967,101 @@ intended_epic_id:    nullableUuid.optional(),
           <span class="bdg b-proj-blue">ALF-104</span>
         </span>
       </div>
-      <span class="dots">···</span>
+      <span class="dots">
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      </span>
     </div>
 
     <div class="trow">
-      <span class="tbox on"></span>
+      <span class="tbox"></span>
       <div class="tmain">
         <span class="ttitle">Book the van for the move</span>
         <span class="tmeta">
           <span class="bdg b-muted">Task</span>
         </span>
       </div>
-      <span class="dots">···</span>
+      <span class="dots">
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      </span>
     </div>
 
     <div class="trow">
-      <span class="tbox"></span>
+      <span class="tspacer"></span>
       <div class="tmain">
         <span class="ttitle">That thing Mark mentioned about the roof</span>
       </div>
-      <span class="dots">···</span>
+      <span class="dots">
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      </span>
+    </div>
+  </div>
+
+</div>
+<p class="mockcap">
+  <b>What is new here, and nothing else is.</b> (i) The <b>Task</b> badge on rows 1 and 3 — Inbox
+  only (<b>S8</b>); row 4 is unclassified and carries none. (ii) The <b>Health</b> folder chip on
+  row 1: it has a <code>folder_id</code> and is <i>still in the Inbox</i>, which is ALF-168's rule
+  and <b>S7</b>'s chip. (iii) The <b>ALF-104</b> epic chip on row 2, beside the existing
+  <code>ALF</code> project chip.
+  <br /><br />
+  <b>Every label chip drawn here is clickable in place</b> (<b>S7</b>): <b>Health</b>, <b>ALF</b>
+  and <b>ALF-104</b> open the same pickers §3.3 and §3.4 draw, ticked at their current value —
+  exactly as the <b>Aug 7</b> due badge and the priority glyph beside them already do. The
+  <b>Task</b> badge is the one label here that isn't: a type change carries <b>S6</b>'s gate, so it
+  stays with the ⋯ menu's <b>Classify as…</b>, which simply isn't offered where it doesn't apply.
+  Everything else — the leading checkbox on a task row and the blank spacer on a code / unclassified
+  one, the due and priority chips, the ⋯ menu, <b>Select</b>, <b>Collapse all</b> — is unchanged.
+</p>
+
+<h3>3.2 · The Inbox while selecting (select mode on)</h3>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Inbox</span>
+    <span><span class="btn btn-ghost">Done</span> <span class="btn btn-ghost">Collapse all</span></span>
+  </div>
+
+  <div class="list">
+    <div class="srow sel" style="margin:2px">
+      <span class="sbox on">
+        <svg class="ic ic-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <span class="stitle">Call the dentist friday to reschedule the cleaning</span>
+      <span class="tmeta">
+        <span class="bdg b-muted">Task</span>
+        <span class="bdg b-muted">Health</span>
+        <span class="bdg b-due">Aug 7</span>
+        <span class="b-prio b-prio-high">
+          <svg class="ic ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>
+        </span>
+      </span>
+    </div>
+
+    <div class="srow sel" style="margin:2px">
+      <span class="sbox on">
+        <svg class="ic ic-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <span class="stitle">Alfred should let me snooze an item until next week</span>
+      <span class="tmeta">
+        <span class="bdg b-muted">Code</span>
+        <span class="bdg b-proj-blue">ALF</span>
+        <span class="bdg b-proj-blue">ALF-104</span>
+      </span>
+    </div>
+
+    <div class="srow sel" style="margin:2px">
+      <span class="sbox on">
+        <svg class="ic ic-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <span class="stitle">Book the van for the move</span>
+      <span class="tmeta">
+        <span class="bdg b-muted">Task</span>
+      </span>
+    </div>
+
+    <div class="srow" style="margin:2px">
+      <span class="sbox"></span>
+      <span class="stitle">That thing Mark mentioned about the roof</span>
     </div>
   </div>
 
@@ -863,8 +1069,12 @@ intended_epic_id:    nullableUuid.optional(),
     <div class="bulk-line">
       <span class="bulk-count">3 selected</span>
       <span class="btn btn-accent">Dispatch</span>
-      <span class="btn btn-outline">Classify as ⌄</span>
-      <span class="btn btn-outline">Move to folder ⌄</span>
+      <span class="btn btn-outline">Classify as
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </span>
+      <span class="btn btn-outline">Move to folder
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </span>
       <span class="btn btn-outline">Send to Code…</span>
       <span class="btn btn-ghost" style="margin-left:auto">Done</span>
     </div>
@@ -872,43 +1082,61 @@ intended_epic_id:    nullableUuid.optional(),
   </div>
 </div>
 <p class="mockcap">
-  <b>What is new here, and nothing else is.</b> (i) The <b>Task</b> badge on rows 1 and 3 — Inbox
-  only (<b>S8</b>); row 4 is unclassified and carries none. (ii) The <b>Health</b> folder chip on
-  row 1: it has a <code>folder_id</code> and is <i>still in the Inbox</i>, which is ALF-168's rule
-  and <b>S7</b>'s chip. (iii) The <b>ALF-104</b> epic chip on row 2, beside the existing
-  <code>ALF</code> project chip. (iv) The bulk bar's <b>Dispatch</b> button, first and teal-filled
-  (<b>S9</b>). (v) The readiness line beneath it (<b>S10</b>) — row 3 is a task with no folder, so
-  pressing Dispatch sends rows 1 and 2 and leaves row 3 selected with the line still showing.
+  The same four items with <b>Select</b> pressed. A selected row takes
+  <code>bg-accent-teal/5</code> and a 2px inset teal ring, and the checkbox fills teal with a
+  <code>Check</code> at strokeWidth 3 — today's treatment, unchanged.
   <br /><br />
-  <b>Every label chip drawn here is clickable in place</b> (<b>S7</b>): <b>Health</b>, <b>ALF</b>
-  and <b>ALF-104</b> open the same pickers §3.2 and §3.3 draw, ticked at their current value —
-  exactly as the <b>Fri 7 Aug</b> and <b>▲</b> chips beside them already do. The <b>Task</b> badge
-  is the one label here that isn't: a type change carries <b>S6</b>'s gate, so it stays with the ⋯
-  menu's <b>Classify as…</b>, which simply isn't offered where it doesn't apply. Everything else —
-  the checkboxes, the due and priority chips, the ⋯ menu, the three older bulk actions, Done — is
-  unchanged.
+  <b>The label chips on these rows are new (S13), and they are inert here.</b> Select mode renders
+  the row as one ghost <code>Button</code> that carries the whole toggle, so a chip inside it can't
+  be a button of its own — nested interactive elements are invalid, and a click has exactly one
+  meaning in this mode. Editing is §3.1's job; this mode is for choosing and dispatching. Today
+  select mode drops everything but the title and the type badge, which would mean dispatching
+  without being able to see a single label the decision rests on.
+  <br /><br />
+  <b>Dispatch</b> leads the bar, teal-filled (<b>S9</b>), and the readiness line sits beneath it
+  (<b>S10</b>): row 3 is a task with no folder, so pressing Dispatch sends rows 1 and 2 and leaves
+  row 3 selected with the line still showing. The three older actions and <b>Done</b> keep their
+  places; only their enablement changes (<b>S11</b>).
 </p>
 
-<h3>3.2 · The detail panel — a task, with the Folder picker open</h3>
+<h3>3.3 · The detail panel — a task, with the Folder picker open</h3>
 
-<div class="app">
+<div class="app room">
   <div class="panel">
     <div class="chiprow">
-      <span class="chip c-teal">◇ Task</span>
-      <span class="chip c-blue">🗓 Fri 7 Aug</span>
-      <span class="chip c-neutral">↻ Never</span>
-      <span class="chip c-red">▲ High</span>
-      <span class="chip c-green">🗀 Health</span>
-    </div>
-    <div style="margin-top:10px">
-      <span class="pop">
-        <span class="opt">No folder</span>
-        <span class="opt sel">Health <span class="tick">✓</span></span>
-        <span class="opt">Work</span>
-        <span class="opt">Home</span>
-        <span class="opt">Errands</span>
+      <span class="chip c-teal">Task</span>
+      <span class="chip c-blue">Aug 7</span>
+      <span class="chip c-neutral">
+        <!-- lucide Repeat, size 13 strokeWidth 2.2 — exactly as RepeatChip renders it -->
+        <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+        Never
+      </span>
+      <span class="chip c-red">
+        <!-- lucide ChevronsUp, size 13 strokeWidth 2.6 — PriorityChip's comfortable form -->
+        <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>
+        High
+      </span>
+      <span class="chip c-teal">
+        <!-- lucide FolderOpen — the folder glyph the command palette already uses -->
+        <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+        Health
       </span>
     </div>
+
+    <!-- Radix anchors the popover under its own trigger (start-aligned, 6px gap) and PORTALS
+         it, so it floats over what follows instead of displacing it. -->
+    <div class="pop-layer" style="top:46px; left:300px">
+      <span class="pop">
+        <span class="popt"><span class="lead">No folder</span></span>
+        <span class="popt"><span class="lead">Health</span>
+          <svg class="ic ic-14 tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+        <span class="popt"><span class="lead">Work</span></span>
+        <span class="popt"><span class="lead">Home</span></span>
+        <span class="popt"><span class="lead">Errands</span></span>
+      </span>
+    </div>
+
     <div style="margin-top:16px">
       <span class="notes-label">Notes</span>
       <div class="notes-body empty">No notes yet.</div>
@@ -920,22 +1148,37 @@ intended_epic_id:    nullableUuid.optional(),
 </div>
 <p class="mockcap">
   The panel's chip row for a <b>task</b>: <b>Type</b> and <b>Folder</b> are new; Due, Repeat and
-  Priority are today's, unmoved. Each chip carries its value when set and the neutral slate treatment
-  when not (Repeat, here) — the tone convention the panel already uses. The open popover is the
-  Folder picker: single-select rows with a teal tick on the current value, and a <b>No folder</b>
-  entry that is <b>present only because this row is undispatched</b> (<b>S4</b>) — on a task already
-  filed in a folder that first row is absent. Picking auto-saves and closes, like every other chip
-  here.
+  Priority are today's, unmoved and drawn exactly as they render — <b>Due carries no icon</b>
+  (<code>DueDateChip</code>'s comfortable form is label-only, and the label is
+  <code>formatDueDate</code>'s output, so <code>Aug 7</code>, not a weekday), Repeat carries lucide
+  <code>Repeat</code> at 13px/2.2, Priority carries the level's own glyph
+  (<code>ChevronsUp</code>/<code>Equal</code>/<code>ChevronsDown</code>) at 13px/2.6. Folder takes
+  lucide <code>FolderOpen</code> — the glyph the command palette already maps to a folder — and
+  Type takes none, matching Due.
+  <br /><br />
+  The open popover is the Folder picker, built on the <b>same shell <code>RepeatChip</code> already
+  uses</b>: a <code>PopoverContent</code> (186px wide, <code>#0d1320</code> on a
+  <code>#25324a</code> border, radius 12) of <code>PickerListItem</code> rows at 13px in
+  <code>card-foreground</code>, the active one marked by a <b>trailing teal <code>Check</code> and
+  nothing else</b> — there is deliberately <b>no fill on the selected row</b>; that teal wash
+  belongs to the gate's <code>OptionRow</code> (§3.5), which is a different component and must not
+  be copied here. The <b>No folder</b> entry is <b>present only because this row is undispatched</b>
+  (<b>S4</b>) — on a task already filed in a folder that first row is absent. Picking auto-saves and
+  closes, like every other chip here.
 </p>
 
-<h3>3.3 · The detail panel — a code item</h3>
+<h3>3.4 · The detail panel — a code item</h3>
 
 <div class="app">
   <div class="panel">
     <div class="chiprow">
-      <span class="chip c-teal">◇ Code</span>
-      <span class="chip c-blue">◈ ALF</span>
-      <span class="chip c-blue">◱ ALF-104 · Inbox triage</span>
+      <span class="chip c-teal">Code</span>
+      <span class="chip c-blue">
+        <!-- lucide GitBranch — the project glyph ProjectNav and the command palette both use -->
+        <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        ALF
+      </span>
+      <span class="chip c-blue"><span style="font-family:ui-monospace,monospace">ALF-104</span> · Inbox triage</span>
     </div>
     <div style="margin-top:16px">
       <span class="notes-label">Notes</span>
@@ -948,9 +1191,12 @@ intended_epic_id:    nullableUuid.optional(),
 
   <div style="margin-top:14px" class="panel">
     <div class="chiprow">
-      <span class="chip c-teal">◇ Code</span>
-      <span class="chip c-neutral">◈ No project</span>
-      <span class="chip c-neutral c-dim">◱ No epic</span>
+      <span class="chip c-teal">Code</span>
+      <span class="chip c-neutral">
+        <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        No project
+      </span>
+      <span class="chip c-neutral c-dim">No epic</span>
     </div>
     <div style="margin-top:16px">
       <span class="notes-label">Notes</span>
@@ -960,24 +1206,50 @@ intended_epic_id:    nullableUuid.optional(),
 </div>
 <p class="mockcap">
   <b>Top:</b> a code item carrying both hints — Due / Repeat / Priority / Folder are absent, because
-  they are task-only. The Project and Epic chips wear the project's colour, matching the row's
-  <code>ProjectKeyChip</code>. <b>Bottom:</b> the same panel with nothing set. <b>Epic is dimmed and
-  non-interactive while no project is chosen</b> (hint: <i>"Pick a project first"</i>) — the epic
-  list is derived from the project, exactly as in the gate. Choosing a different project in the
-  Project picker clears the epic in the same write (<b>S5</b>), which is what keeps <b>S2</b>'s
-  trigger satisfied.
+  they are task-only. The Project and Epic chips wear the <b>project's palette colour</b>
+  (<code>projectColorFor</code> → blue for project #1), matching the row's
+  <code>ProjectKeyChip</code>; Project takes lucide <code>GitBranch</code>, the glyph
+  <code>ProjectNav</code> already tints per project. <b>The Epic chip takes no icon</b> — the repo
+  has no epic glyph today and this story does not invent one; the ref carries the identity, set in
+  <code>font-mono</code> exactly as <code>ProjectKeyChip</code> sets a project key.
+  <br /><br />
+  <b>Bottom:</b> the same panel with nothing set. <b>Epic is dimmed and non-interactive while no
+  project is chosen</b> (hint: <i>"Pick a project first"</i>) — the epic list is derived from the
+  project, exactly as in the gate. Choosing a different project in the Project picker clears the
+  epic in the same write (<b>S5</b>), which is what keeps <b>S2</b>'s trigger satisfied.
 </p>
 
-<h3>3.4 · The gate, and the dispatch confirmation</h3>
+<h3>3.5 · The gate, and the dispatch confirmation</h3>
 
 <div class="app">
   <div style="max-width:420px">
     <span class="fieldlabel">Epic</span>
     <div class="listbox">
-      <span class="opt sel">Inbox triage <span class="hint">ALF-104</span></span>
-      <span class="opt">LLM processing <span class="hint">ALF-158</span></span>
-      <span class="opt">Habits <span class="hint">ALF-146</span></span>
-      <span class="opt act">+ New epic…</span>
+      <span class="gopt sel">
+        <span class="lead">
+          <svg class="ic ic-14 tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Inbox triage
+        </span>
+        <span class="hint">ALF-104</span>
+      </span>
+      <span class="gopt">
+        <span class="lead">
+          <svg class="ic ic-14 tick off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          LLM processing
+        </span>
+        <span class="hint">ALF-158</span>
+      </span>
+      <span class="gopt">
+        <span class="lead">
+          <svg class="ic ic-14 tick off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Habits
+        </span>
+        <span class="hint">ALF-146</span>
+      </span>
+      <span class="gopt act">
+        <svg class="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        New epic…
+      </span>
     </div>
   </div>
 
@@ -988,10 +1260,18 @@ intended_epic_id:    nullableUuid.optional(),
 <p class="mockcap">
   <b>Left:</b> the gate's existing Epic listbox, with the batch's unanimous
   <code>intended_epic_id</code> already selected on open (<b>S12</b>) — the only change to the
-  dialog. It stays interactive: unlike the project on a bulk send, the epic is never locked, and
-  "+ New epic…" is untouched. <b>Right:</b> the toast after a Dispatch that sent two of three
-  selected items — plain, no deep link, because a mixed dispatch has no single destination
-  (<b>S9</b>). The third row stays selected with the readiness line still naming what it needs.
+  dialog, and it is a change of <i>state</i>, not of markup. Drawn as <code>OptionRow</code>
+  actually renders, which is <b>not</b> the panel picker of §3.3: 14px rows, muted until selected,
+  a <code>bg-accent-teal/15</code> wash on the selected one, a <b>leading</b> <code>Check</code>
+  that is always in the DOM at <code>opacity-0</code> when unselected (so the labels stay aligned
+  rather than shifting as the selection moves), the <code>ref</code> right-aligned in
+  <code>font-mono</code> at <code>muted-foreground/70</code>, and an <code>AddNewRow</code> foot row
+  in all-teal with a leading <code>Plus</code>. It stays interactive: unlike the project on a bulk
+  send, the epic is never locked.
+  <br /><br />
+  <b>Right:</b> the toast after a Dispatch that sent two of three selected items — plain, no deep
+  link, because a mixed dispatch has no single destination (<b>S9</b>). The third row stays selected
+  with the readiness line still naming what it needs.
 </p>
 
 <h2>4 · The change, layer by layer</h2>
@@ -1130,6 +1410,9 @@ intended_epic_id:    nullableUuid.optional(),
     (<b>S6</b>), so the row, its menu and the bulk bar can't disagree.</li>
   <li><code>inbox-bulk-bar.tsx</code> — the Dispatch button, the readiness line, the re-derived
     gates and their hint copy (<b>S9</b>–<b>S11</b>).</li>
+  <li><code>task-row.tsx</code>'s <code>inSelectMode</code> branch — the same metadata cluster as
+    the ordinary row, rendered inert (<b>S13</b>). Extract the cluster so the two branches can't
+    drift; the interactive wrappers stay on the ordinary side of that extraction.</li>
   <li><code>code/gate-dialog.tsx</code> — <code>GateItem.intendedEpicId</code> + the unanimity
     pre-select (<b>S12</b>); its two callers (<code>inbox-bulk-bar.tsx</code>,
     <code>task-row.tsx</code>) pass the field through.</li>
@@ -1192,7 +1475,10 @@ intended_epic_id:    nullableUuid.optional(),
       epic chip when set, and the Task badge only in the Inbox — and renders nothing at all for an
       unset field. Each rendered folder / project / epic chip opens its picker and persists a pick
       from the row itself, through the same action the panel calls (the assertion that keeps
-      "shown ⇒ editable" from decaying as chips are added). The bulk bar's four gates and its
+      "shown ⇒ editable" from decaying as chips are added). The select-mode branch renders the same
+      cluster with <b>no interactive element inside the row button</b>, and a click anywhere on it
+      still only toggles selection (<b>S13</b>) — assert the absence, or the nested-button bug
+      returns the first time someone reuses the ordinary row's chip component there. The bulk bar's four gates and its
       readiness line. The gate pre-selects a unanimous epic, doesn't lock it, and clears it when the
       project changes.
     </td>
@@ -1230,7 +1516,7 @@ intended_epic_id:    nullableUuid.optional(),
   This change has a database surface, a live-UI surface and a moving visual snapshot, so pick the
   evidence by the <code>showboat</code> skill's rules — those stay the source of truth, don't
   re-derive them here. The three things worth showing are the migration + trigger (the integration
-  runner's output), the §3.1 claim in the running app (a mixed selection dispatched in one press,
+  runner's output), the §3.2 claim in the running app (a mixed selection dispatched in one press,
   with the unready row left behind), and the snapshot diff from <b>S8</b>.
 </p>
 
@@ -1280,6 +1566,10 @@ intended_epic_id:    nullableUuid.optional(),
     project or epic chip opens its picker with the current value ticked, and picking auto-saves
     through the same store action the detail panel uses. The <code>TypeBadge</code> and the
     row's <code>RecurrenceChip</code> are the two documented exceptions.</li>
+  <li><b>Select mode shows the same metadata cluster as the ordinary row</b> — type, folder, due,
+    priority, project, epic — and every one of them is inert there: a click anywhere on a
+    select-mode row toggles selection and nothing else, and no chip in that branch renders an
+    interactive element (<b>S13</b>).</li>
 </ul>
 
 <h4>Dispatch</h4>
