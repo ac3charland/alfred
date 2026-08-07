@@ -118,23 +118,44 @@ export const ENV_LOCAL_PATH = path.resolve(
  * Create the objects Supabase provides out of the box that the migrations assume exist:
  * the three API roles and the `supabase_realtime` publication (0003 adds a table to it).
  * On a hosted Supabase project these already exist; a vanilla cluster needs them seeded.
+ *
+ * Idempotent, because roles are CLUSTER-global while publications are per-database: a second
+ * database on the same cluster needs its own publication but must not re-create the roles.
  */
 export async function bootstrapSupabase(client: Client): Promise<void> {
   await client.query(`
-    create role anon nologin;
-    create role authenticated nologin;
-    create role service_role nologin bypassrls;
-    create publication supabase_realtime;
+    do $$ begin
+      if not exists (select 1 from pg_roles where rolname = 'anon') then
+        create role anon nologin;
+      end if;
+      if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+        create role authenticated nologin;
+      end if;
+      if not exists (select 1 from pg_roles where rolname = 'service_role') then
+        create role service_role nologin bypassrls;
+      end if;
+      if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+        create publication supabase_realtime;
+      end if;
+    end $$;
   `);
 }
 
 /**
- * Apply every migration in order, exactly as production does (raw SQL, filename order) —
- * so missing grants, RLS gaps, and constraint timing surface here, not in production.
- * Each file is sent as one simple-query batch (multi-statement, dollar-quoted bodies OK).
+ * Apply migrations in order, exactly as production does (raw SQL, filename order) — so missing
+ * grants, RLS gaps, and constraint timing surface here, not in production. Each file is sent as
+ * one simple-query batch (multi-statement, dollar-quoted bodies OK).
+ *
+ * `include` narrows the set, so a caller can stop the history at a chosen point, seed the world as
+ * it stood then, and apply the next migration over that data — the only way to judge a BACKFILL,
+ * which by definition only touches rows that already existed. Defaults to every migration.
  */
-export async function applyMigrations(client: Client, dir: string = MIGRATIONS_DIR): Promise<void> {
-  for (const file of migrationFiles(dir)) {
+export async function applyMigrations(
+  client: Client,
+  dir: string = MIGRATIONS_DIR,
+  include: (file: string) => boolean = () => true,
+): Promise<void> {
+  for (const file of migrationFiles(dir).filter((file) => include(file))) {
     await client.query(readFileSync(file, 'utf8'));
   }
 }
