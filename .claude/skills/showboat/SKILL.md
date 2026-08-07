@@ -199,7 +199,7 @@ things bite, and both surface as every route answering `{"error":"TypeError: fet
   whatever port the last build used (the E2E harness rebuilds on its own port every run).
 - **`npm run start` spawns `next-server` as a child**, so a trap killing only the npm PID leaves
   it holding the port — and the *next* run's requests are answered by that stale server, still
-  pointed at the old mock. Kill the child (`pkill -P "$APP"`), and `pkill -f next-server` before
+  pointed at the old mock. Kill the child (`pkill -P "$APP"`), and `pkill -f '[n]ext-server'` before
   re-running a block that died.
 
 ## Screenshotting the UI (the evidence for any visual change)
@@ -241,8 +241,15 @@ embedding — a green screenshot of the wrong state is worse than no screenshot.
 **Kill the serve before you push.** `serve:storybook` binds port **6006** — the same
 port the pre-push hook's `test:storybook` uses. A background server left running
 makes the hook die with `EADDRINUSE: address already in use 0.0.0.0:6006` and blocks
-the push. After screenshotting, stop it (`pkill -f http-server`) and confirm 6006 is
+the push. After screenshotting, stop it (`pkill -f '[h]ttp-server'`) and confirm 6006 is
 free before `git push`.
+
+**Always bracket the first letter of a `pkill -f` pattern.** `-f` matches against whole
+command lines — including the agent shell's own, which contains the pattern you just typed —
+so a bare `pkill -f http-server` kills the shell running it and the command it was chained
+to never runs (an empty output and a strange exit code, with nothing to show why). Writing
+the pattern as `'[h]ttp-server'` matches the real process but not the literal text of the
+command itself. Same for `pkill -f '[n]ext-server'`.
 
 ### Playwright timezone / locale screenshots
 

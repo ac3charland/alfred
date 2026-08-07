@@ -182,6 +182,11 @@ cleanup (the returned function) always runs when navigating away — use this fo
   `expect` will throw in the browser context. The ESLint rule `use-storybook-expect` enforces
   this.
 
+- **`storybook/test`'s `expect` returns a promise — `await` it, including inside a `waitFor`
+  callback.** Unlike Jest's synchronous `expect`, a bare assertion trips
+  `@typescript-eslint/no-floating-promises`, so the callback has to be async too:
+  `await waitFor(async () => { await expect(el).not.toBeInTheDocument(); })`.
+
 - **Never write a story as a function export in CSF3.** `export const Primary = () => <Button />`
   is CSF2. It still works but loses type inference, Controls integration, and satisfies-based
   TypeScript checking. The ESLint rule `no-stories-of` flags the older `storiesOf()` pattern
