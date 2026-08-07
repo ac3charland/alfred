@@ -10,7 +10,7 @@ Every task in alfred used to be born in the Inbox: filing a thought you already 
 
 ## The folder view, before the "+" is pressed
 
-A "+" sits in the header's right cluster, left of Collapse-all and in the same grey icon-button treatment, so the pair reads as one cluster. It is present at every width.
+A "+" leads the header's right cluster — before the sort control and Collapse-all, in the same grey icon-button treatment — so making a task comes ahead of the controls that arrange them. It is present at every width.
 
 ![](folder-capture-image-1.png)
 
