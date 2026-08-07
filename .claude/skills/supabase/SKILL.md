@@ -178,6 +178,8 @@ useEffect(() => {
 
 - **When a migration recreates a function, copy the CURRENT definition — not the one from the migration that introduced it.** Functions are re-`create or replace`d over their lifetime (`create_code_story` was rewritten by `0012`, `0014`, `0016`), so the earliest migration's body is stale: rebuilding from it silently reverts every later change, and because the function still compiles and returns rows, nothing fails at apply time. `0025` rebuilt `create_code_story` from `0004` and dropped `0014`'s `top_of_project_priority()` landing — new stories went back to appending at the Backlog bottom, caught only by the `database` integration suite (`check:slow`). **`grep -l '<function name>' database/migrations/*.sql` and take the body from the LAST hit**, or read it off the live DB with `pg_get_functiondef`.
 
+- **A multi-statement `client.query('<whole .sql file>')` is already atomic — a *pair* of queries is not.** Postgres wraps a simple-query batch in an implicit transaction, so a file that fails on statement 9 leaves nothing from statements 1–8. That guarantee stops at the batch: a follow-up `insert` recording the apply is its own transaction, so a crash (or a rejected insert) between them leaves the schema changed and the record missing. Wrap both in an explicit `begin`/`commit` when they must agree — `applyMigration` in `database/src/deploy.ts` does.
+
 - **In plpgsql, `record IS NOT NULL` is NOT the negation of `record IS NULL`.** For a composite value, `IS NULL` means *every* field is null and `IS NOT NULL` means *every* field is non-null — so a row that was found but has any nullable column empty satisfies **neither**. `select … into v_row …; if v_row is not null then` therefore silently skips a row that exists, with no error. Use **`found`** (plpgsql sets it after every `SELECT … INTO`) to test whether a row came back, or `select <the one column> into <scalar>` when that's all you need. The `if v_row is null then raise …` idiom is fine — that direction does mean "no row".
 
 - **A single `UPDATE` is NOT immune to a unique violation when it swaps two rows' values.** A plain `unique` index / `UNIQUE` constraint is **non-deferrable**: Postgres checks it **per row, mid-statement**, not at statement end. So `update t set priority = case ref when p_a then b_pri when p_b then a_pri else priority end where ref in (p_a,p_b)` over a `unique(priority)` index **409s** — `duplicate key value violates unique constraint` — the moment it rewrites the first row to a value the second still holds (ALF-35's reorder bug, fixed in `0007`). Two fixes: (a) the **negative-sentinel sequence** in the swap table-row above — keeps the index immediate, no schema change; or (b) make the constraint `unique (priority) deferrable initially deferred` (a table CONSTRAINT, not a plain index — a bare `create unique index` can't be deferrable) so the check runs at commit and the one CASE update stands. The "one statement is atomic so it can't transiently duplicate" intuition is wrong for non-deferrable constraints.
@@ -274,6 +276,20 @@ for relevant `breaking-change` tags and fetch the specific docs page (append `.m
 docs URL for the markdown version). Discover CLI commands with `--help` rather than guessing,
 and always **verify a change with a follow-up query** — a fix without verification is incomplete.
 
+### Merging a migration applies it — to both instances
+
+`.github/workflows/migrate.yml` runs the applier (`database/src/deploy.ts`) on every push to
+`main`, as a `personal` / `work` matrix. Pending is decided per database from its own
+`public.schema_migrations` ledger, so re-runs are no-ops and a hand-applied file is skipped.
+**Shipping a migration is merging it** — apply by hand only to iterate before the PR lands, and
+say so in the PR body if you did. Mechanics and the baseline constant live in
+[`database/README.md`](../../../database/README.md#applying-on-merge-the-default-path); don't
+restate them in a migration's rollout notes.
+
+Nothing orders that apply against Vercel's deploy of the same commit, so the code can go live a
+beat before its schema. Write migrations **expand-then-contract**: the new schema must work with
+the code already running, and a column/table is dropped only in a later migration.
+
 ### In the Claude Code web/remote sandbox, apply migrations via the Management API
 
 The remote sandbox allows outbound **HTTPS only** (through the agent proxy); raw Postgres TCP
@@ -320,9 +336,9 @@ for multi-statement DDL — prefer the session pooler or direct connection for m
 
 To apply **one** migration to the live DB by number, use `npm run migrate -w database <NNNN>`
 (accepts `11`, `0011`, or the full filename). It reads `DATABASE_URL` from `frontend/.env.local`,
-prints the target host, and confirms before writing (`--yes` skips the prompt). It applies a
-single file with no state tracking — fine because most migrations are idempotent-by-design or
-applied once; reach for raw `psql -f` for the schema bootstrap or seed.
+prints the target host, and confirms before writing (`--yes` skips the prompt). It records the
+file in that database's `public.schema_migrations` ledger, so the merge pipeline (below) then
+treats it as done; reach for raw `psql -f` for the schema bootstrap or seed.
 
 **Regenerating `database.types.ts` from `--db-url` is CLI-version-sensitive — pin a mid-2.9x
 version and have Docker running.** Token-free `--db-url` introspection only works on CLI
