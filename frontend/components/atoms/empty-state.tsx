@@ -5,19 +5,26 @@ interface EmptyStateProperties {
   title: string;
   /** An optional muted second line beneath the title. */
   description?: string;
+  /**
+   * An optional control beneath the description — the way out of the empty state itself (a
+   * folder's "Add task"). Views with nothing to offer here simply omit it.
+   */
+  action?: React.ReactNode;
 }
 
 /**
- * The centered "nothing here yet" block — a serif title with an optional muted subtitle —
- * shown when a list or view has no content (the inbox/folder empty states, a not-found view).
+ * The centered "nothing here yet" block — a serif title, an optional muted subtitle, and an
+ * optional action — shown when a list or view has no content (the inbox/folder empty states,
+ * a not-found view).
  */
-export function EmptyState({ title, description }: EmptyStateProperties) {
+export function EmptyState({ title, description, action }: EmptyStateProperties) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <p className="font-serif text-2xl text-muted-foreground/50">{title}</p>
       {description !== undefined && (
         <p className="mt-2 text-sm text-muted-foreground/40">{description}</p>
       )}
+      {action !== undefined && <div className="mt-4">{action}</div>}
     </div>
   );
 }
