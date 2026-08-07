@@ -38,6 +38,13 @@ export const PATCH = withSession(
       'sort_order',
     ]);
 
+    // `dispatched` is an intent, not a column, so it can't ride the field list above. The server
+    // authors the instant: true stamps now, false returns the item to the Inbox, absent leaves
+    // residency untouched (PATCH semantics, like every other field here).
+    if (input.dispatched !== undefined) {
+      updates.dispatched_at = input.dispatched ? new Date().toISOString() : null;
+    }
+
     const { data, error } = await supabase
       .from('items')
       .update(updates)

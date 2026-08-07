@@ -153,6 +153,16 @@ export const updateItemSchema = z.object({
   // Manual subtask rank (ALF-117): a bare double is fine — it's a fractional position, not a
   // bounded value. The reorder gesture PATCHes it (often alongside a re-parent's parent_id).
   sort_order: z.number().optional(),
+  /**
+   * Inbox residency as an INTENT, not a timestamp: `true` sends the item out of the Inbox,
+   * `false` returns it, omitted leaves it where it is. The route authors the instant — no caller
+   * has a reason to choose *when* an item was dispatched, and letting one backdate the column
+   * would quietly corrupt the record of what triage actually did.
+   *
+   * It is not a column, so it never rides the route's field list; the route maps it onto
+   * `dispatched_at`.
+   */
+  dispatched: z.boolean().optional(),
 });
 
 export type UpdateItemInput = ExactOptional<z.infer<typeof updateItemSchema>>;

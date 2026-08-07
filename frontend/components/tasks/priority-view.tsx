@@ -21,6 +21,7 @@ import { useIndentation } from '@/lib/hooks/use-indentation';
 import type { TaskPriority } from '@/lib/priority';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useTaskActions, useTasks, useTasksByPriority } from '@/lib/stores/tasks-store';
+import { residentFolderId } from '@/lib/tasks/residency';
 import { taskDestination } from '@/lib/tasks/task-location';
 import type { ItemNode } from '@/lib/tree';
 import { getDescendantIds, hasActiveDescendant } from '@/lib/tree';
@@ -225,6 +226,8 @@ export function PriorityView() {
   const tasks = useTasksByPriority({ showCompleted });
   const folders = useFolders();
 
+  // Takes a RESIDENT folder id (see `residentFolderId`), so a task still awaiting triage reads
+  // "Inbox" even when it already carries a folder — the view it actually renders in.
   const folderName = (folderId: string | null): string =>
     folderId === null
       ? 'Inbox'
@@ -261,7 +264,7 @@ export function PriorityView() {
               key={task.id}
               node={task}
               depth={0}
-              folderName={folderName(task.folder_id)}
+              folderName={folderName(residentFolderId(task))}
               showCompleted={showCompleted}
             />
           ))}

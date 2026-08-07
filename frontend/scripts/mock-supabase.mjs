@@ -310,10 +310,30 @@ function newItem(input) {
     parent_id: input.parent_id ?? null,
     intended_project_id: input.intended_project_id ?? null,
     priority: input.priority ?? null,
+    // Inbox residency (migration 0026): null = still in the Inbox, whatever folder_id holds.
+    // The DB fills it with a before-insert trigger, so this mirrors that rule — inherit the
+    // parent's residency, else a folder means dispatched, else stay in the Inbox. Only an
+    // ABSENT value inherits (`=== undefined`, not `??`): a seed that states `dispatched_at: null`
+    // beside a folder is asking for the one state no UI can produce — foldered, still in the
+    // Inbox — and `??` would silently stamp it dispatched instead. In Postgres that state is
+    // reached by UPDATEing a folder onto an existing Inbox row (the trigger only fills in an
+    // absent value at insert); a seed skips straight to the end state.
+    dispatched_at:
+      input.dispatched_at === undefined ? inheritedDispatchedAt(input) : input.dispatched_at,
     // Manual subtask rank (migration 0018): explicit when seeded, else the next sequence value —
     // parked high so a POST-created row (e.g. a new subtask) appends at the bottom of its group.
     sort_order: input.sort_order ?? nextSortOrder++,
   };
+}
+
+/** The residency a new item inherits when the caller didn't state one (migration 0026's trigger). */
+function inheritedDispatchedAt(input) {
+  if (input.parent_id != null) {
+    const parent = items.find((row) => String(row.id) === String(input.parent_id));
+    // A missing parent falls through to the folder rule, exactly as the DB trigger does.
+    if (parent !== undefined) return parent.dispatched_at ?? null;
+  }
+  return input.folder_id == null ? null : new Date().toISOString();
 }
 
 function newFolder(input) {
@@ -686,6 +706,8 @@ function handleRpc(req, res, fn, body) {
       item.parent_id = null;
       item.status = 'active';
       item.completed_at = null;
+      // The gate consumes the item, so it leaves the Inbox (migration 0026).
+      item.dispatched_at = new Date().toISOString();
     }
     const code = newCodeItem({
       item_id: body?.p_item,
@@ -762,6 +784,8 @@ function handleRpc(req, res, fn, body) {
       child.parent_id = null;
       child.status = 'active';
       child.completed_at = null;
+      // Converting consumes the child, so it leaves the Inbox (migration 0026).
+      child.dispatched_at = new Date().toISOString();
       const code = newCodeItem({
         item_id: child.id,
         project_id: body?.p_project,
@@ -987,14 +1011,20 @@ function handleRest(req, res, url, body) {
 /**
  * Delete the matched rows of `rest`, honouring migration 0002's FK cascades:
  * items → its subtree + each item's code_items (on delete cascade); folders →
- * items return to the Inbox (on delete set null); projects → their epics +
- * code_items (on delete cascade). epics/code_items delete only themselves.
+ * items return to the Inbox (on delete set null, plus migration 0026's before-delete
+ * trigger clearing their residency); projects → their epics + code_items (on delete
+ * cascade). epics/code_items delete only themselves.
  */
 function deleteRows(rest, matched) {
   if (rest === 'folders') {
     const removeIds = new Set(matched.map((row) => row.id));
     for (const item of items) {
-      if (removeIds.has(item.folder_id)) item.folder_id = null;
+      if (removeIds.has(item.folder_id)) {
+        item.folder_id = null;
+        // Losing the folder used to BE returning to the Inbox; now residency is its own column
+        // and has to be cleared too, or the item renders in no view at all (migration 0026).
+        item.dispatched_at = null;
+      }
     }
     folders = folders.filter((folder) => !removeIds.has(folder.id));
     return;

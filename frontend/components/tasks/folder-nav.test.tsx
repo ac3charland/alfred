@@ -45,6 +45,9 @@ const dueYMD = (offsetDays: number): string => {
   return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2025-01-02T00:00:00Z';
+
 /** Minimal active task item for seeding the store in due-count tests. */
 const taskItem = (overrides: Partial<Item>): Item => ({
   id: 'i1',
@@ -58,6 +61,9 @@ const taskItem = (overrides: Partial<Item>): Item => ({
   status: 'active',
   completed_at: null,
   folder_id: null,
+  // A fixture with a folder is a filed item, so it defaults to dispatched. `...overrides` lands
+  // last, so a fixture can still state `dispatched_at: null` for a foldered Inbox item.
+  dispatched_at: overrides.folder_id == null ? null : DISPATCHED_AT,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,

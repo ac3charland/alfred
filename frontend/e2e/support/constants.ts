@@ -87,6 +87,12 @@ export function makeWeeklyPlan(html: string, overrides: Partial<WeeklyPlan> = {}
   };
 }
 
+/**
+ * The residency stamp a seeded FILED item carries. A fixed constant, never `new Date()` —
+ * fixtures pin the clock rather than read it.
+ */
+export const DISPATCHED_AT = '2024-01-01T00:00:00.000Z';
+
 export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
   return {
     id: overrides.id ?? crypto.randomUUID(),
@@ -100,6 +106,17 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     due_date: overrides.due_date ?? null,
     completed_at: overrides.completed_at ?? null,
     folder_id: overrides.folder_id ?? null,
+    // Residency, derived rather than flat: a seed that says `folder_id: 'f1'` means "filed in
+    // f1", and filing is what dispatches an item out of the Inbox — so the existing seeds keep
+    // meaning what they meant with no edit. Tested against `undefined` rather than `??`, so a
+    // seed can state `dispatched_at: null` explicitly and get the one state this story creates:
+    // an item that already carries a folder but is still waiting in the Inbox.
+    dispatched_at:
+      overrides.dispatched_at === undefined
+        ? overrides.folder_id == null
+          ? null
+          : DISPATCHED_AT
+        : overrides.dispatched_at,
     parent_id: overrides.parent_id ?? null,
     intended_project_id: overrides.intended_project_id ?? null,
     occurrence_index: overrides.occurrence_index ?? null,

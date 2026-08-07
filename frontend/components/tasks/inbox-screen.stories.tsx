@@ -52,6 +52,7 @@ const BASE_NODE: ItemNode = {
   status: 'active',
   completed_at: null,
   folder_id: null,
+  dispatched_at: null,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
@@ -68,6 +69,29 @@ const NODES: ItemNode[] = [
     ...BASE_NODE,
     id: 'item-2',
     title: 'Reply to the recruiter',
+    created_at: '2025-01-01T09:00:00Z',
+  },
+];
+
+/**
+ * The Inbox holding the one row that only becomes possible once residency is its own column:
+ * an item whose `folder_id` already points at a folder while `dispatched_at` is still null, beside
+ * an ordinary capture. Nothing renders either field, so the two rows are indistinguishable — which
+ * is the claim: the folder is a guess about where it would land, not a statement that it has left.
+ */
+const UNDISPATCHED_NODES: ItemNode[] = [
+  {
+    ...BASE_NODE,
+    id: 'item-3',
+    title: 'Call the dentist to reschedule the cleaning',
+    folder_id: 'f-health',
+    dispatched_at: null,
+    created_at: '2025-01-01T10:00:00Z',
+  },
+  {
+    ...BASE_NODE,
+    id: 'item-4',
+    title: 'That thing Mark mentioned about the roof',
     created_at: '2025-01-01T09:00:00Z',
   },
 ];
@@ -111,6 +135,20 @@ export const DesktopInbox: Story = {
   args: { open: true },
   decorators: [withFrame('w-[640px]')],
   parameters: {
+    visualTest: { target: '[data-testid="inbox-frame"]' },
+  },
+};
+
+/**
+ * The Inbox with an item that already carries a folder but has never been dispatched, sitting
+ * beside a plain capture. Both are in the Inbox, and they look the same — the folder is where the
+ * item WOULD land, not where it lives.
+ */
+export const UndispatchedFolderedItem: Story = {
+  args: { open: true },
+  decorators: [withFrame('w-[640px]')],
+  parameters: {
+    store: { tasks: UNDISPATCHED_NODES },
     visualTest: { target: '[data-testid="inbox-frame"]' },
   },
 };

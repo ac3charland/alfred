@@ -45,6 +45,7 @@ const BASE: Item = {
   status: 'active',
   completed_at: null,
   folder_id: null,
+  dispatched_at: null,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,

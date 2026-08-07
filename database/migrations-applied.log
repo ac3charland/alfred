@@ -10,3 +10,4 @@
 2026-07-29T15:19:27.414Z	aws-1-us-east-2.pooler.supabase.com:5432	0023_habits.sql
 2026-07-29T19:31:06.586Z	api.supabase.com/v1/projects/pobfpuohktigmnkcqwga (management api)	0024_folder_sort_order.sql
 2026-07-30T15:50:16.396Z	api.supabase.com/v1/projects/pobfpuohktigmnkcqwga (management api)	0025_story_requires_refinement.sql
+2026-08-07T02:12:28.203Z	api.supabase.com/v1/projects/pobfpuohktigmnkcqwga (management api)	0026_inbox_dispatch.sql
