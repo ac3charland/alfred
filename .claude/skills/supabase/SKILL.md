@@ -298,6 +298,20 @@ rather than escaping by hand. The **project ref** is the `postgres.<ref>` userna
 `DATABASE_URL`. This same endpoint is the way to verify a change afterwards (query
 `information_schema` / `pg_constraint`), since no Postgres client can reach the DB directly.
 
+### A new CHECK constraint breaks the DEPLOYED frontend until the PR ships
+
+Adding a column is safe to apply ahead of a deploy — the running app ignores it. **Adding a
+`CHECK` over that column is not**: the deployed frontend writes without knowing the new
+invariant, so a PATCH that was legal a minute ago starts failing. `items_dispatched_needs_folder`
+did exactly this — the old `moveToInbox` sent `{ folder_id: null }` alone, leaving a backfilled
+`dispatched_at` on a folderless task, and every "Move to → Inbox" 500'd until the matching
+frontend deployed.
+
+So before applying a constraint-adding migration, **grep the deployed write paths for one that
+sends only half the new invariant** and decide the order deliberately: deploy first, or apply and
+merge in the same sitting. Say which in the PR body, with the `alter table … drop constraint …`
+escape hatch, so whoever picks it up knows the schema is ahead of the app.
+
 ### Applying migrations / generating types without a personal access token
 
 Plain SQL migrations can be applied over the **session pooler** connection string (port
