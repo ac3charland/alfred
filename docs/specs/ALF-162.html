@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-162 — Tasks: Add 3 dots to Priority view so tasks can be reprioritized/moved etc</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .new { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+         border-radius: 999px; padding: 0 .4rem; margin-left: .35rem; vertical-align: middle; }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+
+  /* The mockup canvas IS the app: every value below is lifted from source, so the mockup reads
+     in alfred's real dark palette whichever mode this document is read in.
+       bg / surface / border / fg / muted / secondary / teal / red / amber / blue
+                                             → frontend/app/globals.css
+       card radius + row padding + hover wash → priority-view.tsx (PriorityRow)
+       row indentation (depth*1.25 + .75rem)  → lib/hooks/use-indentation.ts
+       ⋯ trigger (IconButton size md, 24px,
+         MoreHorizontal 14px, muted→fg)      → atoms/icon-button.tsx + task-row/task-row-menu.tsx
+       hover-reveal of the actions cluster    → task-row.styles.ts (rowActionsClass)
+       menu surface (r6, border, bg-surface,
+         p-1, shadow-md) + item geometry      → atoms/dropdown-menu.tsx
+       "Open details" teal emphasis           → task-row/task-row-menu.tsx
+       priority / due pills (r999, text-xs)   → atoms/badge.tsx + tasks/priority-chip.tsx
+       detail panel (r13, bg-card, teal glow) → task-row/task-detail-panel.tsx
+       detail chips (r9, 6x12, 13px)          → atoms/chip.tsx
+       Notes eyebrow + textarea + Save        → task-row/task-detail-panel.tsx + atoms/button.tsx */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-card: #0f1626; --a-border: #1e2a3f;
+    --a-fg: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0;
+    --a-red: #f87171; --a-amber: #f0b429; --a-blue: #60a5fa; --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* Inline code inside a mockup sits on the app canvas, so it takes the app's plate. */
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); }
+  .seclabel { color: rgba(138, 150, 168, .7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0 0 .5rem; }
+
+  /* Depth-0 card: rounded-lg border border-border bg-surface (priority-view.tsx). */
+  .pcard { border: 1px solid var(--a-border); border-radius: 8px; background: var(--a-surface);
+           margin-bottom: 8px; }
+  /* Row line: flex items-center gap-2 py-2 pr-3, paddingLeft = depth*1.25 + .75rem. */
+  .prow { display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 12px;
+          border-radius: 8px; }
+  .prow.d1 { padding-left: 32px; }
+  .prow.hov { background: rgba(30, 42, 63, .3); }              /* hover:bg-secondary/30 */
+  .chev { width: 20px; height: 20px; flex: none; display: flex; align-items: center;
+          justify-content: center; color: var(--a-muted); }
+  .chev.open { transform: rotate(90deg); }
+  /* Completion checkbox: h-4 w-4 rounded border, border-muted-foreground/50 at md+. */
+  .cbx { width: 16px; height: 16px; flex: none; border: 1px solid rgba(138, 150, 168, .5);
+         border-radius: 4px; }
+  .ptitle { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; }
+  /* Badge: rounded-full px-2 py-0.5 text-xs; tones from badgeVariants. */
+  .pill { display: inline-flex; align-items: center; gap: 4px; flex: none; border-radius: 999px;
+          padding: 2px 8px; font-size: 12px; font-weight: 500; line-height: 16px; }
+  .pill.high { background: rgba(248, 113, 113, .15); color: var(--a-red); }
+  .pill.med { background: rgba(240, 180, 41, .15); color: var(--a-amber); }
+  .pill.unset { border: 1px solid rgba(30, 42, 63, .7); color: var(--a-muted); }
+  .pill.due { border: 1px solid rgba(96, 165, 250, .5); color: var(--a-blue); }
+  /* Folder label: w-20 shrink-0 truncate text-right text-xs text-muted-foreground. */
+  .flabel { width: 80px; flex: none; text-align: right; font-size: 12px; color: var(--a-muted);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The ⋯ trigger: IconButton size md (24px), MoreHorizontal 14px, tone neutral. */
+  .dots { width: 24px; height: 24px; flex: none; display: flex; align-items: center;
+          justify-content: center; border-radius: 4px; color: var(--a-muted);
+          letter-spacing: 1px; font-size: 15px; }
+  .dots.on { color: var(--a-fg); background: rgba(30, 42, 63, .5); }
+  .dots.off { opacity: 0; }                                    /* md+ resting state: opacity-0 */
+  .dots.ghost { opacity: .25; }                                /* drawn only to show the reserved column */
+
+  /* Dropdown menu — min-w-[8rem] rounded-md border border-border bg-surface p-1 shadow-md. */
+  .menu { min-width: 172px; border: 1px solid var(--a-border); border-radius: 6px;
+          background: var(--a-surface); padding: 4px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.75); }
+  .mi { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        border-radius: 2px; padding: 6px 8px; font-size: 14px; color: var(--a-fg); }
+  .mi .lead { display: flex; align-items: center; gap: 8px; }
+  .mi .ico { width: 16px; height: 16px; flex: none; color: var(--a-muted); }
+  .mi.primary { color: var(--a-teal); font-weight: 600; background: rgba(79, 209, 224, .1); }
+  .mi.danger { color: var(--a-red); }
+  .mi.hl { background: var(--a-secondary); }                   /* focus:bg-secondary */
+  .msep { height: 1px; background: var(--a-border); margin: 4px -4px; }
+  .menus { display: flex; align-items: flex-start; gap: 6px; }
+  .anchor { display: flex; justify-content: flex-end; padding-right: 12px; margin-top: 4px; }
+
+  /* Detail panel — rounded-[13px] border bg-card px-[18px] pb-[18px] pt-4 + teal glow;
+     marginLeft = depth*1.25 + 2.5rem, marginRight 8px, marginTop 2px, marginBottom 12px. */
+  .panel { border: 1px solid var(--a-border); border-radius: 13px; background: var(--a-card);
+           padding: 16px 18px 18px; margin: 2px 8px 12px 40px;
+           box-shadow: 0 0 28px -10px rgba(79, 209, 224, .18); }
+  .chiprow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  /* Chip atom: rounded-[9px] border px-3 py-1.5 text-[13px] font-medium. */
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--a-border);
+          border-radius: 9px; padding: 6px 12px; font-size: 13px; font-weight: 500; }
+  .chip.neutral { border-color: #25324a; color: #8A96A8; }
+  .chip.high { border-color: rgba(248, 113, 113, .3); background: rgba(248, 113, 113, .12);
+               color: var(--a-red); }
+  .chip.duec { border-color: rgba(96, 165, 250, .3); background: rgba(96, 165, 250, .1);
+               color: var(--a-blue); }
+  .noteslabel { color: #5A677C; font-size: 10px; font-weight: 600; letter-spacing: .15em;
+                text-transform: uppercase; margin: 16px 0 8px; }
+  .notesbody { color: #c4cedd; font-size: 13.5px; line-height: 1.65; min-height: 60px; }
+  .savebar { display: flex; justify-content: flex-end; margin-top: 8px; }
+  .savebtn { color: var(--a-teal); font-size: 12px; font-weight: 500; padding: 6px 12px;
+             border-radius: 4px; opacity: .5; }
+
+  /* Mobile card frame — 360px viewport, rounded-2xl card chrome. */
+  .phone { width: 320px; max-width: 100%; }
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 720px) { .side { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Refinement spec · Tasks module</p>
+  <h1>ALF-162 — Tasks: Add 3 dots to Priority view so tasks can be reprioritized/moved etc</h1>
+  <p class="sub">
+    Give every row in the <strong>By-Priority</strong> view the same “More actions” (⋯) menu the
+    Inbox and Folder rows have — scoped to the actions that make sense while triaging a ranked
+    list — so a task can be opened, re-dated, re-noted, re-filed, reordered or deleted without
+    first navigating away to the view it lives in.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+
+  <p>
+    By-Priority (<code>/priority</code>, ALF-37) is the one cross-cutting list of every top-level
+    item across the Inbox and every folder, ranked by the best priority/urgency in each task’s
+    active subtree. Since ALF-101 its rows are real, actionable task components — a completion
+    checkbox, an expand chevron that reveals subtasks recursively, and a clickable
+    <code>PriorityChip</code> — but the right-hand affordances were deliberately left out. The
+    component says so in its own doc comment:
+  </p>
+
+  <pre><code>// frontend/components/tasks/priority-view.tsx
+ * The right-hand task-row affordances (add-subtask, the
+ * ⋯ menu) are deliberately omitted here: the By-Priority list is for triaging and ticking off,
+ * not for restructuring.</code></pre>
+
+  <p>and a unit test pins the absence:</p>
+
+  <pre><code>// frontend/components/tasks/priority-view.test.tsx:298
+it('exposes neither the add-subtask nor the More actions affordance', () =&gt; { … })</code></pre>
+
+  <p>
+    That line held while the menu was mostly <em>restructuring</em>. It no longer does. The menu’s
+    lead entry today is <strong>Open details</strong> — the only way to reach a task’s due date,
+    repeat rule and notes — and it also carries <strong>Move to…</strong>, <strong>Move up</strong>
+    / <strong>Move down</strong>, and <strong>Delete</strong>. In By-Priority all of those are
+    unreachable: a task you have just decided is the most urgent thing you own can be ticked off or
+    re-levelled, but not dated, noted, re-filed, reordered or deleted without clicking through to
+    its folder and finding it again.
+  </p>
+
+  <div class="card teal">
+    <p style="margin:0">
+      <strong>Priority itself is already editable here</strong> — the row’s <code>PriorityChip</code>
+      (rendered with <code>emptyLabel="Set priority"</code>) opens the shared picker in place. The
+      ticket’s “reprioritized” is therefore already satisfied; the gap this spec closes is
+      everything in the “/moved etc” half.
+    </p>
+  </div>
+
+  <h2>2 · Resolved scope <span class="owner">from refinement Q&amp;A</span></h2>
+
+  <table>
+    <thead><tr><th style="width:31%">Question</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Which entries should the By-Priority ⋯ menu carry?</td>
+        <td>
+          <strong>The triage subset.</strong> Open details, Move up / Move down (on expanded
+          subtasks), Move to…, Delete. The code-module group — <em>Classify as…</em>,
+          <em>Send to Code module…</em>, <em>Convert to Code Story…/Epic…</em> — stays out: that is
+          Inbox triage, not priority triage.
+        </td>
+      </tr>
+      <tr>
+        <td>Does the desktop add-subtask “+” come along too?</td>
+        <td>
+          <strong>No — ⋯ only.</strong> By-Priority stays a triage list; no new-work capture there.
+          The menu therefore shows no “Add subtask” item at any breakpoint either.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3 · Decisions locked in this refinement</h2>
+
+  <div class="dec">
+    <h3><span class="n">D1</span>Reuse <code>TaskRowMenu</code> — do not grow a second dropdown</h3>
+    <p>
+      The By-Priority row renders the very same
+      <code>components/tasks/task-row/task-row-menu.tsx</code> the Inbox and Folder rows render.
+      Its internal structure (Open details → divider → reorder → move-to → divider → Delete) is
+      already gated entry-by-entry on booleans, so the triage subset falls out of the flags the
+      caller passes; <strong>no new menu markup, no copied item classes.</strong>
+    </p>
+    <p class="why">
+      <b>Why:</b> the <code>frontend-architecture</code> skill’s one principle — a second copy of a
+      dropdown drifts out of sync with the first. This also means the two menus keep identical
+      keyboard, focus and portal behaviour for free.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D2</span>The menu’s code-module and add-subtask props become optional</h3>
+    <p>
+      <code>TaskRowMenuProperties</code> today requires every code-module and add-subtask prop. The
+      By-Priority caller has nothing true to say about any of them, and stubbing them with
+      <code>() =&gt; {}</code> would fight <code>@typescript-eslint/no-empty-function</code>. So
+      those props become <strong>optional, defaulting to <code>false</code> / absent</strong>; the
+      required surface shrinks to what every caller genuinely has.
+    </p>
+    <p class="why">
+      <b>Why:</b> the priority row then reads as what it is — a menu that simply doesn’t offer the
+      code actions — instead of a menu lied to with a wall of <code>false</code>. <code>TaskRow</code>’s
+      call site is untouched: it keeps passing every prop explicitly.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D3</span>“Move to…” shows on depth-0 rows only</h3>
+    <p>
+      A By-Priority root row carries a folder/Inbox label and filing it is exactly what the label
+      changes. A <em>subtask</em> row does not: <code>moveTask</code> re-files that subtask’s subtree
+      without re-parenting it, so the row would keep rendering under a parent in a different bucket
+      and nothing visible in this view would change. The priority row therefore passes
+      <code>folders</code> only at depth 0 — and the menu’s existing
+      <code>folders.length &gt; 0</code> guard drops the submenu on its own.
+    </p>
+    <p class="why">
+      <b>Why:</b> costs no new conditional, and keeps every action in this view one the user can see
+      the result of. <code>TaskRow</code>’s own behaviour (Move to… on every row) is deliberately
+      unchanged — see <a href="#oos">§9</a>.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D4</span>The detail panel’s open state lives in the expansion store, not the row</h3>
+    <p>
+      “Open details” toggles <code>ExpansionState.details</code> (<code>toggleDetails</code> /
+      <code>closeDetails</code>) — the same set <code>TaskRow</code> uses — and the panel is dismissed
+      by Escape or an outside pointer press through the shared <code>useDismiss</code> hook, scoped
+      to the row’s <code>&lt;li&gt;</code>.
+    </p>
+    <p class="why">
+      <b>Why:</b> the store is already mounted around this view (<code>app/(shell)/layout.tsx</code>),
+      is keyed by item id, and already knows how to be collapsed en masse. A row that opens its
+      detail in the Folder view and then switches to By-Priority finds it open — one item, one
+      state. (The row’s <em>subtask</em> expansion stays the local <code>useState</code> it is
+      today; that asymmetry is pre-existing and out of scope.)
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D5</span>The five auto-saving detail callbacks move into a shared hook</h3>
+    <p>
+      <code>task-row.tsx</code> currently inlines <code>handleSelectDueDate</code>,
+      <code>handleClearDueDate</code>, <code>handleSaveRecurrence</code>,
+      <code>handleSavePriority</code> and <code>handleCommitNotes</code> — ~45 lines including the
+      two fiddly rules (clearing a due date also clears the recurrence; setting a rule on an
+      undated task stamps the anchor). Rather than paste them into the priority row, they become
+      <code>lib/hooks/use-task-detail-actions.ts</code>, <strong>adopted by both call sites in the
+      same change</strong>.
+    </p>
+    <p class="why">
+      <b>Why:</b> “rule of two-or-three, earlier if the block is large or fiddly.” A second copy of
+      the recurrence-anchor rule is exactly the kind that drifts. The hook also absorbs the priority
+      row’s existing <code>handlePriorityChange</code>, so the row chip and the panel chip share one
+      path.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D6</span>Delete commits immediately here — no exit animation</h3>
+    <p>
+      <code>TaskRow</code> plays a fade + height-collapse before firing <code>deleteTask</code>
+      (<code>useAnimatedRowExit</code>). By-Priority has <em>no</em> row exit animation today —
+      completing a task already drops it from the ranked list the instant the store patches — so
+      Delete follows suit and calls <code>deleteTask(node.id)</code> straight from the menu.
+    </p>
+    <p class="why">
+      <b>Why:</b> consistency within the view beats consistency with another view, and the
+      alternative means importing the collapse-wrapper chrome into a row that has none. Deletion
+      stays optimistic and rolls back with a toast on failure, exactly as elsewhere.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D7</span>The ⋯ is the row’s last child, revealed on hover at <code>md</code>+</h3>
+    <p>
+      The trailing actions cluster reuses <code>rowActionsClass</code> from
+      <code>task-row.styles.ts</code>: always visible below <code>md</code> (touch has no hover),
+      <code>opacity-0</code> until the row is hovered at <code>md</code>+, and visible at every
+      width under <code>prefers-reduced-motion</code>. Because it is opacity (not display), the
+      column is reserved at rest and <strong>nothing shifts on hover</strong>. Since it is the last
+      child of a row whose title is <code>flex-1</code>, the ⋯ lands on the row’s right edge at
+      every depth even though only depth-0 rows carry a folder label.
+    </p>
+    <p class="why">
+      <b>Why:</b> ALF-88 settled this behaviour for task rows; re-deriving it here would be a third
+      copy of the same reveal.
+    </p>
+  </div>
+
+  <h2>4 · The behaviour</h2>
+
+  <h3>4.1 · What the menu offers, per row</h3>
+
+  <p>
+    By-Priority ranks <em>every</em> parentless item, so a code or still-unclassified inbox item can
+    appear alongside tasks (they render without a checkbox today). The table is therefore keyed on
+    what the row <em>is</em>, not on an assumption that it is a task.
+  </p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:24%">Entry</th>
+        <th>Shown when</th>
+        <th style="width:34%">Does</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Open details</strong><br /><span class="small">teal, leads the menu</span></td>
+        <td>Always — every row, every depth, every item type.</td>
+        <td>
+          Toggles the inline <code>TaskDetailPanel</code> between the row and its subtask list.
+          Due + Priority chips on task rows; Repeat only on a depth-0 task; Notes always.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Move up</strong> / <strong>Move down</strong></td>
+        <td>
+          Active subtask rows (depth ≥ 1) that are not already at the end of their sibling group —
+          <code>useSubtaskReorder</code>, unchanged.
+        </td>
+        <td>
+          Re-ranks the subtask among its active siblings via <code>reorderSubtask</code>; the
+          expanded group reorders in place.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Move to…</strong> ▸</td>
+        <td>
+          Depth-0 rows only <span class="small">(D3)</span>, and only when at least one folder
+          exists. Submenu lists <em>Inbox</em> first, then every folder.
+        </td>
+        <td>
+          <code>moveTask</code> — re-files the row and its whole subtree, and (per ALF-168) writes
+          residency with it. The row’s folder label updates immediately.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Delete</strong><br /><span class="small">destructive, below a divider</span></td>
+        <td>Always — every row, every depth.</td>
+        <td>
+          <code>deleteTask</code> — removes the row and its whole subtree optimistically, no
+          confirmation, exactly as in the Inbox / Folder views. Rolls back with a toast on failure.
+        </td>
+      </tr>
+      <tr>
+        <td><span class="no">Add subtask</span> · <span class="no">Classify as…</span> ·
+            <span class="no">Send to Code module…</span> · <span class="no">Convert to Code
+            Story…/Epic…</span></td>
+        <td colspan="2">
+          <strong>Never rendered in this view</strong> — resolved in §2. The Inbox keeps them.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.2 · Consequences worth stating</h3>
+
+  <ul class="tight">
+    <li>
+      <strong>An edit can re-rank the row under your cursor.</strong> Changing priority (row chip or
+      panel chip) or a due date re-sorts the list immediately — that is the view working as
+      designed. The row keeps its React key, and its detail-open state lives in the store, so an
+      open panel travels with the row to its new position rather than closing.
+    </li>
+    <li>
+      <strong>The row’s due-date chip stays display-only.</strong> Dates are edited in the panel;
+      the row chip in this view is passed no <code>onSelect</code>/<code>onClear</code> and keeps
+      today’s behaviour.
+    </li>
+    <li>
+      <strong>Completing from the checkbox is unchanged</strong> — including the cascade modal for a
+      task hiding active subtasks.
+    </li>
+    <li>
+      <strong>Clicking the ⋯ must not navigate.</strong> The row title is a real
+      <code>&lt;a href&gt;</code>, but the trigger is a sibling button, not a descendant of the
+      anchor — no interception needed, and a unit test pins it (§7).
+    </li>
+  </ul>
+
+  <h3>4.3 · Where an action goes once picked</h3>
+
+  <p>
+    Nothing new: every entry lands on an existing optimistic store action, which patches the
+    in-memory list, calls the API, and reconciles or rolls back. No route, schema or store change.
+  </p>
+
+  <svg viewBox="0 0 900 210" role="img" aria-labelledby="flow-title flow-desc">
+    <title id="flow-title">Menu action data flow</title>
+    <desc id="flow-desc">
+      A menu item calls a PriorityRow handler, which calls a tasks-store action; the store patches
+      the item list optimistically, calls api-client, and either reconciles the server row or rolls
+      the patch back and toasts.
+    </desc>
+    <style>
+      .bx { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+      .bx.acc { stroke: var(--accent); }
+      .tx { fill: var(--fg); font: 600 12.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .tm { fill: var(--muted); font: 400 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+      .ln.back { stroke: var(--no); stroke-dasharray: 4 3; }
+      .lb { fill: var(--muted); font: 400 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .lb.no { fill: var(--no); }
+    </style>
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)" />
+      </marker>
+      <marker id="arno" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--no)" />
+      </marker>
+    </defs>
+
+    <rect class="bx acc" x="6" y="40" width="176" height="56" rx="8" />
+    <text class="tx" x="94" y="63" text-anchor="middle">⋯ menu item</text>
+    <text class="tm" x="94" y="81" text-anchor="middle">TaskRowMenu</text>
+
+    <rect class="bx" x="222" y="40" width="176" height="56" rx="8" />
+    <text class="tx" x="310" y="63" text-anchor="middle">row handler</text>
+    <text class="tm" x="310" y="81" text-anchor="middle">PriorityRow</text>
+
+    <rect class="bx acc" x="438" y="40" width="196" height="56" rx="8" />
+    <text class="tx" x="536" y="63" text-anchor="middle">store action</text>
+    <text class="tm" x="536" y="81" text-anchor="middle">moveTask / deleteTask / …</text>
+
+    <rect class="bx" x="674" y="40" width="212" height="56" rx="8" />
+    <text class="tx" x="780" y="63" text-anchor="middle">api-client → route</text>
+    <text class="tm" x="780" y="81" text-anchor="middle">PATCH / DELETE /api/items</text>
+
+    <rect class="bx" x="438" y="146" width="196" height="46" rx="8" />
+    <text class="tx" x="536" y="174" text-anchor="middle">optimistic patch</text>
+
+    <line class="ln" x1="182" y1="68" x2="216" y2="68" marker-end="url(#ar)" />
+    <line class="ln" x1="398" y1="68" x2="432" y2="68" marker-end="url(#ar)" />
+    <line class="ln" x1="634" y1="68" x2="668" y2="68" marker-end="url(#ar)" />
+    <line class="ln" x1="536" y1="96" x2="536" y2="140" marker-end="url(#ar)" />
+    <text class="lb" x="546" y="122">list re-renders instantly</text>
+
+    <path class="ln back" d="M 780 96 L 780 169 L 640 169" marker-end="url(#arno)" />
+    <text class="lb no" x="774" y="188" text-anchor="end">on failure: roll back + toast</text>
+  </svg>
+
+  <h2>5 · The surface</h2>
+
+  <p class="small">
+    Mockups are drawn in the app’s own tokens (see the commented block in this document’s
+    stylesheet for where each value comes from). Behaviour and layout intent, not a pixel spec — but
+    every element drawn is required, and nothing required is missing from the drawings.
+  </p>
+
+  <h3>5.1 · The row gains one trailing button</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>/priority — desktop, row 2 hovered</span>
+      <span class="hmeta">md+ · pointer</span></div>
+    <div class="mock-body">
+      <p class="seclabel">Tasks by priority</p>
+
+      <div class="pcard">
+        <div class="prow">
+          <span class="chev"></span>
+          <span class="cbx"></span>
+          <span class="ptitle">Ship the newsletter</span>
+          <span class="pill due">Fri</span>
+          <span class="pill high">⌃ High</span>
+          <span class="flabel">Work</span>
+          <span class="dots off">···</span>
+        </div>
+      </div>
+
+      <div class="pcard">
+        <div class="prow hov">
+          <span class="chev">›</span>
+          <span class="cbx"></span>
+          <span class="ptitle">Draft the Q3 report</span>
+          <span class="pill med">= Medium</span>
+          <span class="flabel">Work</span>
+          <span class="dots on">···</span>
+        </div>
+      </div>
+
+      <div class="anchor">
+        <div class="menus">
+          <div class="menu" style="min-width:150px">
+            <div class="mi"><span class="lead">Inbox</span></div>
+            <div class="mi"><span class="lead">Work</span></div>
+            <div class="mi"><span class="lead">Home</span></div>
+            <div class="mi"><span class="lead">Reading</span></div>
+          </div>
+          <div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi hl"><span class="lead">Move to…</span><span class="ico">›</span></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pcard" style="margin-top:8px">
+        <div class="prow">
+          <span class="chev"></span>
+          <span class="cbx"></span>
+          <span class="ptitle">Renew the domain</span>
+          <span class="pill unset">Set priority</span>
+          <span class="flabel">Inbox</span>
+          <span class="dots off">···</span>
+        </div>
+      </div>
+
+      <p class="cap">
+        Rows 1 and 3 are at rest: the ⋯ column is reserved but <code>opacity-0</code>, so hovering
+        row 2 reveals its button without moving the folder label. Everything left of the ⋯ —
+        chevron, checkbox, title link, due chip, priority chip, folder label — is unchanged.
+      </p>
+    </div>
+  </div>
+
+  <h3>5.2 · A subtask row: reorder instead of re-file</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>/priority — parent expanded, subtask hovered</span>
+      <span class="hmeta">depth 1</span></div>
+    <div class="mock-body">
+      <div class="pcard">
+        <div class="prow">
+          <span class="chev open">›</span>
+          <span class="cbx"></span>
+          <span class="ptitle">Draft the Q3 report</span>
+          <span class="pill med">= Medium</span>
+          <span class="flabel">Work</span>
+          <span class="dots ghost">···</span>
+        </div>
+        <div class="prow d1">
+          <span class="chev"></span>
+          <span class="cbx"></span>
+          <span class="ptitle">Pull the revenue numbers</span>
+          <span class="dots off">···</span>
+        </div>
+        <div class="prow d1 hov">
+          <span class="chev"></span>
+          <span class="cbx"></span>
+          <span class="ptitle">Write the summary</span>
+          <span class="pill high">⌃ High</span>
+          <span class="dots on">···</span>
+        </div>
+        <div class="prow d1">
+          <span class="chev"></span>
+          <span class="cbx"></span>
+          <span class="ptitle">Circulate for review</span>
+          <span class="dots off">···</span>
+        </div>
+      </div>
+
+      <div class="anchor">
+        <div class="menu">
+          <div class="mi primary"><span class="lead">Open details</span></div>
+          <div class="msep"></div>
+          <div class="mi"><span class="lead"><span class="ico">↑</span>Move up</span></div>
+          <div class="mi"><span class="lead"><span class="ico">↓</span>Move down</span></div>
+          <div class="msep"></div>
+          <div class="mi danger"><span class="lead">Delete</span></div>
+        </div>
+      </div>
+
+      <p class="cap">
+        The middle subtask offers both directions; the first would show only <em>Move down</em> and
+        the last only <em>Move up</em>. <strong>No “Move to…”</strong> on a subtask row (D3). The
+        parent’s own ⋯ is drawn faint here only to show that the trailing column lines up at every
+        depth — at rest it is invisible, like rows 1 and 3 above.
+      </p>
+    </div>
+  </div>
+
+  <h3>5.3 · “Open details” — the panel arrives in this view</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>/priority — detail panel open on a depth-0 task</span>
+      <span class="hmeta">row → detail → subtasks</span></div>
+    <div class="mock-body">
+      <div class="pcard">
+        <div class="prow">
+          <span class="chev">›</span>
+          <span class="cbx"></span>
+          <span class="ptitle">Draft the Q3 report</span>
+          <span class="pill med">= Medium</span>
+          <span class="flabel">Work</span>
+          <span class="dots on">···</span>
+        </div>
+        <div class="panel">
+          <div class="chiprow">
+            <span class="chip duec">▤ Fri 14 Aug</span>
+            <span class="chip neutral">↻ Never</span>
+            <span class="chip high">⌃ High</span>
+          </div>
+          <p class="noteslabel">Notes</p>
+          <div class="notesbody">Pull last quarter’s deck for the format.</div>
+          <div class="savebar"><span class="savebtn">Save</span></div>
+        </div>
+      </div>
+
+      <p class="cap">
+        The same <code>TaskDetailPanel</code> the Inbox and Folder rows open, at the same indent
+        (<code>metaLeft</code> = depth × 1.25 + 2.5rem), between the row and its subtask list. Due ·
+        Repeat · Priority each auto-save on pick; Notes auto-saves on blur, ⌘↵, or Save (greyed
+        until dirty, as drawn). Escape or a press outside the row closes it. On a subtask row the
+        Repeat chip is absent; on a code/unclassified row only Notes shows.
+      </p>
+    </div>
+  </div>
+
+  <h3>5.4 · Mobile: the ⋯ is simply always there</h3>
+
+  <div class="side">
+    <div class="mock">
+      <div class="mock-bar"><span>/priority — mobile</span><span class="hmeta">&lt; md · touch</span></div>
+      <div class="mock-body">
+        <div class="phone">
+          <div class="pcard">
+            <div class="prow">
+              <span class="chev">›</span>
+              <span class="cbx"></span>
+              <span class="ptitle">Draft the Q3 report</span>
+              <span class="pill med">= Medium</span>
+              <span class="dots on" style="color:var(--a-muted);background:none">···</span>
+            </div>
+          </div>
+          <div class="pcard">
+            <div class="prow">
+              <span class="chev"></span>
+              <span class="cbx"></span>
+              <span class="ptitle">Renew the domain</span>
+              <span class="pill unset">Set priority</span>
+              <span class="dots on" style="color:var(--a-muted);background:none">···</span>
+            </div>
+          </div>
+        </div>
+        <p class="cap">
+          Below <code>md</code> the actions cluster is always visible (no hover on touch) — the same
+          <code>rowActionsClass</code> rule the task rows use. The folder label is unchanged from
+          today at every width.
+        </p>
+      </div>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Not drawn because it does not change</h4>
+      <ul class="tight small">
+        <li>The By-Priority header, its <em>Show completed</em> toggle and the empty state.</li>
+        <li>The row’s chevron / checkbox / title-link / chip cluster and the cascade modal.</li>
+        <li>The dropdown’s own chrome — surface, radius, item padding, submenu side-offset — all
+          inherited from <code>atoms/dropdown-menu</code>.</li>
+      </ul>
+      <p class="small" style="margin-bottom:0">
+        The menu carries <strong>no new glyphs</strong> beyond the ↑ / ↓ that <em>Move up</em> /
+        <em>Move down</em> already ship with, and the ⋯ trigger itself
+        (<code>MoreHorizontal</code>, 14px at md+, 18px below).
+      </p>
+    </div>
+  </div>
+
+  <h2>6 · The shape of the change</h2>
+
+  <h3>6.1 · Files touched, at a glance</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:42%">File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>frontend/lib/hooks/use-task-detail-actions.ts</code> <span class="new">new</span></td>
+        <td>The five auto-saving detail callbacks, extracted from <code>task-row.tsx</code> (D5).</td>
+      </tr>
+      <tr>
+        <td><code>frontend/components/tasks/task-row/task-row-menu.tsx</code></td>
+        <td>Code-module + add-subtask props become optional with <code>false</code>/absent defaults (D2). No change to the rendered structure.</td>
+      </tr>
+      <tr>
+        <td><code>frontend/components/tasks/task-row.tsx</code></td>
+        <td>Adopts <code>useTaskDetailActions</code>, dropping its five inline handlers. Behaviour identical; its existing tests must stay green with no assertion changes.</td>
+      </tr>
+      <tr>
+        <td><code>frontend/components/tasks/priority-view.tsx</code></td>
+        <td>The substance: <code>PriorityRow</code> gains the actions cluster, the menu, the detail panel and its dismiss.</td>
+      </tr>
+      <tr>
+        <td><code>frontend/components/tasks/priority-view.test.tsx</code></td>
+        <td>The absence test is inverted; new cases per §7.</td>
+      </tr>
+      <tr>
+        <td><code>frontend/e2e/priority.spec.ts</code></td>
+        <td>One end-to-end journey through the new menu (§7).</td>
+      </tr>
+      <tr>
+        <td><code>docs/demos/&lt;feature&gt;/…</code> <span class="new">new</span></td>
+        <td>The demo doc (§8).</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p><strong>No database migration, no API route change, no store change.</strong> Every action this
+  menu exposes already exists and is already exercised from the task rows.</p>
+
+  <h3>6.2 · The extracted hook</h3>
+
+  <pre><code>// frontend/lib/hooks/use-task-detail-actions.ts
+export interface TaskDetailActions {
+  selectDueDate: (iso: string) =&gt; void;
+  clearDueDate: () =&gt; void;
+  changeRecurrence: (rule: RecurrenceRule | null, anchorDate: string) =&gt; void;
+  changePriority: (next: TaskPriority | null) =&gt; void;
+  commitNotes: (value: string) =&gt; void;
+}
+
+/**
+ * The auto-saving detail mutations for one item — the callbacks TaskDetailPanel (and the row's
+ * own chips) fire on every pick/blur. Each is fire-and-forget: the optimistic store already
+ * rolls the row back and toasts on failure, so nothing is returned and nothing throws.
+ */
+export function useTaskDetailActions(node: ItemNode): TaskDetailActions</code></pre>
+
+  <p>The two rules that must survive the move, verbatim in behaviour:</p>
+  <ul class="tight">
+    <li><code>clearDueDate</code> also clears <code>recurrence</code> when one is set — a rule has
+      nowhere to anchor without a due date.</li>
+    <li><code>changeRecurrence</code> stamps <code>due_date: anchorDate</code> in the same patch when
+      a rule is being set on a task that has none.</li>
+  </ul>
+  <p class="small">
+    Both call sites drop their <code>void handleX()</code> wrappers: the hook’s callbacks already
+    return <code>void</code>, which is what <code>TaskDetailPanel</code> and <code>PriorityChip</code>
+    want and what <code>no-floating-promises</code> is happy with.
+  </p>
+
+  <h3>6.3 · How the priority row composes the menu</h3>
+
+  <pre><code>// frontend/components/tasks/priority-view.tsx — inside PriorityRow
+&lt;div className={rowActionsClass}&gt;
+  &lt;TaskRowMenu
+    /* Depth-0 rows only: a subtask has nothing visible to re-file (D3). The menu's own
+       `folders.length &gt; 0` guard drops the submenu when this is empty. */
+    folders={depth === 0 ? folders : []}
+    canMoveUp={isActiveSubtask &amp;&amp; canMoveUp}
+    canMoveDown={isActiveSubtask &amp;&amp; canMoveDown}
+    onMoveUp={moveUp}
+    onMoveDown={moveDown}
+    onOpenDetails={() =&gt; { toggleDetails(node.id); }}
+    onMoveToFolder={(targetFolderId) =&gt; { void moveTask(node.id, targetFolderId ?? null).catch(() =&gt; {}); }}
+    onDelete={() =&gt; { void deleteTask(node.id).catch(() =&gt; {}); }}
+  /&gt;
+&lt;/div&gt;</code></pre>
+
+  <p>Everything the code-module group needs is simply not passed — that is the whole of D2 at the
+  call site. The remaining wiring the row picks up:</p>
+
+  <ul class="tight">
+    <li><code>useSubtaskReorder(node, isCompleted, false)</code> — unchanged hook, supplies
+      <code>isActiveSubtask</code> / <code>canMoveUp</code> / <code>canMoveDown</code> / the two moves.</li>
+    <li><code>useExpansion().details</code> + <code>toggleDetails</code> / <code>closeDetails</code>,
+      and <code>useDismiss(rowRef, close, isDetailOpen)</code> on the row’s <code>&lt;li&gt;</code> (D4).</li>
+    <li><code>useIndentation(depth)</code> — already called for <code>rowLeft</code>; also take
+      <code>metaLeft</code> for the panel.</li>
+    <li><code>group/row</code> on the row’s flex line so <code>rowActionsClass</code>’s
+      <code>group-hover/row</code> resolves to <em>this</em> row.</li>
+    <li>The panel renders <em>between</em> the row line and the <code>AnimatedHeightCollapse</code>
+      subtask list, with <code>showRepeat={isTask &amp;&amp; depth === 0}</code>.</li>
+  </ul>
+
+  <h3>6.4 · Accessibility</h3>
+  <ul class="tight">
+    <li>The trigger keeps <code>aria-label="More actions"</code> — the same accessible name the
+      Inbox/Folder rows use, so existing queries and habits transfer.</li>
+    <li>Reorder stays reachable without a pointer: <em>Move up</em>/<em>Move down</em> are the
+      keyboard path (By-Priority has no drag gesture at all).</li>
+    <li>Radix owns focus: the trigger regains focus when the menu closes, and the panel’s
+      Escape dismiss defers to any open picker popover first (<code>useDismiss</code>).</li>
+  </ul>
+
+  <h2>7 · Tests</h2>
+
+  <p>Red/Green per <code>CLAUDE.md</code>: every behaviour below is expressed in a test, and the
+  inverted absence test is the first thing to go red.</p>
+
+  <h4>Unit — <code>frontend/components/tasks/priority-view.test.tsx</code></h4>
+  <ul class="tight">
+    <li><strong>Replace</strong> <em>“exposes neither the add-subtask nor the More actions
+      affordance”</em> with <em>“exposes the More actions menu but no add-subtask affordance”</em>.</li>
+    <li>The menu offers Open details / Move to… / Delete on a depth-0 row, and <strong>none</strong>
+      of <em>Add subtask</em>, <em>Classify as…</em>, <em>Send to Code module…</em>,
+      <em>Convert to Code Story…</em>, <em>Convert to Code Epic…</em>.</li>
+    <li>A subtask row (expanded) offers <em>Move up</em>/<em>Move down</em> and <strong>no</strong>
+      <em>Move to…</em>; the first and last siblings each offer only the one direction.</li>
+    <li><em>Move to… → Work</em> calls the move API and the row’s folder label flips
+      <code>Inbox</code> → <code>Work</code> without a refetch.</li>
+    <li><em>Delete</em> calls <code>deleteItem</code> and the row leaves the ranked list.</li>
+    <li><em>Open details</em> renders <code>task-detail-panel</code>; picking a priority in the panel
+      patches the item and <strong>re-ranks the row</strong> while the panel stays open.</li>
+    <li>Editing notes in the panel saves on blur (the extracted hook, exercised through this view).</li>
+    <li>Clicking the ⋯ does <strong>not</strong> navigate (no <code>ALFRED_FOCUS_ITEM_EVENT</code>,
+      no history change) — the sibling test to the existing “re-prioritising from the row chip does
+      not navigate”.</li>
+  </ul>
+
+  <h4>Unit — <code>frontend/components/tasks/task-row.test.tsx</code></h4>
+  <ul class="tight">
+    <li>Unchanged. The D5 extraction and D2 signature change must leave every existing assertion
+      green as written — that is the regression net for “the Inbox/Folder menu still works”.</li>
+  </ul>
+
+  <h4>E2E — <code>frontend/e2e/priority.spec.ts</code></h4>
+  <ul class="tight">
+    <li>Seed a folder + an unfiled prioritised task; on <code>/priority</code> open the row’s ⋯,
+      choose <em>Move to… → Work</em>, and assert the row’s label reads <code>Work</code>; then ⋯ →
+      <em>Delete</em> and assert the row is gone from <em>Tasks by priority</em>. One journey covers
+      trigger, submenu, both mutations and the ranked list’s live update.</li>
+  </ul>
+
+  <h4>No new Storybook story</h4>
+  <p class="small">
+    The change composes existing atoms and adds no new visual primitive, so it moves no committed
+    image snapshot. If a snapshot does shift, follow the <code>storybook</code> skill’s
+    capture-the-diff-then-approve flow rather than regenerating blind.
+  </p>
+
+  <h2>8 · Demo evidence</h2>
+
+  <p>
+    This is an <strong>interaction / state transition</strong> — open the menu, pick an action, watch
+    the row respond — so the demo doc follows the <code>showboat</code> skill’s evidence rules for
+    exactly that case, driven through the running app, and lives in its own folder under
+    <code>docs/demos/</code> per that folder’s <code>README</code> (enforced by
+    <code>demo-lint</code> in <code>check:slow</code>). Don’t re-derive the format from this spec —
+    the skill is the source of truth. The journey to capture:
+  </p>
+
+  <ol class="tight">
+    <li><code>/priority</code> at rest, then the hovered row with its ⋯ revealed.</li>
+    <li>The menu open on a depth-0 row, and its <em>Move to…</em> submenu.</li>
+    <li>After the move — the same row, ranked in place, labelled with its new folder.</li>
+    <li>The menu open on an expanded <em>subtask</em>, showing Move up / Move down and no Move to….</li>
+    <li><em>Open details</em> → the panel, and a due date or note saved from it.</li>
+    <li>After <em>Delete</em> — the row gone from the ranked list.</li>
+  </ol>
+
+  <p class="small">
+    Finish with <code>npm run demo -- verify</code> and link the doc from the PR with
+    <code>npm run demo -- pr-link</code> (a live blob URL, not a bare path).
+  </p>
+
+  <h2 id="oos">9 · Out of scope</h2>
+
+  <ul class="tight">
+    <li><strong>The code-module group and the add-subtask affordance</strong> in By-Priority —
+      settled in §2.</li>
+    <li><strong>Changing <code>TaskRow</code>’s own menu.</strong> It keeps <em>Move to…</em> on
+      subtask rows; D3 is a By-Priority decision, not a repair of the Inbox/Folder behaviour.</li>
+    <li><strong>An animated delete/complete exit in By-Priority</strong> (D6) — the view removes rows
+      instantly today and continues to.</li>
+    <li><strong>Making the row’s due-date chip clickable</strong> in this view; the detail panel is
+      the editing surface.</li>
+    <li><strong>Drag-and-drop</strong> reordering or re-parenting in By-Priority, and a
+      <em>Collapse all</em> button for this view.</li>
+    <li><strong>Moving the row’s subtask expansion into the expansion store</strong> — pre-existing
+      local state, untouched (D4).</li>
+    <li><strong>Inline title editing</strong> (double-click) in By-Priority — the task row has it,
+      this view does not, and the ticket doesn’t ask for it.</li>
+  </ul>
+
+  <h3>Open questions</h3>
+  <p>
+    None. The two that mattered — how far the menu should reach, and whether the “+” comes with it —
+    were resolved with the owner in this session (§2) and are locked in §3.
+  </p>
+
+  <h2>10 · Acceptance criteria</h2>
+
+  <ul class="tight">
+    <li>☐ Every row in By-Priority — depth 0 and nested, task and non-task — renders a
+      <strong>More actions</strong> (⋯) trigger as its last child: always visible below
+      <code>md</code>, revealed on row hover at <code>md</code>+, and visible at all widths under
+      reduced motion, with <strong>no layout shift</strong> between the two states.</li>
+    <li>☐ The menu on a <strong>depth-0</strong> row contains exactly: <em>Open details</em>,
+      divider, <em>Move to…</em> ▸ (Inbox + every folder), divider, <em>Delete</em>.</li>
+    <li>☐ The menu on an <strong>active subtask</strong> row contains exactly: <em>Open details</em>,
+      divider, <em>Move up</em> and/or <em>Move down</em> (hidden at the ends of the sibling group),
+      divider, <em>Delete</em> — and <strong>no</strong> <em>Move to…</em>.</li>
+    <li>☐ No row in this view ever shows <em>Add subtask</em>, <em>Classify as…</em>,
+      <em>Send to Code module…</em>, <em>Convert to Code Story…</em> or <em>Convert to Code Epic…</em>,
+      at any breakpoint.</li>
+    <li>☐ <em>Move to…</em> re-files the row and its subtree optimistically; the row’s folder label
+      updates immediately and the ranking is unaffected.</li>
+    <li>☐ <em>Move up</em>/<em>Move down</em> reorder the subtask among its active siblings, in place.</li>
+    <li>☐ <em>Delete</em> removes the row and its subtree immediately (no exit animation, no
+      confirmation) and rolls back with a toast if the request fails.</li>
+    <li>☐ <em>Open details</em> opens the shared <code>TaskDetailPanel</code> between the row and its
+      subtask list — Due + Priority on task rows, Repeat only at depth 0, Notes always — with every
+      control auto-saving, and closes on Escape, an outside pointer press, or a second
+      <em>Open details</em>.</li>
+    <li>☐ An edit made from the panel that changes the ranking re-sorts the list immediately and the
+      open panel travels with its row.</li>
+    <li>☐ Clicking the ⋯ (or any menu item) never navigates away from <code>/priority</code>.</li>
+    <li>☐ <code>useTaskDetailActions</code> exists in <code>lib/hooks/</code> and is used by
+      <strong>both</strong> <code>task-row.tsx</code> and <code>priority-view.tsx</code>; no
+      duplicate detail-save handler remains in either.</li>
+    <li>☐ <code>TaskRow</code>’s menu and detail panel are behaviourally unchanged —
+      <code>task-row.test.tsx</code> passes with no assertion edits.</li>
+    <li>☐ Root <code>npm run check</code> is green, and the demo doc verifies
+      (<code>npm run demo -- verify</code>).</li>
+  </ul>
+
+</div>
+</body>
+</html>
