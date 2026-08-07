@@ -20,6 +20,8 @@ function useActiveEditorTest() {
 const TITLE_A: ActiveEditor = { itemId: 'a', kind: 'title' };
 const SUBTASK_A: ActiveEditor = { itemId: 'a', kind: 'subtask' };
 const TITLE_B: ActiveEditor = { itemId: 'b', kind: 'title' };
+// A folder view's capture box: the same slot, keyed by the FOLDER's id rather than an item's.
+const FOLDER_CAPTURE: ActiveEditor = { itemId: 'folder-1', kind: 'folder-capture' };
 
 // ---------------------------------------------------------------------------
 // sameEditor (pure)
@@ -87,6 +89,37 @@ describe('ActiveEditorProvider', () => {
     });
 
     expect(result.current.active).toBeNull();
+  });
+
+  it("closes a folder's capture box when a row's title editor opens", () => {
+    // The folder box holds the same single-open slot as the row inputs, so a title edit
+    // taking over must close it — otherwise two drafts are live at once.
+    const { result } = renderHook(useActiveEditorTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.openEditor(FOLDER_CAPTURE);
+    });
+    act(() => {
+      result.current.actions.openEditor(TITLE_A);
+    });
+
+    expect(result.current.active).toStrictEqual(TITLE_A);
+  });
+
+  it("a stale close of a folder's capture box leaves the input that took over open", () => {
+    const { result } = renderHook(useActiveEditorTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.openEditor(FOLDER_CAPTURE);
+    });
+    act(() => {
+      result.current.actions.openEditor(TITLE_A);
+    });
+    act(() => {
+      result.current.actions.closeEditor(FOLDER_CAPTURE);
+    });
+
+    expect(result.current.active).toStrictEqual(TITLE_A);
   });
 
   it('closeEditor is a no-op when a different editor is now open', () => {

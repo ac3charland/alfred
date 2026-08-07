@@ -7,8 +7,8 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 /**
  * Active-editor store — the single source of truth for which inline input is open.
  *
- * Across all task rows only ONE inline input may be open at a time: either the
- * title-edit text box on an item or the add-subtask entry box on a parent. They are
+ * Across all task rows only ONE inline input may be open at a time: the title-edit text box
+ * on an item, the add-subtask entry box on a parent, or a folder view's capture box. They are
  * mutually exclusive, so opening one closes whatever was open before (any in-progress
  * title edit is abandoned without saving — only an explicit Save/Enter persists). The
  * Inbox hero capture box is exempt: it is never registered here and stays always-on.
@@ -17,10 +17,15 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
  * (none today, but matching the folders/tasks stores) don't re-render on every change.
  */
 
-/** Identifies one inline input: an item plus which of its inputs. `null` = none open. */
+/**
+ * Identifies one inline input: an item plus which of its inputs. `null` = none open.
+ *
+ * `folder-capture` is the odd one out: it belongs to a folder VIEW, not to an item, so its
+ * `itemId` carries the folder's id.
+ */
 export interface ActiveEditor {
   itemId: string;
-  kind: 'title' | 'subtask';
+  kind: 'title' | 'subtask' | 'folder-capture';
 }
 
 interface ActiveEditorActions {
