@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-161 — Add support for due times</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+    /* app palette — lifted from frontend/app/globals.css. Used ONLY inside .app mockups. */
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f;
+    --a-teal: #4fd1e0; --a-blue: #60a5fa; --a-amber: #f0b429; --a-red: #f87171;
+    --a-plate: #141d2e;
+    /* atoms/popover.tsx chrome + atoms/calendar.tsx cell tints */
+    --a-pop: #0d1320; --a-popline: #25324a;
+    --a-day: #cdd6e4; --a-spill: #46526c; --a-dayhead: #5a677c;
+    --a-today: rgba(96, 165, 250, 0.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); color: inherit; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--ok); font-weight: 700; }
+  .nope { color: var(--no); font-weight: 700; }
+
+  /* ── Decision blocks (the spec library's shared vocabulary) ───────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* ── Acceptance-criteria checklist ───────────────────────────── */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .93rem; }
+  ul.ac li::before {
+    content: ""; position: absolute; left: 0; top: .35rem; width: 1rem; height: 1rem;
+    border: 1px solid var(--faint); border-radius: 3px;
+  }
+  ul.ac li.h {
+    padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  }
+  ul.ac li.h::before { content: none; }
+
+  /* ── App-palette mockup canvas ────────────────────────────────────
+     Every value below is lifted from frontend/app/globals.css and the atom
+     that renders the thing being drawn — atoms/popover.tsx for the popover
+     chrome, atoms/calendar.tsx for the grid, atoms/badge.tsx for the compact
+     due badge, atoms/chip.tsx for the comfortable one, atoms/input.tsx for
+     the time field — so the drawing reads in alfred's real dark UI whichever
+     mode this document is viewed in. */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1.1rem; margin: 1rem 0; color: var(--a-text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: flex-start;
+  }
+  .app code { background: var(--a-plate); color: var(--a-text); font-size: .78em; }
+  .app .cap { color: var(--a-muted); font-size: .72rem; margin: .5rem 0 0; }
+
+  /* PopoverContent: rounded-xl, #25324a border, #0d1320 fill, p-1, soft drop shadow */
+  .pop { background: var(--a-pop); border: 1px solid var(--a-popline); border-radius: 12px;
+         padding: 4px; box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); flex: 0 0 auto; }
+  /* Calendar root: w-64 p-2 */
+  .cal { width: 256px; padding: 8px; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between;
+              padding: 0 4px 8px; }
+  /* text-sm font-medium text-foreground */
+  .cal-month { font-size: 14px; font-weight: 500; color: var(--a-text); }
+  .chev { color: var(--a-muted); font-size: 13px; width: 24px; height: 24px; border-radius: 6px;
+          display: inline-flex; align-items: center; justify-content: center; }
+  /* grid-cols-7 gap-0.5 px-1 */
+  .grid7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 4px; }
+  /* h-6 text-[11px] font-medium text-[#5A677C] */
+  .dh { height: 24px; display: flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 500; color: var(--a-dayhead); }
+  /* h-8 rounded-md text-[13px] */
+  .d { height: 32px; display: flex; align-items: center; justify-content: center;
+       border-radius: 6px; font-size: 13px; color: var(--a-day); }
+  .d.out { color: var(--a-spill); }
+  .d.today { background: var(--a-today); color: #fff; font-weight: 600; }
+  .d.sel { background: var(--a-blue); color: var(--a-bg); font-weight: 600; }
+  /* The new time row. Separator reuses the popover's own border colour. */
+  .timerow { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--a-popline); }
+  .timerow.off { opacity: .4; }
+  .tr-head { display: flex; align-items: center; justify-content: space-between;
+             padding: 0 4px 6px; }
+  .tr-label { font-size: 11px; font-weight: 500; color: var(--a-dayhead);
+              text-transform: uppercase; letter-spacing: .06em; }
+  /* Footer links: rounded px-2 py-1 text-xs font-medium text-accent-blue */
+  .link { font-size: 12px; font-weight: 500; color: var(--a-blue);
+          padding: 4px 8px; border-radius: 4px; }
+  .link.dim { color: var(--a-muted); }
+  .tr-body { display: flex; gap: 4px; padding: 0 4px; align-items: center; }
+  /* Presets share the day cell's treatment (same rounded-md / 13px / tint pair) */
+  .preset { height: 32px; flex: 1 1 0; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 13px; color: var(--a-day); }
+  .preset.sel { background: var(--a-blue); color: var(--a-bg); font-weight: 600; }
+  /* Input atom, shrunk to the row: border-border bg-input rounded-sm text-sm */
+  .tinput { height: 32px; flex: 0 0 86px; border: 1px solid var(--a-border); background: var(--a-secondary);
+            border-radius: 4px; font-size: 13px; color: var(--a-text);
+            display: flex; align-items: center; padding: 0 8px; gap: 6px; }
+  .tinput .ph { color: var(--a-muted); }
+  .tinput .clock { color: var(--a-muted); font-size: 11px; margin-left: auto; }
+  .cal-foot { margin-top: 8px; display: flex; align-items: center; justify-content: space-between;
+              padding: 0 4px; }
+
+  /* Chip strip */
+  .strip { flex: 1 1 300px; min-width: 260px; }
+  .striprow { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .7rem; }
+  /* Badge atom: rounded-full px-2 py-0.5 text-xs, bordered tone variants */
+  .badge { border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 500;
+           border: 1px solid; white-space: nowrap; }
+  .b-due     { color: var(--a-blue);  border-color: color-mix(in srgb, var(--a-blue) 50%, transparent); }
+  .b-today   { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 50%, transparent); }
+  .b-over    { color: var(--a-red);   border-color: color-mix(in srgb, var(--a-red) 50%, transparent); }
+  /* Chip atom: rounded-[9px] border px-3 py-1.5 text-[13px] font-medium */
+  .cchip { border-radius: 9px; border: 1px solid; padding: 6px 12px; font-size: 13px;
+           font-weight: 500; white-space: nowrap; display: inline-flex; }
+  .cc-due   { color: var(--a-blue);  border-color: color-mix(in srgb, var(--a-blue) 30%, transparent);
+              background: color-mix(in srgb, var(--a-blue) 8%, transparent); }
+  .cc-today { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 30%, transparent);
+              background: color-mix(in srgb, var(--a-amber) 10%, transparent); }
+  .cc-over  { color: var(--a-red);   border-color: color-mix(in srgb, var(--a-red) 30%, transparent);
+              background: color-mix(in srgb, var(--a-red) 12%, transparent); }
+  .cc-none  { color: var(--a-muted); border-color: var(--a-popline); }
+  .lbl { color: var(--a-muted); font-size: 11px; text-transform: uppercase;
+         letter-spacing: .06em; margin: 0 0 .4rem; }
+
+  /* Task row (context for the compact badge) */
+  .row { background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 10px;
+         padding: .6rem .75rem; display: flex; gap: .6rem; align-items: flex-start; margin-bottom: .5rem; }
+  .box { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--a-muted);
+         flex: none; margin-top: .2rem; }
+  .row-main { flex: 1; min-width: 0; }
+  .row-title { color: var(--a-text); font-size: 13.5px; margin-bottom: .35rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .b-muted { color: var(--a-muted); border-color: color-mix(in srgb, var(--a-border) 100%, transparent); }
+
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.6rem; }
+  .mockcap b { color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-161 — Add support for due times</h1>
+<p class="sub">
+  <span class="pill">Story</span><span class="pill">Database + frontend</span>
+  A due date can carry an optional time of day. Nothing changes for a task that doesn't have one.
+</p>
+
+<p>
+  A due date in alfred is a <b>calendar day</b> and nothing finer: <code>lib/date-utils.ts</code>
+  deliberately reads <code>YYYY-MM-DD</code> as <i>local</i> midnight so day arithmetic never drifts
+  across a timezone or a DST boundary, and every urgency rule in the app is built on that. This story
+  adds the missing half — <b>a task may also be due at a time</b>, that time shows on its chip, and
+  once it passes the task goes red.
+</p>
+
+<h2>1 · Context &amp; problem</h2>
+
+<p>
+  Today the due date is a whole-day fact, which makes the urgency colours coarse in exactly the way
+  that matters most: <b>everything due today is the same amber, all day</b>. A 9am standup prep and an
+  11pm backup both read "due today" at 4pm, when only one of them is actually late.
+</p>
+
+<p>The rules as they stand, and every place that depends on them:</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Rule</th><th>Today</th><th>Where</th></tr>
+  <tr>
+    <td>Overdue (red)</td>
+    <td><code>parseDueDate(iso) &lt; local midnight today</code> — today is never overdue</td>
+    <td><code>isDueDateOverdue</code> — <code>frontend/lib/date-utils.ts</code></td>
+  </tr>
+  <tr>
+    <td>Due today (amber)</td>
+    <td>the due day <i>is</i> today</td>
+    <td><code>isDueToday</code> / <code>isDueTodayOrOverdue</code> — same file</td>
+  </tr>
+  <tr>
+    <td>Chip colour</td>
+    <td><code>dueBand()</code> → <code>overdue</code> / <code>dueToday</code> / <code>due</code></td>
+    <td><code>components/tasks/due-date-chip.tsx</code></td>
+  </tr>
+  <tr>
+    <td>Chip label</td>
+    <td><code>Today</code> / <code>Tomorrow</code> / <code>Yesterday</code> / <code>Mon D</code></td>
+    <td><code>formatDueDate</code> — <code>lib/date-utils.ts</code></td>
+  </tr>
+  <tr>
+    <td>Folder badges (red / amber)</td>
+    <td>same two predicates, per folder</td>
+    <td><code>useFolderBadgeCounts</code> — <code>lib/stores/tasks-store.tsx</code></td>
+  </tr>
+  <tr>
+    <td>Overdue-subtask tally</td>
+    <td><code>isDueDateOverdue</code> over the whole subtree</td>
+    <td><code>countOverdueDescendants</code> — <code>lib/tree.ts</code></td>
+  </tr>
+  <tr>
+    <td>Priority ordering</td>
+    <td><code>Date.parse(due_date)</code> as the tiebreak inside a priority level</td>
+    <td><code>lib/priority.ts</code></td>
+  </tr>
+  <tr>
+    <td>Editing</td>
+    <td>the month-grid popover: pick a day, or Clear / Today</td>
+    <td><code>components/atoms/calendar.tsx</code></td>
+  </tr>
+</table>
+</div>
+
+<p>
+  There is also a <b>latent capability already built and switched off</b> for want of this feature.
+  The recurrence engine implements an <code>hourly</code> frequency and formats its results as
+  <code>YYYY-MM-DDTHH:mm:ss</code>, but <code>lib/recurrence/types.ts</code> says:
+</p>
+
+<pre><code>/** A recurrence frequency. `hourly` is engine-only for now (no UI entry — needs a time anchor). */</code></pre>
+
+<p>
+  A due time <i>is</i> that anchor. Exposing hourly repeats is deliberately <b>not</b> in this story
+  (see §10), but this is the change that unblocks it, and the model below is chosen so that follow-up
+  is small.
+</p>
+
+<h2>2 · Scope, as settled in refinement</h2>
+
+<div class="scroll">
+<table>
+  <tr><th>Question</th><th>Answer</th></tr>
+  <tr>
+    <td>Does a due time change what counts as overdue?</td>
+    <td><b>Yes.</b> A task due today at 3pm turns red at 3:01pm. Date-only tasks keep the midnight
+        rule exactly.</td>
+  </tr>
+  <tr>
+    <td>Where is the time set?</td>
+    <td><b>In the existing due-date calendar popover</b> — a time row under the month grid. No new
+        chip, no new surface.</td>
+  </tr>
+  <tr>
+    <td>What rides along?</td>
+    <td><b>Recurrence preserves the time</b> — a daily task due 9am spawns its next occurrence at
+        9am.</td>
+  </tr>
+  <tr>
+    <td>How does a time render?</td>
+    <td><b>Compact 12-hour</b>: <code>Today 3pm</code>, <code>Tomorrow 3:30pm</code>,
+        <code>Aug 12 9am</code>.</td>
+  </tr>
+  <tr>
+    <td>Explicitly out</td>
+    <td>Reminders / notifications; the hourly repeat preset; time-aware <i>ordering</i> within a day;
+        natural-language time capture. See §10.</td>
+  </tr>
+</table>
+</div>
+
+<h2>3 · When a task changes colour, drawn</h2>
+
+<svg viewBox="0 0 900 320" role="img" aria-label="A timeline from Aug 11 midnight to Aug 13 noon comparing two tasks both due Aug 12. The date-only task reads blue until Aug 12 midnight, amber for the whole of Aug 12, and red from Aug 13 midnight. The task due Aug 12 at 3pm reads blue until Aug 12 midnight, amber from midnight to 3pm, and red from 3pm onward. The 3pm boundary is annotated as the only band change that no data change causes, and therefore the one that needs a clock.">
+  <style>
+    .ax { stroke: var(--faint); stroke-width: 1.2; }
+    .gl { stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 4 4; }
+    .t  { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--muted); }
+    .th { font: 600 13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: var(--fg); }
+    .ts { font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--faint); }
+    .flip { stroke: #f87171; stroke-width: 1.6; fill: none; }
+  </style>
+
+  <!-- Lane A: a date-only task due Aug 12 -->
+  <text class="th" x="138" y="68" text-anchor="end">due Aug 12</text>
+  <text class="t"  x="138" y="85" text-anchor="end">(no time)</text>
+  <rect x="150" y="56" width="288" height="30" fill="#60a5fa" opacity=".85" />
+  <rect x="438" y="56" width="288" height="30" fill="#f0b429" opacity=".85" />
+  <rect x="726" y="56" width="144" height="30" fill="#f87171" opacity=".85" />
+
+  <!-- Lane B: a timed task due Aug 12 3:00pm -->
+  <text class="th" x="138" y="168" text-anchor="end">due Aug 12</text>
+  <text class="t"  x="138" y="185" text-anchor="end">at 3:00pm</text>
+  <rect x="150" y="156" width="288" height="30" fill="#60a5fa" opacity=".85" />
+  <rect x="438" y="156" width="180" height="30" fill="#f0b429" opacity=".85" />
+  <rect x="618" y="156" width="252" height="30" fill="#f87171" opacity=".85" />
+
+  <!-- Day boundaries -->
+  <line class="gl" x1="438" y1="46" x2="438" y2="232" />
+  <line class="gl" x1="726" y1="46" x2="726" y2="232" />
+
+  <!-- The 3pm flip, and its annotation in the gap between the lanes -->
+  <line class="flip" x1="618" y1="148" x2="618" y2="194" />
+  <path class="flip" d="M 618 148 L 610 130 L 600 130" />
+  <text class="th" x="592" y="112" text-anchor="end">3:00pm — a colour change with no data change.</text>
+  <text class="t"  x="592" y="134" text-anchor="end">The one boundary that needs a clock (D5).</text>
+
+  <!-- Axis -->
+  <line class="ax" x1="150" y1="232" x2="870" y2="232" />
+  <line class="ax" x1="150" y1="232" x2="150" y2="239" />
+  <line class="ax" x1="438" y1="232" x2="438" y2="239" />
+  <line class="ax" x1="726" y1="232" x2="726" y2="239" />
+  <line class="ax" x1="870" y1="232" x2="870" y2="239" />
+  <text class="ts" x="150" y="253" text-anchor="middle">00:00</text>
+  <text class="ts" x="438" y="253" text-anchor="middle">00:00</text>
+  <text class="ts" x="726" y="253" text-anchor="middle">00:00</text>
+  <text class="t" x="294" y="275" text-anchor="middle">Aug 11</text>
+  <text class="t" x="582" y="275" text-anchor="middle">Aug 12</text>
+  <text class="t" x="798" y="275" text-anchor="middle">Aug 13</text>
+
+  <!-- Legend -->
+  <rect x="150" y="296" width="16" height="12" fill="#60a5fa" opacity=".85" />
+  <text class="t" x="174" y="307">Upcoming</text>
+  <rect x="270" y="296" width="16" height="12" fill="#f0b429" opacity=".85" />
+  <text class="t" x="294" y="307">Due today</text>
+  <rect x="394" y="296" width="16" height="12" fill="#f87171" opacity=".85" />
+  <text class="t" x="418" y="307">Overdue</text>
+</svg>
+<p class="diagram-cap">
+  Two tasks, both due Aug 12. Adding a time moves the red boundary from the following midnight to the
+  time itself — and nothing else about the picture changes.
+</p>
+
+<p>Stated as rules, which is how the code will read:</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Band</th><th>Date-only (<code>due_time is null</code>)</th><th>Timed</th></tr>
+  <tr>
+    <td><b>overdue</b> (red)</td>
+    <td>the due day is strictly before today — <i>unchanged</i></td>
+    <td><code>now &gt; the due instant</code></td>
+  </tr>
+  <tr>
+    <td><b>dueToday</b> (amber)</td>
+    <td>the due day is today — <i>unchanged</i></td>
+    <td>the due day is today <b>and</b> the instant hasn't passed</td>
+  </tr>
+  <tr>
+    <td><b>due</b> (blue)</td>
+    <td>any later day — <i>unchanged</i></td>
+    <td>any later day</td>
+  </tr>
+</table>
+</div>
+
+<h2>4 · Decisions</h2>
+
+<div class="dec">
+  <h3><span class="n">D1</span>A second column, <code>due_time time</code> — not a time folded into <code>due_date</code></h3>
+  <p>
+    <code>items.due_date</code> is already a <code>timestamptz</code>, so folding a wall-clock time
+    into it is <i>possible</i>. It is also a trap. The app has never used that column as an instant:
+    <code>parseDueDate</code> reads <code>YYYY-MM-DD</code> <b>and</b> a midnight-UTC timestamp as
+    <i>local</i> midnight, precisely so a date never drifts a day in a negative-UTC zone.
+  </p>
+  <pre><code>// lib/date-utils.ts — the convention a folded-in time would have to break
+if (/^\d{4}-\d{2}-\d{2}(T00:00:00|$)/.test(iso)) {
+  return new Date(iso.slice(0, 10) + 'T00:00:00');
+}</code></pre>
+  <p>
+    Under a folded model, "is this date-only?" becomes a question about the <i>value</i> — either a
+    midnight sentinel or a companion boolean. The sentinel is outright wrong: <b>7:00pm CDT is
+    midnight UTC</b>, so that regex would silently read a real 7pm task as an untimed calendar date.
+    A boolean avoids that but adds a flag that can drift out of sync with the value it describes.
+  </p>
+  <p>
+    A nullable <code>time</code> column has neither problem. <code>null</code> means "no time", every
+    existing row already holds it, and <code>due_date</code> keeps its present meaning untouched.
+  </p>
+  <p class="why">
+    <b>The cost, stated:</b> two fields now travel together through the schema, the route, the store
+    and the optimistic patch — and anything that wants to <i>order</i> by instant has to compose them
+    rather than parse one string. That is the direct reason ordering is deferred (D10, §10).
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span><code>null</code> is not a special case — it is today's behaviour, unmodified</h3>
+  <p>
+    Every predicate returns exactly what it returns now when <code>due_time is null</code>. That is
+    the correctness bar for this story: <b>the app must be indistinguishable from itself</b> for a
+    task without a time, in the chip, the folder badges, the subtask tally, the ordering and the
+    recurrence spawn.
+  </p>
+  <p>
+    Concretely, the predicates take the time as a second argument rather than gaining separate
+    variants, so no call site can accidentally keep using a date-only version:
+  </p>
+  <pre><code>export function isDueDateOverdue(iso: string, time: string | null = null): boolean
+export function isDueToday(iso: string, time: string | null = null): boolean
+export function isDueTodayOrOverdue(iso: string, time: string | null = null): boolean</code></pre>
+  <p class="why">
+    <b>Why a default rather than a required parameter:</b> the recurrence editor and the calendar
+    call <code>parseDueDate</code> for pure calendar arithmetic where a time is meaningless. A
+    defaulted parameter keeps those honest without threading a <code>null</code> through code that
+    has no concept of one.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>Clearing the date clears the time — the route does it, a CHECK proves it</h3>
+  <p>
+    A time with no date is meaningless, so the schema forbids it:
+  </p>
+  <pre><code>alter table items add constraint items_due_time_needs_date check (
+  due_time is null or due_date is not null
+);</code></pre>
+  <p>
+    But a constraint alone would turn today's perfectly ordinary <code>{ due_date: null }</code>
+    PATCH — which <code>task-row.tsx</code>'s clear handler sends — into a 500 for any task that had a
+    time. So <b>the route derives it</b>: when the body sets <code>due_date</code> to
+    <code>null</code>, the route forces <code>due_time: null</code> too, exactly as it already
+    authors <code>dispatched_at</code> from the <code>dispatched</code> intent rather than trusting a
+    caller to send a timestamp.
+  </p>
+  <p class="why">
+    <b>Why the server and not the client:</b> Siri/service-role writes bypass the route's callers but
+    not the route. Deriving it here means no ingress can create the orphan, and the CHECK is a
+    backstop rather than a tripwire.
+  </p>
+</div>
+
+<div class="callout">
+  <b>Deploy order — read before applying the migration.</b> The <code>supabase</code> skill records
+  that a new CHECK breaks the <i>deployed</i> frontend, because it writes without knowing the new
+  invariant (<code>items_dispatched_needs_folder</code> did exactly this). <b>These two constraints
+  are safe</b>: the deployed frontend has no concept of <code>due_time</code>, so every write it makes
+  leaves the column <code>null</code> and satisfies both branches. The migration may therefore be
+  applied ahead of the deploy. Say so in the PR body, with the
+  <code>alter table items drop constraint …</code> escape hatch, so whoever picks it up knows the
+  schema is ahead of the app.
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Overdue becomes instant-aware, and the boundary instant is <i>not</i> overdue</h3>
+  <p>
+    At exactly 3:00pm a 3pm task has arrived, not lapsed. The existing rule already makes that
+    choice — "today itself is NOT overdue" — so a timed task inherits it: overdue is
+    <code>now &gt; dueInstant</code>, strictly.
+  </p>
+  <pre><code>/** The instant a task is due: local midnight when untimed, the local wall-clock time otherwise. */
+export function dueInstant(iso: string, time: string | null): Date
+
+// overdue
+time === null
+  ? parseDueDate(iso) &lt; new Date(new Date().toDateString())   // unchanged
+  : dueInstant(iso, time) &lt; new Date()</code></pre>
+  <p>
+    <code>dueInstant</code> composes the calendar date and the wall-clock time <b>in the viewer's
+    local zone</b> — <code>new Date(y, m, d, hh, mm)</code>, never a UTC parse — which is the same
+    invariant <code>parseDueDate</code> exists to protect, and which makes the value DST-correct for
+    free.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>A band that changes with no data change needs a clock — exactly one, at minute cadence</h3>
+  <p>
+    Every band change in the app today is either caused by a write or happens at midnight, so React
+    re-renders whenever the answer could have moved. A 3pm due time breaks that: at 3:01pm the chip
+    must be red, and nothing has happened. Without a clock, "turns red at 3:01pm" is really "turns red
+    the next time you touch something", which is not the feature that was agreed.
+  </p>
+  <p>
+    So: <code>lib/hooks/use-minute-tick.ts</code> — a <code>useSyncExternalStore</code> hook over
+    <b>one shared interval</b> aligned to the wall-clock minute (so the flip lands on <code>:00</code>,
+    not 60s after mount), following the existing subscribe-once pattern in
+    <code>lib/hooks/use-media-query.ts</code> and <code>lib/use-prefers-reduced-motion.ts</code>.
+    Three consumers, which is every place a band is computed:
+  </p>
+  <ul>
+    <li><code>DueDateChip</code> — its own band.</li>
+    <li><code>useFolderBadgeCounts</code> — the sidebar red/amber tallies.</li>
+    <li><code>TaskRow</code> — so <code>countOverdueDescendants</code>' roll-up doesn't lag the
+        child chips that already updated beneath it.</li>
+  </ul>
+  <p class="why">
+    <b>Cost, and the alternative not taken:</b> one re-render per visible row per minute. For a
+    single-user list of tens-to-low-hundreds of rows that is far below the churn an ordinary keystroke
+    in the capture box already causes. Threading the tick through <code>TasksProvider</code> instead
+    would be fewer subscriptions but would change <code>StateContext</code>'s value shape, which every
+    <code>useTasks()</code> consumer reads — a much wider blast radius for the same result.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>The time is set inside the existing picker, and is unavailable until a date is</h3>
+  <p>
+    One control owns "when is this due", so the popover gains a time row beneath the grid rather than
+    the detail panel gaining a fourth chip. The row is <b>disabled while no date is selected</b> —
+    which is D3's invariant made visible instead of enforced by a surprise, and removes the "user
+    picks a time first" state entirely.
+  </p>
+  <p>
+    Three quick presets (<code>9am</code> / <code>12pm</code> / <code>5pm</code>) plus a typed field
+    for anything else, and a <code>No time</code> link that returns the task to date-only — mirroring
+    the footer's existing <code>Clear</code> / <code>Today</code> pair. Drawn in §5.1.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>Compact 12-hour, and the chip label is a plain join</h3>
+  <p>
+    <code>formatTimeOfDay</code> drops a zero minute and the space before the meridiem, because the
+    compact row badge is already tight and <code>3:00 PM</code> is four characters of nothing:
+  </p>
+  <div class="scroll">
+  <table>
+    <tr><th>stored</th><th>rendered</th><th>stored</th><th>rendered</th></tr>
+    <tr><td><code>09:00</code></td><td><code>9am</code></td><td><code>00:00</code></td><td><code>12am</code></td></tr>
+    <tr><td><code>12:00</code></td><td><code>12pm</code></td><td><code>00:05</code></td><td><code>12:05am</code></td></tr>
+    <tr><td><code>15:00</code></td><td><code>3pm</code></td><td><code>23:45</code></td><td><code>11:45pm</code></td></tr>
+    <tr><td><code>15:30</code></td><td><code>3:30pm</code></td><td><code>12:05</code></td><td><code>12:05pm</code></td></tr>
+  </table>
+  </div>
+  <p>
+    The label is <code>formatDueDate(date)</code> + a space + <code>formatTimeOfDay(time)</code> —
+    so every existing label form composes without a new branch: <code>Today 3pm</code>,
+    <code>Yesterday 5pm</code>, <code>Tomorrow 9am</code>, <code>Aug 12 3:30pm</code>.
+  </p>
+  <p class="why">
+    <b>Accessible name:</b> the compact badge keeps announcing raw values —
+    <code>Due date: 2026-08-12</code> becomes <code>Due date: 2026-08-12 15:00</code> when timed —
+    so the existing test queries keep their shape and gain an unambiguous one for times. The
+    comfortable chip's name stays the stable field label <code>Due date</code>, with the value on its
+    visible text.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>Recurrence carries the wall clock forward by <i>copying</i> it, never computing it</h3>
+  <p>
+    Because the time lives in its own column, "the next occurrence keeps the time" is a copy, not
+    arithmetic. <code>complete_and_spawn</code> already selects the recurring root's own fields onto
+    the spawned row; <code>due_time</code> joins that list, and joins the descendant deep-copy
+    alongside <code>c.due_date</code>.
+  </p>
+  <p>
+    <b>The TypeScript engine is not touched.</b> <code>nextOccurrence</code> computes the next
+    <i>date</i>; the time was never in the string it returns, and the complete route passes the same
+    <code>next_due</code> it always did.
+  </p>
+  <p class="why">
+    <b>Why this is the DST-proof form:</b> a 9am daily task stays 9am across the spring-forward
+    boundary because nothing ever adds 24 hours to an instant. Had the time been folded into
+    <code>due_date</code>, the spawn would have to do timezone-aware arithmetic to avoid becoming an
+    8am or 10am task twice a year.
+  </p>
+  <p class="why">
+    <b>The signature does not change</b> — <code>complete_and_spawn(uuid, timestamptz, int)</code>
+    stays as it is, so no <code>grant execute</code> has to be reissued.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D9</span><code>due_time</code> is a task-only field, like every other one</h3>
+  <p>
+    <code>items_task_only_fields</code> is the CHECK that makes a non-<code>task</code> row
+    structurally incapable of holding a due date, a completion or a priority. A due time belongs in
+    it, added by the drop-and-re-add its own history establishes (0010 did this for
+    <code>priority</code>; 0019 last rewrote it).
+  </p>
+  <pre><code>alter table items drop constraint items_task_only_fields;
+alter table items add constraint items_task_only_fields check (
+  item_type = 'task'
+  or (due_date is null and due_time is null and status = 'active' and completed_at is null
+      and (parent_id is null or item_type = 'code'))
+);</code></pre>
+  <p class="why">
+    Copy the predicate <b>from 0019</b>, the migration that last defined it, and add one conjunct.
+    Re-deriving it from an older migration silently reverts the code-subtask relaxation — the trap
+    0025 and 0026 both document.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>Ordering, grouping and filtering are untouched</h3>
+  <p>
+    <code>lib/priority.ts</code> keeps keying on <code>Date.parse(due_date)</code>, i.e. day
+    resolution. Two tasks due today at 9am and 5pm keep the ordering they have now, tie-broken by
+    <code>created_at</code>. The Priority view's chips <i>show</i> their times and colour correctly;
+    they just don't reorder. Deliberate — see §10.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D11</span>The view and the RPC must both be re-expanded, or the column is invisible</h3>
+  <p>
+    Two documented traps apply to any column added to <code>items</code>, and neither is optional:
+  </p>
+  <ul>
+    <li><code>task_items</code> is <code>select i.*</code>, and PostgreSQL <b>freezes that column
+        list at CREATE</b>. It is the read path for every task in the app, so without a
+        <code>create or replace view</code> the frontend simply never sees <code>due_time</code>.
+        (0011, 0013, 0018 and 0026 each hit or document this.) Use <code>create or replace</code>,
+        not a drop, so the grants and <code>security_invoker</code> survive.</li>
+    <li><code>get_subtree</code> declares an explicit <code>returns table (…)</code>, and
+        <code>create or replace</code> <b>cannot change a function's return type</b> — it must be
+        dropped first, as 0006 did when it added the recurrence columns.</li>
+  </ul>
+  <p class="why">
+    <code>get_subtree</code> has no runtime caller today — only its generated type is referenced, via
+    <code>SubtreeRow</code> in <code>lib/types.ts</code>. Update it anyway: a row type that omits a
+    column of the row is a lie the next reader will believe, and it costs one paragraph of SQL.
+  </p>
+</div>
+
+<h2>5 · The surface</h2>
+
+<h3>5.1 · The picker gains a time row</h3>
+
+<div class="app">
+  <div class="pop">
+    <div class="cal">
+      <div class="cal-head">
+        <span class="chev">‹</span>
+        <span class="cal-month">August 2026</span>
+        <span class="chev">›</span>
+      </div>
+      <div class="grid7">
+        <span class="dh">S</span><span class="dh">M</span><span class="dh">T</span><span class="dh">W</span>
+        <span class="dh">T</span><span class="dh">F</span><span class="dh">S</span>
+      </div>
+      <div class="grid7">
+        <span class="d out">26</span><span class="d out">27</span><span class="d out">28</span><span class="d out">29</span>
+        <span class="d out">30</span><span class="d out">31</span><span class="d">1</span>
+        <span class="d">2</span><span class="d">3</span><span class="d">4</span><span class="d">5</span>
+        <span class="d">6</span><span class="d today">7</span><span class="d">8</span>
+        <span class="d">9</span><span class="d">10</span><span class="d">11</span><span class="d sel">12</span>
+        <span class="d">13</span><span class="d">14</span><span class="d">15</span>
+        <span class="d">16</span><span class="d">17</span><span class="d">18</span><span class="d">19</span>
+        <span class="d">20</span><span class="d">21</span><span class="d">22</span>
+        <span class="d">23</span><span class="d">24</span><span class="d">25</span><span class="d">26</span>
+        <span class="d">27</span><span class="d">28</span><span class="d">29</span>
+        <span class="d">30</span><span class="d">31</span><span class="d out">1</span><span class="d out">2</span>
+        <span class="d out">3</span><span class="d out">4</span><span class="d out">5</span>
+      </div>
+      <div class="timerow">
+        <div class="tr-head">
+          <span class="tr-label">Time</span>
+          <span class="link dim">No time</span>
+        </div>
+        <div class="tr-body">
+          <span class="preset">9am</span>
+          <span class="preset">12pm</span>
+          <span class="preset">5pm</span>
+          <span class="tinput"><span class="ph">--:--</span><span class="clock">▾</span></span>
+        </div>
+      </div>
+      <div class="cal-foot">
+        <span class="link">Clear</span>
+        <span class="link">Today</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <p class="lbl">a · date picked, no time yet</p>
+    <p class="cap">
+      Aug 12 is selected (filled blue), Aug 7 is today (tinted blue) — both unchanged. The new row
+      sits between the grid and the Clear&nbsp;/&nbsp;Today footer, separated by a rule in the
+      popover's own border colour. No preset is lit and the field is empty, because the task is
+      date-only. <b>No&nbsp;time</b> is muted here: it is always present (like <b>Clear</b>) but
+      there is nothing to undo.
+    </p>
+    <p class="cap">
+      The presets carry the day cell's exact treatment — same height, radius, size, and the same
+      blue-filled selected state — because they sit two rows below it in the same popover. Selecting
+      one, typing in the field, or clearing all three <b>saves immediately</b> and leaves the popover
+      open, so a time can be adjusted without reopening; only picking a <i>day</i> closes it, as it
+      does today.
+    </p>
+  </div>
+</div>
+<p class="mockcap">
+  <b>State (a) — a date, no time.</b> Chip above reads <code>Aug 12</code>, blue.
+</p>
+
+<div class="app">
+  <div class="pop">
+    <div class="cal">
+      <div class="cal-head">
+        <span class="chev">‹</span>
+        <span class="cal-month">August 2026</span>
+        <span class="chev">›</span>
+      </div>
+      <div class="grid7">
+        <span class="dh">S</span><span class="dh">M</span><span class="dh">T</span><span class="dh">W</span>
+        <span class="dh">T</span><span class="dh">F</span><span class="dh">S</span>
+      </div>
+      <div class="grid7">
+        <span class="d out">26</span><span class="d out">27</span><span class="d out">28</span><span class="d out">29</span>
+        <span class="d out">30</span><span class="d out">31</span><span class="d">1</span>
+        <span class="d">2</span><span class="d">3</span><span class="d">4</span><span class="d">5</span>
+        <span class="d">6</span><span class="d today">7</span><span class="d">8</span>
+        <span class="d">9</span><span class="d">10</span><span class="d">11</span><span class="d sel">12</span>
+        <span class="d">13</span><span class="d">14</span><span class="d">15</span>
+        <span class="d">16</span><span class="d">17</span><span class="d">18</span><span class="d">19</span>
+        <span class="d">20</span><span class="d">21</span><span class="d">22</span>
+        <span class="d">23</span><span class="d">24</span><span class="d">25</span><span class="d">26</span>
+        <span class="d">27</span><span class="d">28</span><span class="d">29</span>
+        <span class="d">30</span><span class="d">31</span><span class="d out">1</span><span class="d out">2</span>
+        <span class="d out">3</span><span class="d out">4</span><span class="d out">5</span>
+      </div>
+      <div class="timerow">
+        <div class="tr-head">
+          <span class="tr-label">Time</span>
+          <span class="link">No time</span>
+        </div>
+        <div class="tr-body">
+          <span class="preset">9am</span>
+          <span class="preset">12pm</span>
+          <span class="preset">5pm</span>
+          <span class="tinput"><span>15:30</span><span class="clock">▾</span></span>
+        </div>
+      </div>
+      <div class="cal-foot">
+        <span class="link">Clear</span>
+        <span class="link">Today</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <p class="lbl">b · a typed time — 3:30pm</p>
+    <p class="cap">
+      3:30pm isn't a preset, so none is lit and the field carries the value. Had <b>5pm</b> been
+      chosen instead, that preset would fill blue exactly as Aug 12 does and the field would read
+      <code>17:00</code> — one value, two ways in.
+    </p>
+    <p class="cap">
+      <b>No&nbsp;time</b> is now live (blue, like <b>Clear</b>): it drops the time and returns the
+      task to a plain <code>Aug 12</code>. The field is the shared <code>Input</code> atom with
+      <code>type="time"</code>, so the platform's own time entry and keyboard handling come for free;
+      it takes <code>scheme-dark</code> so the native picker chrome matches the popover instead of
+      punching a white panel into it.
+    </p>
+  </div>
+</div>
+<p class="mockcap">
+  <b>State (b) — a date and a time.</b> Chip above reads <code>Aug 12 3:30pm</code>, blue.
+</p>
+
+<div class="app">
+  <div class="pop">
+    <div class="cal">
+      <div class="cal-head">
+        <span class="chev">‹</span>
+        <span class="cal-month">August 2026</span>
+        <span class="chev">›</span>
+      </div>
+      <div class="grid7">
+        <span class="dh">S</span><span class="dh">M</span><span class="dh">T</span><span class="dh">W</span>
+        <span class="dh">T</span><span class="dh">F</span><span class="dh">S</span>
+      </div>
+      <div class="grid7">
+        <span class="d out">26</span><span class="d out">27</span><span class="d out">28</span><span class="d out">29</span>
+        <span class="d out">30</span><span class="d out">31</span><span class="d">1</span>
+        <span class="d">2</span><span class="d">3</span><span class="d">4</span><span class="d">5</span>
+        <span class="d">6</span><span class="d today">7</span><span class="d">8</span>
+        <span class="d">9</span><span class="d">10</span><span class="d">11</span><span class="d">12</span>
+        <span class="d">13</span><span class="d">14</span><span class="d">15</span>
+        <span class="d">16</span><span class="d">17</span><span class="d">18</span><span class="d">19</span>
+        <span class="d">20</span><span class="d">21</span><span class="d">22</span>
+        <span class="d">23</span><span class="d">24</span><span class="d">25</span><span class="d">26</span>
+        <span class="d">27</span><span class="d">28</span><span class="d">29</span>
+        <span class="d">30</span><span class="d">31</span><span class="d out">1</span><span class="d out">2</span>
+        <span class="d out">3</span><span class="d out">4</span><span class="d out">5</span>
+      </div>
+      <div class="timerow off">
+        <div class="tr-head">
+          <span class="tr-label">Time</span>
+          <span class="link dim">No time</span>
+        </div>
+        <div class="tr-body">
+          <span class="preset">9am</span>
+          <span class="preset">12pm</span>
+          <span class="preset">5pm</span>
+          <span class="tinput"><span class="ph">--:--</span><span class="clock">▾</span></span>
+        </div>
+      </div>
+      <div class="cal-foot">
+        <span class="link">Clear</span>
+        <span class="link">Today</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <p class="lbl">c · no date yet — the row is disabled</p>
+    <p class="cap">
+      Opened from an unset chip (<code>Set a due date…</code>), no day is selected, so the whole time
+      row is disabled and dimmed. This is D3's invariant on screen: a time cannot exist without a
+      date, so the control that would create one isn't reachable.
+    </p>
+    <p class="cap">
+      Picking a day closes the popover (unchanged behaviour), so reaching the enabled row is the
+      ordinary second visit. The dimming is the atoms' existing disabled treatment
+      (<code>disabled:opacity-50</code> on the field, the same wash on the presets); every control in
+      the row also carries the real <code>disabled</code> attribute, so it is skipped by tab order
+      and announced as unavailable rather than merely looking faint.
+    </p>
+  </div>
+</div>
+<p class="mockcap">
+  <b>State (c) — no date.</b> Chip above reads <code>Set a due date…</code>, neutral.
+</p>
+
+<h3>5.2 · The chip, in every band, with and without a time</h3>
+
+<div class="app">
+  <div class="strip">
+    <p class="lbl">compact — the row badge</p>
+    <div class="striprow">
+      <span class="badge b-over">Yesterday 5pm</span>
+      <span class="badge b-over">Today 9am</span>
+      <span class="badge b-today">Today 3pm</span>
+      <span class="badge b-due">Aug 12 9am</span>
+    </div>
+    <div class="striprow">
+      <span class="badge b-over">Yesterday</span>
+      <span class="badge b-today">Today</span>
+      <span class="badge b-due">Aug 12</span>
+    </div>
+
+    <p class="lbl" style="margin-top:1.1rem">comfortable — the detail panel</p>
+    <div class="striprow">
+      <span class="cchip cc-over">Today 9am</span>
+      <span class="cchip cc-today">Today 3pm</span>
+      <span class="cchip cc-due">Aug 12 3:30pm</span>
+      <span class="cchip cc-none">Set a due date…</span>
+    </div>
+  </div>
+
+  <div class="strip">
+    <p class="lbl">in a task row</p>
+    <div class="row">
+      <span class="box"></span>
+      <span class="row-main">
+        <span class="row-title">Send the sprint summary</span>
+        <span class="chips">
+          <span class="badge b-muted">Task</span>
+          <span class="badge b-over">Today 9am</span>
+        </span>
+      </span>
+    </div>
+    <div class="row">
+      <span class="box"></span>
+      <span class="row-main">
+        <span class="row-title">Water the plants</span>
+        <span class="chips">
+          <span class="badge b-muted">Task</span>
+          <span class="badge b-today">Today</span>
+        </span>
+      </span>
+    </div>
+    <p class="cap">
+      Same pill, same three tones, one extra word. Nothing about the badge geometry, the row layout or
+      the chip's neighbours changes — a time makes the label longer and nothing else.
+    </p>
+  </div>
+</div>
+<p class="mockcap">
+  <b>Drawn at Fri Aug 7 2026, 10:24am.</b> That pins every colour above: <code>Today 9am</code> is red
+  because 9am has passed; <code>Today 3pm</code> is amber because it hasn't; the untimed
+  <code>Today</code> is amber all day, as it is now. The second compact row is the <b>regression
+  reference</b> — those three are pixel-identical to today's chips, which is what D2 requires.
+</p>
+
+<h2>6 · The change, layer by layer</h2>
+
+<h3>6.1 · Database</h3>
+
+<p>
+  One migration, <code>database/migrations/&lt;next&gt;_due_times.sql</code> — take whatever number is
+  free when you build this, don't reserve one now. In this order:
+</p>
+
+<pre><code>-- 1. The column
+alter table items add column due_time time;
+
+comment on column items.due_time is
+  'Optional local wall-clock time of day for due_date. NULL = the task is due on that calendar '
+  'day with no particular time, which is every task before ALF-161 and the app''s original '
+  'behaviour. Deliberately a wall clock and not part of due_date: the app reads due_date as a '
+  'LOCAL calendar date (lib/date-utils parseDueDate), and a recurring 9am task must stay 9am '
+  'across a DST boundary.';
+
+-- 2. A time cannot exist without a day
+alter table items add constraint items_due_time_needs_date check (
+  due_time is null or due_date is not null
+);
+
+-- 3. Task-only, like every other lifecycle field (predicate copied from 0019, one conjunct added)
+alter table items drop constraint items_task_only_fields;
+alter table items add constraint items_task_only_fields check ( … due_time is null … );
+
+-- 4. Re-expand task_items — MANDATORY, `select i.*` froze its column list at CREATE
+create or replace view task_items with (security_invoker = true) as
+  select i.* from items i
+  where not exists (select 1 from code_items c where c.item_id = i.id);
+
+-- 5. get_subtree — DROP first (create or replace cannot change a return type), then recreate
+--    with due_time in both the `returns table (…)` list and the final select.
+
+-- 6. complete_and_spawn — add due_time to BOTH inserts: the spawned root selects the recurring
+--    root's own due_time, and the descendant deep-copy carries c.due_time beside c.due_date.
+--    Body copied verbatim from 0006; signature unchanged, so no grant is reissued.</code></pre>
+
+<p>No backfill: <code>null</code> is already the right value for every existing row.</p>
+
+<p>Also in <code>database/</code>:</p>
+<ul>
+  <li><code>README.md</code> — the schema summary lists <code>items</code>' task fields; add
+      <code>due_time</code>.</li>
+  <li><code>src/assertions.ts</code> — the integration assertions (§7).</li>
+  <li><code>seed.sql</code> — give one seeded task a <code>due_time</code>, so a fresh dev database
+      shows the feature without hand-editing a row.</li>
+  <li><code>migrations-applied.log</code> — appended by <code>npm run migrate</code>; commit it.</li>
+</ul>
+
+<h3>6.2 · Frontend</h3>
+
+<div class="scroll">
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr>
+    <td><code>lib/database.types.ts</code></td>
+    <td><b>Regenerate</b> with <code>supabase gen types</code> and commit the raw output. Generated
+        file — excluded from ESLint and Prettier; never hand-edit it.</td>
+  </tr>
+  <tr>
+    <td><code>lib/date-utils.ts</code></td>
+    <td>New <code>formatTimeOfDay(time)</code> (D7) and <code>dueInstant(iso, time)</code> (D4);
+        <code>isDueDateOverdue</code> / <code>isDueToday</code> / <code>isDueTodayOrOverdue</code>
+        take an optional trailing <code>time</code>. <code>parseDueDate</code> is not touched.</td>
+  </tr>
+  <tr>
+    <td><code>lib/api/schemas.ts</code></td>
+    <td>A <code>dueTime</code> field beside the existing <code>dueDate</code>, nullable and optional,
+        on both <code>createItemSchema</code> and <code>updateItemSchema</code>. It must accept
+        <b>both</b> <code>HH:MM</code> (what the input sends) and <code>HH:MM:SS</code> (what
+        PostgREST returns for a <code>time</code>, and therefore what the store holds and may
+        resend). Bare <code>z.iso.time()</code> does exactly that at the installed zod 4.4.3 —
+        verified: it takes <code>15:00</code> and <code>15:00:00</code>, and rejects
+        <code>25:00</code>, <code>7:00</code>, <code>3pm</code> and any offset form
+        (<code>15:00Z</code>, <code>15:00:00+02:00</code>). Do <b>not</b> pass
+        <code>{ precision: -1 }</code> — that pins it to minutes and rejects the seconds form the DB
+        returns.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/items/[id]/route.ts</code></td>
+    <td><code>due_time</code> joins the <code>toUpdatePayload</code> field list, plus D3's derivation:
+        a body clearing <code>due_date</code> forces <code>due_time: null</code>.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/items/route.ts</code></td>
+    <td><code>due_time</code> on the create path.</td>
+  </tr>
+  <tr>
+    <td><code>lib/hooks/use-minute-tick.ts</code></td>
+    <td><b>New.</b> One shared, minute-aligned interval behind <code>useSyncExternalStore</code>
+        (D5).</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/tasks-store.tsx</code></td>
+    <td><code>TaskFieldPatch</code> gains <code>due_time</code>, so the optimistic patch and its
+        rollback carry it. <code>useFolderBadgeCounts</code> passes the time to both predicates and
+        subscribes to the tick.</td>
+  </tr>
+  <tr>
+    <td><code>lib/tree.ts</code></td>
+    <td><code>countOverdueDescendants</code> passes <code>child.due_time</code> through.</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/calendar.tsx</code></td>
+    <td>The time row (D6): <code>time</code> / <code>onSelectTime</code> / <code>onClearTime</code>
+        props, three presets, an <code>Input type="time"</code>, and the disabled state when
+        <code>selected === null</code>. Extract the day cell's class expression into one local helper
+        the presets share, so the two treatments can't drift.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/due-date-chip.tsx</code></td>
+    <td>A <code>dueTime</code> prop and matching <code>onSelectTime</code>/<code>onClearTime</code>;
+        <code>dueBand</code> and the label take the time; the compact <code>aria-label</code> appends
+        it; subscribes to the tick.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/task-row.tsx</code></td>
+    <td>Wire the two new save handlers through <code>updateTask</code>. The existing clear-date
+        handler keeps sending <code>{ due_date: null }</code> — the route nulls the time (D3), so no
+        caller has to remember to. Subscribes to the tick for the subtask tally.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/task-row/task-detail-panel.tsx</code></td>
+    <td>Pass <code>node.due_time</code> and the handlers to the comfortable chip.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/priority-view.tsx</code></td>
+    <td>Pass <code>node.due_time</code> to the display-only chip, so its label and colour match the
+        row's.</td>
+  </tr>
+  <tr>
+    <td><code>e2e/support/constants.ts</code></td>
+    <td>The item factory gains <code>due_time</code> (defaulting to <code>null</code>).</td>
+  </tr>
+</table>
+</div>
+
+<div class="callout">
+  <b>Two things it is easy to miss.</b> (1) The store holds raw DB rows, so a time read back as
+  <code>"15:00:00"</code> can be resent verbatim on the next patch — the schema must accept it, and
+  <code>formatTimeOfDay</code> must render it identically to <code>"15:00"</code>. (2) The recurrence
+  editor and the calendar's month seeding call <code>parseDueDate</code> for pure calendar
+  arithmetic; they take <b>no</b> time argument, and adding one would be wrong.
+</div>
+
+<h2>7 · Back-pressure</h2>
+
+<p>
+  Every behavioural claim below lands in a deterministic check. Follow the repo's Red/Green TDD rule:
+  the test that expresses the requirement goes in first.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Suite</th><th>What it must prove</th></tr>
+  <tr>
+    <td><code>lib/date-utils.test.ts</code> (jest)</td>
+    <td>The <code>formatTimeOfDay</code> table in D7, verbatim, including the
+        <code>HH:MM</code>/<code>HH:MM:SS</code> equivalence and both noon/midnight corners.
+        <code>dueInstant</code> composing local date + wall clock. The three predicates: unchanged for
+        <code>null</code>; instant-aware when timed; and the boundary — <b>at exactly the due minute a
+        timed task is not yet overdue</b> (D4). Pin the clock with <code>lib/pin-clock.ts</code>, which
+        exists for precisely this and is the only way these assertions stay true next year.</td>
+  </tr>
+  <tr>
+    <td><code>lib/tree.test.ts</code></td>
+    <td>A subtree whose only late child is <i>timed and already past</i> counts as overdue; the same
+        child before its time does not.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/tasks-store.test.tsx</code></td>
+    <td>Folder badges move a timed task from amber to red as its time passes; an untimed task's
+        tallies are byte-for-byte what they are today. Plus an optimistic <code>due_time</code> patch
+        that rolls back on a failed request.</td>
+  </tr>
+  <tr>
+    <td><code>lib/api/schemas.test.ts</code></td>
+    <td>Accepts <code>15:00</code>, <code>15:00:00</code> and <code>null</code>; rejects
+        <code>25:00</code>, <code>7:00</code>, <code>3pm</code> and <code>15:00:00+02:00</code>.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/items/[id]/route.test.ts</code></td>
+    <td>A PATCH setting <code>due_time</code> reaches the update payload; a PATCH clearing
+        <code>due_date</code> sends <code>due_time: null</code> even when the body never mentioned it
+        (D3); a PATCH that touches neither leaves both out.</td>
+  </tr>
+  <tr>
+    <td><code>lib/hooks/use-minute-tick.test.ts</code></td>
+    <td>One interval regardless of subscriber count; it fires on the wall-clock minute; unsubscribing
+        the last consumer clears it.</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/calendar.test.tsx</code> (RTL)</td>
+    <td>A preset saves <code>09:00</code>; typing saves the typed value; <b>No time</b> saves
+        <code>null</code>; the whole row is <code>disabled</code> when no date is selected; picking a
+        <i>time</i> does not close the popover while picking a <i>day</i> still does.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/due-date-chip.test.tsx</code></td>
+    <td>Labels and bands for the six cells of §5.2's matrix, and the compact
+        <code>aria-label</code> in both the timed and untimed forms.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/due-date-chip.stories.tsx</code></td>
+    <td>New stories for the timed bands and for the picker's three states in §5.1 — these are the
+        screenshots the demo doc embeds.</td>
+  </tr>
+  <tr>
+    <td><code>database/src/assertions.ts</code> (real Postgres, <code>check:slow</code>)</td>
+    <td>The four DB-only claims, none of which any jest test can reach: <code>due_time</code> without
+        <code>due_date</code> is rejected; a non-<code>task</code> row carrying one is rejected;
+        <code>task_items</code> <b>exposes the column</b> (the frozen-view trap — assert it by name,
+        not by row count); and <code>complete_and_spawn</code> spawns the next occurrence with the
+        same <code>due_time</code>.</td>
+  </tr>
+  <tr>
+    <td><code>e2e/task-row.spec.ts</code> (Playwright)</td>
+    <td>One end-to-end pass through the real stack: open the picker, pick a day, pick a time, assert
+        the badge reads <code>… 3pm</code>, reload, assert it survived.</td>
+  </tr>
+</table>
+</div>
+
+<p class="small">
+  <b>Committed visual snapshots:</b> there is no baseline for <code>DueDateChip</code> or
+  <code>Calendar</code> today, so the new stories add PNGs rather than moving any. The existing
+  <code>tasks-taskrow--*</code> baselines only move if a task-row story fixture gains a
+  <code>due_time</code> — don't add one to those fixtures unless you mean to re-approve the baseline
+  (the <code>storybook</code> skill's capture-then-approve flow, never a hand-edited PNG).
+</p>
+
+<h2>8 · Demo evidence</h2>
+
+<p>
+  A user-visible change, so the demo doc is required — <code>docs/demos/&lt;branch&gt;/…</code>,
+  built with <code>npm run demo</code>. <b>Follow the <code>showboat</code> skill's evidence-matching
+  rules</b> rather than a list restated here; they are the source of truth for what counts. Two
+  things worth flagging for this particular change:
+</p>
+<ul>
+  <li>It has a visual surface, so <b>screenshots of the running app are the primary evidence</b> —
+      the picker with its time row, and a row whose badge reads a time in each band. A Storybook still
+      is secondary evidence, not a substitute.</li>
+  <li>The band flip and the recurrence spawn are the two claims a screenshot <i>can't</i> make, so
+      pair them with <code>exec</code> output: the pinned-clock unit tests for the flip, and the
+      Postgres assertion for the spawn. Keep those blocks deterministic so
+      <code>npm run demo -- verify</code> stays green — a live clock in an <code>exec</code> block
+      will not.</li>
+</ul>
+
+<h2>9 · Acceptance criteria</h2>
+
+<ul class="ac">
+  <li class="h">Nothing regresses for a task without a time</li>
+  <li>A task with <code>due_time = null</code> renders the same label, the same band and the same
+      accessible name as it does today, in all three of the row badge, the detail chip and the
+      Priority view.</li>
+  <li>Folder badge counts, the overdue-subtask tally and priority ordering are unchanged for every
+      untimed task.</li>
+  <li>Completing an untimed recurring task spawns the same next occurrence it does today.</li>
+
+  <li class="h">Setting a time</li>
+  <li>The due-date popover shows a time row under the month grid with presets
+      <code>9am</code>&nbsp;/&nbsp;<code>12pm</code>&nbsp;/&nbsp;<code>5pm</code>, a typed field, and
+      a <b>No time</b> control.</li>
+  <li>Choosing a preset, or typing a time, saves immediately and leaves the popover open; choosing a
+      <i>day</i> still closes it.</li>
+  <li><b>No time</b> returns the task to date-only.</li>
+  <li>With no date selected the entire time row is disabled — dimmed, unreachable by keyboard, and
+      announced as unavailable.</li>
+  <li>The chosen time survives a reload.</li>
+
+  <li class="h">Showing a time</li>
+  <li>A timed chip reads <code>&lt;date label&gt; &lt;time&gt;</code> in compact 12-hour form —
+      <code>Today 3pm</code>, <code>Tomorrow 9am</code>, <code>Aug 12 3:30pm</code>,
+      <code>Yesterday 5pm</code> — with a zero minute dropped and no space before the meridiem.</li>
+  <li>The compact badge's accessible name is <code>Due date: &lt;YYYY-MM-DD&gt; &lt;HH:MM&gt;</code>
+      when timed and <code>Due date: &lt;YYYY-MM-DD&gt;</code> when not.</li>
+  <li>Both chip sizes and the Priority view's display-only chip all show the time.</li>
+
+  <li class="h">Urgency</li>
+  <li>A task due today at a time that has passed is <b>red</b>; one whose time is still ahead is
+      <b>amber</b>; at exactly the due minute it is still amber.</li>
+  <li>Folder badges and the overdue-subtask tally agree with the chip for timed tasks.</li>
+  <li>A chip due at a time in the current minute flips to red <b>without any interaction</b>, within
+      a minute of that time passing.</li>
+
+  <li class="h">Recurrence</li>
+  <li>Completing a recurring task that is due at 9am spawns its next occurrence due at 9am.</li>
+  <li>The spawned occurrence's active descendants keep their own times.</li>
+
+  <li class="h">Schema</li>
+  <li>A row with a <code>due_time</code> and no <code>due_date</code> is rejected by the database.</li>
+  <li>A non-<code>task</code> row carrying a <code>due_time</code> is rejected by the database.</li>
+  <li><code>task_items</code> exposes <code>due_time</code>, and <code>get_subtree</code> returns
+      it.</li>
+  <li>Clearing a task's due date through the API clears its time, even when the request never
+      mentions the time.</li>
+
+  <li class="h">Gates</li>
+  <li><code>npm run check</code> is green, with no new ignore directive, no
+      <code>--no-verify</code>, and no tooling-config edit made to get there.</li>
+  <li><code>lib/database.types.ts</code> is regenerated output, not hand-edited.</li>
+  <li>A demo doc exists and <code>npm run demo -- verify</code> reproduces it.</li>
+</ul>
+
+<h2>10 · Out of scope</h2>
+
+<div class="scroll">
+<table>
+  <tr><th>Deferred</th><th>Why, and what it would take</th></tr>
+  <tr>
+    <td><b>Reminders / notifications</b> when a due time arrives</td>
+    <td>The obvious next thought, and already routed elsewhere: epic
+        <a href="epics/ALF-146.html">ALF-146</a> puts notifications in their own epic, with the
+        channel decision made (a Telegram bot from the existing Worker,
+        <code>docs/notifications-spike.md</code>). This story gives that epic the timestamp it would
+        fire on.</td>
+  </tr>
+  <tr>
+    <td><b>The hourly repeat preset</b></td>
+    <td><code>lib/recurrence/types.ts</code> blocks it on "needs a time anchor", which this story
+        supplies. It stays off because the engine's hourly path returns a
+        <code>YYYY-MM-DDTHH:mm:ss</code> string, i.e. it still assumes the time lives in
+        <code>due_date</code>. Unblocking it means teaching <code>nextOccurrence</code> to advance
+        <code>due_time</code> (and roll the date over midnight) and giving
+        <code>complete_and_spawn</code> a <code>next_due_time</code> parameter — a signature change,
+        and its own story.</td>
+  </tr>
+  <tr>
+    <td><b>Time-aware ordering within a day</b></td>
+    <td>Two same-day tasks at 9am and 5pm keep today's ordering (D10). The sort key in
+        <code>lib/priority.ts</code> is a single <code>Date.parse(due_date)</code>; making it
+        instant-aware means composing both columns in the comparator and re-baselining the Priority
+        view's ordering tests. Worth doing — as a separate, visible change.</td>
+  </tr>
+  <tr>
+    <td><b>Natural-language capture</b> ("call Bob tomorrow 3pm")</td>
+    <td>The repo has no NL date parsing today, and adding one is a concern of its own size. Note that
+        <a href="epics/ALF-158.html">ALF-158</a>'s classifier is the natural home for it.</td>
+  </tr>
+  <tr>
+    <td><b>Timezones</b></td>
+    <td>alfred is single-user and every date rule in it is local-wall-clock by design.
+        <code>due_time</code> follows that convention. A task set to 3pm reads 3pm on any device;
+        making it an absolute instant would be a change to the whole date model, not to this
+        column.</td>
+  </tr>
+  <tr>
+    <td><b>A duration, or a start time</b></td>
+    <td>A due time is one instant. Calendar-style time ranges are a different feature.</td>
+  </tr>
+</table>
+</div>
+
+<h3>Open questions</h3>
+<p>
+  None blocking. One judgement call left to the implementation session, because it is cheap to change
+  and only visible once it's on screen: <b>the three preset times</b> (<code>9am</code> /
+  <code>12pm</code> / <code>5pm</code>) are a guess at the common cases. If a different trio reads
+  better once the row is real, change it in the story and say so in the PR — it is three string
+  literals, not a decision this spec needs to have made.
+</p>
+
+<h2>11 · Related reading</h2>
+<ul>
+  <li><code>frontend/lib/date-utils.ts</code> — the local-calendar convention every rule here is built
+      on, and the file most of this story lands in.</li>
+  <li><code>database/migrations/0006_recurring_tasks.sql</code> — the last migration to add columns to
+      <code>items</code>; the model for the <code>get_subtree</code> drop-and-recreate and for
+      <code>complete_and_spawn</code>.</li>
+  <li><code>database/migrations/0026_inbox_dispatch.sql</code> — the most recent column-plus-constraint
+      migration, and the house style for commenting one.</li>
+  <li>The <code>supabase</code> skill — the frozen-view trap, the deployed-frontend CHECK hazard, and
+      how migrations get applied and types regenerated without a personal access token.</li>
+  <li>The <code>showboat</code> skill — the evidence rules §8 defers to.</li>
+  <li>The <code>storybook</code> skill — the capture-then-approve flow if a committed baseline
+      moves.</li>
+  <li><a href="epics/ALF-146.html">ALF-146</a> — where reminders live.</li>
+</ul>
+
+</div>
+</body>
+</html>
