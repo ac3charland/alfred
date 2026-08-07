@@ -178,6 +178,8 @@ useEffect(() => {
 
 - **When a migration recreates a function, copy the CURRENT definition — not the one from the migration that introduced it.** Functions are re-`create or replace`d over their lifetime (`create_code_story` was rewritten by `0012`, `0014`, `0016`), so the earliest migration's body is stale: rebuilding from it silently reverts every later change, and because the function still compiles and returns rows, nothing fails at apply time. `0025` rebuilt `create_code_story` from `0004` and dropped `0014`'s `top_of_project_priority()` landing — new stories went back to appending at the Backlog bottom, caught only by the `database` integration suite (`check:slow`). **`grep -l '<function name>' database/migrations/*.sql` and take the body from the LAST hit**, or read it off the live DB with `pg_get_functiondef`.
 
+- **In plpgsql, `record IS NOT NULL` is NOT the negation of `record IS NULL`.** For a composite value, `IS NULL` means *every* field is null and `IS NOT NULL` means *every* field is non-null — so a row that was found but has any nullable column empty satisfies **neither**. `select … into v_row …; if v_row is not null then` therefore silently skips a row that exists, with no error. Use **`found`** (plpgsql sets it after every `SELECT … INTO`) to test whether a row came back, or `select <the one column> into <scalar>` when that's all you need. The `if v_row is null then raise …` idiom is fine — that direction does mean "no row".
+
 - **A single `UPDATE` is NOT immune to a unique violation when it swaps two rows' values.** A plain `unique` index / `UNIQUE` constraint is **non-deferrable**: Postgres checks it **per row, mid-statement**, not at statement end. So `update t set priority = case ref when p_a then b_pri when p_b then a_pri else priority end where ref in (p_a,p_b)` over a `unique(priority)` index **409s** — `duplicate key value violates unique constraint` — the moment it rewrites the first row to a value the second still holds (ALF-35's reorder bug, fixed in `0007`). Two fixes: (a) the **negative-sentinel sequence** in the swap table-row above — keeps the index immediate, no schema change; or (b) make the constraint `unique (priority) deferrable initially deferred` (a table CONSTRAINT, not a plain index — a bare `create unique index` can't be deferrable) so the check runs at commit and the one CASE update stands. The "one statement is atomic so it can't transiently duplicate" intuition is wrong for non-deferrable constraints.
 
 ### Security traps
@@ -362,6 +364,15 @@ into `database.types.ts`, burying the additive diff. The local cluster is built 
    diff in churn):
    `node node_modules/prettier/bin/prettier.cjs --parser typescript --no-config --no-semi`.
    Diff against the committed file — only your additive changes should remain.
+
+**Adding a column? Generate BEFORE and AFTER the new migration and `patch` the delta onto the
+committed file** — instead of regenerating the whole file and hoping it matches. Apply the
+migrations up to the new one, generate; apply the new one, generate again; `diff -u before.ts
+after.ts | patch frontend/lib/database.types.ts`. The delta is still raw generator output (nothing
+hand-written), but every formatting difference — postgres-meta's version, prettier's version, a
+`graphql_public` the local cluster lacks — appears on **both** sides and cancels out, so churn is
+impossible by construction and steps 2–4's version-pinning stops mattering. `patch` locates the
+hunks by context, so the line offsets between the two files are irrelevant.
 
 **Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
 `DATABASE_URL` from the dashboard's *Direct connection* tab points at
