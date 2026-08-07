@@ -35,7 +35,7 @@ async function asRole<T>(client: Client, role: string, fn: () => Promise<T>): Pr
 }
 
 /** Wrap an assertion so a thrown error (or a rejected query) becomes a failed result, not a crash. */
-async function attempt(name: string, fn: () => Promise<string>): Promise<AssertionResult> {
+export async function attempt(name: string, fn: () => Promise<string>): Promise<AssertionResult> {
   try {
     return { name, ok: true, detail: await fn() };
   } catch (error) {
