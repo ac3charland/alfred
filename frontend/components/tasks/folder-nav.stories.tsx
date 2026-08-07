@@ -17,6 +17,9 @@ const FOLDERS: Folder[] = [
   { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 3 },
 ];
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2025-01-02T00:00:00Z';
+
 const task = (overrides: Partial<Item>): Item => ({
   id: 'i1',
   title: 'Task',
@@ -29,6 +32,9 @@ const task = (overrides: Partial<Item>): Item => ({
   status: 'active',
   completed_at: null,
   folder_id: null,
+  // A fixture with a folder is a filed item, so it defaults to dispatched — these badge counts
+  // are seeded entirely from foldered rows, and a flat null would silently zero them all.
+  dispatched_at: overrides.folder_id == null ? null : DISPATCHED_AT,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,

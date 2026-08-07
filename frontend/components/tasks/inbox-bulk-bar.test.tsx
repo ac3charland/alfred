@@ -25,6 +25,7 @@ const BASE: Item = {
   status: 'active',
   completed_at: null,
   folder_id: null,
+  dispatched_at: null,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
@@ -262,9 +263,10 @@ describe('Inbox select mode', () => {
     await pickFromMenu(user, /move to folder/i, /^work$/i);
 
     await waitFor(() => {
-      expect(mockUpdateItem).toHaveBeenCalledWith('t1', { folder_id: 'f1' });
+      // Filing IS the dispatch: location and residency move together, in one write per row.
+      expect(mockUpdateItem).toHaveBeenCalledWith('t1', { folder_id: 'f1', dispatched: true });
     });
-    expect(mockUpdateItem).toHaveBeenCalledWith('t2', { folder_id: 'f1' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('t2', { folder_id: 'f1', dispatched: true });
   });
 
   it('a partial failure keeps only the failed item selected for retry', async () => {

@@ -34,6 +34,7 @@ const makeItem = (id: string, status: Item['status']): Item => ({
   status,
   completed_at: status === 'completed' ? '2025-01-02T00:00:00Z' : null,
   folder_id: null,
+  dispatched_at: null,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
