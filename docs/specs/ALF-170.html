@@ -489,11 +489,10 @@ intended_epic_id:    nullableUuid.optional(),
 </div>
 
 <div class="dec">
-  <h3><span class="n">S5</span>The detail panel becomes the one place every classifier-written field is editable</h3>
+  <h3><span class="n">S5</span>The detail panel gains Folder, Project and Epic — every classifier-written field except the type</h3>
   <p>
-    <code>TaskDetailPanel</code>'s chip row is Due · Repeat · Priority today. It gains <b>Type</b>,
-    <b>Folder</b>, <b>Project</b> and <b>Epic</b>, and the row shows the set relevant to the item's
-    type — so the panel is complete for every field the epic's verdict schema can write:
+    <code>TaskDetailPanel</code>'s chip row is Due · Repeat · Priority today. It gains
+    <b>Folder</b>, <b>Project</b> and <b>Epic</b>, and shows the set relevant to the item's type:
   </p>
   <div class="scroll">
   <table style="margin:.6rem 0 .3rem">
@@ -501,8 +500,6 @@ intended_epic_id:    nullableUuid.optional(),
       <th style="width:16%">Chip</th><th style="width:22%">Shown when</th>
       <th style="width:26%">Picker contents</th><th>Writes</th>
     </tr>
-    <tr><td><b>Type</b></td><td>always (see <b>S6</b> for when it's enabled)</td>
-        <td>Task · Code</td><td><code>item_type</code> + the clear-set (<b>S6</b>)</td></tr>
     <tr><td><b>Due</b></td><td><code>item_type = 'task'</code> <span class="small">(today)</span></td>
         <td>calendar</td><td><code>due_date</code></td></tr>
     <tr><td><b>Repeat</b></td><td>top-level task <span class="small">(today)</span></td>
@@ -521,14 +518,12 @@ intended_epic_id:    nullableUuid.optional(),
   </table>
   </div>
   <p>
-    <b>Glyph and tone, so nothing is invented at build time.</b> The four new chips take their
+    <b>Glyph and tone, so nothing is invented at build time.</b> The three new chips take their
     treatment from what the repo already does, not from a new palette:
   </p>
   <div class="scroll">
   <table style="margin:.5rem 0 .3rem">
     <tr><th style="width:14%">Chip</th><th style="width:30%">Lucide glyph</th><th>Tone when set</th></tr>
-    <tr><td><b>Type</b></td><td>none — matches <code>DueDateChip</code>'s comfortable form, which is label-only</td>
-        <td>teal. Neutral, labelled <i>Unclassified</i>, before a type is chosen.</td></tr>
     <tr><td><b>Folder</b></td><td><code>FolderOpen</code> — the command palette's <code>folder</code> glyph</td>
         <td>teal (folders carry no colour of their own)</td></tr>
     <tr><td><b>Project</b></td><td><code>GitBranch</code> — the glyph <code>ProjectNav</code> and the command palette both use</td>
@@ -546,19 +541,38 @@ intended_epic_id:    nullableUuid.optional(),
     the source uses (<code>Repeat</code> 2.2, the priority icons 2.6).
   </p>
   <p>
-    All four new chips are the same shape — a chip trigger opening a popover of single-select rows —
+    All three new chips are the same shape — a chip trigger opening a popover of single-select rows —
     so they are built on one shared primitive, <code>components/atoms/picker-chip.tsx</code>, which
     also absorbs the <code>PickerListItem</code> row currently private to
     <code>detail-chips.tsx</code>. Adopting it in <code>RepeatChip</code> is preferred (it is the
     same shape) but not required by this story.
   </p>
   <p>
+    <b>No Type chip.</b> The panel does not get one, and the item's type is never editable from it.
+    Type stays where it already lives: <b>the ⋯ menu's <code>Classify as…</code></b> on the row, and
+    the bulk bar's (<b>S11</b>). The panel's chip row is therefore purely the fields that <i>depend
+    on</i> the type, which is why the set changes completely between a task and a code item — and
+    why an <b>unclassified</b> row's panel shows <i>no chip row at all</i>, exactly as it does today.
+    Classify from the menu first; the fields appear once there is a type to hang them on.
+  </p>
+  <p>
     <b>Every chip here is a trigger whether or not it holds a value.</b> Setting one never turns it
     into a label: the neutral "No folder" / "No project" state and the filled state are the same
     control wearing two tones, and pressing a filled chip reopens its picker with the current value
-    ticked (drawn in <b>§3.3</b>). This is already true of Due, Repeat and Priority; the four new
-    ones inherit it, and <b>S7</b> extends the same property to the label chips on the row.
+    ticked (drawn in <b>§3.3</b>). This is already true of Due, Repeat and Priority; the three new
+    ones inherit it.
   </p>
+  <div class="card" style="margin:.7rem 0">
+    <b>One rule, both surfaces — say it once and mean it everywhere.</b>
+    <b>Folder</b>, <b>Project</b> and <b>Epic</b> are clickable-to-edit <b>in the detail panel
+    (this decision) and on the row (<b>S7</b>)</b>, opening the <i>same</i> picker and writing
+    through the <i>same</i> store action from either place. The two surfaces differ only in
+    <i>which</i> chips are present: the row shows a chip only when the field is set, the panel shows
+    every applicable field including the empty ones. Neither surface ever renders one of these as a
+    dead label. The two documented exceptions are the same in both places — the <b>type</b> (the ⋯
+    menu owns it) and <b>Repeat on the row</b> (panel-only today, unchanged) — plus every chip in
+    select mode, which is inert for a structural reason (<b>S13</b>).
+  </div>
   <p class="why">
     <b>Why the panel owns the <i>empty</i> state:</b> a rail of placeholder chips on every Inbox row
     would put six affordances on a surface whose job is to stay scannable, and most rows need none
@@ -615,15 +629,16 @@ intended_epic_id:    nullableUuid.optional(),
     corrected straight back keeps the level the owner set.
   </p>
   <p>
-    <b>Task and Code only.</b> The picker never offers a return to <code>unclassified</code>. That
+    <b>Task and Code only.</b> The menu never offers a return to <code>unclassified</code>. That
     value is what capture produces and what an abstention leaves behind — it is a starting state,
     not a destination, and nothing in the app reads it as somewhere to go back to.
   </p>
   <p>
     <b>Enabled only on a root with no children</b> — <code>parent_id === null &amp;&amp;
     children.length === 0</code> — with the hint <i>"Only a top-level item with no subtasks can
-    change type"</i>. This gates the panel chip, the row menu's <b>Classify as…</b>, and the bulk
-    bar's (<b>S11</b>).
+    change type"</i>. This gates the row menu's <b>Classify as…</b> and the bulk bar's (<b>S11</b>)
+    — the only two places a type can change, since the detail panel deliberately has no Type chip
+    (<b>S5</b>).
   </p>
   <p class="why">
     <b>Why the shape gate, precisely:</b> <code>enforce_subtask_shape</code> fires
@@ -1104,7 +1119,6 @@ intended_epic_id:    nullableUuid.optional(),
 <div class="app room">
   <div class="panel">
     <div class="chiprow">
-      <span class="chip c-teal">Task</span>
       <span class="chip c-blue">Aug 7</span>
       <span class="chip c-neutral">
         <!-- lucide Repeat, size 13 strokeWidth 2.2 — exactly as RepeatChip renders it -->
@@ -1125,7 +1139,7 @@ intended_epic_id:    nullableUuid.optional(),
 
     <!-- Radix anchors the popover under its own trigger (start-aligned, 6px gap) and PORTALS
          it, so it floats over what follows instead of displacing it. -->
-    <div class="pop-layer" style="top:46px; left:300px">
+    <div class="pop-layer" style="top:46px; left:216px">
       <span class="pop">
         <span class="popt"><span class="lead">No folder</span></span>
         <span class="popt"><span class="lead">Health</span>
@@ -1147,14 +1161,15 @@ intended_epic_id:    nullableUuid.optional(),
   </div>
 </div>
 <p class="mockcap">
-  The panel's chip row for a <b>task</b>: <b>Type</b> and <b>Folder</b> are new; Due, Repeat and
+  The panel's chip row for a <b>task</b>: <b>Folder is the only new chip</b>; Due, Repeat and
   Priority are today's, unmoved and drawn exactly as they render — <b>Due carries no icon</b>
   (<code>DueDateChip</code>'s comfortable form is label-only, and the label is
   <code>formatDueDate</code>'s output, so <code>Aug 7</code>, not a weekday), Repeat carries lucide
   <code>Repeat</code> at 13px/2.2, Priority carries the level's own glyph
   (<code>ChevronsUp</code>/<code>Equal</code>/<code>ChevronsDown</code>) at 13px/2.6. Folder takes
-  lucide <code>FolderOpen</code> — the glyph the command palette already maps to a folder — and
-  Type takes none, matching Due.
+  lucide <code>FolderOpen</code> — the glyph the command palette already maps to a folder.
+  <b>There is no Type chip here</b> (<b>S5</b>): the type is set from the ⋯ menu's
+  <b>Classify as…</b>, and this row is only the fields that depend on it.
   <br /><br />
   The open popover is the Folder picker, built on the <b>same shell <code>RepeatChip</code> already
   uses</b>: a <code>PopoverContent</code> (186px wide, <code>#0d1320</code> on a
@@ -1172,7 +1187,6 @@ intended_epic_id:    nullableUuid.optional(),
 <div class="app">
   <div class="panel">
     <div class="chiprow">
-      <span class="chip c-teal">Code</span>
       <span class="chip c-blue">
         <!-- lucide GitBranch — the project glyph ProjectNav and the command palette both use -->
         <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
@@ -1191,7 +1205,6 @@ intended_epic_id:    nullableUuid.optional(),
 
   <div style="margin-top:14px" class="panel">
     <div class="chiprow">
-      <span class="chip c-teal">Code</span>
       <span class="chip c-neutral">
         <svg class="ic ic-13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         No project
@@ -1205,8 +1218,10 @@ intended_epic_id:    nullableUuid.optional(),
   </div>
 </div>
 <p class="mockcap">
-  <b>Top:</b> a code item carrying both hints — Due / Repeat / Priority / Folder are absent, because
-  they are task-only. The Project and Epic chips wear the <b>project's palette colour</b>
+  <b>Top:</b> a code item carrying both hints — Due / Repeat / Priority / Folder are absent because
+  they are task-only, and there is no Type chip because the panel never has one (<b>S5</b>), so a
+  code item's whole chip row is these two. The Project and Epic chips wear the <b>project's palette
+  colour</b>
   (<code>projectColorFor</code> → blue for project #1), matching the row's
   <code>ProjectKeyChip</code>; Project takes lucide <code>GitBranch</code>, the glyph
   <code>ProjectNav</code> already tints per project. <b>The Epic chip takes no icon</b> — the repo
@@ -1396,8 +1411,9 @@ intended_epic_id:    nullableUuid.optional(),
   <li><b>New</b> <code>components/atoms/picker-chip.tsx</code> — the shared chip-plus-popover
     single-select primitive, absorbing <code>PickerListItem</code> from
     <code>task-row/detail-chips.tsx</code>.</li>
-  <li><code>task-row/detail-chips.tsx</code> — gains <code>TypeChip</code>,
-    <code>FolderChip</code>, <code>IntendedProjectChip</code>, <code>IntendedEpicChip</code>.</li>
+  <li><code>task-row/detail-chips.tsx</code> — gains <code>FolderChip</code>,
+    <code>IntendedProjectChip</code> and <code>IntendedEpicChip</code>. <b>No <code>TypeChip</code></b>
+    — the type is the ⋯ menu's, not the panel's (<b>S5</b>).</li>
   <li><code>task-row/task-detail-panel.tsx</code> — renders the per-type chip set of <b>S5</b> and
     wires each to its store action.</li>
   <li><code>task-row.tsx</code> — the two new row chips and the Inbox-scoped
@@ -1471,7 +1487,10 @@ intended_epic_id:    nullableUuid.optional(),
       <code>dispatchItems</code>: tasks PATCH their whole subtree, code items call the RPC and leave
       the store, unready ids come back unsent and unfailed, a save failure settles separately.
       <code>canChangeType</code> on a root/leaf/parent/subtask. The panel renders the right chip set
-      per type and each chip persists. The row shows the folder chip only while undispatched, the
+      per type, carries <b>no Type chip</b> in any of them, renders no chip row at all for an
+      unclassified row, and each chip it does render persists. The Folder / Project / Epic pickers
+      are exercised <b>twice — once from the panel, once from the row</b> — against the same store
+      action, so neither surface can regress alone. The row shows the folder chip only while undispatched, the
       epic chip when set, and the Task badge only in the Inbox — and renders nothing at all for an
       unset field. Each rendered folder / project / epic chip opens its picker and persists a pick
       from the row itself, through the same action the panel calls (the assertion that keeps
@@ -1539,8 +1558,11 @@ intended_epic_id:    nullableUuid.optional(),
 
 <h4>Editing</h4>
 <ul>
-  <li>The detail panel shows Type · Due · Repeat · Priority · Folder for a task, Type · Project ·
-    Epic for a code item, and Type alone for an unclassified one — each auto-saving.</li>
+  <li>The detail panel shows Due · Repeat · Priority · Folder for a task and Project · Epic for a
+    code item, each auto-saving. It shows <b>no Type chip</b> in either case, and an unclassified
+    row's panel shows <b>no chip row at all</b> — just Notes, as today.</li>
+  <li>An item's type is changed only from the ⋯ menu's <b>Classify as…</b> or the bulk bar's, never
+    from the detail panel.</li>
   <li>Setting a folder from the panel leaves the item in the Inbox; the folder chip appears on the
     row and the folder's badge count does not change.</li>
   <li>The panel's Folder picker offers <b>No folder</b> only while the row is undispatched.</li>
@@ -1549,10 +1571,14 @@ intended_epic_id:    nullableUuid.optional(),
   <li>Changing an item's type is a single PATCH that clears exactly what the new type forbids and
     preserves <code>priority</code>; the control is offered only on a childless top-level row, and
     never offers <code>unclassified</code>.</li>
+  <li><b>Folder, Project and Epic are clickable-to-edit from BOTH surfaces</b> — the detail panel
+    and the row — opening the same picker and writing through the same store action from either.
+    A test that only proves one surface has not proved this.</li>
   <li>Every field the epic's verdict schema can write — <code>item_type</code>,
     <code>priority</code>, <code>due_date</code>, <code>folder_id</code>,
     <code>recurrence</code>, <code>intended_project_id</code>, <code>intended_epic_id</code> — is
-    settable from the Inbox without leaving it.</li>
+    settable from the Inbox without leaving it (the type from the ⋯ menu, the rest from the row
+    chips or the panel).</li>
 </ul>
 
 <h4>The row</h4>
