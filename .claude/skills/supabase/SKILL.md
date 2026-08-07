@@ -491,6 +491,15 @@ project:
   `auth`/`storage` data (e.g. `COPY "auth"."audit_log_entries"`), which fails to restore into a cluster
   that only has your `public` schema (`ERROR: schema "auth" does not exist`). Scope both dumps with
   `--schema public` so the artifact is just the app's own data.
+- **Rebuilding the verify schema from the repo couples the restore to repo↔production parity.** A
+  migration is applied to the live database *before* it is committed, so in that window the dump's
+  `COPY` carries a column the checked-out migrations can't build and the load aborts on a sound
+  dump (`ERROR: column "…" of relation "items" does not exist`) — costing the day's backup to a
+  stale verifier. Read the dump's own `COPY` headers, diff them against the schema you just built,
+  and treat *production ahead of repo* as its own outcome: name it, add the drifted
+  columns/tables as `text` so the payload still loads and counts, upload, then exit non-zero.
+  Only that direction matters — the two instances migrate independently, so a dump *short* of the
+  repo is routine and must stay green. `database/src/backup.ts` is the worked example.
 - **Match the restore server's major version to Supabase's.** Supabase runs **Postgres 17**, whose
   `pg_dump` writes PG17-only GUCs into the dump preamble (e.g. `SET transaction_timeout = 0;`). Loading
   that into an older server fails with `unrecognized configuration parameter "transaction_timeout"` and
