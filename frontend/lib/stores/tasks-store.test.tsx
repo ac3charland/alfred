@@ -1735,6 +1735,30 @@ describe('useScopedTasks', () => {
     expect(result.current.map((n) => n.id)).toStrictEqual(['f-high', 'f-med', 'f-low', 'f-none']);
   });
 
+  it('folder ranks top-level tasks by due date, undated last, in the due sort mode', () => {
+    const ranked: Item[] = [
+      item({ id: 'f-undated', folder_id: 'work', priority: 'high' }),
+      item({ id: 'f-later', folder_id: 'work', due_date: '2026-09-01' }),
+      item({ id: 'f-sooner', folder_id: 'work', due_date: '2026-08-01', priority: 'low' }),
+    ];
+    const { result } = renderHook(
+      () => useScopedTasks({ type: 'folder', folderId: 'work' }, 'due'),
+      { wrapper: makeWrapper(ranked) },
+    );
+    expect(result.current.map((n) => n.id)).toStrictEqual(['f-sooner', 'f-later', 'f-undated']);
+  });
+
+  it('inbox ignores the sort mode — capture order is not negotiable', () => {
+    const inbox: Item[] = [
+      item({ id: 'old-due-soon', created_at: '2025-01-01T00:00:00Z', due_date: '2026-08-01' }),
+      item({ id: 'new-undated', created_at: '2025-02-01T00:00:00Z' }),
+    ];
+    const { result } = renderHook(() => useScopedTasks({ type: 'inbox' }, 'due'), {
+      wrapper: makeWrapper(inbox),
+    });
+    expect(result.current.map((n) => n.id)).toStrictEqual(['new-undated', 'old-due-soon']);
+  });
+
   it('folder orders subtasks by sort_order, NOT priority (ALF-117)', () => {
     // The Folder view ranks its ROOTS by priority but a subtask group follows sort_order — a
     // high-priority subtask does NOT float above a low-priority sibling that sorts earlier.

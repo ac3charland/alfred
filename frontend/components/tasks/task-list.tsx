@@ -9,11 +9,17 @@ import { taskListContainerClass } from '@/components/tasks/task-row.styles';
 import { LIST_BOTTOM_DROP_ID, LIST_TOP_DROP_ID } from '@/lib/dnd/promote-to-root';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { useScopedTasks } from '@/lib/stores/tasks-store';
+import { DEFAULT_TASK_SORT, type TaskSortMode } from '@/lib/tasks/task-sort';
 import { cn } from '@/lib/utils';
 
 interface TaskListProperties {
   /** Which view to render (inbox / a folder / completed) — filters the shared store. */
   scope: TaskScope;
+  /**
+   * Which signal leads the ranking of the top-level rows. Only a folder ranks its tasks, so the
+   * Inbox and Completed views leave this at its default.
+   */
+  sortMode?: TaskSortMode;
   emptyMessage?: string;
   /**
    * When true, the view's ROOT rows participate in Inbox multi-edit: while select mode is on
@@ -75,10 +81,11 @@ function PromoteRootZone({ position }: { position: 'top' | 'bottom' }) {
  */
 export function TaskList({
   scope,
+  sortMode = DEFAULT_TASK_SORT,
   emptyMessage = 'No tasks yet',
   selectable = false,
 }: TaskListProperties) {
-  const nodes = useScopedTasks(scope);
+  const nodes = useScopedTasks(scope, sortMode);
   const isCompletedView = scope.type === 'completed';
 
   if (nodes.length === 0) {
