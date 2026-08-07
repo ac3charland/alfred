@@ -1,0 +1,87 @@
+import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
+import { expect, userEvent, within } from 'storybook/test';
+
+import { CodeProvider } from '@/lib/stores/code-store';
+import type { Folder, Item } from '@/lib/types';
+
+import { FolderView } from './folder-view';
+
+/** Task rows and the capture box both read the code store; the shell seeds it around this view. */
+const withCodeProvider: Decorator = (Story) => (
+  <CodeProvider initialProjects={[]} initialEpics={[]} initialStories={[]}>
+    <Story />
+  </CodeProvider>
+);
+
+const FOLDERS: Folder[] = [
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+  { id: 'f2', name: 'Someday', created_at: '2025-01-02T00:00:00Z', sort_order: 2 },
+];
+
+/** Fixed residency stamp for a seeded FILED item — a fixture in a folder is one a human put there. */
+const DISPATCHED_AT = '2025-01-02T00:00:00Z';
+
+const task = (overrides: Partial<Item>): Item => ({
+  id: 'i1',
+  title: 'Task',
+  notes: null,
+  source_url: null,
+  item_type: 'task',
+  created_at: '2025-01-01T00:00:00Z',
+  raw_capture: null,
+  due_date: null,
+  status: 'active',
+  completed_at: null,
+  folder_id: 'f1',
+  dispatched_at: DISPATCHED_AT,
+  parent_id: null,
+  occurrence_index: null,
+  recurrence: null,
+  priority: null,
+  recurrence_series_id: null,
+  intended_project_id: null,
+  sort_order: 0,
+  ...overrides,
+});
+
+const WORK_TASKS: Item[] = [
+  task({ id: 'a', title: 'Ship the Q3 deck', sort_order: 1 }),
+  task({ id: 'b', title: 'Review the budget spreadsheet', sort_order: 2 }),
+  task({ id: 'c', title: 'Call the vendor back', sort_order: 3 }),
+];
+
+const meta = {
+  title: 'Tasks/FolderView',
+  component: FolderView,
+  decorators: [withCodeProvider],
+  parameters: {
+    layout: 'padded',
+    // The view reads the folder from FoldersProvider and its rows from the flat item store.
+    store: { folders: FOLDERS, tasks: WORK_TASKS },
+  },
+} satisfies Meta<typeof FolderView>;
+
+export default meta;
+
+type Story = StoryObj<typeof meta>;
+
+/** A folder with tasks, the capture box closed: the header's "+" sits left of Collapse-all. */
+export const WithTasks: Story = {
+  args: { folderId: 'f1' },
+};
+
+/** The same folder after pressing "+": the compact capture box sits between header and list. */
+export const CaptureOpen: Story = {
+  args: { folderId: 'f1' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Add task to Work' }));
+    const field = await canvas.findByPlaceholderText('Add task…');
+    await expect(field).toHaveFocus();
+  },
+};
+
+/** An empty folder: its own description, plus the "Add task" way out of the empty state. */
+export const EmptyFolder: Story = {
+  args: { folderId: 'f2' },
+};
