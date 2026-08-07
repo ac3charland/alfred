@@ -298,6 +298,69 @@ describe('addTask', () => {
     );
   });
 
+  it('creates a parentless capture carrying a folder as a task (filing classifies)', async () => {
+    // Folders hold tasks: an unclassified row in a folder has no completion checkbox, so a
+    // capture made from a folder view could never be ticked off. Filing classifies, exactly
+    // as moveTask does when an unclassified item is dropped into a folder.
+    const saved = item({ id: 'server-1', folder_id: 'folder-1', item_type: 'task' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({ text: 'Ship the deck', folderId: 'folder-1' });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.objectContaining({ item_type: 'task', folder_id: 'folder-1' }),
+    );
+  });
+
+  it('shows the folder capture as a task on the optimistic row, before the server responds', () => {
+    pendingCreate();
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    act(() => {
+      void result.current.actions.addTask({ text: 'Ship the deck', folderId: 'folder-1' });
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('task');
+  });
+
+  it('leaves an explicit itemType winning over the folder rule', async () => {
+    const saved = item({ id: 'server-1', item_type: 'code' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({
+        text: 'ALF: add dark mode',
+        itemType: 'code',
+        folderId: 'folder-1',
+      });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ item_type: 'code' }));
+  });
+
+  it('leaves a subtask under a code parent unaffected by the folder rule', async () => {
+    // The parent branch is evaluated first, so a folder riding along on a subtask capture
+    // (the add-subtask box passes its parent's folder) never overrides the inherited family.
+    const codeParent = item({ id: 'code-parent', item_type: 'code', folder_id: 'folder-1' });
+    const saved = item({ id: 'server-1', parent_id: 'code-parent', item_type: 'code' });
+    mockCreateItem.mockResolvedValue(saved);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([codeParent]) });
+
+    await act(async () => {
+      await result.current.actions.addTask({
+        text: 'A story',
+        parentId: 'code-parent',
+        folderId: 'folder-1',
+      });
+    });
+
+    expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ item_type: 'code' }));
+  });
+
   it('creates a code child when the parent is a code row (a child inherits its family)', async () => {
     const codeParent = item({ id: 'code-parent', item_type: 'code' });
     const saved = item({ id: 'server-1', parent_id: 'code-parent', item_type: 'code' });

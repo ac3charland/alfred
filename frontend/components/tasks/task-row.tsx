@@ -63,7 +63,7 @@ import { cn } from '@/lib/utils';
 
 import {
   addSubtaskButtonClass,
-  addSubtaskRevealClass,
+  captureRevealClass,
   cardChromeClass,
   checkboxIncompleteClass,
   checkboxSizeClass,
@@ -1052,7 +1052,7 @@ export function TaskRow({
                         onExited={() => {
                           setAddSubtaskRendered(false);
                         }}
-                        className={addSubtaskRevealClass}
+                        className={captureRevealClass}
                       >
                         <CaptureBox
                           parentId={node.id}

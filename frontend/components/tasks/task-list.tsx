@@ -1,6 +1,7 @@
 'use client';
 
 import { useDroppable } from '@dnd-kit/core';
+import type * as React from 'react';
 
 import { EmptyState } from '@/components/atoms/empty-state';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
@@ -21,6 +22,13 @@ interface TaskListProperties {
    */
   sortMode?: TaskSortMode;
   emptyMessage?: string;
+  /**
+   * The empty state's second line. Defaults to the Inbox's "Capture something above.", which
+   * only holds where a capture box actually sits above the list.
+   */
+  emptyDescription?: string;
+  /** An optional control inside the empty state — a view's own way out of it. */
+  emptyAction?: React.ReactNode;
   /**
    * When true, the view's ROOT rows participate in Inbox multi-edit: while select mode is on
    * each becomes a selection checkbox toggling membership. Only the Inbox passes this; subtask
@@ -83,13 +91,15 @@ export function TaskList({
   scope,
   sortMode = DEFAULT_TASK_SORT,
   emptyMessage = 'No tasks yet',
+  emptyDescription = 'Capture something above.',
+  emptyAction,
   selectable = false,
 }: TaskListProperties) {
   const nodes = useScopedTasks(scope, sortMode);
   const isCompletedView = scope.type === 'completed';
 
   if (nodes.length === 0) {
-    return <EmptyState title={emptyMessage} description="Capture something above." />;
+    return <EmptyState title={emptyMessage} description={emptyDescription} action={emptyAction} />;
   }
 
   return (
