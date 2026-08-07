@@ -142,16 +142,18 @@ describe('GET /api/items', () => {
     expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
   });
 
-  it('uses .is() for inbox=true filter (not .eq on folder_id)', async () => {
+  it('scopes inbox=true to undispatched items with .is() (not .eq, and not on folder_id)', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: [], error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
     await GET(makeRequest('http://localhost/api/items?inbox=true'), STUB_CONTEXT);
 
     const chain = mockSupabase._chain;
-    // Verify .is('folder_id', null) was called — the route must use .is() not .eq()
-    // for SQL IS NULL semantics (Supabase .eq() on a null column returns zero rows).
-    expect(chain.is).toHaveBeenCalledWith('folder_id', null);
+    // The Inbox is "no human has dispatched this yet", NOT "has no folder" — an item can
+    // already carry a folder and still be waiting for triage. `.is()` not `.eq()`, for SQL
+    // IS NULL semantics (Supabase .eq() on a null column returns zero rows).
+    expect(chain.is).toHaveBeenCalledWith('dispatched_at', null);
+    expect(chain.is).not.toHaveBeenCalledWith('folder_id', null);
     expect(chain.eq).not.toHaveBeenCalledWith('folder_id', expect.anything());
   });
 

@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-168 — Implement inbox dispatch (slice A)</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+    /* app palette (frontend/app/globals.css) — used only inside .app mockups */
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f;
+    --a-teal: #4fd1e0; --a-green: #34d399; --a-blue: #60a5fa;
+    --a-amber: #f0b429; --a-red: #f87171; --a-plate: #141d2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--ok); font-weight: 700; }
+  .nope { color: var(--no); font-weight: 700; }
+
+  /* ── Decision blocks (the library's shared vocabulary) ───────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* ── Acceptance-criteria checklist ───────────────────────────── */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .93rem; }
+  ul.ac li::before {
+    content: ""; position: absolute; left: 0; top: .35rem; width: 1rem; height: 1rem;
+    border: 1px solid var(--faint); border-radius: 3px;
+  }
+  ul.ac li.h {
+    padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  }
+  ul.ac li.h::before { content: none; }
+
+  /* ── App-palette mockup — every value below is lifted from
+        frontend/app/globals.css and the atoms that render these rows,
+        so the drawing reads in alfred's real dark palette in either mode. ── */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1rem; margin: 1rem 0; color: var(--a-text); font-size: .84rem;
+    display: flex; gap: 1rem; flex-wrap: wrap;
+  }
+  .app code { background: var(--a-plate); color: var(--a-text); font-size: .78em; }
+  .app-main { flex: 1 1 340px; min-width: 0; }
+  .app-side { flex: 0 0 190px; }
+  .app-head { display: flex; align-items: center; justify-content: space-between;
+              margin-bottom: .75rem; }
+  /* eyebrow: text-xs font-semibold tracking-widest uppercase */
+  .eyebrow { font-size: .64rem; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--a-teal); font-weight: 700; }
+  .ghostbtn { border: 1px solid var(--a-border); border-radius: 6px; color: var(--a-muted);
+              padding: .15rem .55rem; font-size: .72rem; }
+  .row {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 10px;
+    padding: .6rem .75rem; margin-bottom: .5rem; display: flex; gap: .6rem; align-items: flex-start;
+  }
+  .box { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--a-muted);
+         flex: none; margin-top: .2rem; }
+  .row-main { flex: 1; min-width: 0; }
+  .row-title { color: var(--a-text); margin-bottom: .35rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+  /* Badge atom, variant="muted": bordered pill, muted foreground */
+  .chip { border-radius: 999px; padding: .05rem .5rem; font-size: .68rem; font-weight: 500;
+          border: 1px solid; white-space: nowrap; }
+  .c-task  { color: var(--a-muted); border-color: var(--a-border); }
+  .c-amber { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 50%, transparent); }
+  .c-red   { color: var(--a-red);   border-color: color-mix(in srgb, var(--a-red) 50%, transparent); }
+  /* navLinkClass: rounded-sm px-3 py-2 text-sm, muted until active */
+  .nav { display: flex; align-items: center; gap: .6rem; border-radius: 4px;
+         padding: .3rem .6rem; font-size: .78rem; color: var(--a-muted); }
+  .nav.active { background: var(--a-secondary); color: var(--a-text); font-weight: 500; }
+  .nav .name { flex: 1; }
+  .note-badge { display: inline-block; border: 1px dashed color-mix(in srgb, var(--a-teal) 60%, transparent);
+                color: var(--a-teal); border-radius: 6px; font-size: .64rem; padding: .05rem .4rem; }
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.4rem; }
+  .mockcap b { color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-168 — Implement inbox dispatch (slice A)</h1>
+<p class="sub">
+  <span class="pill">Story</span><span class="pill">Epic ALF-158 · slice A</span>
+  Database + frontend. No LLM anywhere in this story.
+</p>
+
+<p>
+  Make Inbox residency an <b>explicit fact on the row</b> instead of something inferred from
+  <code>folder_id</code>. An item is in the Inbox while <code>dispatched_at is null</code>, and only a
+  human act stamps it. Nothing about the app looks or behaves differently when this ships — which is
+  the point: it is the enabling change the rest of
+  <a href="epics/ALF-158.html">ALF-158</a> stands on, landed on its own so the risky part is proven
+  before anything non-deterministic exists.
+</p>
+
+<h2>1 · Context &amp; problem</h2>
+
+<p>
+  Today "in the Inbox" is a derived fact, computed in two places from one column:
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Surface</th><th>Rule today</th><th>Where</th></tr>
+  <tr>
+    <td>Inbox list</td><td><code>item.folder_id === null</code></td>
+    <td><code>useScopedTasks</code> — <code>frontend/lib/stores/tasks-store.tsx</code></td>
+  </tr>
+  <tr>
+    <td>Folder view</td><td><code>item.folder_id === folderId</code></td>
+    <td>same</td>
+  </tr>
+  <tr>
+    <td>Folder badges</td><td><code>item.folder_id !== null</code></td>
+    <td><code>useFolderBadgeCounts</code> — same file</td>
+  </tr>
+  <tr>
+    <td>"Where does this live" labels</td><td><code>root.folder_id !== null ? folderName : 'Inbox'</code></td>
+    <td><code>lib/tasks/task-location.ts</code>, <code>components/shell/search-results.ts</code>,
+        <code>components/tasks/priority-view.tsx</code>, <code>components/tasks/task-row.tsx</code></td>
+  </tr>
+  <tr>
+    <td>Keyed list endpoint</td><td><code>.is('folder_id', null)</code></td>
+    <td><code>lib/data/items.ts</code> (<code>GET /api/items?inbox=true</code>)</td>
+  </tr>
+</table>
+</div>
+
+<p>
+  That identity — <i>having no folder</i> ≡ <i>waiting for triage</i> — holds only while nothing but a
+  human can write <code>folder_id</code>. Epic decision <b>D4</b> breaks it: the classifier writes its
+  guesses onto the item's real fields, <code>folder_id</code> included. Under today's rule the moment a
+  guess lands the item <b>disappears from the Inbox into a folder before the owner has ever seen
+  it</b> — the exact opposite of "waiting for me to look at", and it would happen silently.
+</p>
+
+<p>
+  So residency and location have to become two different facts (<b>D5</b>), and only a human act may
+  change residency (<b>D6</b>). This story does exactly that and stops. It ships with the classifier
+  still non-existent, so <b>every user-visible behaviour is identical before and after</b>: nothing in
+  the app writes <code>folder_id</code> without also dispatching, so the two rules agree on every row.
+</p>
+
+<div class="callout">
+  <b>The invariant this story must not break:</b> every item is reachable from exactly one view. Today
+  a folder deletion (<code>on delete set null</code>) returns its items to the Inbox for free, because
+  losing the folder <i>is</i> returning to the Inbox. Once residency is its own column that stops being
+  free — see <b>S6</b>, which is the one place this refactor can strand data.
+</div>
+
+<h2>2 · The rule, drawn</h2>
+
+<svg viewBox="0 0 900 340" role="img" aria-label="Residency state machine: a capture lands in the Inbox with dispatched_at null; filing it into a folder or admitting it to the code factory stamps dispatched_at; moving it back to the Inbox, or deleting its folder, clears dispatched_at and returns it to the Inbox. The classifier, in a later story, may write folder_id but never touches dispatched_at.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a94a0" />
+    </marker>
+    <style>
+      .bx { fill: none; stroke: #8a94a0; stroke-width: 1.4; rx: 10; }
+      .bx-in { fill: none; stroke: #0d7d7d; stroke-width: 2; }
+      .t { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #5c6672; }
+      .th { font: 600 13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #1b1f24; }
+      .tm { font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #5c6672; }
+      .lb { font: 11.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #5c6672; }
+      .ln { stroke: #8a94a0; stroke-width: 1.3; fill: none; marker-end: url(#ar); }
+      .ln-d { stroke: #8a94a0; stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; marker-end: url(#ar); }
+      @media (prefers-color-scheme: dark) {
+        .t, .tm, .lb { fill: #9aa5b1; } .th { fill: #e6eaef; }
+        .bx { stroke: #6b7682; } .bx-in { stroke: #46c9c9; }
+        .ln, .ln-d { stroke: #6b7682; }
+      }
+    </style>
+  </defs>
+
+  <rect class="bx" x="24" y="26" width="170" height="62" rx="10" />
+  <text class="th" x="42" y="52">Capture</text>
+  <text class="tm" x="42" y="72">POST /api/items</text>
+
+  <rect class="bx-in" x="300" y="18" width="300" height="86" rx="10" />
+  <text class="th" x="322" y="44">Inbox</text>
+  <text class="tm" x="322" y="66">dispatched_at is null</text>
+  <text class="lb" x="322" y="88">…whatever folder_id holds</text>
+
+  <rect class="bx" x="690" y="6" width="186" height="70" rx="10" />
+  <text class="th" x="708" y="32">Folder view</text>
+  <text class="tm" x="708" y="52">folder_id = X and</text>
+  <text class="tm" x="708" y="68">dispatched_at not null</text>
+
+  <rect class="bx" x="690" y="118" width="186" height="70" rx="10" />
+  <text class="th" x="708" y="144">Code factory</text>
+  <text class="tm" x="708" y="164">code_items sidecar</text>
+  <text class="tm" x="708" y="180">+ dispatched_at</text>
+
+  <path class="ln" d="M 196 57 L 296 57" />
+
+  <path class="ln" d="M 602 48 L 686 41" />
+  <text class="lb" x="606" y="30">drag / row menu / bulk Move</text>
+
+  <path class="ln" d="M 602 82 L 686 140" />
+  <text class="lb" x="600" y="112">gate → enter_code_module</text>
+
+  <path class="ln" d="M 780 76 C 780 104, 640 118, 604 100" />
+  <text class="lb" x="628" y="104">Move to Inbox · folder deleted</text>
+
+  <rect class="bx" x="300" y="222" width="300" height="82" rx="10" />
+  <text class="th" x="322" y="248">Classifier (slice D — not this story)</text>
+  <text class="tm" x="322" y="270">writes item_type, priority, due_date,</text>
+  <text class="tm" x="322" y="288">folder_id … never dispatched_at</text>
+  <path class="ln-d" d="M 450 218 L 450 110" />
+
+  <text class="lb" x="24" y="252">Only the solid arrows</text>
+  <text class="lb" x="24" y="270">move an item between</text>
+  <text class="lb" x="24" y="288">views, and every one of</text>
+  <text class="lb" x="24" y="306">them is a human act.</text>
+</svg>
+<p class="diagram-cap">Residency (<code>dispatched_at</code>) is what moves an item between views. Location (<code>folder_id</code>) only says <i>which</i> folder it will land in.</p>
+
+<h4>Truth table</h4>
+<div class="scroll">
+<table>
+  <tr><th><code>dispatched_at</code></th><th><code>folder_id</code></th><th>Where it renders</th><th>Reachable today?</th></tr>
+  <tr><td>null</td><td>null</td><td>Inbox</td><td><span class="yes">yes</span> — an ordinary capture</td></tr>
+  <tr><td>null</td><td>set</td><td><b>Inbox</b> (the whole point)</td><td>not by any UI in this slice; the classifier creates it in slice D. Reachable in tests by seeding.</td></tr>
+  <tr><td>set</td><td>set</td><td>That folder</td><td><span class="yes">yes</span> — a filed task</td></tr>
+  <tr><td>set</td><td>null</td><td>Nowhere — <b>forbidden</b></td><td><span class="nope">rejected</span> by the CHECK in <b>S7</b> (a code item is the one legal exception)</td></tr>
+</table>
+</div>
+
+<h2>3 · Decisions</h2>
+
+<div class="dec">
+  <h3><span class="n">S1</span>The column, and what reads it</h3>
+  <p>
+    <code>items</code> gains <code>dispatched_at timestamptz</code>, nullable, no default.
+    <code>null</code> = still in the Inbox. Every rule in §1's table is rewritten in terms of it:
+    Inbox is <code>dispatched_at === null</code>, a folder view is
+    <code>folder_id === folderId &amp;&amp; dispatched_at !== null</code>, and a folder badge counts a row
+    only when it is dispatched.
+  </p>
+  <p class="why">
+    <b>Why a timestamp, not a boolean:</b> it matches the repo's existing idiom
+    (<code>completed_at</code>, <code>archived_at</code>) and records <i>when</i> triage happened, which
+    is free here and is what slice H's correction diff hangs off later.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S2</span>Backfill: everything currently in a folder is dispatched</h3>
+  <pre><code>update items set dispatched_at = now() where folder_id is not null;</code></pre>
+  <p>
+    Every other row keeps <code>null</code>. No item changes view, which is the migration's whole
+    acceptance test.
+  </p>
+  <p class="why">
+    <b>Why <code>now()</code> rather than <code>created_at</code>:</b> the real dispatch time is
+    unknown for historical rows, and <code>created_at</code> would assert something false (that the item
+    was triaged the instant it was captured). The migration timestamp is honest — it means "dispatched
+    at or before this migration" — and nothing reads the value, only its null-ness.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S3</span>Residency travels with the subtree, exactly like <code>folder_id</code></h3>
+  <p>
+    A subtree shares one folder bucket, and the client filters flat before <code>buildTree</code> —
+    so if a root and its children disagreed about residency the subtree would be split across two
+    views and the orphaned half would vanish. <b><code>dispatched_at</code> is therefore written to
+    every row a <code>folder_id</code> write touches, in the same request.</b> That covers
+    <code>moveTask</code>, <code>bulkMove</code>, and the <code>folderCascade</code> shared by
+    <code>reparentTask</code> / <code>reorderSubtask</code>.
+  </p>
+  <p class="why">
+    <b>Consequence for the cascade helper:</b> <code>folderCascade</code> currently skips descendant
+    writes when the folder is unchanged. It must now cascade when <b>either</b> the folder or the
+    residency differs from the new parent's — dragging an Inbox subtask under a filed task changes
+    residency even when <code>folder_id</code> happens to match.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S4</span>The API takes an <i>intent</i>, and the server authors the timestamp</h3>
+  <p>
+    <code>PATCH /api/items/[id]</code> accepts a new optional boolean <code>dispatched</code> — not a
+    raw timestamp. The route maps it: <code>true</code> → <code>dispatched_at = new Date().toISOString()</code>,
+    <code>false</code> → <code>null</code>, absent → the column is untouched (PATCH semantics, as today).
+  </p>
+  <pre><code>// filing a task, as one coherent write
+PATCH /api/items/:id  { "folder_id": "…uuid…", "item_type": "task", "dispatched": true }
+
+// returning it to the Inbox
+PATCH /api/items/:id  { "folder_id": null, "dispatched": false }</code></pre>
+  <p class="why">
+    <b>Why a virtual field:</b> no caller has a reason to choose <i>when</i> an item was dispatched, and
+    letting one backdate the column would quietly corrupt slice H's diff. A boolean also reads as what it
+    is — "this is a dispatch" — so the intent survives in the request rather than living only in a
+    comment. <b>Why one PATCH and not two:</b> the DB CHECK constraints already force
+    <code>item_type</code> and its type-specific fields to move together (epic <b>D7</b>); residency
+    joins that same coherent write, and a half-applied move can't leave an item unreachable.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S5</span>A new item inherits residency at insert, in the database</h3>
+  <p>
+    A <code>before insert</code> trigger on <code>items</code> fills <code>dispatched_at</code> when the
+    caller left it null:
+  </p>
+  <ul>
+    <li>has a <code>parent_id</code> → inherit the parent's residency (dispatched if the parent is).</li>
+    <li>otherwise, has a <code>folder_id</code> → <code>now()</code>.</li>
+    <li>otherwise → stays <code>null</code>, an ordinary Inbox capture.</li>
+  </ul>
+  <p class="why">
+    <b>Why the database and not the route:</b> two ingresses already create filed items — the folder
+    view's capture box (ALF-165) and the inline "add subtask" field, which passes its parent's
+    <code>folder_id</code> — and Siri/service-role writes bypass the route entirely. <b>Why parent
+    inheritance rather than "a folder means dispatched":</b> once the classifier can put a
+    <code>folder_id</code> on an <i>undispatched</i> item, adding a subtask to it would create a
+    dispatched child under an undispatched parent — the split subtree S3 exists to prevent. Inheriting
+    is correct in both worlds, so it is written once, now.
+  </p>
+  <p class="why">
+    The optimistic store must predict the same value or the new row flashes into the wrong view before
+    reconciling: <code>makeOptimisticItem</code> takes the residency the row will get, and
+    <code>addTask</code> computes it from the parent (which it already looks up) or the folder.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S6</span>Deleting a folder returns its items to the Inbox — explicitly now</h3>
+  <p>
+    <code>items.folder_id</code> is <code>on delete set null</code>, so deleting a folder currently
+    drops its items straight back into the Inbox. Once the Inbox is <code>dispatched_at is null</code>
+    that stops happening by itself: the rows would keep a non-null <code>dispatched_at</code> with no
+    folder and render <b>nowhere at all</b>. A <code>before delete</code> trigger on <code>folders</code>
+    clears <code>dispatched_at</code> for every item in that folder, so today's behaviour survives.
+  </p>
+  <p class="why">
+    <b>This is the one data-loss path in the story.</b> The behaviour it protects is already asserted
+    end-to-end — <code>frontend/e2e/folders.spec.ts</code>'s "Homeless task" case — but that test runs
+    against the in-memory mock, which emulates <code>on delete set null</code> itself
+    (<code>deleteRows</code> in <code>frontend/scripts/mock-supabase.mjs</code>). So the red/green pair
+    that actually catches a missing trigger is a <b>DB integration assertion</b>; the E2E case only stays
+    honest if the mock learns the same rule. Write both, in that order.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S7</span>A CHECK makes "dispatched but nowhere" impossible</h3>
+  <pre><code>alter table items add constraint items_dispatched_needs_folder check (
+  dispatched_at is null or folder_id is not null or item_type = 'code'
+);</code></pre>
+  <p>
+    A dispatched <b>task</b> must hold a folder. A dispatched <b>code</b> item is the deliberate
+    exception: it leaves for the factory, which has no folders.
+  </p>
+  <p class="why">
+    <b>Why enforce it at all:</b> this is epic <b>D17</b>'s "a task with no folder cannot be
+    dispatched" turned into something the database will refuse rather than something each future
+    story must remember. The failure mode it replaces is silent and unrecoverable-looking (an item
+    that exists but renders in no view); the failure mode it introduces is a loud, immediate write
+    error. Loud wins. <b>It does not constrain the classifier:</b> a guessed <code>folder_id</code>
+    on an undispatched row satisfies the first disjunct.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S8</span>Move-to-Inbox clears both fields</h3>
+  <p>
+    <code>moveToInbox</code> keeps meaning what it means today: <code>folder_id</code> → null <i>and</i>
+    <code>dispatched_at</code> → null.
+  </p>
+  <p class="why">
+    <b>Why not keep the folder as a hint:</b> the item would sit in the Inbox pre-filled with the very
+    folder the owner just pulled it out of, and one press of the future bulk Dispatch would send it
+    straight back. "Un-file" should undo the filing, not remember it.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S9</span>The two factory RPCs stamp <code>dispatched_at</code> as they consume an item</h3>
+  <p>
+    <code>enter_code_module</code> (the gate) and <code>convert_to_code_epic</code> (ALF-129) each already
+    run an <code>update items set item_type = 'code', …</code> on the row(s) they admit; each gains
+    <code>dispatched_at = now()</code> in that same statement.
+  </p>
+  <p class="why">
+    <b>Why bother, when a gated item leaves <code>task_items</code> anyway:</b> so
+    "<code>dispatched_at is null</code>" means "still in the Inbox" for <i>every</i> row rather than
+    "every row except the ones that took the other exit" — the sweeper (slice C) keys on that predicate,
+    and slice H reads the dispatch event. One column, no new query.
+  </p>
+  <div class="callout">
+    <b>Copy each function body verbatim from the migration that last defined it</b> —
+    <code>enter_code_module</code> from <code>0014_project_scoped_priority.sql</code>,
+    <code>convert_to_code_epic</code> from <code>0019_code_epics.sql</code> — and change only that one
+    assignment. Re-deriving a body from an older migration silently reverts later fixes; migration
+    <code>0025</code> documents this exact trap.
+  </div>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S10</span>One shared residency helper; no site re-derives the rule</h3>
+  <p>
+    A new pure module <code>frontend/lib/tasks/residency.ts</code> holds the two predicates every read
+    site needs, and every site in §1's table calls it:
+  </p>
+  <pre><code>/** An item is in the Inbox until a human dispatch stamps it. */
+export function isDispatched(item: Pick&lt;Item, 'dispatched_at'&gt;): boolean;
+
+/**
+ * The folder an item actually LIVES in — null while it is still in the Inbox, whatever
+ * `folder_id` holds. The one function that turns location into residency.
+ */
+export function residentFolderId(item: Pick&lt;Item, 'dispatched_at' | 'folder_id'&gt;): string | null;</code></pre>
+  <p class="why">
+    <b>Why extract it:</b> the rule is about to be read from a store selector, a badge tally, three
+    location labels and a route handler. Six copies of <code>dispatched_at !== null &amp;&amp; …</code> is six
+    places for slice D to be half-applied — and the shared-primitive layer is where this repo already
+    puts logic with more than one caller.
+  </p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">S11</span>Nothing new appears on screen in this story</h3>
+  <p>
+    No new control, chip, badge or copy. The bulk <b>Dispatch</b> button is slice <b>I</b>; showing a
+    guessed folder on an Inbox row is slice <b>B</b>. The dispatch actions in this story are the ones
+    that already exist — drag-to-folder, the row menu's <i>Move to</i>, the bulk bar's
+    <i>Move to folder</i>, and the code gate — which now write residency alongside location.
+  </p>
+</div>
+
+<h2>4 · The change, layer by layer</h2>
+
+<h4>Database — one migration, <code>&lt;next&gt;_inbox_dispatch.sql</code></h4>
+<p class="small">
+  Take whatever number is free when you build it; do not reuse the one that was free when this spec was
+  written.
+</p>
+<ol class="tight">
+  <li><code>alter table items add column dispatched_at timestamptz;</code> + a
+    <code>comment on column</code> stating the rule (null = in the Inbox, regardless of
+    <code>folder_id</code>).</li>
+  <li>The backfill (<b>S2</b>).</li>
+  <li>The CHECK (<b>S7</b>) — added <i>after</i> the backfill, or it rejects the existing rows.</li>
+  <li>A partial index on <code>(dispatched_at)</code> where <code>dispatched_at is null</code>: the
+    Inbox read and the sweeper's predicate (slice C) both select exactly that set.</li>
+  <li>The insert trigger (<b>S5</b>) and the folder-delete trigger (<b>S6</b>).</li>
+  <li><code>create or replace view task_items …</code> — <b>mandatory</b>. A <code>select i.*</code>
+    view freezes its column list at CREATE time, so <code>dispatched_at</code> is invisible to
+    <code>getAllItems()</code> until the view is recreated. This is the ALF-62 bug that
+    <code>0011</code> and <code>0013</code> both document; recreate with
+    <code>create or replace</code> (no drop, so grants and <code>security_invoker</code> survive).</li>
+  <li>The two RPC replacements (<b>S9</b>), then <code>notify pgrst, 'reload schema';</code>.</li>
+</ol>
+<p>
+  Then apply it (<code>npm run migrate -w database &lt;n&gt;</code>), commit the appended
+  <code>migrations-applied.log</code> line, and regenerate
+  <code>frontend/lib/database.types.ts</code> with <code>supabase gen types</code> — committed verbatim,
+  never hand-edited.
+</p>
+
+<h4>API</h4>
+<ul class="tight">
+  <li><code>lib/api/schemas.ts</code> — <code>updateItemSchema</code> gains
+    <code>dispatched: z.boolean().optional()</code>. <code>createItemSchema</code> gains nothing: the
+    trigger owns insert-time residency.</li>
+  <li><code>app/api/items/[id]/route.ts</code> — map <code>dispatched</code> onto
+    <code>dispatched_at</code> after <code>toUpdatePayload</code> (it is not a column, so it cannot ride
+    the field list).</li>
+  <li><code>lib/data/items.ts</code> — <code>getItems</code>'s <code>inbox: true</code> branch becomes
+    <code>.is('dispatched_at', null)</code>; update the doc comment that names the old rule.</li>
+  <li><code>lib/api-client.ts</code> — <code>moveToInbox</code> sends
+    <code>{ folder_id: null, dispatched: false }</code> (<b>S8</b>).</li>
+</ul>
+
+<h4>Store — <code>frontend/lib/stores/tasks-store.tsx</code></h4>
+<ul class="tight">
+  <li><code>useScopedTasks</code>: inbox → <code>!isDispatched(item)</code>; folder →
+    <code>isDispatched(item) &amp;&amp; item.folder_id === folderId</code>. Completed is unchanged.</li>
+  <li><code>useFolderBadgeCounts</code>: skip undispatched rows (replace the
+    <code>folder_id === null</code> guard with <code>residentFolderId(item)</code>). Without this an
+    undispatched item carrying a guessed folder inflates that folder's badge from inside the Inbox.</li>
+  <li><code>moveTask</code> / <code>bulkMove</code>: send <code>dispatched: folderId !== null</code>
+    alongside <code>folder_id</code> on every row of the subtree, and patch <code>dispatched_at</code>
+    optimistically in the same dispatch as <code>folder_id</code>.</li>
+  <li><code>folderCascade</code> + its two callers: cascade on a residency change as well as a folder
+    change (<b>S3</b>), adopting the new parent's <code>dispatched_at</code>.</li>
+  <li><code>addTask</code>: pass the predicted residency into <code>makeOptimisticItem</code> (<b>S5</b>).</li>
+  <li><code>removeGatedItem</code> / <code>settleEpicConversion</code>: unchanged — those rows leave the
+    store entirely.</li>
+</ul>
+
+<h4>Read sites</h4>
+<ul class="tight">
+  <li><code>lib/tasks/task-location.ts</code> — <code>taskDestination</code> routes an undispatched root
+    to <code>/?view=inbox</code> even when it carries a folder.</li>
+  <li><code>components/shell/search-results.ts</code> — the result subtitle says <i>Inbox</i> for an
+    undispatched root.</li>
+  <li><code>components/tasks/priority-view.tsx</code> — the right-hand location label, same rule.</li>
+  <li><code>components/tasks/task-row.tsx</code> — the Completed view's context label, same rule.</li>
+  <li><code>lib/tree.ts</code> — <code>makeOptimisticItem</code> carries the new field.</li>
+</ul>
+
+<h4>The E2E mock backend — <code>frontend/scripts/mock-supabase.mjs</code></h4>
+<p>
+  The Playwright suite talks to an in-memory Supabase stand-in that <b>re-implements the database's
+  own rules</b>: <code>deleteRows</code> reproduces <code>on delete set null</code>, and the factory
+  RPCs are hand-written. Every server-side rule this story adds has to land there too, or the E2E
+  suite will keep asserting the old world and pass against a schema that no longer matches:
+</p>
+<ul class="tight">
+  <li>deleting a folder clears its items' <code>dispatched_at</code> as well as their
+    <code>folder_id</code> (<b>S6</b>);</li>
+  <li>an insert inherits residency from its parent, else from its folder (<b>S5</b>);</li>
+  <li><code>enter_code_module</code> / <code>convert_to_code_epic</code> stamp
+    <code>dispatched_at</code> (<b>S9</b>);</li>
+  <li>the <code>PATCH</code> path passes <code>dispatched_at</code> through like any other column —
+    the <code>dispatched</code> → timestamp mapping happens in the Next.js route, above the mock.</li>
+</ul>
+<p class="small">
+  The CHECK (<b>S7</b>) is deliberately <i>not</i> worth reproducing in the mock: it guards against a
+  write the app should never make, and the DB integration suite is where that is proven.
+</p>
+
+<h4>Fixtures</h4>
+<p>
+  <code>Item</code> gains a field, so the compiler will point at every builder. Give the builders a
+  <b>derived default</b> rather than a flat <code>null</code>, so the ~20 existing fixtures that say
+  <code>folder_id: 'f1'</code> keep meaning "filed in f1" with no edit:
+</p>
+<pre><code>dispatched_at: overrides.dispatched_at ?? (overrides.folder_id == null ? null : DISPATCHED_AT),</code></pre>
+<p class="small">
+  A fixed ISO constant, never <code>new Date()</code> — fixtures pin the clock rather than read it.
+  Applies to <code>e2e/support/constants.ts</code>'s <code>makeItem</code> and the per-file
+  <code>task()</code> helpers in the Storybook stories (<code>folder-nav.stories.tsx</code> above all:
+  its badge counts are seeded entirely from foldered rows, and a flat <code>null</code> default would
+  silently zero them).
+</p>
+
+<h2>5 · What the Inbox looks like</h2>
+
+<p>
+  The claim this story makes visually is a negative one — <b>nothing moves and nothing new appears</b> —
+  so what is worth drawing is the row that only exists because of this change: an item whose
+  <code>folder_id</code> points at <b>Health</b> while <code>dispatched_at</code> is still null. It sits
+  in the Inbox and renders exactly like the row beneath it, and <b>Health</b>'s sidebar badges do not
+  count it.
+</p>
+
+<div class="app">
+  <div class="app-main">
+    <div class="app-head">
+      <span class="eyebrow">Inbox</span>
+      <span><span class="ghostbtn">Collapse all</span> <span class="ghostbtn">Select</span></span>
+    </div>
+
+    <div class="row">
+      <span class="box"></span>
+      <div class="row-main">
+        <div class="row-title">Call the dentist to reschedule the cleaning</div>
+        <div class="chips"><span class="chip c-task">Task</span></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="box"></span>
+      <div class="row-main">
+        <div class="row-title">That thing Mark mentioned about the roof</div>
+      </div>
+    </div>
+    <p class="small" style="margin:.4rem 0 0">
+      <span class="note-badge">annotation, not UI</span>
+      row 1 is <code>folder_id = Health</code>, <code>dispatched_at = null</code>; row 2 is a plain
+      capture. The rows are identical because nothing in this slice renders either field.
+    </p>
+  </div>
+
+  <div class="app-side">
+    <div class="nav active"><span class="name">By Priority</span></div>
+    <div class="nav"><span class="name">Health</span><span class="chip c-amber">1</span></div>
+    <div class="nav"><span class="name">Work</span><span class="chip c-red">2</span><span class="chip c-amber">1</span></div>
+    <div class="nav"><span class="name">Completed</span></div>
+  </div>
+</div>
+<p class="mockcap">
+  <b>Health</b>'s amber <code>1</code> is one genuinely filed task — the undispatched row above is not in
+  it. That is <b>S1</b>'s badge guard drawn: the tally counts residency, not location. The dashed
+  annotation is document chrome for this spec, not a thing that renders in the app.
+</p>
+
+<h2>6 · Back-pressure</h2>
+
+<p>
+  Every rule above is deterministic, so all of it is gated. Nothing here needs a new kind of test — it
+  needs the existing suites pointed at the new field.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Suite</th><th>What it must prove</th></tr>
+  <tr>
+    <td><b>DB integration</b><br /><code>database</code> <code>check:slow</code></td>
+    <td>
+      The backfill leaves every foldered item dispatched and every other item not.
+      Insert inheritance (<b>S5</b>) for all three branches. Deleting a folder returns its items to the
+      Inbox (<b>S6</b>). The CHECK rejects a dispatched folderless <i>task</i> and permits a dispatched
+      <i>code</i> item (<b>S7</b>). <code>enter_code_module</code> stamps the row it admits (<b>S9</b>).
+      <code>select dispatched_at from task_items</code> resolves — the view-recreation guard.
+    </td>
+  </tr>
+  <tr>
+    <td><b>Unit</b><br /><code>check:fast</code></td>
+    <td>
+      <code>residency.ts</code> (both helpers, all four truth-table rows). <code>useScopedTasks</code>:
+      an undispatched foldered item is in the Inbox and absent from that folder's view; its subtree
+      travels with it. <code>useFolderBadgeCounts</code> ignores undispatched rows. The store actions
+      send <code>dispatched</code> on every row of a moved subtree, and the cascade fires on a
+      residency-only change. The PATCH route maps <code>dispatched</code> → a timestamp / null / absent.
+      <code>getItems</code> filters on the new column. The four location labels.
+    </td>
+  </tr>
+  <tr>
+    <td><b>Storybook</b><br /><code>check:slow</code></td>
+    <td>
+      A new Inbox story seeded with an undispatched foldered row beside a plain one — the picture in §5.
+      Its image snapshot is a <i>new</i> baseline; no existing baseline should move, and one that does is
+      a bug in the fixture defaults, not a baseline to approve.
+    </td>
+  </tr>
+  <tr>
+    <td><b>E2E</b><br /><code>check:slow</code></td>
+    <td>
+      Existing: <code>folders.spec.ts</code> (delete a folder → its task is back in the Inbox) and
+      <code>task-row.spec.ts</code> / <code>inbox-multi-edit.spec.ts</code> (filing removes a row from the
+      Inbox and shows it in the folder) must stay green with no edit to the test bodies — they are the
+      "nothing visible changed" proof — which requires the mock backend to have learned the new rules.
+      New: seed an undispatched foldered item and assert it renders in the Inbox, not in the folder,
+      and does not reach that folder's badge.
+    </td>
+  </tr>
+</table>
+</div>
+
+<p>
+  <b>Demo doc:</b> this change has both a database surface and a live-app claim, so pick the evidence by
+  the <code>showboat</code> skill's rules — those stay the source of truth, don't re-derive them here.
+  The two things worth showing are the migration + backfill (the integration runner's output) and the
+  §5 claim in the running app (an undispatched foldered item sitting in the Inbox while its folder view
+  and badges ignore it).
+</p>
+
+<h2>7 · Acceptance criteria</h2>
+
+<ul class="ac">
+  <li class="h">Schema</li>
+  <li><code>items.dispatched_at timestamptz</code> exists, is nullable, has no default, and carries a
+      comment stating that null means "in the Inbox".</li>
+  <li>Every pre-existing item with a folder has a non-null <code>dispatched_at</code>; every other item
+      has null. No item changed which view it renders in.</li>
+  <li><code>task_items</code> exposes <code>dispatched_at</code>, and its grants and
+      <code>security_invoker</code> are intact.</li>
+  <li>A dispatched task with no folder is rejected by the database; a dispatched code item is accepted.</li>
+  <li>Deleting a folder returns its items to the Inbox (both <code>folder_id</code> and
+      <code>dispatched_at</code> end null).</li>
+  <li>An item created with a folder, or under a dispatched parent, is dispatched on insert; an item
+      created under an undispatched parent is not.</li>
+  <li><code>enter_code_module</code> and <code>convert_to_code_epic</code> stamp
+      <code>dispatched_at</code>, and neither loses any behaviour from its previous definition.</li>
+  <li><code>frontend/lib/database.types.ts</code> is regenerated (not hand-edited) and
+      <code>migrations-applied.log</code> records the apply.</li>
+
+  <li class="h">Behaviour</li>
+  <li>The Inbox lists exactly the undispatched top-level items, whatever their <code>folder_id</code>.</li>
+  <li>A folder view lists exactly the dispatched items in that folder.</li>
+  <li>Folder attention/overdue badges count only dispatched items.</li>
+  <li>Filing an item (drag, row menu, bulk Move) removes it from the Inbox and shows it in the folder,
+      exactly as before — and it, plus its whole subtree, is dispatched in one coherent write.</li>
+  <li>Moving an item back to the Inbox clears both fields, and its subtree comes with it.</li>
+  <li>Re-parenting a row under a task in another folder — or in the same folder but a different
+      residency — cascades both fields to the subtree.</li>
+  <li>Search results, the By-Priority location label, the Completed context label and "jump to task"
+      all say <i>Inbox</i> for an undispatched item, even one carrying a folder.</li>
+  <li><code>GET /api/items?inbox=true</code> returns undispatched items.</li>
+  <li>No new control, chip or copy appears anywhere in the app.</li>
+
+  <li class="h">Guardrails</li>
+  <li>Every rule above is asserted by at least one test in the suite that owns it (§6), and
+      <code>check</code> is green with no new ignore directives, config edits, or skipped tests.</li>
+  <li>No existing image snapshot baseline moved.</li>
+  <li>The E2E mock backend enforces the same insert-, delete- and RPC-side rules as the migration, so
+      no E2E test body needed editing to stay green.</li>
+  <li>A demo doc exists, is linked from the PR as a live blob URL, and
+      <code>npm run demo -- verify</code> reproduces it.</li>
+</ul>
+
+<h2>8 · Out of scope</h2>
+
+<ul>
+  <li><b>The bulk <code>Dispatch</code> action</b> (epic <b>D17</b>, slice <b>I</b>) — mixed selections,
+    per-item readiness and partial settle. This story only makes the column it will write exist.</li>
+  <li><b>Showing a folder / priority / due chip on an Inbox row, and re-deriving the bulk bar's
+    enablement gates</b> — slice <b>B</b>.</li>
+  <li><b>Anything that writes a guess:</b> no cron, no <code>scheduled</code> handler, no Anthropic
+    call, no <code>classified_at</code>, no <code>intended_epic_id</code>. Slices C, D, E.</li>
+  <li><b>Retro-dispatching or re-triaging the existing backlog.</b> The backfill preserves the current
+    view of every row and asserts nothing else.</li>
+  <li><b>Any UI for <i>when</i> something was dispatched.</b> The timestamp is stored and never
+    rendered.</li>
+</ul>
+
+<h2>9 · Open questions</h2>
+
+<ul>
+  <li>
+    <b>Should a dispatched item ever be un-dispatched in bulk?</b> Single-item "move to Inbox" exists
+    (<b>S8</b>) and the bulk bar's <i>Move to folder → Inbox</i> covers a selection, so nothing is
+    missing today. If slice I later wants an explicit "return to Inbox" action, it is that story's call —
+    the column already supports it.
+  </li>
+  <li>
+    <b>Does an undispatched item with a folder need a visible cue before slice B lands?</b> Proposed
+    <b>no</b> — the state is unreachable through the UI until the classifier exists, so a cue would have
+    nothing to describe. Raised only so slice B knows it inherits the question rather than discovers it.
+  </li>
+</ul>
+
+<h2>10 · Related reading</h2>
+
+<ul class="tight">
+  <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. <b>D4</b>
+    (write-through guesses), <b>D5</b> (residency), <b>D6</b> (only humans dispatch), <b>D7</b> (one
+    coherent write), <b>D17</b> (the Dispatch action this enables), §6 slice <b>A</b>.</li>
+  <li><code>database/migrations/0013_intended_project.sql</code> and <code>0011_task_items_view_columns.sql</code>
+    — the view-recreation gotcha, twice.</li>
+  <li><code>database/migrations/0019_code_epics.sql</code> — the current
+    <code>items_task_only_fields</code> CHECK, the <code>enforce_subtask_shape</code> trigger precedent,
+    and <code>convert_to_code_epic</code>.</li>
+  <li><code>database/migrations/0025_story_requires_refinement.sql</code> — why an RPC body is copied
+    verbatim rather than re-derived.</li>
+  <li>Skills: <code>data-flow</code> (the optimistic store mechanics every action here obeys),
+    <code>supabase</code> (migrations, grants, regenerating types), <code>frontend-architecture</code>
+    (where a shared helper like <b>S10</b> belongs), <code>showboat</code> (the demo evidence rules).</li>
+</ul>
+
+</div>
+</body>
+</html>

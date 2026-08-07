@@ -126,7 +126,11 @@ export function deleteItem(id: string): Promise<{ success: true }> {
 }
 
 /**
- * Move an item to the Inbox (clears its folder_id to null).
+ * Move an item to the Inbox: clear its folder AND its residency, in one write.
+ *
+ * Un-filing undoes the filing rather than remembering it — keeping the folder as a hint would
+ * leave the item sitting in the Inbox pre-filled with the very folder its owner just pulled it
+ * out of, one press away from going straight back.
  *
  * This function lives in lib/ (the null-aware data layer) because the PATCH
  * body needs `{ folder_id: null }` — null is the Postgres canonical absent value
@@ -135,7 +139,7 @@ export function deleteItem(id: string): Promise<{ success: true }> {
 export function moveToInbox(id: string): Promise<Item> {
   return apiRequest<Item>(`/api/items/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ folder_id: null }),
+    body: JSON.stringify({ folder_id: null, dispatched: false }),
   });
 }
 

@@ -293,6 +293,7 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string
+          dispatched_at: string | null
           due_date: string | null
           folder_id: string | null
           id: string
@@ -313,6 +314,7 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           created_at?: string
+          dispatched_at?: string | null
           due_date?: string | null
           folder_id?: string | null
           id?: string
@@ -333,6 +335,7 @@ export type Database = {
         Update: {
           completed_at?: string | null
           created_at?: string
+          dispatched_at?: string | null
           due_date?: string | null
           folder_id?: string | null
           id?: string
@@ -438,6 +441,7 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string | null
+          dispatched_at: string | null
           due_date: string | null
           folder_id: string | null
           id: string | null
@@ -458,6 +462,7 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           created_at?: string | null
+          dispatched_at?: string | null
           due_date?: string | null
           folder_id?: string | null
           id?: string | null
@@ -478,6 +483,7 @@ export type Database = {
         Update: {
           completed_at?: string | null
           created_at?: string | null
+          dispatched_at?: string | null
           due_date?: string | null
           folder_id?: string | null
           id?: string | null
@@ -603,6 +609,7 @@ export type Database = {
         Returns: {
           completed_at: string | null
           created_at: string
+          dispatched_at: string | null
           due_date: string | null
           folder_id: string | null
           id: string

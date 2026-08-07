@@ -48,7 +48,8 @@ export async function getAllItems(): Promise<Item[]> {
  * It returns the raw Supabase `{ data, error }` so the route can map the error to a status
  * (`mapSupabaseError`) — the read layer reports, it doesn't decide HTTP codes.
  *
- *   - `inbox: true`              → items with no folder (`.is('folder_id', null)`)
+ *   - `inbox: true`              → items still awaiting triage (`.is('dispatched_at', null)`),
+ *                                  whatever folder they may already carry
  *   - else `folder` provided     → items in that folder (`.eq`)
  *   - `status` (default 'active')→ filter unless 'all'
  *   - always ordered newest-first
@@ -61,8 +62,8 @@ export async function getItems(
   let builder = supabase.from('items').select('*');
 
   if (query.inbox === true) {
-    // Inbox: items with no folder assigned — must use .is(), not .eq()
-    builder = builder.is('folder_id', null);
+    // Inbox: items no human has dispatched yet — must use .is(), not .eq()
+    builder = builder.is('dispatched_at', null);
   } else if (query.folder !== undefined) {
     builder = builder.eq('folder_id', query.folder);
   }

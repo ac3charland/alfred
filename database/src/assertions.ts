@@ -1,4 +1,8 @@
-import type { Client } from 'pg';
+import path from 'node:path';
+
+import pg, { type Client } from 'pg';
+
+import { MIGRATIONS_DIR, applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 /** One integration check's outcome. `detail` is evidence on success, the failure reason otherwise. */
 export interface AssertionResult {
@@ -80,6 +84,73 @@ async function priorityOf(client: Client, ref: string): Promise<number> {
   const priority = rows[0]?.priority;
   if (priority === undefined) throw new Error(`no such story: ${ref}`);
   return priority;
+}
+
+/** The migration that introduced `items.dispatched_at` — the split point of the backfill replay. */
+const DISPATCH_MIGRATION = '0026_inbox_dispatch.sql';
+
+/**
+ * Replay the migration history around the dispatch migration on a throwaway database: everything
+ * BEFORE it, then a seeded pre-residency world, then the migration itself. A backfill only ever
+ * touches rows that already existed, so it can't be judged on the main connection, where every
+ * migration has already run against an empty schema.
+ *
+ * Returns one row per seeded item: its title and whether the backfill dispatched it.
+ */
+async function replayDispatchBackfill(
+  client: Client,
+): Promise<{ title: string; dispatched: boolean }[]> {
+  // A code literal, never user input — same footing as the `set role` interpolation above.
+  const database = 'alfred_dispatch_backfill';
+  await client.query(`drop database if exists ${database}`);
+  await client.query(`create database ${database}`);
+  const probe = new pg.Client({
+    host: client.host,
+    port: client.port,
+    user: client.user,
+    database,
+  });
+  await probe.connect();
+  try {
+    await bootstrapSupabase(probe);
+    await applyMigrations(
+      probe,
+      MIGRATIONS_DIR,
+      (file) => path.basename(file) < DISPATCH_MIGRATION,
+    );
+    // The world as it stood when "in the Inbox" still meant "has no folder": a filed task with a
+    // subtask beneath it, and a loose capture.
+    const { rows: folderRows } = await probe.query<{ id: string }>(
+      `insert into folders (name) values ('Health') returning id`,
+    );
+    const folder = folderRows[0]?.id;
+    if (folder === undefined) throw new Error('could not seed a folder');
+    const { rows: parentRows } = await probe.query<{ id: string }>(
+      `insert into items (title, item_type, folder_id) values ('filed task', 'task', $1)
+         returning id`,
+      [folder],
+    );
+    const parent = parentRows[0]?.id;
+    if (parent === undefined) throw new Error('could not seed a filed task');
+    await probe.query(
+      `insert into items (title, item_type, folder_id, parent_id)
+         values ('filed subtask', 'task', $1, $2)`,
+      [folder, parent],
+    );
+    await probe.query(`insert into items (title, item_type) values ('inbox capture', 'task')`);
+
+    await applyMigrations(
+      probe,
+      MIGRATIONS_DIR,
+      (file) => path.basename(file) === DISPATCH_MIGRATION,
+    );
+    const { rows } = await probe.query<{ title: string; dispatched: boolean }>(
+      `select title, dispatched_at is not null as dispatched from items order by title`,
+    );
+    return rows;
+  } finally {
+    await probe.end();
+  }
 }
 
 /** Seed the second project (ALF-110) used to prove project-scoped moves leave it undisturbed. */
@@ -1065,6 +1136,212 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const dispatchBackfillResult = await attempt(
+    'the dispatch backfill leaves every foldered item dispatched and every other item in the Inbox (ALF-168)',
+    async () => {
+      const rows = await replayDispatchBackfill(client);
+      const expected = [
+        { title: 'filed subtask', dispatched: true },
+        { title: 'filed task', dispatched: true },
+        { title: 'inbox capture', dispatched: false },
+      ];
+      const actual = rows.map((row) => `${row.title}=${String(row.dispatched)}`).join(', ');
+      const wanted = expected.map((row) => `${row.title}=${String(row.dispatched)}`).join(', ');
+      if (actual !== wanted) throw new Error(`expected ${wanted}, got ${actual}`);
+      return `pre-existing rows after the migration: ${actual}`;
+    },
+  );
+
+  const dispatchInheritanceResult = await attempt(
+    'a new item inherits residency from its parent, else from its folder (ALF-168)',
+    async () => {
+      const { rows: folderRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Inheritance') returning id`,
+      );
+      const folder = folderRows[0]?.id;
+      if (folder === undefined) throw new Error('could not seed a folder');
+
+      const insert = async (
+        columns: string,
+        values: readonly unknown[],
+      ): Promise<{ id: string; dispatched_at: string | null }> => {
+        const placeholders = values.map((_, index) => `$${String(index + 1)}`).join(', ');
+        // `::text`, so two rows' residency compares by VALUE — `pg` parses timestamptz into a
+        // Date, and two equal instants are two different objects under `!==`.
+        const { rows } = await client.query<{ id: string; dispatched_at: string | null }>(
+          `insert into items (${columns}) values (${placeholders})
+             returning id, dispatched_at::text as dispatched_at`,
+          [...values],
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('insert returned no row');
+        return row;
+      };
+
+      const filed = await insert('title, item_type, folder_id', ['filed', 'task', folder]);
+      if (filed.dispatched_at === null)
+        throw new Error('an item created with a folder must be dispatched on insert');
+
+      const captured = await insert('title, item_type', ['captured', 'task']);
+      if (captured.dispatched_at !== null)
+        throw new Error('a plain capture must stay in the Inbox');
+
+      const filedChild = await insert('title, item_type, folder_id, parent_id', [
+        'filed child',
+        'task',
+        folder,
+        filed.id,
+      ]);
+      if (filedChild.dispatched_at !== filed.dispatched_at)
+        throw new Error('a child must adopt its parent’s residency exactly, not its own now()');
+
+      const inboxChild = await insert('title, item_type, parent_id', [
+        'inbox child',
+        'task',
+        captured.id,
+      ]);
+      if (inboxChild.dispatched_at !== null)
+        throw new Error('a child of an undispatched parent must stay in the Inbox');
+
+      return 'folder → dispatched; no folder → Inbox; child adopts its parent’s residency either way';
+    },
+  );
+
+  const dispatchFolderDeleteResult = await attempt(
+    'deleting a folder returns its items to the Inbox — both fields (ALF-168)',
+    async () => {
+      const { rows: folderRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Doomed') returning id`,
+      );
+      const folder = folderRows[0]?.id;
+      if (folder === undefined) throw new Error('could not seed a folder');
+      const { rows: itemRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type, folder_id) values ('homeless soon', 'task', $1)
+           returning id`,
+        [folder],
+      );
+      const item = itemRows[0]?.id;
+      if (item === undefined) throw new Error('could not seed an item');
+
+      await client.query(`delete from folders where id = $1`, [folder]);
+
+      const { rows } = await client.query<{
+        folder_id: string | null;
+        dispatched_at: string | null;
+      }>(`select folder_id, dispatched_at from items where id = $1`, [item]);
+      const row = rows[0];
+      if (row === undefined) throw new Error('the item was deleted along with its folder');
+      if (row.folder_id !== null || row.dispatched_at !== null)
+        throw new Error(
+          `expected both fields null, got folder_id=${String(row.folder_id)} dispatched_at=${String(row.dispatched_at)}`,
+        );
+      return 'folder_id and dispatched_at both cleared — the item is back in the Inbox';
+    },
+  );
+
+  const dispatchCheckResult = await attempt(
+    'the database refuses a dispatched task with no folder, and accepts a dispatched code item (ALF-168)',
+    async () => {
+      let rejected = '';
+      try {
+        await client.query(
+          `insert into items (title, item_type, dispatched_at) values ('nowhere', 'task', now())`,
+        );
+      } catch (error) {
+        rejected = error instanceof Error ? error.message : String(error);
+      }
+      if (rejected === '')
+        throw new Error('a dispatched folderless TASK was accepted — it would render nowhere');
+      if (!rejected.includes('items_dispatched_needs_folder'))
+        throw new Error(`rejected by the wrong constraint: ${rejected}`);
+
+      // A code item is the deliberate exception: it leaves for the factory, which has no folders.
+      const { rows } = await client.query<{ dispatched_at: string | null }>(
+        `insert into items (title, item_type, dispatched_at) values ('gated', 'code', now())
+           returning dispatched_at`,
+      );
+      if (rows[0]?.dispatched_at == undefined)
+        throw new Error('a dispatched folderless CODE item should have been accepted');
+
+      // And the shape the whole column exists for: a folder written onto an Inbox row with no
+      // dispatch. The CHECK must permit it — a guess about where an item belongs is not a
+      // decision to send it there, so the item stays put.
+      const { rows: folderRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Guessed') returning id`,
+      );
+      const { rows: guessRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('a capture', 'task') returning id`,
+      );
+      await client.query(`update items set folder_id = $1 where id = $2`, [
+        folderRows[0]?.id,
+        guessRows[0]?.id,
+      ]);
+      const { rows: stillInbox } = await client.query<{ in_inbox: boolean }>(
+        `select dispatched_at is null as in_inbox from items where id = $1`,
+        [guessRows[0]?.id],
+      );
+      if (stillInbox[0]?.in_inbox !== true)
+        throw new Error('writing a folder onto an Inbox row must not move it out of the Inbox');
+
+      return 'task rejected; code item accepted; a folder written onto an Inbox row leaves it there';
+    },
+  );
+
+  const dispatchOnGateResult = await attempt(
+    'enter_code_module and convert_to_code_epic stamp dispatched_at, and task_items surfaces it (ALF-168)',
+    async () => {
+      const { rows: gateRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('gate me', 'task') returning id`,
+      );
+      const gated = gateRows[0]?.id;
+      if (gated === undefined) throw new Error('could not seed an inbox item');
+      // The view-recreation guard: an items column added after `task_items` was created is
+      // invisible to `select i.*` until the view is recreated (the 0011/0013 freeze).
+      const { rows: viewRows } = await client.query<{ dispatched_at: string | null }>(
+        `select dispatched_at from task_items where id = $1`,
+        [gated],
+      );
+      if (viewRows.length !== 1)
+        throw new Error('the seeded inbox item is missing from the task_items view');
+      if (viewRows[0]?.dispatched_at !== null)
+        throw new Error('a plain capture should read back undispatched through the view');
+
+      await asRole(client, 'authenticated', () =>
+        client.query(`select enter_code_module($1, $2, $3)`, [gated, PROJECT, EPIC]),
+      );
+      const { rows: gatedRows } = await client.query<{ dispatched_at: string | null }>(
+        `select dispatched_at from items where id = $1`,
+        [gated],
+      );
+      if (gatedRows[0]?.dispatched_at == undefined)
+        throw new Error('enter_code_module left the admitted item undispatched');
+
+      const { rows: parentRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('decomposed', 'task') returning id`,
+      );
+      const parent = parentRows[0]?.id;
+      if (parent === undefined) throw new Error('could not seed a parent');
+      const { rows: childRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type, parent_id) values ('a child', 'task', $1)
+           returning id`,
+        [parent],
+      );
+      const child = childRows[0]?.id;
+      if (child === undefined) throw new Error('could not seed a child');
+      await asRole(client, 'authenticated', () =>
+        client.query(`select convert_to_code_epic($1, $2)`, [parent, PROJECT]),
+      );
+      const { rows: convertedRows } = await client.query<{ dispatched_at: string | null }>(
+        `select dispatched_at from items where id = $1`,
+        [child],
+      );
+      if (convertedRows[0]?.dispatched_at == undefined)
+        throw new Error('convert_to_code_epic left the converted child undispatched');
+
+      return 'task_items surfaces dispatched_at; both factory RPCs stamp the rows they consume';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -1093,5 +1370,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     habitAnonResult,
     anonInsertResult,
     anonReadResult,
+    dispatchBackfillResult,
+    dispatchInheritanceResult,
+    dispatchFolderDeleteResult,
+    dispatchCheckResult,
+    dispatchOnGateResult,
   ];
 }

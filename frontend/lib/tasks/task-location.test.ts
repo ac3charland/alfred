@@ -2,6 +2,9 @@ import type { Item } from '@/lib/types';
 
 import { taskDestination } from './task-location';
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2026-01-02T00:00:00Z';
+
 function makeItem(overrides: Partial<Item> = {}): Item {
   return {
     id: overrides.id ?? 'i1',
@@ -15,6 +18,15 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     status: overrides.status ?? 'active',
     completed_at: null,
     folder_id: overrides.folder_id ?? null,
+    // A fixture with a folder is a filed item, so it defaults to dispatched. Tested against
+    // `undefined` rather than `??`, so a fixture can state `dispatched_at: null` explicitly and
+    // seed a foldered item that is still in the Inbox.
+    dispatched_at:
+      overrides.dispatched_at === undefined
+        ? overrides.folder_id == null
+          ? null
+          : DISPATCHED_AT
+        : overrides.dispatched_at,
     parent_id: overrides.parent_id ?? null,
     occurrence_index: null,
     priority: null,
@@ -46,6 +58,23 @@ describe('taskDestination', () => {
     const child = makeItem({ id: 'child', parent_id: 'root', folder_id: 'f9' });
     const grandchild = makeItem({ id: 'gc', parent_id: 'child', folder_id: 'f9' });
     expect(taskDestination(grandchild, [root, child, grandchild])).toBe('/folders/f9');
+  });
+
+  it('routes an undispatched task to the Inbox even when it already carries a folder', () => {
+    // The folder says where it would land; residency says where it renders today.
+    const item = makeItem({ folder_id: 'f1', dispatched_at: null });
+    expect(taskDestination(item, [item])).toBe('/?view=inbox');
+  });
+
+  it('routes a subtask of an undispatched root to the Inbox', () => {
+    const root = makeItem({ id: 'root', folder_id: 'f9', dispatched_at: null });
+    const child = makeItem({
+      id: 'child',
+      parent_id: 'root',
+      folder_id: 'f9',
+      dispatched_at: null,
+    });
+    expect(taskDestination(child, [root, child])).toBe('/?view=inbox');
   });
 
   it('bails to the inbox when a subtask has a broken (missing) parent chain', () => {

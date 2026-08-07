@@ -49,6 +49,7 @@ import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { residentFolderId } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import {
   countOverdueDescendants,
@@ -367,7 +368,8 @@ export function TaskRow({
 
   // On the Completed screen, each root row carries a context label showing where the
   // task lives: its ancestor breadcrumb (oldest → youngest) when it's a nested subtask,
-  // otherwise its folder name (or "Inbox"). Ancestors are resolved from the full task
+  // otherwise its RESIDENT folder name (or "Inbox" — including for a task that carries a
+  // folder but was never dispatched). Ancestors are resolved from the full task
   // list because they may be active items filtered out of the completed view.
   const isContextRow = isCompletedView && depth === 0;
   const ancestorTitles = React.useMemo(
@@ -376,11 +378,12 @@ export function TaskRow({
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — constant dep-array literal; every element is Object.is-equal across renders so React never recomputes, identical to [].
     [isContextRow, allTasks, node.parent_id],
   );
+  const contextFolderId = residentFolderId(node);
   const contextLabel = isContextRow
     ? ancestorTitles.length > 0
       ? ancestorTitles.join(' > ')
-      : node.folder_id
-        ? (folders.find((f) => f.id === node.folder_id)?.name ?? 'Unknown')
+      : contextFolderId
+        ? (folders.find((f) => f.id === contextFolderId)?.name ?? 'Unknown')
         : 'Inbox'
     : null;
 

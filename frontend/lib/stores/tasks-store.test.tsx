@@ -49,6 +49,7 @@ const BASE: Item = {
   status: 'active',
   completed_at: null,
   folder_id: null,
+  dispatched_at: null,
   parent_id: null,
   occurrence_index: null,
   recurrence: null,
@@ -58,8 +59,23 @@ const BASE: Item = {
   sort_order: 0,
 };
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2025-01-01T11:00:00Z';
+
 function item(overrides: Partial<Item>): Item {
-  return { ...BASE, ...overrides };
+  const row = { ...BASE, ...overrides };
+  // A fixture with a folder is a filed item, so it defaults to dispatched — every existing seed
+  // that says `folder_id: 'f1'` keeps meaning "filed in f1". State `dispatched_at: null`
+  // explicitly to seed the one state this story creates: foldered, but still in the Inbox.
+  if (overrides.dispatched_at === undefined && row.folder_id !== null) {
+    return { ...row, dispatched_at: DISPATCHED_AT };
+  }
+  return row;
+}
+
+/** Hold the create API promise open, so an assertion sees the OPTIMISTIC row, not the reconciled one. */
+function pendingCreate() {
+  mockCreateItem.mockReturnValue(new Promise<Item>(() => {}));
 }
 
 function makeWrapper(initialTasks: Item[]) {
@@ -170,6 +186,48 @@ describe('addTask', () => {
     });
 
     expect(result.current.tasks).toStrictEqual([]);
+  });
+
+  // The DB fills residency at insert (inherit the parent's, else a folder means dispatched), so
+  // the optimistic row has to predict the same value — otherwise the new row flashes into the
+  // wrong view for one render before the server row reconciles it back.
+  describe('predicts the residency the saved row will get', () => {
+    it('leaves a plain capture in the Inbox', () => {
+      pendingCreate();
+      const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+      act(() => void result.current.actions.addTask({ text: 'A thought' }));
+
+      expect(result.current.tasks[0]?.dispatched_at).toBeNull();
+    });
+
+    it('dispatches a capture made inside a folder', () => {
+      pendingCreate();
+      const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([]) });
+
+      act(() => void result.current.actions.addTask({ text: 'Filed', folderId: 'folder-1' }));
+
+      expect(result.current.tasks[0]?.dispatched_at).not.toBeNull();
+    });
+
+    it('has a subtask adopt its parent’s residency, not its own folder', () => {
+      pendingCreate();
+      // A parent that carries a folder but is still in the Inbox: its new subtask belongs in the
+      // Inbox too, even though the "add subtask" field passes the parent's folder along.
+      const parent = item({ id: 'p1', folder_id: 'folder-1', dispatched_at: null });
+      const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent]) });
+
+      act(
+        () =>
+          void result.current.actions.addTask({
+            text: 'Subtask',
+            parentId: 'p1',
+            folderId: 'folder-1',
+          }),
+      );
+
+      expect(result.current.tasks.find((t) => t.title === 'Subtask')?.dispatched_at).toBeNull();
+    });
   });
 
   it('includes parent_id in the API call when parentId is provided', async () => {
@@ -973,8 +1031,28 @@ describe('moveTask', () => {
     });
 
     expect(result.current.tasks.every((t) => t.folder_id === 'folder-2')).toBe(true);
-    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-2' });
-    expect(mockUpdateItem).toHaveBeenCalledWith('c-1', { folder_id: 'folder-2' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      folder_id: 'folder-2',
+      dispatched: true,
+    });
+    expect(mockUpdateItem).toHaveBeenCalledWith('c-1', {
+      folder_id: 'folder-2',
+      dispatched: true,
+    });
+  });
+
+  it('dispatches the whole subtree optimistically, so it lands in the folder view at once', () => {
+    // Hold the API promise open: the assertion is about the OPTIMISTIC patch, before the server
+    // rows reconcile. Without residency in that patch the subtree would sit in the Inbox until
+    // the round-trip landed, then jump.
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    expect(result.current.tasks.every((t) => t.dispatched_at === null)).toBe(true);
+
+    act(() => void result.current.actions.moveTask('item-1', 'folder-2'));
+
+    expect(result.current.tasks.every((t) => t.dispatched_at !== null)).toBe(true);
   });
 
   it('uses moveToInbox when the target is null', async () => {
@@ -988,6 +1066,26 @@ describe('moveTask', () => {
     });
 
     expect(mockMoveToInbox).toHaveBeenCalledWith('item-1');
+  });
+
+  it('clears residency along with the folder when moving back to the Inbox', async () => {
+    // Un-filing undoes the filing: keeping either field would leave the row rendering in the
+    // folder it was just pulled out of.
+    mockMoveToInbox.mockResolvedValue({
+      ...item({ id: 'item-1' }),
+      folder_id: null,
+      dispatched_at: null,
+    });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', folder_id: 'folder-9' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.moveTask('item-1', null);
+    });
+
+    expect(result.current.tasks[0]?.folder_id).toBeNull();
+    expect(result.current.tasks[0]?.dispatched_at).toBeNull();
   });
 
   it('is a no-op and does not call the API when the id is not in the store', async () => {
@@ -1037,6 +1135,7 @@ describe('moveTask', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith('u-1', {
       folder_id: 'folder-2',
       item_type: 'task',
+      dispatched: true,
     });
     expect(result.current.tasks[0]?.item_type).toBe('task');
     expect(result.current.tasks[0]?.folder_id).toBe('folder-2');
@@ -1078,7 +1177,10 @@ describe('moveTask', () => {
     });
 
     // No item_type in the payload — a task stays a task.
-    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-2' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      folder_id: 'folder-2',
+      dispatched: true,
+    });
     expect(result.current.tasks[0]?.item_type).toBe('task');
   });
 });
@@ -1104,7 +1206,10 @@ describe('bulkMove', () => {
     });
 
     expect(result.current.tasks.every((t) => t.folder_id === 'folder-2')).toBe(true);
-    expect(mockUpdateItem).toHaveBeenCalledWith('c1', { folder_id: 'folder-2' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('c1', {
+      folder_id: 'folder-2',
+      dispatched: true,
+    });
     expect(failed).toEqual([]);
   });
 
@@ -1181,9 +1286,16 @@ describe('reparentTask', () => {
 
     const draggedAfter = result.current.tasks.find((t) => t.id === 'd1');
     expect(draggedAfter?.parent_id).toBe('p1');
-    expect(mockUpdateItem).toHaveBeenCalledWith('d1', { parent_id: 'p1', folder_id: 'folder-9' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1', {
+      parent_id: 'p1',
+      folder_id: 'folder-9',
+      dispatched: true,
+    });
     // The subtree adopts the new parent's folder.
-    expect(mockUpdateItem).toHaveBeenCalledWith('d1-c', { folder_id: 'folder-9' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1-c', {
+      folder_id: 'folder-9',
+      dispatched: true,
+    });
     expect(result.current.tasks.every((t) => t.id === 'p1' || t.folder_id === 'folder-9')).toBe(
       true,
     );
@@ -1202,9 +1314,46 @@ describe('reparentTask', () => {
       await result.current.actions.reparentTask('d1', 'p1');
     });
 
-    expect(mockUpdateItem).toHaveBeenCalledWith('d1', { parent_id: 'p1', folder_id: 'folder-1' });
-    // Same folder → the child is not PATCHed.
-    expect(mockUpdateItem).not.toHaveBeenCalledWith('d1-c', { folder_id: 'folder-1' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1', {
+      parent_id: 'p1',
+      folder_id: 'folder-1',
+      dispatched: true,
+    });
+    // Same folder AND same residency → the child is not PATCHed.
+    expect(mockUpdateItem).not.toHaveBeenCalledWith('d1-c', {
+      folder_id: 'folder-1',
+      dispatched: true,
+    });
+  });
+
+  it('cascades to the subtree on a residency-only change — same folder, different view', async () => {
+    // The undispatched rows already point at folder-1 but render in the Inbox. Nesting them
+    // under a filed task there changes which view the subtree lives in even though `folder_id`
+    // never moves, so the descendants have to be written too — otherwise the child stays in
+    // the Inbox while its parent leaves, and the orphan renders nowhere.
+    const dragged = item({ id: 'd1', folder_id: 'folder-1', dispatched_at: null });
+    const child = item({ id: 'd1-c', parent_id: 'd1', folder_id: 'folder-1', dispatched_at: null });
+    const target = item({ id: 'p1', folder_id: 'folder-1' });
+    mockUpdateItem.mockImplementation((id: string) =>
+      Promise.resolve(item({ id, folder_id: 'folder-1' })),
+    );
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([dragged, child, target]),
+    });
+
+    await act(async () => {
+      await result.current.actions.reparentTask('d1', 'p1');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1', {
+      parent_id: 'p1',
+      folder_id: 'folder-1',
+      dispatched: true,
+    });
+    expect(mockUpdateItem).toHaveBeenCalledWith('d1-c', {
+      folder_id: 'folder-1',
+      dispatched: true,
+    });
   });
 
   it('is a no-op when the target parent is not in the store', async () => {
@@ -1353,10 +1502,14 @@ describe('reorderSubtask', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith('d', {
       parent_id: 'p2',
       folder_id: 'folder-9',
+      dispatched: true,
       sort_order: 15,
     });
     // The subtree adopts the new parent's folder.
-    expect(mockUpdateItem).toHaveBeenCalledWith('d-c', { folder_id: 'folder-9' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('d-c', {
+      folder_id: 'folder-9',
+      dispatched: true,
+    });
     const draggedAfter = result.current.tasks.find((t) => t.id === 'd');
     expect(draggedAfter?.parent_id).toBe('p2');
   });
@@ -1676,6 +1829,32 @@ describe('useScopedTasks', () => {
     });
     expect(result.current).toStrictEqual([]);
   });
+
+  // An item can carry a folder and still be waiting for triage. It belongs to the Inbox until a
+  // human dispatches it, and its subtree has to travel with it — a subtree split across two
+  // views loses the orphaned half, because each view filters flat before building its tree.
+  describe('an undispatched item that already carries a folder', () => {
+    const undispatched: Item[] = [
+      item({ id: 'guessed', folder_id: 'work', dispatched_at: null }),
+      item({ id: 'guessed-child', folder_id: 'work', parent_id: 'guessed', dispatched_at: null }),
+      item({ id: 'filed', folder_id: 'work' }),
+    ];
+
+    it('renders in the Inbox, with its subtree', () => {
+      const { result } = renderHook(() => useScopedTasks({ type: 'inbox' }), {
+        wrapper: makeWrapper(undispatched),
+      });
+      expect(result.current.map((n) => n.id)).toStrictEqual(['guessed']);
+      expect(result.current[0]?.children.map((c) => c.id)).toStrictEqual(['guessed-child']);
+    });
+
+    it('is absent from the view of the folder it points at', () => {
+      const { result } = renderHook(() => useScopedTasks({ type: 'folder', folderId: 'work' }), {
+        wrapper: makeWrapper(undispatched),
+      });
+      expect(result.current.map((n) => n.id)).toStrictEqual(['filed']);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1820,6 +1999,18 @@ describe('useFolderBadgeCounts', () => {
     });
 
     expect(result.current.counts['f1']).toEqual({ attention: 1, overdue: 0 });
+  });
+
+  it('ignores an undispatched item, even one already carrying that folder', () => {
+    // The tally counts residency, not location — otherwise an item sitting in the Inbox would
+    // inflate the badge of a folder it has not been filed into.
+    const items = [
+      item({ id: 'guessed', folder_id: 'f1', due_date: dueYMD(-1), dispatched_at: null }),
+      item({ id: 'filed', folder_id: 'f1', due_date: dueYMD(0) }),
+    ];
+    const { result } = renderHook(useFolderBadgeCounts, { wrapper: makeWrapper(items) });
+
+    expect(result.current).toEqual({ f1: { attention: 1, overdue: 0 } });
   });
 });
 

@@ -25,6 +25,7 @@ function item(priority: TaskPriority | null, due_date: string | null): Item {
     status: 'active',
     completed_at: null,
     folder_id: null,
+    dispatched_at: null,
     parent_id: null,
     occurrence_index: null,
     priority,

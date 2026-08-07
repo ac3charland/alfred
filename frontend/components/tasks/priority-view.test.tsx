@@ -13,6 +13,9 @@ jest.mock('@/lib/api-client');
 const mockCompleteTask = jest.mocked(apiClient.completeTask);
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 
+/** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
+const DISPATCHED_AT = '2026-01-01T00:00:00Z';
+
 let nextCreated = 0;
 function makeItem(title: string, overrides: Partial<Item> = {}): Item {
   nextCreated += 1;
@@ -28,6 +31,15 @@ function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     status: overrides.status ?? 'active',
     completed_at: overrides.completed_at ?? null,
     folder_id: overrides.folder_id ?? null,
+    // A fixture with a folder is a filed item, so it defaults to dispatched. Tested against
+    // `undefined` rather than `??`, so a fixture can state `dispatched_at: null` explicitly and
+    // seed a foldered item that is still in the Inbox.
+    dispatched_at:
+      overrides.dispatched_at === undefined
+        ? overrides.folder_id == null
+          ? null
+          : DISPATCHED_AT
+        : overrides.dispatched_at,
     parent_id: overrides.parent_id ?? null,
     occurrence_index: null,
     priority: overrides.priority ?? null,
@@ -170,6 +182,19 @@ describe('PriorityView', () => {
     const rows = within(list).getAllByRole('listitem');
     expect(rows.find((li) => li.textContent.includes('Filed'))).toHaveTextContent('Work');
     expect(rows.find((li) => li.textContent.includes('Unfiled'))).toHaveTextContent('Inbox');
+  });
+
+  it('labels an undispatched task "Inbox" even when it already carries a folder', () => {
+    const folders: Folder[] = [
+      { id: 'f1', name: 'Work', created_at: '2026-01-01T00:00:00Z', sort_order: 1 },
+    ];
+    renderWithProviders(<PriorityView />, {
+      folders,
+      tasks: [makeItem('Guessed', { priority: 'high', folder_id: 'f1', dispatched_at: null })],
+    });
+
+    const list = screen.getByRole('list', { name: 'Tasks by priority' });
+    expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('Inbox');
   });
 
   it('shows an empty state when there are no tasks', () => {

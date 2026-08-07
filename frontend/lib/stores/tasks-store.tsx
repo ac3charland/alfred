@@ -11,6 +11,7 @@ import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { DEFAULT_TASK_SORT, type TaskSortMode, sortNodesBy } from '@/lib/tasks/task-sort';
+import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import { buildTree, collectSubtree, makeOptimisticItem, tempId } from '@/lib/tree';
 import type { Item, ItemType } from '@/lib/types';
@@ -199,23 +200,36 @@ async function applyBulkSettled(
 interface FolderCascade {
   /** The folder bucket the subtree adopts (the new parent's `folder_id`). */
   newFolderId: string | null;
-  /** Whether the folder actually changed — a same-folder move writes no descendant rows. */
-  folderChanged: boolean;
+  /** The residency the subtree adopts (the new parent's `dispatched_at`). */
+  newDispatchedAt: string | null;
+  /** Whether the new parent has been dispatched — the intent the API takes. */
+  newDispatched: boolean;
+  /** Whether folder or residency actually changed — an unchanged move writes no descendant rows. */
+  cascades: boolean;
   /** The dragged row's descendant ids (excludes the row itself) — the rows to re-file. */
   descendantIds: string[];
 }
 
 /**
  * Compute the folder cascade for nesting `dragged` (with its subtree `affected`) under
- * `newParent`. A subtree shares one folder bucket, so a cross-folder move drags the whole subtree
- * along; a same-folder move is a pure parent/order change with no descendant writes. Shared by
- * `reparentTask` and `reorderSubtask` so the cascade logic lives in one place.
+ * `newParent`. A subtree shares one folder bucket AND one residency, so a move that changes
+ * either drags the whole subtree along; a move that changes neither is a pure parent/order change
+ * with no descendant writes. Shared by `reparentTask` and `reorderSubtask` so the cascade logic
+ * lives in one place.
+ *
+ * Residency has to be part of the test, not just the payload: dragging an Inbox subtask under a
+ * filed task changes which view its subtree renders in even when `folder_id` happens to match,
+ * and a subtree split across two views loses the orphaned half (each view filters flat, then
+ * builds its tree).
  */
 function folderCascade(dragged: Item, affected: Item[], newParent: Item): FolderCascade {
   const newFolderId = newParent.folder_id;
   return {
     newFolderId,
-    folderChanged: dragged.folder_id !== newFolderId,
+    newDispatchedAt: newParent.dispatched_at,
+    newDispatched: isDispatched(newParent),
+    cascades:
+      dragged.folder_id !== newFolderId || isDispatched(dragged) !== isDispatched(newParent),
     descendantIds: affected.filter((item) => item.id !== dragged.id).map((item) => item.id),
   };
 }
@@ -290,7 +304,15 @@ export function TasksProvider({
         const pool = siblings.length > 0 ? siblings : tasksRef.current;
         const sortOrder =
           pool.length > 0 ? Math.max(...pool.map((item) => item.sort_order)) + 1 : 1;
-        const optimistic = makeOptimisticItem(createInput, sortOrder);
+        // Predict the residency the DB trigger will assign — inherit the parent's, else a folder
+        // means dispatched — or the new row flashes into the wrong view before reconciling.
+        const dispatchedAt =
+          parent === undefined
+            ? folderId == null
+              ? null
+              : new Date().toISOString()
+            : parent.dispatched_at;
+        const optimistic = makeOptimisticItem(createInput, sortOrder, dispatchedAt);
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({ type: 'insert', item: optimistic });
@@ -429,9 +451,17 @@ export function TasksProvider({
             : new Set(
                 affected.filter((item) => item.item_type === 'unclassified').map((item) => item.id),
               );
+        // Filing IS the dispatch, and moving back to the Inbox undoes it — location and residency
+        // travel together, on every row of the subtree, in one coherent write per row.
+        const dispatched = folderId !== null;
+        const dispatchedAt = dispatched ? new Date().toISOString() : null;
         await runOptimisticMutation({
           optimistic: () => {
-            dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
+            dispatch({
+              type: 'patch',
+              ids,
+              patch: { folder_id: folderId, dispatched_at: dispatchedAt },
+            });
             if (classifyIds.size > 0) {
               dispatch({ type: 'patch', ids: [...classifyIds], patch: { item_type: 'task' } });
             }
@@ -444,8 +474,8 @@ export function TasksProvider({
                   : api.updateItem(
                       itemId,
                       classifyIds.has(itemId)
-                        ? { folder_id: folderId, item_type: 'task' }
-                        : { folder_id: folderId },
+                        ? { folder_id: folderId, item_type: 'task', dispatched: true }
+                        : { folder_id: folderId, dispatched: true },
                     ),
               ),
             ),
@@ -506,7 +536,7 @@ export function TasksProvider({
                   subtree.map((row) =>
                     folderId === null
                       ? api.moveToInbox(row.id)
-                      : api.updateItem(row.id, { folder_id: folderId }),
+                      : api.updateItem(row.id, { folder_id: folderId, dispatched: true }),
                   ),
                 ),
             },
@@ -514,7 +544,15 @@ export function TasksProvider({
         });
         if (units.length === 0) return [];
         const affectedIds = units.flatMap((unit) => unit.snapshot.map((row) => row.id));
-        dispatch({ type: 'patch', ids: affectedIds, patch: { folder_id: folderId } });
+        // Residency rides along with the folder, exactly as in the single-item move.
+        dispatch({
+          type: 'patch',
+          ids: affectedIds,
+          patch: {
+            folder_id: folderId,
+            dispatched_at: folderId === null ? null : new Date().toISOString(),
+          },
+        });
         return applyBulkSettled(
           dispatch,
           showToastRef.current,
@@ -559,32 +597,44 @@ export function TasksProvider({
         const newParent = current.find((item) => item.id === newParentId);
         // The target may have just been deleted/reconciled away.
         if (newParent === undefined) return;
-        // Moving under a parent in a different folder drags the whole subtree's folder
-        // along; staying in the same folder is a pure parent change (no descendant writes).
-        const { newFolderId, folderChanged, descendantIds } = folderCascade(
-          dragged,
-          affected,
-          newParent,
-        );
+        // Moving under a parent in a different folder — or in the same folder but a different
+        // residency — drags the whole subtree along; a move that changes neither is a pure
+        // parent change (no descendant writes).
+        const { newFolderId, newDispatchedAt, newDispatched, cascades, descendantIds } =
+          folderCascade(dragged, affected, newParent);
 
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({
               type: 'patch',
               ids: [id],
-              patch: { parent_id: newParentId, folder_id: newFolderId },
+              patch: {
+                parent_id: newParentId,
+                folder_id: newFolderId,
+                dispatched_at: newDispatchedAt,
+              },
             });
-            if (folderChanged && descendantIds.length > 0) {
-              dispatch({ type: 'patch', ids: descendantIds, patch: { folder_id: newFolderId } });
+            if (cascades && descendantIds.length > 0) {
+              dispatch({
+                type: 'patch',
+                ids: descendantIds,
+                patch: { folder_id: newFolderId, dispatched_at: newDispatchedAt },
+              });
             }
           },
           apiCall: () => {
             const requests = [
-              api.updateItem(id, { parent_id: newParentId, folder_id: newFolderId }),
+              api.updateItem(id, {
+                parent_id: newParentId,
+                folder_id: newFolderId,
+                dispatched: newDispatched,
+              }),
             ];
-            if (folderChanged) {
+            if (cascades) {
               for (const descId of descendantIds) {
-                requests.push(api.updateItem(descId, { folder_id: newFolderId }));
+                requests.push(
+                  api.updateItem(descId, { folder_id: newFolderId, dispatched: newDispatched }),
+                );
               }
             }
             return Promise.all(requests);
@@ -633,21 +683,27 @@ export function TasksProvider({
         // Cross-parent → re-parent + folder cascade (as reparentTask) AND set the new slot's rank.
         const newParent = current.find((item) => item.id === parentId);
         if (newParent === undefined) return;
-        const { newFolderId, folderChanged, descendantIds } = folderCascade(
-          dragged,
-          affected,
-          newParent,
-        );
+        const { newFolderId, newDispatchedAt, newDispatched, cascades, descendantIds } =
+          folderCascade(dragged, affected, newParent);
 
         await runOptimisticMutation({
           optimistic: () => {
             dispatch({
               type: 'patch',
               ids: [id],
-              patch: { parent_id: parentId, folder_id: newFolderId, sort_order: sortOrder },
+              patch: {
+                parent_id: parentId,
+                folder_id: newFolderId,
+                dispatched_at: newDispatchedAt,
+                sort_order: sortOrder,
+              },
             });
-            if (folderChanged && descendantIds.length > 0) {
-              dispatch({ type: 'patch', ids: descendantIds, patch: { folder_id: newFolderId } });
+            if (cascades && descendantIds.length > 0) {
+              dispatch({
+                type: 'patch',
+                ids: descendantIds,
+                patch: { folder_id: newFolderId, dispatched_at: newDispatchedAt },
+              });
             }
           },
           apiCall: () => {
@@ -655,12 +711,15 @@ export function TasksProvider({
               api.updateItem(id, {
                 parent_id: parentId,
                 folder_id: newFolderId,
+                dispatched: newDispatched,
                 sort_order: sortOrder,
               }),
             ];
-            if (folderChanged) {
+            if (cascades) {
               for (const descId of descendantIds) {
-                requests.push(api.updateItem(descId, { folder_id: newFolderId }));
+                requests.push(
+                  api.updateItem(descId, { folder_id: newFolderId, dispatched: newDispatched }),
+                );
               }
             }
             return Promise.all(requests);
@@ -753,11 +812,11 @@ export function useScopedTasks(
       if (scopeType === 'completed') return item.status === 'completed';
       // Active views (inbox / folder) keep BOTH active and completed items in scope so a
       // parent's completed children render under it (revealed by "Show completed"). A
-      // subtree shares one folder bucket (moveTask cascades folder_id), so filtering by
-      // folder alone keeps each subtree intact for buildTree.
-      // Stryker disable next-line ConditionalExpression: AT_CEILING — for inbox, folderId is null, so `folder_id === folderId` equals the inbox filter `folder_id === null`; completed is handled above, so forcing this branch true changes nothing.
-      if (scopeType === 'folder') return item.folder_id === folderId;
-      return item.folder_id === null; // inbox
+      // subtree shares one folder bucket AND one residency (every folder write cascades both),
+      // so filtering flat keeps each subtree intact for buildTree.
+      if (scopeType === 'folder') return isDispatched(item) && item.folder_id === folderId;
+      // Inbox: everything a human hasn't dispatched yet, whatever folder_id may already hold.
+      return !isDispatched(item);
     });
     const forest = buildTree(filtered);
     if (scopeType === 'completed') return forest;
@@ -787,14 +846,16 @@ export interface FolderBadgeCounts {
  *
  * The two buckets are **disjoint** — every counted task lands in exactly one — so the numbers
  * never double-count the same task:
- * - **overdue** (red): active, in a folder, with a `due_date` strictly before today. Past-due
- *   takes precedence, so a high-priority overdue task counts here, not in attention.
- * - **attention** (amber): active, in a folder, NOT overdue, and either high-priority (regardless
- *   of due date — a high-priority task with no due date still counts) OR due today.
+ * - **overdue** (red): active, resident in a folder, with a `due_date` strictly before today.
+ *   Past-due takes precedence, so a high-priority overdue task counts here, not in attention.
+ * - **attention** (amber): active, resident in a folder, NOT overdue, and either high-priority
+ *   (regardless of due date — a high-priority task with no due date still counts) OR due today.
  *
- * Inbox items (`folder_id === null`) and completed tasks never count. A `due_date` implies the
- * row is a task (the DB `items_task_only_fields` constraint), and subtasks share their ancestor's
- * `folder_id`, so these flat counts include nested subtasks.
+ * The tally counts **residency, not location**: an item still in the Inbox never counts, even
+ * when it already carries a folder, or it would inflate that folder's badge from inside the
+ * Inbox. Completed tasks never count either. A `due_date` implies the row is a task (the DB
+ * `items_task_only_fields` constraint), and subtasks share their ancestor's folder and residency,
+ * so these flat counts include nested subtasks.
  */
 export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
   const items = useTasks();
@@ -805,16 +866,17 @@ export function useFolderBadgeCounts(): Record<string, FolderBadgeCounts> {
       bucket[key] += 1;
     };
     for (const item of items) {
-      if (item.folder_id === null) continue;
+      const folderId = residentFolderId(item);
+      if (folderId === null) continue;
       if (item.status !== 'active') continue;
       if (item.due_date !== null && isDueDateOverdue(item.due_date)) {
-        bump(item.folder_id, 'overdue');
+        bump(folderId, 'overdue');
         continue;
       }
       // Not overdue: a due date that is today-or-earlier can only be today here.
       const isDueToday = item.due_date !== null && isDueTodayOrOverdue(item.due_date);
       if (item.priority === 'high' || isDueToday) {
-        bump(item.folder_id, 'attention');
+        bump(folderId, 'attention');
       }
     }
     return counts;

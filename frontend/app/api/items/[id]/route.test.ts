@@ -56,6 +56,21 @@ const routeContext = { params: Promise.resolve({ id: TEST_ID }) };
 // PATCH /api/items/[id]
 // ---------------------------------------------------------------------------
 
+/** PATCH the test item with `body` and return the payload the route built for Supabase. */
+async function patchWith(body: unknown): Promise<Record<string, unknown>> {
+  const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_ITEM, error: undefined });
+  mockCreateClient.mockResolvedValue(mockSupabase as never);
+  await PATCH(
+    new Request(`http://localhost/api/items/${TEST_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+    routeContext,
+  );
+  return firstCallArg(mockSupabase._chain.update);
+}
+
 describe('PATCH /api/items/[id]', () => {
   it('returns 401 when no session', async () => {
     const mockSupabase = makeMockSupabase(undefined, { data: undefined, error: undefined });
@@ -384,6 +399,35 @@ describe('PATCH /api/items/[id]', () => {
     const chain = mockSupabase._chain;
     const payload = firstCallArg(chain.update);
     expect(Object.keys(payload)).not.toContain('folder_id');
+  });
+
+  // `dispatched` is an INTENT, not a column: the route authors the instant, so no caller can
+  // backdate residency. The three cases are the whole contract.
+  describe('the `dispatched` intent maps onto dispatched_at', () => {
+    it('true stamps a server-authored timestamp', async () => {
+      const payload = await patchWith({ dispatched: true });
+      expect(typeof payload['dispatched_at']).toBe('string');
+      // A real instant, not an echo of anything the caller sent.
+      expect(Number.isNaN(Date.parse(String(payload['dispatched_at'])))).toBe(false);
+    });
+
+    it('false returns the item to the Inbox', async () => {
+      const payload = await patchWith({ dispatched: false });
+      expect(payload['dispatched_at']).toBeNull();
+    });
+
+    it('absent leaves residency untouched, and never leaks the virtual field itself', async () => {
+      const payload = await patchWith({ title: 'Only title' });
+      expect(Object.keys(payload)).not.toContain('dispatched_at');
+      expect(Object.keys(payload)).not.toContain('dispatched');
+    });
+
+    it('rides alongside folder_id as one coherent write', async () => {
+      const folderId = 'e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8';
+      const payload = await patchWith({ folder_id: folderId, dispatched: true });
+      expect(payload['folder_id']).toBe(folderId);
+      expect(payload['dispatched_at']).not.toBeNull();
+    });
   });
 
   it('includes parent_id in update payload when provided', async () => {
