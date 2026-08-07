@@ -8,6 +8,8 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 - `migrations-applied.log` — committed paper trail of which migrations reached a live DB (appended
   by `npm run migrate`; commit it). Guards against the migration-drift class that caused ALF-119/124.
 - `seed.sql` — tiny development dataset (folders + a nested subtask tree).
+- `src/deploy.ts` — the applier the merge pipeline runs (see
+  [Applying on merge](#applying-on-merge-the-default-path)); also usable locally.
 
 ## Schema summary
 
@@ -49,7 +51,59 @@ The Software Factory: Project / Epic / Story model + the refine→implement life
 - **RLS/grants**: same single-user pattern as `0001` (`authenticated` full access; explicit
   table/view/function GRANTs to `anon, authenticated, service_role`).
 
-## Applying to the hosted project
+## Applying on merge (the default path)
+
+**Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`
+runs `database/src/deploy.ts` on every push to `main`, as a `personal` / `work` matrix
+(`fail-fast: false`) over the same session-pooler secrets the nightly backup uses
+(`SUPABASE_DB_URL_PERSONAL` / `SUPABASE_DB_URL_WORK`). Nothing pending → it reads the ledger, says
+"already up to date", and exits. You don't apply migrations by hand as part of shipping any more;
+the [instance-isolation rule](../docs/instance-isolation.md) that *every* migration must reach
+*both* databases is now mechanical rather than remembered.
+
+How it decides what to run:
+
+- **`public.schema_migrations`** — a ledger table **in each database**, one row per applied
+  migration filename. The committed `migrations-applied.log` records the shared history a human
+  typed; it can't answer "what has *this* database seen?", which is the only question an unattended
+  applier may act on. The deployer creates the ledger itself (`create table if not exists`) — it is
+  not a migration, because it has to exist before the first migration can be judged.
+- **Pending = every migration file the ledger doesn't record**, applied in filename order. Each file
+  runs in **one transaction together with its ledger row**, so a failure leaves neither half-applied
+  SQL nor a row claiming success. A `pg_advisory_lock` around the run keeps a merge and a manual
+  apply from racing.
+- **Baseline.** A database that already carries the app schema but has no ledger predates this
+  automation, so its first run **records** everything through `BASELINE_MIGRATION`
+  (`0026_inbox_dispatch.sql` — the last migration applied by hand) as already applied instead of
+  re-running it, then applies what came after. That constant is a historical fact about the two live
+  databases; **never advance it**. An empty database (a newly provisioned instance) has no schema, so
+  it just gets every migration from `0001`.
+- **`npm run migrate` writes the same ledger**, so a migration you apply by hand — during
+  development, or to unblock something — is never re-applied by the pipeline.
+
+Two things worth knowing:
+
+- **The migration lands after the app code.** Vercel deploys `main` on its own schedule and nothing
+  orders the two, so write migrations **expand-then-contract**: the new schema must work with the
+  code already live, and a column/table is only dropped in a later migration. This is the same
+  discipline the pipeline's speed makes cheap, not a new constraint.
+- **The ledger is in `public`** so it travels with the schema-scoped nightly dump (a restored
+  database still knows its history) and it is deliberately **left ungranted**, so the PostgREST API
+  roles can't see it. The integration suite asserts both. The next `supabase gen types` run will list
+  `schema_migrations` in `frontend/lib/database.types.ts` — expected, and unused by app code.
+
+Watch a run under **Actions → Migrate Databases**; a failure emails the repo owner like any other
+red workflow. To see what a live database is missing without writing anything:
+
+```bash
+# Reads DATABASE_URL from frontend/.env.local (or an exported SUPABASE_DB_URL / DATABASE_URL):
+npm run deploy -w database -- --dry-run
+```
+
+## Applying to the hosted project by hand
+
+Reach for this when you're iterating on a migration before it merges, or bootstrapping a database
+from scratch — the merge pipeline above is the path for anything that has landed on `main`.
 
 Env values live in `frontend/.env.local` (gitignored). Prefer the **Direct connection**
 URI (it's IPv6 and works from a normal machine). If your network is IPv4-only, use the
@@ -61,7 +115,8 @@ is unreliable for multi-statement DDL.
 # prints the target host, and confirms before writing (add --yes to skip the prompt):
 npm run migrate -w database 11           # accepts 11, 0011, or 0011_task_items_view_columns.sql
 # On success it appends a line to database/migrations-applied.log (the paper trail of what reached
-# a live DB) — COMMIT that change so the branch records the apply.
+# a live DB) — COMMIT that change so the branch records the apply. It also records the migration in
+# that database's own schema_migrations ledger, so the merge pipeline won't re-apply it.
 
 # Or drive any file directly with psql (schema bootstrap, seed, a hand-picked migration):
 psql "$DATABASE_URL" -f database/migrations/0001_initial_schema.sql
@@ -92,6 +147,10 @@ package closes it with two checks:
   one-line regression here — red without its fix migration, green with it. Needs the
   PostgreSQL **server** binaries (`initdb`/`pg_ctl`); install the `postgresql` package if
   they're missing. Runs the server as the `postgres` user when invoked as root.
+  It also runs the **deployer's** assertions (`src/deploy-assertions.ts`) on their own throwaway
+  databases on that cluster: a fresh database takes every migration and a second run applies
+  nothing, a pre-ledger database is baselined rather than replayed, a file and its ledger row land
+  together or not at all, and the ledger stays unreadable to `anon`/`authenticated`.
 - **`npm run lint:migrations -w tools/migration-lint`** (via the root `check:fast`) — a
   static linter; its `sequence-grant` rule fails the build if a `create sequence` lacks a
   `grant usage … to anon, authenticated, service_role`. Cheap, no container; catches the
