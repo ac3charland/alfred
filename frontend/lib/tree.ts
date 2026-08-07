@@ -221,12 +221,18 @@ export const OPTIMISTIC_APPEND_SORT_ORDER = Number.MAX_SAFE_INTEGER;
  * "bottom of the group" (`max(sibling sort_order) + 1`); it defaults to a large append value for
  * a group with no siblings. The server's real sequence value replaces it on reconcile. Roots set
  * it too (harmless — roots ignore sort_order; they order by created_at / priority).
+ *
+ * `dispatchedAt` is the residency the saved row will get — the DB fills it at insert (inherit the
+ * parent's, else a folder means dispatched), so the caller predicts the same value here or the
+ * new row flashes into the wrong view before reconciling. Defaults to the Inbox.
  */
 export function makeOptimisticItem(
   input: CreateItemInput,
   sortOrder: number = OPTIMISTIC_APPEND_SORT_ORDER,
+  dispatchedAt: string | null = null,
 ): Item {
   return {
+    dispatched_at: dispatchedAt,
     id: `${TEMP_ID_PREFIX}${crypto.randomUUID()}`,
     title: input.title ?? input.text ?? '',
     notes: input.notes ?? null,
