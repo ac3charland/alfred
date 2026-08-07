@@ -282,9 +282,14 @@ export function TasksProvider({
           text: input.text,
           raw_capture: input.text,
           title: input.title ?? input.text,
+          // A parentless capture made INSIDE a folder is filing, and filing classifies: folders
+          // hold tasks, so it is created as one rather than as an unclassified row (which would
+          // render in the folder with no completion checkbox). Same rule `moveTask` applies when
+          // an unclassified item is filed. An explicit `itemType` (a `<project>:` prefix match)
+          // still wins, and a subtask's inherited family is decided first.
           item_type:
             parentId === undefined
-              ? (input.itemType ?? 'unclassified')
+              ? (input.itemType ?? (folderId === undefined ? 'unclassified' : 'task'))
               : parent?.item_type === 'code'
                 ? 'code'
                 : 'task',
