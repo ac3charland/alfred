@@ -1,6 +1,6 @@
 import {
   addSubtaskButtonClass,
-  addSubtaskRevealClass,
+  captureRevealClass,
   cardChromeClass,
   checkboxIncompleteClass,
   checkboxSizeClass,
@@ -112,12 +112,13 @@ describe('task-row styles', () => {
     expect(metaFooterClass).toContain('md:contents');
   });
 
-  it('add-subtask reveal pads both axes so the field focus ring is not clipped (ALF-112)', () => {
+  it('capture reveal pads both axes so the field focus ring is not clipped', () => {
     // The teal focus ring reaches ~3px past the field's border box; the reveal's
     // overflow-hidden height clip shaves the left edge unless the inner layer has horizontal
-    // room. px-1 (4px) clears it, py-1 keeps the existing vertical room.
-    expect(addSubtaskRevealClass).toContain('px-1');
-    expect(addSubtaskRevealClass).toContain('py-1');
+    // room. px-1 (4px) clears it, py-1 keeps the existing vertical room. Shared by the row's
+    // add-subtask box and the folder header's capture box — one class, both reveals.
+    expect(captureRevealClass).toContain('px-1');
+    expect(captureRevealClass).toContain('py-1');
   });
 
   it('add-subtask "+" is hidden on mobile, inline at md+ (collapsed into the ⋯ menu — ALF-118)', () => {
