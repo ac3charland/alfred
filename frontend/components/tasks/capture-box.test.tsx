@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
@@ -12,16 +12,22 @@ import { CaptureBox } from './capture-box';
 jest.mock('@/lib/api-client');
 const mockCreateItem = jest.mocked(apiClient.createItem);
 
-const ALFRED: Project = {
-  id: 'p-alf',
-  name: 'Alfred',
-  key: 'ALF',
-  repo_owner: 'ac3charland',
-  repo_name: 'alfred',
-  github_url: null,
-  ref_seq: 0,
-  created_at: '2025-01-01T00:00:00Z',
-};
+function makeProject(id: string, name: string, key: string): Project {
+  return {
+    id,
+    name,
+    key,
+    repo_owner: 'ac3charland',
+    repo_name: name.toLowerCase(),
+    github_url: null,
+    ref_seq: 0,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+}
+
+const ALFRED = makeProject('p-alf', 'Alfred', 'ALF');
+const RELAY = makeProject('p-rlp', 'Relay', 'RLP');
+const SANDBOX = makeProject('p-sbx', 'Sandbox', 'SBX');
 
 describe('CaptureBox', () => {
   beforeEach(() => {
@@ -326,7 +332,7 @@ describe('CaptureBox', () => {
       const user = userEvent.setup();
       renderWithProviders(<CaptureBox parseProjectPrefix />, { projects: [ALFRED] });
 
-      await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'ALF: add dark mode');
+      await user.type(screen.getByRole('combobox', { name: /capture box/i }), 'ALF: add dark mode');
       await user.click(screen.getByRole('button', { name: /capture/i }));
 
       await waitFor(() => {
@@ -350,7 +356,7 @@ describe('CaptureBox', () => {
       const user = userEvent.setup();
       renderWithProviders(<CaptureBox parseProjectPrefix />, { projects: [ALFRED] });
 
-      await user.type(screen.getByRole('textbox', { name: /capture box/i }), 'Note: buy milk');
+      await user.type(screen.getByRole('combobox', { name: /capture box/i }), 'Note: buy milk');
       await user.click(screen.getByRole('button', { name: /capture/i }));
 
       await waitFor(() => {
@@ -381,6 +387,227 @@ describe('CaptureBox', () => {
       const argument = mockCreateItem.mock.calls[0]?.[0];
       expect(argument?.item_type).toBe('unclassified');
       expect(argument?.intended_project_id).toBeUndefined();
+    });
+  });
+
+  describe('project suggestions (leading ":")', () => {
+    const PROJECTS = [ALFRED, RELAY, SANDBOX];
+
+    /** The Inbox box, seeded with the three projects the suggestion list ranks. */
+    function renderInboxBox(projects = PROJECTS) {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox parseProjectPrefix />, { projects });
+      return { user, box: screen.getByRole('combobox', { name: /capture box/i }) };
+    }
+
+    it('opens a listbox of every project when the value starts with a colon', async () => {
+      const { user, box } = renderInboxBox();
+
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      await user.type(box, ':');
+
+      const listbox = await screen.findByRole('listbox', { name: 'Projects' });
+      expect(within(listbox).getAllByRole('option')).toHaveLength(3);
+      expect(within(listbox).getByText('Alfred')).toBeInTheDocument();
+      expect(within(listbox).getByText('Relay')).toBeInTheDocument();
+      expect(within(listbox).getByText('Sandbox')).toBeInTheDocument();
+      expect(box).toHaveAttribute('aria-expanded', 'true');
+      // The first row is active on open.
+      expect(box).toHaveAttribute('aria-activedescendant', 'project-suggestion-p-alf');
+    });
+
+    it('filters the list as the query is typed after the colon', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':al');
+
+      const listbox = await screen.findByRole('listbox');
+      expect(within(listbox).getAllByRole('option')).toHaveLength(1);
+      expect(within(listbox).getByText('Alfred')).toBeInTheDocument();
+    });
+
+    it('closes the panel entirely for a query with no matches, and reopens on backspace', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':zzz');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(box).toHaveAttribute('aria-expanded', 'false');
+
+      await user.keyboard('{Backspace}{Backspace}{Backspace}');
+      expect(await screen.findByRole('listbox')).toBeInTheDocument();
+    });
+
+    it('never opens for a value whose colon is not leading, or has no colon at all', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, 'Note: buy milk');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+      await user.clear(box);
+      await user.type(box, 'buy milk');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    it('never opens when the project list is empty', async () => {
+      const { user, box } = renderInboxBox([]);
+
+      await user.type(box, ':');
+
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    it('never opens on a box rendered without parseProjectPrefix', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<CaptureBox />, { projects: PROJECTS });
+
+      const box = screen.getByRole('textbox', { name: /capture box/i });
+      await user.type(box, ':');
+
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(box).not.toHaveAttribute('aria-expanded');
+    });
+
+    it('moves the active row with the arrow keys, clamping at both ends', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':');
+      await screen.findByRole('listbox');
+
+      await user.keyboard('{ArrowUp}');
+      expect(box).toHaveAttribute('aria-activedescendant', 'project-suggestion-p-alf');
+
+      await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+      expect(box).toHaveAttribute('aria-activedescendant', 'project-suggestion-p-sbx');
+    });
+
+    it('makes a hovered row the active one, so pointer and keyboard agree', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':');
+      const listbox = await screen.findByRole('listbox');
+
+      await user.hover(within(listbox).getByRole('option', { name: /Relay/ }));
+
+      expect(box).toHaveAttribute('aria-activedescendant', 'project-suggestion-p-rlp');
+    });
+
+    it('writes the project key on Enter and captures nothing', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':');
+      await screen.findByRole('listbox');
+      await user.keyboard('{ArrowDown}{Enter}');
+
+      expect(box).toHaveValue('RLP: ');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(mockCreateItem).not.toHaveBeenCalled();
+      expect(box).toHaveFocus();
+    });
+
+    it('writes the project key on Tab', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':al');
+      await screen.findByRole('listbox');
+      await user.keyboard('{Tab}');
+
+      expect(box).toHaveValue('ALF: ');
+      expect(mockCreateItem).not.toHaveBeenCalled();
+    });
+
+    it('writes the project key when a row is clicked, keeping focus in the box', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':');
+      const listbox = await screen.findByRole('listbox');
+      await user.click(within(listbox).getByRole('option', { name: /Sandbox/ }));
+
+      expect(box).toHaveValue('SBX: ');
+      expect(box).toHaveFocus();
+      expect(mockCreateItem).not.toHaveBeenCalled();
+    });
+
+    it('always writes the key, even when the name was typed, and preserves the remainder', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':alfred add dark mode');
+      await screen.findByRole('listbox');
+      await user.keyboard('{Enter}');
+
+      expect(box).toHaveValue('ALF: add dark mode');
+    });
+
+    it('closes on Escape without altering the text; a following Enter captures verbatim', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: ':alf' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':alf');
+      await screen.findByRole('listbox');
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(box).toHaveValue(':alf');
+
+      await user.keyboard('{Enter}');
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledWith(expect.objectContaining({ text: ':alf' }));
+      });
+    });
+
+    it('re-arms the panel once the value stops starting with a colon', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':alf');
+      await screen.findByRole('listbox');
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+      // Still dismissed while the colon leads, even as the query changes…
+      await user.keyboard('{Backspace}');
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+      // …and armed again once it doesn't.
+      await user.clear(box);
+      await user.type(box, ':');
+      expect(await screen.findByRole('listbox')).toBeInTheDocument();
+    });
+
+    it('captures a suggestion-completed prefix as Code with the project assigned', async () => {
+      mockCreateItem.mockResolvedValue({ id: '1', title: 'Add dark mode' } as Awaited<
+        ReturnType<typeof apiClient.createItem>
+      >);
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':al');
+      await screen.findByRole('listbox');
+      await user.keyboard('{Enter}');
+      await user.type(box, 'add dark mode');
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        expect(mockCreateItem).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: 'ALF: add dark mode',
+            title: 'Add dark mode',
+            item_type: 'code',
+            intended_project_id: 'p-alf',
+          }),
+        );
+      });
+    });
+
+    it('leaves Shift+Enter as a newline while the panel is open', async () => {
+      const { user, box } = renderInboxBox();
+
+      await user.type(box, ':alf');
+      await screen.findByRole('listbox');
+      await user.keyboard('{Shift>}{Enter}{/Shift}');
+
+      expect(box).toHaveValue(':alf\n');
+      expect(screen.queryByRole('listbox')).toBeInTheDocument();
+      expect(mockCreateItem).not.toHaveBeenCalled();
     });
   });
 

@@ -36,7 +36,7 @@ test('capturing a thought adds it to the inbox', async ({ page, seed }) => {
 
   await page.goto('/?view=inbox');
 
-  const box = page.getByRole('textbox', { name: 'Capture box' });
+  const box = page.getByRole('combobox', { name: 'Capture box' });
   await box.fill('Write the quarterly report');
   await box.press('Enter');
 

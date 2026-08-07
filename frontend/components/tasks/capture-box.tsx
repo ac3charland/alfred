@@ -3,16 +3,28 @@
 import * as React from 'react';
 
 import { Button } from '@/components/atoms/button';
+import { Popover, PopoverAnchor } from '@/components/atoms/popover';
 import { Spinner } from '@/components/atoms/spinner';
 import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
 import { ALFRED_CAPTURE_FOCUS_EVENT } from '@/components/tasks/alfred-link';
+import { ProjectSuggestPopover } from '@/components/tasks/project-suggest-popover';
 import { parseProjectPrefix as matchProjectPrefix } from '@/lib/code/project-prefix';
+import {
+  applyProjectSuggestion,
+  parseSuggestTrigger,
+  projectSuggestionDomId,
+  rankProjectSuggestions,
+} from '@/lib/code/project-suggestions';
 import { useProjects } from '@/lib/stores/code-store';
 import { useTaskActions } from '@/lib/stores/tasks-store';
+import type { Project } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
 import { captureGhostClass, captureSurfaceClass, captureTextareaClass } from './capture-box.styles';
+
+/** The suggestion listbox's DOM id — the textarea's `aria-controls` target. */
+const SUGGEST_LISTBOX_ID = 'capture-project-suggestions';
 
 interface CaptureBoxProperties {
   /** The folder to scope the capture to. Undefined means Inbox (no folder). */
@@ -24,9 +36,12 @@ interface CaptureBoxProperties {
   /** Compact-mode placeholder — a code parent's box reads "Add story…" (ALF-129). */
   placeholder?: string;
   /**
-   * Opt-in project-prefix parsing (Inbox capture box only). When true, a recognized
-   * `<project name|key>:` prefix classifies the capture as Code, assigns that project, and
-   * strips the prefix. Off (the default) for folder and subtask capture boxes.
+   * Opt-in project prefixing (Inbox capture box only). When true, a leading `:` opens an
+   * anchored list of projects whose selection writes a `<KEY>: ` prefix into the box, AND a
+   * recognized `<project name|key>:` prefix classifies the capture as Code, assigns that
+   * project, and strips the prefix. One flag gates both halves, so the list can never appear
+   * on a surface that wouldn't honour the prefix it inserts. Off (the default) for folder and
+   * subtask capture boxes.
    */
   parseProjectPrefix?: boolean;
   /** Called after a successful capture. */
@@ -41,7 +56,8 @@ interface CaptureBoxProperties {
  * - Full mode: large textarea with a serif prompt, displayed above the Inbox.
  * - Compact mode: single-line input for inline subtask creation.
  *
- * Enter submits; Shift+Enter inserts a newline in full mode.
+ * Enter submits; Shift+Enter inserts a newline in full mode. With `parseProjectPrefix` on, a
+ * leading `:` opens the anchored project list, which claims ↑↓/↵/Tab/Esc until it closes.
  */
 export function CaptureBox({
   folderId,
@@ -79,6 +95,33 @@ export function CaptureBox({
   // form's onBlur would read as "focus left the box" and dismiss before the submit lands. The
   // button's onPointerDown fires before that blur, so this flag lets onBlur skip the dismiss.
   const pressingSubmitReference = React.useRef(false);
+  // The suggestion list's own state: which row is active, and whether Escape has shut it for
+  // this trigger session. Everything else about the list is derived from `value` below.
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const [dismissed, setDismissed] = React.useState(false);
+  // Set when a selection rewrites the value, so the layout effect below knows to move the caret.
+  const caretToEndReference = React.useRef(false);
+  const surfaceReference = React.useRef<HTMLDivElement>(null);
+
+  // The whole list is derived from the box's raw value — there is no "suggestion mode" to enter
+  // or leave, so deleting back to `:` reopens it exactly as typing it forward does.
+  const trigger = parseProjectPrefix && !compact ? parseSuggestTrigger(value) : null;
+  const suggestions = trigger === null ? [] : rankProjectSuggestions(trigger.query, projects);
+  const suggestOpen = trigger !== null && !dismissed && suggestions.length > 0;
+
+  // Reset the active row whenever the query changes — the derive-during-render pattern (see
+  // search-box.tsx), never a setState effect. A null query means the value stopped leading with
+  // ':', which also re-arms a dismissal.
+  const query = trigger?.query ?? null;
+  const [lastQuery, setLastQuery] = React.useState(query);
+  if (query !== lastQuery) {
+    setLastQuery(query);
+    setActiveIndex(0);
+    if (query === null) setDismissed(false);
+  }
+  // Keep the active row in range as the list shrinks under the cursor.
+  const clampedIndex = suggestions.length === 0 ? 0 : Math.min(activeIndex, suggestions.length - 1);
+  const activeSuggestion = suggestOpen ? suggestions[clampedIndex] : undefined;
 
   React.useEffect(() => {
     if (compact) {
@@ -151,7 +194,58 @@ export function CaptureBox({
     setGhosts((current) => current.filter((ghost) => ghost.id !== id));
   };
 
+  /**
+   * Commit a suggestion: rewrite the value to `<KEY>: <remainder>` and flag the caret move. The
+   * list closes on its own — the new value no longer leads with ':', so the trigger is gone.
+   */
+  const applySuggestion = (project: Project) => {
+    if (trigger === null) return;
+    setValue(applyProjectSuggestion(trigger, project));
+    setEngaged(true);
+    caretToEndReference.current = true;
+  };
+
+  // Placing the caret inline with `setValue` is clobbered by the re-render, so do it on the beat
+  // after the new value commits — before paint, so the caret never flashes at the wrong offset.
+  React.useLayoutEffect(() => {
+    if (!caretToEndReference.current) return;
+    caretToEndReference.current = false;
+    const textarea = textareaReference.current;
+    if (textarea === null) return;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, [value]);
+
   const handleKeyDown = (event_: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // While the project list is open it owns ↑↓/↵/Tab/Esc, so Enter completes the prefix
+    // instead of capturing a half-typed `:alf`. Shift+Enter still inserts a newline.
+    if (suggestOpen) {
+      if (event_.key === 'ArrowDown') {
+        event_.preventDefault();
+        setActiveIndex(Math.min(clampedIndex + 1, suggestions.length - 1));
+        return;
+      }
+      if (event_.key === 'ArrowUp') {
+        event_.preventDefault();
+        setActiveIndex(Math.max(clampedIndex - 1, 0));
+        return;
+      }
+      if (event_.key === 'Escape') {
+        event_.preventDefault();
+        setDismissed(true);
+        return;
+      }
+      if (
+        activeSuggestion !== undefined &&
+        !event_.shiftKey &&
+        (event_.key === 'Enter' || event_.key === 'Tab')
+      ) {
+        event_.preventDefault();
+        applySuggestion(activeSuggestion);
+        return;
+      }
+    }
+
     if (event_.key === 'Enter' && !event_.shiftKey) {
       event_.preventDefault();
       void handleSubmit();
@@ -236,53 +330,90 @@ export function CaptureBox({
       }}
       className="relative"
     >
-      <div className={captureSurfaceClass}>
-        {/* Serif prompt — a resting hint shown only while empty and not yet engaged */}
-        {!value && !engaged && (
-          <p
-            className="pointer-events-none absolute left-4 top-4 font-serif text-lg text-muted-foreground/60 select-none"
-            aria-hidden
-          >
-            What&rsquo;s on your mind?
-          </p>
+      <Popover
+        open={suggestOpen}
+        onOpenChange={(next) => {
+          // Radix closes on Escape / an outside interaction; both mean "shut it for this
+          // trigger session", which the value alone can't express.
+          if (!next) setDismissed(true);
+        }}
+        modal={false}
+      >
+        <PopoverAnchor asChild>
+          <div ref={surfaceReference} className={captureSurfaceClass}>
+            {/* Serif prompt — a resting hint shown only while empty and not yet engaged */}
+            {!value && !engaged && (
+              <p
+                className="pointer-events-none absolute left-4 top-4 font-serif text-lg text-muted-foreground/60 select-none"
+                aria-hidden
+              >
+                What&rsquo;s on your mind?
+              </p>
+            )}
+            <Textarea
+              unstyled
+              ref={textareaReference}
+              value={value}
+              onChange={(event_) => {
+                const next = event_.target.value;
+                setValue(next);
+                // Once the user has typed something, stay engaged for the rest of this focus
+                // session so the prompt doesn't flicker back after the box is cleared on capture.
+                if (next !== '') setEngaged(true);
+              }}
+              onKeyDown={handleKeyDown}
+              rows={3}
+              aria-label="Capture box"
+              // Suggestions turn the box into a combobox; without them it stays a plain textbox,
+              // so the folder and subtask boxes are untouched.
+              role={parseProjectPrefix ? 'combobox' : undefined}
+              aria-autocomplete={parseProjectPrefix ? 'list' : undefined}
+              aria-expanded={parseProjectPrefix ? suggestOpen : undefined}
+              aria-controls={parseProjectPrefix ? SUGGEST_LISTBOX_ID : undefined}
+              aria-activedescendant={
+                activeSuggestion === undefined
+                  ? undefined
+                  : projectSuggestionDomId(activeSuggestion)
+              }
+              className={captureTextareaClass}
+            />
+            <div className="absolute bottom-3 right-3 flex items-center gap-2">
+              {errorMessage && (
+                <span className="text-xs text-destructive" role="alert">
+                  {errorMessage}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground/50 select-none">
+                Enter to capture · Shift+Enter for newline
+              </span>
+              <Button
+                type="submit"
+                size="sm"
+                variant="accent"
+                aria-label="Capture"
+                disabled={!value.trim()}
+                className="disabled:opacity-40"
+              >
+                {isSaving ? <Spinner label="Saving" /> : 'Capture'}
+              </Button>
+            </div>
+          </div>
+        </PopoverAnchor>
+        {suggestOpen && (
+          <ProjectSuggestPopover
+            suggestions={suggestions}
+            projects={projects}
+            activeIndex={clampedIndex}
+            listboxId={SUGGEST_LISTBOX_ID}
+            onSelect={applySuggestion}
+            onHover={setActiveIndex}
+            onClose={() => {
+              setDismissed(true);
+            }}
+            anchorRef={surfaceReference}
+          />
         )}
-        <Textarea
-          unstyled
-          ref={textareaReference}
-          value={value}
-          onChange={(event_) => {
-            const next = event_.target.value;
-            setValue(next);
-            // Once the user has typed something, stay engaged for the rest of this focus
-            // session so the prompt doesn't flicker back after the box is cleared on capture.
-            if (next !== '') setEngaged(true);
-          }}
-          onKeyDown={handleKeyDown}
-          rows={3}
-          aria-label="Capture box"
-          className={captureTextareaClass}
-        />
-        <div className="absolute bottom-3 right-3 flex items-center gap-2">
-          {errorMessage && (
-            <span className="text-xs text-destructive" role="alert">
-              {errorMessage}
-            </span>
-          )}
-          <span className="text-xs text-muted-foreground/50 select-none">
-            Enter to capture · Shift+Enter for newline
-          </span>
-          <Button
-            type="submit"
-            size="sm"
-            variant="accent"
-            aria-label="Capture"
-            disabled={!value.trim()}
-            className="disabled:opacity-40"
-          >
-            {isSaving ? <Spinner label="Saving" /> : 'Capture'}
-          </Button>
-        </div>
-      </div>
+      </Popover>
       {/* Capture flourish: each ghost fades+slides right, then removes itself on animationend. */}
       {ghosts.map((ghost) => (
         <span
