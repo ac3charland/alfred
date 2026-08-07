@@ -14,22 +14,26 @@ let lastTaskListScope: unknown;
 let lastEmptyMessage: string | undefined;
 let lastEmptyDescription: string | undefined;
 let lastEmptyAction: React.ReactNode;
+let lastSortMode: string | undefined;
 jest.mock('./task-list', () => ({
   TaskList: function MockTaskList({
     emptyAction,
     emptyDescription,
     emptyMessage,
     scope,
+    sortMode,
   }: {
     emptyAction?: React.ReactNode;
     emptyDescription?: string;
     emptyMessage?: string;
     scope?: unknown;
+    sortMode?: string;
   }) {
     lastTaskListScope = scope;
     lastEmptyMessage = emptyMessage;
     lastEmptyDescription = emptyDescription;
     lastEmptyAction = emptyAction;
+    lastSortMode = sortMode;
     // Render the action too, so a test can press it exactly as a user would in an empty folder.
     return (
       <div data-testid="task-list">
@@ -73,6 +77,7 @@ jest.mock('./capture-box', () => ({
 
 const FOLDERS: Folder[] = [
   { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+  { id: 'f2', name: 'Home', created_at: '2025-01-02T00:00:00Z', sort_order: 2 },
 ];
 
 /** A sibling of the folder view that can steal the single-open-editor slot, as a task row would. */
@@ -290,6 +295,42 @@ describe('FolderView', () => {
 
       expect(lastEmptyAction).toBeUndefined();
       expect(screen.queryByRole('button', { name: 'Add task' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the sort control', () => {
+    it('opens on the folder ranking by priority', () => {
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      expect(screen.getByRole('button', { name: 'Sort by: Priority' })).toBeInTheDocument();
+      expect(lastSortMode).toBe('priority');
+    });
+
+    it('re-ranks the list by due date once that is picked', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      await user.click(screen.getByRole('button', { name: 'Sort by: Priority' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Due date' }));
+
+      expect(lastSortMode).toBe('due');
+      expect(screen.getByRole('button', { name: 'Sort by: Due date' })).toBeInTheDocument();
+    });
+
+    it('keeps each folder on its own ordering', async () => {
+      const user = userEvent.setup();
+      const { rerender } = renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      await user.click(screen.getByRole('button', { name: 'Sort by: Priority' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Due date' }));
+
+      // A second folder is untouched by the first folder's choice…
+      rerender(<FolderView folderId="f2" />);
+      expect(lastSortMode).toBe('priority');
+
+      // …and the first folder still remembers its own when you come back.
+      rerender(<FolderView folderId="f1" />);
+      expect(lastSortMode).toBe('due');
     });
   });
 

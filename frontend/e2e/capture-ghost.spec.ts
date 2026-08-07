@@ -22,7 +22,7 @@ function translateX(transform: string): number {
 
 test('captured text fades and slides right, then unmounts', async ({ page }) => {
   await page.goto('/');
-  const textarea = page.getByRole('textbox', { name: 'Capture box' });
+  const textarea = page.getByRole('combobox', { name: 'Capture box' });
   await textarea.fill('A fleeting thought');
 
   const frames: ProbeFrame[] = await sampleDuring(

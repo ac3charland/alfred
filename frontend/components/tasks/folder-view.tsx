@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/atoms/empty-state';
 import { IconButton } from '@/components/atoms/icon-button';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
+import { FolderSortMenu } from '@/components/tasks/folder-sort-menu';
 import { TaskList } from '@/components/tasks/task-list';
 import { captureRevealClass } from '@/components/tasks/task-row.styles';
 import {
@@ -16,6 +17,7 @@ import {
   useActiveEditor,
   useActiveEditorActions,
 } from '@/lib/stores/active-editor-store';
+import { useFolderSort } from '@/lib/stores/folder-sort-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
@@ -30,14 +32,19 @@ interface FolderViewProperties {
  * server round-trip. An id with no matching folder — e.g. a stale deep link, or the
  * folder you just deleted — shows a not-found message instead of a server 404.
  *
- * The header's "+" is the folder's own capture affordance: it reveals the same compact
- * CaptureBox the row-level "Add subtask" renders, wired to this folder, so a thought that
- * already belongs here is filed without a trip through the Inbox. Whether that box is open
- * lives in the ActiveEditorProvider (keyed by the FOLDER's id), so it holds the same
- * single-open-input slot as every row's inline editor.
+ * The header carries the folder's own sort choice: which signal leads the ranking of its
+ * top-level rows, priority or the due date. It is read from the FolderSortProvider rather than
+ * held here, since this component is remounted on every view switch.
+ *
+ * Its "+" is the folder's own capture affordance: it reveals the same compact CaptureBox the
+ * row-level "Add subtask" renders, wired to this folder, so a thought that already belongs here
+ * is filed without a trip through the Inbox. Whether that box is open lives in the
+ * ActiveEditorProvider (keyed by the FOLDER's id), so it holds the same single-open-input slot
+ * as every row's inline editor.
  */
 export function FolderView({ folderId }: FolderViewProperties) {
   const folder = useFolders().find((candidate) => candidate.id === folderId);
+  const { mode, setMode } = useFolderSort(folderId);
   const editor = { itemId: folderId, kind: 'folder-capture' } as const;
   const showCapture = sameEditor(useActiveEditor(), editor);
   const { openEditor, closeEditor } = useActiveEditorActions();
@@ -69,13 +76,14 @@ export function FolderView({ folderId }: FolderViewProperties) {
   return (
     <>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
+        <span className="truncate text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
           {folder.name}
         </span>
-        <div className="flex items-center gap-1">
-          {/* The capture toggle, in the same grey treatment as its neighbour so the pair reads
-              as one cluster. Present at every width: the folder header has no overflow menu to
-              fold into (unlike the row's "+") and its actions are never hover-gated. */}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* The capture toggle leads the cluster — making a task comes before the controls that
+              arrange them — in the same grey treatment as its neighbours. Present at every width:
+              the folder header has no overflow menu to fold into (unlike the row's "+") and its
+              actions are never hover-gated. */}
           <IconButton
             aria-label={`Add task to ${folder.name}`}
             title="Add task"
@@ -96,6 +104,7 @@ export function FolderView({ folderId }: FolderViewProperties) {
           >
             <Plus size={16} />
           </IconButton>
+          <FolderSortMenu value={mode} onChange={setMode} />
           <CollapseAllButton scope={{ type: 'folder', folderId }} />
         </div>
       </div>
@@ -121,6 +130,7 @@ export function FolderView({ folderId }: FolderViewProperties) {
 
       <TaskList
         scope={{ type: 'folder', folderId }}
+        sortMode={mode}
         emptyMessage={`No tasks in ${folder.name}`}
         emptyDescription="Add your first task to this folder."
         // The empty state's way in is withheld while the box is open — it opens the very box

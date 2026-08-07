@@ -40,7 +40,7 @@ test('capture with a project prefix → add stories → reorder → send → epi
   await page.goto('/?view=inbox');
 
   // 1. Capture with the project prefix → a code row carrying the assigned-project chip.
-  const captureBox = page.getByRole('textbox', { name: 'Capture box' });
+  const captureBox = page.getByRole('combobox', { name: 'Capture box' });
   await captureBox.fill('Alfred: Construction inbox');
   await captureBox.press('Enter');
   const parentRow = page.getByRole('listitem').filter({ hasText: 'Construction inbox' }).first();

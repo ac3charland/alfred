@@ -29,7 +29,7 @@ test('the landing screen does not overflow the viewport', async ({ page, seed })
 
   await page.goto('/');
 
-  await expect(page.getByRole('textbox', { name: 'Capture box' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Capture box' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Tasks' })).toBeHidden();
   expect(await documentOverflowsViewport(page)).toBe(false);
 });

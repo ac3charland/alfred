@@ -7,10 +7,8 @@ import {
   priorityOption,
   priorityRank,
   rankByPriority,
-  sortNodesByPriority,
 } from '@/lib/priority';
 import { stableSorted } from '@/lib/sort';
-import type { ItemNode } from '@/lib/tree';
 import type { Item } from '@/lib/types';
 
 /** A minimal item carrying only the fields the priority key reads. */
@@ -188,39 +186,5 @@ describe('rankByPriority', () => {
     ];
     expect(rankByPriority(items, false).map((t) => t.id)).toStrictEqual(['active']);
     expect(rankByPriority(items, true).map((t) => t.id)).toStrictEqual(['active', 'done']);
-  });
-});
-
-/** A tree node with task-relevant overrides for the recursive sorter. */
-function node(id: string, overrides: Partial<Item> = {}, children: ItemNode[] = []): ItemNode {
-  return { ...task(id, overrides), children };
-}
-
-describe('sortNodesByPriority', () => {
-  it('ranks the top-level nodes by priority → due → created_at, leaving each subtree untouched', () => {
-    const tree = [
-      node('none'),
-      node('low', { priority: 'low' }),
-      node('high', { priority: 'high' }, [
-        node('c-low', { priority: 'low', parent_id: 'high' }),
-        node('c-high', { priority: 'high', parent_id: 'high' }),
-      ]),
-    ];
-    const sorted = sortNodesByPriority(tree);
-    // Roots ranked high → low → none.
-    expect(sorted.map((n) => n.id)).toStrictEqual(['high', 'low', 'none']);
-    // Children keep the order buildTree gave them (their sort_order) — priority no longer reorders
-    // a subtask group (ALF-117), so the higher-priority child does NOT float to the top here.
-    expect(sorted[0]?.children.map((c) => c.id)).toStrictEqual(['c-low', 'c-high']);
-  });
-
-  it('ranks by each node OWN priority (no subtree rollup) — a Low parent stays below Medium', () => {
-    const tree = [
-      node('medium', { priority: 'medium' }),
-      node('lowParent', { priority: 'low' }, [
-        node('child', { priority: 'high', parent_id: 'lowParent' }),
-      ]),
-    ];
-    expect(sortNodesByPriority(tree).map((n) => n.id)).toStrictEqual(['medium', 'lowParent']);
   });
 });

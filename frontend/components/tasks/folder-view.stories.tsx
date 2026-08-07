@@ -2,14 +2,20 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 import { expect, userEvent, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
+import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import type { Folder, Item } from '@/lib/types';
 
 import { FolderView } from './folder-view';
 
-/** Task rows and the capture box both read the code store; the shell seeds it around this view. */
-const withCodeProvider: Decorator = (Story) => (
+/**
+ * The two stores the shell seeds around this view that the global preview decorator doesn't:
+ * the code store (task rows and the capture box read it) and each folder's sort choice.
+ */
+const withViewStores: Decorator = (Story) => (
   <CodeProvider initialProjects={[]} initialEpics={[]} initialStories={[]}>
-    <Story />
+    <FolderSortProvider>
+      <Story />
+    </FolderSortProvider>
   </CodeProvider>
 );
 
@@ -53,7 +59,7 @@ const WORK_TASKS: Item[] = [
 const meta = {
   title: 'Tasks/FolderView',
   component: FolderView,
-  decorators: [withCodeProvider],
+  decorators: [withViewStores],
   parameters: {
     layout: 'padded',
     // The view reads the folder from FoldersProvider and its rows from the flat item store.
