@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import pg, { type Client } from 'pg';
 
+import { copiedTables, reconcileDriftStatements, schemaDrift } from './backup.ts';
 import { MIGRATIONS_DIR, applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 /** One integration check's outcome. `detail` is evidence on success, the failure reason otherwise. */
@@ -151,6 +152,45 @@ async function replayDispatchBackfill(
   } finally {
     await probe.end();
   }
+}
+
+/**
+ * Stand the nightly backup's verify database up as it stood the day it broke: every migration
+ * BEFORE the dispatch one, i.e. a repo that has not yet caught up with a production database that
+ * already has `items.dispatched_at`. Returns a live client on it; the caller ends it.
+ */
+async function staleVerifyDatabase(client: Client): Promise<Client> {
+  // A code literal, never user input — same footing as the `set role` interpolation above.
+  const database = 'alfred_backup_drift';
+  await client.query(`drop database if exists ${database}`);
+  await client.query(`create database ${database}`);
+  const probe = new pg.Client({
+    host: client.host,
+    port: client.port,
+    user: client.user,
+    database,
+  });
+  await probe.connect();
+  await bootstrapSupabase(probe);
+  await applyMigrations(probe, MIGRATIONS_DIR, (file) => path.basename(file) < DISPATCH_MIGRATION);
+  return probe;
+}
+
+/** The public schema's base-table columns of a database, keyed by table (what the verifier sees). */
+async function publicColumns(client: Client): Promise<Map<string, string[]>> {
+  const { rows } = await client.query<{ table_name: string; column_name: string }>(
+    `select c.table_name, c.column_name from information_schema.columns c
+       join information_schema.tables t
+         on t.table_schema = c.table_schema and t.table_name = c.table_name
+      where c.table_schema = 'public' and t.table_type = 'BASE TABLE'`,
+  );
+  const columns = new Map<string, string[]>();
+  for (const row of rows) {
+    const existing = columns.get(row.table_name);
+    if (existing === undefined) columns.set(row.table_name, [row.column_name]);
+    else existing.push(row.column_name);
+  }
+  return columns;
 }
 
 /** Seed the second project (ALF-110) used to prove project-scoped moves leave it undisturbed. */
@@ -1494,6 +1534,63 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const backupDriftResult = await attempt(
+    'the nightly backup survives a production database migrated ahead of the repo, and stays quiet ' +
+      'when the repo is ahead instead',
+    async () => {
+      // The 2026-08-07 red run, exactly: the scheduled job checked out a main whose migrations
+      // stopped at 0025 while the live `personal` database already had 0026. psql aborted the
+      // load — `column "dispatched_at" of relation "items" does not exist` — and a sound 628 KB
+      // dump was never uploaded. `migrate.yml` now applies on merge, so the repo is normally at
+      // or ahead of production; this stays as the net under the cases that outlive it — a re-run
+      // replaying a pinned commit, a merge landing mid-dump, a revert, hand-applied DDL.
+      const stale = await staleVerifyDatabase(client);
+      try {
+        const present = await publicColumns(stale);
+        if (present.get('items')?.includes('dispatched_at') === true)
+          throw new Error('precondition failed: the stale verify schema already has dispatched_at');
+
+        // Verbatim from the failing run's log.
+        const dump =
+          `COPY "public"."items" ("id", "title", "notes", "source_url", "item_type", ` +
+          `"created_at", "raw_capture", "due_date", "status", "completed_at", "folder_id", ` +
+          `"parent_id", "recurrence", "recurrence_series_id", "occurrence_index", "priority", ` +
+          `"intended_project_id", "sort_order", "dispatched_at") FROM stdin;\n\\.\n`;
+        const drift = schemaDrift(copiedTables(dump), present);
+        const described = drift.map((d) => `${d.table}:${d.columns.join('+')}`).join(', ');
+        if (described !== 'items:dispatched_at')
+          throw new Error(`expected drift on items.dispatched_at, got ${described || 'none'}`);
+
+        for (const statement of reconcileDriftStatements(drift)) {
+          await stale.query(statement);
+        }
+        // The reconciled schema must now hold the shape the COPY was writing — that is the whole
+        // point: the payload lands, gets counted, and the dump reaches R2.
+        await stale.query(
+          `insert into items (title, item_type, dispatched_at) values ('restored', 'task', now())`,
+        );
+        const { rows } = await stale.query<{ count: string }>(
+          `select count(*)::text as count from items where dispatched_at is not null`,
+        );
+        if (rows[0]?.count !== '1')
+          throw new Error(`reconciled schema did not accept the dispatched row (${described})`);
+
+        // And the other direction stays silent: a dump taken between a merge and its migrate job,
+        // or against an instance whose migrate job failed, is short a column — normal, not drift.
+        const shortDump = `COPY public.items (id, title) FROM stdin;\n\\.\n`;
+        const reverse = schemaDrift(copiedTables(shortDump), await publicColumns(stale));
+        if (reverse.length > 0)
+          throw new Error(
+            `a dump short of the repo was reported as drift: ${String(reverse.length)}`,
+          );
+
+        return 'stale verifier detected items.dispatched_at, reconciled it, and accepted the row; a short dump reported no drift';
+      } finally {
+        await stale.end();
+      }
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -1528,5 +1625,6 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     dispatchFolderDeleteResult,
     dispatchCheckResult,
     dispatchOnGateResult,
+    backupDriftResult,
   ];
 }

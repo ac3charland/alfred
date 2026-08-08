@@ -493,6 +493,18 @@ project:
   `auth`/`storage` data (e.g. `COPY "auth"."audit_log_entries"`), which fails to restore into a cluster
   that only has your `public` schema (`ERROR: schema "auth" does not exist`). Scope both dumps with
   `--schema public` so the artifact is just the app's own data.
+- **Rebuilding the verify schema from the repo couples the restore to repo↔production parity.**
+  When the dump's `COPY` carries a column the checked-out migrations can't build, the load aborts
+  on a perfectly sound dump (`ERROR: column "…" of relation "items" does not exist`) and the day's
+  backup is lost to a stale verifier. `migrate.yml` applies on merge, so production is normally at
+  or behind `main` — but a scheduled run pins its commit (a re-run replays it while production
+  moves on), `db-backup-*` and `db-migrate-*` are separate concurrency groups so a merge can land
+  mid-dump, and a reverted migration or hand-applied DDL puts production ahead outright. Read the
+  dump's own `COPY` headers, diff them against the schema you just built, and treat *production
+  ahead of repo* as its own outcome: name it, add the drifted columns/tables as `text` so the
+  payload still loads and counts, upload, then exit non-zero. Only that direction matters — a dump
+  *short* of the repo defaults the rest and must stay green. `database/src/backup.ts` is the
+  worked example.
 - **Match the restore server's major version to Supabase's.** Supabase runs **Postgres 17**, whose
   `pg_dump` writes PG17-only GUCs into the dump preamble (e.g. `SET transaction_timeout = 0;`). Loading
   that into an older server fails with `unrecognized configuration parameter "transaction_timeout"` and
