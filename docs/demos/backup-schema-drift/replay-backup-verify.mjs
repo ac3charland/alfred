@@ -3,9 +3,9 @@
  *
  * Replays the 2026-08-07 red backup run against real PostgreSQL: a PRODUCTION database that has
  * already been migrated (it has `items.dispatched_at`) dumped into a VERIFY database rebuilt from
- * a repo whose migrations stop one short — exactly the window between applying a migration to the
- * live database and committing it. First the old load, which aborts; then the same dump through
- * the new drift path, which names the drift, gives the data somewhere to land, and restores it.
+ * a repo whose migrations stop one short. First the old load, which aborts; then the same dump
+ * through the new drift path, which names the drift, gives the data somewhere to land, and
+ * restores it.
  *
  * The change has no visual surface, so the evidence is the restore's own answers. Everything
  * printed is derived — exit codes, the ERROR line, drift descriptions, row counts — never a
@@ -183,7 +183,7 @@ try {
 
   // ── 4. The other direction stays silent ─────────────────────────────────────────────────────
   out('\n── the reverse case: a dump SHORT of the repo is normal, not drift ─────────');
-  out('  (the two instances migrate independently — `work` regularly lags `personal`)');
+  out('  (dumped between a merge and its migrate job, or from an instance whose job failed)');
   const shortDump = 'COPY public.items (id, title) FROM stdin;\n\\.\n';
   const reverse = schemaDrift(copiedTables(shortDump), await publicColumns(verifyClient));
   out(`  drift reported : ${reverse.length === 0 ? 'none — the backup stays green' : 'DRIFT'}`);
