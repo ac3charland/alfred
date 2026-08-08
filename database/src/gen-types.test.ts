@@ -6,6 +6,7 @@ import {
   assertUsableTypes,
   clusterConnectionString,
   firstDifferingLine,
+  touchesMigrations,
 } from './gen-types.ts';
 
 describe('TYPES_OUTPUT_PATH', () => {
@@ -67,6 +68,24 @@ describe('assertUsableTypes', () => {
     expect(() => {
       assertUsableTypes('export type Database = {\n}\n');
     }).toThrow(/public/);
+  });
+});
+
+describe('touchesMigrations', () => {
+  it('is false for a branch that changed nothing', () => {
+    expect(touchesMigrations([])).toBe(false);
+  });
+
+  it('is true when a migration was added or edited', () => {
+    expect(touchesMigrations(['database/migrations/0027_intended_epic.sql'])).toBe(true);
+  });
+
+  it('is false for changes elsewhere, including the database package itself', () => {
+    expect(touchesMigrations(['frontend/lib/tasks.ts', 'database/src/deploy.ts'])).toBe(false);
+  });
+
+  it('ignores a non-SQL file dropped in the migrations folder — it builds no schema', () => {
+    expect(touchesMigrations(['database/migrations/README.md'])).toBe(false);
   });
 });
 

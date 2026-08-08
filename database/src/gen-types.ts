@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -71,6 +72,50 @@ export function assertUsableTypes(text: string): void {
       'the generated output has no `public` schema — the migrations did not apply to the throwaway cluster',
     );
   }
+}
+
+/** Trunk refs to diff against, in priority order (first existing one wins). */
+const TRUNK_REFS: readonly string[] = ['origin/main', 'main', 'origin/master', 'master'];
+
+/** Whether any changed path is a migration — the only kind of change that can restate the types. */
+export function touchesMigrations(changedPaths: readonly string[]): boolean {
+  return changedPaths.some((changed) => /(?:^|\/)database\/migrations\/[^/]+\.sql$/.test(changed));
+}
+
+/**
+ * Whether this branch adds or edits a migration relative to trunk, which is the only way the
+ * committed types can have gone stale. `undefined` when git can't tell us — no trunk ref among
+ * {@link TRUNK_REFS} (a shallow CI checkout), or any command failing — which callers must read as
+ * "check anyway": a freshness gate must never go quiet on a guess. Diffed against the **working
+ * tree**, so an uncommitted migration counts too.
+ */
+export function migrationsChangedSinceTrunk(): boolean | undefined {
+  const trunk = TRUNK_REFS.find(
+    (ref) => spawnSync('git', ['rev-parse', '--verify', '--quiet', ref]).status === 0,
+  );
+  if (trunk === undefined) return undefined;
+  const base = spawnSync('git', ['merge-base', 'HEAD', trunk], { encoding: 'utf8' });
+  if (base.status !== 0) return undefined;
+  const mergeBase = base.stdout.trim();
+  if (mergeBase === '') return undefined;
+  // `:/` anchors the pathspec at the repo root, so this works from any package's cwd.
+  const diff = spawnSync('git', ['diff', '--name-only', mergeBase, '--', ':/database/migrations'], {
+    encoding: 'utf8',
+  });
+  if (diff.status !== 0) return undefined;
+  // A NEW migration is the common case and starts out untracked, which `git diff` does not list —
+  // relying on the diff alone would silently skip the gate exactly when it matters most.
+  // `--full-name` is required: unlike `git diff --name-only`, `ls-files` prints paths relative to
+  // the CURRENT directory, so without it the two lists disagree whenever this runs from a package.
+  const untracked = spawnSync(
+    'git',
+    ['ls-files', '--full-name', '--others', '--exclude-standard', '--', ':/database/migrations'],
+    { encoding: 'utf8' },
+  );
+  if (untracked.status !== 0) return undefined;
+  return touchesMigrations(
+    `${diff.stdout}\n${untracked.stdout}`.split(/\r?\n/).map((line) => line.trim()),
+  );
 }
 
 /** The 1-based line where two texts first diverge, or `-1` when they are identical. */

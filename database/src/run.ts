@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
 import pg from 'pg';
@@ -5,7 +6,14 @@ import pg from 'pg';
 import { attempt, runAssertions } from './assertions.ts';
 import { startCluster } from './cluster.ts';
 import { runDeployAssertions } from './deploy-assertions.ts';
-import { assertUsableTypes, clusterConnectionString, generateTypes } from './gen-types.ts';
+import {
+  TYPES_OUTPUT_PATH,
+  assertUsableTypes,
+  clusterConnectionString,
+  firstDifferingLine,
+  generateTypes,
+  migrationsChangedSinceTrunk,
+} from './gen-types.ts';
 import { applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 const { Client } = pg;
@@ -48,12 +56,40 @@ async function main(): Promise<number> {
       },
     );
 
+    // Freshness gate: a branch that adds a migration must commit the regenerated types with it,
+    // or the frontend is typed against a schema that no longer exists. Only that branch pays for
+    // the check — with no migration touched the committed file cannot have gone stale, and an
+    // ALFRED_MIGRATIONS_DIR override means this cluster isn't the committed set at all. It reuses
+    // the type the assertion above already rendered, so the gate costs a string compare.
+    const migrationsTouched = migrationsChangedSinceTrunk();
+    const overridden = (process.env['ALFRED_MIGRATIONS_DIR'] ?? '') !== '';
+    const freshnessResult = await attempt(
+      'the committed database types match the migrations',
+      async () => {
+        if (overridden) return 'skipped — ALFRED_MIGRATIONS_DIR points at another migration set';
+        if (migrationsTouched === false) {
+          return 'skipped — this branch changes no migration, so the committed types cannot be stale';
+        }
+        const generated = await generateTypes(clusterConnectionString(cluster));
+        const line = firstDifferingLine(readFileSync(TYPES_OUTPUT_PATH, 'utf8'), generated);
+        if (line !== -1) {
+          throw new Error(
+            `frontend/lib/database.types.ts first differs from the migrations at line ${String(line)} — run \`npm run gen-types -w database\` and commit the result`,
+          );
+        }
+        return migrationsTouched === undefined
+          ? 'up to date (checked anyway — could not read the diff against trunk)'
+          : 'up to date with the migration this branch adds';
+      },
+    );
+
     // The schema assertions run against this pre-migrated database; the deploy assertions bring up
     // their own databases on the same cluster (they are about HOW migrations get applied, so they
     // must start from an empty — or deliberately half-migrated — one).
     const results = [
       ...(await runAssertions(client)),
       typesResult,
+      freshnessResult,
       ...(await runDeployAssertions(cluster)),
     ];
 
