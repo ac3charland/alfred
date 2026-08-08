@@ -309,6 +309,7 @@ function newItem(input) {
     folder_id: input.folder_id ?? null,
     parent_id: input.parent_id ?? null,
     intended_project_id: input.intended_project_id ?? null,
+    intended_epic_id: input.intended_epic_id ?? null,
     priority: input.priority ?? null,
     // Inbox residency (migration 0026): null = still in the Inbox, whatever folder_id holds.
     // The DB fills it with a before-insert trigger, so this mirrors that rule — inherit the
