@@ -297,6 +297,7 @@ export type Database = {
           due_date: string | null
           folder_id: string | null
           id: string
+          intended_epic_id: string | null
           intended_project_id: string | null
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string | null
@@ -318,6 +319,7 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string
+          intended_epic_id?: string | null
           intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"]
           notes?: string | null
@@ -339,6 +341,7 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string
+          intended_epic_id?: string | null
           intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"]
           notes?: string | null
@@ -359,6 +362,13 @@ export type Database = {
             columns: ["folder_id"]
             isOneToOne: false
             referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_intended_epic_id_fkey"
+            columns: ["intended_epic_id"]
+            isOneToOne: false
+            referencedRelation: "epics"
             referencedColumns: ["id"]
           },
           {
@@ -445,6 +455,7 @@ export type Database = {
           due_date: string | null
           folder_id: string | null
           id: string | null
+          intended_epic_id: string | null
           intended_project_id: string | null
           item_type: Database["public"]["Enums"]["item_type"] | null
           notes: string | null
@@ -466,6 +477,7 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string | null
+          intended_epic_id?: string | null
           intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"] | null
           notes?: string | null
@@ -487,6 +499,7 @@ export type Database = {
           due_date?: string | null
           folder_id?: string | null
           id?: string | null
+          intended_epic_id?: string | null
           intended_project_id?: string | null
           item_type?: Database["public"]["Enums"]["item_type"] | null
           notes?: string | null
@@ -507,6 +520,13 @@ export type Database = {
             columns: ["folder_id"]
             isOneToOne: false
             referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_intended_epic_id_fkey"
+            columns: ["intended_epic_id"]
+            isOneToOne: false
+            referencedRelation: "epics"
             referencedColumns: ["id"]
           },
           {
@@ -613,6 +633,7 @@ export type Database = {
           due_date: string | null
           folder_id: string | null
           id: string
+          intended_epic_id: string | null
           intended_project_id: string | null
           item_type: Database["public"]["Enums"]["item_type"]
           notes: string | null
