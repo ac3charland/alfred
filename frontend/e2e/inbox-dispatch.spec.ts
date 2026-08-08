@@ -89,6 +89,7 @@ const ALFRED_PROJECT = {
   github_url: null,
   ref_seq: 104,
   created_at: new Date(Date.UTC(2024, 0, 1)).toISOString(),
+  description: null,
 };
 const TRIAGE_EPIC = {
   id: EPIC_ID,

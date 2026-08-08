@@ -344,6 +344,8 @@ function newFolder(input) {
     name: input.name ?? '',
     // Manual sidebar rank (migration 0024): explicit when seeded, else the next sequence value.
     sort_order: input.sort_order ?? nextFolderSortOrder++,
+    // What belongs in this folder (migration 0028); null until the owner writes it.
+    description: input.description ?? null,
   };
 }
 
@@ -400,6 +402,8 @@ function newProject(input) {
     repo_name: input.repo_name ?? '',
     github_url: input.github_url ?? null,
     ref_seq: input.ref_seq ?? 0,
+    // What this project is and what work belongs in it (migration 0028).
+    description: input.description ?? null,
   };
 }
 

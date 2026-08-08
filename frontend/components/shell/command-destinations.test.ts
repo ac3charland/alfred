@@ -11,6 +11,7 @@ function makeFolder(overrides: Partial<Folder> = {}): Folder {
     name: 'A folder',
     created_at: '2025-01-01T00:00:00Z',
     sort_order: 1,
+    description: null,
     ...overrides,
   };
 }
@@ -25,6 +26,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     ref_seq: 0,
     repo_name: 'repo',
     repo_owner: 'owner',
+    description: null,
     ...overrides,
   };
 }

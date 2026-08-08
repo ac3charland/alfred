@@ -88,6 +88,7 @@ const COMPLETED_FOLDER_ITEM: Item = {
 };
 
 const FOLDER: Folder = {
+  description: null,
   id: 'folder-1',
   name: 'Work',
   created_at: '2025-01-01T09:00:00Z',
@@ -1768,12 +1769,14 @@ describe('TaskRow', () => {
   describe('folder name in context label', () => {
     it('shows the correct folder name when multiple folders exist', () => {
       const folderA: Folder = {
+        description: null,
         id: 'folder-a',
         name: 'Alpha',
         created_at: '2025-01-01T00:00:00Z',
         sort_order: 2,
       };
       const folderB: Folder = {
+        description: null,
         id: 'folder-b',
         name: 'Beta',
         created_at: '2025-01-01T01:00:00Z',
@@ -2563,6 +2566,7 @@ describe('TaskRow — classification & type-gating', () => {
     it('removes the item and toasts the ref when the gate completes', async () => {
       // One project + epic seeded into the CodeProvider so the gate can be confirmed end to end.
       const project: Project = {
+        description: null,
         id: 'p1',
         name: 'Alfred',
         key: 'ALF',
@@ -2649,6 +2653,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
   ];
 
   const PROJECT: Project = {
+    description: null,
     id: 'p1',
     name: 'Alfred',
     key: 'ALF',
@@ -3562,6 +3567,7 @@ describe('TaskRow — detail panel vs add-subtask entry (ALF-128)', () => {
 
 describe('TaskRow — label chips & per-type detail fields (ALF-170)', () => {
   const PROJECT: Project = {
+    description: null,
     id: 'p1',
     name: 'Alfred',
     key: 'ALF',

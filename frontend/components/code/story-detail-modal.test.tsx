@@ -31,6 +31,7 @@ const mockMoveCode = jest.mocked(api.moveCode);
 const mockMoveCodeInProject = jest.mocked(api.moveCodeInProject);
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

@@ -8,6 +8,7 @@ import { useProjectFilter } from './use-project-filter';
 
 function makeProject(id: string, name: string): Project {
   return {
+    description: null,
     id,
     name,
     key: name.slice(0, 3).toUpperCase(),

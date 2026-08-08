@@ -34,8 +34,14 @@ const mockUpdateFolder = jest.mocked(apiClient.updateFolder);
 const mockDeleteFolder = jest.mocked(apiClient.deleteFolder);
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 10 },
-  { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z', sort_order: 20 },
+  { description: null, id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 10 },
+  {
+    description: null,
+    id: 'f2',
+    name: 'Personal',
+    created_at: '2025-01-02T00:00:00Z',
+    sort_order: 20,
+  },
 ];
 
 /** A local YYYY-MM-DD due-date string offset from today (0 = today, -1 = yesterday). */
@@ -193,6 +199,7 @@ describe('FolderNav', () => {
 
   it('adds a folder optimistically and calls createFolder', async () => {
     mockCreateFolder.mockResolvedValue({
+      description: null,
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
@@ -213,6 +220,7 @@ describe('FolderNav', () => {
 
   it('hides the create form and clears the name after successful creation', async () => {
     mockCreateFolder.mockResolvedValue({
+      description: null,
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
@@ -234,6 +242,7 @@ describe('FolderNav', () => {
 
   it('reopening the create form after success shows an empty input', async () => {
     mockCreateFolder.mockResolvedValue({
+      description: null,
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
@@ -302,6 +311,7 @@ describe('FolderNav', () => {
 
   it('calls createFolder with the trimmed name when input has surrounding spaces', async () => {
     mockCreateFolder.mockResolvedValue({
+      description: null,
       id: 'f3',
       name: 'Projects',
       created_at: '2025-01-03T00:00:00Z',
@@ -676,6 +686,7 @@ describe('FolderNav', () => {
 
   it('calls updateFolder with the new name when the rename form is submitted', async () => {
     mockUpdateFolder.mockResolvedValue({
+      description: null,
       id: 'f1',
       name: 'Work Renamed',
       created_at: '2025-01-01T00:00:00Z',
@@ -699,6 +710,7 @@ describe('FolderNav', () => {
 
   it('hides the rename form after a successful rename', async () => {
     mockUpdateFolder.mockResolvedValue({
+      description: null,
       id: 'f1',
       name: 'Work Renamed',
       created_at: '2025-01-01T00:00:00Z',
@@ -890,6 +902,7 @@ describe('FolderNav', () => {
 
   it('calls updateFolder with the trimmed name when rename input has surrounding spaces', async () => {
     mockUpdateFolder.mockResolvedValue({
+      description: null,
       id: 'f1',
       name: 'Work Renamed',
       created_at: '2025-01-01T00:00:00Z',
@@ -954,6 +967,7 @@ describe('FolderNav', () => {
     // sidebar's order.
     /** The only folder in the sidebar — it can travel in neither direction. */
     const LONE_FOLDER: Folder = {
+      description: null,
       id: 'f1',
       name: 'Work',
       created_at: '2025-01-01T00:00:00Z',
@@ -961,9 +975,27 @@ describe('FolderNav', () => {
     };
 
     const UNSORTED: Folder[] = [
-      { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 30 },
-      { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z', sort_order: 10 },
-      { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 20 },
+      {
+        description: null,
+        id: 'f1',
+        name: 'Work',
+        created_at: '2025-01-01T00:00:00Z',
+        sort_order: 30,
+      },
+      {
+        description: null,
+        id: 'f2',
+        name: 'Personal',
+        created_at: '2025-01-02T00:00:00Z',
+        sort_order: 10,
+      },
+      {
+        description: null,
+        id: 'f3',
+        name: 'Someday',
+        created_at: '2025-01-03T00:00:00Z',
+        sort_order: 20,
+      },
     ];
 
     it('renders the folders by their manual rank, not the order they were seeded in', () => {
@@ -1016,7 +1048,13 @@ describe('FolderNav', () => {
       renderWithProviders(<FolderNav />, {
         folders: [
           ...FOLDERS,
-          { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 30 },
+          {
+            description: null,
+            id: 'f3',
+            name: 'Someday',
+            created_at: '2025-01-03T00:00:00Z',
+            sort_order: 30,
+          },
         ],
       });
 
@@ -1064,6 +1102,7 @@ describe('FolderNav', () => {
   describe('rename form submit via keyboard', () => {
     it('submits rename on Enter key', async () => {
       mockUpdateFolder.mockResolvedValue({
+        description: null,
         id: 'f1',
         name: 'Work Renamed',
         created_at: '2025-01-01T00:00:00Z',
@@ -1089,6 +1128,7 @@ describe('FolderNav', () => {
   describe('create form submit via keyboard', () => {
     it('submits create on Enter key', async () => {
       mockCreateFolder.mockResolvedValue({
+        description: null,
         id: 'f3',
         name: 'Projects',
         created_at: '2025-01-03T00:00:00Z',

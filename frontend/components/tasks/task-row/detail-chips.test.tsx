@@ -10,12 +10,19 @@ import { FolderChip, IntendedEpicChip, IntendedProjectChip, RepeatChip } from '.
 // ── Seed builders for the store-reading chips (Folder / Project / Epic). ──
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Health', created_at: '2025-01-01T10:00:00Z', sort_order: 1 },
-  { id: 'f2', name: 'Work', created_at: '2025-01-01T11:00:00Z', sort_order: 2 },
+  {
+    description: null,
+    id: 'f1',
+    name: 'Health',
+    created_at: '2025-01-01T10:00:00Z',
+    sort_order: 1,
+  },
+  { description: null, id: 'f2', name: 'Work', created_at: '2025-01-01T11:00:00Z', sort_order: 2 },
 ];
 
 function project(id: string, name: string, key: string): Project {
   return {
+    description: null,
     id,
     name,
     key,

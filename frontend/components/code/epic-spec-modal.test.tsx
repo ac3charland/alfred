@@ -16,6 +16,7 @@ jest.mock('react-markdown', () => ({
 jest.mock('remark-gfm', () => ({ __esModule: true, default: () => {} }));
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

@@ -10,6 +10,7 @@ import {
 
 function makeProject(id: string): Project {
   return {
+    description: null,
     id,
     name: id,
     key: 'ALF',

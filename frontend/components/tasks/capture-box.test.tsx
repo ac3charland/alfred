@@ -14,6 +14,7 @@ const mockCreateItem = jest.mocked(apiClient.createItem);
 
 function makeProject(id: string, name: string, key: string): Project {
   return {
+    description: null,
     id,
     name,
     key,

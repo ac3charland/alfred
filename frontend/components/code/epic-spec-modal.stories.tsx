@@ -6,6 +6,7 @@ import type { Epic, Project } from '@/lib/types';
 import { EpicSpecModal } from './epic-spec-modal';
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

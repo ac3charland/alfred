@@ -9,7 +9,13 @@ import { TasksProvider } from '@/lib/stores/tasks-store';
 import type { CodeStory, Folder, Item } from '@/lib/types';
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Software', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+  {
+    description: null,
+    id: 'f1',
+    name: 'Software',
+    created_at: '2025-01-01T00:00:00Z',
+    sort_order: 1,
+  },
 ];
 
 /** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */

@@ -116,6 +116,7 @@ test('Convert to Code Story on a task → it leaves Tasks and lands on the board
     ],
     projects: [
       {
+        description: null,
         id: projectId,
         name: 'Alfred',
         key: 'ALF',
@@ -189,6 +190,7 @@ test('the "Created …" toast is clickable and deep-links to the new story (ALF-
     ],
     projects: [
       {
+        description: null,
         id: projectId,
         name: 'Alfred',
         key: 'ALF',

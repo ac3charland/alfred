@@ -9,6 +9,7 @@ import { Backlog } from './backlog';
 
 const PROJECTS: Project[] = [
   {
+    description: null,
     id: 'p1',
     name: 'Alfred',
     key: 'ALF',
@@ -19,6 +20,7 @@ const PROJECTS: Project[] = [
     created_at: '2025-01-01T00:00:00Z',
   },
   {
+    description: null,
     id: 'p2',
     name: 'Relay',
     key: 'RLP',
@@ -128,6 +130,7 @@ const PALETTE_SEED: [string, string, string, CodeStory['factory_state'], string]
 const PALETTE = PALETTE_SEED.map(([name, key, repo, factoryState, title], index) => {
   const createdAt = `2025-02-0${String(index + 1)}T00:00:00Z`;
   const project: Project = {
+    description: null,
     id: `pp${String(index + 1)}`,
     name,
     key,

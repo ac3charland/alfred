@@ -7,6 +7,7 @@ import type { CodeStory, Epic, Project } from '@/lib/types';
 import { StoryDetailModal } from './story-detail-modal';
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

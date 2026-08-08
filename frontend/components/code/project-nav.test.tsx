@@ -27,6 +27,7 @@ let pushStateSpy: jest.SpyInstance;
 
 const PROJECTS: Project[] = [
   {
+    description: null,
     id: 'p1',
     name: 'Alfred',
     key: 'ALF',
@@ -37,6 +38,7 @@ const PROJECTS: Project[] = [
     created_at: '2025-01-01T00:00:00Z',
   },
   {
+    description: null,
     id: 'p2',
     name: 'Relay',
     key: 'RLP',
@@ -279,6 +281,7 @@ describe('ProjectNav', () => {
     // NB: the seeded PROJECTS already use ALF + RLP, so the new key must be distinct
     // (the dialog rejects a duplicate key — covered in gate-dialog.test).
     const created: Project = {
+      description: null,
       id: 'p-new',
       name: 'Beacon',
       key: 'BCN',
