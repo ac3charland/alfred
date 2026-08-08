@@ -134,7 +134,29 @@
   }
   .app .desc .pencil { color: var(--a-muted); font-size: 12px; margin-left: .375rem; }
   .app .desc.placeholder { color: var(--a-muted); }
+  /* Hover: the EMPTY line's label brightens to foreground (its span carries
+     `hover:text-foreground`); a FILLED line's text does not — only the pencil arrives. */
+  .app .desc.hovered.placeholder { color: var(--a-text); }
+  .app .desc .pencil.off { opacity: 0; }
   .app .desc-wide { max-width: 42rem; }
+  .app .menu {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: .5rem;
+    padding: .25rem; width: 12rem; font-size: .8rem;
+  }
+  .app .menu-item { padding: .3rem .5rem; border-radius: .25rem; display: flex; gap: .5rem; align-items: center; }
+  .app .menu-item.danger { color: #f87171; }
+  .app .menu-sep { height: 1px; background: var(--a-border); margin: .25rem 0; }
+
+  /* A left-to-right sequence of app canvases with document-styled captions beneath —
+     the numbering is the document's chrome, the frames stay pure app. */
+  .seq { display: grid; gap: 1rem; grid-template-columns: 1fr; margin: 1rem 0 1.5rem; }
+  @media (min-width: 760px) { .seq { grid-template-columns: repeat(3, 1fr); } }
+  .seq.two { grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .seq.two { grid-template-columns: repeat(2, 1fr); } }
+  .seq figure { margin: 0; }
+  .seq figure .app { margin: 0; padding: .85rem .9rem; }
+  .seq figcaption { color: var(--muted); font-size: .8rem; margin-top: .45rem; line-height: 1.45; }
+  .seq figcaption b { color: var(--fg); }
   .app .ta {
     width: 100%; border: 1px solid var(--a-border); background: var(--a-input);
     border-radius: .25rem; padding: .375rem .5rem; font-size: .875rem; color: var(--a-text);
@@ -174,7 +196,7 @@
   project for a code item by <b>picking an id from a closed list</b> (epic decision D3: the live ids
   are the enum values of the response schema, so an invented folder is not something the model can
   emit). That design makes a wrong id impossible — but it says nothing about the model picking the
-  <i>wrong existing</i> folder, which epic D8 names as the expensive failure, because a
+  <i>wrong existing</i> folder, which epic D9 names as the expensive failure, because a
   confident-but-wrong label gets rubber-stamped in review.
 </p>
 <p>
@@ -209,8 +231,9 @@
   <tr>
     <td>Where is a description authored?</td>
     <td><b>In place, in each surface's own header</b> — the folder's under the folder-view header, the
-      project's under the board header. Both reuse the epic-notes inline editor
-      (<code>InlineEditTrigger</code> → <code>TextareaField</code>). The sidebar folder menu's
+      project's under the board header. Both reuse the epic-notes inline editor,
+      extracted into a shared atom (D5): <b>the line itself is the trigger</b> — no ⋯ menu, no
+      <i>Edit</i> entry, no new control. The sidebar folder menu's
       <i>Edit</i> keeps meaning <b>rename</b>, exactly as it does today.</td>
   </tr>
   <tr>
@@ -286,122 +309,129 @@
 
 <h2>3 · The surface</h2>
 
+<div class="callout">
+  <b>There is no menu entry, and no new control.</b> Neither header gains a ⋯ menu, a button, or an
+  <i>Edit</i> item. <b>The description line itself is the button</b> — click the text (or the
+  <i>Add …</i> placeholder standing in for it) and it becomes the editor in place. That is not a new
+  idea invented for this story: it is exactly how the epic header's notes work today, drawn in §3.1
+  so the two can be compared. The folder's ⋯ menu does exist — in the <b>sidebar</b>, not this header
+  — and it is untouched (§3.7).
+</div>
+
+<h3>3.1 · The affordance we're adopting, as it already works on an epic</h3>
+
 <p>
-  Both surfaces get the <b>same</b> affordance, because the repo already has one for exactly this
-  shape of field: the epic header's notes editor in
-  <code>components/code/board/epic-block.tsx</code> — a left-aligned
-  <code>InlineEditTrigger</code> showing either the text or an <i>Add …</i> placeholder with a
-  hover-revealed pencil, swapping on click to a <code>TextareaField</code> with
-  <b>Save</b> / <b>Cancel</b>. Nothing new is invented here; the two headers adopt it.
+  <code>EpicHeaderActions</code> in <code>components/code/board/epic-block.tsx</code>: one
+  <code>InlineEditTrigger</code> wrapping the text and a <code>Pencil</code> glyph, swapping on click
+  to a <code>TextareaField</code> with <b>Save</b> / <b>Cancel</b>. Folders and projects adopt this
+  component (§5.2) rather than a lookalike.
 </p>
 
-<h3>3.1 · Folder view — no description yet</h3>
-
-<div class="app">
-  <div class="row">
-    <span class="eyebrow">Health</span>
-    <span class="ctrls">
-      <span class="glyph">＋</span>
-      <span class="btn-outline">⇅ Sort by: Priority</span>
-      <span class="glyph">⌃⌄</span>
-    </span>
-  </div>
-  <div class="desc placeholder">Add folder description…</div>
-  <div class="tasks">
-    <div class="task"><span class="box"></span><span>Book the dentist</span></div>
-    <div class="task"><span class="box"></span><span>Refill the prescription</span></div>
-  </div>
-</div>
-<p class="mockcap">
-  The description line is <b>always present</b>, even when empty — matching the epic-notes precedent,
-  where <i>Add epic notes…</i> shows on every epic that has none. It sits on its own row beneath the
-  existing header row, so the header's control cluster (capture <b>＋</b>, <b>Sort by</b>,
-  <b>Collapse all</b>) is untouched.
-</p>
-
-<h3>3.2 · Folder view — described, and the hover state</h3>
-
-<div class="app">
-  <div class="row">
-    <span class="eyebrow">Health</span>
-    <span class="ctrls">
-      <span class="glyph">＋</span>
-      <span class="btn-outline">⇅ Sort by: Priority</span>
-      <span class="glyph">⌃⌄</span>
-    </span>
-  </div>
-  <div class="desc">
-    <span>Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.</span>
-    <span class="pencil">✎</span>
-  </div>
-  <div class="tasks">
-    <div class="task"><span class="box"></span><span>Book the dentist</span></div>
-    <div class="task"><span class="box"></span><span>Refill the prescription</span></div>
-  </div>
-</div>
-<p class="mockcap">
-  The pencil trails the text and is drawn here in its <b>hovered</b> state; at rest it is
-  <code>opacity-0</code> and fades in on hover of the line, exactly as the epic-notes pencil does. The
-  text <b>wraps</b> — it is not truncated or clamped — and the folder column is already
-  <code>max-w-3xl</code>, so it needs no width cap of its own.
-</p>
-
-<h3>3.3 · Folder view — editing</h3>
-
-<div class="app">
-  <div class="row">
-    <span class="eyebrow">Health</span>
-    <span class="ctrls">
-      <span class="glyph">＋</span>
-      <span class="btn-outline">⇅ Sort by: Priority</span>
-      <span class="glyph">⌃⌄</span>
-    </span>
-  </div>
-  <div style="margin-top:.5rem">
-    <div class="ta focusring">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.</div>
-    <div class="ta-actions">
-      <span class="btn-ghost-accent">Save</span>
-      <span class="btn-ghost">Cancel</span>
+<div class="seq">
+  <figure>
+    <div class="app">
+      <div class="desc placeholder">Add epic notes…<span class="pencil off">✎</span></div>
     </div>
+    <figcaption><b>1 · At rest.</b> The whole line is a button. The pencil is
+      <code>opacity-0</code>.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="desc placeholder hovered">Add epic notes…<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>2 · Hover.</b> The pencil fades in and the placeholder brightens to
+      <code>text-foreground</code> — the only cue that the line is interactive.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="ta empty focusring">Epic notes…</div>
+      <div class="ta-actions"><span class="btn-ghost-accent">Save</span><span class="btn-ghost">Cancel</span></div>
+    </div>
+    <figcaption><b>3 · Click.</b> The line is replaced in place by the textarea.</figcaption>
+  </figure>
+</div>
+
+<h3>3.2 · Folder view — where the line sits</h3>
+
+<div class="app">
+  <div class="row">
+    <span class="eyebrow">Health</span>
+    <span class="ctrls">
+      <span class="glyph">＋</span>
+      <span class="btn-outline">⇅ Sort by: Priority</span>
+      <span class="glyph">⌃⌄</span>
+    </span>
   </div>
+  <div class="desc">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.<span class="pencil off">✎</span></div>
   <div class="tasks">
     <div class="task"><span class="box"></span><span>Book the dentist</span></div>
     <div class="task"><span class="box"></span><span>Refill the prescription</span></div>
   </div>
 </div>
 <p class="mockcap">
-  The <code>TextareaField</code> <code>default</code> variant, verbatim: 2 rows, no resize handle,
-  <code>bg-input</code> on a <code>border-border</code> box, teal focus ring, a
-  <code>ghostAccent</code> <b>Save</b> and a muted <b>Cancel</b> beneath it, left-aligned. It replaces
-  the display line in the same slot, so nothing below it moves. On an empty folder the textarea shows
-  the placeholder <i>"What belongs in this folder…"</i>. ⌘↵ / Ctrl+↵ saves and Escape cancels — both
-  are already in the atom.
+  A described folder <b>at rest</b> — muted text, no pencil, nothing else changed. The line sits on
+  its own row beneath the existing header row, so the header's control cluster (capture <b>＋</b>,
+  <b>Sort by</b>, <b>Collapse all</b>) keeps its row and its contents. The text wraps rather than
+  truncating, which is what the epic's classes do in the built CSS.
 </p>
 
-<h3>3.4 · Board header — no description yet</h3>
+<h3>3.3 · Folder view — how you get in</h3>
 
-<div class="app">
-  <div class="row">
-    <span class="head-line">
-      <span class="proj-name">Alfred</span>
-      <span class="proj-key">ALF</span>
-    </span>
-    <span class="ctrls">
-      <span class="btn-outline">＋ Create epic</span>
-      <span class="btn-outline">Collapse all</span>
-      <span class="btn-outline">⋯</span>
-    </span>
-  </div>
-  <div class="desc placeholder">Add project description…</div>
-  <div class="lanes">
-    <div class="lane">Needs refinement</div>
-    <div class="lane">In refinement</div>
-    <div class="lane">Ready for dev</div>
-    <div class="lane">In development</div>
-  </div>
+<div class="seq">
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc placeholder">Add folder description…<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>1 · At rest.</b> An undescribed folder shows the placeholder — this is what
+      advertises the feature, and it is the entire discovery path.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc placeholder hovered">Add folder description…<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>2 · Hover.</b> Pencil in, label brightened. No menu is opened and nothing else on
+      the header reacts.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div style="margin-top:.5rem">
+        <div class="ta empty focusring">Folder description…</div>
+        <div class="ta-actions"><span class="btn-ghost-accent">Save</span><span class="btn-ghost">Cancel</span></div>
+      </div>
+    </div>
+    <figcaption><b>3 · Click.</b> The editor opens in place, seeded with the current value (empty
+      here). The tasks below do not move.</figcaption>
+  </figure>
 </div>
 
-<h3>3.5 · Board header — described</h3>
+<p class="mockcap">
+  Frames 1–3 are the description line only, at the position §3.2 draws it in context.
+</p>
+
+<h3>3.4 · Folder view — a line that already has text</h3>
+
+<div class="seq two">
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>At rest.</b> Muted text, no pencil.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>Hover.</b> Only the pencil arrives — a filled line does <b>not</b> brighten,
+      because the epic's brighten-on-hover lives on the placeholder span alone.</figcaption>
+  </figure>
+</div>
+
+<h3>3.5 · Board header — where the line sits</h3>
 
 <div class="app">
   <div class="row">
@@ -415,10 +445,7 @@
       <span class="btn-outline">⋯</span>
     </span>
   </div>
-  <div class="desc desc-wide">
-    <span>My personal capture-first task system — Next.js on Vercel, Cloudflare Workers, Supabase. Anything about alfred itself belongs here.</span>
-    <span class="pencil">✎</span>
-  </div>
+  <div class="desc desc-wide">My personal capture-first task system — Next.js on Vercel, Cloudflare Workers, Supabase. Anything about alfred itself belongs here.<span class="pencil off">✎</span></div>
   <div class="lanes">
     <div class="lane">Needs refinement</div>
     <div class="lane">In refinement</div>
@@ -427,13 +454,90 @@
   </div>
 </div>
 <p class="mockcap">
-  Same line, same pencil, same editor — placed under the name/key pair rather than beside it, so the
+  Same line, same component, placed under the name/key pair rather than beside it, so
   <code>BoardToolbar</code> keeps its own row and its <code>flex-wrap</code> behaviour is unchanged.
-  Unlike the folder column the board is full-width, so the description line is capped at
-  <code>max-w-2xl</code>; the mockup shows it stopping short of the board's right edge.
+  The <b>⋯</b> drawn at the right is the board's <i>existing</i> filter menu (the one that holds
+  <i>Filter by status</i> / <i>Show abandoned</i> / <i>Show archived</i> below <code>md</code>) — it
+  gains no entry from this story. Unlike the folder column the board is full-width, so the line is
+  capped at <code>max-w-2xl</code>; the mockup shows it stopping short of the right edge.
 </p>
 
-<h3>3.6 · Board header — editing</h3>
+<h3>3.6 · Board header — how you get in</h3>
+
+<div class="seq">
+  <figure>
+    <div class="app">
+      <div class="head-line"><span class="proj-name">Alfred</span><span class="proj-key">ALF</span></div>
+      <div class="desc placeholder">Add project description…<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>1 · At rest.</b> An undescribed project, placeholder showing.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="head-line"><span class="proj-name">Alfred</span><span class="proj-key">ALF</span></div>
+      <div class="desc placeholder hovered">Add project description…<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>2 · Hover.</b> Identical behaviour to the folder and the epic — same
+      component.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="head-line"><span class="proj-name">Alfred</span><span class="proj-key">ALF</span></div>
+      <div class="desc-wide" style="margin-top:.5rem">
+        <div class="ta empty focusring">Project description…</div>
+        <div class="ta-actions"><span class="btn-ghost-accent">Save</span><span class="btn-ghost">Cancel</span></div>
+      </div>
+    </div>
+    <figcaption><b>3 · Click.</b> The editor opens in place, capped at the same
+      <code>max-w-2xl</code> as the line it replaced.</figcaption>
+  </figure>
+</div>
+
+<h3>3.7 · What is <em>not</em> touched — the sidebar folder menu</h3>
+
+<p>
+  Folders <i>do</i> have a ⋯ menu — on the sidebar row, not the view header. It is drawn here
+  unchanged, because <b>this story adds nothing to it</b>: no <i>Describe</i> entry, and
+  <i>Edit</i> still opens the single-line rename it opens today.
+</p>
+
+<div class="app">
+  <div class="row" style="max-width:20rem">
+    <span style="display:flex;align-items:center;gap:.5rem"><span class="glyph">🗀</span>Health</span>
+    <span class="glyph">⋯</span>
+  </div>
+  <div class="menu" style="margin-top:.5rem">
+    <div class="menu-item">↑ Move up</div>
+    <div class="menu-item">↓ Move down</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item">Edit</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item danger">Delete</div>
+  </div>
+</div>
+<p class="mockcap">
+  <code>FolderNavMenu</code> exactly as it is today. A description is longer than a sidebar row can
+  show or a single-line inline field can hold, which is why it is authored in the view — not because
+  the menu was unavailable.
+</p>
+
+<h3>3.8 · Both surfaces, undescribed, in context</h3>
+
+<div class="app">
+  <div class="row">
+    <span class="eyebrow">Health</span>
+    <span class="ctrls">
+      <span class="glyph">＋</span>
+      <span class="btn-outline">⇅ Sort by: Priority</span>
+      <span class="glyph">⌃⌄</span>
+    </span>
+  </div>
+  <div class="desc placeholder">Add folder description…<span class="pencil off">✎</span></div>
+  <div class="tasks">
+    <div class="task"><span class="box"></span><span>Book the dentist</span></div>
+    <div class="task"><span class="box"></span><span>Refill the prescription</span></div>
+  </div>
+</div>
 
 <div class="app">
   <div class="row">
@@ -447,13 +551,7 @@
       <span class="btn-outline">⋯</span>
     </span>
   </div>
-  <div class="desc-wide" style="margin-top:.5rem">
-    <div class="ta empty focusring">What this project is, and what kind of work belongs in it…</div>
-    <div class="ta-actions">
-      <span class="btn-ghost-accent">Save</span>
-      <span class="btn-ghost">Cancel</span>
-    </div>
-  </div>
+  <div class="desc placeholder">Add project description…<span class="pencil off">✎</span></div>
   <div class="lanes">
     <div class="lane">Needs refinement</div>
     <div class="lane">In refinement</div>
@@ -462,18 +560,30 @@
   </div>
 </div>
 <p class="mockcap">
-  The empty editor, showing the project placeholder. The editor is present on both surfaces — it is
-  the same component with different copy, not a folder-only affordance.
+  The line is <b>always present</b>, even when empty — matching the epic-notes precedent, where
+  <i>Add epic notes…</i> shows on every epic that has none. That is deliberate and load-bearing: with
+  no menu entry and no button, the placeholder <i>is</i> the discovery path (D4). It costs one muted
+  line on surfaces that have no description yet, and it is what moves the four board baselines (§7).
 </p>
 
 <h4>Copy, in one place</h4>
+<p class="small">
+  Each column is the epic's string with the noun swapped — <i>Add epic notes…</i> / <i>Epic notes…</i>
+  / <i>Edit epic notes</i>. Nothing here is a new phrasing pattern.
+</p>
 <table>
-  <tr><th style="width:26%">Slot</th><th>Folder</th><th>Project</th></tr>
-  <tr><td>Empty-state trigger (also its accessible name)</td><td>Add folder description…</td><td>Add project description…</td></tr>
-  <tr><td>Textarea placeholder</td><td>What belongs in this folder…</td><td>What this project is, and what kind of work belongs in it…</td></tr>
-  <tr><td>Textarea <code>aria-label</code></td><td>Edit folder description</td><td>Edit project description</td></tr>
-  <tr><td>Failure toast</td><td>Couldn't save the folder description</td><td>Couldn't save the project description</td></tr>
+  <tr><th style="width:24%">Slot</th><th>Epic (today)</th><th>Folder</th><th>Project</th></tr>
+  <tr><td>Empty-state trigger (also its accessible name)</td><td>Add epic notes…</td><td>Add folder description…</td><td>Add project description…</td></tr>
+  <tr><td>Textarea placeholder</td><td>Epic notes…</td><td>Folder description…</td><td>Project description…</td></tr>
+  <tr><td>Textarea <code>aria-label</code></td><td>Edit epic notes</td><td>Edit folder description</td><td>Edit project description</td></tr>
+  <tr><td>Failure toast</td><td><span class="small">— (silent rollback)</span></td><td>Couldn't save the folder description</td><td>Couldn't save the project description</td></tr>
 </table>
+<p class="small">
+  The toast column is the one place the two new call sites do more than the epic does: the epic's
+  save rolls its draft back silently, while both stores here already own a toast helper and use it on
+  every other failed write, so a silent rollback would be the odd one out. It is the existing
+  <code>showToast</code>, not a new mechanism.
+</p>
 
 <h2>4 · Decisions</h2>
 
@@ -520,17 +630,38 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D4</span>The line is always rendered — an empty description shows its placeholder</h3>
-  <p>Not hover-gated, not hidden until first use. Every folder view and every board shows either a
-    description or <i>Add …</i>.</p>
-  <p class="why"><b>Why:</b> it matches the epic-notes precedent, and a field nobody knows exists is a
-    field that stays null — which is the one outcome that makes this whole story worthless. The cost
-    is one muted line on surfaces that have no description yet, and the visible-consequence is real:
-    <b>it moves four committed Storybook baselines</b> (§7).</p>
+  <h3><span class="n">D4</span>The line is the trigger, and it is always rendered</h3>
+  <p>No ⋯ menu on either header, no <i>Edit</i> entry, no button. Clicking the line opens the editor
+    in place; the pencil is a hover cue on that same line, not a separate control. And the line is
+    always rendered — not hover-gated, not hidden until first use — so every folder view and every
+    board shows either a description or <i>Add …</i>.</p>
+  <p class="why"><b>Why these are one decision:</b> with no menu entry anywhere, the placeholder
+    <i>is</i> the only way anyone discovers the field exists. Hide it until first use and the feature
+    is unreachable; put it behind a menu instead and both headers grow a control they don't have
+    today. The epic header settled this exact trade already, and nobody has since asked it for a menu
+    item. The cost is one muted line on undescribed surfaces, and one real consequence: <b>it moves
+    four committed Storybook baselines</b> (§7).</p>
 </div>
 
 <div class="dec">
-  <h3><span class="n">D5</span><code>updateFolderSchema</code>'s <code>refine</code> has to be loosened, not just extended</h3>
+  <h3><span class="n">D5</span>The affordance is the epic's component — extracted, then shared by all three</h3>
+  <p>Lift <code>EpicHeaderActions</code>'s display/edit swap into an atom (e.g.
+    <code>components/atoms/inline-note-field.tsx</code>) taking the current text, the three strings
+    from §3's copy table, and an <code>onSave</code>. Point <b>all three</b> call sites at it — the
+    epic header included. Nothing is redesigned: the extraction is a move, so the epic header must
+    render byte-identically afterwards (same classes, same DOM order).</p>
+  <p class="why"><b>Why extract rather than copy:</b> "the same visual grammar as the epic
+    descriptions" is a claim that decays the moment there are three near-copies of it — one gets a
+    tweak and the surfaces drift apart with nothing failing. One component makes it true by
+    construction instead of by review. It is also the <code>frontend-architecture</code> skill's
+    rule: this is the third instance of the pattern, which is where it stops being a coincidence.</p>
+  <p class="why"><b>What this does not license:</b> changing the epic notes' behaviour, copy, or
+    markup while the component is being extracted. If the extraction can't produce an identical epic
+    header, that is a signal the abstraction is wrong, not a licence to adjust the epic.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span><code>updateFolderSchema</code>'s <code>refine</code> has to be loosened, not just extended</h3>
   <p>It currently reads <i>"Either <code>name</code> or <code>sort_order</code> is required"</i>. Add
     <code>description</code> to the object <b>and</b> to the predicate — otherwise a description-only
     PATCH is rejected with a 400 before it reaches the route, and the failure looks like a store bug.</p>
@@ -541,7 +672,7 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D6</span>No view to recreate, and no <code>select</code> to change</h3>
+  <h3><span class="n">D7</span>No view to recreate, and no <code>select</code> to change</h3>
   <p>The <code>task_items</code> trap the epic spec warns about — <code>select i.*</code> freezing its
     column list at CREATE time — <b>does not apply here.</b> There is no view over <code>folders</code>
     at all, and <code>v_code_stories</code> names project columns explicitly
@@ -555,7 +686,7 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D7</span>Creation stays name-only</h3>
+  <h3><span class="n">D8</span>Creation stays name-only</h3>
   <p><code>POST /api/folders</code> and <code>POST /api/projects</code> are unchanged. A new folder or
     project starts with <code>description: null</code> and is described afterwards from its own
     header.</p>
@@ -565,7 +696,7 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D8</span>Both writes are optimistic, mirroring what each store already does</h3>
+  <h3><span class="n">D9</span>Both writes are optimistic, mirroring what each store already does</h3>
   <p>Folders: a new <code>setFolderDescription(id, description)</code> action, a line-for-line mirror
     of <code>renameFolder</code> — optimistic <code>patch</code>, PATCH, <code>replace</code> with the
     saved row, rollback to the previous value, toast on failure. Projects: a new
@@ -577,7 +708,7 @@
 </div>
 
 <div class="dec">
-  <h3><span class="n">D9</span>Nothing reads the description, and nothing is stubbed for a future reader</h3>
+  <h3><span class="n">D10</span>Nothing reads the description, and nothing is stubbed for a future reader</h3>
   <p>No prompt-assembly helper, no <code>describeClosedWorld()</code>, no Worker change, no
     placeholder module waiting to be filled in.</p>
   <p class="why"><b>Why:</b> story D owns the prompt and hasn't been specced yet; a seam guessed now
@@ -614,7 +745,7 @@ comment on column projects.description is
   'NULL = undescribed. Same purpose and same cap as folders.description.';</code></pre>
 
 <p>No backfill: <code>null</code> is already correct for every existing row. No view recreation and
-  no re-grant (D6) — neither table is behind a view, and no function signature changes.</p>
+  no re-grant (D7) — neither table is behind a view, and no function signature changes.</p>
 
 <p>Also in <code>database/</code>:</p>
 <table>
@@ -640,7 +771,7 @@ comment on column projects.description is
   <tr>
     <td><code>lib/api/schemas.ts</code></td>
     <td><code>updateFolderSchema</code> gains <code>description: z.string().max(500).nullable().optional()</code>,
-      and its <code>.refine</code> is loosened to a non-empty-body check (D5). New
+      and its <code>.refine</code> is loosened to a non-empty-body check (D6). New
       <code>updateProjectSchema</code> in the Software-Factory section: the same single field, same
       non-empty-body refine, exported as <code>UpdateProjectInput</code>.</td>
   </tr>
@@ -666,7 +797,7 @@ comment on column projects.description is
   </tr>
   <tr>
     <td><code>lib/stores/folders-store.tsx</code></td>
-    <td><code>setFolderDescription</code> on <code>FolderActions</code> (D8). The reducer's generic
+    <td><code>setFolderDescription</code> on <code>FolderActions</code> (D9). The reducer's generic
       <code>patch</code> action already does what it needs — no reducer change.</td>
   </tr>
   <tr>
@@ -687,22 +818,26 @@ comment on column projects.description is
   </tr>
   <tr>
     <td><code>components/tasks/folder-view.tsx</code></td>
-    <td>The description row beneath the existing header row (§3.1–3.3). The header
+    <td>The description row beneath the existing header row (§3.2–3.4). The header
       <code>div</code>'s <code>mb-2</code> moves to a new wrapper so the spacing below the block is
       unchanged.</td>
   </tr>
   <tr>
     <td><code>components/code/board.tsx</code></td>
-    <td>The description row beneath the name/key line, <code>max-w-2xl</code> (§3.4–3.6).</td>
+    <td>The description row beneath the name/key line, <code>max-w-2xl</code> (§3.5–3.6).</td>
   </tr>
   <tr>
-    <td>A shared editor component</td>
-    <td>The two surfaces render the identical display/edit swap with different copy and a different
-      save callback, so extract it once (e.g.
-      <code>components/atoms/inline-description.tsx</code>) rather than writing it twice — see the
-      <code>frontend-architecture</code> skill. <code>EpicHeaderActions</code> is a third instance of
-      the same pattern; <b>leave it alone</b> — folding it in means touching the board's epic header
-      and its snapshots for no behavioural gain, and it is a separate refactor if anyone wants it.</td>
+    <td><code>components/atoms/inline-note-field.tsx</code> <span class="small">(new)</span></td>
+    <td><b>Extracted from <code>EpicHeaderActions</code></b>, not written fresh (D5): the
+      <code>InlineEditTrigger</code> + <code>Pencil</code> display line, the empty-vs-filled span
+      split, and the <code>TextareaField</code> swap — with the current value, the three copy strings
+      and an <code>onSave</code> as props. Carry the class strings across verbatim.</td>
+  </tr>
+  <tr>
+    <td><code>components/code/board/epic-block.tsx</code></td>
+    <td><code>EpicHeaderActions</code> keeps its <code>updateEpic</code> save and its
+      <code>border-b</code> wrapper but renders the extracted atom instead of its own copy. Its
+      output must be identical — this is a move, not a redesign (D5).</td>
   </tr>
   <tr>
     <td><code>e2e/support/constants.ts</code></td>
@@ -727,7 +862,7 @@ comment on column projects.description is
 
 <div class="callout">
   <b>Two things it is easy to miss.</b> (1) <code>updateFolderSchema</code>'s <code>refine</code>
-  (D5) — the feature 400s without it, and the typecheck is green either way. (2) The board's
+  (D6) — the feature 400s without it, and the typecheck is green either way. (2) The board's
   <code>visualTest</code> target is <code>[data-testid="board-frame"]</code>, which <i>wraps the whole
   Board including its header</i> — so the description line lands inside four committed baselines
   (§7). That is expected, not a regression, but it must go through the capture-then-approve flow.
@@ -744,7 +879,7 @@ comment on column projects.description is
   <tr><th style="width:36%">Suite</th><th>What it must prove</th></tr>
   <tr>
     <td><code>lib/api/schemas.test.ts</code></td>
-    <td><code>updateFolderSchema</code> accepts a <b>description-only</b> body (D5), accepts
+    <td><code>updateFolderSchema</code> accepts a <b>description-only</b> body (D6), accepts
       <code>null</code>, accepts a name-only body as it does today, rejects <code>{}</code>, and
       rejects 501 characters. <code>updateProjectSchema</code>: the same four, plus that it strips a
       <code>name</code> / <code>key</code> a caller tries to smuggle in.</td>
@@ -789,6 +924,18 @@ comment on column projects.description is
     <td><code>maxLength</code> reaches the <code>&lt;textarea&gt;</code> when given, and the attribute
       is absent when it is not (so the epic-notes and block-reason call sites are provably
       unchanged).</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/inline-note-field.test.tsx</code> <span class="small">(new)</span></td>
+    <td>The affordance itself, once: the empty label vs the text; click opens the textarea seeded
+      with the current value; Save reports the trimmed value and empty as <code>null</code>; an
+      unchanged value reports nothing; Cancel and Escape close without reporting.</td>
+  </tr>
+  <tr>
+    <td><code>components/code/board/epic-block.test.tsx</code></td>
+    <td><b>Passes unchanged.</b> The epic-notes assertions are the regression net for the extraction
+      (D5) — if any of them needs editing, the atom's shape is wrong. Do not rewrite them to fit
+      it.</td>
   </tr>
   <tr>
     <td><code>components/tasks/folder-view.stories.tsx</code><br /><code>components/code/board.stories.tsx</code></td>
@@ -847,6 +994,19 @@ comment on column projects.description is
   <li>Saving an unchanged value issues no request.</li>
   <li>A failed save restores the previous text and shows <i>Couldn't save the folder description</i>.</li>
   <li>A described folder shows its text wrapped, with a pencil that appears on hover.</li>
+  <li>An undescribed line brightens to <code>text-foreground</code> on hover; a described one does
+    not — on both, only the pencil changes state (§3.4).</li>
+  <li>The line is reachable by keyboard: it is a real button, takes focus in tab order with the
+    teal focus ring, and Enter or Space opens the editor.</li>
+</ul>
+
+<h4>The way in, and the ways that aren't</h4>
+<ul class="ac">
+  <li>The description line is the <b>only</b> trigger. Neither the folder-view header nor the board
+    header gains a ⋯ menu, an <i>Edit</i> entry, or any other new control.</li>
+  <li>The sidebar folder row menu is unchanged: <i>Move up</i> / <i>Move down</i> / <i>Edit</i> /
+    <i>Delete</i>, with <i>Edit</i> still opening the single-line rename.</li>
+  <li>The board's existing ⋯ filter menu holds the same three entries it holds today.</li>
 </ul>
 
 <h4>Authoring a project description</h4>
@@ -875,8 +1035,11 @@ comment on column projects.description is
   <li>Folder rename from the sidebar, folder create, folder reorder and folder delete behave exactly
     as they do today; the sidebar row menu's <i>Edit</i> still opens the rename.</li>
   <li>Project creation from the sidebar <b>+</b> and from the gate is unchanged.</li>
-  <li>The epic-notes editor and the story block-reason editor are byte-for-byte unchanged in
-    behaviour.</li>
+  <li>The epic notes render and behave exactly as they do today after being migrated onto the
+    extracted atom — same strings, same classes, same states — and
+    <code>epic-block.test.tsx</code> passes without an edit.</li>
+  <li>The story block-reason editor (the <code>TextareaField</code> <code>warning</code> variant) is
+    unchanged.</li>
   <li>No LLM code, no Worker change, and no prompt exists in the repo as a result of this story.</li>
 </ul>
 
@@ -898,7 +1061,7 @@ comment on column projects.description is
     <td>Putting descriptions into the classifier prompt</td>
     <td>The whole point of the field, and explicitly ALF-158 <b>story D</b>'s. There is no prompt
       assembly in the repo to add a line to, and story D has not been specced. This story ends at the
-      column and the authoring surface (D9).</td>
+      column and the authoring surface (D10).</td>
   </tr>
   <tr>
     <td>Descriptions on epics</td>
@@ -931,20 +1094,26 @@ comment on column projects.description is
   </tr>
   <tr>
     <td>Setting a description at creation time</td>
-    <td>D7. The sidebar's create form is one inline field on purpose, and the new-project dialog is
+    <td>D8. The sidebar's create form is one inline field on purpose, and the new-project dialog is
       already three fields guarding a unique key.</td>
   </tr>
   <tr>
-    <td>Folding <code>EpicHeaderActions</code> into the extracted editor</td>
-    <td>A pure refactor of working code that would drag the epic header — and its snapshots — into a
-      story about a new column. Worth doing; not here.</td>
+    <td>Any change to how the epic notes look or behave</td>
+    <td>The epic header is the <i>source</i> of the affordance here, not a surface being redesigned by
+      it. It is migrated onto the extracted atom (D5) and must come out identical; improving it is a
+      separate decision that would then apply to all three call sites at once.</td>
+  </tr>
+  <tr>
+    <td>A ⋯ menu, an <i>Edit</i> entry, or any other new control on either header</td>
+    <td>D4. The line is the trigger. Adding a second way in would mean two affordances for one field
+      on surfaces that today have neither.</td>
   </tr>
 </table>
 
 <h2>10 · Related reading</h2>
 <ul>
   <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. <b>D3</b>
-    (the closed world the description enriches), <b>D8</b> (abstention, and why a wrong pick is the
+    (the closed world the description enriches), <b>D9</b> (abstention, and why a wrong pick is the
     expensive failure), <b>D16</b> / <b>D18</b> (why prompt bytes are re-sent per item, which is what
     D3's cap is about), and §6 story <b>D</b> (the eventual reader).</li>
   <li><code>components/code/board/epic-block.tsx</code> — <code>EpicHeaderActions</code>, the
