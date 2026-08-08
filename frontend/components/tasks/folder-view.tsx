@@ -7,18 +7,20 @@ import { AnimatedHeightReveal } from '@/components/atoms/animated-height-reveal'
 import { Button } from '@/components/atoms/button';
 import { EmptyState } from '@/components/atoms/empty-state';
 import { IconButton } from '@/components/atoms/icon-button';
+import { InlineNoteField } from '@/components/atoms/inline-note-field';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
 import { FolderSortMenu } from '@/components/tasks/folder-sort-menu';
 import { TaskList } from '@/components/tasks/task-list';
 import { captureRevealClass } from '@/components/tasks/task-row.styles';
+import { ENTITY_DESCRIPTION_MAX } from '@/lib/api/schemas';
 import {
   sameEditor,
   useActiveEditor,
   useActiveEditorActions,
 } from '@/lib/stores/active-editor-store';
 import { useFolderSort } from '@/lib/stores/folder-sort-store';
-import { useFolders } from '@/lib/stores/folders-store';
+import { useFolderActions, useFolders } from '@/lib/stores/folders-store';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
 interface FolderViewProperties {
@@ -48,6 +50,7 @@ export function FolderView({ folderId }: FolderViewProperties) {
   const editor = { itemId: folderId, kind: 'folder-capture' } as const;
   const showCapture = sameEditor(useActiveEditor(), editor);
   const { openEditor, closeEditor } = useActiveEditorActions();
+  const { setFolderDescription } = useFolderActions();
   const prefersReducedMotion = usePrefersReducedMotion();
 
   // The box animates in and back out, so it must stay mounted through its exit — an unmount
@@ -75,38 +78,52 @@ export function FolderView({ folderId }: FolderViewProperties) {
 
   return (
     <>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
-          {folder.name}
-        </span>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* The capture toggle leads the cluster — making a task comes before the controls that
-              arrange them — in the same grey treatment as its neighbours. Present at every width:
-              the folder header has no overflow menu to fold into (unlike the row's "+") and its
-              actions are never hover-gated. */}
-          <IconButton
-            aria-label={`Add task to ${folder.name}`}
-            title="Add task"
-            aria-expanded={showCapture}
-            onMouseDown={(event) => {
-              // Keep focus inside the open box until the click lands. Without this the box's
-              // blur-dismiss fires first, so the click handler sees a closed box and re-opens
-              // what it just closed — the same trap the row's "+" guards against.
-              if (showCapture) event.preventDefault();
-            }}
-            onClick={() => {
-              if (showCapture) {
-                closeEditor(editor);
-              } else {
-                openEditor(editor);
-              }
-            }}
-          >
-            <Plus size={16} />
-          </IconButton>
-          <FolderSortMenu value={mode} onChange={setMode} />
-          <CollapseAllButton scope={{ type: 'folder', folderId }} />
+      <div className="mb-2 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
+            {folder.name}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* The capture toggle leads the cluster — making a task comes before the controls that
+                arrange them — in the same grey treatment as its neighbours. Present at every width:
+                the folder header has no overflow menu to fold into (unlike the row's "+") and its
+                actions are never hover-gated. */}
+            <IconButton
+              aria-label={`Add task to ${folder.name}`}
+              title="Add task"
+              aria-expanded={showCapture}
+              onMouseDown={(event) => {
+                // Keep focus inside the open box until the click lands. Without this the box's
+                // blur-dismiss fires first, so the click handler sees a closed box and re-opens
+                // what it just closed — the same trap the row's "+" guards against.
+                if (showCapture) event.preventDefault();
+              }}
+              onClick={() => {
+                if (showCapture) {
+                  closeEditor(editor);
+                } else {
+                  openEditor(editor);
+                }
+              }}
+            >
+              <Plus size={16} />
+            </IconButton>
+            <FolderSortMenu value={mode} onChange={setMode} />
+            <CollapseAllButton scope={{ type: 'folder', folderId }} />
+          </div>
         </div>
+
+        {/* What belongs in this folder, in the owner's words (ALF-179). Its own row beneath the
+            control cluster, so the header keeps its shape; always rendered, because with no menu
+            entry and no button the placeholder is the entire discovery path. */}
+        <InlineNoteField
+          value={folder.description}
+          emptyLabel="Add folder description…"
+          placeholder="Folder description…"
+          editLabel="Edit folder description"
+          maxLength={ENTITY_DESCRIPTION_MAX}
+          onSave={(description) => setFolderDescription(folderId, description)}
+        />
       </div>
 
       {captureRendered && (

@@ -78,3 +78,47 @@ test('deleting a folder returns its tasks to the Inbox', async ({ page, seed }) 
   await page.goto('/?view=inbox');
   await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Homeless task')).toBeVisible();
 });
+
+test('describes a folder from its view header, and clears the description again', async ({
+  page,
+  seed,
+}) => {
+  // Real UUID id: the description PATCHes the folder by id, which the route validates as a
+  // UUID (a readable id would 400 → roll back).
+  const folder = makeFolder('Health');
+  await seed({ folders: [folder] });
+  await page.goto(`/folders/${folder.id}`);
+
+  // The placeholder is the entire discovery path — there is no menu entry and no button.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/folders/') && response.request().method() === 'PATCH',
+  );
+  await page.getByRole('button', { name: 'Add folder description…' }).click();
+  await page
+    .getByRole('textbox', { name: 'Edit folder description' })
+    .fill('Doctors, dentist, prescriptions, the gym.');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await saved;
+  await expect(
+    page.getByRole('button', { name: 'Doctors, dentist, prescriptions, the gym.' }),
+  ).toBeVisible();
+
+  // It is a column, not client state: a full reload reads it back from the server.
+  await page.reload();
+  await expect(
+    page.getByRole('button', { name: 'Doctors, dentist, prescriptions, the gym.' }),
+  ).toBeVisible();
+
+  // Emptying it returns the folder to the placeholder (the column is null, not '').
+  const cleared = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/folders/') && response.request().method() === 'PATCH',
+  );
+  await page.getByRole('button', { name: 'Doctors, dentist, prescriptions, the gym.' }).click();
+  await page.getByRole('textbox', { name: 'Edit folder description' }).fill('');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await cleared;
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Add folder description…' })).toBeVisible();
+});
