@@ -115,9 +115,9 @@
 <h2>1 · What this story is</h2>
 
 <p>Epic <a href="epics/ALF-158.html">ALF-158</a> splits into ten slices, A–J. Three of them are
-already spoken for: <b>A</b> (Inbox residency) shipped as ALF-168, and <b>B + E + I</b> (editing
-parity, the epic hint, the Dispatch action) are refined as ALF-170. This story takes the three that
-contain the model:</p>
+already shipped: <b>A</b> (Inbox residency) as ALF-168, and <b>B + E + I</b> (editing parity, the
+epic hint, the Dispatch action) as ALF-170. A fourth enabler, ALF-179, is refined and waiting. This
+story takes the three slices that contain the model:</p>
 
 <div class="scroll"><table>
   <tr><th style="width:3rem">Slice</th><th>What it is</th><th>Why it lands here</th></tr>
@@ -145,20 +145,50 @@ contain the model:</p>
   </tr>
 </table></div>
 
-<h3>Prerequisite: ALF-170 must land first</h3>
+<h3>Prerequisites</h3>
+<p>This story reads three columns it does not create. Two of the three are already live:</p>
+<div class="scroll"><table>
+  <tr><th style="width:8rem">Story</th><th>What it gives this one</th><th style="width:8rem">State</th></tr>
+  <tr>
+    <td><b>ALF-168</b><br /><span class="small">slice A</span></td>
+    <td><code>items.dispatched_at</code>, the backfill, the <code>{ dispatched: boolean }</code> PATCH
+      intent, the residency-aware selectors. The sweep predicate and the dispatch trigger both key on
+      it.</td>
+    <td class="yes">Merged<br /><span class="small">0026</span></td>
+  </tr>
+  <tr>
+    <td><b>ALF-170</b><br /><span class="small">slices B + E + I</span></td>
+    <td><code>items.intended_epic_id</code> — the pre-factory epic hint the verdict schema
+      (<a href="#s6">S6</a>) asks for and the coherent write (<a href="#s9">S9</a>) sets — plus the
+      Dispatch action whose <code>dispatched_at</code> transition fires the diff
+      (<a href="#s13">S13</a>).</td>
+    <td class="yes">Merged<br /><span class="small">0027</span></td>
+  </tr>
+  <tr>
+    <td><b>ALF-179</b></td>
+    <td><code>folders.description</code> and <code>projects.description</code> — the owner-authored
+      sentences the prompt's closed-world block carries (<a href="#s7">S7</a>).</td>
+    <td class="no">Refined,<br />not built</td>
+  </tr>
+</table></div>
 <p>
-  ALF-170 introduces <code>items.intended_epic_id</code> — the pre-factory epic hint. The verdict
-  schema in <a href="#s6">S6</a> asks the model for an epic, and <a href="#s8">S8</a> writes it. That
-  column does not exist until ALF-170 merges.
+  <b>ALF-179 must land before this story.</b> Its spec ships the column, the write path and the
+  authoring surface, and stops deliberately at the boundary — its D10 says in as many words that
+  "story D owns the prompt" and declines to guess the seam. <a href="#s7">S7</a> is that seam. Its own
+  framing is that it makes this prompt <i>better, not possible</i>, and that is true of the epic as a
+  whole — but it is not true of this story, which selects those two columns and would fail on a
+  database that lacks them.
 </p>
 <p>
-  <b>If ALF-171 is picked up before ALF-170 has merged, stop and say so</b> rather than building a
-  reduced version. This is the same posture ALF-170 takes toward ALF-168, and for the same reason: a
-  quietly-dropped field is a spec the reviewer never approved. ALF-168 <i>has</i> merged — migration
-  <code>0026_inbox_dispatch.sql</code>, the <code>dispatched_at</code> column, the
-  <code>{ dispatched: boolean }</code> PATCH intent and the residency-aware selectors are all live,
-  and this spec assumes them throughout.
+  <b>If ALF-171 is picked up before ALF-179 has merged, stop and say so</b> rather than building a
+  reduced version. A quietly-dropped field is a spec the reviewer never approved — the same posture
+  ALF-170 took toward ALF-168.
 </p>
+<div class="callout">
+  <b>Order note.</b> ALF-179 also wants to land <i>early</i> for a reason of its own: descriptions are
+  only worth reading once they have been written, so shipping the authoring surface first means this
+  story inherits real content on day one instead of a table of nulls.
+</div>
 
 <h3>What this story deliberately leaves</h3>
 <p>The epic's remaining three slices are <b>not</b> in scope and want their own tickets. Each is
@@ -202,7 +232,7 @@ this refinement, and all four are settled — a later session should not re-open
   <tr>
     <td>Reference timezone for date parsing (epic §7 — "story D can't land without it").</td>
     <td><b><code>America/Chicago</code></b>, as an IANA zone in a <code>[vars]</code> entry — see
-        <a href="#s9">S9</a>.</td>
+        <a href="#s10">S10</a>.</td>
   </tr>
   <tr>
     <td>Does editing an undispatched item without dispatching it make it permanently yours?</td>
@@ -220,18 +250,18 @@ this refinement, and all four are settled — a later session should not re-open
 <div class="scroll"><table>
   <tr><th style="width:5rem">Epic</th><th>What it says</th><th>Where it lands</th></tr>
   <tr><td><b>D1/D2</b></td><td>The Anthropic API with a pay-as-you-go key; Haiku 4.5 by default, the model id a var.</td><td><a href="#s5">S5</a></td></tr>
-  <tr><td><b>D3</b></td><td>Constrain ids in the schema, re-validate in code, let the database have the last word.</td><td><a href="#s6">S6</a>, <a href="#s7">S7</a>, §5</td></tr>
+  <tr><td><b>D3</b></td><td>Constrain ids in the schema, re-validate in code, let the database have the last word.</td><td><a href="#s6">S6</a>, <a href="#s8">S8</a>, §5</td></tr>
   <tr><td><b>D4</b></td><td>Guesses are written to real fields with no "suggested" marking.</td><td>Nothing in this story renders provenance. The columns it adds are invisible by intent.</td></tr>
-  <tr><td><b>D6</b></td><td>Dispatch is a human action; the classifier never sets <code>dispatched_at</code>.</td><td><a href="#s8">S8</a> — <code>dispatched_at</code> is absent from the write payload, and a test pins that.</td></tr>
-  <tr><td><b>D7</b></td><td>One coherent write per item.</td><td><a href="#s8">S8</a></td></tr>
+  <tr><td><b>D6</b></td><td>Dispatch is a human action; the classifier never sets <code>dispatched_at</code>.</td><td><a href="#s9">S9</a> — <code>dispatched_at</code> is absent from the write payload, and a test pins that.</td></tr>
+  <tr><td><b>D7</b></td><td>One coherent write per item.</td><td><a href="#s9">S9</a></td></tr>
   <tr><td><b>D8</b></td><td>Abstention is a first-class answer; every field may come back null.</td><td><a href="#s6">S6</a>, §4</td></tr>
   <tr><td><b>D9</b></td><td>A scheduled Worker sweeps; capture is never coupled to the model.</td><td><a href="#s1">S1</a>, §7</td></tr>
   <tr><td><b>D10</b></td><td>A processed marker; the sweeper is idempotent and never re-guesses over you.</td><td><a href="#s1">S1</a>, <a href="#s2">S2</a></td></tr>
   <tr><td><b>D12</b></td><td>The model's judgement is not a back-pressure gate; everything around it is.</td><td>§8</td></tr>
-  <tr><td><b>D13</b></td><td>Degrade per field, retry only transport, no conversational repair loop.</td><td><a href="#s10">S10</a>, §5</td></tr>
+  <tr><td><b>D13</b></td><td>Degrade per field, retry only transport, no conversational repair loop.</td><td><a href="#s11">S11</a>, §5</td></tr>
   <tr><td><b>D14</b></td><td>The key lives only in the Worker.</td><td>§7 — a Worker secret; the frontend gains no LLM code path.</td></tr>
-  <tr><td><b>D15</b></td><td>Every override is recorded; the diff is taken at dispatch; nothing is shown.</td><td><a href="#s11">S11</a>, <a href="#s12">S12</a>, <a href="#s13">S13</a>, §6</td></tr>
-  <tr><td><b>D16</b></td><td>Corrections feed back as few-shot examples, nothing more clever.</td><td><a href="#s14">S14</a>, §6</td></tr>
+  <tr><td><b>D15</b></td><td>Every override is recorded; the diff is taken at dispatch; nothing is shown.</td><td><a href="#s12">S12</a>, <a href="#s13">S13</a>, <a href="#s14">S14</a>, §6</td></tr>
+  <tr><td><b>D16</b></td><td>Corrections feed back as few-shot examples, nothing more clever.</td><td><a href="#s15">S15</a>, §6</td></tr>
   <tr><td><b>D18</b></td><td>One item, one request — sequential within a sweep, never a batch.</td><td><a href="#s1">S1</a></td></tr>
 </table></div>
 
@@ -279,17 +309,37 @@ this refinement, and all four are settled — a later session should not re-open
 <pre><code>-- fires when a watched field changes, classified_at is still null, and the
 -- statement is not itself the classifier stamping its own verdict
 if new.classified_at is null and (
-     new.title is distinct from old.title
-  or new.notes is distinct from old.notes
+     new.title     is distinct from old.title
+  or new.notes     is distinct from old.notes
   or new.item_type is distinct from old.item_type
-  or new.priority is distinct from old.priority
-  or new.due_date is distinct from old.due_date
-  or new.folder_id is distinct from old.folder_id
-  or new.intended_project_id is distinct from old.intended_project_id
-  or new.intended_epic_id is distinct from old.intended_epic_id
+  or new.priority  is distinct from old.priority
+  or new.due_date  is distinct from old.due_date
+  -- the three FK columns claim only when the new value is NOT NULL — see below
+  or (new.folder_id           is distinct from old.folder_id
+      and new.folder_id is not null)
+  or (new.intended_project_id is distinct from old.intended_project_id
+      and new.intended_project_id is not null)
+  or (new.intended_epic_id    is distinct from old.intended_epic_id
+      and new.intended_epic_id is not null)
 ) then
   new.classified_at := now();   -- provenance columns stay null: no model produced this
 end if;</code></pre>
+  <div class="callout">
+    <b>Why the three FK columns only claim in the non-null direction.</b> All three are
+    <code>on delete set null</code>, so a <i>referential cascade</i> writes them without any human
+    stating anything. Deleting a folder is the case that bites: 0026's
+    <code>return_folder_items_to_inbox</code> deliberately returns that folder's items to the Inbox,
+    and the same delete nulls their <code>folder_id</code> — so a naive watch would claim every one
+    of those items on its way back to the Inbox, permanently hiding from the sweeper exactly the rows
+    that most need re-triaging. Excluding the to-null direction fixes it precisely, and costs only
+    the vanishing case of a human hand-clearing a label on a never-classified item.<br /><br />
+    This is a cousin of the gotcha the <code>supabase</code> skill records from ALF-170 — a trigger
+    that reads two columns is fine until a cascade writes them for you. It differs in shape (that one
+    needed a <i>deferred constraint</i> trigger because it validates coherence and must judge the
+    settled row; this one modifies <code>NEW</code>, so it must stay <code>before update</code>) but
+    it has the same root cause, and the same moral: <b>only the real-Postgres integration suite
+    catches it — the JS mock has no cascades.</b> §8 pins it there.
+  </div>
   <p class="why"><b>Why the database and not the route.</b> There are already three ingresses that
   edit an item — the Next.js PATCH route, the two factory RPCs, and any service-role write (Siri, a
   future shortcut) — and only the database sits under all of them. The same argument ALF-168 made for
@@ -313,13 +363,13 @@ end if;</code></pre>
     <tr><td><code>classified_provider</code></td><td><code>text</code>, null</td><td><code>'anthropic'</code>. Null = this row was claimed by a human edit (<a href="#s2">S2</a>), not judged.</td></tr>
     <tr><td><code>classified_model</code></td><td><code>text</code>, null</td><td>The resolved model id, e.g. <code>claude-haiku-4-5</code>.</td></tr>
     <tr><td><code>classified_prompt_version</code></td><td><code>int</code>, null</td><td>A module constant in the Worker, bumped by hand whenever the prompt text or the schema changes.</td></tr>
-    <tr><td><code>classified_guess</code></td><td><code>jsonb</code>, null</td><td>The verdict as written, so the dispatch diff has something to compare against (<a href="#s11">S11</a>).</td></tr>
-    <tr><td><code>classify_attempts</code></td><td><code>int</code>, not null, default 0</td><td>Failed attempts. The ceiling (<a href="#s10">S10</a>).</td></tr>
+    <tr><td><code>classified_guess</code></td><td><code>jsonb</code>, null</td><td>The verdict as written, so the dispatch diff has something to compare against (<a href="#s12">S12</a>).</td></tr>
+    <tr><td><code>classify_attempts</code></td><td><code>int</code>, not null, default 0</td><td>Failed attempts. The ceiling (<a href="#s11">S11</a>).</td></tr>
   </table></div>
   <p class="why"><b>Why the provider is a column and not a constant.</b> Straight from the epic: an
   override is the accuracy metric, so stamping the provider turns a future A/B into a query instead
   of a migration. It costs one <code>text</code> column now and keeps the option open for free. It is
-  copied onto every corrections row too (<a href="#s13">S13</a>).<br /><br />
+  copied onto every corrections row too (<a href="#s14">S14</a>).<br /><br />
   <b>Why the prompt version is hand-bumped.</b> It is what makes a prompt change safely replayable
   over old captures — the reason story G can exist at all. A derived hash would change on
   whitespace; a hand-bumped integer changes when a human decides the prompt is meaningfully
@@ -352,7 +402,7 @@ end if;</code></pre>
     <li><b>The SDK, not raw <code>fetch</code>.</b> <code>wrangler.toml</code> already sets
       <code>compatibility_flags = ["nodejs_compat"]</code>, and Cloudflare Workers is an officially
       supported runtime for <code>@anthropic-ai/sdk</code>. The SDK also brings the retry behaviour
-      D13 leans on (<a href="#s10">S10</a>). This is a deliberate departure from
+      D13 leans on (<a href="#s11">S11</a>). This is a deliberate departure from
       <code>src/supabase.ts</code>, which stays on raw <code>fetch</code> — that module's comment
       explains it keeps the Worker tiny and needs no compat flag, and it is not worth rewriting.</li>
     <li><b>Model id from <code>env.CLASSIFIER_MODEL</code></b>, defaulting to
@@ -415,7 +465,52 @@ end if;</code></pre>
 </div>
 
 <div class="dec" id="s7">
-  <h3><span class="n">S7</span>Re-validate anyway — closed world plus cross-field coherence</h3>
+  <h3><span class="n">S7</span>The closed world is described, not just named</h3>
+  <p>The schema constrains <i>which</i> ids the model may emit; it says nothing about how it should
+  choose between them. So the prompt's folder and project lists carry each row's
+  <code>description</code> — the one-sentence standing statement of what belongs there that ALF-179
+  ships — alongside its name:</p>
+<pre><code>Folders (choose at most one, by id):
+  7f3a…  Health   — Appointments, prescriptions, exercise, anything medical.
+  b2c1…  House    — Repairs, maintenance, things to buy for the flat.
+  9e04…  Someday  — Things I might do eventually. Nothing with a date.
+  4d77…  Work                       ← undescribed: the name alone, no dash, no placeholder
+
+Projects (choose at most one, by id):
+  1a55…  ALF · alfred  — This app: the task system, the Inbox, the code factory.</code></pre>
+  <ul>
+    <li><b>Present when written, silently absent when not.</b> A null description contributes
+      nothing — not an empty dash, not "(no description)". ALF-179's D2 guarantees empty is stored as
+      <code>null</code> and never <code>''</code>, which is what makes
+      <code>description ?? undefined</code> a sufficient test; the renderer must treat both
+      identically anyway, since the app's own readers do.</li>
+    <li><b>Epics are named, not described.</b> They get their ref and title, and nothing more —
+      <code>epics.notes</code> is deliberately <i>not</i> fed to the model. ALF-179's D1 draws that
+      line explicitly: <code>notes</code> is a free scratchpad on a board card, "misc", while a
+      description is a standing statement written to be read by something else. Feeding a scratchpad
+      to the classifier as if it were a specification is how a prompt starts quietly encoding
+      whatever the owner last jotted.</li>
+    <li><b>No fallback prose.</b> If nothing has a description the block degrades to today's bare
+      list of names, which is exactly what the prompt would have carried anyway.</li>
+  </ul>
+  <p class="why"><b>Why this is the highest-value place to spend prompt tokens.</b> S6 makes a
+  hallucinated folder impossible, but the epic names the <i>expensive</i> failure as a
+  confident-but-wrong pick from the real list — it gets rubber-stamped in review precisely because it
+  looks legitimate. "Someday" versus "Work" is a judgement about how the owner uses their own system,
+  and no amount of prompt engineering recovers it from a bare noun. This is the field that carries
+  that judgement, and it is the only input here written by the owner specifically to be read by the
+  model.<br /><br />
+  <b>What it costs:</b> descriptions are capped at 500 characters each (ALF-179 D3), so a fully
+  described world of ~10 folders and ~3 projects is order +400 tokens on a ~1.5k prompt — comparable
+  to the example block, and still inside D2's "under a dollar a month". No cap or truncation is
+  applied here: the 500-character limit is already enforced at write time, and silently trimming the
+  sentence the owner wrote to disambiguate two folders would defeat the point.<br /><br />
+  <b>Descriptions are read, never written.</b> Nothing in this story authors or edits one — that is
+  ALF-179's whole contribution, and the two stories meet at this column.</p>
+</div>
+
+<div class="dec" id="s8">
+  <h3><span class="n">S8</span>Re-validate anyway — closed world plus cross-field coherence</h3>
   <p>D3's second layer, and the natural unit-test seam. A pure function
   <code>validateVerdict(raw, world)</code> takes the parsed response plus the id sets that were sent
   and returns a verdict where every surviving field is legal. Each rule drops a field to null; none
@@ -441,8 +536,8 @@ end if;</code></pre>
   cannot express, and it is pure and deterministic, which makes it the seam D12 wants gated.</p>
 </div>
 
-<div class="dec" id="s8">
-  <h3><span class="n">S8</span>One coherent write, and <code>dispatched_at</code> is never in it</h3>
+<div class="dec" id="s9">
+  <h3><span class="n">S9</span>One coherent write, and <code>dispatched_at</code> is never in it</h3>
   <p>A validated verdict becomes exactly one <code>PATCH /rest/v1/items?id=eq.&lt;id&gt;</code>
   carrying the surviving guess fields <i>and</i> all six provenance columns together:</p>
 <pre><code>{ item_type, priority, due_date, folder_id,
@@ -466,8 +561,8 @@ end if;</code></pre>
   the same text forever, burning budget on exactly the items already known to be unjudgeable.</p>
 </div>
 
-<div class="dec" id="s9">
-  <h3><span class="n">S9</span>The reference date is <code>America/Chicago</code>, computed per sweep</h3>
+<div class="dec" id="s10">
+  <h3><span class="n">S10</span>The reference date is <code>America/Chicago</code>, computed per sweep</h3>
   <p>"Friday" resolves against a wall clock the Worker does not have. The zone is
   <code>CLASSIFIER_TIMEZONE</code> in <code>[vars]</code>, set to <code>America/Chicago</code> (the
   owner's answer). The prompt carries a reference date computed as:</p>
@@ -484,8 +579,8 @@ end if;</code></pre>
   day it is.</p>
 </div>
 
-<div class="dec" id="s10">
-  <h3><span class="n">S10</span>Degrade per field, retry only transport, count every failure</h3>
+<div class="dec" id="s11">
+  <h3><span class="n">S11</span>Degrade per field, retry only transport, count every failure</h3>
   <p>Each classification is one stateless request. The Worker never opens a second turn to tell the
   model it got something wrong. Failures split two ways, and the full table is §5.</p>
   <ul>
@@ -516,10 +611,10 @@ end if;</code></pre>
   the precision D8 optimises for.</p>
 </div>
 
-<div class="dec" id="s11">
-  <h3><span class="n">S11</span><code>classified_guess</code> is the snapshot, not a second source of truth</h3>
+<div class="dec" id="s12">
+  <h3><span class="n">S12</span><code>classified_guess</code> is the snapshot, not a second source of truth</h3>
   <p>The verdict as written is stored on the item as <code>jsonb</code>. It is written once, by the
-  sweeper, and read by exactly one consumer: the dispatch trigger (<a href="#s12">S12</a>). No UI, no
+  sweeper, and read by exactly one consumer: the dispatch trigger (<a href="#s13">S13</a>). No UI, no
   API, no store field, no selector.</p>
   <p class="why">D4 costs the interface its ability to tell a guess from a decision. This is what buys
   it back — invisibly, which is the whole point. Storing the <i>post</i>-validation verdict (not the
@@ -527,8 +622,8 @@ end if;</code></pre>
   the owner, so it is not something they can be said to have corrected.</p>
 </div>
 
-<div class="dec" id="s12">
-  <h3><span class="n">S12</span>The dispatch diff is a database trigger, so every exit is covered</h3>
+<div class="dec" id="s13">
+  <h3><span class="n">S13</span>The dispatch diff is a database trigger, so every exit is covered</h3>
   <p>An <code>after update</code> trigger on <code>items</code>, firing when
   <code>old.dispatched_at is null and new.dispatched_at is not null and old.classified_guess is not
   null</code>. For each of the six guessed fields it compares the guess against the row as it now
@@ -556,8 +651,8 @@ end if;</code></pre>
   needed.</p>
 </div>
 
-<div class="dec" id="s13">
-  <h3><span class="n">S13</span>The log freezes the text and stores ids; names are resolved at read time</h3>
+<div class="dec" id="s14">
+  <h3><span class="n">S14</span>The log freezes the text and stores ids; names are resolved at read time</h3>
   <p><code>classification_corrections</code> is append-only, one row per corrected field:</p>
 <pre><code>id                uuid primary key default gen_random_uuid()
 item_id           uuid references items(id) on delete set null
@@ -594,8 +689,8 @@ created_at        timestamptz not null default now()</code></pre>
   <code>items</code> in ALF-146.</p>
 </div>
 
-<div class="dec" id="s14">
-  <h3><span class="n">S14</span>Example selection: round-robin across the three directions, 12 slots</h3>
+<div class="dec" id="s15">
+  <h3><span class="n">S15</span>Example selection: round-robin across the three directions, 12 slots</h3>
   <p>The epic leaves the selection rule to this story and warns about its trap: a log dominated by
   "you left this blank and I filled it in" nudges the model toward guessing more, which is the
   failure D8 exists to prevent. So recency alone is not the rule.</p>
@@ -615,8 +710,8 @@ created_at        timestamptz not null default now()</code></pre>
   call, no review surface. D16 stops at recency-ordered examples and so does this story.</p>
 </div>
 
-<div class="dec" id="s15">
-  <h3><span class="n">S15</span>The health check becomes the deploy's receipt for the classifier config too</h3>
+<div class="dec" id="s16">
+  <h3><span class="n">S16</span>The health check becomes the deploy's receipt for the classifier config too</h3>
   <p><code>GET /</code> extends from <code>alfred workers ok (build &lt;sha&gt;)</code> to also name
   the resolved model and zone:</p>
 <pre><code>alfred workers ok (build 9b6e5f7; classifier claude-haiku-4-5 @ America/Chicago)</code></pre>
@@ -725,10 +820,11 @@ all it does to an item is fill in fields. The dashed teal line is the learning h
 <ul>
   <li>The item's <code>title</code>, <code>notes</code>, <code>raw_capture</code> and
     <code>source_url</code>.</li>
-  <li>The live folder list (id + name), project list (id + key + name), epic list (id + ref + title +
-    project id).</li>
-  <li>The reference date, computed per <a href="#s9">S9</a>, with its weekday spelled out.</li>
-  <li>The recent-corrections example block (<a href="#s14">S14</a>), omitted entirely when the log is
+  <li>The live folder list (id + name + <b>description</b>), project list (id + key + name +
+    <b>description</b>), epic list (id + ref + title + project id — named, not described). Rendering
+    and omission rules in <a href="#s7">S7</a>.</li>
+  <li>The reference date, computed per <a href="#s10">S10</a>, with its weekday spelled out.</li>
+  <li>The recent-corrections example block (<a href="#s15">S15</a>), omitted entirely when the log is
     empty — an empty log is just today's prompt.</li>
 </ul>
 
@@ -766,14 +862,14 @@ failure must not abort the sweep — the per-item body is wrapped so the loop co
 <h2>6 · The correction loop, end to end</h2>
 <ol>
   <li>The sweeper writes a verdict and stores it as <code>classified_guess</code>
-    (<a href="#s11">S11</a>).</li>
+    (<a href="#s12">S12</a>).</li>
   <li>The owner scans the Inbox, overwrites what they disagree with using the row's ordinary editing
     controls, and presses Dispatch.</li>
   <li>The <code>dispatched_at</code> transition fires the trigger, which diffs guess against final and
-    appends one row per disagreement, tagged with its direction (<a href="#s12">S12</a>).</li>
+    appends one row per disagreement, tagged with its direction (<a href="#s13">S13</a>).</li>
   <li>The next sweep reads the log, resolves ids to names against the live world, drops what no longer
     resolves, and draws 12 examples round-robin across the three directions
-    (<a href="#s14">S14</a>).</li>
+    (<a href="#s15">S15</a>).</li>
   <li>Those examples go into the prompt as worked pairs: <i>this text → the label the owner actually
     chose</i>.</li>
 </ol>
@@ -788,7 +884,8 @@ failure must not abort the sweep — the per-item body is wrapped so the loop co
 
 <h3>Database — one migration, <code>&lt;next&gt;_llm_classifier.sql</code></h3>
 <p class="small">Take whatever number is free when you build it; do not reuse the one that was free
-when this spec was written.</p>
+when this spec was written. Everything below is new to this story — the <code>description</code>
+columns <a href="#s7">S7</a> reads are ALF-179's migration, not this one's.</p>
 <ol>
   <li>The six <code>items</code> columns of <a href="#s3">S3</a>, each with a
     <code>comment on column</code> naming what it is for and (for
@@ -799,10 +896,10 @@ when this spec was written.</p>
     <code>items_undispatched_idx</code> from 0026.</li>
   <li>The claim trigger of <a href="#s2">S2</a> — <code>before update on items</code>,
     <code>security invoker</code>.</li>
-  <li>The <code>classification_corrections</code> table of <a href="#s13">S13</a>, with its CHECKs,
+  <li>The <code>classification_corrections</code> table of <a href="#s14">S14</a>, with its CHECKs,
     RLS, the <code>authenticated full access</code> policy and explicit grants to
     <code>anon, authenticated, service_role</code>.</li>
-  <li>The dispatch-diff trigger of <a href="#s12">S12</a> — <code>after update on items</code>.</li>
+  <li>The dispatch-diff trigger of <a href="#s13">S13</a> — <code>after update on items</code>.</li>
   <li><b><code>create or replace view task_items …</code> — mandatory</b> (<a href="#s4">S4</a>). No
     drop, so grants and <code>security_invoker</code> survive.</li>
   <li><code>notify pgrst, 'reload schema';</code></li>
@@ -823,7 +920,7 @@ while drafting rather than discovering it at pre-commit.</p>
     <td>A new <code>scheduled(event, env, ctx)</code> export beside the existing <code>fetch</code>;
       <code>Env</code> gains <code>ANTHROPIC_API_KEY</code> (secret), <code>CLASSIFIER_MODEL</code>
       and <code>CLASSIFIER_TIMEZONE</code> (vars); <code>GET /</code> reports the classifier config
-      (<a href="#s15">S15</a>). The handler body itself stays thin — it delegates to
+      (<a href="#s16">S16</a>). The handler body itself stays thin — it delegates to
       <code>sweep.ts</code>, exactly as <code>fetch</code> delegates to
       <code>handleWebhook</code>.</td>
   </tr>
@@ -842,17 +939,18 @@ while drafting rather than discovering it at pre-commit.</p>
   <tr>
     <td><code>prompt.ts</code> <span class="small">(new)</span></td>
     <td>Pure: the system prompt text, <code>PROMPT_VERSION</code>, the reference-date computation,
-      the example-block renderer and the round-robin selector of <a href="#s14">S14</a>.</td>
+      the example-block renderer and the round-robin selector of <a href="#s15">S15</a>.</td>
   </tr>
   <tr>
     <td><code>verdict.ts</code> <span class="small">(new)</span></td>
-    <td>Pure: the verdict type, <code>validateVerdict()</code> (<a href="#s7">S7</a>) and the
+    <td>Pure: the verdict type, <code>validateVerdict()</code> (<a href="#s8">S8</a>) and the
       gap-filling merge against the item's existing values.</td>
   </tr>
   <tr>
     <td><code>supabase.ts</code></td>
-    <td>Gains the reads and writes this story needs — eligible items, folders, projects, epics, recent
-      corrections, the item PATCH — in the file's existing raw-<code>fetch</code> idiom. The existing
+    <td>Gains the reads and writes this story needs — eligible items, folders and projects
+      (<code>description</code> included in the <code>select</code>), epics, recent corrections, the
+      item PATCH — in the file's existing raw-<code>fetch</code> idiom. The existing
       <code>patchByRef</code> helpers are keyed by <code>ref</code>, so the new calls are siblings,
       not refactors of them.</td>
   </tr>
@@ -908,10 +1006,12 @@ API call.</b> The Anthropic client is stubbed at the module boundary in every un
     <td>
       <b>Prompt assembly:</b> live ids become enum members; an empty list collapses to
       <code>{"type":"null"}</code> rather than an empty enum; the reference date is rendered in
-      <code>CLASSIFIER_TIMEZONE</code>; an empty corrections log yields no example block; the
+      <code>CLASSIFIER_TIMEZONE</code>; a folder or project with a description renders it and one
+      without renders the name alone (both <code>null</code> and <code>''</code>, per
+      <a href="#s7">S7</a>); epics never carry <code>notes</code>; an empty corrections log yields no example block; the
       round-robin draw keeps all three directions represented, respects recency inside a bucket, skips
       exhausted buckets, and drops unresolvable ids before drawing.<br />
-      <b>Validation:</b> every row of <a href="#s7">S7</a>'s table; the gap-filling merge never
+      <b>Validation:</b> every row of <a href="#s8">S8</a>'s table; the gap-filling merge never
       overwrites a non-null existing value.<br />
       <b>The write:</b> one PATCH per item carrying guesses and provenance together; the payload never
       contains <code>dispatched_at</code>; an all-null verdict still marks the item.<br />
@@ -930,7 +1030,9 @@ API call.</b> The Anthropic client is stubbed at the module boundary in every un
       <b>The claim trigger:</b> editing a watched field on an unclassified row stamps
       <code>classified_at</code> and leaves the provenance columns null; a write that sets
       <code>classified_at</code> itself is not double-stamped; a row that already has
-      <code>classified_at</code> is untouched; an update to an unwatched column does not claim.<br />
+      <code>classified_at</code> is untouched; an update to an unwatched column does not claim; and —
+      the cascade case — <b>deleting a folder returns its undispatched items to the Inbox without
+      claiming them</b>, so they stay sweep-eligible.<br />
       <b>The diff trigger:</b> dispatching a guessed item writes one row per disagreeing field with
       the right <code>direction</code>; agreement writes nothing; a null
       <code>classified_guess</code> writes nothing; a second dispatch of an already-dispatched item
@@ -978,6 +1080,9 @@ the model's own output is not, so capture it via <code>note</code>/paste rather 
 <ul class="ac">
   <li>The request constrains <code>folder_id</code>, <code>intended_project_id</code> and
     <code>intended_epic_id</code> to enums of the live ids, so an invented id cannot be emitted.</li>
+  <li>The folder and project lists shown to the model carry each row's owner-written
+    <code>description</code> when one exists, and its name alone when it doesn't. Epics carry ref and
+    title only — never <code>notes</code>.</li>
   <li>Every field may come back null, and a fully-abstaining verdict still marks the item as
     classified.</li>
   <li>Every id is re-checked against the sets that were sent, and cross-field incoherence drops the
@@ -1007,6 +1112,8 @@ the model's own output is not, so capture it via <code>note</code>/paste rather 
     <code>classified_provider</code>.</li>
   <li>The rule holds for every ingress — the PATCH route, the factory RPCs, and a service-role write —
     because it lives in the database.</li>
+  <li>A referential cascade does not claim: deleting a folder returns its undispatched items to the
+    Inbox and they remain eligible for the next sweep.</li>
 </ul>
 
 <h4>The correction loop</h4>
@@ -1056,6 +1163,9 @@ in here:</p>
   <li><b>A second provider, or an A/B between providers.</b> Nothing is built for it beyond D2's two
     cheap disciplines: the narrow call boundary (<a href="#s5">S5</a>) and the provider stamp
     (<a href="#s3">S3</a>).</li>
+  <li><b>Authoring, editing or backfilling a folder or project description.</b> This story reads that
+    column; ALF-179 creates it, writes it and builds its editor. Nothing here adds a description to an
+    undescribed folder, and no default or generated text is ever substituted for one.</li>
   <li><b>Retro-classifying the existing backlog.</b> The sweeper takes new captures. A one-off
     backfill over historical items is a separate decision with a separate cost.</li>
   <li><b>Prompt caching.</b> Below Haiku 4.5's 4096-token floor, and the prompt must never be padded
@@ -1066,13 +1176,13 @@ in here:</p>
 <ul>
   <li><b>Does the correction log ever forget?</b> Recency ordering handles this implicitly while the
     log is small and stops handling it once it isn't — a lesson from a year ago about a folder you
-    barely use still competes for a slot. No action now; <a href="#s14">S14</a>'s 60-row read window
+    barely use still competes for a slot. No action now; <a href="#s15">S15</a>'s 60-row read window
     bounds the problem in the near term, and a session that later reaches for "just feed the whole
     table" should know this is why it won't stay fine.</li>
   <li><b>Is 12 examples the right number?</b> Chosen for cost, not measured. Story F's fixtures are
     what would settle it, which is the main reason F is worth doing next.</li>
   <li><b>Does <code>--var WORKER_VERSION</code> merge with or shadow <code>[vars]</code>?</b>
-    <a href="#s15">S15</a> makes the answer observable rather than guessed. Confirm it on the first
+    <a href="#s16">S16</a> makes the answer observable rather than guessed. Confirm it on the first
     deploy — and if it shadows, the fix is to pass all three vars in the workflow's deploy command,
     which is a one-line change. Either way, record the answer in the <code>cloudflare-workers</code>
     skill.</li>
@@ -1083,8 +1193,14 @@ in here:</p>
   <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. D1–D18
     are the decisions this story implements; §6 is the slice map; §7 is where three of this story's
     four resolved questions came from.</li>
-  <li><a href="ALF-170.html"><code>docs/specs/ALF-170.html</code></a> — the prerequisite:
-    <code>intended_epic_id</code>, editing parity, and the Dispatch action this story's diff hooks.</li>
+  <li><a href="ALF-179.html"><code>docs/specs/ALF-179.html</code></a> — the prerequisite that is not
+    yet built: <code>folders.description</code> and <code>projects.description</code>. Its §1 states
+    the problem <a href="#s7">S7</a> exists to solve, its D1 is why epic <code>notes</code> stays out,
+    its D2 is why <code>description ?? undefined</code> suffices, its D3 is the 500-character cap, and
+    its D10 is the seam it deliberately left for this story.</li>
+  <li><code>docs/specs/archive/ALF-170.html</code> — shipped: <code>intended_epic_id</code>
+    (migration <code>0027</code>), editing parity, and the Dispatch action this story's diff hooks.
+    Its deferred constraint trigger is the pattern <a href="#s2">S2</a>'s callout compares against.</li>
   <li><code>database/migrations/0026_inbox_dispatch.sql</code> — ALF-168, shipped: the residency
     column, the trigger idioms this story copies, and the mandatory view recreation stated in its own
     words.</li>
@@ -1101,7 +1217,9 @@ in here:</p>
     <code>scheduled</code> handler and cron triggers explicitly, so <b>this story is the one that owes
     that section</b>.</li>
   <li><code>.claude/skills/supabase/SKILL.md</code> and <code>migration-lint</code> — grants, RLS, and
-    the view/sequence traps this migration must not re-run into.</li>
+    the view/sequence traps this migration must not re-run into. Read its
+    <b>deferred-coherence-trigger</b> entry before writing either trigger: it is the recorded form of
+    the cascade hazard <a href="#s2">S2</a> works around.</li>
   <li><code>.claude/skills/showboat/SKILL.md</code> — the demo doc's command set and evidence rules.</li>
   <li><code>docs/specs/product/SPEC.md</code> — §2 (Workers for LLM processing), §3.2
     (<code>raw_capture</code>), §6 (the <code>/api/items</code> seam), §7 (secrets &amp; RLS), §11
