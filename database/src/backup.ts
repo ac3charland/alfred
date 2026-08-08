@@ -239,6 +239,19 @@ export function backupExitCode(drift: readonly TableDrift[]): number {
   return drift.length > 0 ? 1 : 0;
 }
 
+/**
+ * The run's closing line — the one an operator actually reads in the Actions summary. It says only
+ * what happened and where the detail is, deliberately NOT a remedy: {@link describeSchemaDrift}
+ * above it already walks the causes, and a one-line guess at the fix is what went stale when
+ * `migrate.yml` started applying on merge. Paired with {@link backupExitCode} so the wording and
+ * the exit code are decided in one place and tested together.
+ */
+export function backupSummaryLine(drift: readonly TableDrift[]): string {
+  return drift.length > 0
+    ? '✗ backup uploaded, but production is ahead of database/migrations — see the drift report above'
+    : '✓ backup complete';
+}
+
 /** Append a progress line to stdout (mirrors the integration runner's plain, greppable logging). */
 function log(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -399,11 +412,7 @@ async function main(): Promise<number> {
       log(`  uploaded ${key}`);
     }
     // The backup exists either way; the exit code is what tells the owner the repo is behind.
-    log(
-      drift.length > 0
-        ? '✗ backup uploaded, but database/migrations is behind production — commit the migration'
-        : '✓ backup complete',
-    );
+    log(backupSummaryLine(drift));
     return backupExitCode(drift);
   } finally {
     rmSync(work, { recursive: true, force: true });
