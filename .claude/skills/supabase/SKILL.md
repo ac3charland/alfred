@@ -280,10 +280,11 @@ and always **verify a change with a follow-up query** — a fix without verifica
 
 `.github/workflows/migrate.yml` runs the applier (`database/src/deploy.ts`) on every push to
 `main`, as a `personal` / `work` matrix. Pending is decided per database from its own
-`public.schema_migrations` ledger, so re-runs are no-ops and a hand-applied file is skipped.
-**Shipping a migration is merging it** — apply by hand only to iterate before the PR lands, and
-say so in the PR body if you did. Mechanics live in
-[`database/README.md`](../../../database/README.md#applying-on-merge-the-default-path); don't
+`public.schema_migrations` ledger, so re-runs are no-ops. **Shipping a migration is merging it —
+there is no sanctioned way to hand-apply one to a live instance any more**, not even to iterate
+before the PR lands; validate a new migration against real Postgres with
+`npm run check:slow -w database` (the throwaway-cluster integration suite) instead. Mechanics live
+in [`database/README.md`](../../../database/README.md#applying-on-merge-the-default-path); don't
 restate them in a migration's rollout notes.
 
 A database with schema but no ledger is **refused**, not guessed at, and adopting one is an
@@ -301,12 +302,14 @@ Nothing orders that apply against Vercel's deploy of the same commit, so the cod
 beat before its schema. Write migrations **expand-then-contract**: the new schema must work with
 the code already running, and a column/table is dropped only in a later migration.
 
-### In the Claude Code web/remote sandbox, apply migrations via the Management API
+### In the Claude Code web/remote sandbox, query Postgres via the Management API
 
 The remote sandbox allows outbound **HTTPS only** (through the agent proxy); raw Postgres TCP
-to the pooler (5432 **and** 6543) is blocked, so `npm run migrate`, `psql`, and `pg.Client`
-all hang and fail with a bare `timeout expired`. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
-the environment, run migrations — and any ad-hoc SQL — over the **Management API** instead:
+to the pooler (5432 **and** 6543) is blocked, so `psql` and `pg.Client` both hang and fail with
+a bare `timeout expired`. There is no sanctioned way to hand-apply a migration any more (see
+above — CI applies on merge), but ad-hoc read SQL — e.g. verifying what a merge just applied —
+still has nowhere else to go from the sandbox. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
+the environment, run it over the **Management API** instead:
 
 **Check the ENVIRONMENT for credentials, not `frontend/.env.local`.** That file is gitignored
 and absent from a fresh sandbox clone, so its absence proves nothing — `SUPABASE_ACCESS_TOKEN`
@@ -339,17 +342,7 @@ sends only half the new invariant** and decide the order deliberately: deploy fi
 merge in the same sitting. Say which in the PR body, with the `alter table … drop constraint …`
 escape hatch, so whoever picks it up knows the schema is ahead of the app.
 
-### Applying migrations / generating types without a personal access token
-
-Plain SQL migrations can be applied over the **session pooler** connection string (port
-5432) with any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable
-for multi-statement DDL — prefer the session pooler or direct connection for migrations.
-
-To apply **one** migration to the live DB by number, use `npm run migrate -w database <NNNN>`
-(accepts `11`, `0011`, or the full filename). It reads `DATABASE_URL` from `frontend/.env.local`,
-prints the target host, and confirms before writing (`--yes` skips the prompt). It records the
-file in that database's `public.schema_migrations` ledger, so the merge pipeline (below) then
-treats it as done; reach for raw `psql -f` for the schema bootstrap or seed.
+### Generating types without a personal access token
 
 **Regenerating `database.types.ts` from `--db-url` is CLI-version-sensitive — pin a mid-2.9x
 version and have Docker running.** Token-free `--db-url` introspection only works on CLI
