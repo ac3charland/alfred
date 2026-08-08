@@ -7,11 +7,11 @@ import pg, { type Client } from 'pg';
 import { type AssertionResult, attempt } from './assertions.ts';
 import type { Cluster } from './cluster.ts';
 import {
-  BASELINE_MIGRATION,
   LEDGER_TABLE,
   appliedMigrations,
   applyMigration,
   deployMigrations,
+  ledgerAcceptsManualApply,
   recordManualApply,
 } from './deploy.ts';
 import {
@@ -27,14 +27,23 @@ function allMigrationNames(): string[] {
   return migrationFiles(MIGRATIONS_DIR).map((file) => path.basename(file));
 }
 
-/** The migrations up to and including {@link BASELINE_MIGRATION} — the hand-applied history. */
-function throughBaseline(names: readonly string[]): string[] {
-  return names.slice(0, names.indexOf(BASELINE_MIGRATION) + 1);
+/**
+ * A stand-in for a database caught partway through the history — the shape both live databases
+ * turned out to be in. Picked two from the end so the "and then apply the rest" half is non-empty
+ * however many migrations exist.
+ */
+function adoptionPoint(names: readonly string[]): string {
+  return names[Math.max(0, names.length - 3)] ?? '';
 }
 
-/** The migrations that landed after the baseline — what a pre-ledger database still needs. */
+/** The migrations up to and including the adoption point — the history such a database carries. */
+function throughBaseline(names: readonly string[]): string[] {
+  return names.slice(0, names.indexOf(adoptionPoint(names)) + 1);
+}
+
+/** The migrations after the adoption point — what an adopted database still needs applied. */
 function afterBaseline(names: readonly string[]): string[] {
-  return names.slice(names.indexOf(BASELINE_MIGRATION) + 1);
+  return names.slice(names.indexOf(adoptionPoint(names)) + 1);
 }
 
 /**
@@ -140,40 +149,63 @@ export async function runDeployAssertions(cluster: Cluster): Promise<AssertionRe
       }),
   );
 
-  const baselineResult = await attempt(
-    'deploy baselines a pre-ledger database instead of re-running its history',
+  const refuseResult = await attempt(
+    'deploy REFUSES to guess the history of a database that has schema but no ledger',
     async () =>
-      withDatabase(cluster, 'alfred_deploy_preledger', async (client) => {
-        // Reconstruct the live databases as they stood when this deployer landed: the history
-        // through the baseline applied by hand, and no ledger table at all.
+      withDatabase(cluster, 'alfred_deploy_unadopted', async (client) => {
+        // The exact shape both live databases were in — and neither stood where an assumed
+        // baseline would have put it. Guessing marks the real gaps as applied and hides them.
         await applyMigrations(client, MIGRATIONS_DIR, (file) =>
           throughBaseline(names).includes(path.basename(file)),
         );
-        const plan = await deployMigrations(client);
-        expectSame('baselined', plan.baseline, throughBaseline(names));
+        await expectRejects(deployMigrations(client), 'an unadopted database must not be deployed');
+        // Nothing may have been written on the way out — least of all a partial ledger.
+        expectSame('ledger', await appliedMigrations(client), []);
+        return 'refused, and wrote nothing';
+      }),
+  );
+
+  const adoptResult = await attempt(
+    'an explicit --baseline adopts a database at its verified point, then applies the rest',
+    async () =>
+      withDatabase(cluster, 'alfred_deploy_adopt', async (client) => {
+        await applyMigrations(client, MIGRATIONS_DIR, (file) =>
+          throughBaseline(names).includes(path.basename(file)),
+        );
+        const plan = await deployMigrations(client, { baseline: adoptionPoint(names) });
+        expectSame('adopted', plan.baseline, throughBaseline(names));
         expectSame('applied', plan.apply, afterBaseline(names));
         expectSame('ledger', sorted(await appliedMigrations(client)), names);
-        return `baselined ${String(plan.baseline.length)} through ${BASELINE_MIGRATION}, applied ${String(plan.apply.length)}`;
+
+        // Adoption is one-time: the next merge is an ordinary no-op, with no baseline passed.
+        const next = await deployMigrations(client);
+        expectSame('next run', next.apply, []);
+        return `adopted ${String(plan.baseline.length)} at ${adoptionPoint(names)}, applied ${String(plan.apply.length)}, then a clean no-op`;
       }),
   );
 
   const manualResult = await attempt(
-    'a hand-applied migration is recorded, and does not strand the deployer at 0001',
+    'a hand-applied migration is never recorded as the whole history of an unadopted database',
     async () =>
       withDatabase(cluster, 'alfred_deploy_manual', async (client) => {
-        // The live databases as they were: full history through the baseline, no ledger. Someone
-        // now applies the newest migration by hand (`npm run migrate`) before the merge lands.
         await applyMigrations(client, MIGRATIONS_DIR, (file) =>
           throughBaseline(names).includes(path.basename(file)),
         );
-        await recordManualApply(client, BASELINE_MIGRATION);
+        // `npm run migrate` against an unadopted database: a lone row would read as "this is all it
+        // has ever had" and send the next merge back to 0001, so the manual path declines to write.
+        if (await ledgerAcceptsManualApply(client)) {
+          throw new Error('an unadopted database must not accept a lone manual-apply row');
+        }
 
-        // The ledger now has rows, so the deployer trusts it as the whole story — which is only
-        // safe because the manual path baselined the history behind that row first.
+        // Once adopted, the same hand-apply records normally and the next deploy stays a no-op.
+        await deployMigrations(client, { baseline: adoptionPoint(names) });
+        if (!(await ledgerAcceptsManualApply(client))) {
+          throw new Error('an adopted database must accept a manual-apply row');
+        }
+        await recordManualApply(client, adoptionPoint(names));
         const plan = await deployMigrations(client);
-        expectSame('applied after a manual apply', plan.apply, afterBaseline(names));
-        expectSame('ledger', sorted(await appliedMigrations(client)), names);
-        return `hand-applied ${BASELINE_MIGRATION}; the next deploy applied ${String(plan.apply.length)}, not ${String(names.length)}`;
+        expectSame('applied after a manual apply', plan.apply, []);
+        return 'declined before adoption, recorded after';
       }),
   );
 
@@ -240,5 +272,5 @@ export async function runDeployAssertions(cluster: Cluster): Promise<AssertionRe
       }),
   );
 
-  return [freshResult, baselineResult, manualResult, rollbackResult, grantResult];
+  return [freshResult, refuseResult, adoptResult, manualResult, rollbackResult, grantResult];
 }
