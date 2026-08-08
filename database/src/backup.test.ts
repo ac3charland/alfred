@@ -6,6 +6,7 @@ import {
   assertInstanceName,
   backupExitCode,
   backupKeys,
+  backupSummaryLine,
   copiedTables,
   dailyKey,
   describeSchemaDrift,
@@ -267,15 +268,27 @@ describe('reconcileDriftStatements', () => {
   });
 });
 
-describe('backupExitCode', () => {
-  it('is green when the repo could rebuild everything the dump carried', () => {
+describe('backupExitCode / backupSummaryLine', () => {
+  const drifted = [{ table: 'items', columns: ['dispatched_at'], absent: false }];
+
+  it('is green, and says so, when the repo could rebuild everything the dump carried', () => {
     expect(backupExitCode([])).toBe(0);
+    expect(backupSummaryLine([])).toBe('✓ backup complete');
   });
 
-  it('is RED on drift, even though the verified dump was uploaded first', () => {
+  it('is RED on drift, and says the backup was uploaded anyway', () => {
     // The pairing that matters: the artifact reaches R2 (no lost backup) and the run still fails,
-    // so GitHub emails the owner about the migration that never got committed.
-    expect(backupExitCode([{ table: 'items', columns: ['dispatched_at'], absent: false }])).toBe(1);
+    // so GitHub emails the owner. Both halves have to show up in the closing line.
+    expect(backupExitCode(drifted)).toBe(1);
+    expect(backupSummaryLine(drifted)).toMatch(/backup uploaded/);
+    expect(backupSummaryLine(drifted)).toMatch(/production is ahead/);
+  });
+
+  it('does not prescribe a remedy in the closing line — that is the drift report’s job', () => {
+    // "commit the migration" was right under apply-then-commit and went stale the moment
+    // migrate.yml started applying on merge. The line names what happened and points up.
+    expect(backupSummaryLine(drifted)).not.toMatch(/commit the migration/);
+    expect(backupSummaryLine(drifted)).toMatch(/see the drift report above/);
   });
 });
 
