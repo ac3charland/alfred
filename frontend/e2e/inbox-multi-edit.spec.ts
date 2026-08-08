@@ -32,8 +32,9 @@ test.describe('inbox multi-edit', () => {
     const bar = page.getByRole('region', { name: 'Bulk actions' });
     await expect(bar).toContainText('2 selected');
 
-    // Classify is live (all-unclassified); Move is gated off (task-only).
-    await expect(bar.getByRole('button', { name: /move to folder/i })).toBeDisabled();
+    // Classify is live, and so is Move (ALF-170 widened it to unclassified rows — filing
+    // classifies them, so they were always legal targets).
+    await expect(bar.getByRole('button', { name: /move to folder/i })).toBeEnabled();
     await bar.getByRole('button', { name: /classify as/i }).click();
     await page.getByRole('menuitem', { name: /^task$/i }).click();
 
