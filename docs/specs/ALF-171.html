@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-171 — Create LLM classifier integration and cron worker</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--good); font-weight: 600; }
+  .no  { color: var(--bad); font-weight: 600; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul, .dec ol { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* ── Acceptance checklist ────────────────────────────────────── */
+  .ac { list-style: none; padding-left: 0; }
+  .ac li { position: relative; padding-left: 1.75rem; margin: .45rem 0; font-size: .93rem; }
+  .ac li::before {
+    content: ""; position: absolute; left: 0; top: .3rem; width: 1rem; height: 1rem;
+    border: 1.5px solid var(--faint); border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p><span class="pill">Story</span><span class="pill">Epic ALF-158 · slices C + D + H</span></p>
+<h1>ALF-171 — Create LLM classifier integration and cron worker</h1>
+<p class="sub">
+  Database + Worker + deploy. <b>No UI</b>: this story renders nothing new and changes no
+  component. The only frontend edit is a regenerated type file and the fixture builders that
+  follow from it.
+</p>
+
+<div class="card">
+  <p style="margin-top:0"><b>The one-line shape.</b> A cron trigger wakes the existing Worker every
+  two minutes. It selects the Inbox items nobody has touched yet, asks Claude Haiku 4.5 for a
+  schema-constrained verdict about each one — type, priority, due date, folder, project, epic — and
+  writes the guesses onto the item's real fields in a single coherent <code>UPDATE</code>. It never
+  moves anything: dispatch stays a human act. And when you <i>do</i> dispatch, a database trigger
+  diffs your final labels against what the machine guessed and appends every disagreement to a
+  write-only log, which the next sweep reads back as worked examples.</p>
+</div>
+
+<h2>1 · What this story is</h2>
+
+<p>Epic <a href="epics/ALF-158.html">ALF-158</a> splits into ten slices, A–J. Three of them are
+already spoken for: <b>A</b> (Inbox residency) shipped as ALF-168, and <b>B + E + I</b> (editing
+parity, the epic hint, the Dispatch action) are refined as ALF-170. This story takes the three that
+contain the model:</p>
+
+<div class="scroll"><table>
+  <tr><th style="width:3rem">Slice</th><th>What it is</th><th>Why it lands here</th></tr>
+  <tr>
+    <td><b>C</b></td>
+    <td>The sweeper skeleton — cron trigger, <code>scheduled</code> handler, sweep query, the
+        <code>classified_at</code> marker, the service-role write.</td>
+    <td>The first cron in the repo. It carries the wrangler and deploy learning.</td>
+  </tr>
+  <tr>
+    <td><b>D</b></td>
+    <td>The Anthropic call — prompt assembly, the enum'd output schema, re-validation, the coherent
+        write, the per-failure degradation table.</td>
+    <td>Splitting C from D would mean building a deterministic stand-in classifier and then deleting
+        it a week later. The stand-in's only purpose is to prove the loop, and a stubbed model
+        response proves the same thing in a unit test — <a href="#s5">S5</a>.</td>
+  </tr>
+  <tr>
+    <td><b>H</b></td>
+    <td>The correction loop — <code>classified_guess</code>, the dispatch-time diff, the
+        <code>classification_corrections</code> table, the few-shot block in the prompt.</td>
+    <td>It needs a prompt to inject into (D) and a dispatch to hook (A, shipped). Landing it in the
+        same migration as C+D's columns saves a second <code>items</code> migration and a second
+        <code>task_items</code> recreation.</td>
+  </tr>
+</table></div>
+
+<h3>Prerequisite: ALF-170 must land first</h3>
+<p>
+  ALF-170 introduces <code>items.intended_epic_id</code> — the pre-factory epic hint. The verdict
+  schema in <a href="#s6">S6</a> asks the model for an epic, and <a href="#s8">S8</a> writes it. That
+  column does not exist until ALF-170 merges.
+</p>
+<p>
+  <b>If ALF-171 is picked up before ALF-170 has merged, stop and say so</b> rather than building a
+  reduced version. This is the same posture ALF-170 takes toward ALF-168, and for the same reason: a
+  quietly-dropped field is a spec the reviewer never approved. ALF-168 <i>has</i> merged — migration
+  <code>0026_inbox_dispatch.sql</code>, the <code>dispatched_at</code> column, the
+  <code>{ dispatched: boolean }</code> PATCH intent and the residency-aware selectors are all live,
+  and this spec assumes them throughout.
+</p>
+
+<h3>What this story deliberately leaves</h3>
+<p>The epic's remaining three slices are <b>not</b> in scope and want their own tickets. Each is
+independent of the others and of this one:</p>
+<div class="scroll"><table>
+  <tr><th style="width:3rem">Slice</th><th>Deferred work</th><th>Why it can wait</th></tr>
+  <tr>
+    <td><b>F</b></td>
+    <td>Evaluation fixtures + an on-demand accuracy run.</td>
+    <td>Non-gating by construction (epic D12). It measures the model's judgement; nothing in this
+        story depends on that measurement existing, and it wants real captures with expected labels
+        that only exist after this ships.</td>
+  </tr>
+  <tr>
+    <td><b>G</b></td>
+    <td>Manual re-classify from <code>raw_capture</code>.</td>
+    <td>An escape hatch for when a prompt improves. This story lays its foundation — the prompt
+        version stamp of <a href="#s3">S3</a> — but the action itself is a UI affordance plus a
+        marker reset, and there is no improved prompt to replay yet.</td>
+  </tr>
+  <tr>
+    <td><b>J</b></td>
+    <td>Recurrence presets in the verdict.</td>
+    <td>One more enum field plus <code>ruleFromPreset</code> at the write. The epic says it is the
+        field that most deserves an eval fixture before being trusted, since a wrong guess
+        <i>manufactures</i> items via <code>complete_and_spawn</code> — so it should follow F, not
+        precede it.</td>
+  </tr>
+</table></div>
+
+<h2>2 · Resolved in refinement</h2>
+<p>Four questions the epic explicitly left to a story session. All four were answered by the owner in
+this refinement, and all four are settled — a later session should not re-open them.</p>
+
+<div class="scroll"><table>
+  <tr><th style="width:32%">Question</th><th>Answer</th></tr>
+  <tr>
+    <td>How much of the remaining epic should one spec cover?</td>
+    <td><b>C + D + deploy + H.</b> F, G and J become follow-up tickets (above).</td>
+  </tr>
+  <tr>
+    <td>Reference timezone for date parsing (epic §7 — "story D can't land without it").</td>
+    <td><b><code>America/Chicago</code></b>, as an IANA zone in a <code>[vars]</code> entry — see
+        <a href="#s9">S9</a>.</td>
+  </tr>
+  <tr>
+    <td>Does editing an undispatched item without dispatching it make it permanently yours?</td>
+    <td><b>Yes.</b> Any human touch of a classifier-written field claims the item and the sweeper
+        never revisits — see <a href="#s2">S2</a>.</td>
+  </tr>
+  <tr>
+    <td>Is a spend ceiling worth building, and of what shape?</td>
+    <td><b>A hard per-sweep item cap</b>, not a dollar meter — see <a href="#s1">S1</a>. Deferred
+        items cost nothing because they are still unmarked.</td>
+  </tr>
+</table></div>
+
+<h3>What the epic decides, and where it lands here</h3>
+<div class="scroll"><table>
+  <tr><th style="width:5rem">Epic</th><th>What it says</th><th>Where it lands</th></tr>
+  <tr><td><b>D1/D2</b></td><td>The Anthropic API with a pay-as-you-go key; Haiku 4.5 by default, the model id a var.</td><td><a href="#s5">S5</a></td></tr>
+  <tr><td><b>D3</b></td><td>Constrain ids in the schema, re-validate in code, let the database have the last word.</td><td><a href="#s6">S6</a>, <a href="#s7">S7</a>, §5</td></tr>
+  <tr><td><b>D4</b></td><td>Guesses are written to real fields with no "suggested" marking.</td><td>Nothing in this story renders provenance. The columns it adds are invisible by intent.</td></tr>
+  <tr><td><b>D6</b></td><td>Dispatch is a human action; the classifier never sets <code>dispatched_at</code>.</td><td><a href="#s8">S8</a> — <code>dispatched_at</code> is absent from the write payload, and a test pins that.</td></tr>
+  <tr><td><b>D7</b></td><td>One coherent write per item.</td><td><a href="#s8">S8</a></td></tr>
+  <tr><td><b>D8</b></td><td>Abstention is a first-class answer; every field may come back null.</td><td><a href="#s6">S6</a>, §4</td></tr>
+  <tr><td><b>D9</b></td><td>A scheduled Worker sweeps; capture is never coupled to the model.</td><td><a href="#s1">S1</a>, §7</td></tr>
+  <tr><td><b>D10</b></td><td>A processed marker; the sweeper is idempotent and never re-guesses over you.</td><td><a href="#s1">S1</a>, <a href="#s2">S2</a></td></tr>
+  <tr><td><b>D12</b></td><td>The model's judgement is not a back-pressure gate; everything around it is.</td><td>§8</td></tr>
+  <tr><td><b>D13</b></td><td>Degrade per field, retry only transport, no conversational repair loop.</td><td><a href="#s10">S10</a>, §5</td></tr>
+  <tr><td><b>D14</b></td><td>The key lives only in the Worker.</td><td>§7 — a Worker secret; the frontend gains no LLM code path.</td></tr>
+  <tr><td><b>D15</b></td><td>Every override is recorded; the diff is taken at dispatch; nothing is shown.</td><td><a href="#s11">S11</a>, <a href="#s12">S12</a>, <a href="#s13">S13</a>, §6</td></tr>
+  <tr><td><b>D16</b></td><td>Corrections feed back as few-shot examples, nothing more clever.</td><td><a href="#s14">S14</a>, §6</td></tr>
+  <tr><td><b>D18</b></td><td>One item, one request — sequential within a sweep, never a batch.</td><td><a href="#s1">S1</a></td></tr>
+</table></div>
+
+<h2>3 · Decisions</h2>
+
+<div class="dec" id="s1">
+  <h3><span class="n">S1</span>The sweep: one query, a hard item cap, sequential calls</h3>
+  <p>The <code>scheduled</code> handler runs a single PostgREST read against <code>items</code> with
+  the service-role key, then loops the results one at a time:</p>
+<pre><code>GET /rest/v1/items
+  ?parent_id=is.null
+  &amp;dispatched_at=is.null
+  &amp;classified_at=is.null
+  &amp;classify_attempts=lt.5
+  &amp;select=id,title,notes,raw_capture,source_url,item_type,priority,due_date,
+           folder_id,intended_project_id,intended_epic_id,classify_attempts
+  &amp;order=created_at.asc
+  &amp;limit=10</code></pre>
+  <ul>
+    <li><b>Zero eligible rows means zero API calls.</b> A steady state where everything is triaged
+      costs one database query per tick and nothing else.</li>
+    <li><b>The cap is 10 per tick</b> (a module constant, <code>SWEEP_LIMIT</code>). Items over the
+      cap are simply still unmarked on the next tick, so deferring them is free — which is why this
+      is a more honest brake than a dollar meter (epic §7). At the epic's ~20 captures/day the cap is
+      never reached in normal use; it exists so a bug cannot run away.</li>
+    <li><b>Oldest first</b> (<code>created_at.asc</code>), so a burst drains in capture order rather
+      than starving the earliest item.</li>
+    <li><b>Sequential, one item per request</b> (D18). <code>for … of</code> with <code>await</code>
+      inside, not <code>Promise.all</code>. Wall time is irrelevant — nobody is waiting on a tick —
+      and parallel bursts only add 429 risk.</li>
+    <li><b>The handler awaits its own work.</b> Return the promise from <code>scheduled</code>;
+      do not fire-and-forget. A scheduled invocation is torn down when its returned promise settles,
+      so unawaited work is silently killed mid-sweep.</li>
+  </ul>
+  <p class="why"><b>Cron cadence:</b> <code>*/2 * * * *</code>. The epic asks for "order of every 1–2
+  minutes"; two minutes halves the idle query volume for latency nobody perceives, given the whole
+  premise is capture-now-refine-later.</p>
+</div>
+
+<div class="dec" id="s2">
+  <h3><span class="n">S2</span>A human touch claims the item — enforced by a trigger, not by route code</h3>
+  <p>The owner's answer in refinement: any human edit to a classifier-written field stamps
+  <code>classified_at</code>, so the sweeper never revisits that row. This is implemented as a
+  <code>before update</code> trigger on <code>items</code>, not in the PATCH route:</p>
+<pre><code>-- fires when a watched field changes, classified_at is still null, and the
+-- statement is not itself the classifier stamping its own verdict
+if new.classified_at is null and (
+     new.title is distinct from old.title
+  or new.notes is distinct from old.notes
+  or new.item_type is distinct from old.item_type
+  or new.priority is distinct from old.priority
+  or new.due_date is distinct from old.due_date
+  or new.folder_id is distinct from old.folder_id
+  or new.intended_project_id is distinct from old.intended_project_id
+  or new.intended_epic_id is distinct from old.intended_epic_id
+) then
+  new.classified_at := now();   -- provenance columns stay null: no model produced this
+end if;</code></pre>
+  <p class="why"><b>Why the database and not the route.</b> There are already three ingresses that
+  edit an item — the Next.js PATCH route, the two factory RPCs, and any service-role write (Siri, a
+  future shortcut) — and only the database sits under all of them. The same argument ALF-168 made for
+  putting <code>inherit_dispatched_at</code> in a trigger rather than the route applies unchanged,
+  and it is why this story needs no frontend behaviour change at all.<br /><br />
+  <b>Why <code>classified_at</code> rather than a separate "claimed" column.</b> The sweep predicate
+  is already <code>classified_at is null</code>; reusing it means there is exactly one way to be
+  ineligible, so the two can never disagree. A row claimed by a human is distinguishable from one the
+  model judged: its <code>classified_provider</code> is null (<a href="#s3">S3</a>).<br /><br />
+  <b>The accepted cost.</b> A capture you deliberately rewrote to be clearer will never be guessed
+  at. That is the trade the owner chose, and it is the conservative direction: it makes "the machine
+  changed my answer back" structurally impossible, which is the failure D10 exists to prevent.</p>
+</div>
+
+<div class="dec" id="s3">
+  <h3><span class="n">S3</span>Provenance is three columns, and null provider means "no model ran"</h3>
+  <p>The epic leaves the exact provenance columns to the story. They are:</p>
+  <div class="scroll"><table>
+    <tr><th>Column</th><th>Shape</th><th>Purpose</th></tr>
+    <tr><td><code>classified_at</code></td><td><code>timestamptz</code>, null</td><td>The idempotency marker (D10). Null = eligible.</td></tr>
+    <tr><td><code>classified_provider</code></td><td><code>text</code>, null</td><td><code>'anthropic'</code>. Null = this row was claimed by a human edit (<a href="#s2">S2</a>), not judged.</td></tr>
+    <tr><td><code>classified_model</code></td><td><code>text</code>, null</td><td>The resolved model id, e.g. <code>claude-haiku-4-5</code>.</td></tr>
+    <tr><td><code>classified_prompt_version</code></td><td><code>int</code>, null</td><td>A module constant in the Worker, bumped by hand whenever the prompt text or the schema changes.</td></tr>
+    <tr><td><code>classified_guess</code></td><td><code>jsonb</code>, null</td><td>The verdict as written, so the dispatch diff has something to compare against (<a href="#s11">S11</a>).</td></tr>
+    <tr><td><code>classify_attempts</code></td><td><code>int</code>, not null, default 0</td><td>Failed attempts. The ceiling (<a href="#s10">S10</a>).</td></tr>
+  </table></div>
+  <p class="why"><b>Why the provider is a column and not a constant.</b> Straight from the epic: an
+  override is the accuracy metric, so stamping the provider turns a future A/B into a query instead
+  of a migration. It costs one <code>text</code> column now and keeps the option open for free. It is
+  copied onto every corrections row too (<a href="#s13">S13</a>).<br /><br />
+  <b>Why the prompt version is hand-bumped.</b> It is what makes a prompt change safely replayable
+  over old captures — the reason story G can exist at all. A derived hash would change on
+  whitespace; a hand-bumped integer changes when a human decides the prompt is meaningfully
+  different.</p>
+</div>
+
+<div class="dec" id="s4">
+  <h3><span class="n">S4</span><code>task_items</code> is recreated, and the new columns are visible to the frontend</h3>
+  <p>The migration ends with <code>create or replace view task_items … as select i.* from items i …</code>
+  and <code>notify pgrst, 'reload schema'</code>, exactly as 0011, 0013 and 0026 do.</p>
+  <p class="why"><b>Why recreate, when D4 says the UI must never show the guess.</b> It is tempting to
+  leave the view stale as a free enforcement of invisibility. Don't. <code>Item</code> is
+  <code>Database['public']['Tables']['items']['Row']</code> — the <i>table</i> row type — and
+  <code>getAllItems()</code> reads the view with <code>.overrideTypes&lt;Item[]&gt;()</code>. A column
+  on the table but not the view produces a row whose runtime value is <code>undefined</code> where
+  the type promises <code>string | null</code>. That exact mismatch is a documented past crash in
+  this repo (<code>lib/priority.ts</code> carries the comment). Invisibility is D4's job and D4
+  achieves it by nobody rendering the field — the same way <code>dispatched_at</code> rides the view
+  unrendered today.<br /><br />
+  <b>The consequence to plan for:</b> <code>Item</code> gains six fields, so the compiler will point
+  at every fixture builder that constructs a whole item. See §7.</p>
+</div>
+
+<div class="dec" id="s5">
+  <h3><span class="n">S5</span>The call: the official SDK, Haiku 4.5 as a var, no thinking, no effort</h3>
+  <p>One narrow module, <code>workers/src/classifier.ts</code>, owns the entire Anthropic surface:
+  build the request, send it, return a parsed verdict or a typed failure. Nothing else in the Worker
+  imports <code>@anthropic-ai/sdk</code>.</p>
+  <ul>
+    <li><b>The SDK, not raw <code>fetch</code>.</b> <code>wrangler.toml</code> already sets
+      <code>compatibility_flags = ["nodejs_compat"]</code>, and Cloudflare Workers is an officially
+      supported runtime for <code>@anthropic-ai/sdk</code>. The SDK also brings the retry behaviour
+      D13 leans on (<a href="#s10">S10</a>). This is a deliberate departure from
+      <code>src/supabase.ts</code>, which stays on raw <code>fetch</code> — that module's comment
+      explains it keeps the Worker tiny and needs no compat flag, and it is not worth rewriting.</li>
+    <li><b>Model id from <code>env.CLASSIFIER_MODEL</code></b>, defaulting to
+      <code>claude-haiku-4-5</code> in <code>[vars]</code>. "Try Sonnet for a week" is then a deploy
+      flag, not a story.</li>
+    <li><b>No <code>thinking</code>, no <code>output_config.effort</code>.</b> Haiku 4.5 rejects
+      <code>effort</code> outright, and classification needs no reasoning budget. Omit both.</li>
+    <li><b><code>max_tokens: 512</code>.</b> The verdict is ~100 tokens; this is headroom so
+      <code>stop_reason: "max_tokens"</code> never fires in practice.</li>
+    <li><b>No prompt caching, and never pad the prompt to reach the cache floor.</b> Haiku 4.5's
+      minimum cacheable prefix is 4096 tokens and a compact classify prompt sits well under it, so
+      <code>cache_read_input_tokens: 0</code> is the expected reading, not a bug.</li>
+  </ul>
+  <p class="why"><b>Cost, at the epic's ~20 items/day:</b> ~$1.20/month before examples, ~$1.80 after
+  the few-shot block's ~+50% input. The per-item verdict is ~1.5k in / ~100 out at $1/$5 per MTok.
+  Every option in this tier is inside noise, so the choice is decided by fit — and the property that
+  matters is structured-output support, which Haiku 4.5 has.</p>
+</div>
+
+<div class="dec" id="s6">
+  <h3><span class="n">S6</span>The schema carries the live ids as enums, rebuilt every sweep</h3>
+  <p>This is D3's first layer, and it is why a hallucinated folder is not a case the Worker has to
+  handle. The request carries <code>output_config.format</code> with a JSON Schema assembled per
+  sweep from the live folder / project / epic lists:</p>
+<pre><code>output_config: {
+  format: {
+    type: 'json_schema',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['item_type','priority','due_date','folder_id',
+                 'intended_project_id','intended_epic_id'],
+      properties: {
+        item_type:           { anyOf: [{ enum: ['task','code'] },        { type: 'null' }] },
+        priority:            { anyOf: [{ enum: ['high','medium','low'] },{ type: 'null' }] },
+        due_date:            { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] },
+        folder_id:           { anyOf: [{ enum: [ ...live folder ids ] },   { type: 'null' }] },
+        intended_project_id: { anyOf: [{ enum: [ ...live project ids ] },  { type: 'null' }] },
+        intended_epic_id:    { anyOf: [{ enum: [ ...live epic ids ] },     { type: 'null' }] },
+      },
+    },
+  },
+}</code></pre>
+  <ul>
+    <li><b>Every field is <code>required</code>; nullability is an explicit <code>{"type":"null"}</code>
+      branch.</b> A strict schema wants every key present, and abstention has to be a value the model
+      can emit rather than a key it can omit (D8).</li>
+    <li><b><code>additionalProperties: false</code> on the object</b> — required by structured
+      outputs.</li>
+    <li><b>An empty id list collapses the field to <code>{"type":"null"}</code></b>. An empty
+      <code>enum</code> is not a valid schema, so a fresh database with no folders must not produce
+      one. The prompt-assembly function handles this and a unit test pins it.</li>
+    <li><b>Read the response as JSON from the single text block</b>, guarding <code>stop_reason</code>
+      first. <code>messages.parse()</code> is not usable here: it wants a static Zod schema, and this
+      schema is rebuilt per sweep from live ids.</li>
+  </ul>
+  <p class="why"><b>The per-request schema is not a cost problem.</b> A new schema pays a one-time
+  compilation and then caches for 24 hours; the id lists change only when a folder, project or epic
+  is created, so in practice the schema is stable for days.</p>
+</div>
+
+<div class="dec" id="s7">
+  <h3><span class="n">S7</span>Re-validate anyway — closed world plus cross-field coherence</h3>
+  <p>D3's second layer, and the natural unit-test seam. A pure function
+  <code>validateVerdict(raw, world)</code> takes the parsed response plus the id sets that were sent
+  and returns a verdict where every surviving field is legal. Each rule drops a field to null; none
+  rejects the whole verdict:</p>
+  <div class="scroll"><table>
+    <tr><th>Rule</th><th>Dropped</th></tr>
+    <tr><td>An id is not in the set that was sent (deleted between prompt assembly and write-back)</td><td>That id field</td></tr>
+    <tr><td><code>item_type</code> is not <code>'task'</code> — a task-only field is present</td><td><code>priority</code>, <code>due_date</code>, <code>folder_id</code></td></tr>
+    <tr><td><code>item_type</code> is not <code>'code'</code> — a code-only field is present</td><td><code>intended_project_id</code>, <code>intended_epic_id</code></td></tr>
+    <tr><td><code>intended_epic_id</code> names an epic that does not belong to <code>intended_project_id</code></td><td><code>intended_epic_id</code></td></tr>
+    <tr><td><code>intended_epic_id</code> is set with no <code>intended_project_id</code></td><td><code>intended_epic_id</code></td></tr>
+    <tr><td><code>due_date</code> does not parse as <code>YYYY-MM-DD</code></td><td><code>due_date</code></td></tr>
+    <tr><td>A field the item already holds a non-null value for</td><td>That field — see below</td></tr>
+  </table></div>
+  <p><b>The classifier fills gaps; it never overwrites.</b> The last row is D10's third consequence.
+  An <code>ALF:</code>-prefixed capture arrives already <code>code</code> with a project set and no
+  <code>classified_at</code>, so it is eligible and should usefully gain an epic or a priority — but
+  the project a human's prefix chose is not the classifier's to change. The merge is
+  <code>existing ?? guessed</code>, per field.</p>
+  <p class="why"><b>Why this layer exists when the enum already closed the value space.</b> The enum
+  closes the values but not the <i>time gap</i> — a folder can be deleted between prompt assembly and
+  write-back, and only this step notices. It is also where cross-field rules live, which an enum
+  cannot express, and it is pure and deterministic, which makes it the seam D12 wants gated.</p>
+</div>
+
+<div class="dec" id="s8">
+  <h3><span class="n">S8</span>One coherent write, and <code>dispatched_at</code> is never in it</h3>
+  <p>A validated verdict becomes exactly one <code>PATCH /rest/v1/items?id=eq.&lt;id&gt;</code>
+  carrying the surviving guess fields <i>and</i> all six provenance columns together:</p>
+<pre><code>{ item_type, priority, due_date, folder_id,
+  intended_project_id, intended_epic_id,          // only the fields that survived S7
+  classified_at: &lt;now&gt;, classified_provider: 'anthropic',
+  classified_model: env.CLASSIFIER_MODEL, classified_prompt_version: PROMPT_VERSION,
+  classified_guess: &lt;the validated verdict, as written&gt; }</code></pre>
+  <p class="why"><b>The database will reject anything else.</b> <code>items_task_only_fields</code>
+  requires <code>due_date is null</code> unless <code>item_type = 'task'</code>, and
+  <code>items_intended_project_code_only</code> requires <code>item_type = 'code'</code> for the
+  project hint. Writing a due date before the type flips violates the CHECK and fails the row. This
+  is not a style preference; it is the schema — which is also why S7's cross-field rules mirror the
+  CHECKs exactly, so a validated verdict is always a legal write.<br /><br />
+  <b><code>dispatched_at</code> is absent by construction</b>, and a unit test asserts the payload
+  never contains that key. This is the invariant that makes D4 safe: because the machine cannot move
+  anything anywhere, the worst a bad guess can do is show a wrong chip on a row you are already
+  looking at.<br /><br />
+  <b>An abstention is still a write.</b> A verdict where every field came back null still PATCHes the
+  provenance columns, marking the item. Eligibility is <code>classified_at is null</code>, not
+  <code>item_type = 'unclassified'</code> — keying on the type would re-ask the same question about
+  the same text forever, burning budget on exactly the items already known to be unjudgeable.</p>
+</div>
+
+<div class="dec" id="s9">
+  <h3><span class="n">S9</span>The reference date is <code>America/Chicago</code>, computed per sweep</h3>
+  <p>"Friday" resolves against a wall clock the Worker does not have. The zone is
+  <code>CLASSIFIER_TIMEZONE</code> in <code>[vars]</code>, set to <code>America/Chicago</code> (the
+  owner's answer). The prompt carries a reference date computed as:</p>
+<pre><code>new Intl.DateTimeFormat('en-CA', { timeZone: env.CLASSIFIER_TIMEZONE })
+  .format(new Date())        // → 'YYYY-MM-DD'</code></pre>
+  <p>The model emits <code>due_date</code> as a bare <code>YYYY-MM-DD</code>, written verbatim.
+  <code>items.due_date</code> is <code>timestamptz</code>, so Postgres casts it to UTC midnight —
+  which is exactly the shape <code>parseDueDate()</code> is written to read back as a local calendar
+  date without an off-by-one in a negative-UTC zone.</p>
+  <p class="why"><b>Why a var rather than a constant:</b> the zone is the one piece of this prompt
+  that is about the owner rather than the domain, and it changes if they move. <b>Why the zone is in
+  the prompt at all:</b> so a date is resolved once, deterministically, by the code — the model is
+  given "today is 2026-08-08 (Saturday)" and asked for an absolute date, never asked to know what
+  day it is.</p>
+</div>
+
+<div class="dec" id="s10">
+  <h3><span class="n">S10</span>Degrade per field, retry only transport, count every failure</h3>
+  <p>Each classification is one stateless request. The Worker never opens a second turn to tell the
+  model it got something wrong. Failures split two ways, and the full table is §5.</p>
+  <ul>
+    <li><b>Transport</b> — 429, 5xx, timeout, network. The SDK's own retry (<code>maxRetries</code>,
+      default 2) absorbs the blip inside the request. If it still throws: nothing written, the
+      attempt counter goes up, the next tick tries again. <i>That is the entire retry mechanism</i> —
+      no queue, no backoff state, no dead-letter.</li>
+    <li><b>Content</b> — a refusal, a truncation, an unparseable body. Nothing written, attempt
+      counted. Re-sending the same prompt will not help, so it burns an attempt rather than
+      looping.</li>
+    <li><b>The ceiling is 5 attempts</b>, enforced in the sweep predicate
+      (<code>classify_attempts=lt.5</code>) rather than by stamping a marker. A row that exhausts its
+      attempts goes on being an ordinary unclassified Inbox item, forever if need be — the worst case
+      equals today.</li>
+    <li><b>Incrementing costs no extra read.</b> The sweep already selected
+      <code>classify_attempts</code>, so a failure PATCHes <code>n + 1</code> from the value in
+      hand.</li>
+  </ul>
+  <p class="why"><b>Why every failure counts, including transport.</b> A taxonomy where transport
+  failures retry freely is defensible, but it has no brake at all: a persistent misconfiguration
+  would loop at 720 calls/day forever. Counting everything gives a uniform rule and, at a two-minute
+  cadence, tolerates a ~10-minute outage before an item is set aside. Simplicity wins here; the
+  alternative buys resilience against exactly the failure the owner would notice anyway.<br /><br />
+  <b>Why no repair loop.</b> The error a repair loop exists to fix is precisely the one S6 designs
+  out — you cannot usefully say "that folder doesn't exist, try again" about an id the model was
+  never able to emit. For everything else abstention is already the right answer, and a repair turn
+  would spend a second call to convert a blank into a guess, moving in the opposite direction from
+  the precision D8 optimises for.</p>
+</div>
+
+<div class="dec" id="s11">
+  <h3><span class="n">S11</span><code>classified_guess</code> is the snapshot, not a second source of truth</h3>
+  <p>The verdict as written is stored on the item as <code>jsonb</code>. It is written once, by the
+  sweeper, and read by exactly one consumer: the dispatch trigger (<a href="#s12">S12</a>). No UI, no
+  API, no store field, no selector.</p>
+  <p class="why">D4 costs the interface its ability to tell a guess from a decision. This is what buys
+  it back — invisibly, which is the whole point. Storing the <i>post</i>-validation verdict (not the
+  raw model output) means the diff compares like with like: a field S7 dropped was never presented to
+  the owner, so it is not something they can be said to have corrected.</p>
+</div>
+
+<div class="dec" id="s12">
+  <h3><span class="n">S12</span>The dispatch diff is a database trigger, so every exit is covered</h3>
+  <p>An <code>after update</code> trigger on <code>items</code>, firing when
+  <code>old.dispatched_at is null and new.dispatched_at is not null and old.classified_guess is not
+  null</code>. For each of the six guessed fields it compares the guess against the row as it now
+  stands, and inserts one <code>classification_corrections</code> row per disagreement.</p>
+  <p><b>All three directions count as corrections</b>, and the log records which:</p>
+  <div class="scroll"><table>
+    <tr><th>Direction</th><th>Guessed</th><th>Chosen</th><th>What it teaches</th></tr>
+    <tr><td><code>changed</code></td><td>non-null</td><td>non-null, different</td><td>The label was wrong.</td></tr>
+    <tr><td><code>filled_in</code></td><td>null</td><td>non-null</td><td>It could have known.</td></tr>
+    <tr><td><code>blanked</code></td><td>non-null</td><td>null</td><td>It should have abstained — the most valuable of the three, because precision is what D8 optimises for.</td></tr>
+  </table></div>
+  <p class="why"><b>Why a trigger rather than the PATCH route.</b> Dispatch happens three ways: the
+  bulk <code>{ dispatched: true }</code> PATCH, <code>enter_code_module</code>, and
+  <code>convert_to_code_epic</code> — two of which are RPCs the route never sees. The transition of
+  <code>dispatched_at</code> from null is the single choke point all three pass through, and putting
+  the diff there means no ingress can forget it. It also keeps this story out of the frontend
+  entirely.<br /><br />
+  <b>Why at dispatch rather than on every edit.</b> An edit mid-triage may be revised twice before
+  you're done; logging each would teach the model your hesitation rather than your conclusion.
+  Dispatch is the commit point in this design and it fires exactly once per item.<br /><br />
+  <b>A known, accepted quirk:</b> <code>enter_code_module</code> nulls <code>due_date</code> in the
+  same statement that stamps <code>dispatched_at</code>, so a task-shaped guess on an item the owner
+  sent to the factory logs a <code>blanked</code> due-date correction. That is the correct lesson —
+  the owner decided it was a code item, so the due date was wrong — and no special-casing is
+  needed.</p>
+</div>
+
+<div class="dec" id="s13">
+  <h3><span class="n">S13</span>The log freezes the text and stores ids; names are resolved at read time</h3>
+  <p><code>classification_corrections</code> is append-only, one row per corrected field:</p>
+<pre><code>id                uuid primary key default gen_random_uuid()
+item_id           uuid references items(id) on delete set null
+captured_text     text not null          -- DENORMALISED copy of the title (+ notes)
+field             text not null          -- check: one of the six
+direction         text not null          -- check: changed | filled_in | blanked
+guessed_value     text                   -- null = the model abstained
+chosen_value      text                   -- null = the owner blanked it
+provider          text not null
+model             text not null
+prompt_version    int  not null
+created_at        timestamptz not null default now()</code></pre>
+  <ul>
+    <li><b>The captured text is copied, not referenced.</b> A correction is a historical fact — this
+      text, at that moment, got that label. Referencing would lose the text when the item is deleted,
+      and would pair the <i>current</i> title with a label chosen for the old one when the item is
+      edited, silently corrupting the example.</li>
+    <li><b>Ids are stored as ids</b> (as text), and resolved to human names when the prompt is
+      assembled. An example that says "→ <code>7f3a…</code>" teaches the model nothing; an example
+      that says "→ Health" teaches it the taxonomy. Resolving at read time also gives D16's
+      closed-world filter for free: a correction naming a since-deleted folder simply fails to
+      resolve and is dropped rather than taught.</li>
+    <li><b><code>item_id</code> is <code>on delete set null</code></b>, so a lesson outlives its
+      item.</li>
+    <li><b>RLS, policy and grants</b> exactly as every other table: <code>enable row level
+      security</code>, the <code>authenticated full access</code> policy, and explicit grants to
+      <code>anon, authenticated, service_role</code>. The trigger is <code>security invoker</code>,
+      so the inserting role must hold <code>insert</code> on the table — including the
+      <code>authenticated</code> role that a browser dispatch runs as.</li>
+  </ul>
+  <p class="why"><b>Why a table rather than columns on <code>items</code>:</b> different cardinality
+  (several corrections per item), different lifetime (outlives the item), append-only, and read by
+  exactly one consumer. The same reasoning that kept <code>habit_entries</code> off
+  <code>items</code> in ALF-146.</p>
+</div>
+
+<div class="dec" id="s14">
+  <h3><span class="n">S14</span>Example selection: round-robin across the three directions, 12 slots</h3>
+  <p>The epic leaves the selection rule to this story and warns about its trap: a log dominated by
+  "you left this blank and I filled it in" nudges the model toward guessing more, which is the
+  failure D8 exists to prevent. So recency alone is not the rule.</p>
+  <p>The most recent 60 corrections are read, partitioned into the three direction buckets, and drawn
+  <b>round-robin</b> — one from <code>blanked</code>, one from <code>changed</code>, one from
+  <code>filled_in</code>, repeat — each bucket internally recency-ordered, skipping exhausted buckets,
+  until 12 examples are collected or nothing is left. Examples whose ids no longer resolve are
+  dropped before the draw, not after, so a dropped example does not cost a slot.</p>
+  <p class="why"><b>Why round-robin rather than a reserved fraction.</b> It keeps blanking represented
+  without a magic percentage, degrades to plain recency when a bucket is empty, and is a pure
+  function of (rows, live world) — which makes it a clean unit-test seam rather than a behaviour you
+  can only observe in production.<br /><br />
+  <b>Why 12 and not "everything".</b> Twenty examples at ~40 tokens is roughly +800 on a ~1.5k prompt;
+  12 keeps the block meaningful and the cost under a dollar a month. The number is the one thing here
+  worth tuning later, and it is a module constant so tuning it is a one-line change.<br /><br />
+  <b>What is not built:</b> no distillation into standing rules, no embedding store, no second model
+  call, no review surface. D16 stops at recency-ordered examples and so does this story.</p>
+</div>
+
+<div class="dec" id="s15">
+  <h3><span class="n">S15</span>The health check becomes the deploy's receipt for the classifier config too</h3>
+  <p><code>GET /</code> extends from <code>alfred workers ok (build &lt;sha&gt;)</code> to also name
+  the resolved model and zone:</p>
+<pre><code>alfred workers ok (build 9b6e5f7; classifier claude-haiku-4-5 @ America/Chicago)</code></pre>
+  <p class="why"><b>This is not decoration — it closes a real risk.</b> The deploy workflow runs
+  <code>wrangler deploy --var WORKER_VERSION:"$GITHUB_SHA"</code>, and this story is the first to put
+  anything else in <code>[vars]</code>. If a CLI <code>--var</code> ever shadows rather than merges
+  the file's vars, the classifier would silently fall back to its defaults in production with no
+  symptom. Reporting the resolved values makes that a one-<code>curl</code> check instead of a
+  mystery — the same reasoning that made the build stamp exist after a Worker sat three phases behind
+  main for days (ALF-149). The existing assertion on the health string in
+  <code>src/index.test.ts</code> is updated alongside it.</p>
+</div>
+
+<h2>4 · Architecture</h2>
+
+<svg viewBox="0 0 940 420" role="img" aria-label="The sweep: cron wakes the Worker, which reads eligible items, assembles a prompt from the live folder, project and epic lists plus recent corrections, calls Claude, validates the verdict and writes it back. Separately, a human dispatch fires a database trigger that diffs the guess against the final labels and appends corrections, which feed the next prompt.">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)" />
+    </marker>
+    <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)" />
+    </marker>
+  </defs>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12">
+
+    <!-- cron -->
+    <rect x="10" y="24" width="120" height="46" rx="8" fill="var(--accent-bg)" stroke="var(--accent)" />
+    <text x="70" y="43" text-anchor="middle" fill="var(--accent)" font-weight="600">cron</text>
+    <text x="70" y="59" text-anchor="middle" fill="var(--accent)" font-size="10.5">*/2 * * * *</text>
+
+    <!-- worker box -->
+    <rect x="160" y="10" width="530" height="270" rx="10" fill="none" stroke="var(--line)" stroke-dasharray="4 4" />
+    <text x="176" y="28" fill="var(--faint)" font-size="10.5" letter-spacing="1">WORKERS/ — scheduled()</text>
+
+    <rect x="180" y="42" width="150" height="50" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="255" y="62" text-anchor="middle" fill="var(--fg)" font-weight="600">sweep query</text>
+    <text x="255" y="78" text-anchor="middle" fill="var(--muted)" font-size="10.5">≤ 10 eligible items</text>
+
+    <rect x="360" y="42" width="150" height="50" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="435" y="62" text-anchor="middle" fill="var(--fg)" font-weight="600">assemble prompt</text>
+    <text x="435" y="78" text-anchor="middle" fill="var(--muted)" font-size="10.5">ids → enums · examples</text>
+
+    <rect x="540" y="42" width="130" height="50" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="605" y="62" text-anchor="middle" fill="var(--fg)" font-weight="600">Claude</text>
+    <text x="605" y="78" text-anchor="middle" fill="var(--muted)" font-size="10.5">haiku 4.5, 1 item</text>
+
+    <rect x="540" y="140" width="130" height="50" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="605" y="160" text-anchor="middle" fill="var(--fg)" font-weight="600">validate</text>
+    <text x="605" y="176" text-anchor="middle" fill="var(--muted)" font-size="10.5">closed world · coherence</text>
+
+    <rect x="330" y="140" width="160" height="50" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="410" y="160" text-anchor="middle" fill="var(--fg)" font-weight="600">one coherent PATCH</text>
+    <text x="410" y="176" text-anchor="middle" fill="var(--muted)" font-size="10.5">+ classified_at, guess</text>
+
+    <text x="255" y="163" text-anchor="middle" fill="var(--muted)" font-size="10.5">sequential,</text>
+    <text x="255" y="178" text-anchor="middle" fill="var(--muted)" font-size="10.5">one item at a time</text>
+
+    <!-- database -->
+    <rect x="740" y="42" width="180" height="148" rx="10" fill="var(--card)" stroke="var(--line)" />
+    <text x="830" y="63" text-anchor="middle" fill="var(--fg)" font-weight="600">Supabase</text>
+    <text x="830" y="84" text-anchor="middle" fill="var(--muted)" font-size="11">items</text>
+    <text x="830" y="102" text-anchor="middle" fill="var(--faint)" font-size="10">classified_at · guess</text>
+    <text x="830" y="126" text-anchor="middle" fill="var(--muted)" font-size="11">folders · projects · epics</text>
+    <text x="830" y="150" text-anchor="middle" fill="var(--accent)" font-size="11">classification_corrections</text>
+    <text x="830" y="170" text-anchor="middle" fill="var(--faint)" font-size="10">append-only, never rendered</text>
+
+    <!-- flow arrows -->
+    <path d="M132 47 L178 60" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M332 67 L358 67" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M512 67 L538 67" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M605 94 L605 138" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M538 165 L492 165" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M330 165 L262 165 L262 96" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M738 100 L700 100 L700 60 L672 60" stroke="var(--muted)" fill="none" marker-end="url(#ah)" opacity=".55" />
+    <path d="M492 152 L700 152 L700 120 L738 120" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+
+    <!-- human lane -->
+    <rect x="160" y="310" width="530" height="90" rx="10" fill="none" stroke="var(--line)" stroke-dasharray="4 4" />
+    <text x="176" y="330" fill="var(--faint)" font-size="10.5" letter-spacing="1">THE HUMAN HALF — nothing here is automated</text>
+
+    <rect x="180" y="342" width="150" height="44" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="255" y="369" text-anchor="middle" fill="var(--fg)" font-weight="600">scan &amp; overwrite</text>
+
+    <rect x="360" y="342" width="150" height="44" rx="8" fill="var(--accent-bg)" stroke="var(--accent)" />
+    <text x="435" y="369" text-anchor="middle" fill="var(--accent)" font-weight="600">Dispatch</text>
+
+    <rect x="540" y="342" width="150" height="44" rx="8" fill="var(--card)" stroke="var(--line)" />
+    <text x="615" y="363" text-anchor="middle" fill="var(--fg)" font-weight="600">DB trigger: diff</text>
+    <text x="615" y="378" text-anchor="middle" fill="var(--muted)" font-size="10.5">guess vs. final labels</text>
+
+    <path d="M332 364 L358 364" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M512 364 L538 364" stroke="var(--muted)" fill="none" marker-end="url(#ah)" />
+    <path d="M692 364 L820 364 L820 196" stroke="var(--accent)" fill="none" marker-end="url(#ah-a)" />
+    <path d="M410 196 L410 240 L120 240 L120 364 L178 364" stroke="var(--muted)" fill="none" marker-end="url(#ah)" opacity=".6" />
+    <path d="M780 196 L780 220 L435 220 L435 40" stroke="var(--accent)" fill="none" marker-end="url(#ah-a)" stroke-dasharray="5 3" />
+    <text x="600" y="234" fill="var(--accent)" font-size="10.5">corrections → next sweep's examples</text>
+  </g>
+</svg>
+<p class="diagram-cap">The capture path is untouched; everything here hangs off the cron trigger, and
+all it does to an item is fill in fields. The dashed teal line is the learning half.</p>
+
+<h2>5 · What the model is asked, and what comes back</h2>
+
+<h4>Input, per item</h4>
+<ul>
+  <li>The item's <code>title</code>, <code>notes</code>, <code>raw_capture</code> and
+    <code>source_url</code>.</li>
+  <li>The live folder list (id + name), project list (id + key + name), epic list (id + ref + title +
+    project id).</li>
+  <li>The reference date, computed per <a href="#s9">S9</a>, with its weekday spelled out.</li>
+  <li>The recent-corrections example block (<a href="#s14">S14</a>), omitted entirely when the log is
+    empty — an empty log is just today's prompt.</li>
+</ul>
+
+<h4>The abstention rules the prompt must state</h4>
+<div class="scroll"><table>
+  <tr><th>Field</th><th>Answer only when</th></tr>
+  <tr><td><code>item_type</code></td><td>The text clearly reads as a task or as work on alfred itself. May stay null, which is simply the item behaving as it does today.</td></tr>
+  <tr><td><code>due_date</code></td><td>The text actually states a date or a day. <b>Never inferred from urgency.</b></td></tr>
+  <tr><td><code>priority</code></td><td>The text signals it. No default guess.</td></tr>
+  <tr><td><code>folder_id</code></td><td>One existing folder is a clear fit. Never invent a folder.</td></tr>
+  <tr><td><code>intended_project_id</code> / <code>intended_epic_id</code></td><td>Only from the sets supplied. Never invent either.</td></tr>
+</table></div>
+<p class="small">Given D4, the cost of the two error modes is wildly asymmetric: a blank field is one
+the owner was going to fill anyway — zero regression — while a confident wrong label is worse than
+nothing, because a row that looks done gets skimmed past and dispatched. Optimise for precision and
+accept low recall.</p>
+
+<h4>Failure behaviour (D13, mapped to code)</h4>
+<div class="scroll"><table>
+  <tr><th style="width:36%">What went wrong</th><th>What the Worker does</th><th>Attempt?</th></tr>
+  <tr><td>An id fails validation — deleted between prompt and write-back</td><td>That field drops to null. The rest is written; the item is marked. No retry.</td><td>—</td></tr>
+  <tr><td>Cross-field incoherence — a <code>code</code> verdict carrying a due date</td><td>The offending field is dropped, the coherent core is written.</td><td>—</td></tr>
+  <tr><td>Every field abstained</td><td>Still a write: the provenance columns mark the item so it is never swept again.</td><td>—</td></tr>
+  <tr><td><code>stop_reason: "refusal"</code></td><td>Nothing written. Re-sending the same prompt will not help.</td><td class="yes">+1</td></tr>
+  <tr><td><code>stop_reason: "max_tokens"</code></td><td>Nothing written. A config bug rather than model behaviour — the verdict is ~100 tokens against a 512 ceiling, so this should never fire.</td><td class="yes">+1</td></tr>
+  <tr><td>Body is not valid JSON, or fails the shape check</td><td>Nothing written.</td><td class="yes">+1</td></tr>
+  <tr><td>429 / 5xx / timeout / network (after the SDK's own retries)</td><td>Nothing written; the next tick tries again.</td><td class="yes">+1</td></tr>
+  <tr><td>Attempt ceiling reached (5)</td><td>The item drops out of the sweep predicate and stays an ordinary unclassified Inbox row.</td><td>—</td></tr>
+  <tr><td>The write itself fails (a CHECK, a vanished row)</td><td>Logged, item left unmarked, next tick. The database has the last word by design.</td><td class="yes">+1</td></tr>
+</table></div>
+<p class="small"><b>Nothing here may block a capture, drop an item, or leave one in a state the UI
+can't render.</b> The feature is strictly additive; the worst case is the status quo. One item's
+failure must not abort the sweep — the per-item body is wrapped so the loop continues.</p>
+
+<h2>6 · The correction loop, end to end</h2>
+<ol>
+  <li>The sweeper writes a verdict and stores it as <code>classified_guess</code>
+    (<a href="#s11">S11</a>).</li>
+  <li>The owner scans the Inbox, overwrites what they disagree with using the row's ordinary editing
+    controls, and presses Dispatch.</li>
+  <li>The <code>dispatched_at</code> transition fires the trigger, which diffs guess against final and
+    appends one row per disagreement, tagged with its direction (<a href="#s12">S12</a>).</li>
+  <li>The next sweep reads the log, resolves ids to names against the live world, drops what no longer
+    resolves, and draws 12 examples round-robin across the three directions
+    (<a href="#s14">S14</a>).</li>
+  <li>Those examples go into the prompt as worked pairs: <i>this text → the label the owner actually
+    chose</i>.</li>
+</ol>
+<div class="callout">
+  <b>Nothing about this is rendered.</b> No badge, no "corrected" state, no diff view, no accuracy
+  dashboard. D15 is a write-only substrate, and this story keeps it that way. The signal is collected
+  for free from work the owner was going to do anyway — which is what turns D4's one genuine weakness
+  into an asset.
+</div>
+
+<h2>7 · The change, layer by layer</h2>
+
+<h3>Database — one migration, <code>&lt;next&gt;_llm_classifier.sql</code></h3>
+<p class="small">Take whatever number is free when you build it; do not reuse the one that was free
+when this spec was written.</p>
+<ol>
+  <li>The six <code>items</code> columns of <a href="#s3">S3</a>, each with a
+    <code>comment on column</code> naming what it is for and (for
+    <code>classified_provider</code>) what a null means.</li>
+  <li>A partial index over the sweep predicate:
+    <code>create index items_unclassified_idx on items (created_at) where classified_at is null</code>
+    — the sweeper is the only query that wants this set, mirroring
+    <code>items_undispatched_idx</code> from 0026.</li>
+  <li>The claim trigger of <a href="#s2">S2</a> — <code>before update on items</code>,
+    <code>security invoker</code>.</li>
+  <li>The <code>classification_corrections</code> table of <a href="#s13">S13</a>, with its CHECKs,
+    RLS, the <code>authenticated full access</code> policy and explicit grants to
+    <code>anon, authenticated, service_role</code>.</li>
+  <li>The dispatch-diff trigger of <a href="#s12">S12</a> — <code>after update on items</code>.</li>
+  <li><b><code>create or replace view task_items …</code> — mandatory</b> (<a href="#s4">S4</a>). No
+    drop, so grants and <code>security_invoker</code> survive.</li>
+  <li><code>notify pgrst, 'reload schema';</code></li>
+</ol>
+<p>Apply with <code>npm run migrate -w database &lt;n&gt;</code>, commit the appended
+<code>migrations-applied.log</code> line, and regenerate <code>frontend/lib/database.types.ts</code>
+with <code>supabase gen types</code> — committed verbatim, never hand-edited.</p>
+<p class="small"><b>migration-lint:</b> the new table needs no sequence (uuid default), and the view
+is a <code>create or replace</code>, so neither <code>sequence-grant</code> nor
+<code>view-grant</code> should fire. Run <code>npm run lint:migrations -w tools/migration-lint</code>
+while drafting rather than discovering it at pre-commit.</p>
+
+<h3>Workers — <code>workers/src/</code></h3>
+<div class="scroll"><table>
+  <tr><th style="width:30%">File</th><th>What it holds</th></tr>
+  <tr>
+    <td><code>index.ts</code></td>
+    <td>A new <code>scheduled(event, env, ctx)</code> export beside the existing <code>fetch</code>;
+      <code>Env</code> gains <code>ANTHROPIC_API_KEY</code> (secret), <code>CLASSIFIER_MODEL</code>
+      and <code>CLASSIFIER_TIMEZONE</code> (vars); <code>GET /</code> reports the classifier config
+      (<a href="#s15">S15</a>). The handler body itself stays thin — it delegates to
+      <code>sweep.ts</code>, exactly as <code>fetch</code> delegates to
+      <code>handleWebhook</code>.</td>
+  </tr>
+  <tr>
+    <td><code>sweep.ts</code> <span class="small">(new)</span></td>
+    <td>The loop of <a href="#s1">S1</a>: read eligible items, per item classify → validate → write,
+      per-item error containment, the attempt counter.</td>
+  </tr>
+  <tr>
+    <td><code>classifier.ts</code> <span class="small">(new)</span></td>
+    <td>The only module that imports <code>@anthropic-ai/sdk</code> (<a href="#s5">S5</a>): schema
+      assembly, the request, <code>stop_reason</code> handling, and a typed
+      <code>{ ok: verdict } | { failed: reason }</code> result. Keeping the call behind one narrow
+      function is what D2 means by "swappable" — no provider abstraction, no second SDK.</td>
+  </tr>
+  <tr>
+    <td><code>prompt.ts</code> <span class="small">(new)</span></td>
+    <td>Pure: the system prompt text, <code>PROMPT_VERSION</code>, the reference-date computation,
+      the example-block renderer and the round-robin selector of <a href="#s14">S14</a>.</td>
+  </tr>
+  <tr>
+    <td><code>verdict.ts</code> <span class="small">(new)</span></td>
+    <td>Pure: the verdict type, <code>validateVerdict()</code> (<a href="#s7">S7</a>) and the
+      gap-filling merge against the item's existing values.</td>
+  </tr>
+  <tr>
+    <td><code>supabase.ts</code></td>
+    <td>Gains the reads and writes this story needs — eligible items, folders, projects, epics, recent
+      corrections, the item PATCH — in the file's existing raw-<code>fetch</code> idiom. The existing
+      <code>patchByRef</code> helpers are keyed by <code>ref</code>, so the new calls are siblings,
+      not refactors of them.</td>
+  </tr>
+</table></div>
+<p><code>@anthropic-ai/sdk</code> is added to <code>workers/package.json</code> (a real dependency,
+not a devDependency). No other package gains an LLM dependency — D14.</p>
+
+<h3>Config and deploy</h3>
+<ul>
+  <li><code>wrangler.toml</code> gains a <code>[triggers]</code> block
+    (<code>crons = ["*/2 * * * *"]</code>) — it has none today — and a <code>[vars]</code> block with
+    <code>CLASSIFIER_MODEL</code> and <code>CLASSIFIER_TIMEZONE</code>. The file's existing comment
+    block documenting secrets gains <code>ANTHROPIC_API_KEY</code>, and the new
+    <code>[vars]</code> section explains why <code>WORKER_VERSION</code> is still deliberately
+    <i>not</i> declared there.</li>
+  <li><b>The secret is set once, by hand:</b> <code>npx wrangler secret put ANTHROPIC_API_KEY</code>
+    from <code>workers/</code>. Secrets persist across deploys and are never re-uploaded by CI. For
+    <code>wrangler dev</code>, the same key goes in the gitignored <code>.dev.vars</code>.</li>
+  <li><b>No CI change.</b> <code>.github/workflows/deploy-worker.yml</code> already deploys every push
+    to <code>main</code> with no path filter, and <code>wrangler deploy</code> registers cron triggers
+    from <code>wrangler.toml</code>. Merging is deploying, including for the schedule.</li>
+  <li><b>Local exercise:</b> <code>npx wrangler dev --test-scheduled</code> serves a
+    <code>/__scheduled</code> endpoint that fires the handler on demand, so a sweep can be triggered
+    against a scratch Supabase without waiting two minutes or deploying.</li>
+</ul>
+
+<h3>Frontend — types and fixtures only</h3>
+<p><b>No component, store, route, schema or hook changes.</b> The claim rule and the dispatch diff both
+live in the database, and nothing renders the new columns. What does change:</p>
+<ul>
+  <li><code>lib/database.types.ts</code> — regenerated, committed verbatim.</li>
+  <li><code>Item</code> gains six fields, so the compiler will point at every builder that constructs
+    a whole item: <code>e2e/support/constants.ts</code>'s <code>makeItem</code> and the per-file
+    <code>task()</code> helpers in the Storybook stories. A flat null / zero default is correct for
+    all six — no existing fixture has been classified, so nothing changes meaning (unlike ALF-168's
+    <code>dispatched_at</code>, which had to be derived).</li>
+  <li><code>frontend/scripts/mock-supabase.mjs</code> — <code>newItem</code> defaults the six columns
+    so every seeded row carries them and the PATCH passthrough is unchanged. The two triggers are
+    deliberately <b>not</b> reproduced there, for the reason ALF-168 and ALF-170 both give: the DB
+    integration suite is where server-side behaviour is proven.</li>
+</ul>
+
+<h2>8 · Back-pressure</h2>
+<p>D12 draws the line at the model boundary: everything deterministic is gated, the model's judgement
+is not. Concretely — <b>no test in <code>check:fast</code> or <code>check:slow</code> may make a live
+API call.</b> The Anthropic client is stubbed at the module boundary in every unit test, exactly as
+<code>globalThis.fetch</code> is stubbed in <code>supabase.test.ts</code> today.</p>
+
+<div class="scroll"><table>
+  <tr><th style="width:26%">Suite</th><th>What it must prove</th></tr>
+  <tr>
+    <td><b>Unit</b><br /><code class="small">workers · check:fast</code></td>
+    <td>
+      <b>Prompt assembly:</b> live ids become enum members; an empty list collapses to
+      <code>{"type":"null"}</code> rather than an empty enum; the reference date is rendered in
+      <code>CLASSIFIER_TIMEZONE</code>; an empty corrections log yields no example block; the
+      round-robin draw keeps all three directions represented, respects recency inside a bucket, skips
+      exhausted buckets, and drops unresolvable ids before drawing.<br />
+      <b>Validation:</b> every row of <a href="#s7">S7</a>'s table; the gap-filling merge never
+      overwrites a non-null existing value.<br />
+      <b>The write:</b> one PATCH per item carrying guesses and provenance together; the payload never
+      contains <code>dispatched_at</code>; an all-null verdict still marks the item.<br />
+      <b>The sweep:</b> the query's predicate and limit; sequential (not parallel) calls; zero
+      eligible rows makes zero API calls; one item's failure does not abort the loop; the attempt
+      counter increments on each failure row of §5; the ceiling removes an item from the predicate.<br />
+      <b>The health string</b> names the resolved model and zone.
+    </td>
+  </tr>
+  <tr>
+    <td><b>DB integration</b><br /><code class="small">database · check:slow</code></td>
+    <td>
+      The six columns exist with the right nullability and defaults, and
+      <code>select classified_at, classified_guess from task_items</code> resolves — the
+      view-recreation guard.<br />
+      <b>The claim trigger:</b> editing a watched field on an unclassified row stamps
+      <code>classified_at</code> and leaves the provenance columns null; a write that sets
+      <code>classified_at</code> itself is not double-stamped; a row that already has
+      <code>classified_at</code> is untouched; an update to an unwatched column does not claim.<br />
+      <b>The diff trigger:</b> dispatching a guessed item writes one row per disagreeing field with
+      the right <code>direction</code>; agreement writes nothing; a null
+      <code>classified_guess</code> writes nothing; a second dispatch of an already-dispatched item
+      writes nothing; deleting the item leaves the correction with a null <code>item_id</code> and its
+      <code>captured_text</code> intact; <code>enter_code_module</code> also produces corrections
+      (the RPC path, not just the PATCH path).<br />
+      <b>Grants and RLS</b> on <code>classification_corrections</code> as the real
+      <code>authenticated</code> role — including that a browser-role dispatch can insert through the
+      trigger.
+    </td>
+  </tr>
+  <tr>
+    <td><b>Storybook / Playwright</b></td>
+    <td>Nothing new. This story renders nothing; the existing suites must simply stay green through
+      the fixture updates, which is itself the evidence that the columns are invisible.</td>
+  </tr>
+</table></div>
+
+<h4>Demo evidence</h4>
+<p>There is no UI to screenshot, so the demo doc captures the behaviour itself: a real sweep against a
+scratch database — a captured item before, the <code>/__scheduled</code> trigger, and the same row
+after, carrying its guesses — then a dispatch with one label overridden, and the resulting
+<code>classification_corrections</code> row. Follow the <a href="../../.claude/skills/showboat/SKILL.md"><code>showboat</code></a>
+skill for the command set and for what counts as evidence; note in particular its rule that a demo
+shows <i>new behaviour</i> rather than proving non-regression, so no test invocation belongs in the
+doc (<code>demo-lint</code>'s <code>no-test-in-demo</code> enforces this at pre-push). Keep the
+<code>exec</code> blocks deterministic enough that <code>npm run demo -- verify</code> stays green —
+the model's own output is not, so capture it via <code>note</code>/paste rather than a re-runnable
+<code>exec</code>.</p>
+
+<h2>9 · Acceptance criteria</h2>
+
+<h4>The sweep</h4>
+<ul class="ac">
+  <li>A cron trigger fires the Worker's <code>scheduled</code> export every two minutes, registered
+    from <code>wrangler.toml</code> and live after a normal merge to <code>main</code>.</li>
+  <li>The sweep selects only top-level, undispatched, unclassified items under the attempt ceiling,
+    oldest first, at most 10 per tick.</li>
+  <li>With no eligible items, a tick makes exactly one database query and zero API calls.</li>
+  <li>Items are classified one per request, sequentially; a failure on one item does not stop the
+    others.</li>
+</ul>
+
+<h4>The verdict</h4>
+<ul class="ac">
+  <li>The request constrains <code>folder_id</code>, <code>intended_project_id</code> and
+    <code>intended_epic_id</code> to enums of the live ids, so an invented id cannot be emitted.</li>
+  <li>Every field may come back null, and a fully-abstaining verdict still marks the item as
+    classified.</li>
+  <li>Every id is re-checked against the sets that were sent, and cross-field incoherence drops the
+    offending field rather than the whole verdict.</li>
+  <li>A field the item already holds a value for is never overwritten — an <code>ALF:</code>-prefixed
+    capture keeps its project and may gain an epic or a priority.</li>
+  <li>A due date is written only when the text states one, resolved against
+    <code>America/Chicago</code>.</li>
+</ul>
+
+<h4>The write</h4>
+<ul class="ac">
+  <li>All of an item's guesses and all of its provenance land in a single <code>UPDATE</code>.</li>
+  <li>The classifier never writes <code>dispatched_at</code>; no item leaves the Inbox without a human
+    act.</li>
+  <li>Each failure mode of §5 behaves as tabulated, and a run of failures sets an item aside rather
+    than looping forever.</li>
+  <li>Nothing in this story can block, slow, or fail a capture: <code>POST /api/items</code> gains no
+    LLM call and no new dependency.</li>
+</ul>
+
+<h4>The claim rule</h4>
+<ul class="ac">
+  <li>Editing any classifier-written field on an undispatched item stamps
+    <code>classified_at</code>, and the sweeper never revisits it.</li>
+  <li>A human-claimed row is distinguishable from a model-judged one by its null
+    <code>classified_provider</code>.</li>
+  <li>The rule holds for every ingress — the PATCH route, the factory RPCs, and a service-role write —
+    because it lives in the database.</li>
+</ul>
+
+<h4>The correction loop</h4>
+<ul class="ac">
+  <li>Dispatching an item whose guess disagrees with its final labels appends one correction row per
+    field, tagged <code>changed</code>, <code>filled_in</code> or <code>blanked</code>.</li>
+  <li>Each row carries a frozen copy of the captured text plus the provider, model and prompt version
+    that produced the guess.</li>
+  <li>Deleting the item leaves the lesson intact.</li>
+  <li>The next sweep's prompt carries up to 12 examples drawn round-robin across the three directions,
+    with ids resolved to names and unresolvable examples dropped.</li>
+  <li>Nothing in the app renders any of it.</li>
+</ul>
+
+<h4>Guardrails</h4>
+<ul class="ac">
+  <li>No test in <code>check:fast</code> or <code>check:slow</code> makes a live model call.</li>
+  <li><code>ANTHROPIC_API_KEY</code> exists only as a Worker secret — not in Vercel, not in the client
+    bundle, not in the repo.</li>
+  <li><code>task_items</code> is recreated in the same migration, and reading the new columns through
+    the view resolves.</li>
+  <li><code>GET /</code> reports the running build alongside the resolved classifier model and
+    timezone.</li>
+  <li>A demo doc reproduces a real sweep and a real correction, and
+    <code>npm run demo -- verify</code> passes.</li>
+</ul>
+
+<h2>10 · Out of scope</h2>
+<p>Beyond slices F, G and J (§1), the epic's non-goals hold unchanged and none of them may be pulled
+in here:</p>
+<ul>
+  <li><b>Rewriting captured text.</b> No de-rambling of voice input, no title tidying, no
+    summarising. Titles and notes stay byte-for-byte as captured; this story writes metadata
+    only.</li>
+  <li><b>Suggesting subtasks or structure.</b> No proposing a breakdown of a capture into
+    children.</li>
+  <li><b>Knowledge items.</b> That destination type does not exist yet; the schema's
+    <code>item_type</code> enum offers only <code>task</code>, <code>code</code> and null.</li>
+  <li><b>Any other LLM feature in the SPEC §13 roadmap</b> — the Reader digest, the Communication
+    Firewall, refinement generation inside the factory. This is Inbox triage only, even though it
+    stands up the first Worker→LLM path they will all reuse.</li>
+  <li><b>Chat, or any conversational surface.</b> One call, one item, no turns.</li>
+  <li><b>Distilling corrections into standing rules.</b> D16 stops at recency-ordered examples, and so
+    does this.</li>
+  <li><b>Any UI for the correction log.</b> No diff view, no "the model got this wrong" affordance, no
+    accuracy dashboard.</li>
+  <li><b>A second provider, or an A/B between providers.</b> Nothing is built for it beyond D2's two
+    cheap disciplines: the narrow call boundary (<a href="#s5">S5</a>) and the provider stamp
+    (<a href="#s3">S3</a>).</li>
+  <li><b>Retro-classifying the existing backlog.</b> The sweeper takes new captures. A one-off
+    backfill over historical items is a separate decision with a separate cost.</li>
+  <li><b>Prompt caching.</b> Below Haiku 4.5's 4096-token floor, and the prompt must never be padded
+    to reach it (<a href="#s5">S5</a>).</li>
+</ul>
+
+<h2>11 · Open questions</h2>
+<ul>
+  <li><b>Does the correction log ever forget?</b> Recency ordering handles this implicitly while the
+    log is small and stops handling it once it isn't — a lesson from a year ago about a folder you
+    barely use still competes for a slot. No action now; <a href="#s14">S14</a>'s 60-row read window
+    bounds the problem in the near term, and a session that later reaches for "just feed the whole
+    table" should know this is why it won't stay fine.</li>
+  <li><b>Is 12 examples the right number?</b> Chosen for cost, not measured. Story F's fixtures are
+    what would settle it, which is the main reason F is worth doing next.</li>
+  <li><b>Does <code>--var WORKER_VERSION</code> merge with or shadow <code>[vars]</code>?</b>
+    <a href="#s15">S15</a> makes the answer observable rather than guessed. Confirm it on the first
+    deploy — and if it shadows, the fix is to pass all three vars in the workflow's deploy command,
+    which is a one-line change. Either way, record the answer in the <code>cloudflare-workers</code>
+    skill.</li>
+</ul>
+
+<h2>12 · Related reading</h2>
+<ul>
+  <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. D1–D18
+    are the decisions this story implements; §6 is the slice map; §7 is where three of this story's
+    four resolved questions came from.</li>
+  <li><a href="ALF-170.html"><code>docs/specs/ALF-170.html</code></a> — the prerequisite:
+    <code>intended_epic_id</code>, editing parity, and the Dispatch action this story's diff hooks.</li>
+  <li><code>database/migrations/0026_inbox_dispatch.sql</code> — ALF-168, shipped: the residency
+    column, the trigger idioms this story copies, and the mandatory view recreation stated in its own
+    words.</li>
+  <li><code>database/migrations/0013_intended_project.sql</code> and <code>0019_code_epics.sql</code> —
+    the pre-factory hint pattern and the <code>items_task_only_fields</code> CHECK that forces the
+    coherent write.</li>
+  <li><code>.claude/skills/anthropic-api/SKILL.md</code> — calling Claude from a Worker, SDK vs raw
+    fetch, <code>stop_reason</code> handling. <b>Note it predates structured outputs</b>: it reaches
+    for a forced <code>tool_choice</code> where <a href="#s6">S6</a> uses
+    <code>output_config.format</code>, and its model table is a generation behind. Updating it is part
+    of this story's compounding-learning debt.</li>
+  <li><code>.claude/skills/cloudflare-workers/SKILL.md</code> — typed <code>Env</code>, secrets vs
+    vars, <code>wrangler.toml</code>, deploy. Its "what was left out" list names the
+    <code>scheduled</code> handler and cron triggers explicitly, so <b>this story is the one that owes
+    that section</b>.</li>
+  <li><code>.claude/skills/supabase/SKILL.md</code> and <code>migration-lint</code> — grants, RLS, and
+    the view/sequence traps this migration must not re-run into.</li>
+  <li><code>.claude/skills/showboat/SKILL.md</code> — the demo doc's command set and evidence rules.</li>
+  <li><code>docs/specs/product/SPEC.md</code> — §2 (Workers for LLM processing), §3.2
+    (<code>raw_capture</code>), §6 (the <code>/api/items</code> seam), §7 (secrets &amp; RLS), §11
+    Phase 6.</li>
+</ul>
+
+</div>
+</body>
+</html>
