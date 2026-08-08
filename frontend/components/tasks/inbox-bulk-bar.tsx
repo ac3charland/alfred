@@ -12,17 +12,25 @@ import {
 } from '@/components/atoms/dropdown-menu';
 import { GateDialog, type GateItem } from '@/components/code/gate-dialog';
 import { projectBoardHref } from '@/lib/code/board-links';
+import { useCodeActions } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { dispatchReadiness, summarizeBlockers } from '@/lib/tasks/dispatch';
 import type { CodeStory } from '@/lib/types';
 
-import { bulkBarClass, bulkBarWrapperClass } from './inbox-bulk-bar.styles';
+import {
+  bulkBarClass,
+  bulkBarStackClass,
+  bulkBarWrapperClass,
+  readinessLineClass,
+} from './inbox-bulk-bar.styles';
 
-const CLASSIFY_DISABLED_HINT = 'Only unclassified items can be classified';
-const MOVE_DISABLED_HINT = 'Only tasks can be filed into a folder';
+const CLASSIFY_DISABLED_HINT = 'Only a top-level item with no subtasks can change type';
+const MOVE_DISABLED_HINT = 'Only tasks and unclassified items can be filed into a folder';
 const SEND_DISABLED_HINT = 'An item with subtasks is sent from its own row menu';
+const DISPATCH_DISABLED_HINT = 'Nothing in the selection is ready to dispatch';
 
 /**
  * The Inbox header's "Select" / "Done" toggle. Pressing it enters multi-edit mode (rows become
@@ -48,11 +56,14 @@ export function InboxSelectToggle() {
 }
 
 /**
- * The Inbox bulk action bar: shown only while select mode is on and ≥1 item is selected. Each
- * action is gated on the selection's composition (the same type-coherence the single-row menu
- * applies, lifted to a set): Classify needs an all-unclassified selection, Move needs an
- * all-task one, Send-to-Code admits any. A full success clears the selection and exits mode; a
- * partial failure keeps just the failed items selected so they can be retried. Esc exits.
+ * The Inbox bulk action bar: shown only while select mode is on and ≥1 item is selected.
+ * **Dispatch leads** — the primary action, the only one styled accent: it sends each READY
+ * selected item to its own destination in one press (a task to its labelled folder, a code item
+ * through the factory gate), leaving unready items selected with the readiness line naming what
+ * each is missing. The other actions are gated on the selection's composition: Classify needs
+ * every row to be a childless root (the type-change shape gate), Move needs tasks/unclassified
+ * rows, Send-to-Code stays the "choose the project and epic now" path. A full success clears
+ * the selection and exits mode; a partial outcome keeps the unfinished items selected. Esc exits.
  *
  * The effective selection is the stored ids intersected with the items still in the Inbox, so
  * an item that has left (gated/moved away) simply stops counting — and a prune keeps the store
@@ -61,7 +72,8 @@ export function InboxSelectToggle() {
 export function InboxBulkBar() {
   const { active, selectedIds } = useInboxSelection();
   const { exit, prune } = useInboxSelectionActions();
-  const { bulkClassify, bulkMove, removeGatedItem } = useTaskActions();
+  const { bulkClassify, bulkMove, dispatchItems, removeGatedItem } = useTaskActions();
+  const { convertTaskToCode } = useCodeActions();
   const { showToast } = useToastActions();
   const folders = useFolders();
   const inboxNodes = useScopedTasks({ type: 'inbox' });
@@ -93,17 +105,35 @@ export function InboxBulkBar() {
 
   const ids = selectedItems.map((item) => item.id);
   const count = selectedItems.length;
-  const allUnclassified = count > 0 && selectedItems.every((i) => i.item_type === 'unclassified');
-  const allTask = count > 0 && selectedItems.every((i) => i.item_type === 'task');
+  // Classify's gate is the type-change SHAPE gate (a childless top-level row), whatever the
+  // current type — correcting a type is the common case now, and the old all-unclassified gate
+  // disabled the control on precisely the rows that carry a type to correct. Selection only
+  // holds roots, so childlessness is the live half of the check.
+  const allChildlessRoots =
+    count > 0 && selectedItems.every((i) => i.parent_id === null && i.children.length === 0);
+  // Move's gate widens to unclassified rows — the smallest honest widening: moveTask already
+  // classifies an unclassified row to task as it files it. A code row still can't be filed.
+  const allFileable =
+    count > 0 &&
+    selectedItems.every((i) => i.item_type === 'task' || i.item_type === 'unclassified');
   // The bulk send is story-per-item; an epic-shaped row (any children) goes through its own
   // row menu instead (ALF-129).
   const anySelectedHasChildren = selectedItems.some((i) => i.children.length > 0);
 
-  // After a bulk action: full success exits; a partial failure narrows the selection to the
-  // failed items so the same action can be retried on just those.
-  const settle = (failed: string[]) => {
-    if (failed.length === 0) exit();
-    else prune(failed);
+  // Dispatch readiness, derived live from the selection: the ready ones go on press, and the
+  // second line names what every unready one is missing — before the press, not after.
+  const blockers = selectedItems.flatMap((item) => {
+    const readiness = dispatchReadiness(item, item.children.length > 0);
+    return readiness.ready ? [] : [readiness.blocker];
+  });
+  const readyCount = count - blockers.length;
+  const readinessLine = summarizeBlockers(blockers);
+
+  // After a bulk action: full success exits; a partial outcome narrows the selection to the
+  // unfinished items so the same action can be retried on just those.
+  const settle = (staying: string[]) => {
+    if (staying.length === 0) exit();
+    else prune(staying);
   };
 
   const handleClassify = async (itemType: 'task' | 'code') => {
@@ -114,12 +144,23 @@ export function InboxBulkBar() {
     settle(await bulkMove(ids, folderId));
   };
 
+  const handleDispatch = async () => {
+    // One press, each ready item to its own destination; unready ∪ failed stay selected. The
+    // toast counts what actually went, with no deep link — a mixed dispatch has no single
+    // destination to link to.
+    const staying = await dispatchItems(ids, convertTaskToCode);
+    const sent = count - staying.length;
+    if (sent > 0) showToast(`Dispatched ${String(sent)} item${sent === 1 ? '' : 's'}`);
+    settle(staying);
+  };
+
   const gateItems: GateItem[] = selectedItems.map((item) => ({
     id: item.id,
     title: item.title,
     notes: item.notes,
     source_url: item.source_url,
     intendedProjectId: item.intended_project_id,
+    intendedEpicId: item.intended_epic_id,
   }));
 
   // Settle the bulk send: the admitted items have left task_items, so drop them from the store
@@ -147,90 +188,119 @@ export function InboxBulkBar() {
       <div aria-hidden className="h-20" />
 
       <div className={bulkBarWrapperClass}>
-        <div role="region" aria-label="Bulk actions" className={bulkBarClass}>
-          <span className="mr-1 text-sm font-semibold text-accent-teal">{count} selected</span>
+        <div className={bulkBarStackClass}>
+          <div role="region" aria-label="Bulk actions" className={bulkBarClass}>
+            <span className="mr-1 text-sm font-semibold text-accent-teal">{count} selected</span>
 
-          {/* Classify as — only when every selected item is still unclassified. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!allUnclassified}
-                title={allUnclassified ? undefined : CLASSIFY_DISABLED_HINT}
-              >
-                Classify as
-                <ChevronDown size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem
-                onSelect={() => {
-                  void handleClassify('task');
-                }}
-              >
-                Task
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  void handleClassify('code');
-                }}
-              >
-                Code
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            {/* Dispatch — the primary action: each ready item to its own destination, in one
+              press. Enabled from one ready item; unready items are never sent. */}
+            <Button
+              variant="accent"
+              size="sm"
+              disabled={readyCount === 0}
+              title={readyCount === 0 ? DISPATCH_DISABLED_HINT : undefined}
+              onClick={() => {
+                void handleDispatch();
+              }}
+            >
+              Dispatch
+            </Button>
 
-          {/* Move to folder — only when every selected item is a task. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!allTask}
-                title={allTask ? undefined : MOVE_DISABLED_HINT}
-              >
-                Move to folder
-                <ChevronDown size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem
-                onSelect={() => {
-                  void handleMove(null);
-                }}
-              >
-                Inbox
-              </DropdownMenuItem>
-              {folders.map((folder) => (
+            {/* Classify as — every selected row must be a childless root (the shape gate the
+              database can't enforce on a parent). */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!allChildlessRoots}
+                  title={allChildlessRoots ? undefined : CLASSIFY_DISABLED_HINT}
+                >
+                  Classify as
+                  <ChevronDown size={14} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
                 <DropdownMenuItem
-                  key={folder.id}
                   onSelect={() => {
-                    void handleMove(folder.id);
+                    void handleClassify('task');
                   }}
                 >
-                  {folder.name}
+                  Task
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void handleClassify('code');
+                  }}
+                >
+                  Code
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          {/* Send to Code — story-per-item, so it disables when any selected row has children. */}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={anySelectedHasChildren}
-            title={anySelectedHasChildren ? SEND_DISABLED_HINT : undefined}
-            onClick={() => {
-              setShowGate(true);
-            }}
-          >
-            Send to Code…
-          </Button>
+            {/* Move to folder — tasks and unclassified rows (filing classifies the latter). */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!allFileable}
+                  title={allFileable ? undefined : MOVE_DISABLED_HINT}
+                >
+                  Move to folder
+                  <ChevronDown size={14} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void handleMove(null);
+                  }}
+                >
+                  Inbox
+                </DropdownMenuItem>
+                {folders.map((folder) => (
+                  <DropdownMenuItem
+                    key={folder.id}
+                    onSelect={() => {
+                      void handleMove(folder.id);
+                    }}
+                  >
+                    {folder.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={exit}>
-            Done
-          </Button>
+            {/* Send to Code — story-per-item, so it disables when any selected row has children.
+              It stays the "choose the project and epic now" path (it hosts "+ New epic…");
+              Dispatch is the "use what's already set" path. Neither subsumes the other. */}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={anySelectedHasChildren}
+              title={anySelectedHasChildren ? SEND_DISABLED_HINT : undefined}
+              onClick={() => {
+                setShowGate(true);
+              }}
+            >
+              Send to Code…
+            </Button>
+
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={exit}>
+              Done
+            </Button>
+          </div>
+
+          {/* The readiness line — what the selection is missing, grouped by reason with counts,
+              derived live so it updates as rows are selected, corrected in the panel, or
+              dropped. It arrives BEFORE the press, and after a partial dispatch it is simply
+              what remains. */}
+          {readinessLine !== null && (
+            <div role="status" className={readinessLineClass}>
+              {readinessLine}
+            </div>
+          )}
         </div>
       </div>
 
