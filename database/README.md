@@ -72,14 +72,21 @@ How it decides what to run:
   runs in **one transaction together with its ledger row**, so a failure leaves neither half-applied
   SQL nor a row claiming success. A `pg_advisory_lock` around the run keeps a merge and a manual
   apply from racing.
-- **Baseline.** A database that already carries the app schema but has no ledger predates this
-  automation, so its first run **records** everything through `BASELINE_MIGRATION`
-  (`0026_inbox_dispatch.sql` — the last migration applied by hand) as already applied instead of
-  re-running it, then applies what came after. That constant is a historical fact about the two live
-  databases; **never advance it**. An empty database (a newly provisioned instance) has no schema, so
-  it just gets every migration from `0001`.
+- **An empty database** (a newly provisioned instance) has no schema and no ledger, so it simply
+  gets every migration from `0001`.
+- **An _unadopted_ database — schema but no ledger — is refused, loudly.** Its history is
+  unknowable from the outside, and a guess is unrecoverable: recording an assumed history marks the
+  gaps it actually has as applied and hides them forever. Both live databases proved the point when
+  this landed — Work was nine migrations behind (`0018`–`0026`) and Personal had lost `0016`'s
+  function rewrite, so *neither* stood where an assumed baseline would have put it.
+- **Adoption is one explicit command**, naming the migration you have verified the database stands
+  at: `npm run deploy -w database -- --baseline 0017_grant_v_code_stories.sql`. Everything through
+  that file is recorded as applied, the rest is applied normally, and the database is ordinary from
+  then on. The workflow never passes `--baseline` — a merge must not adopt anything.
 - **`npm run migrate` writes the same ledger**, so a migration you apply by hand — during
-  development, or to unblock something — is never re-applied by the pipeline.
+  development, or to unblock something — is never re-applied by the pipeline. Against an *unadopted*
+  database it deliberately records nothing and says so: a lone row there would read as that
+  database's entire history.
 
 Two things worth knowing:
 
@@ -91,6 +98,9 @@ Two things worth knowing:
   database still knows its history) and it is deliberately **left ungranted**, so the PostgREST API
   roles can't see it. The integration suite asserts both. The next `supabase gen types` run will list
   `schema_migrations` in `frontend/lib/database.types.ts` — expected, and unused by app code.
+
+Both live databases were adopted and caught up when this landed (Work: `0018`–`0026`; Personal:
+`0016`), and `migrations-applied.log` records those applies — so neither needs adopting again.
 
 Watch a run under **Actions → Migrate Databases**; a failure emails the repo owner like any other
 red workflow. To see what a live database is missing without writing anything:
@@ -149,8 +159,9 @@ package closes it with two checks:
   they're missing. Runs the server as the `postgres` user when invoked as root.
   It also runs the **deployer's** assertions (`src/deploy-assertions.ts`) on their own throwaway
   databases on that cluster: a fresh database takes every migration and a second run applies
-  nothing, a pre-ledger database is baselined rather than replayed, a file and its ledger row land
-  together or not at all, and the ledger stays unreadable to `anon`/`authenticated`.
+  nothing, an unadopted database is refused rather than guessed at, an explicit `--baseline` adopts
+  one and applies the rest, a file and its ledger row land together or not at all, and the ledger
+  stays unreadable to `anon`/`authenticated`.
 - **`npm run lint:migrations -w tools/migration-lint`** (via the root `check:fast`) — a
   static linter; its `sequence-grant` rule fails the build if a `create sequence` lacks a
   `grant usage … to anon, authenticated, service_role`. Cheap, no container; catches the
