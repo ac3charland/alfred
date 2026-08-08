@@ -2,9 +2,12 @@
 -- Safe to run once on a fresh DB. Demonstrates: folders, Inbox items, an
 -- unclassified capture, and a 3-level subtask tree (arbitrary depth).
 
-insert into folders (id, name) values
-  ('11111111-1111-1111-1111-111111111111', 'Work'),
-  ('22222222-2222-2222-2222-222222222222', 'Home');
+-- One folder is described and one is not, so a fresh dev database shows both states of the
+-- folder-header description line without hand-editing a row.
+insert into folders (id, name, description) values
+  ('11111111-1111-1111-1111-111111111111', 'Work',
+   'Anything for my employer: meetings, deliverables, admin, and the people I work with.'),
+  ('22222222-2222-2222-2222-222222222222', 'Home', null);
 
 -- Inbox items (folder_id null) — a task plus a raw unclassified capture
 insert into items (id, title, item_type, status, raw_capture) values
