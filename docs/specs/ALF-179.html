@@ -1,0 +1,1133 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-179 — Add support for folder and code project descriptions</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .ac { list-style: none; padding-left: 0; }
+  .ac li { padding-left: 1.6rem; position: relative; }
+  .ac li::before {
+    content: "☐"; position: absolute; left: 0; top: 0; color: var(--faint); font-size: 1rem;
+  }
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.6rem; }
+
+  /* ── App-palette mockups ──────────────────────────────────────────────────
+     Every value below is taken from source, not memory:
+       colours + radius  → frontend/app/globals.css (@layer base :root, @theme inline)
+       serif fallback    → globals.css names Georgia as Instrument Serif's fallback
+       folder header     → components/tasks/folder-view.tsx
+       board header      → components/code/board.tsx
+       inline editor     → components/atoms/textarea-field.tsx (default variant)
+                         + components/atoms/inline-edit-trigger.tsx
+                         + components/code/board/epic-block.tsx (the display/edit swap)
+       buttons           → components/atoms/button.tsx (size sm = h-8 px-3 text-xs)
+                         + components/atoms/icon-button.tsx (neutral tone, size md)   */
+  .app {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-input: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-teal: #4fd1e0;
+    --a-radius: 0.5rem;
+    --a-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --a-serif: Georgia, "Times New Roman", serif;
+    --a-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1.15rem 1.25rem; margin: 1rem 0; color: var(--a-text);
+    font-family: var(--a-sans); font-size: 14px; line-height: 1.5;
+  }
+  /* Inline <code> inside a canvas must wear the app's chrome, not the document's. */
+  .app code { background: rgba(30, 42, 63, .8); color: var(--a-text); font-family: var(--a-mono); }
+  .app .row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .app .eyebrow {
+    font-size: .75rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+    color: color-mix(in srgb, var(--a-muted) 70%, transparent);
+  }
+  .app .ctrls { display: flex; align-items: center; gap: .5rem; flex: none; }
+  .app .glyph { color: var(--a-muted); font-size: 15px; line-height: 1; }
+  .app .btn-outline {
+    display: inline-flex; align-items: center; gap: .375rem; height: 2rem; padding: 0 .75rem;
+    border: 1px solid var(--a-border); border-radius: .25rem; font-size: .75rem;
+    color: var(--a-text); background: transparent; white-space: nowrap;
+  }
+  .app .btn-ghost-accent {
+    display: inline-flex; align-items: center; height: 2rem; padding: 0 .75rem;
+    border-radius: .25rem; font-size: .75rem; font-weight: 500; color: var(--a-teal);
+    background: transparent;
+  }
+  .app .btn-ghost {
+    display: inline-flex; align-items: center; height: 2rem; padding: 0 .75rem;
+    border-radius: .25rem; font-size: .75rem; font-weight: 500; color: var(--a-muted);
+    background: transparent;
+  }
+  .app .proj-name { font-family: var(--a-serif); font-size: 1.5rem; line-height: 1.2; color: var(--a-text); }
+  .app .proj-key { font-family: var(--a-mono); font-size: .875rem; color: var(--a-muted); }
+  .app .head-line { display: flex; align-items: baseline; gap: .5rem; }
+  /* The description line itself: text-sm text-muted-foreground, its own row under the header. */
+  .app .desc {
+    font-size: .875rem; color: var(--a-muted); margin-top: .5rem;
+  }
+  .app .desc .pencil { color: var(--a-muted); font-size: 12px; margin-left: .375rem; }
+  .app .desc.placeholder { color: var(--a-muted); }
+  /* Hover: the EMPTY line's label brightens to foreground (its span carries
+     `hover:text-foreground`); a FILLED line's text does not — only the pencil arrives. */
+  .app .desc.hovered.placeholder { color: var(--a-text); }
+  .app .desc .pencil.off { opacity: 0; }
+  .app .desc-wide { max-width: 42rem; }
+  .app .menu {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: .5rem;
+    padding: .25rem; width: 12rem; font-size: .8rem;
+  }
+  .app .menu-item { padding: .3rem .5rem; border-radius: .25rem; display: flex; gap: .5rem; align-items: center; }
+  .app .menu-item.danger { color: #f87171; }
+  .app .menu-sep { height: 1px; background: var(--a-border); margin: .25rem 0; }
+
+  /* A left-to-right sequence of app canvases with document-styled captions beneath —
+     the numbering is the document's chrome, the frames stay pure app. */
+  .seq { display: grid; gap: 1rem; grid-template-columns: 1fr; margin: 1rem 0 1.5rem; }
+  @media (min-width: 760px) { .seq { grid-template-columns: repeat(3, 1fr); } }
+  .seq.two { grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .seq.two { grid-template-columns: repeat(2, 1fr); } }
+  .seq figure { margin: 0; }
+  .seq figure .app { margin: 0; padding: .85rem .9rem; }
+  .seq figcaption { color: var(--muted); font-size: .8rem; margin-top: .45rem; line-height: 1.45; }
+  .seq figcaption b { color: var(--fg); }
+  .app .ta {
+    width: 100%; border: 1px solid var(--a-border); background: var(--a-input);
+    border-radius: .25rem; padding: .375rem .5rem; font-size: .875rem; color: var(--a-text);
+    min-height: 3.25rem; font-family: var(--a-sans);
+  }
+  .app .ta.empty { color: var(--a-muted); }
+  .app .ta-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+  .app .tasks { margin-top: .9rem; display: flex; flex-direction: column; gap: .4rem; }
+  .app .task {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: 10px;
+    padding: .5rem .7rem; display: flex; gap: .55rem; align-items: center; font-size: .8rem;
+  }
+  .app .box { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--a-muted); flex: none; }
+  .app .lanes { margin-top: .9rem; display: flex; gap: .5rem; }
+  .app .lane {
+    flex: 1; background: var(--a-surface); border: 1px solid var(--a-border);
+    border-radius: 10px; padding: .5rem; font-size: .7rem; color: var(--a-muted);
+    min-height: 3.5rem;
+  }
+  .app .focusring { box-shadow: 0 0 0 2px var(--a-teal); }
+</style>
+
+<div class="wrap">
+
+<h1>ALF-179 — Add support for folder and code project descriptions</h1>
+<p class="sub">
+  <span class="pill">Story spec</span>
+  <span class="pill">Epic ALF-158 · LLM processing</span>
+  A nullable <code>description</code> on <code>folders</code> and <code>projects</code>, authored
+  in place from each surface's own header. No LLM code in this story.
+</p>
+
+<h2>1 · Context &amp; problem</h2>
+
+<p>
+  Epic <a href="epics/ALF-158.html">ALF-158</a> has the classifier choose a folder for a task and a
+  project for a code item by <b>picking an id from a closed list</b> (epic decision D3: the live ids
+  are the enum values of the response schema, so an invented folder is not something the model can
+  emit). That design makes a wrong id impossible — but it says nothing about the model picking the
+  <i>wrong existing</i> folder, which epic D9 names as the expensive failure, because a
+  confident-but-wrong label gets rubber-stamped in review.
+</p>
+<p>
+  Today the only thing distinguishing one option from another in that list is its <b>name</b>.
+  <code>folders</code> is <code>(id, name, created_at, sort_order)</code> and nothing more;
+  <code>projects</code> carries a name, a 3-char key and a repo. So the prompt story D will assemble
+  can say no more than <i>"Health", "Work", "Someday", "House"</i> — and "Someday" versus "Work" is a
+  judgement about how the owner uses their own system, which no amount of prompt engineering recovers
+  from a bare noun.
+</p>
+<p>
+  This story adds the field that carries that judgement: one sentence per folder and per project,
+  written by the owner, saying what belongs there. It ships the column, the write path and the
+  authoring surface — and stops before anything reads it. Two reasons that boundary is the right one:
+  the classifier does not exist in the repo yet (epic stories C and D), and the descriptions are only
+  worth reading once they have been <i>written</i>, so landing the authoring surface first means story
+  D inherits real content on day one instead of a table of nulls.
+</p>
+
+<div class="card">
+  <b>Where this sits in the epic.</b> It is not one of the epic's A–J slices — it is a small
+  additional enabler discovered while refining them. It has no dependency on any of them and none of
+  them depends on it to <i>land</i>: it makes story D's prompt better, not possible. It touches no
+  file the residency work (story A, merged) or the sweeper (story C) touch, so it can ship at any
+  point.
+</div>
+
+<h2>2 · Scope, as settled in refinement</h2>
+
+<table>
+  <tr><th style="width:34%">Question</th><th>Settled</th></tr>
+  <tr>
+    <td>Where is a description authored?</td>
+    <td><b>In place, in each surface's own header</b> — the folder's under the folder-view header, the
+      project's under the board header. Both reuse the epic-notes inline editor,
+      extracted into a shared atom (D5): <b>the line itself is the trigger</b> — no ⋯ menu, no
+      <i>Edit</i> entry, no new control. The sidebar folder menu's
+      <i>Edit</i> keeps meaning <b>rename</b>, exactly as it does today.</td>
+  </tr>
+  <tr>
+    <td>Projects have no <code>PATCH</code> route at all — how wide should the new one be?</td>
+    <td><b>Description only.</b> <code>PATCH /api/projects/[id]</code> accepts
+      <code>description</code> and nothing else. <code>name</code>, <code>key</code>,
+      <code>github_url</code> and the repo fields stay as immutable as they are today.</td>
+  </tr>
+  <tr>
+    <td>Does anything read the description?</td>
+    <td><b>No.</b> Nothing in the app or the Worker consumes it in this story. Prompt assembly is
+      story D's.</td>
+  </tr>
+</table>
+
+<h3>The shape of the change</h3>
+
+<svg viewBox="0 0 900 250" role="img" aria-label="Where the description column lands: the two headers write it, the existing select-star reads carry it, and story D reads it later.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+    </marker>
+  </defs>
+  <g font-family="-apple-system, system-ui, sans-serif">
+    <!-- write side -->
+    <rect x="8" y="24" width="250" height="86" rx="9" fill="var(--card)" stroke="var(--accent)" stroke-width="1.5" />
+    <text x="24" y="48" font-size="13" font-weight="600" fill="var(--fg)">Folder view header</text>
+    <text x="24" y="68" font-size="11" font-family="ui-monospace, monospace" fill="var(--muted)">components/tasks/folder-view.tsx</text>
+    <text x="24" y="92" font-size="11" fill="var(--muted)">inline editor → setFolderDescription</text>
+
+    <rect x="8" y="130" width="250" height="86" rx="9" fill="var(--card)" stroke="var(--accent)" stroke-width="1.5" />
+    <text x="24" y="154" font-size="13" font-weight="600" fill="var(--fg)">Board header</text>
+    <text x="24" y="174" font-size="11" font-family="ui-monospace, monospace" fill="var(--muted)">components/code/board.tsx</text>
+    <text x="24" y="198" font-size="11" fill="var(--muted)">inline editor → updateProjectDescription</text>
+
+    <!-- routes -->
+    <rect x="300" y="24" width="230" height="86" rx="9" fill="var(--card)" stroke="var(--line)" stroke-width="1.5" />
+    <text x="316" y="48" font-size="13" font-weight="600" fill="var(--fg)">PATCH /api/folders/[id]</text>
+    <text x="316" y="68" font-size="11" fill="var(--muted)">exists — gains a field</text>
+    <text x="316" y="92" font-size="11" fill="var(--muted)">and a looser non-empty refine</text>
+
+    <rect x="300" y="130" width="230" height="86" rx="9" fill="var(--card)" stroke="var(--line)" stroke-width="1.5" />
+    <text x="316" y="154" font-size="13" font-weight="600" fill="var(--fg)">PATCH /api/projects/[id]</text>
+    <text x="316" y="174" font-size="11" fill="var(--muted)">new route, description only</text>
+
+    <!-- db -->
+    <rect x="572" y="70" width="200" height="104" rx="9" fill="var(--card)" stroke="var(--accent)" stroke-width="1.5" />
+    <text x="588" y="94" font-size="13" font-weight="600" fill="var(--fg)">One migration</text>
+    <text x="588" y="116" font-size="11" font-family="ui-monospace, monospace" fill="var(--muted)">folders.description</text>
+    <text x="588" y="134" font-size="11" font-family="ui-monospace, monospace" fill="var(--muted)">projects.description</text>
+    <text x="588" y="156" font-size="11" fill="var(--muted)">text null · ≤ 500 chars</text>
+
+    <!-- later -->
+    <rect x="572" y="196" width="310" height="44" rx="9" fill="none" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="5 4" />
+    <text x="588" y="223" font-size="12" fill="var(--muted)">later — story D reads it into the classify prompt</text>
+
+    <g color="var(--muted)" stroke="var(--muted)" stroke-width="1.4" fill="none">
+      <path d="M 262 67 L 296 67" marker-end="url(#ar)" />
+      <path d="M 262 173 L 296 173" marker-end="url(#ar)" />
+      <path d="M 534 67 L 560 67 L 560 108 L 568 108" marker-end="url(#ar)" />
+      <path d="M 534 173 L 560 173 L 560 140 L 568 140" marker-end="url(#ar)" />
+    </g>
+    <g color="var(--faint)" stroke="var(--faint)" stroke-width="1.4" fill="none" stroke-dasharray="5 4">
+      <path d="M 672 178 L 672 192" marker-end="url(#ar)" />
+    </g>
+  </g>
+</svg>
+<p class="diagram-cap">
+  Two writers, one column, no readers yet. The reads that already exist (<code>select('*')</code> in
+  <code>lib/data/folders.ts</code> and <code>lib/data/code.ts</code>) carry the new field with no query
+  change.
+</p>
+
+<h2>3 · The surface</h2>
+
+<div class="callout">
+  <b>There is no menu entry, and no new control.</b> Neither header gains a ⋯ menu, a button, or an
+  <i>Edit</i> item. <b>The description line itself is the button</b> — click the text (or the
+  <i>Add …</i> placeholder standing in for it) and it becomes the editor in place. That is not a new
+  idea invented for this story: it is exactly how the epic header's notes work today, drawn in §3.1
+  so the two can be compared. The folder's ⋯ menu does exist — in the <b>sidebar</b>, not this header
+  — and it is untouched (§3.7).
+</div>
+
+<h3>3.1 · The affordance we're adopting, as it already works on an epic</h3>
+
+<p>
+  <code>EpicHeaderActions</code> in <code>components/code/board/epic-block.tsx</code>: one
+  <code>InlineEditTrigger</code> wrapping the text and a <code>Pencil</code> glyph, swapping on click
+  to a <code>TextareaField</code> with <b>Save</b> / <b>Cancel</b>. Folders and projects adopt this
+  component (§5.2) rather than a lookalike.
+</p>
+
+<div class="seq">
+  <figure>
+    <div class="app">
+      <div class="desc placeholder">Add epic notes…<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>1 · At rest.</b> The whole line is a button. The pencil is
+      <code>opacity-0</code>.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="desc placeholder hovered">Add epic notes…<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>2 · Hover.</b> The pencil fades in and the placeholder brightens to
+      <code>text-foreground</code> — the only cue that the line is interactive.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="ta empty focusring">Epic notes…</div>
+      <div class="ta-actions"><span class="btn-ghost-accent">Save</span><span class="btn-ghost">Cancel</span></div>
+    </div>
+    <figcaption><b>3 · Click.</b> The line is replaced in place by the textarea.</figcaption>
+  </figure>
+</div>
+
+<h3>3.2 · Folder view — where the line sits</h3>
+
+<div class="app">
+  <div class="row">
+    <span class="eyebrow">Health</span>
+    <span class="ctrls">
+      <span class="glyph">＋</span>
+      <span class="btn-outline">⇅ Sort by: Priority</span>
+      <span class="glyph">⌃⌄</span>
+    </span>
+  </div>
+  <div class="desc">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.<span class="pencil off">✎</span></div>
+  <div class="tasks">
+    <div class="task"><span class="box"></span><span>Book the dentist</span></div>
+    <div class="task"><span class="box"></span><span>Refill the prescription</span></div>
+  </div>
+</div>
+<p class="mockcap">
+  A described folder <b>at rest</b> — muted text, no pencil, nothing else changed. The line sits on
+  its own row beneath the existing header row, so the header's control cluster (capture <b>＋</b>,
+  <b>Sort by</b>, <b>Collapse all</b>) keeps its row and its contents. The text wraps rather than
+  truncating, which is what the epic's classes do in the built CSS.
+</p>
+
+<h3>3.3 · Folder view — how you get in</h3>
+
+<div class="seq">
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc placeholder">Add folder description…<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>1 · At rest.</b> An undescribed folder shows the placeholder — this is what
+      advertises the feature, and it is the entire discovery path.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc placeholder hovered">Add folder description…<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>2 · Hover.</b> Pencil in, label brightened. No menu is opened and nothing else on
+      the header reacts.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div style="margin-top:.5rem">
+        <div class="ta empty focusring">Folder description…</div>
+        <div class="ta-actions"><span class="btn-ghost-accent">Save</span><span class="btn-ghost">Cancel</span></div>
+      </div>
+    </div>
+    <figcaption><b>3 · Click.</b> The editor opens in place, seeded with the current value (empty
+      here). The tasks below do not move.</figcaption>
+  </figure>
+</div>
+
+<p class="mockcap">
+  Frames 1–3 are the description line only, at the position §3.2 draws it in context.
+</p>
+
+<h3>3.4 · Folder view — a line that already has text</h3>
+
+<div class="seq two">
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>At rest.</b> Muted text, no pencil.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="row"><span class="eyebrow">Health</span></div>
+      <div class="desc">Doctors, dentist, prescriptions, the gym, anything about my body or my health admin.<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>Hover.</b> Only the pencil arrives — a filled line does <b>not</b> brighten,
+      because the epic's brighten-on-hover lives on the placeholder span alone.</figcaption>
+  </figure>
+</div>
+
+<h3>3.5 · Board header — where the line sits</h3>
+
+<div class="app">
+  <div class="row">
+    <span class="head-line">
+      <span class="proj-name">Alfred</span>
+      <span class="proj-key">ALF</span>
+    </span>
+    <span class="ctrls">
+      <span class="btn-outline">＋ Create epic</span>
+      <span class="btn-outline">Collapse all</span>
+      <span class="btn-outline">⋯</span>
+    </span>
+  </div>
+  <div class="desc desc-wide">My personal capture-first task system — Next.js on Vercel, Cloudflare Workers, Supabase. Anything about alfred itself belongs here.<span class="pencil off">✎</span></div>
+  <div class="lanes">
+    <div class="lane">Needs refinement</div>
+    <div class="lane">In refinement</div>
+    <div class="lane">Ready for dev</div>
+    <div class="lane">In development</div>
+  </div>
+</div>
+<p class="mockcap">
+  Same line, same component, placed under the name/key pair rather than beside it, so
+  <code>BoardToolbar</code> keeps its own row and its <code>flex-wrap</code> behaviour is unchanged.
+  The <b>⋯</b> drawn at the right is the board's <i>existing</i> filter menu (the one that holds
+  <i>Filter by status</i> / <i>Show abandoned</i> / <i>Show archived</i> below <code>md</code>) — it
+  gains no entry from this story. Unlike the folder column the board is full-width, so the line is
+  capped at <code>max-w-2xl</code>; the mockup shows it stopping short of the right edge.
+</p>
+
+<h3>3.6 · Board header — how you get in</h3>
+
+<div class="seq">
+  <figure>
+    <div class="app">
+      <div class="head-line"><span class="proj-name">Alfred</span><span class="proj-key">ALF</span></div>
+      <div class="desc placeholder">Add project description…<span class="pencil off">✎</span></div>
+    </div>
+    <figcaption><b>1 · At rest.</b> An undescribed project, placeholder showing.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="head-line"><span class="proj-name">Alfred</span><span class="proj-key">ALF</span></div>
+      <div class="desc placeholder hovered">Add project description…<span class="pencil">✎</span></div>
+    </div>
+    <figcaption><b>2 · Hover.</b> Identical behaviour to the folder and the epic — same
+      component.</figcaption>
+  </figure>
+  <figure>
+    <div class="app">
+      <div class="head-line"><span class="proj-name">Alfred</span><span class="proj-key">ALF</span></div>
+      <div class="desc-wide" style="margin-top:.5rem">
+        <div class="ta empty focusring">Project description…</div>
+        <div class="ta-actions"><span class="btn-ghost-accent">Save</span><span class="btn-ghost">Cancel</span></div>
+      </div>
+    </div>
+    <figcaption><b>3 · Click.</b> The editor opens in place, capped at the same
+      <code>max-w-2xl</code> as the line it replaced.</figcaption>
+  </figure>
+</div>
+
+<h3>3.7 · What is <em>not</em> touched — the sidebar folder menu</h3>
+
+<p>
+  Folders <i>do</i> have a ⋯ menu — on the sidebar row, not the view header. It is drawn here
+  unchanged, because <b>this story adds nothing to it</b>: no <i>Describe</i> entry, and
+  <i>Edit</i> still opens the single-line rename it opens today.
+</p>
+
+<div class="app">
+  <div class="row" style="max-width:20rem">
+    <span style="display:flex;align-items:center;gap:.5rem"><span class="glyph">🗀</span>Health</span>
+    <span class="glyph">⋯</span>
+  </div>
+  <div class="menu" style="margin-top:.5rem">
+    <div class="menu-item">↑ Move up</div>
+    <div class="menu-item">↓ Move down</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item">Edit</div>
+    <div class="menu-sep"></div>
+    <div class="menu-item danger">Delete</div>
+  </div>
+</div>
+<p class="mockcap">
+  <code>FolderNavMenu</code> exactly as it is today. A description is longer than a sidebar row can
+  show or a single-line inline field can hold, which is why it is authored in the view — not because
+  the menu was unavailable.
+</p>
+
+<h3>3.8 · Both surfaces, undescribed, in context</h3>
+
+<div class="app">
+  <div class="row">
+    <span class="eyebrow">Health</span>
+    <span class="ctrls">
+      <span class="glyph">＋</span>
+      <span class="btn-outline">⇅ Sort by: Priority</span>
+      <span class="glyph">⌃⌄</span>
+    </span>
+  </div>
+  <div class="desc placeholder">Add folder description…<span class="pencil off">✎</span></div>
+  <div class="tasks">
+    <div class="task"><span class="box"></span><span>Book the dentist</span></div>
+    <div class="task"><span class="box"></span><span>Refill the prescription</span></div>
+  </div>
+</div>
+
+<div class="app">
+  <div class="row">
+    <span class="head-line">
+      <span class="proj-name">Alfred</span>
+      <span class="proj-key">ALF</span>
+    </span>
+    <span class="ctrls">
+      <span class="btn-outline">＋ Create epic</span>
+      <span class="btn-outline">Collapse all</span>
+      <span class="btn-outline">⋯</span>
+    </span>
+  </div>
+  <div class="desc placeholder">Add project description…<span class="pencil off">✎</span></div>
+  <div class="lanes">
+    <div class="lane">Needs refinement</div>
+    <div class="lane">In refinement</div>
+    <div class="lane">Ready for dev</div>
+    <div class="lane">In development</div>
+  </div>
+</div>
+<p class="mockcap">
+  The line is <b>always present</b>, even when empty — matching the epic-notes precedent, where
+  <i>Add epic notes…</i> shows on every epic that has none. That is deliberate and load-bearing: with
+  no menu entry and no button, the placeholder <i>is</i> the discovery path (D4). It costs one muted
+  line on surfaces that have no description yet, and it is what moves the four board baselines (§7).
+</p>
+
+<h4>Copy, in one place</h4>
+<p class="small">
+  Each column is the epic's string with the noun swapped — <i>Add epic notes…</i> / <i>Epic notes…</i>
+  / <i>Edit epic notes</i>. Nothing here is a new phrasing pattern.
+</p>
+<table>
+  <tr><th style="width:24%">Slot</th><th>Epic (today)</th><th>Folder</th><th>Project</th></tr>
+  <tr><td>Empty-state trigger (also its accessible name)</td><td>Add epic notes…</td><td>Add folder description…</td><td>Add project description…</td></tr>
+  <tr><td>Textarea placeholder</td><td>Epic notes…</td><td>Folder description…</td><td>Project description…</td></tr>
+  <tr><td>Textarea <code>aria-label</code></td><td>Edit epic notes</td><td>Edit folder description</td><td>Edit project description</td></tr>
+  <tr><td>Failure toast</td><td><span class="small">— (silent rollback)</span></td><td>Couldn't save the folder description</td><td>Couldn't save the project description</td></tr>
+</table>
+<p class="small">
+  The toast column is the one place the two new call sites do more than the epic does: the epic's
+  save rolls its draft back silently, while both stores here already own a toast helper and use it on
+  every other failed write, so a silent rollback would be the odd one out. It is the existing
+  <code>showToast</code>, not a new mechanism.
+</p>
+
+<h2>4 · Decisions</h2>
+
+<div class="dec">
+  <h3><span class="n">D1</span>The column is <code>description</code> on both tables — not <code>notes</code></h3>
+  <p><code>text</code>, nullable, no default. Null on every existing row, and null is a permanently
+    legal value.</p>
+  <p class="why"><b>Why not <code>notes</code>, which <code>epics</code> already has:</b> they are
+    different fields with different jobs. <code>epics.notes</code> is a free scratchpad on a board
+    card — anything the owner wants to jot. A description is a <i>standing statement of what belongs
+    here</i>, written to be read by something else. The ticket names it, and one honest name beats
+    reusing a word whose existing meaning is "misc".</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>Empty is stored as <code>null</code>, never <code>''</code></h3>
+  <p>The editor trims and maps an empty result to <code>null</code> before writing
+    (<code>next === '' ? null : next</code>), and every reader treats <code>null</code> and the empty
+    string identically when deciding whether to show the placeholder.</p>
+  <p class="why"><b>Why:</b> two representations of "no description" is one more than the prompt
+    assembly in story D should have to think about — <code>description ?? undefined</code> must be
+    enough to omit the folder's line entirely. The epic-notes save does exactly this today; copying it
+    keeps one idiom.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>500 characters, enforced at three layers, visible at none</h3>
+  <ul>
+    <li>A DB <code>CHECK (description is null or char_length(description) &lt;= 500)</code> on each table.</li>
+    <li><code>z.string().max(500)</code> in both schemas, so an API caller gets a 400 rather than a
+      Postgres error mapped to a 500.</li>
+    <li>A native <code>maxLength</code> on the textarea, so the UI can never produce a body the
+      other two reject.</li>
+  </ul>
+  <p class="why"><b>Why a cap at all:</b> every description is re-sent on <i>every</i> classify call
+    (epic D18 — one item, one request, the folder list rebuilt each sweep), so an essay pasted into
+    one folder is a permanent tax on every future item. The epic is explicit that prompt budget is the
+    scarce thing and that padding the prompt is never a saving.
+    <b>Why no counter, no error state:</b> 500 characters is several times what a real description
+    needs, so hitting it is rare enough that a persistent counter would be chrome on every folder to
+    serve a case that essentially never happens. Adding a counter would also mean a new prop on a
+    shared atom used by the epic notes and the block-reason flow. The cap is a backstop, not a
+    workflow.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>The line is the trigger, and it is always rendered</h3>
+  <p>No ⋯ menu on either header, no <i>Edit</i> entry, no button. Clicking the line opens the editor
+    in place; the pencil is a hover cue on that same line, not a separate control. And the line is
+    always rendered — not hover-gated, not hidden until first use — so every folder view and every
+    board shows either a description or <i>Add …</i>.</p>
+  <p class="why"><b>Why these are one decision:</b> with no menu entry anywhere, the placeholder
+    <i>is</i> the only way anyone discovers the field exists. Hide it until first use and the feature
+    is unreachable; put it behind a menu instead and both headers grow a control they don't have
+    today. The epic header settled this exact trade already, and nobody has since asked it for a menu
+    item. The cost is one muted line on undescribed surfaces, and one real consequence: <b>it moves
+    four committed Storybook baselines</b> (§7).</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>The affordance is the epic's component — extracted, then shared by all three</h3>
+  <p>Lift <code>EpicHeaderActions</code>'s display/edit swap into an atom (e.g.
+    <code>components/atoms/inline-note-field.tsx</code>) taking the current text, the three strings
+    from §3's copy table, and an <code>onSave</code>. Point <b>all three</b> call sites at it — the
+    epic header included. Nothing is redesigned: the extraction is a move, so the epic header must
+    render byte-identically afterwards (same classes, same DOM order).</p>
+  <p class="why"><b>Why extract rather than copy:</b> "the same visual grammar as the epic
+    descriptions" is a claim that decays the moment there are three near-copies of it — one gets a
+    tweak and the surfaces drift apart with nothing failing. One component makes it true by
+    construction instead of by review. It is also the <code>frontend-architecture</code> skill's
+    rule: this is the third instance of the pattern, which is where it stops being a coincidence.</p>
+  <p class="why"><b>What this does not license:</b> changing the epic notes' behaviour, copy, or
+    markup while the component is being extracted. If the extraction can't produce an identical epic
+    header, that is a signal the abstraction is wrong, not a licence to adjust the epic.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span><code>updateFolderSchema</code>'s <code>refine</code> has to be loosened, not just extended</h3>
+  <p>It currently reads <i>"Either <code>name</code> or <code>sort_order</code> is required"</i>. Add
+    <code>description</code> to the object <b>and</b> to the predicate — otherwise a description-only
+    PATCH is rejected with a 400 before it reaches the route, and the failure looks like a store bug.</p>
+  <p class="why"><b>Why call it out:</b> it is the one place in this change where adding a field
+    without touching a second line silently breaks the feature, and both are in the same 8-line block.
+    Prefer the <code>updateHabitSchema</code> idiom — <code>Object.keys(body).length &gt; 0</code> —
+    so the next field added here can't repeat this.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>No view to recreate, and no <code>select</code> to change</h3>
+  <p>The <code>task_items</code> trap the epic spec warns about — <code>select i.*</code> freezing its
+    column list at CREATE time — <b>does not apply here.</b> There is no view over <code>folders</code>
+    at all, and <code>v_code_stories</code> names project columns explicitly
+    (<code>p.key</code>, <code>p.name</code>, <code>p.repo_owner</code>, <code>p.repo_name</code>) — it
+    has no <code>p.*</code>. The reads are already <code>select('*')</code> straight off the tables, so
+    they pick the column up for free.</p>
+  <p class="why"><b>Why state a non-problem:</b> the epic tells every story session in ALF-158 to
+    recreate a view after adding a column. Following that instruction here would produce a pointless
+    view recreation; a session that <i>doesn't</i> follow it should be able to see it checked rather
+    than forgotten.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>Creation stays name-only</h3>
+  <p><code>POST /api/folders</code> and <code>POST /api/projects</code> are unchanged. A new folder or
+    project starts with <code>description: null</code> and is described afterwards from its own
+    header.</p>
+  <p class="why"><b>Why:</b> the sidebar's create form is a single inline field by design (type a
+    name, Enter, done) and the new-project dialog is already a three-field form guarding a unique key.
+    Describing is a second, unhurried thought — the same reason capture doesn't ask for a folder.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D9</span>Both writes are optimistic, mirroring what each store already does</h3>
+  <p>Folders: a new <code>setFolderDescription(id, description)</code> action, a line-for-line mirror
+    of <code>renameFolder</code> — optimistic <code>patch</code>, PATCH, <code>replace</code> with the
+    saved row, rollback to the previous value, toast on failure. Projects: a new
+    <code>patchProject</code> reducer action (mirroring the existing <code>patchEpic</code>) plus an
+    <code>updateProjectDescription(id, description)</code> action in the same shape.</p>
+  <p class="why"><b>Why optimistic rather than a refetch:</b> it is the house pattern for every
+    mutation in both stores (see the <code>data-flow</code> skill), and the write is a single scalar on
+    a row already in memory — the cheapest possible case for it.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>Nothing reads the description, and nothing is stubbed for a future reader</h3>
+  <p>No prompt-assembly helper, no <code>describeClosedWorld()</code>, no Worker change, no
+    placeholder module waiting to be filled in.</p>
+  <p class="why"><b>Why:</b> story D owns the prompt and hasn't been specced yet; a seam guessed now
+    would be a seam it has to delete. The column and the authoring surface are the whole contribution,
+    and they are independently useful — a described folder is self-documenting for the human too.</p>
+</div>
+
+<h2>5 · The change, layer by layer</h2>
+
+<h3>5.1 · Database</h3>
+<p>
+  One migration, <code>database/migrations/&lt;next&gt;_entity_descriptions.sql</code> — take whatever
+  number is free when you build this; do not reserve one now.
+</p>
+
+<pre><code>-- 1. The columns
+alter table folders  add column description text;
+alter table projects add column description text;
+
+-- 2. The cap (D3) — a backstop against an essay pasted into a field that is re-sent
+--    on every classify call once ALF-158 story D lands.
+alter table folders  add constraint folders_description_length
+  check (description is null or char_length(description) &lt;= 500);
+alter table projects add constraint projects_description_length
+  check (description is null or char_length(description) &lt;= 500);
+
+comment on column folders.description is
+  'Optional one-or-two-line statement of what belongs in this folder (ALF-179). NULL = undescribed, '
+  'which is every folder before this migration. Written by the owner from the folder view header; '
+  'destined for the ALF-158 classifier prompt, which needs more than a bare name to choose between '
+  'folders. Capped at 500 chars because it is re-sent on every classification request.';
+comment on column projects.description is
+  'Optional one-or-two-line statement of what this project is and what work belongs in it (ALF-179). '
+  'NULL = undescribed. Same purpose and same cap as folders.description.';</code></pre>
+
+<p>No backfill: <code>null</code> is already correct for every existing row. No view recreation and
+  no re-grant (D7) — neither table is behind a view, and no function signature changes.</p>
+
+<p>Also in <code>database/</code>:</p>
+<table>
+  <tr><th style="width:30%">File</th><th>Change</th></tr>
+  <tr><td><code>README.md</code></td><td>The schema summary lists <code>folders</code> as
+    <code>(id, name, created_at)</code> and describes <code>projects</code>; add
+    <code>description</code> to both entries.</td></tr>
+  <tr><td><code>src/assertions.ts</code></td><td>The real-Postgres assertions (§6).</td></tr>
+  <tr><td><code>seed.sql</code></td><td>Give at least one seeded folder a description, so a fresh dev
+    database shows the feature without hand-editing a row.</td></tr>
+  <tr><td><code>migrations-applied.log</code></td><td>Appended by <code>npm run migrate</code>; commit it.</td></tr>
+</table>
+
+<h3>5.2 · Frontend</h3>
+<table>
+  <tr><th style="width:38%">File</th><th>Change</th></tr>
+  <tr>
+    <td><code>lib/database.types.ts</code></td>
+    <td>Regenerate with <code>supabase gen types</code> and commit the raw output. Generated file —
+      excluded from ESLint and Prettier; never hand-edit it. <code>Folder</code> and
+      <code>Project</code> pick the field up from here.</td>
+  </tr>
+  <tr>
+    <td><code>lib/api/schemas.ts</code></td>
+    <td><code>updateFolderSchema</code> gains <code>description: z.string().max(500).nullable().optional()</code>,
+      and its <code>.refine</code> is loosened to a non-empty-body check (D6). New
+      <code>updateProjectSchema</code> in the Software-Factory section: the same single field, same
+      non-empty-body refine, exported as <code>UpdateProjectInput</code>.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/folders/[id]/route.ts</code></td>
+    <td><code>'description'</code> joins the <code>toUpdatePayload</code> field list. Nothing else
+      changes — a present key (even <code>null</code>) is forwarded, an absent one is left alone.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/projects/[id]/route.ts</code></td>
+    <td><b>New.</b> A <code>PATCH</code> only, built exactly like
+      <code>app/api/epics/[id]/route.ts</code>: <code>withSession</code> → <code>parseUUID</code> →
+      <code>parseRequestBody(updateProjectSchema)</code> →
+      <code>toUpdatePayload&lt;ProjectUpdate&gt;(input, ['description'])</code> → update, select,
+      single → <code>mapSupabaseError</code> on failure. No <code>GET</code>, no
+      <code>DELETE</code>.</td>
+  </tr>
+  <tr>
+    <td><code>lib/api-client.ts</code></td>
+    <td>New <code>updateProject(id, input)</code> beside <code>createProject</code>, in the same
+      <code>apiRequest</code> shape as <code>updateEpic</code>. <code>updateFolder</code> already
+      takes the whole <code>UpdateFolderInput</code>, so it needs no change.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/folders-store.tsx</code></td>
+    <td><code>setFolderDescription</code> on <code>FolderActions</code> (D9). The reducer's generic
+      <code>patch</code> action already does what it needs — no reducer change.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/code-store.tsx</code></td>
+    <td>A <code>patchProject</code> reducer action (mirroring <code>patchEpic</code>: a no-op when the
+      id is absent) and an <code>updateProjectDescription</code> member on
+      <code>CodeActions</code>.</td>
+  </tr>
+  <tr>
+    <td><code>lib/tree.ts</code></td>
+    <td><code>makeOptimisticFolder</code> and <code>makeOptimisticProject</code> both build a full row
+      literal — each gains <code>description: null</code>.</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/textarea-field.tsx</code></td>
+    <td>One optional <code>maxLength</code> prop, forwarded to the <code>&lt;textarea&gt;</code> (D3).
+      Existing call sites are unaffected.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/folder-view.tsx</code></td>
+    <td>The description row beneath the existing header row (§3.2–3.4). The header
+      <code>div</code>'s <code>mb-2</code> moves to a new wrapper so the spacing below the block is
+      unchanged.</td>
+  </tr>
+  <tr>
+    <td><code>components/code/board.tsx</code></td>
+    <td>The description row beneath the name/key line, <code>max-w-2xl</code> (§3.5–3.6).</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/inline-note-field.tsx</code> <span class="small">(new)</span></td>
+    <td><b>Extracted from <code>EpicHeaderActions</code></b>, not written fresh (D5): the
+      <code>InlineEditTrigger</code> + <code>Pencil</code> display line, the empty-vs-filled span
+      split, and the <code>TextareaField</code> swap — with the current value, the three copy strings
+      and an <code>onSave</code> as props. Carry the class strings across verbatim.</td>
+  </tr>
+  <tr>
+    <td><code>components/code/board/epic-block.tsx</code></td>
+    <td><code>EpicHeaderActions</code> keeps its <code>updateEpic</code> save and its
+      <code>border-b</code> wrapper but renders the extracted atom instead of its own copy. Its
+      output must be identical — this is a move, not a redesign (D5).</td>
+  </tr>
+  <tr>
+    <td><code>e2e/support/constants.ts</code></td>
+    <td><code>makeFolder</code> and <code>makeProject</code> gain
+      <code>description: overrides.description ?? null</code>.</td>
+  </tr>
+  <tr>
+    <td><code>scripts/mock-supabase.mjs</code></td>
+    <td><code>newFolder</code> and <code>newProject</code> gain
+      <code>description: input.description ?? null</code>. The generic <code>PATCH</code> handler
+      already covers both tables, so the new route needs no mock work.</td>
+  </tr>
+  <tr>
+    <td>Every <code>Folder</code> / <code>Project</code> object literal in tests and stories</td>
+    <td>Both types are the generated <code>Row</code>, so <b>every typed literal fails typecheck until
+      it carries <code>description</code></b> — roughly a dozen files each. Let
+      <code>npm run check:fast</code> enumerate them; the load-bearing ones are
+      <code>folder-view.stories.tsx</code>, <code>folder-nav.stories.tsx</code>,
+      <code>board.stories.tsx</code> and <code>project-nav.stories.tsx</code>.</td>
+  </tr>
+</table>
+
+<div class="callout">
+  <b>Two things it is easy to miss.</b> (1) <code>updateFolderSchema</code>'s <code>refine</code>
+  (D6) — the feature 400s without it, and the typecheck is green either way. (2) The board's
+  <code>visualTest</code> target is <code>[data-testid="board-frame"]</code>, which <i>wraps the whole
+  Board including its header</i> — so the description line lands inside four committed baselines
+  (§7). That is expected, not a regression, but it must go through the capture-then-approve flow.
+</div>
+
+<h2>6 · Back-pressure</h2>
+
+<p>
+  Every behavioural claim below lands in a deterministic check. Follow the repo's Red/Green TDD rule:
+  the test that expresses the requirement goes in first.
+</p>
+
+<table>
+  <tr><th style="width:36%">Suite</th><th>What it must prove</th></tr>
+  <tr>
+    <td><code>lib/api/schemas.test.ts</code></td>
+    <td><code>updateFolderSchema</code> accepts a <b>description-only</b> body (D6), accepts
+      <code>null</code>, accepts a name-only body as it does today, rejects <code>{}</code>, and
+      rejects 501 characters. <code>updateProjectSchema</code>: the same four, plus that it strips a
+      <code>name</code> / <code>key</code> a caller tries to smuggle in.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/folders/[id]/route.test.ts</code></td>
+    <td>A description-only PATCH reaches the update payload; <code>description: null</code> is
+      forwarded (it clears the column) rather than dropped; a name-only PATCH's payload contains no
+      <code>description</code> key.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/projects/[id]/route.test.ts</code> <span class="small">(new)</span></td>
+    <td>PATCH updates the row and returns it; a non-UUID id is a 400 before any Supabase call; a
+      Supabase error is mapped through <code>mapSupabaseError</code>; an unsupported field never
+      reaches the update.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/folders-store.test.tsx</code></td>
+    <td><code>setFolderDescription</code> patches the list before the request resolves, reconciles
+      with the saved row, and on rejection restores the <i>previous</i> description and toasts.</td>
+  </tr>
+  <tr>
+    <td><code>lib/stores/code-store.test.tsx</code></td>
+    <td>The same three for <code>updateProjectDescription</code>, plus that <code>patchProject</code>
+      is a no-op for an id no longer in the list (the race rule <code>patchEpic</code> follows).</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/folder-view.test.tsx</code></td>
+    <td>The placeholder shows when the description is <code>null</code> <i>and</i> when it is
+      <code>''</code>; the text shows when set; clicking swaps to a textarea seeded with the current
+      value; Save calls the action with the trimmed value; saving an emptied field calls it with
+      <code>null</code> (D2); saving an unchanged value calls nothing; Cancel and Escape both restore
+      the display without calling the action.</td>
+  </tr>
+  <tr>
+    <td><code>components/code/board.test.tsx</code></td>
+    <td>The same set for the project description, so the board's copy of the affordance is pinned
+      independently of the folder's.</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/textarea-field.test.tsx</code></td>
+    <td><code>maxLength</code> reaches the <code>&lt;textarea&gt;</code> when given, and the attribute
+      is absent when it is not (so the epic-notes and block-reason call sites are provably
+      unchanged).</td>
+  </tr>
+  <tr>
+    <td><code>components/atoms/inline-note-field.test.tsx</code> <span class="small">(new)</span></td>
+    <td>The affordance itself, once: the empty label vs the text; click opens the textarea seeded
+      with the current value; Save reports the trimmed value and empty as <code>null</code>; an
+      unchanged value reports nothing; Cancel and Escape close without reporting.</td>
+  </tr>
+  <tr>
+    <td><code>components/code/board/epic-block.test.tsx</code></td>
+    <td><b>Passes unchanged.</b> The epic-notes assertions are the regression net for the extraction
+      (D5) — if any of them needs editing, the atom's shape is wrong. Do not rewrite them to fit
+      it.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/folder-view.stories.tsx</code><br /><code>components/code/board.stories.tsx</code></td>
+    <td>A described state on each, so the demo doc has something to screenshot. The board's existing
+      stories keep their <code>visualTest</code> parameters — their baselines move (§7).</td>
+  </tr>
+  <tr>
+    <td><code>e2e/folders.spec.ts</code> and a code-side spec</td>
+    <td>The full round trip against the mock backend: type a description, it renders; reload, it is
+      still there; empty it, the placeholder returns. This is the only check that proves route +
+      store + component + persistence agree.</td>
+  </tr>
+  <tr>
+    <td><code>database/src/assertions.ts</code> <span class="small">(real Postgres, <code>check:slow</code>)</span></td>
+    <td>The two DB-only claims no jest test can reach: both columns exist and are nullable, and each
+      table's length CHECK rejects a 501-character description.</td>
+  </tr>
+</table>
+
+<h2>7 · Demo evidence</h2>
+
+<p>
+  A user-visible change, so a demo doc is required — <code>docs/demos/&lt;branch&gt;/…</code>, built
+  with <code>npm run demo</code>. Follow the <code>showboat</code> skill's evidence-matching rules
+  rather than a list restated here; they are the source of truth for what counts. Two things specific
+  to this change:
+</p>
+<ul>
+  <li><b>It has a visual surface</b>, so screenshots of the running app are the primary evidence: a
+    folder header in all three states and a board header described. A Storybook still is secondary
+    evidence, not a substitute.</li>
+  <li><b>It moves committed visual snapshots.</b> The board's <code>visualTest</code> target wraps its
+    header, so adding the description line changes
+    <code>code-board--seeded.png</code>, <code>code-board--mobile-board.png</code>,
+    <code>code-board--with-archived-epic.png</code> and
+    <code>code-board--with-blocked-stories.png</code>. Follow the <code>storybook</code> skill's
+    capture-then-approve flow: embed the auto-emitted <b>diff image</b> as the demo evidence,
+    <i>then</i> approve the new baselines
+    (<code>npm run test:storybook:update -w frontend</code>) and commit the regenerated PNGs alongside
+    the demo doc. Never hand-edit a baseline. <code>FolderView</code> has no committed snapshot, so
+    nothing moves on the tasks side.</li>
+</ul>
+
+<h2>8 · Acceptance criteria</h2>
+
+<h4>Authoring a folder description</h4>
+<ul class="ac">
+  <li>A folder with no description shows <i>Add folder description…</i> on its own line under the
+    folder-view header, at every viewport.</li>
+  <li>Clicking it opens a two-row textarea seeded with the current value, with Save and Cancel beneath
+    it, and the tasks below do not move.</li>
+  <li>Saving persists immediately (optimistically) and survives a reload.</li>
+  <li>⌘↵ / Ctrl+↵ saves; Escape and Cancel both restore the display without writing.</li>
+  <li>Saving an emptied field returns the folder to the placeholder and stores <code>null</code>, not
+    <code>''</code>.</li>
+  <li>Saving an unchanged value issues no request.</li>
+  <li>A failed save restores the previous text and shows <i>Couldn't save the folder description</i>.</li>
+  <li>A described folder shows its text wrapped, with a pencil that appears on hover.</li>
+  <li>An undescribed line brightens to <code>text-foreground</code> on hover; a described one does
+    not — on both, only the pencil changes state (§3.4).</li>
+  <li>The line is reachable by keyboard: it is a real button, takes focus in tab order with the
+    teal focus ring, and Enter or Space opens the editor.</li>
+</ul>
+
+<h4>The way in, and the ways that aren't</h4>
+<ul class="ac">
+  <li>The description line is the <b>only</b> trigger. Neither the folder-view header nor the board
+    header gains a ⋯ menu, an <i>Edit</i> entry, or any other new control.</li>
+  <li>The sidebar folder row menu is unchanged: <i>Move up</i> / <i>Move down</i> / <i>Edit</i> /
+    <i>Delete</i>, with <i>Edit</i> still opening the single-line rename.</li>
+  <li>The board's existing ⋯ filter menu holds the same three entries it holds today.</li>
+</ul>
+
+<h4>Authoring a project description</h4>
+<ul class="ac">
+  <li>Every criterion above holds for the project description on the board header, with the project
+    copy, capped at <code>max-w-2xl</code>.</li>
+  <li>The <code>BoardToolbar</code> stays on its own row at every viewport, including the phone
+    layout where the filters fold into the ⋯ menu.</li>
+</ul>
+
+<h4>API &amp; schema</h4>
+<ul class="ac">
+  <li><code>PATCH /api/folders/[id]</code> accepts a body carrying only <code>description</code>.</li>
+  <li><code>PATCH /api/projects/[id]</code> exists, updates the description, and returns the updated
+    row.</li>
+  <li>That route ignores every field but <code>description</code> — a body naming <code>name</code>,
+    <code>key</code> or <code>github_url</code> cannot change them.</li>
+  <li>An empty PATCH body is a 400 on both routes.</li>
+  <li>A description over 500 characters is a 400, not a 500.</li>
+  <li>The database rejects a description over 500 characters on both tables.</li>
+  <li>Both columns are nullable and null on every pre-existing row.</li>
+</ul>
+
+<h4>Nothing regresses</h4>
+<ul class="ac">
+  <li>Folder rename from the sidebar, folder create, folder reorder and folder delete behave exactly
+    as they do today; the sidebar row menu's <i>Edit</i> still opens the rename.</li>
+  <li>Project creation from the sidebar <b>+</b> and from the gate is unchanged.</li>
+  <li>The epic notes render and behave exactly as they do today after being migrated onto the
+    extracted atom — same strings, same classes, same states — and
+    <code>epic-block.test.tsx</code> passes without an edit.</li>
+  <li>The story block-reason editor (the <code>TextareaField</code> <code>warning</code> variant) is
+    unchanged.</li>
+  <li>No LLM code, no Worker change, and no prompt exists in the repo as a result of this story.</li>
+</ul>
+
+<h4>Gates</h4>
+<ul class="ac">
+  <li><code>npm run check</code> is green, with no new ignore directive, no <code>--no-verify</code>,
+    and no tooling-config edit made to get there.</li>
+  <li><code>lib/database.types.ts</code> is regenerated output, not hand-edited.</li>
+  <li>The four moved board baselines are regenerated by the updater and committed, with the diff image
+    in the demo doc.</li>
+  <li>A demo doc exists and <code>npm run demo -- verify</code> reproduces it.</li>
+</ul>
+
+<h2>9 · Out of scope</h2>
+
+<table>
+  <tr><th style="width:34%">Deferred</th><th>Why, and what it would take</th></tr>
+  <tr>
+    <td>Putting descriptions into the classifier prompt</td>
+    <td>The whole point of the field, and explicitly ALF-158 <b>story D</b>'s. There is no prompt
+      assembly in the repo to add a line to, and story D has not been specced. This story ends at the
+      column and the authoring surface (D10).</td>
+  </tr>
+  <tr>
+    <td>Descriptions on epics</td>
+    <td><code>epics.notes</code> already exists with a PATCH route and an inline editor on the board,
+      so an epic has somewhere to say what it is. Whether the classifier should read
+      <code>notes</code> or want a purpose-built <code>description</code> is story D's call, made with
+      the prompt in front of it.</td>
+  </tr>
+  <tr>
+    <td>Renaming a project, or editing its key / repo</td>
+    <td>Ruled out in refinement (§2). <code>key</code> is deliberately immutable — every ref, branch
+      name and PR frontmatter carries it. A rename is a real feature with its own consequences; it is
+      not a side effect of adding a text column.</td>
+  </tr>
+  <tr>
+    <td>Showing the description anywhere else — sidebar tooltip, project picker, gate dialog, backlog</td>
+    <td>Each is a separate layout decision with its own truncation question, and none of them helps
+      the owner <i>write</i> the description, which is what this story is for.</td>
+  </tr>
+  <tr>
+    <td>Searching descriptions from the command palette or global search</td>
+    <td>Global search indexes items; folders appear only as a result's subtitle. Adding a second
+      searchable entity type is its own change.</td>
+  </tr>
+  <tr>
+    <td>A character counter or a "too long" error state</td>
+    <td>D3: the cap is a backstop three layers deep, not a workflow. A counter would be permanent
+      chrome plus a new prop on an atom shared with two other flows, to serve a case that essentially
+      never occurs.</td>
+  </tr>
+  <tr>
+    <td>Setting a description at creation time</td>
+    <td>D8. The sidebar's create form is one inline field on purpose, and the new-project dialog is
+      already three fields guarding a unique key.</td>
+  </tr>
+  <tr>
+    <td>Any change to how the epic notes look or behave</td>
+    <td>The epic header is the <i>source</i> of the affordance here, not a surface being redesigned by
+      it. It is migrated onto the extracted atom (D5) and must come out identical; improving it is a
+      separate decision that would then apply to all three call sites at once.</td>
+  </tr>
+  <tr>
+    <td>A ⋯ menu, an <i>Edit</i> entry, or any other new control on either header</td>
+    <td>D4. The line is the trigger. Adding a second way in would mean two affordances for one field
+      on surfaces that today have neither.</td>
+  </tr>
+</table>
+
+<h2>10 · Related reading</h2>
+<ul>
+  <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. <b>D3</b>
+    (the closed world the description enriches), <b>D9</b> (abstention, and why a wrong pick is the
+    expensive failure), <b>D16</b> / <b>D18</b> (why prompt bytes are re-sent per item, which is what
+    D3's cap is about), and §6 story <b>D</b> (the eventual reader).</li>
+  <li><code>components/code/board/epic-block.tsx</code> — <code>EpicHeaderActions</code>, the
+    display/edit swap this story copies.</li>
+  <li><code>app/api/epics/[id]/route.ts</code> — the shape
+    <code>app/api/projects/[id]/route.ts</code> should take.</li>
+  <li><code>database/migrations/0024_folder_sort_order.sql</code> — the last column added to
+    <code>folders</code>, and the house style for a migration comment.</li>
+  <li><code>.claude/skills/data-flow/SKILL.md</code> — the optimistic store pattern both new actions
+    follow.</li>
+  <li><code>.claude/skills/frontend-architecture/SKILL.md</code> — when a repeated component gets
+    extracted, which is why the editor is written once.</li>
+  <li><code>.claude/skills/storybook/SKILL.md</code> §7 — the capture-then-approve flow for the four
+    moved baselines.</li>
+</ul>
+
+</div>
