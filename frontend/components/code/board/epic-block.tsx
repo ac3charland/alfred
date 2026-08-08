@@ -24,8 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
-import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
-import { TextareaField } from '@/components/atoms/textarea-field';
+import { InlineNoteField } from '@/components/atoms/inline-note-field';
 import { EpicSpecModal } from '@/components/code/epic-spec-modal';
 import { NewStoryDialog } from '@/components/code/new-story-dialog';
 import { StoryCard } from '@/components/code/story-card';
@@ -42,56 +41,22 @@ export type OpenSessionHandler = (story: CodeStory, phase: LaunchPhase) => void 
 /**
  * The epic header's notes-editing area. Notes go through the store's optimistic
  * `updateEpic`. Sits OUTSIDE the collapse toggle button (no nested interactive elements).
+ *
+ * The display/edit swap itself is the shared `InlineNoteField` — the same affordance the folder
+ * view and the board header use for their descriptions.
  */
 function EpicHeaderActions({ epic }: { epic: Epic }) {
   const { updateEpic } = useCodeActions();
-  const [editingNotes, setEditingNotes] = React.useState(false);
-  const [draftNotes, setDraftNotes] = React.useState(epic.notes ?? '');
-
-  const saveNotes = async () => {
-    const next = draftNotes.trim();
-    setEditingNotes(false);
-    if (next === (epic.notes ?? '')) return;
-    try {
-      await updateEpic(epic.id, { notes: next === '' ? null : next });
-    } catch {
-      setDraftNotes(epic.notes ?? '');
-    }
-  };
 
   return (
     <div className="flex flex-col gap-2 border-b border-border/40 px-4 pb-3">
-      {editingNotes ? (
-        <TextareaField
-          aria-label="Edit epic notes"
-          value={draftNotes}
-          onChange={setDraftNotes}
-          onSave={saveNotes}
-          onCancel={() => {
-            setEditingNotes(false);
-            setDraftNotes(epic.notes ?? '');
-          }}
-          placeholder="Epic notes…"
-        />
-      ) : (
-        <InlineEditTrigger
-          onClick={() => {
-            setDraftNotes(epic.notes ?? '');
-            setEditingNotes(true);
-          }}
-          className="group/notes flex min-w-0 flex-1 items-center gap-1.5 text-sm"
-        >
-          {epic.notes === null || epic.notes === '' ? (
-            <span className="text-muted-foreground hover:text-foreground">Add epic notes…</span>
-          ) : (
-            <span className="truncate whitespace-pre-wrap text-muted-foreground">{epic.notes}</span>
-          )}
-          <Pencil
-            size={12}
-            className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/notes:opacity-100 motion-reduce:transition-none"
-          />
-        </InlineEditTrigger>
-      )}
+      <InlineNoteField
+        value={epic.notes}
+        emptyLabel="Add epic notes…"
+        placeholder="Epic notes…"
+        editLabel="Edit epic notes"
+        onSave={(notes) => updateEpic(epic.id, { notes })}
+      />
     </div>
   );
 }

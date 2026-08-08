@@ -17,6 +17,11 @@ interface TextareaFieldProperties {
   placeholder?: string;
   /** Rows for the textarea (default 2). */
   rows?: number;
+  /**
+   * Optional native character cap. Given, the field can never produce a body the API and the DB
+   * would reject; omitted, the attribute is absent and the textarea is uncapped as before.
+   */
+  maxLength?: number;
   /** Disables both action buttons while a save is in flight. */
   isPending?: boolean;
   /** Save button text (default "Save"). */
@@ -47,6 +52,7 @@ export function TextareaField({
   label,
   placeholder,
   rows = 2,
+  maxLength,
   isPending = false,
   saveLabel = 'Save',
   cancelLabel = 'Cancel',
@@ -75,6 +81,7 @@ export function TextareaField({
         }
       }}
       rows={rows}
+      maxLength={maxLength}
       placeholder={placeholder}
       className="w-full resize-none rounded-sm border border-border bg-input px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-teal"
     />
