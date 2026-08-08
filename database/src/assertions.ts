@@ -1386,10 +1386,12 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     'the nightly backup survives a production database migrated ahead of the repo, and stays quiet ' +
       'when the repo is ahead instead',
     async () => {
-      // The 2026-08-07 red run, exactly: 0026 was applied to the live `personal` database at
-      // 02:12Z but had not yet merged, so the scheduled job checked out a main whose migrations
-      // stop at 0025. psql aborted the load — `column "dispatched_at" of relation "items" does not
-      // exist` — and a sound 628 KB dump was never uploaded. Replay that against real Postgres.
+      // The 2026-08-07 red run, exactly: the scheduled job checked out a main whose migrations
+      // stopped at 0025 while the live `personal` database already had 0026. psql aborted the
+      // load — `column "dispatched_at" of relation "items" does not exist` — and a sound 628 KB
+      // dump was never uploaded. `migrate.yml` now applies on merge, so the repo is normally at
+      // or ahead of production; this stays as the net under the cases that outlive it — a re-run
+      // replaying a pinned commit, a merge landing mid-dump, a revert, hand-applied DDL.
       const stale = await staleVerifyDatabase(client);
       try {
         const present = await publicColumns(stale);
@@ -1421,8 +1423,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         if (rows[0]?.count !== '1')
           throw new Error(`reconciled schema did not accept the dispatched row (${described})`);
 
-        // And the other direction stays silent: the two instances migrate independently, so a
-        // dump SHORT of the repo (today's `work`) is normal and must never fail a backup.
+        // And the other direction stays silent: a dump taken between a merge and its migrate job,
+        // or against an instance whose migrate job failed, is short a column — normal, not drift.
         const shortDump = `COPY public.items (id, title) FROM stdin;\n\\.\n`;
         const reverse = schemaDrift(copiedTables(shortDump), await publicColumns(stale));
         if (reverse.length > 0)
