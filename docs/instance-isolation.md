@@ -47,10 +47,8 @@ Each database carries its own `public.schema_migrations` ledger, which is what m
 instance seen it?" answerable per instance; the two jobs are independent (`fail-fast: false`), so if
 one goes red, that instance — and only that instance — is behind until it's re-run.
 
-The committed `database/migrations-applied.log` remains the human-readable, git-reviewable history
-of what reached a live database by hand (both pooler hosts are regional and indistinguishable in the
-log, so it never tracked instances). Provisioning a brand-new instance is now just pointing the
-applier at the empty database: with no schema and no ledger, it applies the whole set from `0001`.
+Provisioning a brand-new instance is now just pointing the applier at the empty database: with no
+schema and no ledger, it applies the whole set from `0001` — no manual migration step needed.
 
 ## Offline / cached data
 
