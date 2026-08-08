@@ -189,8 +189,8 @@ describe('schemaDrift', () => {
   });
 
   it('reports nothing when the SCHEMA is ahead — the repo may hold migrations an instance lacks', () => {
-    // The two instances migrate independently, so `work` routinely dumps fewer columns than the
-    // repo declares. COPY simply defaults the rest; that is not drift and must not fail a backup.
+    // A dump taken between a merge and its migrate job, or against an instance whose migrate job
+    // failed, is short a column. COPY defaults the rest; not drift, and must not fail a backup.
     const present = new Map([['items', ['id', 'title', 'dispatched_at']]]);
     expect(schemaDrift([{ table: 'items', columns: ['id', 'title'] }], present)).toStrictEqual([]);
   });
@@ -217,14 +217,24 @@ describe('schemaDrift', () => {
 });
 
 describe('describeSchemaDrift', () => {
-  it('names each drifted table, its columns, and points at the migrations that are behind', () => {
+  it('names each drifted table and its columns', () => {
     const message = describeSchemaDrift([
       { table: 'items', columns: ['dispatched_at'], absent: false },
       { table: 'habits', columns: ['id', 'name'], absent: true },
     ]);
     expect(message).toMatch(/items: dispatched_at/);
     expect(message).toMatch(/habits \(whole table\): id, name/);
-    expect(message).toMatch(/database\/migrations/);
+  });
+
+  it('sends the reader to the causes that survive migrate-on-merge, not to “go commit it”', () => {
+    // migrate.yml applies on merge, so a missing commit is no longer the likely cause — pointing
+    // there would send the operator looking in the wrong place.
+    const message = describeSchemaDrift([
+      { table: 'items', columns: ['dispatched_at'], absent: false },
+    ]);
+    expect(message).toMatch(/re-run replaying an older pinned commit/);
+    expect(message).toMatch(/merge land mid-dump/);
+    expect(message).toMatch(/reverted, or DDL applied by hand/);
   });
 });
 

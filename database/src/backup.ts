@@ -162,8 +162,9 @@ export function copiedTables(dumpSql: string): CopiedTable[] {
  * whole tables, the dump carries that the verify database has nowhere to put.
  *
  * ONE-DIRECTIONAL by design. The reverse — the repo declaring more than a dump carries — is normal
- * and must never fail a backup: the two instances migrate independently, so `work` routinely dumps
- * a column short of the repo and COPY simply leaves the rest at their defaults. Only
+ * and must never fail a backup: a dump taken between a merge and its migrate job, or against an
+ * instance whose migrate job failed (`migrate.yml` runs `fail-fast: false`, so one instance can
+ * lag the other), is simply short a column, and COPY leaves the rest at their defaults. Only
  * production-ahead-of-repo can abort a load.
  */
 export function schemaDrift(
@@ -183,7 +184,7 @@ export function schemaDrift(
   return drift;
 }
 
-/** The operator-facing account of the drift: what is ahead, and which side needs the fix. */
+/** The operator-facing account of the drift: what is ahead, and where to go looking. */
 export function describeSchemaDrift(drift: readonly TableDrift[]): string {
   return [
     'production is AHEAD of database/migrations — the dump carries shapes the repo cannot build:',
@@ -191,8 +192,10 @@ export function describeSchemaDrift(drift: readonly TableDrift[]): string {
       ({ table, columns, absent }) =>
         `      ${table}${absent ? ' (whole table)' : ''}: ${columns.join(', ')}`,
     ),
-    '    The dump is sound; the VERIFIER is stale. Commit the missing migration(s) to',
-    '    database/migrations so the next run can rebuild production’s schema from the repo.',
+    '    The dump is sound; the VERIFIER is stale. migrate.yml applies on merge, so check, in',
+    '    order: is this a re-run replaying an older pinned commit? did a merge land mid-dump',
+    '    (db-backup-* and db-migrate-* are separate concurrency groups)? was a migration',
+    '    reverted, or DDL applied by hand outside the workflow?',
   ].join('\n');
 }
 
@@ -357,12 +360,14 @@ async function main(): Promise<number> {
       // throwaway free of the hosted `extensions` schema the dump's own DDL references.
       await bootstrapSupabase(client);
       await applyMigrations(client);
-      // …but it also couples the verifier to repo↔production parity, and the normal order of
-      // operations breaks that: a migration is applied to the live database FIRST and committed
-      // afterwards. In that window the dump carries a column the repo cannot build, and the load
+      // …but it also couples the verifier to repo↔production parity, and that can break in ways
+      // this job cannot see: a scheduled run pins its commit (a re-run replays it while production
+      // moves on), `db-backup-*` and `db-migrate-*` are separate concurrency groups so a merge can
+      // apply a migration mid-dump, and a revert or hand-applied DDL puts production ahead
+      // outright. In any of those the dump carries a column the repo cannot build and the load
       // aborts on a dump that is perfectly sound — costing the day's backup to a stale verifier.
       // So name that case, give the data somewhere to land, and carry on to the upload; the run
-      // still ends red (see the drift exit below) so the uncommitted migration gets chased.
+      // still ends red (see the drift exit below) so the mismatch gets chased.
       drift = schemaDrift(
         copiedTables(readFileSync(dataPath, 'utf8')),
         await presentPublicColumns(client),
