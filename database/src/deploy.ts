@@ -20,18 +20,6 @@ import { MIGRATIONS_DIR, migrationFiles, resolveDatabaseUrl } from './migrate.ts
 export const LEDGER_TABLE = 'public.schema_migrations';
 
 /**
- * The last migration applied to the live databases BY HAND, before this deployer existed. A
- * database that already carries the app schema but has no ledger predates the automation, so its
- * first deploy records every migration up to and including this file as already applied instead of
- * re-running it (re-running `0001` would fail on `type "item_type" already exists`).
- *
- * This is a historical fact about the Personal and Work databases, NOT a pointer at "the newest
- * migration" — never advance it. Once every database has a ledger it is dead weight that only
- * matters again when a new instance is provisioned from an out-of-band schema copy.
- */
-export const BASELINE_MIGRATION = '0026_inbox_dispatch.sql';
-
-/**
  * Advisory-lock key held for the length of a deploy, so two runs — a merge racing a manual
  * `npm run migrate`, or a re-queued workflow — can never apply the same file twice. An arbitrary
  * fixed number is enough: alfred takes no other advisory locks.
@@ -40,7 +28,7 @@ export const MIGRATION_LOCK_KEY = 177;
 
 /** What a deploy will do: files recorded as already-applied, and files to actually run. */
 export interface MigrationPlan {
-  /** Recorded in the ledger WITHOUT being run — history the database already carries. */
+  /** Recorded in the ledger WITHOUT being run — history the database is declared to carry. */
   readonly baseline: readonly string[];
   /** Run in this (filename) order, each in its own transaction with its ledger row. */
   readonly apply: readonly string[];
@@ -54,30 +42,42 @@ export interface PlanInput {
   readonly applied: Iterable<string>;
   /** Whether the database already carries the app schema (i.e. it is not empty). */
   readonly hasAppSchema: boolean;
-  /** Override the {@link BASELINE_MIGRATION} cut-off; tests pin their own. */
-  readonly baseline?: string;
+  /** Adoption point for a pre-ledger database — supplied deliberately, never defaulted. */
+  readonly baseline?: string | undefined;
 }
 
 /**
  * Decide what a deploy should do against one database. Three cases, in the order they are checked:
  *
  * - **Ledger has rows** — the normal path: apply every file the ledger doesn't record, in file order.
- * - **No ledger rows, but the app schema exists** — a database that predates this deployer: record
- *   the history through {@link BASELINE_MIGRATION} as already applied, then apply what came after.
  * - **No ledger rows and no schema** — a brand-new database: apply everything from `0001`.
+ * - **No ledger rows, but the app schema exists** — an *unadopted* database. Its history is
+ *   unknowable from here, so this **throws** unless the caller supplies `baseline`, the migration
+ *   the operator has verified it stands at; everything through that file is then recorded as
+ *   applied and the rest is run.
+ *
+ * That last case is deliberately not a guess. Both live databases turned out to sit somewhere
+ * other than the point they were assumed to (Work was nine migrations behind; Personal had lost a
+ * function rewrite), and recording an assumed history would have marked those real gaps as applied
+ * and hidden them permanently. A loud failure is recoverable; a false ledger row is not.
  */
 export function planMigrations({
   files,
   applied,
   hasAppSchema,
-  baseline = BASELINE_MIGRATION,
+  baseline,
 }: PlanInput): MigrationPlan {
   const done = new Set(applied);
   if (done.size === 0 && hasAppSchema) {
+    if (baseline === undefined) {
+      throw new Error(
+        'this database has the app schema but no migration ledger, so what it has applied is unknown — refusing to guess. Verify its state, then adopt it once with --baseline <migration it stands at>; see database/README.md.',
+      );
+    }
     const cut = files.indexOf(baseline);
     if (cut === -1) {
       throw new Error(
-        `baseline migration "${baseline}" is not in the migration set — it was renamed or removed; a pre-ledger database cannot be baselined until that is resolved`,
+        `baseline migration "${baseline}" is not in the migration set — check the filename against database/migrations/`,
       );
     }
     return { baseline: files.slice(0, cut + 1), apply: files.slice(cut + 1) };
@@ -127,7 +127,7 @@ export async function ensureLedger(client: Client): Promise<void> {
       applied_at timestamptz not null default now()
     );
     comment on table ${LEDGER_TABLE} is
-      'Applied-migration ledger for THIS database, written by database/src/deploy.ts. applied_at is when the row was written — for baselined rows that is when the deployer first recognized the pre-existing history, not when the SQL originally ran. No grants: the API roles must never see it.';
+      'Applied-migration ledger for THIS database, written by database/src/deploy.ts. applied_at is when the row was written — for rows recorded by a one-time --baseline adoption that is when the database was adopted, not when the SQL originally ran. No grants: the API roles must never see it.';
   `);
 }
 
@@ -148,35 +148,26 @@ export async function recordInLedger(client: Client, names: readonly string[]): 
 }
 
 /**
- * Make the ledger reflect the history a database already carries, and return what was baselined.
- * Returns `[]` for a database that already has ledger rows, and for an empty one (nothing to
- * assume). Both entry points must call this **before** they record anything of their own: the
- * ledger is read as "the whole story", so a first row written without the baseline behind it would
- * strand the deployer — it would see one recorded migration on a full database and try to replay
- * `0001` on the next merge.
+ * Whether this database's ledger can honestly gain a row for a hand-applied migration. True when
+ * it is **adopted** (the ledger already records its history) or **empty** (no app schema, so the
+ * hand-apply is building it from `0001`). False for an unadopted database that already has schema:
+ * a lone row there would read as "this is everything it has ever had" and send the next merge back
+ * to `0001`. Call this BEFORE applying the file — afterwards, a bootstrapping database looks like
+ * an unadopted one.
  */
-async function bootstrapLedger(client: Client, dir: string): Promise<readonly string[]> {
-  await ensureLedger(client);
-  const { baseline } = planMigrations({
-    files: migrationFiles(dir).map((file) => path.basename(file)),
-    applied: await appliedMigrations(client),
-    hasAppSchema: await hasAppSchema(client),
-  });
-  await recordInLedger(client, baseline);
-  return baseline;
+export async function ledgerAcceptsManualApply(client: Client): Promise<boolean> {
+  const applied = await appliedMigrations(client);
+  if (applied.length > 0) return true;
+  return !(await hasAppSchema(client));
 }
 
 /**
  * Record a migration applied BY HAND (`npm run migrate`) in the target database's ledger, so the
- * merge pipeline sees it as done rather than applying it a second time. Baselines the history
- * behind it first — see {@link bootstrapLedger}.
+ * merge pipeline sees it as done rather than applying it a second time. Only valid when
+ * {@link ledgerAcceptsManualApply} said so before the file ran.
  */
-export async function recordManualApply(
-  client: Client,
-  file: string,
-  dir: string = MIGRATIONS_DIR,
-): Promise<void> {
-  await bootstrapLedger(client, dir);
+export async function recordManualApply(client: Client, file: string): Promise<void> {
+  await ensureLedger(client);
   await recordInLedger(client, [path.basename(file)]);
 }
 
@@ -204,6 +195,11 @@ export interface DeployOptions {
   readonly dir?: string | undefined;
   /** Report the plan without writing anything — not even the ledger table. */
   readonly dryRun?: boolean;
+  /**
+   * One-time adoption of a database that has schema but no ledger: the migration an operator has
+   * VERIFIED it stands at. Never set by the pipeline — a merge must not adopt anything.
+   */
+  readonly baseline?: string | undefined;
   /** Progress sink. Omitted (the integration suite) means the deploy runs silently. */
   readonly log?: (message: string) => void;
 }
@@ -216,7 +212,7 @@ export interface DeployOptions {
  */
 export async function deployMigrations(
   client: Client,
-  { dir = MIGRATIONS_DIR, dryRun = false, log }: DeployOptions = {},
+  { dir = MIGRATIONS_DIR, dryRun = false, baseline, log }: DeployOptions = {},
 ): Promise<MigrationPlan> {
   if (!dryRun) {
     await ensureLedger(client);
@@ -229,6 +225,7 @@ export async function deployMigrations(
       files: names,
       applied,
       hasAppSchema: await hasAppSchema(client),
+      baseline,
     });
 
     for (const orphan of unknownApplied(names, applied)) {
@@ -238,7 +235,7 @@ export async function deployMigrations(
     }
     if (plan.baseline.length > 0) {
       log?.(
-        `› no ledger yet on an existing database — recording ${String(plan.baseline.length)} migrations through ${BASELINE_MIGRATION} as already applied`,
+        `› adopting this database at ${String(baseline)} — recording ${String(plan.baseline.length)} migrations as already applied, on your word`,
       );
     }
     if (dryRun) {
@@ -267,11 +264,20 @@ function stdout(message: string): void {
 
 /**
  * Apply every pending migration to the database named by `SUPABASE_DB_URL` — the merge pipeline's
- * entry point, and a usable local command (`--dry-run` to see what's pending on a live database).
- * `INSTANCE` only labels the output, so a matrix run's two jobs stay readable.
+ * entry point, and a usable local command (`--dry-run` to see what's pending on a live database,
+ * `--baseline <file>` to adopt an unadopted one). `INSTANCE` only labels the output, so a matrix
+ * run's two jobs stay readable.
  */
 async function main(): Promise<number> {
-  const dryRun = process.argv.slice(2).includes('--dry-run');
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run');
+  // `--baseline <file>`: a one-time, operator-verified adoption. The workflow never passes it.
+  const baselineAt = args.indexOf('--baseline');
+  const baseline = baselineAt === -1 ? undefined : args[baselineAt + 1];
+  if (baselineAt !== -1 && (baseline === undefined || baseline.startsWith('-'))) {
+    process.stderr.write('deploy: --baseline needs a migration filename\n');
+    return 1;
+  }
   const instance = process.env['INSTANCE'];
   const label = instance === undefined || instance === '' ? '' : `[${instance}] `;
   const url = resolveDatabaseUrl(['SUPABASE_DB_URL', 'DATABASE_URL']);
@@ -286,6 +292,7 @@ async function main(): Promise<number> {
       // (a fixture, this package's demo) without touching database/migrations. Unset → the real one.
       dir: process.env['ALFRED_MIGRATIONS_DIR'],
       dryRun,
+      baseline,
       log: (message) => {
         stdout(`${label}${message}`);
       },

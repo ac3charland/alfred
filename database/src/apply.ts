@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline/promises';
 
 import pg from 'pg';
 
-import { recordManualApply } from './deploy.ts';
+import { ledgerAcceptsManualApply, recordManualApply } from './deploy.ts';
 import {
   APPLIED_LOG_PATH,
   recordApplied,
@@ -53,13 +53,20 @@ async function main(): Promise<number> {
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
+    // Ask BEFORE applying: once this file lands, a database being bootstrapped by hand becomes
+    // indistinguishable from an unadopted one that already had schema.
+    const canRecord = await ledgerAcceptsManualApply(client);
     await client.query(readFileSync(file, 'utf8'));
     process.stdout.write(`✓ applied ${path.basename(file)}\n`);
     // Record it in the target database's own ledger too, so the merge pipeline (which reads that
-    // ledger to decide what's pending) never re-runs a migration someone applied by hand. Bootstrap
-    // first: on a database that predates the ledger, a lone row for this file would read as "this
-    // is all it has ever had" and send the next merge back to 0001.
-    await recordManualApply(client, file);
+    // ledger to decide what's pending) never re-runs a migration someone applied by hand.
+    if (canRecord) {
+      await recordManualApply(client, file);
+    } else {
+      process.stdout.write(
+        '! this database has schema but no migration ledger, so a lone row would misrepresent its history — not recorded. Adopt it once with `npm run deploy -w database -- --baseline <migration it stands at>`.\n',
+      );
+    }
     // Append to the committed ledger so the branch records what actually reached this host, then
     // nudge the operator to commit it — the paper trail only helps if it lands in git.
     recordApplied(new Date(), host, file);

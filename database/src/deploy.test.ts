@@ -1,19 +1,6 @@
-import path from 'node:path';
-
-import { BASELINE_MIGRATION, planMigrations, unknownApplied } from './deploy.ts';
-import { MIGRATIONS_DIR, migrationFiles } from './migrate.ts';
+import { planMigrations, unknownApplied } from './deploy.ts';
 
 const FILES = ['0001_a.sql', '0002_b.sql', '0003_c.sql', '0004_d.sql'];
-
-describe('BASELINE_MIGRATION', () => {
-  it('names a migration that actually exists', () => {
-    // The baseline is the hand-applied history the live databases already carry. If a rename
-    // ever orphans it, the first deploy against a pre-ledger database would throw instead of
-    // baselining — catch that here, in the cheap suite.
-    const names = migrationFiles(MIGRATIONS_DIR).map((file) => path.basename(file));
-    expect(names).toContain(BASELINE_MIGRATION);
-  });
-});
 
 describe('planMigrations', () => {
   it('applies every migration to a database with no app schema', () => {
@@ -23,7 +10,16 @@ describe('planMigrations', () => {
     });
   });
 
-  it('baselines a pre-ledger database through the baseline migration', () => {
+  it('refuses to guess for a database that has schema but no ledger', () => {
+    // The failure this exists to prevent: Personal and Work were BOTH somewhere other than the
+    // assumed point, so recording an assumed history would have marked real gaps as applied and
+    // hidden them forever. Adoption is an explicit, operator-verified act.
+    expect(() => planMigrations({ files: FILES, applied: [], hasAppSchema: true })).toThrow(
+      /no migration ledger/,
+    );
+  });
+
+  it('adopts a pre-ledger database at an explicitly supplied point', () => {
     expect(
       planMigrations({
         files: FILES,
@@ -37,7 +33,7 @@ describe('planMigrations', () => {
     });
   });
 
-  it('never baselines once the ledger has rows, even on a database with app schema', () => {
+  it('never adopts once the ledger has rows, even when a baseline is passed', () => {
     expect(
       planMigrations({
         files: FILES,
@@ -68,7 +64,7 @@ describe('planMigrations', () => {
     ).toStrictEqual(['0002_b.sql', '0004_d.sql']);
   });
 
-  it('throws when the baseline migration is not in the file set', () => {
+  it('throws when the supplied baseline is not in the file set', () => {
     expect(() =>
       planMigrations({ files: FILES, applied: [], hasAppSchema: true, baseline: '0099_gone.sql' }),
     ).toThrow(/0099_gone\.sql/);
