@@ -8,6 +8,8 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 - `seed.sql` — tiny development dataset (folders + a nested subtask tree).
 - `src/deploy.ts` — the applier the merge pipeline runs (see
   [Applying on merge](#applying-on-merge-the-default-path)); also usable locally.
+- `src/gen-types.ts` — regenerates the frontend's `Database` type from the migrations, with no live
+  database (see [Regenerating the types](#regenerating-frontendlibdatabasetypests)).
 
 ## Schema summary
 
@@ -115,20 +117,35 @@ below), which applies every migration to a throwaway cluster on every run; previ
 database is missing, without writing anything, with `npm run deploy -w database -- --dry-run`
 (see above).
 
-Regenerating `frontend/lib/database.types.ts` still needs a live schema to introspect — point it at
-an already-migrated hosted project. Env values live in `frontend/.env.local` (gitignored). Prefer
-the **Direct connection** URI (it's IPv6 and works from a normal machine); if your network is
-IPv4-only, use the **Session pooler** string (port 5432) instead.
+### Regenerating `frontend/lib/database.types.ts`
+
+The frontend's `Database` type comes from the **migrations**, not from a live database, so it can be
+regenerated on the branch that adds the migration — before anything merges:
 
 ```bash
-# Regenerate the TypeScript types after a schema change (Docker must be running; pin a
-# mid-2.9x CLI — the latest CLI requires an access token for --db-url, see the supabase skill):
-npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > frontend/lib/database.types.ts
+npm run gen-types -w database              # rewrite frontend/lib/database.types.ts
+npm run gen-types -w database -- --check   # exit 1 if the committed file is stale (writes nothing)
 ```
 
-Token-free `--db-url` introspection needs a local Docker `postgres-meta` container, so start
-Docker first. The current CLI dropped the token-free path; pin `supabase@2.95.0`. See the
-`supabase` skill ("Regenerating `database.types.ts`") for the version details.
+`src/gen-types.ts` applies every committed migration to the same throwaway cluster the integration
+suite uses, then describes the result with **postgres-meta's TypeScript template** — the generator
+the Supabase CLI runs inside its container, pinned to the matching version. So it needs no
+credentials, no Docker, and no hosted project, and the schema it reads is the one *your branch*
+builds. Commit its output verbatim; the file is generated, so it's excluded from ESLint and Prettier
+and must never be hand-edited.
+
+Two things a local cluster cannot speak for, both deliberate:
+
+- **Supabase's managed schemas are absent.** `graphql_public` (the `pg_graphql` extension), `auth`
+  and `storage` exist only on a hosted project, so they aren't in the generated type. App code only
+  ever reaches through `Database['public']`, so nothing depends on them.
+- **`__InternalSupabase.PostgrestVersion`** describes the hosted platform's PostgREST, which a local
+  cluster has no notion of. It's carried as a constant in `src/gen-types.ts` — bump it by hand if
+  Supabase upgrades PostgREST.
+
+The generated formatting comes from whichever **Prettier the workspace hoists** (postgres-meta calls
+it internally and resolves the root copy), so a Prettier major bump will reflow this file — reflow it
+by re-running the generator, never by hand.
 
 ## Testing the migrations against real Postgres
 
