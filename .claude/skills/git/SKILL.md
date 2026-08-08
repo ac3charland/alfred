@@ -119,6 +119,26 @@ Before pushing a change that narrows a widely-used type, **`git fetch origin mai
 origin/main`** and re-run `check:fast` so the fallout surfaces locally instead of in CI. Rebase
 rather than merge — see below.
 
+## Listing what a branch changed vs trunk (for a scoped gate)
+
+A gate that only fires for branches touching some path — `migrationsChangedSinceTrunk` in
+`database/src/gen-types.ts`, `changedPathsSinceTrunk` in `tools/skill-lint/src/git.ts` — has to
+assemble that file list itself, and two defaults quietly break it:
+
+- **`git diff --name-only <merge-base>` lists only tracked files.** A brand-new file is untracked
+  until it's added, so a gate keyed on "did this branch add one?" skips exactly the case it exists
+  for — and skips it *silently*, reading as a pass. Union the diff with
+  `git ls-files --others --exclude-standard`.
+- **The two commands disagree on path roots.** `git diff --name-only` prints repo-root-relative
+  paths; **`git ls-files` prints cwd-relative** ones, so from inside a package the same file arrives
+  as `migrations/0028.sql` from one and `database/migrations/0028.sql` from the other, and a prefix
+  match against the combined list fails. Pass **`--full-name`** to `ls-files`. (`:/path` pathspecs
+  are cwd-independent in both, so anchor pathspecs that way.)
+
+Both failures are silent passes, so prove a scoped gate with a **red run**: create the triggering
+file, confirm the gate fails, then satisfy it and confirm it passes. A gate only ever observed green
+hasn't been tested.
+
 ## Resolve a conflicting pull by rebasing, never merging
 
 PRs land via GitHub's **rebase** merge, which replays only **non-merge** commits. Resolve a
