@@ -153,11 +153,6 @@
   .link { font-size: 12px; font-weight: 500; color: var(--a-blue);
           padding: 4px 8px; border-radius: 4px; }
   .link.dim { color: var(--a-muted); }
-  .tr-body { display: flex; gap: 4px; padding: 0 4px; align-items: center; }
-  /* Presets share the day cell's treatment (same rounded-md / 13px / tint pair) */
-  .preset { height: 32px; flex: 1 1 0; display: flex; align-items: center; justify-content: center;
-            border-radius: 6px; font-size: 13px; color: var(--a-day); }
-  .preset.sel { background: var(--a-blue); color: var(--a-bg); font-weight: 600; }
   /* Input atom, shrunk to the row: border-border bg-input rounded-sm text-sm */
   .tinput { height: 32px; flex: 0 0 86px; border: 1px solid var(--a-border); background: var(--a-secondary);
             border-radius: 4px; font-size: 13px; color: var(--a-text);
@@ -238,80 +233,69 @@
   .rationale { padding: 0 .7rem .8rem; }
   .rationale h4 { margin-top: .9rem; }
   .rationale p { font-size: .9rem; margin: .3rem 0; }
-  .crap { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 .2rem; }
-  .crap span { font-size: .72rem; font-weight: 600; border-radius: 999px; padding: .12rem .55rem;
-               border: 1px solid var(--line); color: var(--muted); background: var(--bg); }
-  .crap span.on { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
   .nojs { font-size: .8rem; color: var(--faint); padding: 0 .7rem .7rem; }
 
   /* ── Shared preview strip inside the app canvas ──────────────────── */
   .preview { flex: 0 0 auto; display: flex; align-items: center; gap: .6rem; }
   .preview .arrow { color: var(--a-muted); font-size: 12px; }
 
-  /* ── Version B — the hour rail ───────────────────────────────────── */
-  /* 8 columns so the rail inherits the day grid's column rhythm; two rows
-     cover 7am–10pm. Cell geometry is the day cell's, exactly. */
-  .rail { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 0 4px; }
-  .rail .h { height: 30px; display: flex; align-items: center; justify-content: center;
-             border-radius: 6px; font-size: 11.5px; color: var(--a-day); border: 0;
-             background: none; cursor: pointer; font-family: inherit; }
-  .rail .h:hover:not(:disabled) { background: rgba(255,255,255,.07); }
-  .rail .h.sel { background: var(--a-blue); color: var(--a-bg); font-weight: 600; }
-  .rail .h:disabled { cursor: default; }
-  .mins { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 6px 4px 0; }
-  .mins .m { height: 28px; display: flex; align-items: center; justify-content: center;
-             border-radius: 6px; font-size: 12px; color: var(--a-day); border: 1px solid var(--a-border);
-             background: none; cursor: pointer; font-family: inherit; }
-  .mins .m:hover:not(:disabled) { background: rgba(255,255,255,.07); }
-  .mins .m.sel { background: var(--a-blue); color: var(--a-bg); border-color: var(--a-blue); font-weight: 600; }
-  .rail-hint { font-size: 10.5px; color: var(--a-dayhead); padding: 6px 4px 0; }
+  /* ── The time row, in all four versions ──────────────────────────────
+     Every option is one row: the "Time" label on the left, one control on
+     the right. Nothing here is a new shape — the field is the Input atom,
+     the box is the CheckboxButton atom, the list rows are OptionButton. */
+  .trow { display: flex; align-items: center; justify-content: space-between;
+          gap: 8px; padding: 0 4px; }
+  .trow .grow { flex: 1 1 auto; min-width: 0; }
 
-  /* ── Version C — the smart field ─────────────────────────────────── */
-  .smart { padding: 0 4px; }
-  .smart input { width: 100%; height: 32px; border: 1px solid var(--a-border); background: var(--a-secondary);
+  /* Native <select> — Input atom geometry; the browser draws the list as an
+     overlay, so it costs the popover no height at all. */
+  .tsel { height: 32px; border: 1px solid var(--a-border); background: var(--a-secondary);
+          border-radius: 4px; font-size: 13px; color: var(--a-text); padding: 0 6px;
+          font-family: inherit; color-scheme: dark; max-width: 130px; }
+  .tsel:disabled { opacity: .5; }
+
+  /* CheckboxField atom: a 16px box, teal-filled when checked, label to its right. */
+  .cbrow { display: flex; align-items: center; gap: 10px; padding: 0 4px; }
+  .cbox { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--a-border);
+          background: none; flex: none; cursor: pointer; display: inline-flex;
+          align-items: center; justify-content: center; padding: 0; }
+  .cbox[aria-checked="true"] { background: var(--a-teal); border-color: var(--a-teal); }
+  .cbox svg { display: block; }
+  .cblabel { font-size: 13px; color: var(--a-text); cursor: pointer; }
+  .cbrow.off .cbox, .cbrow.off .cblabel { cursor: default; }
+
+  /* Combobox list — OptionButton rows in a scroller. */
+  .sugg { margin-top: 4px; display: flex; flex-direction: column; gap: 2px;
+          max-height: 118px; overflow-y: auto; scrollbar-width: thin; }
+  .sugg button { display: flex; width: 100%; align-items: center; justify-content: space-between;
+                 gap: 8px; border-radius: 4px; padding: 5px 10px; font-size: 13px; text-align: left;
+                 border: 0; background: none; color: var(--a-muted); cursor: pointer;
+                 font-family: inherit; }
+  .sugg button:hover { background: color-mix(in srgb, var(--a-secondary) 60%, transparent); color: var(--a-text); }
+  .sugg button.top { background: color-mix(in srgb, var(--a-teal) 15%, transparent); color: var(--a-text); }
+  .sugg button.sel { color: var(--a-blue); }
+  .sugg .kbd { font-size: 10px; color: var(--a-muted); border: 1px solid var(--a-border);
+               border-radius: 3px; padding: 0 4px; }
+  .combo { padding: 0 4px; }
+  .combo input { width: 100%; height: 32px; border: 1px solid var(--a-border); background: var(--a-secondary);
                  border-radius: 4px; font-size: 13px; color: var(--a-text); padding: 0 8px;
                  font-family: inherit; }
-  .smart input::placeholder { color: var(--a-muted); }
-  .smart input:disabled { opacity: .5; }
+  .combo input::placeholder { color: var(--a-muted); }
+  .combo input:disabled { opacity: .5; }
   /* The Input atom's focus treatment: focus-visible:ring-2 ring-accent-teal. The UA
      default ring is white and reads as a foreign element dropped into the popover. */
-  .smart input:focus, input.tinput:focus {
+  .combo input:focus, input.tinput:focus, .tsel:focus {
     outline: none; border-color: var(--a-teal);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--a-teal) 45%, transparent);
   }
-  .sugg { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
-  /* OptionButton atom, kind="option": full-width row, rounded-sm, px-3 py-2, text-sm */
-  .sugg button { display: flex; width: 100%; align-items: center; justify-content: space-between;
-                 gap: 8px; border-radius: 4px; padding: 6px 12px; font-size: 13px; text-align: left;
-                 border: 0; background: none; color: var(--a-muted); cursor: pointer; font-family: inherit; }
-  .sugg button:hover { background: color-mix(in srgb, var(--a-secondary) 60%, transparent); color: var(--a-text); }
-  .sugg button.top { background: color-mix(in srgb, var(--a-teal) 15%, transparent); color: var(--a-text); }
-  .sugg .kbd { font-size: 10px; color: var(--a-muted); border: 1px solid var(--a-border);
-               border-radius: 3px; padding: 0 4px; }
-  .sugg .empty { font-size: 12px; color: var(--a-dayhead); padding: 6px 12px; }
 
-  /* ── Version D — the three columns ───────────────────────────────── */
-  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding: 0 4px; }
-  .col { border: 1px solid var(--a-border); border-radius: 6px; overflow: hidden; }
-  .col .ch { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--a-dayhead);
-             text-align: center; padding: 3px 0; border-bottom: 1px solid var(--a-border); }
-  .col .list { max-height: 104px; overflow-y: auto; scrollbar-width: thin; }
-  .col .list button { display: block; width: 100%; height: 26px; border: 0; background: none;
-                      color: var(--a-day); font-size: 12.5px; cursor: pointer; font-family: inherit; }
-  .col .list button:hover:not(:disabled) { background: rgba(255,255,255,.07); }
-  .col .list button.sel { background: var(--a-blue); color: var(--a-bg); font-weight: 600; }
-  .colnote { font-size: 10.5px; color: var(--a-dayhead); padding: 6px 4px 0; }
-
-  /* The mockup's controls are REAL buttons and inputs, not styled spans, so the
-     disabled state it draws is the one a keyboard actually meets. These reset the
-     UA chrome that brings with it, without touching the treatments above. */
-  .preset, .notime, .rail .h, .mins .m, .sugg button, .col .list button {
-    font-family: inherit; -webkit-appearance: none; appearance: none;
-  }
-  .preset { border: 0; background: none; cursor: pointer; }
-  .preset:hover:not(:disabled) { background: rgba(255, 255, 255, .07); }
-  .notime { border: 0; background: none; cursor: pointer; }
+  /* The mockup's controls are REAL inputs and buttons, not styled spans, so the
+     disabled state it draws is the one a keyboard actually meets. */
+  .sugg button, .cbox { -webkit-appearance: none; appearance: none; font-family: inherit; }
   input.tinput { display: block; font-family: inherit; }
+  /* `display` on the rule above outranks the UA's `[hidden] { display: none }`, so
+     B's field stayed visible after unchecking until this put it back. */
+  [hidden] { display: none !important; }
   .off { opacity: .4; }
   .off * { cursor: default !important; }
   /* Selected day in the live grid — the Calendar atom's filled-blue treatment. */
@@ -323,18 +307,11 @@
      would otherwise strand the popover off to the right of a dead column. */
   .lab .app { flex-direction: column; align-items: flex-start; }
 
-  /* Selected beats hover — every one of these treatments is a `:hover` rule and a
-     `.sel` rule on the same element, and `el:hover:not(:disabled)` outranks
-     `el.sel` on specificity. Without the `:hover` twin the cell you just clicked
-     loses its fill while the pointer is still resting on it. */
-  .d.sel, .d.sel:hover, .d.today.sel,
-  .preset.sel, .preset.sel:hover,
-  .rail .h.sel, .rail .h.sel:hover,
-  .col .list button.sel, .col .list button.sel:hover {
+  /* Selected beats hover — `el:hover` outranks `el.sel` on specificity, so without
+     the `:hover` twin the day you just clicked loses its fill while the pointer is
+     still resting on it. */
+  .d.sel, .d.sel:hover, .d.today.sel {
     background: var(--a-blue); color: var(--a-bg); font-weight: 600;
-  }
-  .mins .m.sel, .mins .m.sel:hover {
-    background: var(--a-blue); color: var(--a-bg); border-color: var(--a-blue); font-weight: 600;
   }
 
 </style>
@@ -693,8 +670,9 @@ time === null
     picks a time first" state entirely.
   </p>
   <p>
-    A <code>No time</code> control returns the task to date-only, mirroring the footer's existing
-    <code>Clear</code> / <code>Today</code> pair.
+    Clearing back to date-only is <b>the same control's job</b>, not a second one beside it — an
+    emptied field, an unchecked box, a "No time" option. Which of those it is falls out of §5.1's
+    pick.
   </p>
   <p class="why">
     <b>What the control itself is, is deliberately still open.</b> §5.1 draws four complete
@@ -817,27 +795,29 @@ alter table items add constraint items_task_only_fields check (
 
 <p>
   <b>This section is a decision, not a description.</b> Where the time lives is settled (inside the
-  existing due-date popover, under the month grid — D6); <i>what the control is</i> is not. Below are
-  four designs, each drawn in alfred's real design system and each <b>complete</b> — every one
-  satisfies the whole requirement list, so picking any of them is a full sign-off and none leaves a
-  gap for the implementation session to invent.
+  existing due-date popover, under the month grid — D6); <i>what the control is</i> is not.
+</p>
+
+<p>
+  All four below are <b>one row with one control</b>, and all four are patterns you have used this
+  week in some other app. That is deliberate: a due time is a solved input, and the cheapest correct
+  answer here is the conventional one. Three of the four need essentially no new component — the
+  browser, or an atom this popover already contains, does the work.
 </p>
 
 <div class="card">
   <h4 style="margin-top:0">What every option must do</h4>
   <ul style="margin-bottom:0">
-    <li><b>R1</b> — set a time on the selected day, saving immediately, leaving the popover open (only
-        picking a <i>day</i> closes it).</li>
-    <li><b>R2</b> — reach any time it can express, not just a fixed menu, and state its granularity
-        plainly.</li>
-    <li><b>R3</b> — clear back to date-only.</li>
-    <li><b>R4</b> — be wholly unavailable while no date is selected: dimmed, really
-        <code>disabled</code>, out of tab order. (D3's invariant made visible.)</li>
-    <li><b>R5</b> — show the current value in the control itself, not only on the chip.</li>
-    <li><b>R6</b> — be built from treatments already in this popover — the day cell, the
-        <code>Input</code> atom, the footer link — so it reads as part of the calendar rather than a
-        bolt-on. This is the <i>Repetition</i> half of CRAP, and it is a requirement, not a
-        preference.</li>
+    <li><b>R1</b> — set a time on the selected day, saving immediately, leaving the popover open
+        (only picking a <i>day</i> closes it).</li>
+    <li><b>R2</b> — reach the times it claims to, at the granularity stated below.</li>
+    <li><b>R3</b> — clear back to date-only. <i>Each option does this with its own control</i>, not a
+        separate link — see the table.</li>
+    <li><b>R4</b> — be unavailable while no date is selected: dimmed, really <code>disabled</code>,
+        out of tab order. (D3's invariant made visible.)</li>
+    <li><b>R5</b> — show the current value in the control itself.</li>
+    <li><b>R6</b> — introduce no new shape. The field is the <code>Input</code> atom, the box is
+        <code>CheckboxButton</code>, the list rows are <code>OptionButton</code>.</li>
   </ul>
 </div>
 
@@ -849,10 +829,10 @@ alter table items add constraint items_task_only_fields check (
 
   <div class="lab-bar">
     <span class="bar-label">Version</span>
-    <label class="tab" for="ver-a">A · Preset row</label>
-    <label class="tab" for="ver-b">B · Hour rail</label>
-    <label class="tab" for="ver-c">C · Smart field</label>
-    <label class="tab" for="ver-d">D · Three columns</label>
+    <label class="tab" for="ver-a">A · Time field</label>
+    <label class="tab" for="ver-b">B · Include-time checkbox</label>
+    <label class="tab" for="ver-c">C · Dropdown</label>
+    <label class="tab" for="ver-d">D · Type or pick</label>
   </div>
 
   <div class="lab-bar">
@@ -903,78 +883,42 @@ alter table items add constraint items_task_only_fields check (
             <span class="d out">3</span><span class="d out">4</span><span class="d out">5</span>
           </div>
 
-          <!-- ── A · preset row + native field ───────────────────────── -->
+          <!-- ── A · the native time field, and nothing else ─────────── -->
           <div class="timerow pane pane-a" id="row-a">
-            <div class="tr-head">
+            <div class="trow">
               <span class="tr-label">Time</span>
-              <button type="button" class="link dim notime">No time</button>
-            </div>
-            <div class="tr-body">
-              <button type="button" class="preset" data-t="09:00">9am</button>
-              <button type="button" class="preset" data-t="12:00">12pm</button>
-              <button type="button" class="preset" data-t="17:00">5pm</button>
               <input type="time" class="tinput" id="a-input" aria-label="Time" />
             </div>
           </div>
 
-          <!-- ── B · hour rail + minute snap ─────────────────────────── -->
+          <!-- ── B · include-time checkbox, then the field ───────────── -->
           <div class="timerow pane pane-b" id="row-b">
-            <div class="tr-head">
-              <span class="tr-label">Time</span>
-              <button type="button" class="link dim notime">No time</button>
+            <div class="cbrow">
+              <button type="button" class="cbox" id="b-box" role="checkbox" aria-checked="false"
+                      aria-labelledby="b-label"></button>
+              <span class="cblabel grow" id="b-label">Include time</span>
+              <input type="time" class="tinput" id="b-input" aria-label="Time" hidden />
             </div>
-            <div class="rail" id="b-rail">
-              <button type="button" class="h" data-h="7">7a</button>
-              <button type="button" class="h" data-h="8">8a</button>
-              <button type="button" class="h" data-h="9">9a</button>
-              <button type="button" class="h" data-h="10">10a</button>
-              <button type="button" class="h" data-h="11">11a</button>
-              <button type="button" class="h" data-h="12">12p</button>
-              <button type="button" class="h" data-h="13">1p</button>
-              <button type="button" class="h" data-h="14">2p</button>
-              <button type="button" class="h" data-h="15">3p</button>
-              <button type="button" class="h" data-h="16">4p</button>
-              <button type="button" class="h" data-h="17">5p</button>
-              <button type="button" class="h" data-h="18">6p</button>
-              <button type="button" class="h" data-h="19">7p</button>
-              <button type="button" class="h" data-h="20">8p</button>
-              <button type="button" class="h" data-h="21">9p</button>
-              <button type="button" class="h" data-h="22">10p</button>
-            </div>
-            <div class="mins" id="b-mins">
-              <button type="button" class="m" data-m="0">:00</button>
-              <button type="button" class="m" data-m="15">:15</button>
-              <button type="button" class="m" data-m="30">:30</button>
-              <button type="button" class="m" data-m="45">:45</button>
-              <button type="button" class="m" data-other="1" aria-label="Another time">⋯</button>
-            </div>
-            <p class="rail-hint" id="b-hint">Pick an hour, then the minutes.</p>
           </div>
 
-          <!-- ── C · one parsed field ────────────────────────────────── -->
+          <!-- ── C · a native select of half-hours ───────────────────── -->
           <div class="timerow pane pane-c" id="row-c">
-            <div class="tr-head">
+            <div class="trow">
               <span class="tr-label">Time</span>
-              <button type="button" class="link dim notime">No time</button>
-            </div>
-            <div class="smart">
-              <input type="text" id="c-input" placeholder="3pm · 15:30 · noon · 9" aria-label="Time" />
-              <div class="sugg" id="c-sugg"></div>
+              <select class="tsel" id="c-select" aria-label="Time"><option value="">No time</option><option value="00:00">12am</option><option value="00:30">12:30am</option><option value="01:00">1am</option><option value="01:30">1:30am</option><option value="02:00">2am</option><option value="02:30">2:30am</option><option value="03:00">3am</option><option value="03:30">3:30am</option><option value="04:00">4am</option><option value="04:30">4:30am</option><option value="05:00">5am</option><option value="05:30">5:30am</option><option value="06:00">6am</option><option value="06:30">6:30am</option><option value="07:00">7am</option><option value="07:30">7:30am</option><option value="08:00">8am</option><option value="08:30">8:30am</option><option value="09:00">9am</option><option value="09:30">9:30am</option><option value="10:00">10am</option><option value="10:30">10:30am</option><option value="11:00">11am</option><option value="11:30">11:30am</option><option value="12:00">12pm</option><option value="12:30">12:30pm</option><option value="13:00">1pm</option><option value="13:30">1:30pm</option><option value="14:00">2pm</option><option value="14:30">2:30pm</option><option value="15:00">3pm</option><option value="15:30">3:30pm</option><option value="16:00">4pm</option><option value="16:30">4:30pm</option><option value="17:00">5pm</option><option value="17:30">5:30pm</option><option value="18:00">6pm</option><option value="18:30">6:30pm</option><option value="19:00">7pm</option><option value="19:30">7:30pm</option><option value="20:00">8pm</option><option value="20:30">8:30pm</option><option value="21:00">9pm</option><option value="21:30">9:30pm</option><option value="22:00">10pm</option><option value="22:30">10:30pm</option><option value="23:00">11pm</option><option value="23:30">11:30pm</option></select>
             </div>
           </div>
 
-          <!-- ── D · hour / minute / meridiem ────────────────────────── -->
+          <!-- ── D · type or pick, from the same half-hour list ──────── -->
           <div class="timerow pane pane-d" id="row-d">
             <div class="tr-head">
               <span class="tr-label">Time</span>
-              <button type="button" class="link dim notime">No time</button>
             </div>
-            <div class="cols">
-              <div class="col"><div class="ch">Hour</div><div class="list" id="d-h"><button type="button" data-dh="12">12</button><button type="button" data-dh="1">1</button><button type="button" data-dh="2">2</button><button type="button" data-dh="3">3</button><button type="button" data-dh="4">4</button><button type="button" data-dh="5">5</button><button type="button" data-dh="6">6</button><button type="button" data-dh="7">7</button><button type="button" data-dh="8">8</button><button type="button" data-dh="9">9</button><button type="button" data-dh="10">10</button><button type="button" data-dh="11">11</button></div></div>
-              <div class="col"><div class="ch">Min</div><div class="list" id="d-m"><button type="button" data-dm="0">00</button><button type="button" data-dm="5">05</button><button type="button" data-dm="10">10</button><button type="button" data-dm="15">15</button><button type="button" data-dm="20">20</button><button type="button" data-dm="25">25</button><button type="button" data-dm="30">30</button><button type="button" data-dm="35">35</button><button type="button" data-dm="40">40</button><button type="button" data-dm="45">45</button><button type="button" data-dm="50">50</button><button type="button" data-dm="55">55</button></div></div>
-              <div class="col"><div class="ch">am/pm</div><div class="list" id="d-p"><button type="button" data-dp="am">am</button><button type="button" data-dp="pm">pm</button></div></div>
+            <div class="combo">
+              <input type="text" id="d-input" placeholder="No time" aria-label="Time"
+                     role="combobox" aria-expanded="false" aria-controls="d-list" />
+              <div class="sugg" id="d-list" role="listbox" hidden></div>
             </div>
-            <p class="colnote" id="d-note">Five-minute steps.</p>
           </div>
 
           <div class="cal-foot">
@@ -987,99 +931,93 @@ alter table items add constraint items_task_only_fields check (
 
     <div class="rationale">
       <div class="pane pane-a">
-        <h4>A · Preset row + native field</h4>
-        <div class="crap"><span class="on">Repetition</span><span class="on">Proximity</span><span>Contrast</span><span>Alignment</span></div>
+        <h4>A · The native time field</h4>
+        <p class="small"><b>Seen in</b> every HTML form on the web · <b>new component</b> none</p>
         <p>
-          <b>Optimises for:</b> not existing. The three pills <i>are</i> day cells — same height,
-          radius, type size and blue-filled selected state — so the row introduces no new visual idea,
-          and the native field carries everything the pills don't. Hick's law is respected by keeping
-          the visible menu to three.
+          One <code>&lt;input type="time"&gt;</code>. The browser supplies the picker, the keyboard
+          handling, the mobile wheel, the locale, the validation and the accessible name — none of
+          which we then own. <b>An empty field <i>is</i> <code>NULL</code></b>, so there is no clear
+          control to design: R3 falls out of the input rather than being bolted beside it.
         </p>
-        <p>
-          <b>Costs:</b> two competing affordances share one row, which buys a half-second of "which of
-          these do I use?" every time. The presets are a guess at someone's day, and a wrong guess is
-          dead pixels in a 240px-wide popover. The field's dropdown chrome is the platform's, not
-          ours — <code>scheme-dark</code> makes it dark but not <i>ours</i>.
+        <p class="why">
+          <b>The one wrinkle:</b> clearing relies on the browser's own affordance — a small ✕ in
+          Chrome, select-and-delete on a keyboard. It works everywhere, but it is the least
+          <i>discoverable</i> clear of the four.
         </p>
-        <p class="small"><b>Granularity</b> one minute · <b>3:30pm</b> = focus + 4 keystrokes ·
-          <b>5pm</b> = 1 click · <b>adds</b> ~62px</p>
+        <p class="small"><b>Granularity</b> one minute · <b>Clear</b> empty the field ·
+          <b>adds</b> ~40px</p>
       </div>
 
       <div class="pane pane-b">
-        <h4>B · Hour rail + minute snap</h4>
-        <div class="crap"><span class="on">Alignment</span><span class="on">Contrast</span><span>Repetition</span><span>Proximity</span></div>
+        <h4>B · Include-time checkbox, then the field</h4>
+        <p class="small"><b>Seen in</b> Notion, Airtable, most form builders · <b>new component</b> none —
+          <code>CheckboxField</code> + <code>Input</code></p>
         <p>
-          <b>Optimises for:</b> the hand, and for never typing. Two rows of eight cover 7am–10pm on a
-          column rhythm that echoes the seven-column day grid above it, so the popover reads as one
-          aligned system rather than a calendar with something stapled underneath. Because the rail is
-          fixed, <b>3pm is always in the same place</b> — spatial constancy turns a search into a
-          reach, and by the second week it is muscle memory.
+          The checkbox <b>is the nullability</b>: unchecked means <code>due_time IS NULL</code>, and
+          the field only exists once you have said you want one. It reads as a sentence — <i>include
+          time</i> — which is exactly what the column models, and it is the most explicit clear of the
+          four.
         </p>
-        <p>
-          <b>Costs:</b> sixteen targets is a lot to scan the first few times, and the cells are 30px —
-          consistent with the 32px day cells this app already ships, but under the 44px touch
-          guidance. Every set is two steps, including the trivial ones. Quarter-hours are privileged;
-          anything else goes through the <code>⋯</code> cell, which is one more step for the rare
-          case — deliberate progressive disclosure, but it <i>is</i> a step.
+        <p class="why">
+          <b>The one wrinkle:</b> checking the box has to put <i>some</i> time in the column, so it
+          seeds one (9:00am here). Two controls instead of one, though the second is hidden until it
+          matters.
         </p>
-        <p class="small"><b>Granularity</b> 15 min, any minute via <code>⋯</code> ·
-          <b>3:30pm</b> = 2 clicks · <b>5pm</b> = 2 clicks · <b>adds</b> ~96px</p>
+        <p class="small"><b>Granularity</b> one minute · <b>Clear</b> uncheck ·
+          <b>adds</b> ~34px unchecked, ~34px checked</p>
       </div>
 
       <div class="pane pane-c">
-        <h4>C · One parsed field</h4>
-        <div class="crap"><span class="on">Proximity</span><span class="on">Contrast</span><span>Repetition</span><span>Alignment</span></div>
+        <h4>C · A dropdown of half-hours</h4>
+        <p class="small"><b>Seen in</b> Outlook, Calendly, booking forms everywhere · <b>new component</b> none —
+          a native <code>&lt;select&gt;</code></p>
         <p>
-          <b>Optimises for:</b> the keyboard, and for having almost no UI at all. One field, and the
-          suggestion list underneath resolves what you typed before you commit — so <code>9</code>
-          shows you both readings rather than silently guessing one. This is the only option with a
-          real precedent in the app: the capture box's colon-typeahead (ALF-167) is the same
-          type-then-choose shape, built from the same <code>OptionButton</code> rows.
+          One click, no typing, nothing to mistype, and — because the browser renders the list as an
+          overlay — it <b>costs the popover no height at all</b>. <code>No time</code> is simply the
+          first option, so R3 is an item in the list rather than a separate control.
         </p>
-        <p>
-          <b>Costs:</b> it is the only option that needs code that doesn't exist — a
-          <code>parseTimeInput</code> module and its table tests, plus the ambiguity policy for a bare
-          number. And a blank field <b>does not announce what it accepts</b>: the placeholder is the
-          entire discoverability story, which is thin. On a phone it means raising the keyboard for
-          something the other three do with a thumb.
+        <p class="why">
+          <b>The one wrinkle:</b> 30-minute steps, full stop. A 3:07 deadline cannot be expressed.
+          For a personal task list that is very likely fine, but it is the only option here that
+          says no to something.
         </p>
-        <p class="small"><b>Granularity</b> one minute · <b>3:30pm</b> = 7 keystrokes ·
-          <b>5pm</b> = 3 keystrokes · <b>adds</b> ~44px, ~130px with suggestions open</p>
+        <p class="small"><b>Granularity</b> 30 min · <b>Clear</b> pick "No time" ·
+          <b>adds</b> ~40px, and nothing while open</p>
       </div>
 
       <div class="pane pane-d">
-        <h4>D · Hour / minute / meridiem columns</h4>
-        <div class="crap"><span class="on">Repetition</span><span class="on">Alignment</span><span>Proximity</span><span>Contrast</span></div>
+        <h4>D · Type or pick</h4>
+        <p class="small"><b>Seen in</b> Google Calendar, Todoist, Fantastical · <b>new component</b> a small
+          filtered list</p>
         <p>
-          <b>Optimises for:</b> being impossible to get wrong. Three short lists, no typing, no
-          parsing, no meridiem ambiguity, and the value reads left-to-right in the order you say it —
-          <i>three · thirty · pm</i>. Identical behaviour on desktop and phone, which none of the
-          others quite manage.
+          Google Calendar's field: the same half-hour list as C, but the box is typeable and filters
+          as you go — <code>3</code> narrows to the threes, and anything you type that <i>is</i> a
+          time is offered whether or not it is on the list. It is the only option that serves the
+          keyboard and the pointer equally well.
         </p>
-        <p>
-          <b>Costs:</b> three decisions to express one value, every time, including 9am. It is the
-          tallest by a wide margin in a popover that already runs six rows of calendar. And it needs a
-          <b>seed</b>: with no time set, clicking a bare minute has no hour to attach to, so the
-          control has to invent one (this mockup seeds 9:00am) — a small wart, but a real one that the
-          other three don't have.
+        <p class="why">
+          <b>The one wrinkle:</b> it is the only one of the four that is a real component — a filtered
+          listbox with its own keyboard contract. Not much code, but it is code we then own, and
+          it is the only one where "what did the user mean by <code>9</code>" is a question we have
+          to answer.
         </p>
-        <p class="small"><b>Granularity</b> 5 min · <b>3:30pm</b> = 3 clicks · <b>5pm</b> = 3 clicks ·
-          <b>adds</b> ~132px</p>
+        <p class="small"><b>Granularity</b> one minute (typed), 30 min (list) · <b>Clear</b> empty the
+          box, or pick "No time" · <b>adds</b> ~40px, ~150px with the list open</p>
       </div>
     </div>
   </div>
 </div>
 <p class="nojs">
-  The switcher is plain CSS (labelled radios) and the pickers are progressively enhanced — with
-  scripting off the document still shows every version's control, drawn, in its default state.
+  The switcher is plain CSS (labelled radios) and the controls are authored in markup — with
+  scripting off the document still shows every version, drawn.
 </p>
 
 <p class="mockcap">
-  <b>Try it.</b> Switch versions and the value carries across, so the four can be compared on the same
-  task. Switch the due day and the chip re-bands live by the §3 rules — <b>Today + 9am</b> is red at
-  the pinned 10:24am, <b>Today + 3pm</b> is amber, and <b>— none —</b> disables every version's
-  control, which is R4. The <code>due_date</code> / <code>due_time</code> readout is what D1's two
-  columns actually hold.
+  <b>Try it.</b> The value carries across versions, so the four can be compared on the same task.
+  Switch the due day and the chip re-bands live by the §3 rules — <b>Today&nbsp;+&nbsp;9am</b> is red
+  at the pinned 10:24am, <b>Today&nbsp;+&nbsp;3pm</b> is amber — and <b>— none —</b> disables every
+  version's control, which is R4. The <code>due_date</code> / <code>due_time</code> readout is what
+  D1's two columns actually hold.
 </p>
 
 <h4>Side by side</h4>
@@ -1087,44 +1025,41 @@ alter table items add constraint items_task_only_fields check (
 <div class="scroll">
 <table>
   <tr>
-    <th>&nbsp;</th><th>A · Preset row</th><th>B · Hour rail</th><th>C · Smart field</th><th>D · Columns</th>
+    <th>&nbsp;</th><th>A · Time field</th><th>B · Checkbox</th><th>C · Dropdown</th><th>D · Type or pick</th>
   </tr>
   <tr>
-    <td><b>Set 5pm</b></td><td>1 click</td><td>2 clicks</td><td>3 keystrokes</td><td>3 clicks</td>
+    <td><b>Set 5pm</b></td><td>type 4 keys</td><td>check + 4 keys</td><td>1 click</td><td>1 click, or 3 keys</td>
   </tr>
   <tr>
-    <td><b>Set 3:30pm</b></td><td>focus + 4 keys</td><td>2 clicks</td><td>7 keystrokes</td><td>3 clicks</td>
+    <td><b>Set 3:07pm</b></td><td>type</td><td>check + type</td><td><b>can't</b></td><td>type</td>
   </tr>
   <tr>
-    <td><b>Granularity</b></td><td>1 min</td><td>15 min (any via <code>⋯</code>)</td><td>1 min</td><td>5 min</td>
+    <td><b>Granularity</b></td><td>1 min</td><td>1 min</td><td>30 min</td><td>1 min typed</td>
   </tr>
   <tr>
-    <td><b>Typing required</b></td><td>off-preset only</td><td>off-quarter only</td><td>always</td><td>never</td>
+    <td><b>Clear (R3)</b></td><td>empty the field</td><td>uncheck</td><td>pick "No time"</td><td>empty, or "No time"</td>
   </tr>
   <tr>
-    <td><b>Phone</b></td><td>native picker</td><td>30px targets</td><td>raises keyboard</td><td>best</td>
+    <td><b>New component</b></td><td>none</td><td>none</td><td>none</td><td>a filtered list</td>
   </tr>
   <tr>
-    <td><b>New code</b></td><td>least</td><td>rail + minute state</td><td><b>a parser + its tests</b></td><td>three lists + a seed rule</td>
+    <td><b>Popover height</b></td><td>+40px</td><td>+34px</td><td>+40px</td><td>+40px / +150px open</td>
   </tr>
   <tr>
-    <td><b>Popover height</b></td><td>+62px</td><td>+96px</td><td>+44px</td><td>+132px</td>
-  </tr>
-  <tr>
-    <td><b>Leans on</b></td><td>Repetition</td><td>Alignment</td><td>Proximity</td><td>Repetition + Alignment</td>
+    <td><b>Phone</b></td><td>native wheel</td><td>native wheel</td><td>native list</td><td>raises keyboard</td>
   </tr>
 </table>
 </div>
 
 <div class="callout">
-  <b>If you want a recommendation: B.</b> It is the only one whose geometry <i>is</i> the calendar's
-  geometry, so R6 comes free rather than being argued for; it needs no parser and no seed rule; it is
-  two thumbs or two clicks with no typing on either platform; and the fixed rail buys spatial
-  constancy that none of the others can. Its real cost is sixteen 30px targets, which is a Fitts
-  concession this app already makes with its day cells. <b>A is the safe fallback</b> — cheapest to
-  build, least to argue about, and the one to take if the rail feels like too much popover.
-  <b>Pick in a review comment and the implementation session builds exactly that</b>; the acceptance
-  criteria in §9 are written to hold whichever you choose.
+  <b>If you want a recommendation: A.</b> It is one control, it is the browser's, an empty field
+  already means <code>NULL</code> so there is nothing else to build, and it is the only option with
+  no wrinkle worth a paragraph. <b>B if</b> you want the clear to be obvious and the row to stay
+  quiet until a time is wanted — it is the same field with an explicit on/off, and it maps to the
+  nullable column exactly. <b>C if</b> you would rather never type, and 30-minute steps are no
+  loss. <b>D only if</b> the Google-Calendar feel is worth owning a component for.
+  <b>Answer in a review comment</b> and the implementation session builds exactly that; §9's
+  acceptance criteria are written against R1–R6 so they hold whichever you pick.
 </div>
 
 
@@ -1298,11 +1233,10 @@ create or replace view task_items with (security_invoker = true) as
     <td><code>components/atoms/calendar.tsx</code></td>
     <td>The time row (D6): <code>time</code> / <code>onSelectTime</code> / <code>onClearTime</code>
         props, the disabled state when <code>selected === null</code>, and whichever control §5.1's
-        pick lands on. Whatever that is, extract the day cell's class expression into one local helper
-        the time control's own cells share (every candidate reuses it — that's R6), so the two
-        treatments can't drift. Version C additionally needs a
-        <code>lib/date-utils</code> <code>parseTimeInput</code> and its table tests; the other three
-        add no new module.</td>
+        pick lands on. A, B and C add no new component — an <code>Input type="time"</code>, that plus
+        the existing <code>CheckboxField</code>, or a native <code>&lt;select&gt;</code>. <b>Only D</b>
+        adds one: a filtered listbox built from <code>OptionButton</code> rows, plus its
+        half-hour list and the bare-number policy (§10).</td>
   </tr>
   <tr>
     <td><code>components/tasks/due-date-chip.tsx</code></td>
@@ -1388,9 +1322,9 @@ create or replace view task_items with (security_invoker = true) as
   </tr>
   <tr>
     <td><code>components/atoms/calendar.test.tsx</code> (RTL)</td>
-    <td>Written against §5.1's requirement list so it holds whichever version is picked: the control's
-        quick path saves a time (R1); its escape hatch reaches an off-menu one (R2); <b>No time</b>
-        saves <code>null</code> (R3); every control in the row is <code>disabled</code> when no date is
+    <td>Written against §5.1's requirement list so it holds whichever version is picked: the control
+        saves a time (R1) at its stated granularity (R2); the control's own clear path saves
+        <code>null</code> (R3); every control in the row is <code>disabled</code> when no date is
         selected (R4); the current value is reflected back in the control (R5); and picking a
         <i>time</i> does not close the popover while picking a <i>day</i> still does.</td>
   </tr>
@@ -1460,12 +1394,13 @@ create or replace view task_items with (security_invoker = true) as
 
   <li class="h">Setting a time — R1–R6, and they hold whichever version §5.1 picks</li>
   <li>The due-date popover shows a time row under the month grid, built as the picked version of
-      §5.1 draws it, plus a <b>No time</b> control.</li>
-  <li><b>R1</b> — the control's quick path sets a time, saving immediately and leaving the popover
-      open; choosing a <i>day</i> still closes it.</li>
-  <li><b>R2</b> — a time off the quick path is reachable, to the granularity that version states in
-      §5.1's comparison table.</li>
-  <li><b>R3</b> — <b>No time</b> returns the task to date-only.</li>
+      §5.1 draws it.</li>
+  <li><b>R1</b> — the control sets a time, saving immediately and leaving the popover open; choosing
+      a <i>day</i> still closes it.</li>
+  <li><b>R2</b> — every time the picked version claims to reach is reachable, at the granularity
+      §5.1's comparison table states for it.</li>
+  <li><b>R3</b> — the control's own clear path returns the task to date-only: an emptied field (A,
+      D), an unchecked box (B), or the "No time" option (C, D).</li>
   <li><b>R4</b> — with no date selected every control in the row is dimmed, carries the real
       <code>disabled</code> attribute, is skipped by tab order, and is announced as unavailable.</li>
   <li><b>R5</b> — the control reflects the current value, not just the chip above it.</li>
@@ -1564,20 +1499,12 @@ create or replace view task_items with (security_invoker = true) as
   sentence that has to be written before an implementation session can start.
 </p>
 <p>
-  Two sub-questions ride on the pick, and neither needs settling now — the implementation session can
-  make the call and say so in its PR, because both are a handful of literals:
-</p>
-<ul>
-  <li><b>If A</b> — which three preset times. <code>9am</code> / <code>12pm</code> / <code>5pm</code>
-      is a guess at someone's day.</li>
-  <li><b>If B</b> — where the rail starts and ends. 7am–10pm fits two rows of eight; a 6am–9pm rail
-      is the same size and a different bet about when this person works.</li>
-</ul>
-<p>
-  <b>If C</b>, one thing does need deciding up front rather than in flight, because it is behaviour
-  rather than a literal: what a bare number means. §5.1's parser offers both readings and orders them
-  1–6 → pm, 7–11 → am, 12 → noon. Silently picking one instead would be the kind of guess that is
-  wrong a few times a week.
+  <b>Only D carries a sub-question</b>, and it is behaviour rather than a literal, so it wants an
+  answer up front: <b>what a bare number means</b>. Chronological order would put <code>3am</code>
+  above <code>3pm</code>, so pressing Enter on <code>3</code> would quietly set an alarm for the
+  small hours. §5.1's lab leads with the reading a working day means — 1–6 → pm, 7–11 → am, 12 →
+  noon — and offers the other underneath. A, B and C never face the question: the browser owns the
+  input, or the menu has no ambiguity in it.
 </p>
 
 <h2>11 · Related reading</h2>
@@ -1601,8 +1528,8 @@ create or replace view task_items with (security_invoker = true) as
 <script>
 /*
  * §5.1's picker lab. Progressive enhancement only — the switcher is CSS (labelled
- * radios) and every control is drawn in markup, so with scripting off the document
- * is still the static mockup it was. This adds the live value.
+ * radios) and the controls are authored in markup, so with scripting off the
+ * document is still the static mockup it was. This adds the live value.
  *
  * The formatting and banding functions below are deliberately the SPEC's rules
  * (D4 and D7) written out, not an approximation: if the drawing and the prose ever
@@ -1617,7 +1544,7 @@ create or replace view task_items with (security_invoker = true) as
 
   function pad(n) { return String(n).padStart(2, '0'); }
 
-  var state = { date: '2026-08-12', time: null, cText: '', bOther: false };
+  var state = { date: '2026-08-12', time: null, dText: '', dOpen: false };
 
   // ── D7: compact 12-hour. Zero minute dropped, no space before the meridiem. ──
   function formatTimeOfDay(t) {
@@ -1651,80 +1578,22 @@ create or replace view task_items with (security_invoker = true) as
     return iso === TODAY ? 'today' : 'due';
   }
 
-  // ── Version C's parser. The ambiguity policy is the interesting part: a bare
-  //    number has two readings and the list shows both rather than guessing.
-  function parseTimeInput(raw) {
-    var s = String(raw).trim().toLowerCase();
-    var out = [];
-    function push(h, m) {
-      if (h < 0 || h > 23 || m < 0 || m > 59) return;
-      var v = pad(h) + ':' + pad(m);
-      if (out.indexOf(v) === -1) out.push(v);
-    }
-    if (s === '') return out;
-    if (s === 'noon') push(12, 0);
-    if (s === 'midnight') push(0, 0);
-    if (s === 'eod') push(17, 0);
-    var m;
-    if ((m = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)$/.exec(s))) {
-      var h = Number(m[1]) % 12;
-      if (m[3].charAt(0) === 'p') h += 12;
-      push(h, Number(m[2] || 0));
-    } else if ((m = /^(\d{1,2}):(\d{2})$/.exec(s))) {
-      push(Number(m[1]), Number(m[2]));
-    } else if ((m = /^(\d{1,2})$/.exec(s))) {
-      var n = Number(m[1]);
-      if (n >= 1 && n <= 12) {
-        // Nearer-to-a-working-day first: 1–6 read as pm, 7–11 as am, 12 as noon.
-        if (n === 12) { push(12, 0); push(0, 0); }
-        else if (n <= 6) { push(n + 12, 0); push(n, 0); }
-        else { push(n, 0); push(n + 12, 0); }
-      } else if (n >= 13 && n <= 23) push(n, 0);
-    }
-    return out.slice(0, 3);
-  }
-
   var $ = function (id) { return document.getElementById(id); };
   var lab = document.querySelector('.lab');
   if (!lab) return;
 
-  function setTime(t) { state.time = t; state.bOther = false; render(); }
+  // The half-hour menu shared by C and D.
+  var SLOTS = [];
+  for (var i = 0; i < 48; i++) SLOTS.push(pad(Math.floor(i / 2)) + ':' + (i % 2 ? '30' : '00'));
+
+  var CHECK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0a0e17" ' +
+    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+  function setTime(t) { state.time = t; render(); }
   function setDate(d) {
     state.date = d || null;
-    if (state.date === null) { state.time = null; state.cText = ''; state.bOther = false; }
+    if (state.date === null) { state.time = null; state.dText = ''; state.dOpen = false; }
     render();
-  }
-
-  // Every control is authored in markup, not generated here — that is what makes the
-  // "opens without scripting" claim true rather than aspirational. This only ever
-  // toggles state on what the document already contains. The one exception is B's
-  // `⋯` escape hatch, which swaps the minute row for a field; the original markup is
-  // cached so leaving that mode restores it exactly.
-  var MINS_HTML = $('b-mins').innerHTML;
-
-  function renderMins() {
-    var mins = $('b-mins');
-    if (state.bOther) {
-      if (!$('b-other')) {
-        mins.innerHTML =
-          '<input type="time" class="tinput" id="b-other" style="grid-column:1/5;width:100%" aria-label="Time" />' +
-          '<button type="button" class="m" data-back="1" aria-label="Back to quarter hours">↩</button>';
-        $('b-other').addEventListener('input', function () {
-          if (this.value) { state.time = this.value; render(); }
-        });
-      }
-      var other = $('b-other');
-      if (document.activeElement !== other) other.value = state.time || '';
-      other.disabled = state.date === null;
-      return;
-    }
-    if ($('b-other')) mins.innerHTML = MINS_HTML;
-    var cur = state.time ? Number(state.time.slice(3, 5)) : null;
-    Array.prototype.forEach.call(mins.querySelectorAll('.m'), function (btn) {
-      if (btn.dataset.other) { btn.disabled = state.date === null; return; }
-      btn.classList.toggle('sel', cur !== null && Number(btn.dataset.m) === cur);
-      btn.disabled = state.time === null || state.date === null;
-    });
   }
 
   function render() {
@@ -1735,10 +1604,10 @@ create or replace view task_items with (security_invoker = true) as
     var chip = $('pv-chip');
     var b = band(state.date, t);
     chip.className = 'badge ' + (b === 'over' ? 'b-over' : b === 'today' ? 'b-today' : b === 'due' ? 'b-due' : 'b-muted');
-    chip.textContent = state.date === null
+    chip.textContent = disabled
       ? 'Set a due date…'
       : formatDueDate(state.date) + (t ? ' ' + formatTimeOfDay(t) : '');
-    $('pv-store').textContent = state.date === null
+    $('pv-store').textContent = disabled
       ? 'due_date NULL · due_time NULL'
       : 'due_date ' + state.date + ' · due_time ' + (t ? t : 'NULL');
 
@@ -1754,121 +1623,97 @@ create or replace view task_items with (security_invoker = true) as
     Array.prototype.forEach.call(document.querySelectorAll('#row-a, #row-b, #row-c, #row-d'), function (row) {
       row.classList.toggle('off', disabled);
     });
-    Array.prototype.forEach.call(document.querySelectorAll('.notime'), function (btn) {
-      btn.disabled = disabled || t === null;
-      btn.classList.toggle('dim', disabled || t === null);
-    });
+    $('row-b').querySelector('.cbrow').classList.toggle('off', disabled);
 
-    // A — presets + native field.
-    Array.prototype.forEach.call(document.querySelectorAll('#row-a .preset'), function (btn) {
-      btn.classList.toggle('sel', btn.dataset.t === t);
-      btn.disabled = disabled;
-    });
-    $('a-input').value = t || '';
+    // A — the native field. Empty IS null.
+    if (document.activeElement !== $('a-input')) $('a-input').value = t || '';
     $('a-input').disabled = disabled;
 
-    // B — rail + minutes.
-    Array.prototype.forEach.call(document.querySelectorAll('#b-rail .h'), function (btn) {
-      btn.classList.toggle('sel', t !== null && Number(btn.dataset.h) === Number(t.slice(0, 2)));
-      btn.disabled = disabled;
-    });
-    renderMins();
-    $('b-hint').textContent = disabled
-      ? 'Pick a day first.'
-      : t === null ? 'Pick an hour, then the minutes.'
-      : 'Set to ' + formatTimeOfDay(t) + '. ⋯ for anything off the quarter.';
+    // B — the checkbox is the nullability; the field appears only once it is on.
+    var box = $('b-box');
+    box.setAttribute('aria-checked', String(t !== null));
+    box.innerHTML = t !== null ? CHECK : '';
+    box.disabled = disabled;
+    var bIn = $('b-input');
+    bIn.hidden = t === null;
+    bIn.disabled = disabled;
+    if (document.activeElement !== bIn) bIn.value = t || '';
 
-    // C — field + suggestions.
-    var cIn = $('c-input');
-    if (document.activeElement !== cIn) cIn.value = state.cText;
-    cIn.disabled = disabled;
-    var hits = disabled ? [] : parseTimeInput(state.cText);
-    if (state.cText.trim() === '') {
-      $('c-sugg').innerHTML = t
-        ? '<div class="empty">Now ' + formatTimeOfDay(t) + '. Type to change it.</div>'
-        : '';
-    } else if (hits.length === 0) {
-      $('c-sugg').innerHTML = '<div class="empty">Not a time yet…</div>';
-    } else {
-      $('c-sugg').innerHTML = hits.map(function (v, i) {
-        return '<button type="button" data-c="' + v + '" class="' + (i === 0 ? 'top' : '') + '">' +
-          '<span>' + formatTimeOfDay(v) + '</span><span class="kbd">' + (i === 0 ? '↵' : v) + '</span></button>';
-      }).join('');
+    // C — the native select. "No time" is the first option, so R3 is in the list.
+    $('c-select').value = t && SLOTS.indexOf(t) !== -1 ? t : '';
+    $('c-select').disabled = disabled;
+
+    // D — type or pick.
+    var dIn = $('d-input');
+    dIn.disabled = disabled;
+    if (document.activeElement !== dIn) dIn.value = t ? formatTimeOfDay(t) : '';
+    var list = $('d-list');
+    list.hidden = !state.dOpen || disabled;
+    dIn.setAttribute('aria-expanded', String(!list.hidden));
+    if (!list.hidden) {
+      var q = state.dText.trim().toLowerCase().replace(/\s+/g, '');
+      var hits = SLOTS.filter(function (v) { return q === '' || formatTimeOfDay(v).indexOf(q) === 0; });
+      // A bare number has two readings, and chronological order would put 3am above
+      // 3pm — so Enter on "3" would set an alarm for the small hours. Lead with the
+      // one a working day means: 1–6 pm, 7–11 am, 12 noon. This is D's stated policy,
+      // and the reason its rationale calls out owning the question at all.
+      var bare = /^(\d{1,2})$/.test(q) ? Number(q) : null;
+      if (bare !== null && bare >= 1 && bare <= 12) {
+        var pmFirst = bare <= 6 || bare === 12;
+        hits = hits.filter(function (v) { return (Number(v.slice(0, 2)) >= 12) === pmFirst; })
+          .concat(hits.filter(function (v) { return (Number(v.slice(0, 2)) >= 12) !== pmFirst; }));
+      }
+      // A typed time that is not on the half-hour menu is still offered — the list
+      // narrows the common case without becoming the only way in.
+      var exact = /^([01]\d|2[0-3]):([0-5]\d)$/.test(q) ? q : null;
+      if (exact && hits.indexOf(exact) === -1) hits.unshift(exact);
+      list.innerHTML = (q === '' ? '<button type="button" role="option" data-d="">No time</button>' : '') +
+        hits.slice(0, 24).map(function (v, n) {
+          return '<button type="button" role="option" data-d="' + v + '" class="' +
+            (v === t ? 'sel' : '') + (n === 0 && q !== '' ? ' top' : '') + '">' +
+            '<span>' + formatTimeOfDay(v) + '</span>' +
+            (n === 0 && q !== '' ? '<span class="kbd">↵</span>' : '') + '</button>';
+        }).join('');
+      var hit = list.querySelector('.sel');
+      if (hit) list.scrollTop = hit.offsetTop - (list.clientHeight - hit.offsetHeight) / 2;
     }
-
-    // D — three columns.
-    var H = t ? Number(t.slice(0, 2)) : null;
-    var M = t ? Number(t.slice(3, 5)) : null;
-    var h12 = H === null ? null : (H % 12 === 0 ? 12 : H % 12);
-    var mer = H === null ? null : (H < 12 ? 'am' : 'pm');
-    Array.prototype.forEach.call(document.querySelectorAll('#d-h button'), function (btn) {
-      btn.classList.toggle('sel', Number(btn.dataset.dh) === h12); btn.disabled = disabled;
-    });
-    Array.prototype.forEach.call(document.querySelectorAll('#d-m button'), function (btn) {
-      btn.classList.toggle('sel', Number(btn.dataset.dm) === M); btn.disabled = disabled;
-    });
-    Array.prototype.forEach.call(document.querySelectorAll('#d-p button'), function (btn) {
-      btn.classList.toggle('sel', btn.dataset.dp === mer); btn.disabled = disabled;
-    });
-    $('d-note').textContent = disabled ? 'Pick a day first.'
-      : t === null ? 'Five-minute steps. With nothing set, the first pick seeds 9:00am.'
-      : 'Five-minute steps.';
-    // R5 is not satisfied by merely marking the selected row — in a scrolling list the
-    // current value can sit outside the viewport, so the control would show nothing.
-    // Centre it. (Scroll the LIST, never scrollIntoView, which would move the page too.)
-    ['d-h', 'd-m', 'd-p'].forEach(function (id) {
-      var list = $(id), hit = list.querySelector('.sel');
-      if (!hit || list.offsetParent === null) return;
-      list.scrollTop = hit.offsetTop - (list.clientHeight - hit.offsetHeight) / 2;
-    });
   }
 
-  // Switching version must re-render: D's lists can only be scrolled to their
-  // selected row once the pane actually has a layout box.
-  Array.prototype.forEach.call(lab.querySelectorAll('input[name="ver"]'), function (radio) {
-    radio.addEventListener('change', render);
-  });
-
-  // ── Wiring. One delegated listener; the controls are all real buttons. ──
-  document.addEventListener('click', function (event) {
-    var el = event.target.closest ? event.target.closest('button') : null;
+  // ── Wiring ──
+  lab.addEventListener('click', function (event) {
+    var el = event.target.closest ? event.target.closest('button, .cblabel, .d[data-day]') : null;
     if (!el || el.disabled) return;
-    var d = el.dataset;
 
-    if (d.date !== undefined) { setDate(d.date); return; }
-    if (el.classList.contains('notime')) { setTime(null); state.cText = ''; render(); return; }
-    if (d.t) { setTime(d.t); return; }
-    if (d.c) { state.cText = ''; setTime(d.c); return; }
-    if (d.h) { setTime(pad(Number(d.h)) + ':' + (state.time ? state.time.slice(3, 5) : '00')); return; }
-    if (d.m !== undefined && state.time) { setTime(state.time.slice(0, 2) + ':' + pad(Number(d.m))); return; }
-    if (d.other) { state.bOther = true; render(); return; }
-    if (d.back) { state.bOther = false; render(); return; }
-
-    // D seeds 9:00am when nothing is set — the wart its rationale names.
-    if (d.dh || d.dm !== undefined || d.dp) {
-      var base = state.time || '09:00';
-      var H = Number(base.slice(0, 2)), M = Number(base.slice(3, 5));
-      if (d.dh) { var pm = H >= 12; var n = Number(d.dh) % 12; H = pm ? n + 12 : n; }
-      if (d.dm !== undefined) M = Number(d.dm);
-      if (d.dp) { var hr = H % 12; H = d.dp === 'pm' ? hr + 12 : hr; }
-      setTime(pad(H) + ':' + pad(M));
+    if (el.dataset.date !== undefined) { setDate(el.dataset.date); return; }
+    if (el.classList.contains('d')) { setDate(el.dataset.day); return; }
+    if (el === $('b-box') || (el.classList.contains('cblabel') && state.date !== null)) {
+      setTime(state.time === null ? '09:00' : null); // checking has to seed a value
       return;
     }
+    if (el.dataset.d !== undefined) { state.dText = ''; state.dOpen = false; setTime(el.dataset.d || null); return; }
   });
 
-  document.addEventListener('click', function (event) {
-    var cell = event.target.closest ? event.target.closest('#daygrid .d[data-day]') : null;
-    if (cell) setDate(cell.dataset.day);
-  });
+  $('a-input').addEventListener('input', function () { setTime(this.value || null); });
+  $('b-input').addEventListener('input', function () { if (this.value) setTime(this.value); });
+  $('c-select').addEventListener('change', function () { setTime(this.value || null); });
 
-  $('a-input').addEventListener('input', function () { if (this.value) setTime(this.value); });
-
-  $('c-input').addEventListener('input', function () { state.cText = this.value; render(); });
-  $('c-input').addEventListener('keydown', function (event) {
+  $('d-input').addEventListener('focus', function () { state.dOpen = true; render(); });
+  $('d-input').addEventListener('input', function () { state.dText = this.value; state.dOpen = true; render(); });
+  $('d-input').addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') { state.dOpen = false; render(); return; }
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    var hits = parseTimeInput(state.cText);
-    if (hits.length > 0) { state.cText = ''; setTime(hits[0]); }
+    var first = $('d-list').querySelector('button[data-d]:not([data-d=""])');
+    if (first) { state.dText = ''; state.dOpen = false; setTime(first.dataset.d); }
+  });
+  document.addEventListener('click', function (event) {
+    if (state.dOpen && !event.target.closest('#row-d')) { state.dOpen = false; render(); }
+  });
+
+  // Switching version must re-render: a hidden pane has no layout box, so any
+  // scroll-to-selection can only be done once its pane is actually visible.
+  Array.prototype.forEach.call(lab.querySelectorAll('input[name="ver"]'), function (radio) {
+    radio.addEventListener('change', render);
   });
 
   render();
