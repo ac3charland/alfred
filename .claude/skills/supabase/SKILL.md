@@ -352,6 +352,10 @@ postgres-meta's TypeScript template — the engine inside the CLI's typegen cont
 lockfile. No live database, no access token, no Docker. `-- --check` reports a stale committed file
 (exit 1) without writing. Regenerate on the branch that adds the migration; never hand-edit the file.
 
+**`check:slow` enforces it**, so forgetting is a red push rather than a frontend typed against a
+schema that no longer exists. The assertion runs only on a branch that touches
+`database/migrations/` — nothing else can make the committed types stale.
+
 Two consequences of describing a local cluster rather than a hosted project, both intended:
 
 - Supabase's managed schemas (`graphql_public`, `auth`, `storage`) are **absent** — app code only
