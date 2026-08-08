@@ -36,6 +36,8 @@ export const PATCH = withSession(
       'recurrence',
       'priority',
       'sort_order',
+      'intended_project_id',
+      'intended_epic_id',
     ]);
 
     // `dispatched` is an intent, not a column, so it can't ride the field list above. The server

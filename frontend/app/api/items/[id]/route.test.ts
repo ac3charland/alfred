@@ -401,6 +401,32 @@ describe('PATCH /api/items/[id]', () => {
     expect(Object.keys(payload)).not.toContain('folder_id');
   });
 
+  // The two pre-factory hints became PATCHable in ALF-170 (before that the project hint was
+  // insert-only): present maps into the payload, null clears, absent stays out.
+  describe('the pre-factory hints (intended_project_id / intended_epic_id)', () => {
+    const PROJECT_ID = 'a1b2c3d4-e5f6-4a0b-8c1d-2e3f4a5b6c7d';
+    const EPIC_ID = 'b2c3d4e5-f6a7-4b0c-8d1e-3f4a5b6c7d8e';
+
+    it('maps both hints into the payload when provided', async () => {
+      const payload = await patchWith({
+        intended_project_id: PROJECT_ID,
+        intended_epic_id: EPIC_ID,
+      });
+      expect(payload).toEqual({ intended_project_id: PROJECT_ID, intended_epic_id: EPIC_ID });
+    });
+
+    it('maps null through to clear either hint', async () => {
+      const payload = await patchWith({ intended_project_id: null, intended_epic_id: null });
+      expect(payload).toEqual({ intended_project_id: null, intended_epic_id: null });
+    });
+
+    it('leaves both hints out of the payload when absent', async () => {
+      const payload = await patchWith({ title: 'Only title' });
+      expect(Object.keys(payload)).not.toContain('intended_project_id');
+      expect(Object.keys(payload)).not.toContain('intended_epic_id');
+    });
+  });
+
   // `dispatched` is an INTENT, not a column: the route authors the instant, so no caller can
   // backdate residency. The three cases are the whole contract.
   describe('the `dispatched` intent maps onto dispatched_at', () => {

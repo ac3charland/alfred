@@ -153,6 +153,11 @@ export const updateItemSchema = z.object({
   // Manual subtask rank (ALF-117): a bare double is fine — it's a fractional position, not a
   // bounded value. The reorder gesture PATCHes it (often alongside a re-parent's parent_id).
   sort_order: z.number().optional(),
+  // The pre-factory hints (nullable so a PATCH can clear them). The DB owns their coherence:
+  // both are code-only CHECKs, and the epic must belong to the intended project (the 0027
+  // constraint trigger) — so an incoherent pair is a loud write error, not silent corruption.
+  intended_project_id: nullableUuid.optional(),
+  intended_epic_id: nullableUuid.optional(),
   /**
    * Inbox residency as an INTENT, not a timestamp: `true` sends the item out of the Inbox,
    * `false` returns it, omitted leaves it where it is. The route authors the instant — no caller
