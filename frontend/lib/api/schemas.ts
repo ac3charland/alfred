@@ -31,6 +31,19 @@ const dueDate = z.iso
   .nullable();
 // Discrete task priority (ALF-37). Nullable so a PATCH can clear it (`{ priority: null }`).
 const taskPriority = z.enum(['high', 'medium', 'low']).nullable();
+/**
+ * The description cap, shared by the zod schemas below and the `maxLength` the two authoring
+ * surfaces put on their textarea — so the UI can never produce a body the API rejects. The DB
+ * CHECK carries the same number: a description is destined to be re-sent on every classification
+ * request, so an essay pasted into one folder would tax every future item.
+ */
+export const ENTITY_DESCRIPTION_MAX = 500;
+
+/**
+ * A folder's or project's description — the owner's standing statement of what belongs there
+ * (ALF-179). Nullable so an emptied field clears the column instead of storing `''`.
+ */
+const entityDescription = z.string().max(ENTITY_DESCRIPTION_MAX).nullable();
 
 // ---------------------------------------------------------------------------
 // Recurrence (the RecurrenceRule shape — mirror of lib/recurrence/types)
@@ -189,18 +202,25 @@ export const createFolderSchema = z.object({
 export type CreateFolderInput = z.infer<typeof createFolderSchema>;
 
 /**
- * Body for PATCH /api/folders/[id] — every field optional (a rename, a reorder, or both).
- * `sort_order` is the manual sidebar rank (ALF-153): a bare double, since it's a fractional
- * position rather than a bounded value.
+ * Body for PATCH /api/folders/[id] — every field optional (a rename, a reorder, a description,
+ * or any combination). `sort_order` is the manual sidebar rank (ALF-153): a bare double, since
+ * it's a fractional position rather than a bounded value. `description` says what belongs in the
+ * folder (ALF-179); nullable so clearing it stores null rather than an empty string, and capped
+ * at the same 500 chars the DB CHECK enforces so an over-long body is a 400 here rather than a
+ * Postgres error mapped to a 500.
+ *
+ * The refine is a non-empty-body check rather than a list of field names (the `updateHabitSchema`
+ * idiom): naming the fields means every field added here needs a second edit, and forgetting it
+ * rejects the new field's PATCH with a 400 that reads like a store bug.
  */
 export const updateFolderSchema = z
   .object({
     name: z.string().min(1).optional(),
     sort_order: z.number().optional(),
+    description: entityDescription.optional(),
   })
-  .refine((data) => data.name !== undefined || data.sort_order !== undefined, {
-    message: 'Either "name" or "sort_order" is required',
-    path: ['name'],
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'No fields to update',
   });
 
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>;
@@ -368,6 +388,23 @@ export const createProjectSchema = z.object({
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+/**
+ * Body for PATCH /api/projects/[id] — the description, and nothing else (ALF-179). `name`,
+ * `key`, `github_url` and the repo fields stay as immutable as they are today: `key` is carried
+ * by every ref, branch name and PR frontmatter, so renaming a project is a real feature with its
+ * own consequences rather than a side effect of adding a text column. An object schema STRIPS
+ * unknown keys, so a body naming any of them changes nothing.
+ */
+export const updateProjectSchema = z
+  .object({
+    description: entityDescription.optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'No fields to update',
+  });
+
+export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
 /** Body for POST /api/epics — calls the `create_epic` RPC (allocates the shared ref). */
 export const createEpicSchema = z.object({

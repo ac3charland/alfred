@@ -13,6 +13,7 @@ import {
   updateEpicSchema,
   updateFolderSchema,
   updateItemSchema,
+  updateProjectSchema,
 } from './schemas';
 
 describe('createItemSchema', () => {
@@ -318,8 +319,59 @@ describe('createFolderSchema', () => {
 });
 
 describe('updateFolderSchema', () => {
-  it('requires name', () => {
+  it('rejects an empty body — a PATCH must change something', () => {
     expect(updateFolderSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('accepts a name-only body', () => {
+    expect(updateFolderSchema.safeParse({ name: 'Work' }).success).toBe(true);
+  });
+
+  it('accepts a description-only body', () => {
+    expect(updateFolderSchema.safeParse({ description: 'Anything about my health.' }).success).toBe(
+      true,
+    );
+  });
+
+  it('accepts a null description — clearing the column', () => {
+    expect(updateFolderSchema.safeParse({ description: null }).success).toBe(true);
+  });
+
+  it('accepts a description of exactly 500 characters', () => {
+    expect(updateFolderSchema.safeParse({ description: 'x'.repeat(500) }).success).toBe(true);
+  });
+
+  it('rejects a description over 500 characters (a 400, not a Postgres CHECK 500)', () => {
+    expect(updateFolderSchema.safeParse({ description: 'x'.repeat(501) }).success).toBe(false);
+  });
+});
+
+describe('updateProjectSchema', () => {
+  it('rejects an empty body — a PATCH must change something', () => {
+    expect(updateProjectSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('accepts a description', () => {
+    expect(updateProjectSchema.safeParse({ description: 'My task system.' }).success).toBe(true);
+  });
+
+  it('accepts a null description — clearing the column', () => {
+    expect(updateProjectSchema.safeParse({ description: null }).success).toBe(true);
+  });
+
+  it('rejects a description over 500 characters', () => {
+    expect(updateProjectSchema.safeParse({ description: 'x'.repeat(501) }).success).toBe(false);
+  });
+
+  it('strips a name / key / github_url a caller tries to smuggle in', () => {
+    const result = updateProjectSchema.safeParse({
+      description: 'Described',
+      name: 'Renamed',
+      key: 'XXX',
+      github_url: 'https://github.com/someone/else',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toStrictEqual({ description: 'Described' });
   });
 });
 
