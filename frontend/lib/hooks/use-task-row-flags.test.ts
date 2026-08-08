@@ -21,6 +21,7 @@ const BASE_NODE: ItemNode = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
   children: [],
 };
@@ -178,6 +179,34 @@ describe('useTaskRowFlags', () => {
     it("is false when the node is inside the dragged item's own subtree", () => {
       const { isValidDropTarget } = useTaskRowFlags(BASE_NODE, false, new Set(['item-1']));
       expect(isValidDropTarget).toBe(false);
+    });
+  });
+
+  describe('canChangeType (ALF-170)', () => {
+    it.each(['task', 'code', 'unclassified'] as const)(
+      'is true for a childless %s root',
+      (itemType) => {
+        const { canChangeType } = useTaskRowFlags(
+          { ...BASE_NODE, item_type: itemType },
+          false,
+          EMPTY,
+        );
+        expect(canChangeType).toBe(true);
+      },
+    );
+
+    it('is false for a root with children — the flip the database cannot catch', () => {
+      const { canChangeType } = useTaskRowFlags(
+        { ...BASE_NODE, children: [child({})] },
+        false,
+        EMPTY,
+      );
+      expect(canChangeType).toBe(false);
+    });
+
+    it('is false for a subtask', () => {
+      const { canChangeType } = useTaskRowFlags(child({}), false, EMPTY);
+      expect(canChangeType).toBe(false);
     });
   });
 });

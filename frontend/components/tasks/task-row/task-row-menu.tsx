@@ -17,6 +17,8 @@ import type { Folder } from '@/lib/types';
 
 /** Why "Convert to Code Story…" is disabled on a row with subtasks. */
 const STORY_DISABLED_HINT = 'A story is a single item — this one has subtasks.';
+/** Why Classify as… is disabled on a subtask or a row with subtasks (the shape gate). */
+const CLASSIFY_DISABLED_HINT = 'Only a top-level item with no subtasks can change type';
 /** Why "Convert to Code Epic…" (and an epic-shaped send) is disabled on the wrong shape. */
 const EPIC_DISABLED_HINT =
   'An epic needs at least one subtask, and its subtasks must not have subtasks of their own.';
@@ -24,8 +26,12 @@ const EPIC_DISABLED_HINT =
 const TEMP_ID_HINT = 'Still saving — try again in a moment.';
 
 interface TaskRowMenuProperties {
-  /** True when the row still has no classification (offers the Classify-as submenu). */
-  isUnclassified: boolean;
+  /**
+   * True when the row's type may change: a top-level row with no subtasks. Correcting a type is
+   * an ordinary act now, so Classify as… renders for every row — disabled with a hint when the
+   * shape forbids it (a parent's flip would strand its children's family; see useTaskRowFlags).
+   */
+  canChangeType: boolean;
   /** True for a code-classified inbox item (offers "Send to Code module…"). */
   isCode: boolean;
   /** True for a code child — it converts with its parent, so it offers no send entry. */
@@ -90,7 +96,7 @@ interface TaskRowMenuProperties {
  * encapsulated here so the row body composes the menu without restating them.
  */
 export function TaskRowMenu({
-  isUnclassified,
+  canChangeType,
   isCode,
   isCodeChild,
   isCodeParent,
@@ -165,32 +171,34 @@ export function TaskRowMenu({
           </>
         )}
 
-        {/* Classify as ▸ — inbox triage, offered only while the row is still unclassified.
-            Picking a type flips item_type (the optimistic classifyItem action). */}
-        {isUnclassified && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              Classify as…
-              <ChevronRight size={12} className="text-muted-foreground" />
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuItem
-                onSelect={() => {
-                  onClassify('task');
-                }}
-              >
-                Task
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  onClassify('code');
-                }}
-              >
-                Code
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
+        {/* Classify as ▸ — sets or corrects the row's type (the single coherent classifyItem
+            write). Task and Code only: unclassified is a starting state, not a destination.
+            Disabled with a hint when the row's shape forbids a type change. */}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger
+            disabled={!canChangeType}
+            title={canChangeType ? undefined : CLASSIFY_DISABLED_HINT}
+          >
+            Classify as…
+            <ChevronRight size={12} className="text-muted-foreground" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem
+              onSelect={() => {
+                onClassify('task');
+              }}
+            >
+              Task
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                onClassify('code');
+              }}
+            >
+              Code
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
 
         {/* Send to Code module — a childless code root opens the story gate (with "…"); a code
             PARENT runs the epic conversion instead: immediately (no "…") when an intended
