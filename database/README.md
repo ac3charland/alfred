@@ -127,6 +127,11 @@ npm run gen-types -w database              # rewrite frontend/lib/database.types
 npm run gen-types -w database -- --check   # exit 1 if the committed file is stale (writes nothing)
 ```
 
+**Forgetting is a red push, not a surprise later.** The integration suite (`check:slow`, so the
+pre-push hook and CI) asserts the committed types match the migrations — but **only on a branch that
+adds or edits one**, since no other change can make them stale. It reuses the schema that suite has
+already migrated, so the gate costs a string compare rather than another cluster.
+
 `src/gen-types.ts` applies every committed migration to the same throwaway cluster the integration
 suite uses, then describes the result with **postgres-meta's TypeScript template** — the generator
 the Supabase CLI runs inside its container, pinned to the matching version. So it needs no
