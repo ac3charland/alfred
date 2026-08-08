@@ -6,14 +6,7 @@ import pg, { type Client } from 'pg';
 
 import { type AssertionResult, attempt } from './assertions.ts';
 import type { Cluster } from './cluster.ts';
-import {
-  LEDGER_TABLE,
-  appliedMigrations,
-  applyMigration,
-  deployMigrations,
-  ledgerAcceptsManualApply,
-  recordManualApply,
-} from './deploy.ts';
+import { LEDGER_TABLE, appliedMigrations, applyMigration, deployMigrations } from './deploy.ts';
 import {
   MIGRATIONS_DIR,
   applyMigrations,
@@ -184,31 +177,6 @@ export async function runDeployAssertions(cluster: Cluster): Promise<AssertionRe
       }),
   );
 
-  const manualResult = await attempt(
-    'a hand-applied migration is never recorded as the whole history of an unadopted database',
-    async () =>
-      withDatabase(cluster, 'alfred_deploy_manual', async (client) => {
-        await applyMigrations(client, MIGRATIONS_DIR, (file) =>
-          throughBaseline(names).includes(path.basename(file)),
-        );
-        // `npm run migrate` against an unadopted database: a lone row would read as "this is all it
-        // has ever had" and send the next merge back to 0001, so the manual path declines to write.
-        if (await ledgerAcceptsManualApply(client)) {
-          throw new Error('an unadopted database must not accept a lone manual-apply row');
-        }
-
-        // Once adopted, the same hand-apply records normally and the next deploy stays a no-op.
-        await deployMigrations(client, { baseline: adoptionPoint(names) });
-        if (!(await ledgerAcceptsManualApply(client))) {
-          throw new Error('an adopted database must accept a manual-apply row');
-        }
-        await recordManualApply(client, adoptionPoint(names));
-        const plan = await deployMigrations(client);
-        expectSame('applied after a manual apply', plan.apply, []);
-        return 'declined before adoption, recorded after';
-      }),
-  );
-
   const rollbackResult = await attempt(
     'a migration and its ledger row land together, or not at all',
     async () =>
@@ -272,5 +240,5 @@ export async function runDeployAssertions(cluster: Cluster): Promise<AssertionRe
       }),
   );
 
-  return [freshResult, refuseResult, adoptResult, manualResult, rollbackResult, grantResult];
+  return [freshResult, refuseResult, adoptResult, rollbackResult, grantResult];
 }

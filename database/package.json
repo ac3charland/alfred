@@ -6,7 +6,6 @@
   "description": "Supabase migrations, SQL schema, generated types, and the real-Postgres integration suite for alfred.",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "migrate": "node src/apply.ts",
     "deploy": "node src/deploy.ts",
     "describe": "node src/describe.ts",
     "backup": "node src/backup.ts",
