@@ -176,6 +176,21 @@ describe('updateItemSchema', () => {
   it('rejects an unknown priority level', () => {
     expect(updateItemSchema.safeParse({ priority: 'urgent' }).success).toBe(false);
   });
+
+  it('accepts both pre-factory hints as UUIDs and null to clear them', () => {
+    // Both hints became PATCHable in ALF-170 — before that the project hint was insert-only.
+    const id = '00000000-0000-4000-8000-000000000042';
+    expect(updateItemSchema.safeParse({ intended_project_id: id }).success).toBe(true);
+    expect(updateItemSchema.safeParse({ intended_epic_id: id }).success).toBe(true);
+    expect(
+      updateItemSchema.safeParse({ intended_project_id: null, intended_epic_id: null }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a non-UUID value for either hint', () => {
+    expect(updateItemSchema.safeParse({ intended_project_id: 'ALF' }).success).toBe(false);
+    expect(updateItemSchema.safeParse({ intended_epic_id: 'ALF-104' }).success).toBe(false);
+  });
 });
 
 describe('recurrenceSchema', () => {

@@ -23,6 +23,7 @@ const ITEM: GateItem = {
   notes: null,
   source_url: null,
   intendedProjectId: null,
+  intendedEpicId: null,
 };
 
 const PROJECT: Project = {
@@ -176,6 +177,7 @@ describe('GateDialog', () => {
           notes: null,
           source_url: null,
           intendedProjectId: null,
+          intendedEpicId: null,
         },
         {
           id: 'i2',
@@ -183,6 +185,7 @@ describe('GateDialog', () => {
           notes: null,
           source_url: null,
           intendedProjectId: null,
+          intendedEpicId: null,
         },
       ],
     });
@@ -272,6 +275,75 @@ describe('GateDialog', () => {
         'aria-selected',
         'false',
       );
+    });
+  });
+
+  describe('Intended-epic pre-selection (ALF-170)', () => {
+    const EPIC_2: Epic = {
+      ...EPIC,
+      id: 'e2',
+      name: 'Second Epic',
+      ref_number: 9,
+      ref: 'ALF-9',
+    };
+
+    it('pre-selects a unanimous intended epic, still interactive (never locked)', async () => {
+      const user = userEvent.setup();
+      renderGate(
+        {
+          items: [
+            { ...ITEM, intendedProjectId: 'p1', intendedEpicId: 'e1' },
+            { ...ITEM, id: 'item-2', intendedProjectId: 'p1', intendedEpicId: 'e1' },
+          ],
+        },
+        { projects: [PROJECT], epics: [EPIC, EPIC_2] },
+      );
+
+      // The batch's unanimous epic starts selected…
+      expect(
+        await screen.findByRole('option', { name: /communication firewall/i }),
+      ).toHaveAttribute('aria-selected', 'true');
+      // …and stays a live option: the owner can still change their mind.
+      await user.click(screen.getByRole('option', { name: /second epic/i }));
+      expect(screen.getByRole('option', { name: /second epic/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('does not pre-select an epic when the batch disagrees', async () => {
+      renderGate(
+        {
+          items: [
+            { ...ITEM, intendedProjectId: 'p1', intendedEpicId: 'e1' },
+            { ...ITEM, id: 'item-2', intendedProjectId: 'p1', intendedEpicId: 'e2' },
+          ],
+        },
+        { projects: [PROJECT], epics: [EPIC, EPIC_2] },
+      );
+
+      expect(
+        await screen.findByRole('option', { name: /communication firewall/i }),
+      ).toHaveAttribute('aria-selected', 'false');
+      expect(screen.getByRole('option', { name: /second epic/i })).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+    });
+
+    it('clears the pre-selected epic when a different project is chosen', async () => {
+      const user = userEvent.setup();
+      renderGate(
+        { items: [{ ...ITEM, intendedProjectId: 'p1', intendedEpicId: 'e1' }] },
+        { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
+      );
+
+      await screen.findByRole('option', { name: /communication firewall/i });
+      await user.click(screen.getByRole('option', { name: /relay/i }));
+
+      // The epic selection is gone (a different project's epic list, nothing ticked) and
+      // Confirm re-disables until an epic is chosen again.
+      expect(screen.getByRole('button', { name: /send to code module/i })).toBeDisabled();
     });
   });
 

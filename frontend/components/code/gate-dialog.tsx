@@ -20,6 +20,8 @@ export interface GateItem {
   source_url: string | null;
   /** The project pre-assigned at capture via a prefix, if any — pre-selects (and, in bulk, locks) the gate. */
   intendedProjectId: string | null;
+  /** The pre-factory epic hint, if any — pre-selects the epic when the batch is unanimous, never locks it. */
+  intendedEpicId: string | null;
 }
 
 interface GateDialogProperties {
@@ -62,8 +64,16 @@ function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties
   // Lock only a BULK send whose whole selection shares one project — render it as a read-only
   // chip and let the user pick only the epic. A single item stays user-changeable.
   const projectLocked = items.length > 1 && unanimousProjectId !== null;
+  // The epic pre-selects by the same unanimity rule — but is NEVER locked: the epic list is
+  // right there in the dialog, and picking a different project already clears it, so a lock
+  // would only stop the owner changing their mind in the one place they came to change it.
+  const firstIntendedEpic = items[0]?.intendedEpicId ?? null;
+  const unanimousEpicId =
+    items.length > 0 && items.every((it) => it.intendedEpicId === firstIntendedEpic)
+      ? firstIntendedEpic
+      : null;
   const [projectId, setProjectId] = React.useState<string | null>(unanimousProjectId);
-  const [epicId, setEpicId] = React.useState<string | null>(null);
+  const [epicId, setEpicId] = React.useState<string | null>(unanimousEpicId);
   const [newProjectOpen, setNewProjectOpen] = React.useState(false);
   const [newEpicOpen, setNewEpicOpen] = React.useState(false);
 

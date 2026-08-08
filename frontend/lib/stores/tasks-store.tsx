@@ -10,6 +10,7 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { dispatchReadiness } from '@/lib/tasks/dispatch';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import { DEFAULT_TASK_SORT, type TaskSortMode, sortNodesBy } from '@/lib/tasks/task-sort';
 import type { ItemNode } from '@/lib/tree';
@@ -73,6 +74,33 @@ type TaskFieldPatch = Pick<
   'title' | 'due_date' | 'notes' | 'recurrence' | 'priority'
 >;
 
+/**
+ * The one coherent PATCH a type change is: `item_type` travels with the clears the new type
+ * forbids — chosen from the row's CURRENT type, since that decides which fields it may be
+ * carrying. A task's due date is task-only and its recurrence is anchored to it, so both go
+ * when it becomes code; a code row's two pre-factory hints are code-only, so both go when it
+ * becomes a task. An unclassified row can carry neither set (the DB CHECKs), so its flip is a
+ * bare `item_type` patch. `priority` is deliberately never cleared: no constraint forbids it,
+ * and a mis-classification corrected straight back keeps the level the owner set.
+ */
+function classifyPatch(current: ItemType, next: 'task' | 'code'): api.UpdateItemInput {
+  if (current === 'task' && next === 'code') {
+    return { item_type: next, due_date: null, recurrence: null };
+  }
+  if (current === 'code' && next === 'task') {
+    return { item_type: next, intended_project_id: null, intended_epic_id: null };
+  }
+  return { item_type: next };
+}
+
+/** The item fields a code dispatch hands the factory gate (the code store's own input shape). */
+interface CodeDispatchItem {
+  id: string;
+  title: string;
+  notes: string | null;
+  source_url: string | null;
+}
+
 interface TaskActions {
   /** Optimistically add a task (root or subtask), then reconcile with the saved row. */
   addTask: (input: AddTaskInput) => Promise<void>;
@@ -83,24 +111,52 @@ interface TaskActions {
   /** Optimistically patch a task's editable fields, rolling back on failure. */
   updateTask: (id: string, patch: TaskFieldPatch) => Promise<void>;
   /**
-   * Classify an inbox item by flipping its `item_type` (the inbox-triage gate).
-   * Its own action — not part of `TaskFieldPatch` — so only this deliberate control may
-   * change the type. An `unclassified` row is always free of task-only fields (the
-   * DB CHECK), so the flip is a bare `item_type` patch that clears nothing; reconciles /
-   * rolls back exactly like `updateTask`.
+   * Classify an inbox item — the single coherent write of a type change: `item_type` plus
+   * the clears the new type forbids (see {@link classifyPatch}). Its own action — not part
+   * of `TaskFieldPatch` — so only the deliberate Classify controls may change the type;
+   * reconciles / rolls back exactly like `updateTask`.
    */
   classifyItem: (id: string, itemType: 'task' | 'code') => Promise<void>;
   /** Move a task (and its subtree) to a folder, or to the Inbox when null. */
   moveTask: (id: string, folderId: string | null) => Promise<void>;
   /**
-   * Bulk inbox-triage: classify a set of items by flipping each one's `item_type`. One
-   * optimistic patch over the whole set, then the existing per-item route fanned out with
+   * Label a row with the folder it WOULD land in, without moving it: cascades `folder_id`
+   * across the subtree (a subtree shares one folder bucket) and never touches residency — so
+   * it reads as "label this" on an undispatched row and "move this between folders" on a
+   * dispatched one, from one rule. Filing (which also stamps residency) stays `moveTask`'s.
+   */
+  setFolder: (id: string, folderId: string | null) => Promise<void>;
+  /**
+   * Set or clear a code row's pre-factory project hint. A change clears the epic hint in the
+   * SAME patch — an epic belongs to a project, and the DB's coherence trigger would reject the
+   * stale pair anyway (the same rule the gate applies when a project pick clears the epic).
+   */
+  setIntendedProject: (id: string, projectId: string | null) => Promise<void>;
+  /** Set or clear a code row's pre-factory epic hint (within its already-set project). */
+  setIntendedEpic: (id: string, epicId: string | null) => Promise<void>;
+  /**
+   * Bulk inbox-triage: classify a set of items, each through its own coherent
+   * {@link classifyPatch} (each row's clear-set depends on its own current type). One
+   * optimistic patch pass over the set, then the existing per-item route fanned out with
    * `Promise.allSettled` so a failure on one item doesn't abort the rest — saved items stay
    * applied, failed items roll back individually, and a toast reports the count that failed.
    * Resolves with the ids that FAILED (empty = full success), so the caller can keep just
    * those selected for a retry.
    */
   bulkClassify: (ids: string[], itemType: 'task' | 'code') => Promise<string[]>;
+  /**
+   * Dispatch: send each READY selected item to its own destination in one press — a task (and
+   * its whole subtree) to its folder via the residency PATCH, a code item into the factory via
+   * `sendToCode` (the code store's `convertTaskToCode`, passed in because the RPC's optimistic
+   * board card lives in that store). Unready items — judged by `dispatchReadiness` — are
+   * filtered out BEFORE anything runs: never sent, never "failures". Gated rows are dropped
+   * from this store on success. Resolves with the ids that should STAY SELECTED (unready ∪
+   * failed), so the bar keeps exactly the unfinished work in front of the owner.
+   */
+  dispatchItems: (
+    ids: string[],
+    sendToCode: (item: CodeDispatchItem, projectId: string, epicId: string) => Promise<unknown>,
+  ) => Promise<string[]>;
   /**
    * Bulk move: file a set of tasks (each cascading its subtree) into a folder, or back to the
    * Inbox when null. Each selected root is moved atomically (its whole subtree succeeds or
@@ -425,11 +481,12 @@ export function TasksProvider({
       },
       async classifyItem(id, itemType) {
         const previous = tasksRef.current.find((item) => item.id === id);
+        const patch = classifyPatch(previous?.item_type ?? 'unclassified', itemType);
         await runOptimisticMutation({
           optimistic: () => {
-            dispatch({ type: 'patch', ids: [id], patch: { item_type: itemType } });
+            dispatch({ type: 'patch', ids: [id], patch });
           },
-          apiCall: () => api.updateItem(id, { item_type: itemType }),
+          apiCall: () => api.updateItem(id, patch),
           reconcile: (saved) => {
             dispatch({ type: 'upsert', items: [saved] });
           },
@@ -495,29 +552,98 @@ export function TasksProvider({
           },
         });
       },
+      async setFolder(id, folderId) {
+        const affected = collectSubtree(tasksRef.current, id);
+        if (affected.length === 0) return;
+        const ids = affected.map((item) => item.id);
+        // folder_id alone — residency is deliberately untouched, which is what makes this
+        // "label it" on an Inbox row instead of "file it" (that write is moveTask's).
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids, patch: { folder_id: folderId } });
+          },
+          apiCall: () =>
+            Promise.all(ids.map((itemId) => api.updateItem(itemId, { folder_id: folderId }))),
+          reconcile: (rows) => {
+            dispatch({ type: 'upsert', items: rows });
+          },
+          rollback: () => {
+            dispatch({ type: 'upsert', items: affected });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save changes");
+          },
+        });
+      },
+      async setIntendedProject(id, projectId) {
+        const previous = tasksRef.current.find((item) => item.id === id);
+        // One PATCH: the epic hint clears whenever the project changes, so the row can never
+        // hold an epic from the wrong project (the DB trigger enforces the same rule).
+        const patch = { intended_project_id: projectId, intended_epic_id: null };
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids: [id], patch });
+          },
+          apiCall: () => api.updateItem(id, patch),
+          reconcile: (saved) => {
+            dispatch({ type: 'upsert', items: [saved] });
+          },
+          rollback: () => {
+            if (previous) dispatch({ type: 'upsert', items: [previous] });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save changes");
+          },
+        });
+      },
+      async setIntendedEpic(id, epicId) {
+        const previous = tasksRef.current.find((item) => item.id === id);
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', ids: [id], patch: { intended_epic_id: epicId } });
+          },
+          apiCall: () => api.updateItem(id, { intended_epic_id: epicId }),
+          reconcile: (saved) => {
+            dispatch({ type: 'upsert', items: [saved] });
+          },
+          rollback: () => {
+            if (previous) dispatch({ type: 'upsert', items: [previous] });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save changes");
+          },
+        });
+      },
       async bulkClassify(ids, itemType) {
         const current = tasksRef.current;
         const byId = new Map(current.map((row) => [row.id, row] as const));
-        // An unclassified item is always a leaf (subtasks nest only under tasks), so each
-        // selected id is its own unit — no subtree to gather.
+        // A type change is gated to childless roots, so each selected id is its own unit — no
+        // subtree to gather. Each row's coherent clear-set depends on its own current type, so
+        // the patch is per-row rather than one shared object.
         const units: BulkUnit[] = ids.flatMap((id) => {
           const previous = byId.get(id);
           if (previous === undefined) return [];
+          const patch = classifyPatch(previous.item_type, itemType);
           return [
             {
               id,
               snapshot: [previous],
-              request: () => api.updateItem(id, { item_type: itemType }).then((row) => [row]),
+              request: () => api.updateItem(id, patch).then((row) => [row]),
             },
           ];
         });
         if (units.length === 0) return [];
-        // One optimistic patch over the whole set, then settle + per-unit reconcile/rollback.
-        dispatch({
-          type: 'patch',
-          ids: units.map((unit) => unit.id),
-          patch: { item_type: itemType },
-        });
+        // One optimistic pass over the set (per-row patches), then settle + per-unit
+        // reconcile/rollback.
+        for (const unit of units) {
+          const previous = byId.get(unit.id);
+          if (previous === undefined) continue;
+          dispatch({
+            type: 'patch',
+            ids: [unit.id],
+            patch: classifyPatch(previous.item_type, itemType),
+          });
+        }
         return applyBulkSettled(
           dispatch,
           showToastRef.current,
@@ -564,6 +690,83 @@ export function TasksProvider({
           units,
           (failed, total) => `${String(failed)} of ${String(total)} couldn't be filed`,
         );
+      },
+      async dispatchItems(ids, sendToCode) {
+        const current = tasksRef.current;
+        const unreadyIds: string[] = [];
+        const units: BulkUnit[] = [];
+        const codeIds: string[] = [];
+        const taskSubtreeIds: string[] = [];
+        for (const id of ids) {
+          const item = current.find((row) => row.id === id);
+          if (item === undefined) continue;
+          const hasChildren = current.some((row) => row.parent_id === id);
+          if (!dispatchReadiness(item, hasChildren).ready) {
+            // Filtered out BEFORE the mutation runs: not sent, not a failure — it stays
+            // selected with the readiness line still naming what it's missing.
+            unreadyIds.push(id);
+            continue;
+          }
+          if (item.item_type === 'task') {
+            // A decomposed task dispatches with its whole subtree, exactly as bulk Move to
+            // folder cascades — every row gets the residency stamp in its own coherent PATCH.
+            const subtree = collectSubtree(current, id);
+            taskSubtreeIds.push(...subtree.map((row) => row.id));
+            units.push({
+              id,
+              snapshot: subtree,
+              request: () =>
+                Promise.all(subtree.map((row) => api.updateItem(row.id, { dispatched: true }))),
+            });
+          } else {
+            // A ready code item has both hints — the gate has nothing left to ask, so the
+            // existing RPC runs straight off the row. Its optimistic board card (and its
+            // rollback) live in the code store; success is reconciled here by dropping the
+            // row, which has left task_items server-side.
+            const { intended_project_id: projectId, intended_epic_id: epicId } = item;
+            if (projectId === null || epicId === null) continue;
+            codeIds.push(id);
+            units.push({
+              id,
+              // Nothing in THIS store changes optimistically for a code dispatch, so there is
+              // nothing to restore on failure.
+              snapshot: [],
+              request: async () => {
+                await sendToCode(
+                  {
+                    id: item.id,
+                    title: item.title,
+                    notes: item.notes,
+                    source_url: item.source_url,
+                  },
+                  projectId,
+                  epicId,
+                );
+                return [];
+              },
+            });
+          }
+        }
+        if (units.length === 0) return unreadyIds;
+        // Optimistic residency stamp on every task subtree; the server rows reconcile it.
+        if (taskSubtreeIds.length > 0) {
+          dispatch({
+            type: 'patch',
+            ids: taskSubtreeIds,
+            patch: { dispatched_at: new Date().toISOString() },
+          });
+        }
+        const failedIds = await applyBulkSettled(
+          dispatch,
+          showToastRef.current,
+          units,
+          (failed, total) => `${String(failed)} of ${String(total)} couldn't be dispatched`,
+        );
+        // A gated code item has left task_items — drop the settled ones from this store.
+        const failed = new Set(failedIds);
+        const gatedIds = codeIds.filter((id) => !failed.has(id));
+        if (gatedIds.length > 0) dispatch({ type: 'remove', ids: gatedIds });
+        return [...unreadyIds, ...failedIds];
       },
       async reparentTask(id, newParentId) {
         const current = tasksRef.current;

@@ -12,6 +12,11 @@ export interface RecurrenceChipProperties extends Omit<
 > {
   /** The rule to summarize (e.g. `"Every 2 weeks on Mon, Wed"`). */
   rule: RecurrenceRule;
+  /**
+   * Render a non-interactive `<span>` instead of the clickable badge — for the select-mode row,
+   * where the whole row is one button and a nested control would be invalid HTML.
+   */
+  inert?: boolean;
 }
 
 /**
@@ -23,11 +28,25 @@ export interface RecurrenceChipProperties extends Omit<
  */
 export function RecurrenceChip({
   rule,
+  inert = false,
   className,
   'aria-label': ariaLabel,
   ...properties
 }: RecurrenceChipProperties) {
   const summary = summarizeRule(rule);
+  if (inert) {
+    return (
+      <Badge
+        variant="accent"
+        className={cn('inline-flex items-center gap-1 font-medium', className)}
+        aria-label={ariaLabel ?? `Repeats: ${summary}`}
+        {...properties}
+      >
+        <Repeat size={10} strokeWidth={2.5} className="shrink-0" />
+        {summary}
+      </Badge>
+    );
+  }
   return (
     <Badge
       asButton

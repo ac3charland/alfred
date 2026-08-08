@@ -243,6 +243,7 @@ export function makeOptimisticItem(
     folder_id: input.folder_id ?? null,
     parent_id: input.parent_id ?? null,
     intended_project_id: input.intended_project_id ?? null,
+    intended_epic_id: null,
     status: 'active',
     completed_at: null,
     created_at: new Date().toISOString(),

@@ -119,6 +119,7 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
         : overrides.dispatched_at,
     parent_id: overrides.parent_id ?? null,
     intended_project_id: overrides.intended_project_id ?? null,
+    intended_epic_id: overrides.intended_epic_id ?? null,
     occurrence_index: overrides.occurrence_index ?? null,
     priority: overrides.priority ?? null,
     recurrence: overrides.recurrence ?? null,

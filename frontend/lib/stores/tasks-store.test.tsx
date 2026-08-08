@@ -56,6 +56,7 @@ const BASE: Item = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
 };
 
@@ -1074,6 +1075,392 @@ describe('bulkClassify', () => {
 
     expect(mockUpdateItem).not.toHaveBeenCalled();
     expect(failed).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The coherent type change (ALF-170): item_type travels with the clears the new
+// type forbids, chosen from the row's CURRENT type.
+// ---------------------------------------------------------------------------
+
+describe('classifyItem sends one coherent write', () => {
+  it('task → code clears the due date and recurrence in the same PATCH', async () => {
+    const rule = { freq: 'daily', interval: 1, end: { type: 'never' } };
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'code' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({ id: 'item-1', item_type: 'task', due_date: '2026-08-14', recurrence: rule }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'code');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      item_type: 'code',
+      due_date: null,
+      recurrence: null,
+    });
+  });
+
+  it('code → task clears both pre-factory hints in the same PATCH', async () => {
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'task' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({
+          id: 'item-1',
+          item_type: 'code',
+          intended_project_id: 'p1',
+          intended_epic_id: 'e1',
+        }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'task');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      item_type: 'task',
+      intended_project_id: null,
+      intended_epic_id: null,
+    });
+  });
+
+  it('leaves priority alone in both directions', async () => {
+    // No constraint forbids a priority on a code row, and a mis-classification corrected
+    // straight back keeps the level the owner set.
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'code', priority: 'high' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'task', priority: 'high' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.classifyItem('item-1', 'code');
+    });
+
+    const sent = mockUpdateItem.mock.calls[0]?.[1];
+    expect(sent).not.toHaveProperty('priority');
+    expect(result.current.tasks[0]?.priority).toBe('high');
+  });
+
+  it('applies the clears optimistically before the request resolves', () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'task', due_date: '2026-08-14' })]),
+    });
+
+    act(() => {
+      void result.current.actions.classifyItem('item-1', 'code');
+    });
+
+    expect(result.current.tasks[0]?.item_type).toBe('code');
+    expect(result.current.tasks[0]?.due_date).toBeNull();
+  });
+});
+
+describe('bulkClassify sends each row its own clear-set', () => {
+  it('a mixed selection gets per-row patches, not one shared object', async () => {
+    // The task carries a due date to clear; the unclassified row has nothing to clear, so its
+    // flip stays a bare item_type patch.
+    mockUpdateItem.mockImplementation((id) => Promise.resolve(item({ id, item_type: 'code' })));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({ id: 'was-task', item_type: 'task', due_date: '2026-08-14' }),
+        item({ id: 'was-unclassified', item_type: 'unclassified' }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.bulkClassify(['was-task', 'was-unclassified'], 'code');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('was-task', {
+      item_type: 'code',
+      due_date: null,
+      recurrence: null,
+    });
+    expect(mockUpdateItem).toHaveBeenCalledWith('was-unclassified', { item_type: 'code' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setFolder — the label write (ALF-170): folder_id cascades over the subtree,
+// residency is never touched, so an Inbox row stays in the Inbox.
+// ---------------------------------------------------------------------------
+
+describe('setFolder', () => {
+  const parent = item({ id: 'parent', item_type: 'task' });
+  const child = item({ id: 'child', item_type: 'task', parent_id: 'parent' });
+
+  it('cascades folder_id over the subtree and writes no residency field', async () => {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(item({ id, item_type: 'task', folder_id: 'f1', dispatched_at: null })),
+    );
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    await act(async () => {
+      await result.current.actions.setFolder('parent', 'f1');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('parent', { folder_id: 'f1' });
+    expect(mockUpdateItem).toHaveBeenCalledWith('child', { folder_id: 'f1' });
+    for (const call of mockUpdateItem.mock.calls) {
+      expect(call[1]).not.toHaveProperty('dispatched');
+      expect(call[1]).not.toHaveProperty('dispatched_at');
+    }
+  });
+
+  it('labels the row optimistically while leaving it in the Inbox', () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    act(() => {
+      void result.current.actions.setFolder('parent', 'f1');
+    });
+
+    expect(result.current.tasks.every((t) => t.folder_id === 'f1')).toBe(true);
+    expect(result.current.tasks.every((t) => t.dispatched_at === null)).toBe(true);
+  });
+
+  it('restores the subtree on failure', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, child]) });
+
+    await act(async () => {
+      await result.current.actions.setFolder('parent', 'f1').catch(() => {});
+    });
+
+    expect(result.current.tasks.every((t) => t.folder_id === null)).toBe(true);
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't save changes");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The pre-factory hint writes (ALF-170).
+// ---------------------------------------------------------------------------
+
+describe('setIntendedProject', () => {
+  it('clears the epic hint in the same PATCH when the project changes', async () => {
+    mockUpdateItem.mockResolvedValue(
+      item({ id: 'item-1', item_type: 'code', intended_project_id: 'p2' }),
+    );
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({
+          id: 'item-1',
+          item_type: 'code',
+          intended_project_id: 'p1',
+          intended_epic_id: 'e1',
+        }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.setIntendedProject('item-1', 'p2');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      intended_project_id: 'p2',
+      intended_epic_id: null,
+    });
+  });
+
+  it('clears both hints when the project is cleared', async () => {
+    mockUpdateItem.mockResolvedValue(item({ id: 'item-1', item_type: 'code' }));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'code', intended_project_id: 'p1' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.setIntendedProject('item-1', null);
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+      intended_project_id: null,
+      intended_epic_id: null,
+    });
+  });
+
+  it('rolls the row back on failure', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([
+        item({
+          id: 'item-1',
+          item_type: 'code',
+          intended_project_id: 'p1',
+          intended_epic_id: 'e1',
+        }),
+      ]),
+    });
+
+    await act(async () => {
+      await result.current.actions.setIntendedProject('item-1', 'p2').catch(() => {});
+    });
+
+    expect(result.current.tasks[0]?.intended_project_id).toBe('p1');
+    expect(result.current.tasks[0]?.intended_epic_id).toBe('e1');
+  });
+});
+
+describe('setIntendedEpic', () => {
+  it('patches the epic hint alone and reconciles', async () => {
+    mockUpdateItem.mockResolvedValue(
+      item({ id: 'item-1', item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
+    );
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([item({ id: 'item-1', item_type: 'code', intended_project_id: 'p1' })]),
+    });
+
+    await act(async () => {
+      await result.current.actions.setIntendedEpic('item-1', 'e1');
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { intended_epic_id: 'e1' });
+    expect(result.current.tasks[0]?.intended_epic_id).toBe('e1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchItems (ALF-170): one press, three outcomes — a ready task PATCHes its
+// whole subtree, a ready code item runs the gate RPC and leaves the store, an
+// unready item is never sent and comes back to stay selected.
+// ---------------------------------------------------------------------------
+
+describe('dispatchItems', () => {
+  const readyTask = item({
+    id: 'ready-task',
+    item_type: 'task',
+    folder_id: 'f1',
+    dispatched_at: null,
+  });
+  const taskChild = item({
+    id: 'task-child',
+    item_type: 'task',
+    parent_id: 'ready-task',
+    folder_id: 'f1',
+    dispatched_at: null,
+  });
+  const readyCode = item({
+    id: 'ready-code',
+    title: 'Snooze an item',
+    item_type: 'code',
+    intended_project_id: 'p1',
+    intended_epic_id: 'e1',
+  });
+  const unready = item({ id: 'unready', item_type: 'task', folder_id: null });
+
+  it('PATCHes a ready task and its whole subtree with the dispatched intent', async () => {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(item({ id, item_type: 'task', folder_id: 'f1' })),
+    );
+    const sendToCode = jest.fn();
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([readyTask, taskChild]),
+    });
+
+    let stay: string[] = ['sentinel'];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['ready-task'], sendToCode);
+    });
+
+    expect(mockUpdateItem).toHaveBeenCalledWith('ready-task', { dispatched: true });
+    expect(mockUpdateItem).toHaveBeenCalledWith('task-child', { dispatched: true });
+    expect(sendToCode).not.toHaveBeenCalled();
+    expect(stay).toEqual([]);
+  });
+
+  it('stamps the task subtree optimistically before the requests resolve', () => {
+    mockUpdateItem.mockReturnValue(new Promise<Item>(() => {}));
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([readyTask, taskChild]),
+    });
+
+    act(() => {
+      void result.current.actions.dispatchItems(['ready-task'], jest.fn());
+    });
+
+    expect(result.current.tasks.every((t) => t.dispatched_at !== null)).toBe(true);
+  });
+
+  it('sends a ready code item through the gate RPC and drops it from the store', async () => {
+    const sendToCode = jest.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([readyCode]) });
+
+    let stay: string[] = ['sentinel'];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['ready-code'], sendToCode);
+    });
+
+    expect(sendToCode).toHaveBeenCalledWith(
+      { id: 'ready-code', title: 'Snooze an item', notes: null, source_url: null },
+      'p1',
+      'e1',
+    );
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+    expect(result.current.tasks).toHaveLength(0);
+    expect(stay).toEqual([]);
+  });
+
+  it('never sends an unready item, returns it to stay selected, and does not count it as a failure', async () => {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(item({ id, item_type: 'task', folder_id: 'f1' })),
+    );
+    const sendToCode = jest.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([readyTask, taskChild, readyCode, unready]),
+    });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(
+        ['ready-task', 'ready-code', 'unready'],
+        sendToCode,
+      );
+    });
+
+    expect(stay).toEqual(['unready']);
+    expect(mockUpdateItem).not.toHaveBeenCalledWith('unready', expect.anything());
+    // The unready row is untouched — still in the Inbox, still undispatched.
+    expect(result.current.tasks.find((t) => t.id === 'unready')?.dispatched_at).toBeNull();
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('settles a save failure like every other bulk action: rollback, toast, id returned', async () => {
+    // The task's subtree PATCH fails; the code item succeeds.
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const sendToCode = jest.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([readyTask, taskChild, readyCode]),
+    });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['ready-task', 'ready-code'], sendToCode);
+    });
+
+    expect(stay).toEqual(['ready-task']);
+    // The failed subtree rolls back to undispatched; the gated code row is gone.
+    expect(result.current.tasks.find((t) => t.id === 'ready-task')?.dispatched_at).toBeNull();
+    expect(result.current.tasks.find((t) => t.id === 'task-child')?.dispatched_at).toBeNull();
+    expect(result.current.tasks.find((t) => t.id === 'ready-code')).toBeUndefined();
+    expect(mockShowToast).toHaveBeenCalledWith("1 of 2 couldn't be dispatched");
+  });
+
+  it('keeps a failed code item in the store and returns it', async () => {
+    const sendToCode = jest.fn().mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([readyCode]) });
+
+    let stay: string[] = [];
+    await act(async () => {
+      stay = await result.current.actions.dispatchItems(['ready-code'], sendToCode);
+    });
+
+    expect(stay).toEqual(['ready-code']);
+    expect(result.current.tasks.find((t) => t.id === 'ready-code')).toBeDefined();
+    expect(mockShowToast).toHaveBeenCalledWith("1 of 1 couldn't be dispatched");
   });
 });
 

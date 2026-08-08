@@ -45,6 +45,14 @@ export interface TaskRowFlags {
    * families don't mix by drag.
    */
   isValidDropTarget: boolean;
+  /**
+   * The type may be changed (the ⋯ menu's Classify as… / the bulk bar's): a top-level row with
+   * no subtasks. The dangerous flip is a PARENT's — `enforce_subtask_shape` returns early on a
+   * parentless row and never re-validates the untouched children, so a code root would silently
+   * acquire task children; the database cannot catch that one, so the UI must. A subtask's flip
+   * is caught by the DB, but the UI shouldn't offer it either.
+   */
+  canChangeType: boolean;
 }
 
 /**
@@ -80,6 +88,7 @@ export function useTaskRowFlags(
     !isTempId(node.id) &&
     !draggedSubtreeIds.has(node.id) &&
     draggedItemType !== 'code';
+  const canChangeType = node.parent_id === null && node.children.length === 0;
 
   return {
     isTask,
@@ -92,5 +101,6 @@ export function useTaskRowFlags(
     canConvertToStory,
     canConvertToEpic,
     isValidDropTarget,
+    canChangeType,
   };
 }

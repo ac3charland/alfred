@@ -25,6 +25,11 @@ export interface DueDateChipProperties {
    * neighbours). Defaults to `compact`.
    */
   size?: 'compact' | 'comfortable';
+  /**
+   * Render a non-interactive `<span>` (no button, no picker) — for the select-mode row, where
+   * the whole row is one button and a nested control would be invalid HTML.
+   */
+  inert?: boolean;
   /** Optional accessible-name override for the trigger. */
   'aria-label'?: string;
   /** Extra classes on the trigger. */
@@ -71,6 +76,7 @@ export function DueDateChip({
   onSelect,
   onClear,
   size = 'compact',
+  inert = false,
   className,
   'aria-label': ariaLabel,
 }: DueDateChipProperties) {
@@ -81,6 +87,18 @@ export function DueDateChip({
   // label ("Due date") so the value rides its visible text. Both contain "due date" for queries.
   const resolvedLabel =
     ariaLabel ?? (size === 'compact' && dueDate ? `Due date: ${dueDate}` : 'Due date');
+
+  if (inert) {
+    return (
+      <Badge
+        variant={dueDate ? dueBand(dueDate) : 'muted'}
+        className={cn('font-medium', className)}
+        aria-label={resolvedLabel}
+      >
+        {label}
+      </Badge>
+    );
+  }
 
   const trigger =
     size === 'comfortable' ? (

@@ -50,6 +50,7 @@ const BASE_ITEM: Item = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
 };
 
@@ -2227,12 +2228,14 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.queryByText('Code')).not.toBeInTheDocument();
     });
 
-    // ALF-67: the "Task" pill is gone from every row (a parent task no longer shows one, on
-    // top of ALF-65 already hiding it for subtasks / folder items). "Code" stays everywhere.
-    it('shows no "Task" badge on a root task row', () => {
+    // ALF-170 reverses part of ALF-67 in the one place it matters: the Inbox now holds
+    // unclassified, task and code rows side by side, and only two of the three can be
+    // dispatched — so an undispatched Inbox ROOT task wears the badge again. Subtasks
+    // (ALF-65), folder views and Completed keep showing none.
+    it('shows the "Task" badge on an undispatched Inbox root task', () => {
       renderTasks([BASE_ITEM]);
 
-      expect(screen.queryByText('Task')).not.toBeInTheDocument();
+      expect(screen.getByText('Task')).toBeInTheDocument();
     });
 
     it('shows a "Code" badge on a code row', () => {
@@ -2283,7 +2286,7 @@ describe('TaskRow — classification & type-gating', () => {
   });
 
   describe('the Classify as… submenu', () => {
-    it('offers Classify as… only while the row is unclassified', async () => {
+    it('offers Classify as… on an unclassified row', async () => {
       const user = userEvent.setup();
       renderTasks([UNCLASSIFIED_ITEM]);
 
@@ -2293,24 +2296,50 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
     });
 
-    it('hides Classify as… once the row is a task', async () => {
+    // ALF-170: correcting a type is an ordinary act now, so the submenu stays for classified
+    // childless roots too — the same shape gate the database can't enforce on a parent.
+    it('keeps Classify as… enabled on a classified childless root (task and code)', async () => {
       const user = userEvent.setup();
       renderTasks([BASE_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
 
-      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+      const trigger = screen.getByRole('menuitem', { name: 'Classify as…' });
+      expect(trigger).toBeInTheDocument();
+      expect(trigger).not.toHaveAttribute('data-disabled');
     });
 
-    it('hides Classify as… once the row is code', async () => {
+    it('disables Classify as… (with the shape hint) on a row with subtasks', async () => {
       const user = userEvent.setup();
-      renderTasks([CODE_ITEM]);
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
 
-      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+      const trigger = screen.getByRole('menuitem', { name: 'Classify as…' });
+      expect(trigger).toHaveAttribute('data-disabled');
+      expect(trigger).toHaveAttribute(
+        'title',
+        'Only a top-level item with no subtasks can change type',
+      );
+    });
+
+    it('disables Classify as… on a subtask row', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+      const subtaskRow = screen.getByText('Write unit tests').closest('li');
+      expect(subtaskRow).not.toBeNull();
+      await user.click(
+        within(subtaskRow as HTMLElement).getByRole('button', { name: /more actions/i }),
+      );
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toHaveAttribute(
+        'data-disabled',
+      );
     });
 
     it('classifies as Task (item_type → task) and reveals the task affordances', async () => {
@@ -3523,6 +3552,245 @@ describe('TaskRow — detail panel vs add-subtask entry (ALF-128)', () => {
     expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ALF-170 — the label chips (folder / project / epic), editable on BOTH surfaces
+// ---------------------------------------------------------------------------
+
+describe('TaskRow — label chips & per-type detail fields (ALF-170)', () => {
+  const PROJECT: Project = {
+    id: 'p1',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 0,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+  const PROJECT_2: Project = { ...PROJECT, id: 'p2', name: 'Realplay', key: 'RPL' };
+  const EPIC: Epic = {
+    id: 'e1',
+    project_id: 'p1',
+    name: 'Inbox triage',
+    notes: null,
+    ref_number: 104,
+    ref: 'ALF-104',
+    archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+  const EPIC_2: Epic = {
+    ...EPIC,
+    id: 'e2',
+    name: 'LLM processing',
+    ref_number: 158,
+    ref: 'ALF-158',
+  };
+  const CODE_WITH_HINTS: Item = {
+    ...BASE_ITEM,
+    id: 'code-1',
+    title: 'Snooze an item',
+    item_type: 'code',
+    intended_project_id: 'p1',
+    intended_epic_id: 'e1',
+  };
+  const seeds = { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2], folders: [FOLDER] };
+
+  describe('the detail panel shows the per-type field set', () => {
+    it('a task: Due · Repeat · Priority · Folder — no Project, no Epic, no Type', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      const panel = await openDetails(user);
+
+      expect(within(panel).getByRole('button', { name: 'Due date' })).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Repeat' })).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Priority' })).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Folder' })).toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Project' })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Epic' })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: /type/i })).not.toBeInTheDocument();
+    });
+
+    it('a code item: Project · Epic — no task fields, no Type', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_WITH_HINTS], seeds);
+      const panel = await openDetails(user);
+
+      expect(within(panel).getByRole('button', { name: 'Project' })).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Epic' })).toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Due date' })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Repeat' })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Priority' })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Folder' })).not.toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: /type/i })).not.toBeInTheDocument();
+    });
+
+    it('an unclassified row: no chip row at all — just Notes, as today', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], seeds);
+      const panel = await openDetails(user);
+
+      expect(within(panel).getByRole('textbox', { name: 'Notes' })).toBeInTheDocument();
+      // The only buttons in the panel are the Notes Save button — no field chips.
+      const buttons = within(panel).getAllByRole('button');
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]).toHaveAccessibleName('Save notes');
+    });
+  });
+
+  describe('setting a folder from the panel labels without moving (S4)', () => {
+    it('persists through setFolder and keeps the row in the Inbox, chip now on the row', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...BASE_ITEM,
+        folder_id: 'folder-1',
+        dispatched_at: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      const panel = await openDetails(user);
+
+      await user.click(within(panel).getByRole('button', { name: 'Folder' }));
+      await user.click(await screen.findByRole('button', { name: 'Work' }));
+
+      // folder_id alone — no residency field, so the row stays in the Inbox view…
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: 'folder-1' });
+      });
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+      // …and the row now wears the folder chip.
+      expect(
+        within(rowFor('Write tests')).getByRole('button', { name: 'Folder: Work' }),
+      ).toBeInTheDocument();
+    });
+
+    it("offers 'No folder' while undispatched and omits it on a dispatched row", async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1', dispatched_at: DISPATCHED_AT }], {
+        ...seeds,
+        scope: { type: 'folder', folderId: 'folder-1' },
+      });
+      const panel = await openDetails(user);
+
+      await user.click(within(panel).getByRole('button', { name: 'Folder' }));
+      await screen.findByRole('button', { name: 'Work' });
+      expect(screen.queryByRole('button', { name: 'No folder' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the code hints from the panel (S5)', () => {
+    it('changing the project clears the epic in the same PATCH', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...CODE_WITH_HINTS,
+        intended_project_id: 'p2',
+        intended_epic_id: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([CODE_WITH_HINTS], seeds);
+      const panel = await openDetails(user);
+
+      await user.click(within(panel).getByRole('button', { name: 'Project' }));
+      await user.click(await screen.findByRole('button', { name: /Realplay/ }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('code-1', {
+          intended_project_id: 'p2',
+          intended_epic_id: null,
+        });
+      });
+    });
+
+    it('picking an epic persists intended_epic_id alone', async () => {
+      mockUpdateItem.mockResolvedValue({ ...CODE_WITH_HINTS, intended_epic_id: 'e2' });
+      const user = userEvent.setup();
+      renderTasks([CODE_WITH_HINTS], seeds);
+      const panel = await openDetails(user);
+
+      await user.click(within(panel).getByRole('button', { name: 'Epic' }));
+      await user.click(await screen.findByRole('button', { name: /LLM processing/ }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('code-1', { intended_epic_id: 'e2' });
+      });
+    });
+  });
+
+  describe('the row chips are editable where they render (S7)', () => {
+    it('the folder chip renders only on an undispatched row carrying a folder', () => {
+      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1', dispatched_at: null }], seeds);
+      expect(
+        within(rowFor('Write tests')).getByRole('button', { name: 'Folder: Work' }),
+      ).toBeInTheDocument();
+    });
+
+    it('no folder chip on a dispatched row (a folder view would restate the view)', () => {
+      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1', dispatched_at: DISPATCHED_AT }], {
+        ...seeds,
+        scope: { type: 'folder', folderId: 'folder-1' },
+      });
+      expect(screen.queryByRole('button', { name: /folder: work/i })).not.toBeInTheDocument();
+    });
+
+    it('nothing renders for an unset field — no folder, project or epic chip', () => {
+      renderTasks([BASE_ITEM], seeds);
+      const row = rowFor('Write tests');
+      expect(within(row).queryByRole('button', { name: /folder:/i })).not.toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: /project:/i })).not.toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: /epic:/i })).not.toBeInTheDocument();
+    });
+
+    it('the row folder chip opens its picker and persists through the same store action', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, folder_id: 'folder-1' });
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, folder_id: 'folder-1', dispatched_at: null }], seeds);
+
+      await user.click(screen.getByRole('button', { name: 'Folder: Work' }));
+      await user.click(await screen.findByRole('button', { name: 'No folder' }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: null });
+      });
+    });
+
+    it('the row project chip is clickable and clears the epic when the project changes', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...CODE_WITH_HINTS,
+        intended_project_id: 'p2',
+        intended_epic_id: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([CODE_WITH_HINTS], seeds);
+
+      await user.click(screen.getByRole('button', { name: 'Project: ALF' }));
+      await user.click(await screen.findByRole('button', { name: /Realplay/ }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('code-1', {
+          intended_project_id: 'p2',
+          intended_epic_id: null,
+        });
+      });
+    });
+
+    it('the row epic chip shows the ref beside the project chip and persists a pick', async () => {
+      mockUpdateItem.mockResolvedValue({ ...CODE_WITH_HINTS, intended_epic_id: 'e2' });
+      const user = userEvent.setup();
+      renderTasks([CODE_WITH_HINTS], seeds);
+      const row = rowFor('Snooze an item');
+
+      expect(within(row).getByRole('button', { name: 'Project: ALF' })).toBeInTheDocument();
+      await user.click(within(row).getByRole('button', { name: 'Epic: ALF-104' }));
+      await user.click(await screen.findByRole('button', { name: /LLM processing/ }));
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('code-1', { intended_epic_id: 'e2' });
+      });
     });
   });
 });

@@ -50,9 +50,22 @@ const PROJECT_TEXT_CLASS: Record<ProjectColor, string> = {
   teal: 'text-accent-teal',
 };
 
+const PROJECT_CHIP_CLASS: Record<ProjectColor, string> = {
+  blue: 'border-accent-blue/30 bg-accent-blue/10 text-accent-blue',
+  amber: 'border-accent-amber/30 bg-accent-amber/10 text-accent-amber',
+  green: 'border-accent-green/30 bg-accent-green/10 text-accent-green',
+  red: 'border-accent-red/30 bg-accent-red/10 text-accent-red',
+  teal: 'border-accent-teal/30 bg-accent-teal/10 text-accent-teal',
+};
+
 /** Tinted-pill classes (background + text) for a project badge in the given colour. */
 export function projectBadgeClasses(color: ProjectColor): string {
   return PROJECT_BADGE_CLASS[color];
+}
+
+/** Bordered-chip classes (border + faint fill + text) for a detail chip in the given colour. */
+export function projectChipClasses(color: ProjectColor): string {
+  return PROJECT_CHIP_CLASS[color];
 }
 
 /** Text-colour class for a project glyph (the ProjectNav branch icon) in the given colour. */

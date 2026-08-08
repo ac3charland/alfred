@@ -35,6 +35,11 @@ export interface PriorityChipProperties {
   emptyLabel?: string;
   /** Alignment for the picker menu (Radix `align`). Defaults to `start`. */
   menuAlign?: 'start' | 'center' | 'end';
+  /**
+   * Render a non-interactive `<span>` (no button, no menu) — for the select-mode row, where
+   * the whole row is one button and a nested control would be invalid HTML.
+   */
+  inert?: boolean;
   /** Optional accessible-name override for the trigger. */
   'aria-label'?: string;
   /** Extra classes on the trigger. */
@@ -69,6 +74,7 @@ export function PriorityChip({
   symbolOnly = false,
   emptyLabel,
   menuAlign = 'start',
+  inert = false,
   className,
   'aria-label': ariaLabel,
 }: PriorityChipProperties) {
@@ -89,6 +95,25 @@ export function PriorityChip({
       : option
         ? `Priority: ${option.label}`
         : (emptyLabel ?? 'Priority'));
+
+  if (inert) {
+    return (
+      <Badge
+        variant={option?.badgeVariant ?? 'muted'}
+        className={cn('inline-flex items-center gap-1 font-medium', className)}
+        aria-label={resolvedLabel}
+      >
+        {option && (
+          <option.icon
+            size={10}
+            strokeWidth={2.5}
+            className={cn('shrink-0', symbolOnly && 'h-4 w-4')}
+          />
+        )}
+        {!symbolOnly && label}
+      </Badge>
+    );
+  }
 
   const trigger =
     size === 'comfortable' ? (

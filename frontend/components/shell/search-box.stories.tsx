@@ -36,6 +36,7 @@ const task = (overrides: Partial<Item>): Item => ({
   recurrence: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
   ...overrides,
 });

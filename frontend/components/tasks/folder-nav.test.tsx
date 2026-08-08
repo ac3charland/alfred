@@ -70,6 +70,7 @@ const taskItem = (overrides: Partial<Item>): Item => ({
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
   ...overrides,
 });

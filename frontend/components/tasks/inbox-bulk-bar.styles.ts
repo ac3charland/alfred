@@ -22,6 +22,21 @@ export const bulkBarWrapperClass = cn(
  */
 export const bulkBarClass = cn(
   'pointer-events-auto flex flex-wrap items-center gap-2',
-  'w-full max-w-2xl rounded-xl border border-accent-teal px-3 py-2.5',
+  'w-full rounded-xl border border-accent-teal px-3 py-2.5',
+  'bg-surface/95 backdrop-blur-sm shadow-[0_18px_40px_-12px_rgba(0,0,0,0.7)]',
+);
+
+/**
+ * The column stacking the action pill over its readiness line, owning the shared width cap the
+ * pill alone used to carry so the two lines stay edge-aligned.
+ */
+export const bulkBarStackClass = cn('flex w-full max-w-2xl flex-col gap-1.5');
+
+/**
+ * The readiness line beneath the actions (ALF-170): what the selection is missing, next to the
+ * button it is about. Muted — it informs the press, it doesn't compete with it.
+ */
+export const readinessLineClass = cn(
+  'pointer-events-auto rounded-lg border border-border/60 px-3 py-1.5 text-xs text-muted-foreground',
   'bg-surface/95 backdrop-blur-sm shadow-[0_18px_40px_-12px_rgba(0,0,0,0.7)]',
 );

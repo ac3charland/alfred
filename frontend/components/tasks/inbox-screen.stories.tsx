@@ -2,7 +2,7 @@ import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { ItemNode } from '@/lib/tree';
-import type { Project } from '@/lib/types';
+import type { Epic, Project } from '@/lib/types';
 
 import { InboxScreen } from './inbox-screen';
 
@@ -19,9 +19,29 @@ const PROJECTS: Project[] = [
   },
 ];
 
-/** The Inbox capture box parses project prefixes, so it needs the code store's project list. */
+const EPICS: Epic[] = [
+  {
+    id: 'e-104',
+    project_id: 'p-alf',
+    name: 'Inbox triage',
+    notes: null,
+    ref_number: 104,
+    ref: 'ALF-104',
+    archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    created_at: '2025-01-01T00:00:00Z',
+  },
+];
+
+/**
+ * The Inbox capture box parses project prefixes, and the row's project/epic chips read the
+ * code store, so it needs the project + epic lists.
+ */
 const withCodeProvider: Decorator = (Story) => (
-  <CodeProvider initialProjects={PROJECTS} initialEpics={[]} initialStories={[]}>
+  <CodeProvider initialProjects={PROJECTS} initialEpics={EPICS} initialStories={[]}>
     <Story />
   </CodeProvider>
 );
@@ -59,6 +79,7 @@ const BASE_NODE: ItemNode = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
   children: [],
 };
@@ -162,5 +183,56 @@ export const MobileInbox: Story = {
   decorators: [withFrame('w-[390px]')],
   parameters: {
     visualTest: { target: '[data-testid="inbox-frame"]', viewport: { width: 390, height: 844 } },
+  },
+};
+
+/**
+ * The Inbox mid-triage (ALF-170): four rows side by side — a task labelled with a folder and a
+ * due date (Task badge + folder chip), a code item carrying both pre-factory hints (project +
+ * epic chips), a bare task (badge only), and an unclassified capture (nothing). Every label the
+ * dispatch decision rests on is on the rows.
+ */
+export const MidTriage: Story = {
+  args: { open: true },
+  decorators: [withFrame('w-[640px]')],
+  parameters: {
+    store: {
+      folders: [
+        { id: 'f-health', name: 'Health', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+      ],
+      tasks: [
+        {
+          ...BASE_NODE,
+          id: 'triage-1',
+          title: 'Call the dentist friday to reschedule the cleaning',
+          folder_id: 'f-health',
+          due_date: '2026-08-07',
+          created_at: '2025-01-01T10:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          id: 'triage-2',
+          title: 'Alfred should let me snooze an item until next week',
+          item_type: 'code',
+          intended_project_id: 'p-alf',
+          intended_epic_id: 'e-104',
+          created_at: '2025-01-01T09:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          id: 'triage-3',
+          title: 'Book the van for the move',
+          created_at: '2025-01-01T08:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          id: 'triage-4',
+          title: 'That thing Mark mentioned about the roof',
+          item_type: 'unclassified',
+          created_at: '2025-01-01T07:00:00Z',
+        },
+      ],
+    },
+    visualTest: { target: '[data-testid="inbox-frame"]' },
   },
 };

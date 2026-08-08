@@ -675,6 +675,158 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const intendedEpicResult = await attempt(
+    'items.intended_epic_id: code-only CHECK, project-coherence trigger, delete cascades (ALF-170)',
+    async () => {
+      // The CHECK (intended_epic_id is null or item_type = 'code') must reject a non-code item —
+      // a task and an unclassified row alike.
+      for (const itemType of ['task', 'unclassified'] as const) {
+        let rejected = false;
+        try {
+          await asRole(client, 'authenticated', () =>
+            client.query(
+              `insert into items (title, item_type, intended_epic_id) values ('bad', $1, $2)`,
+              [itemType, EPIC],
+            ),
+          );
+        } catch {
+          rejected = true;
+        }
+        if (!rejected) throw new Error(`a ${itemType} item was allowed to carry an intended epic`);
+      }
+
+      // The coherence trigger: an epic hint with NO project hint is rejected on insert…
+      let rejected = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(
+            `insert into items (title, item_type, intended_epic_id) values ('bad', 'code', $1)`,
+            [EPIC],
+          ),
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('an epic hint with no project hint was allowed');
+
+      // …an epic from ANOTHER project is rejected on insert…
+      rejected = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(
+            `insert into items (title, item_type, intended_project_id, intended_epic_id)
+               values ('bad', 'code', $1, $2)`,
+            [PROJECT, EPIC_2],
+          ),
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('an epic from another project was allowed on insert');
+
+      // …and a matching pair is permitted, with the view (recreated in 0027) surfacing it.
+      const inserted = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id, intended_epic_id)
+             values ('epic hint', 'code', $1, $2) returning id`,
+          [PROJECT, EPIC],
+        ),
+      );
+      const id = inserted.rows[0]?.id;
+      if (!id) throw new Error('a coherent project+epic pair was rejected');
+      const surfaced = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_epic_id: string | null }>(
+          `select intended_epic_id from task_items where id = $1`,
+          [id],
+        ),
+      );
+      if (surfaced.rows[0]?.intended_epic_id !== EPIC)
+        throw new Error(
+          `task_items did not surface intended_epic_id (got ${String(surfaced.rows[0]?.intended_epic_id)})`,
+        );
+
+      // The trigger also fires on UPDATE — moving the project out from under the epic raises.
+      rejected = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`update items set intended_project_id = $1 where id = $2`, [PROJECT_2, id]),
+        );
+      } catch {
+        rejected = true;
+      }
+      if (!rejected) throw new Error('an update breaking project/epic coherence was allowed');
+
+      // on delete set null: deleting the epic clears the epic hint, keeps the project hint and
+      // the row. A throwaway epic so the shared seed EPIC's stories are untouched.
+      const temporaryEpic = '77777777-7777-7777-7777-777777777777';
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Temp Epic', 999, 'ALF-999')`,
+        [temporaryEpic, PROJECT],
+      );
+      const tempItem = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id, intended_epic_id)
+             values ('temp epic hint', 'code', $1, $2) returning id`,
+          [PROJECT, temporaryEpic],
+        ),
+      );
+      const tempItemId = tempItem.rows[0]?.id;
+      if (!tempItemId) throw new Error('temp code item insert returned no id');
+      await client.query(`delete from epics where id = $1`, [temporaryEpic]);
+      const afterEpicDelete = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_project_id: string | null; intended_epic_id: string | null }>(
+          `select intended_project_id, intended_epic_id from items where id = $1`,
+          [tempItemId],
+        ),
+      );
+      const epicDeleteRow = afterEpicDelete.rows[0];
+      if (epicDeleteRow?.intended_epic_id !== null)
+        throw new Error('intended_epic_id was not nulled when the epic was deleted');
+      if (epicDeleteRow.intended_project_id !== PROJECT)
+        throw new Error('deleting the epic should leave the project hint intact');
+
+      // Deleting the PROJECT nulls both hints: the epics cascade away (nulling the epic hint via
+      // this FK) and the project FK nulls its own. A throwaway project + epic + item.
+      const temporaryProject = '88888888-8888-8888-8888-888888888888';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'TPE', 'Temp For Epic', 'ac3charland', 'temp-epic')`,
+        [temporaryProject],
+      );
+      const temporaryProjectEpic = '99999999-9999-9999-9999-999999999999';
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Temp Project Epic', 1, 'TPE-1')`,
+        [temporaryProjectEpic, temporaryProject],
+      );
+      const pairItem = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, intended_project_id, intended_epic_id)
+             values ('both hints', 'code', $1, $2) returning id`,
+          [temporaryProject, temporaryProjectEpic],
+        ),
+      );
+      const pairItemId = pairItem.rows[0]?.id;
+      if (!pairItemId) throw new Error('paired code item insert returned no id');
+      await client.query(`delete from projects where id = $1`, [temporaryProject]);
+      const afterProjectDelete = await asRole(client, 'authenticated', () =>
+        client.query<{ intended_project_id: string | null; intended_epic_id: string | null }>(
+          `select intended_project_id, intended_epic_id from items where id = $1`,
+          [pairItemId],
+        ),
+      );
+      const projectDeleteRow = afterProjectDelete.rows[0];
+      if (
+        projectDeleteRow?.intended_project_id !== null ||
+        projectDeleteRow.intended_epic_id !== null
+      )
+        throw new Error('deleting the project did not null both hints');
+
+      return 'CHECK + trigger enforced on insert and update, view surfaces the column, deletes null the hints';
+    },
+  );
+
   const subtaskShapeResult = await attempt(
     'enforce_subtask_shape: 1-deep code children, no family mixing (ALF-129)',
     async () => {
@@ -1451,6 +1603,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     outstandingProjectMoveResult,
     taskItemsColumnsResult,
     intendedProjectResult,
+    intendedEpicResult,
     subtaskShapeResult,
     convertToEpicResult,
     convertTaskParentResult,

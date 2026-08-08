@@ -39,6 +39,7 @@ const BASE_NODE: ItemNode = {
   priority: null,
   recurrence_series_id: null,
   intended_project_id: null,
+  intended_epic_id: null,
   sort_order: 0,
   children: [],
 };
@@ -201,11 +202,17 @@ export const SubtaskWithPriority: Story = {
   },
 };
 
-// A task filed in a folder: no "Task" pill either (ALF-67). Rendered with its folder_id set;
-// contrast with TaskClassified (Inbox).
+// A task filed in a folder: no "Task" pill (ALF-67 — the badge is Inbox-only) and no folder
+// chip (the folder view would restate itself). Filed means dispatched, so the fixture carries
+// the residency stamp; contrast with TaskClassified (Inbox).
 export const TaskInFolder: Story = {
   args: {
-    node: { ...BASE_NODE, title: 'Draft the project brief', folder_id: 'f1' },
+    node: {
+      ...BASE_NODE,
+      title: 'Draft the project brief',
+      folder_id: 'f1',
+      dispatched_at: '2025-01-02T00:00:00Z',
+    },
   },
   parameters: {
     store: {

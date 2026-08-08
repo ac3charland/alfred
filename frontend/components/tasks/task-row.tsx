@@ -7,25 +7,20 @@ import * as React from 'react';
 import { AnimatedHeightCollapse } from '@/components/atoms/animated-height-collapse';
 import { AnimatedHeightEnter } from '@/components/atoms/animated-height-enter';
 import { AnimatedHeightReveal } from '@/components/atoms/animated-height-reveal';
-import { Badge } from '@/components/atoms/badge';
 import { Button } from '@/components/atoms/button';
 import { CheckboxButton } from '@/components/atoms/checkbox-button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
-import { RecurrenceChip } from '@/components/atoms/recurrence-chip';
 import { EpicGateDialog } from '@/components/code/epic-gate-dialog';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
-import { DueDateChip } from '@/components/tasks/due-date-chip';
-import { PriorityChip } from '@/components/tasks/priority-chip';
-import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
 import { SubtaskGap } from '@/components/tasks/subtask-gap';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
+import { RowMetaCluster } from '@/components/tasks/task-row/row-meta-cluster';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
-import { TypeBadge } from '@/components/tasks/type-badge';
 import type { ConvertedEpic } from '@/lib/api-client';
 import { projectBoardHref, storyBoardHref } from '@/lib/code/board-links';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
@@ -35,7 +30,7 @@ import { useIndentation } from '@/lib/hooks/use-indentation';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import { useSubtaskReorder } from '@/lib/hooks/use-subtask-reorder';
 import { useTaskRowFlags } from '@/lib/hooks/use-task-row-flags';
-import { isPriorityLevel } from '@/lib/priority';
+import type { TaskPriority } from '@/lib/priority';
 import { parseRecurrenceRule } from '@/lib/recurrence';
 import type { RecurrenceRule } from '@/lib/recurrence';
 import {
@@ -49,15 +44,9 @@ import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
-import { residentFolderId } from '@/lib/tasks/residency';
+import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
-import {
-  countOverdueDescendants,
-  getAncestorTitles,
-  getDescendantIds,
-  hasActiveDescendant,
-  isTempId,
-} from '@/lib/tree';
+import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -75,7 +64,6 @@ import {
   deleteCollapseClass,
   deleteFadeClass,
   dropPlusClass,
-  metaFooterClass,
   mobileTapClass,
   notesPreviewClass,
   rowActionsClass,
@@ -83,7 +71,6 @@ import {
   rowContentColClass,
   rowDropTargetClass,
   rowHoverClass,
-  subtaskCountBadgeClass,
   subtreeClass,
   titleInputClass,
   titleTextClass,
@@ -142,6 +129,9 @@ export function TaskRow({
     uncompleteTask,
     updateTask,
     moveTask,
+    setFolder,
+    setIntendedProject,
+    setIntendedEpic,
     deleteTask,
     classifyItem,
     removeGatedItem,
@@ -194,7 +184,6 @@ export function TaskRow({
   // send-to-code, the drop highlight) all derive from the node — see useTaskRowFlags.
   const {
     isTask,
-    isUnclassified,
     isCode,
     canConvert,
     canAddSubtask,
@@ -203,6 +192,7 @@ export function TaskRow({
     canConvertToStory,
     canConvertToEpic,
     isValidDropTarget,
+    canChangeType,
   } = useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
@@ -213,11 +203,19 @@ export function TaskRow({
   );
   const isTopLevelTask = isTask && node.parent_id === null;
 
-  // Only "Code" earns a row badge now. The "Task" pill is gone from the parent row (ALF-67) on
-  // top of already being hidden for subtasks / folder items (ALF-65), so a task never shows one;
-  // "Code" keeps its badge everywhere (the rare, meaningful distinction). An unclassified row
-  // has no badge either way.
-  const showTypeBadge = node.item_type === 'code';
+  // "Code" earns a row badge everywhere (the rare, meaningful distinction). "Task" shows one
+  // ONLY on an undispatched top-level row outside the Completed view — i.e. an Inbox root, the
+  // one surface that now holds unclassified, task and code rows side by side, where a bare task
+  // row and an unclassified row would otherwise be pixel-identical while behaving differently
+  // under Dispatch. Everywhere else (folder views, Completed, subtasks) a task keeps showing no
+  // badge — the ALF-67 / ALF-65 judgement, intact everywhere it was made about. An unclassified
+  // row has no badge.
+  const showTypeBadge =
+    node.item_type === 'code' ||
+    (node.item_type === 'task' &&
+      node.parent_id === null &&
+      !isCompletedView &&
+      !isDispatched(node));
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -330,27 +328,9 @@ export function TaskRow({
 
   const hasChildren = node.children.length > 0;
   const descendantCount = getDescendantIds(node).length;
-  // The row's subtask-count badge reads `${completed}/${total}` over the DIRECT subtasks (ALF-67).
-  const totalSubtasks = node.children.length;
-  const completedSubtasks = node.children.filter((child) => child.status === 'completed').length;
-  // The overdue tally spans the WHOLE subtree (ALF-59), unlike the `completed/total` count beside
-  // it: a late subtask buried three levels down still has to surface on the row you can see.
-  const overdueSubtasks = countOverdueDescendants(node);
   // The checkbox reads as "complete" both for a completed row and during the exit
   // animation, so its fill + check icon appear the instant completion begins.
   const showAsComplete = isCompleted || isCompleting;
-
-  // Whether this row has any right-cluster metadata (type / due / repeat / priority / count).
-  // On mobile these move into a wrapped footer line below the title; the wrapper is only
-  // rendered when there's something to show, so a bare row doesn't reserve an empty footer line.
-  const hasMeta =
-    showTypeBadge ||
-    (isTask && node.due_date !== null) ||
-    (isTopLevelTask && recurrenceRule !== null) ||
-    (isTask && isPriorityLevel(node.priority)) ||
-    // No `overdueSubtasks` term needed: an overdue descendant implies at least one child, so
-    // `totalSubtasks > 0` already covers every row that can carry the overdue tally.
-    totalSubtasks > 0;
 
   // The card boundary is drawn exactly once, at a top-level (depth-0) node, enclosing the row
   // body AND its subtree — so subtasks sit inside the parent's card, never as cards of their own.
@@ -502,6 +482,59 @@ export function TaskRow({
     }
   };
 
+  // The three label writes (folder / project / epic), shared by the row chips and the detail
+  // panel — one picker, one store action, whichever surface it's edited from. Each no-ops on
+  // an unchanged pick, like the due-date handler above.
+  const handleSetFolder = async (folderId: string | null) => {
+    if (folderId === node.folder_id) return;
+    try {
+      await setFolder(node.id, folderId);
+    } catch {
+      // The store already rolled the subtree back.
+    }
+  };
+
+  const handleSetProject = async (projectId: string | null) => {
+    if (projectId === node.intended_project_id) return;
+    try {
+      await setIntendedProject(node.id, projectId);
+    } catch {
+      // The store already rolled the row back.
+    }
+  };
+
+  const handleSetEpic = async (epicId: string | null) => {
+    if (epicId === node.intended_epic_id) return;
+    try {
+      await setIntendedEpic(node.id, epicId);
+    } catch {
+      // The store already rolled the row back.
+    }
+  };
+
+  // The one editing-handler bundle the metadata cluster takes — present on the ordinary row,
+  // omitted in select mode (where the chips render inert).
+  const metaEditing = {
+    onSelectDueDate: (iso: string) => {
+      void handleSelectDueDate(iso);
+    },
+    onClearDueDate: () => {
+      void handleClearDueDate();
+    },
+    onChangePriority: (next: TaskPriority | null) => {
+      void handleSavePriority(next);
+    },
+    onSetFolder: (folderId: string | null) => {
+      void handleSetFolder(folderId);
+    },
+    onSetProject: (projectId: string | null) => {
+      void handleSetProject(projectId);
+    },
+    onSetEpic: (epicId: string | null) => {
+      void handleSetEpic(epicId);
+    },
+  };
+
   // Open the inline add-subtask field: mark this row's subtask editor active (closing any other
   // row's open input) and expand the subtree, since the form renders inside it. Shared by the
   // desktop "+" button and the mobile ⋯-menu "Add subtask" item (ALF-118). Unlike the "+" button
@@ -582,6 +615,9 @@ export function TaskRow({
   // checkbox and clicking anywhere flips membership. Inline edit, expand, the drag handle and
   // the "More actions" menu are all suppressed so the row has exactly one meaning, and the
   // subtree is hidden (only root Inbox rows are selectable). A selected row gets the teal ring.
+  // The metadata cluster stays — it is the state you dispatch from, so the labels the decision
+  // rests on must be visible — but INERT (no `editing`): a chip inside this one <button> can't
+  // be a button of its own, and a click here means "toggle selection", nothing else.
   if (inSelectMode) {
     return (
       <li className="group/row list-none">
@@ -610,7 +646,14 @@ export function TaskRow({
             {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm text-foreground">{node.title}</span>
-          {showTypeBadge && <TypeBadge itemType={node.item_type} />}
+          <RowMetaCluster
+            node={node}
+            isTask={isTask}
+            isTopLevelTask={isTopLevelTask}
+            recurrenceRule={recurrenceRule}
+            showTypeBadge={showTypeBadge}
+            isCompletedView={isCompletedView}
+          />
         </Button>
       </li>
     );
@@ -848,86 +891,21 @@ export function TaskRow({
                   </div>
                 )}
 
-                {/* Metadata cluster (Type → Due → Repeat → Priority → Subtask count):
-                display-only here — editing happens on the detail panel's chips. On mobile this
-                sits on its own line *below* the title inside the shared content column (so a long
-                title isn't squeezed by the badges); at md+ `display:contents` dissolves the
-                wrapper and the badges sit inline to the title's right, exactly as today. Only
-                rendered when there's metadata to show, so a bare row has no empty footer line. */}
-                {hasMeta && (
-                  <div className={metaFooterClass}>
-                    {/* Type badge — only "Code" earns a row badge now (the "Task" pill was removed
-                    in ALF-67 / ALF-65); an unclassified row shows none. */}
-                    {showTypeBadge && <TypeBadge itemType={node.item_type} />}
-
-                    {/* Assigned-project chip — a code inbox item that carries an intended project
-                    (assigned at capture via a `<project>:` prefix) shows the project's key beside
-                    the badge. Read-only; the project is chosen/changed through the gate. */}
-                    {node.intended_project_id !== null && (
-                      <ProjectKeyChip projectId={node.intended_project_id} />
-                    )}
-
-                    {/* Due date — `task`-only. Clickable: opens the calendar to change or clear
-                    the date (same chip + auto-save as the detail panel; ALF-94). */}
-                    {isTask && node.due_date && (
-                      <DueDateChip
-                        dueDate={node.due_date}
-                        onSelect={(iso) => {
-                          void handleSelectDueDate(iso);
-                        }}
-                        onClear={() => {
-                          void handleClearDueDate();
-                        }}
-                      />
-                    )}
-
-                    {/* Repeat — top-level recurring tasks only. */}
-                    {isTopLevelTask && recurrenceRule !== null && (
-                      <RecurrenceChip rule={recurrenceRule} />
-                    )}
-
-                    {/* Priority — any task (top-level or subtask) with a level set; symbol-only on
-                    the row. Clickable: opens the picker to change or clear the level (same chip +
-                    auto-save as the detail panel; ALF-94). Subtasks carry their own priority (set
-                    on the detail panel, ranked in the Folder view), so their level shows here too
-                    (ALF-63). */}
-                    {isTask && isPriorityLevel(node.priority) && (
-                      <PriorityChip
-                        priority={node.priority}
-                        symbolOnly
-                        onChange={(next) => {
-                          void handleSavePriority(next);
-                        }}
-                      />
-                    )}
-
-                    {/* Subtask count — completed / total of the direct subtasks (e.g. 2/5). */}
-                    {totalSubtasks > 0 && (
-                      <Badge
-                        variant="plain"
-                        aria-label={`${String(completedSubtasks)} of ${String(totalSubtasks)} subtasks complete`}
-                        className={subtaskCountBadgeClass}
-                      >
-                        {completedSubtasks}/{totalSubtasks}
-                      </Badge>
-                    )}
-
-                    {/* Overdue subtasks — how much of the subtree is already late (ALF-59). A
-                    bare red count, like the folder overdue tally: the number carries the signal
-                    and the `aria-label` names its meaning. Sits last so it reads as a rider on
-                    the subtask count, and stays put when the row expands (the subtask rows'
-                    own red due chips repeat it, but the parent keeps the running total). */}
-                    {overdueSubtasks > 0 && (
-                      <Badge
-                        variant="overdue"
-                        className="font-medium"
-                        aria-label={`${String(overdueSubtasks)} overdue ${overdueSubtasks === 1 ? 'subtask' : 'subtasks'}`}
-                      >
-                        {overdueSubtasks}
-                      </Badge>
-                    )}
-                  </div>
-                )}
+                {/* Metadata cluster (Type → Folder → Project → Epic → Due → Repeat → Priority →
+                Subtask count) — the shared RowMetaCluster, interactive here: every label chip is
+                clickable in place, opening the same picker its detail-panel twin does. On mobile
+                it sits on its own line *below* the title inside the shared content column (so a
+                long title isn't squeezed by the badges); at md+ `display:contents` dissolves the
+                wrapper and the badges sit inline to the title's right, exactly as today. */}
+                <RowMetaCluster
+                  node={node}
+                  isTask={isTask}
+                  isTopLevelTask={isTopLevelTask}
+                  recurrenceRule={recurrenceRule}
+                  showTypeBadge={showTypeBadge}
+                  isCompletedView={isCompletedView}
+                  editing={metaEditing}
+                />
               </div>
 
               {/* Row actions — always visible on mobile, hover-revealed on md+ (ALF-88). */}
@@ -966,7 +944,7 @@ export function TaskRow({
 
                 {/* More actions dropdown — all visibility conditionals live inside it. */}
                 <TaskRowMenu
-                  isUnclassified={isUnclassified}
+                  canChangeType={canChangeType}
                   isCode={isCode}
                   isCodeChild={isCodeChild}
                   isCodeParent={isCodeParent}
@@ -1007,6 +985,7 @@ export function TaskRow({
                 node={node}
                 metaLeft={metaIndentLeft}
                 isTask={isTask}
+                isCode={isCode}
                 showRepeat={isTopLevelTask}
                 recurrence={recurrenceRule}
                 onChangeRecurrence={(rule, anchorDate) => {
@@ -1020,6 +999,15 @@ export function TaskRow({
                 }}
                 onChangePriority={(next) => {
                   void handleSavePriority(next);
+                }}
+                onSetFolder={(folderId) => {
+                  void handleSetFolder(folderId);
+                }}
+                onSetProject={(projectId) => {
+                  void handleSetProject(projectId);
+                }}
+                onSetEpic={(epicId) => {
+                  void handleSetEpic(epicId);
                 }}
                 onCommitNotes={(value) => {
                   void handleCommitNotes(value);
@@ -1165,6 +1153,7 @@ export function TaskRow({
             notes: node.notes,
             source_url: node.source_url,
             intendedProjectId: node.intended_project_id,
+            intendedEpicId: node.intended_epic_id,
           },
         ]}
         onComplete={(stories) => {
