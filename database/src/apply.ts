@@ -1,33 +1,19 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 
 import pg from 'pg';
 
+import { ledgerAcceptsManualApply, recordManualApply } from './deploy.ts';
 import {
   APPLIED_LOG_PATH,
-  ENV_LOCAL_PATH,
-  parseEnvValue,
   recordApplied,
+  resolveDatabaseUrl,
   resolveMigration,
 } from './migrate.ts';
 
 const { Client } = pg;
-
-/**
- * Resolve the live connection string: prefer an exported `DATABASE_URL`, else read it out of the
- * gitignored `frontend/.env.local`. Throws a directive error when neither is available.
- */
-function databaseUrl(): string {
-  const fromEnv = process.env['DATABASE_URL'];
-  if (fromEnv !== undefined && fromEnv !== '') return fromEnv;
-  if (existsSync(ENV_LOCAL_PATH)) {
-    const fromFile = parseEnvValue(readFileSync(ENV_LOCAL_PATH, 'utf8'), 'DATABASE_URL');
-    if (fromFile !== undefined && fromFile !== '') return fromFile;
-  }
-  throw new Error(`DATABASE_URL is not set and none found in ${ENV_LOCAL_PATH}`);
-}
 
 /** Ask the user to confirm applying to a named host; defaults to no on a bare Enter. */
 async function confirm(question: string): Promise<boolean> {
@@ -55,7 +41,7 @@ async function main(): Promise<number> {
   }
 
   const file = resolveMigration(selector);
-  const url = databaseUrl();
+  const url = resolveDatabaseUrl();
   const host = new URL(url).host;
   process.stdout.write(`→ target: ${host}\n`);
 
@@ -67,8 +53,20 @@ async function main(): Promise<number> {
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
+    // Ask BEFORE applying: once this file lands, a database being bootstrapped by hand becomes
+    // indistinguishable from an unadopted one that already had schema.
+    const canRecord = await ledgerAcceptsManualApply(client);
     await client.query(readFileSync(file, 'utf8'));
     process.stdout.write(`✓ applied ${path.basename(file)}\n`);
+    // Record it in the target database's own ledger too, so the merge pipeline (which reads that
+    // ledger to decide what's pending) never re-runs a migration someone applied by hand.
+    if (canRecord) {
+      await recordManualApply(client, file);
+    } else {
+      process.stdout.write(
+        '! this database has schema but no migration ledger, so a lone row would misrepresent its history — not recorded. Adopt it once with `npm run deploy -w database -- --baseline <migration it stands at>`.\n',
+      );
+    }
     // Append to the committed ledger so the branch records what actually reached this host, then
     // nudge the operator to commit it — the paper trail only helps if it lands in git.
     recordApplied(new Date(), host, file);

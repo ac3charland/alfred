@@ -38,13 +38,19 @@ discipline. The notes below are the human side of that contract.
 Both instances run **identical code** from `main` (a push deploys both Vercel projects) and share
 **one** `database/migrations/` set — but each has its **own** Supabase database. So a schema change
 is only half-done when it lands in git: **every new migration must be applied to _both_ Supabase
-projects**, or the two instances drift and one will 500 on the un-migrated path. Call this out in
-any migration's rollout notes, and apply it to Personal and Work as part of shipping it.
+projects**, or the two instances drift and one will 500 on the un-migrated path.
 
-There is a single committed migration ledger (`database/migrations-applied.log`); it tracks the
-shared schema history, not per-instance applies (both pooler hosts are regional and
-indistinguishable in the log). Provisioning a brand-new instance replays the whole set out of band
-and is not recorded there.
+**Merging applies it to both.** `.github/workflows/migrate.yml` runs the applier on every push to
+`main` as a `personal` / `work` matrix, so the rule above is enforced by the pipeline rather than by
+remembering — see [`database/README.md`](../database/README.md#applying-on-merge-the-default-path).
+Each database carries its own `public.schema_migrations` ledger, which is what makes "has *this*
+instance seen it?" answerable per instance; the two jobs are independent (`fail-fast: false`), so if
+one goes red, that instance — and only that instance — is behind until it's re-run.
+
+The committed `database/migrations-applied.log` remains the human-readable, git-reviewable history
+of what reached a live database by hand (both pooler hosts are regional and indistinguishable in the
+log, so it never tracked instances). Provisioning a brand-new instance is now just pointing the
+applier at the empty database: with no schema and no ledger, it applies the whole set from `0001`.
 
 ## Offline / cached data
 

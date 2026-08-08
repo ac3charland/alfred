@@ -1,5 +1,6 @@
-import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import type { Client } from 'pg';
@@ -113,6 +114,26 @@ export const ENV_LOCAL_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../frontend/.env.local',
 );
+
+/**
+ * Resolve a live connection string: the first of `names` that is exported, else `DATABASE_URL` out
+ * of the gitignored `frontend/.env.local`. Throws a directive error when neither is available.
+ * Shared so the manual applier and the CI deployer pick their target the same way — the deployer
+ * just looks at `SUPABASE_DB_URL` first, the name the workflow secrets already use.
+ */
+export function resolveDatabaseUrl(names: readonly string[] = ['DATABASE_URL']): string {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined && value !== '') return value;
+  }
+  if (existsSync(ENV_LOCAL_PATH)) {
+    const fromFile = parseEnvValue(readFileSync(ENV_LOCAL_PATH, 'utf8'), 'DATABASE_URL');
+    if (fromFile !== undefined && fromFile !== '') return fromFile;
+  }
+  throw new Error(
+    `none of ${names.join(', ')} is set and no DATABASE_URL found in ${ENV_LOCAL_PATH}`,
+  );
+}
 
 /**
  * Create the objects Supabase provides out of the box that the migrations assume exist:

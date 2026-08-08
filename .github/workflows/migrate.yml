@@ -1,0 +1,58 @@
+name: Migrate Databases
+
+# A merged migration used to reach production only when someone remembered to run
+# `npm run migrate -w database <N>` against BOTH Supabase projects by hand. That gap is what
+# ALF-119 (0014 never applied to prod) and ALF-124 (grant drift) were, and half-applying it —
+# Personal but not Work — silently drifts the two instances apart until one of them 500s.
+# Merging IS migrating now, for both instances.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # manual runs (e.g. after provisioning an instance, or a re-run)
+
+# The job only reads the repo; every database credential comes from a secret.
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    # One job per isolated instance (each its own Supabase database), matching backup.yml.
+    # fail-fast: false so a failure against one instance still lets the other reach the same schema.
+    strategy:
+      fail-fast: false
+      matrix:
+        instance: [personal, work]
+    name: migrate (${{ matrix.instance }})
+    runs-on: ubuntu-latest
+    # Serialize per instance so two quick merges can't interleave their applies. The applier also
+    # takes a Postgres advisory lock, which covers a manual `npm run migrate` racing this job.
+    # cancel-in-progress: false — a cancelled apply is worse than a queued one.
+    concurrency:
+      group: db-migrate-${{ matrix.instance }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # NOTE: deliberately NOT filtered by `paths:` (same reasoning as deploy-worker.yml). A path
+      # filter is one more way for a change to reach main without reaching production. With nothing
+      # pending the applier reads the ledger, prints "already up to date", and exits — a few seconds.
+      #
+      # The applier is idempotent: it applies only the migrations this database's own
+      # `public.schema_migrations` ledger doesn't record, each in one transaction with its ledger row.
+      - name: Apply pending migrations
+        run: node database/src/deploy.ts
+        env:
+          INSTANCE: ${{ matrix.instance }}
+          # Each instance points at its own Supabase database. Session-mode pooler (IPv4, port 5432)
+          # — NOT the direct connection (IPv6-only on the free tier, unreachable from IPv4 runners)
+          # and NOT the transaction pooler (6543, unreliable for multi-statement DDL). Same secrets
+          # the nightly backup uses.
+          SUPABASE_DB_URL: ${{ matrix.instance == 'personal' && secrets.SUPABASE_DB_URL_PERSONAL || secrets.SUPABASE_DB_URL_WORK }}

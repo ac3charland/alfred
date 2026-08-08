@@ -4,6 +4,7 @@ import pg from 'pg';
 
 import { runAssertions } from './assertions.ts';
 import { startCluster } from './cluster.ts';
+import { runDeployAssertions } from './deploy-assertions.ts';
 import { applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 const { Client } = pg;
@@ -27,7 +28,10 @@ async function main(): Promise<number> {
     // An optional override lets a fixture (or this package's demo) apply a different
     // migration set without touching database/migrations; unset → the real migrations.
     await applyMigrations(client, process.env['ALFRED_MIGRATIONS_DIR']);
-    const results = await runAssertions(client);
+    // The schema assertions run against this pre-migrated database; the deploy assertions bring up
+    // their own databases on the same cluster (they are about HOW migrations get applied, so they
+    // must start from an empty — or deliberately half-migrated — one).
+    const results = [...(await runAssertions(client)), ...(await runDeployAssertions(cluster))];
 
     let failed = 0;
     for (const result of results) {
