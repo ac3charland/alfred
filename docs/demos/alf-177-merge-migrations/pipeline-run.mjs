@@ -1,6 +1,6 @@
 // Drives the REAL merge-pipeline applier (`database/src/deploy.ts`, the command
-// `.github/workflows/migrate.yml` runs) against throwaway PostgreSQL databases standing in for the
-// two Supabase instances. Nothing here is a stub: the same CLI, the same SQL, the same ledger.
+// `.github/workflows/migrate.yml` runs) against throwaway PostgreSQL databases. Nothing here is a
+// stub: the same CLI, the same SQL, the same ledger.
 //
 // The scratch migration set is `database/migrations` plus one new file, so the run shows a merge
 // actually landing something. Output is normalized (the cluster's random port) so `demo verify`
@@ -13,11 +13,12 @@ import path from 'node:path';
 import pg from 'pg';
 
 import { startCluster } from '../../../database/src/cluster.ts';
-import { BASELINE_MIGRATION, recordManualApply } from '../../../database/src/deploy.ts';
+import { recordManualApply } from '../../../database/src/deploy.ts';
 import {
   MIGRATIONS_DIR,
   applyMigrations,
   bootstrapSupabase,
+  migrationFiles,
 } from '../../../database/src/migrate.ts';
 
 const DEPLOY_CLI = path.resolve(import.meta.dirname, '../../../database/src/deploy.ts');
@@ -28,9 +29,11 @@ const PENDING_SQL = `-- ALF-177 demo: a perfectly ordinary migration merging to 
 create index if not exists items_source_url_idx on items (source_url);
 `;
 
+/** Where the Work database really stood: everything through 0017, and nothing after. */
+const WORK_STOOD_AT = '0017_grant_v_code_stories.sql';
+
 function heading(text) {
-  const rule = '─'.repeat(Math.max(3, 74 - text.length));
-  console.log(`\n── ${text} ${rule}`);
+  console.log(`\n── ${text} ${'─'.repeat(Math.max(3, 74 - text.length))}`);
 }
 
 /** A scratch migration set: every committed migration, plus the one that "just merged". */
@@ -55,7 +58,7 @@ function runDeploy(url, instance, migrationsDir, ...args) {
       ALFRED_MIGRATIONS_DIR: migrationsDir,
     },
   });
-  const port = new URL(url).port;
+  const { port } = new URL(url);
   const mask = (text) => text.replaceAll(`127.0.0.1:${port}`, '127.0.0.1:<port>').trimEnd();
   if (result.stdout.trim()) console.log(mask(result.stdout));
   if (result.stderr.trim()) console.log(mask(result.stderr));
@@ -64,7 +67,7 @@ function runDeploy(url, instance, migrationsDir, ...args) {
 
 /** Create a database on the cluster and return its connection URL. */
 async function createDatabase(cluster, name) {
-  const admin = new pg.Client({ ...cluster, database: cluster.database });
+  const admin = new pg.Client({ ...cluster });
   await admin.connect();
   try {
     await admin.query(`create database ${name}`);
@@ -85,12 +88,12 @@ async function withClient(url, fn) {
   }
 }
 
-/** Stand a database up the way the live ones look today: full history by hand, no ledger. */
-async function seedLiveDatabase(cluster, name) {
+/** A database carrying history up to `upTo` by hand, with no ledger — an unadopted database. */
+async function seedUnadopted(cluster, name, upTo) {
   const url = await createDatabase(cluster, name);
   await withClient(url, async (client) => {
     await bootstrapSupabase(client);
-    await applyMigrations(client, MIGRATIONS_DIR, (file) => path.basename(file) <= BASELINE_MIGRATION);
+    await applyMigrations(client, MIGRATIONS_DIR, (file) => path.basename(file) <= upTo);
   });
   return url;
 }
@@ -102,31 +105,45 @@ async function showLedger(url, label, limit = 3) {
       `select filename from public.schema_migrations order by filename desc limit $1`,
       [limit],
     );
-    const listed = rows.map((row) => row.filename).reverse();
     const { rows: counted } = await client.query(
       'select count(*)::int as n from public.schema_migrations',
     );
-    console.log(`${label}: ${counted[0].n} rows, last ${String(listed.length)} —`);
-    for (const name of listed) console.log(`  ${name}`);
+    console.log(`${label}: ${counted[0].n} rows, last ${limit} —`);
+    for (const name of rows.map((row) => row.filename).reverse()) console.log(`  ${name}`);
   });
 }
 
 const cluster = await startCluster();
 const migrations = scratchMigrations();
+const newest = migrationFiles(MIGRATIONS_DIR).map((f) => path.basename(f)).at(-1);
 try {
-  // Both instances start where Personal and Work actually are: the whole committed history applied
-  // by hand, and no ledger table — nothing has ever recorded what they've seen.
-  const personal = await seedLiveDatabase(cluster, 'alfred_personal');
-  const work = await seedLiveDatabase(cluster, 'alfred_work');
+  // Both instances start unadopted: history applied by hand over the years, no ledger. And — the
+  // thing that made this ticket bite — they are NOT at the same point. Work was nine behind.
+  const personal = await seedUnadopted(cluster, 'alfred_personal', newest);
+  const work = await seedUnadopted(cluster, 'alfred_work', WORK_STOOD_AT);
 
-  // …except that on Work, the operator already ran `npm run migrate` for the new migration before
-  // the PR merged — the habit the pipeline is replacing.
+  heading('an unadopted database: the deployer refuses to guess what it has');
+  const refused = runDeploy(work, 'work', migrations);
+  console.log(`exit code: ${refused}`);
   await withClient(work, async (client) => {
-    await client.query(PENDING_SQL);
-    await recordManualApply(client, PENDING, migrations);
+    const { rows } = await client.query(
+      `select to_regclass('public.schema_migrations') is null
+              or (select count(*) from public.schema_migrations) = 0 as wrote_nothing`,
+    );
+    console.log(`wrote nothing: ${rows[0].wrote_nothing}`);
   });
 
-  heading(`a merge adds ${PENDING}; what is pending, per instance`);
+  // Adoption happens against the committed set as it stands today — before the new migration
+  // merges — which is exactly how it was done against the two live databases.
+  heading('adoption: one command, at the point the operator VERIFIED');
+  runDeploy(personal, 'personal', MIGRATIONS_DIR, '--baseline', newest);
+  runDeploy(work, 'work', MIGRATIONS_DIR, '--baseline', WORK_STOOD_AT);
+
+  heading('each database now records its own history');
+  await showLedger(personal, 'personal');
+  await showLedger(work, 'work');
+
+  heading(`a merge adds ${PENDING} — what is pending, per instance`);
   runDeploy(personal, 'personal', migrations, '--dry-run');
   runDeploy(work, 'work', migrations, '--dry-run');
 
@@ -134,33 +151,47 @@ try {
   runDeploy(personal, 'personal', migrations);
   runDeploy(work, 'work', migrations);
 
-  heading('each database now records its own history');
-  await showLedger(personal, 'personal');
-  await showLedger(work, 'work');
-
-  heading('the index the migration created is really there (personal)');
-  await withClient(personal, async (client) => {
-    const { rows } = await client.query(
-      `select indexname from pg_indexes where indexname = 'items_source_url_idx'`,
-    );
-    console.log(rows.length === 1 ? `  ${rows[0].indexname}` : '  MISSING');
-  });
+  heading('the index the migration created is really there, on both');
+  for (const [label, url] of [
+    ['personal', personal],
+    ['work', work],
+  ]) {
+    await withClient(url, async (client) => {
+      const { rows } = await client.query(
+        `select indexname from pg_indexes where indexname = 'items_source_url_idx'`,
+      );
+      console.log(`  ${label}: ${rows.length === 1 ? rows[0].indexname : 'MISSING'}`);
+    });
+  }
 
   heading('the next merge, with nothing new to apply');
   runDeploy(personal, 'personal', migrations);
   runDeploy(work, 'work', migrations);
 
+  heading('a hand-applied migration is skipped, not run twice');
+  const extra = '0028_items_notes_index.sql';
+  writeFileSync(
+    path.join(migrations, extra),
+    'create index if not exists items_notes_idx on items (notes);\n',
+  );
+  await withClient(personal, async (client) => {
+    await client.query('create index if not exists items_notes_idx on items (notes);');
+    await recordManualApply(client, extra);
+  });
+  console.log(`(applied ${extra} by hand on personal)`);
+  runDeploy(personal, 'personal', migrations);
+
   heading('a broken migration fails the job instead of half-landing');
   writeFileSync(
-    path.join(migrations, '0028_broken.sql'),
+    path.join(migrations, '0029_broken.sql'),
     'create table wont_survive (id int);\nalter table items add column does_not_exist_ref uuid references nope (id);\n',
   );
-  const code = runDeploy(personal, 'personal', migrations);
+  const code = runDeploy(work, 'work', migrations);
   console.log(`exit code: ${code}`);
-  await withClient(personal, async (client) => {
+  await withClient(work, async (client) => {
     const { rows } = await client.query(
       `select to_regclass('public.wont_survive') is null as rolled_back,
-              (select count(*)::int from public.schema_migrations where filename = '0028_broken.sql') as recorded`,
+              (select count(*)::int from public.schema_migrations where filename = '0029_broken.sql') as recorded`,
     );
     console.log(`rolled back: ${rows[0].rolled_back}, ledger rows for it: ${rows[0].recorded}`);
   });
