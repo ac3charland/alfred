@@ -188,6 +188,13 @@ export interface CodeActions {
   /** Optimistically add an epic (the `create_epic` RPC allocates its ref), then reconcile. */
   createEpic: (projectId: string, name: string) => Promise<Epic>;
   /**
+   * Set the project's description — the owner's statement of what the project is and what work
+   * belongs in it, written from the board header (ALF-179). `null` clears it. The description is
+   * the project's ONLY editable field; optimistically patched via the reducer's `patchProject`,
+   * then reconciled with the saved row, rolling the previous value back on error.
+   */
+  updateProjectDescription: (projectId: string, description: string | null) => Promise<void>;
+  /**
    * The gate from within the Code view: admit an item already known here to the
    * factory. Inserts an optimistic story card and reconciles with the allocated ref.
    */
@@ -378,6 +385,7 @@ interface CodeState {
 type CodeAction =
   | { type: 'insertProject'; project: Project }
   | { type: 'replaceProject'; id: string; project: Project }
+  | { type: 'patchProject'; id: string; patch: Partial<Project> }
   | { type: 'removeProject'; id: string }
   | { type: 'insertEpic'; epic: Epic }
   | { type: 'replaceEpic'; id: string; epic: Epic }
@@ -402,6 +410,12 @@ export function codeReducer(state: CodeState, action: CodeAction): CodeState {
       return {
         ...state,
         projects: state.projects.map((p) => (p.id === action.id ? action.project : p)),
+      };
+    }
+    case 'patchProject': {
+      return {
+        ...state,
+        projects: state.projects.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p)),
       };
     }
     case 'removeProject': {
@@ -759,6 +773,32 @@ export function CodeProvider({
           showToastRef.current("Couldn't create project");
           throw error;
         }
+      },
+      async updateProjectDescription(projectId, description) {
+        const previous = stateRef.current.projects.find((p) => p.id === projectId);
+        if (previous === undefined) {
+          throw new Error(`Project ${projectId} not found in the code store`);
+        }
+        const rollback: Partial<Project> = { description: previous.description };
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patchProject', id: projectId, patch: { description } });
+          },
+          apiCall: () => api.updateProject(projectId, { description }),
+          reconcile: (saved) => {
+            dispatch({
+              type: 'patchProject',
+              id: projectId,
+              patch: { description: saved.description },
+            });
+          },
+          rollback: () => {
+            dispatch({ type: 'patchProject', id: projectId, patch: rollback });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save the project description");
+          },
+        });
       },
       async createEpic(projectId, name) {
         const optimistic = makeOptimisticEpic(projectId, name);

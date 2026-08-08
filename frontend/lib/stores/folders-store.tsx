@@ -30,6 +30,12 @@ interface FolderActions {
   /** Optimistically rename a folder, rolling back the name on failure. */
   renameFolder: (id: string, name: string) => Promise<void>;
   /**
+   * Optimistically set the folder's description — the owner's statement of what belongs here,
+   * written from the folder-view header (ALF-179). `null` clears it; the caller maps an emptied
+   * field to null so "no description" has one representation. Rolls back on failure.
+   */
+  setFolderDescription: (id: string, description: string | null) => Promise<void>;
+  /**
    * Optimistically move a folder to a new fractional rank in the sidebar list (ALF-153),
    * rolling the rank back on failure. `sortOrder` is the slot's midpoint — the caller
    * (a gap drop or a "Move up"/"Move down" menu action) computes it from the neighbours.
@@ -151,6 +157,25 @@ export function FoldersProvider({
           },
           onError: () => {
             showToastRef.current("Couldn't rename folder");
+          },
+        });
+      },
+      async setFolderDescription(id, description) {
+        const previous = foldersRef.current.find((folder) => folder.id === id);
+        await runOptimisticMutation({
+          optimistic: () => {
+            dispatch({ type: 'patch', id, patch: { description } });
+          },
+          apiCall: () => updateFolder(id, { description }),
+          reconcile: (saved) => {
+            dispatch({ type: 'replace', id, folder: saved });
+          },
+          rollback: () => {
+            if (previous)
+              dispatch({ type: 'patch', id, patch: { description: previous.description } });
+          },
+          onError: () => {
+            showToastRef.current("Couldn't save the folder description");
           },
         });
       },

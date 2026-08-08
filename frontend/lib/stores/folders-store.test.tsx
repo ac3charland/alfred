@@ -20,9 +20,27 @@ jest.mock('@/lib/stores/toast-store', () => ({
   useToastActions: () => ({ showToast: mockShowToast, dismissToast: jest.fn() }),
 }));
 
-const WORK: Folder = { id: 'f-1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 };
-const HOME: Folder = { id: 'f-2', name: 'Home', created_at: '2025-01-02T00:00:00Z', sort_order: 2 };
-const PLAY: Folder = { id: 'f-3', name: 'Play', created_at: '2025-01-03T00:00:00Z', sort_order: 3 };
+const WORK: Folder = {
+  description: null,
+  id: 'f-1',
+  name: 'Work',
+  created_at: '2025-01-01T00:00:00Z',
+  sort_order: 1,
+};
+const HOME: Folder = {
+  description: null,
+  id: 'f-2',
+  name: 'Home',
+  created_at: '2025-01-02T00:00:00Z',
+  sort_order: 2,
+};
+const PLAY: Folder = {
+  description: null,
+  id: 'f-3',
+  name: 'Play',
+  created_at: '2025-01-03T00:00:00Z',
+  sort_order: 3,
+};
 
 function makeWrapper(initialFolders: Folder[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -123,6 +141,7 @@ describe('addFolder', () => {
 
   it('reconciles the temp folder to the saved server row (replaces temp id and fields)', async () => {
     const saved: Folder = {
+      description: null,
       id: 'server-1',
       name: 'Projects',
       created_at: '2025-02-01T00:00:00Z',
@@ -280,6 +299,95 @@ describe('renameFolder', () => {
       await result.current.actions.renameFolder('f-1', 'Hobby').catch(() => {});
     });
     expect(result.current.folders[0]?.name).toBe('Job');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setFolderDescription
+// ---------------------------------------------------------------------------
+
+describe('setFolderDescription', () => {
+  it('applies the description optimistically (before the request resolves)', () => {
+    mockUpdateFolder.mockReturnValue(new Promise<Folder>(() => {}));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK]) });
+
+    act(() => {
+      void result.current.actions.setFolderDescription('f-1', 'Anything for my employer.');
+    });
+
+    expect(result.current.folders[0]?.description).toBe('Anything for my employer.');
+    expect(mockUpdateFolder).toHaveBeenCalledWith('f-1', {
+      description: 'Anything for my employer.',
+    });
+  });
+
+  it('reconciles with the saved row', async () => {
+    const saved: Folder = { ...WORK, description: 'Saved by the server.' };
+    mockUpdateFolder.mockResolvedValue(saved);
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK]) });
+
+    await act(async () => {
+      await result.current.actions.setFolderDescription('f-1', 'Anything for my employer.');
+    });
+
+    expect(result.current.folders[0]?.description).toBe('Saved by the server.');
+  });
+
+  it('clears the description with null', async () => {
+    const described: Folder = { ...WORK, description: 'Anything for my employer.' };
+    mockUpdateFolder.mockResolvedValue({ ...described, description: null });
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([described]) });
+
+    await act(async () => {
+      await result.current.actions.setFolderDescription('f-1', null);
+    });
+
+    expect(result.current.folders[0]?.description).toBeNull();
+    expect(mockUpdateFolder).toHaveBeenCalledWith('f-1', { description: null });
+  });
+
+  it('describes the correct folder when several exist', async () => {
+    const savedHome: Folder = { ...HOME, description: 'The house.' };
+    mockUpdateFolder.mockResolvedValue(savedHome);
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK, HOME]) });
+
+    await act(async () => {
+      await result.current.actions.setFolderDescription('f-2', 'The house.');
+    });
+
+    expect(result.current.folders[0]?.description).toBeNull();
+    expect(result.current.folders[1]?.description).toBe('The house.');
+  });
+
+  it('restores the previous description and toasts when the request fails', async () => {
+    const described: Folder = { ...WORK, description: 'The original.' };
+    mockUpdateFolder.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([described]) });
+
+    await act(async () => {
+      await result.current.actions.setFolderDescription('f-1', 'Replaced').catch(() => {});
+    });
+
+    expect(result.current.folders[0]?.description).toBe('The original.');
+    expect(mockShowToast).toHaveBeenCalledWith("Couldn't save the folder description");
+  });
+
+  it('adds no phantom folder when the id is unknown and the request fails', async () => {
+    const networkError = new Error('network');
+    mockUpdateFolder.mockRejectedValue(networkError);
+    const { result } = renderHook(useFoldersTest, { wrapper: makeWrapper([WORK]) });
+    let caughtError: unknown;
+
+    await act(async () => {
+      try {
+        await result.current.actions.setFolderDescription('does-not-exist', 'Described');
+      } catch (error) {
+        caughtError = error;
+      }
+    });
+
+    expect(result.current.folders).toHaveLength(1);
+    expect(caughtError).toBe(networkError);
   });
 });
 
