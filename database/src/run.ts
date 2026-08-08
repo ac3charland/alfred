@@ -2,9 +2,10 @@ import process from 'node:process';
 
 import pg from 'pg';
 
-import { runAssertions } from './assertions.ts';
+import { attempt, runAssertions } from './assertions.ts';
 import { startCluster } from './cluster.ts';
 import { runDeployAssertions } from './deploy-assertions.ts';
+import { assertUsableTypes, clusterConnectionString, generateTypes } from './gen-types.ts';
 import { applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 const { Client } = pg;
@@ -28,10 +29,33 @@ async function main(): Promise<number> {
     // An optional override lets a fixture (or this package's demo) apply a different
     // migration set without touching database/migrations; unset → the real migrations.
     await applyMigrations(client, process.env['ALFRED_MIGRATIONS_DIR']);
+    // The typegen assertion reads this same migrated database — `npm run gen-types` is only
+    // trustworthy if the type it renders actually describes what the migrations built.
+    const typesResult = await attempt(
+      'gen-types renders a Database type describing the migrated schema',
+      async () => {
+        const types = await generateTypes(clusterConnectionString(cluster));
+        assertUsableTypes(types);
+        // Spot-check one table, one view and one enum, each from a different migration, so a
+        // generator that silently returned an empty schema can't pass.
+        const missing = ['items: {', 'v_code_stories: {', 'task_priority:'].filter(
+          (needle) => !types.includes(needle),
+        );
+        if (missing.length > 0) {
+          throw new Error(`generated types are missing ${missing.join(', ')}`);
+        }
+        return `${String(types.split('\n').length)} lines covering tables, views and enums`;
+      },
+    );
+
     // The schema assertions run against this pre-migrated database; the deploy assertions bring up
     // their own databases on the same cluster (they are about HOW migrations get applied, so they
     // must start from an empty — or deliberately half-migrated — one).
-    const results = [...(await runAssertions(client)), ...(await runDeployAssertions(cluster))];
+    const results = [
+      ...(await runAssertions(client)),
+      typesResult,
+      ...(await runDeployAssertions(cluster)),
+    ];
 
     let failed = 0;
     for (const result of results) {
