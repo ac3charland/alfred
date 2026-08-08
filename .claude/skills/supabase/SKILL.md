@@ -282,9 +282,20 @@ and always **verify a change with a follow-up query** — a fix without verifica
 `main`, as a `personal` / `work` matrix. Pending is decided per database from its own
 `public.schema_migrations` ledger, so re-runs are no-ops and a hand-applied file is skipped.
 **Shipping a migration is merging it** — apply by hand only to iterate before the PR lands, and
-say so in the PR body if you did. Mechanics and the baseline constant live in
+say so in the PR body if you did. Mechanics live in
 [`database/README.md`](../../../database/README.md#applying-on-merge-the-default-path); don't
 restate them in a migration's rollout notes.
+
+A database with schema but no ledger is **refused**, not guessed at, and adopting one is an
+explicit `--baseline <verified migration>`. Assume nothing about how far along a database is: when
+this landed, Work was nine migrations behind and Personal had lost `0016`'s function rewrite.
+
+**To find out where a database really stands, replay every migration into a throwaway cluster
+(`startCluster` + `applyMigrations`, as `src/run.ts` does) and diff the live one against it.** Diff
+*objects* (tables/columns/constraints/indexes) **and** `md5(p.prosrc)` per function — a migration
+that only rewrites a function body is invisible to an object-level diff, which is exactly how
+Personal read as complete while missing `0016`. Compare `prosrc`, not `pg_get_functiondef`: the
+latter regenerates its header and differs across server versions (local 16 vs Supabase 17).
 
 Nothing orders that apply against Vercel's deploy of the same commit, so the code can go live a
 beat before its schema. Write migrations **expand-then-contract**: the new schema must work with
