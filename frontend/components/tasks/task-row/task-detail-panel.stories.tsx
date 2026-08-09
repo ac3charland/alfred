@@ -119,7 +119,10 @@ export const TaskFields: Story = {
   args: {
     node: {
       ...BASE_NODE,
-      due_date: '2026-08-07',
+      // Far-future literal (matches task-row.stories.tsx's convention) so the chip always renders
+      // the absolute "Aug 7" label — a date near today would flip to a relative "Today"/"Tomorrow"/
+      // "Yesterday" label depending on which day the suite happens to run.
+      due_date: '2099-08-07',
       priority: 'high',
       folder_id: 'f-health',
     },

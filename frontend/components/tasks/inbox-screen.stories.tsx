@@ -207,7 +207,10 @@ export const MidTriage: Story = {
           id: 'triage-1',
           title: 'Call the dentist friday to reschedule the cleaning',
           folder_id: 'f-health',
-          due_date: '2026-08-07',
+          // Far-future literal (see task-row.stories.tsx / task-detail-panel.stories.tsx) so the
+          // due-date badge always renders the absolute "Aug 7" label instead of drifting to a
+          // relative "Today"/"Tomorrow"/"Yesterday" label depending on the run date.
+          due_date: '2099-08-07',
           created_at: '2025-01-01T10:00:00Z',
         },
         {
