@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-180 — Add subtle visual indicators for AI-classified vs human claimed</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+  .pickme { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+            text-transform: uppercase; color: var(--ok); border: 1px solid var(--ok);
+            border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+
+  /* The mockup canvas IS the app: every value below is lifted from source, so the mockup reads
+     in alfred's real dark palette whichever mode this document is read in.
+       bg / surface / border / fg / muted / secondary / teal / red / blue / amber
+                                              → frontend/app/globals.css
+       list panel (r2xl, border, bg-surface,
+         divide-y divide-border/50)           → task-row.styles.ts (taskListContainerClass)
+       row (flex, gap-2, py-2 pr-2, rounded-sm,
+         hover:bg-secondary/30)               → task-row.styles.ts (rowBaseClass, rowHoverClass)
+       row paddingLeft (depth*1.25 + .75rem)  → lib/hooks/use-indentation.ts
+       chevron (IconButton sm, 20px; invisible
+         spacer at md+ with no children)      → atoms/icon-button.tsx + task-row.tsx
+       checkbox (h-4 w-4 at md+, border
+         muted-foreground/50)                 → task-row.styles.ts (checkboxSizeClass,
+                                                 checkboxIncompleteClass)
+       title (text-sm, leading-5 at md+)      → task-row.styles.ts (titleTextClass)
+       pills (rounded-full px-2 py-0.5 text-xs;
+         muted / destructive / due variants)  → atoms/badge.tsx (badgeVariants)
+       folder pill glyph (FolderOpen 10px)    → task-row/detail-chips.tsx (FolderChip compact)
+       project + epic pills (font-mono,
+         bg-accent-blue/15 text-accent-blue —
+         ALF is project #1 → blue)            → lib/code/project-color.ts + project-key-chip.tsx
+       priority pill (High → destructive
+         variant, ChevronsUp at h-4 w-4)      → lib/priority.ts + tasks/priority-chip.tsx
+       due pill (Badge variant="due", "Aug 7") → atoms/badge.tsx + lib/date-utils.ts
+       Inbox eyebrow (text-xs font-semibold
+         tracking-widest uppercase,
+         muted-foreground/70)                 → tasks/inbox-screen.tsx
+       select-mode row (ghost Button, px-2 py-2,
+         bg-accent-teal/5 + ring-2 ring-inset
+         ring-accent-teal when selected)      → task-row.tsx (select-mode branch)
+       mobile card (rounded-2xl border bg-surface
+         p-1; badges wrap to their own line)  → task-row.styles.ts (cardChromeClass,
+                                                 metaFooterClass, rowContentColClass) */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f; --a-fg: #e8edf5;
+    --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0; --a-red: #f87171;
+    --a-blue: #60a5fa; --a-amber: #f0b429; --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); font-size: .82rem; margin: .5rem 0 0; }
+  .seclabel { color: rgba(138, 150, 168, .7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0 0 .5rem; }
+
+  /* The list panel + rows. */
+  .ilist { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+           overflow: hidden; }
+  .irow { position: relative; display: flex; align-items: flex-start; gap: 8px;
+          padding: 8px 8px 8px 12px; border-radius: 2px;
+          border-top: 1px solid rgba(30, 42, 63, .5); }
+  .ilist .irow:first-child { border-top: 0; }
+  .chev { width: 20px; height: 20px; flex: none; visibility: hidden; }
+  .cbx { width: 16px; height: 16px; flex: none; margin-top: 2px; border-radius: 4px;
+         border: 1px solid rgba(138, 150, 168, .5); }
+  .cbx.spacer { border-color: transparent; }
+  .ttl { font-size: 14px; line-height: 20px; min-width: 0; flex: 1; }
+  .metas { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: none; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; flex: none; border-radius: 999px;
+          padding: 2px 8px; font-size: 12px; line-height: 16px; font-weight: 500; }
+  .pill.muted { border: 1px solid rgba(30, 42, 63, .7); color: var(--a-muted); }
+  .pill.high { background: rgba(248, 113, 113, .15); color: var(--a-red); }
+  .pill.due { border: 1px solid rgba(96, 165, 250, .5); color: var(--a-blue); }
+  .pill.proj { background: rgba(96, 165, 250, .15); color: var(--a-blue);
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ic { width: 10px; height: 10px; flex: none; }
+
+  /* ── The four candidate marks. Only the selected option's markup is displayed. ── */
+  .mk { display: none; }                                  /* hidden until its option is picked */
+  .mk-chip { align-items: center; justify-content: center; border-radius: 999px;
+             padding: 2px 6px; border: 1px solid rgba(30, 42, 63, .7); flex: none;
+             line-height: 0; }
+  .mk-chip .g { width: 11px; height: 11px; }
+  .mk-glyph { align-items: center; margin-left: 6px; vertical-align: -1px; }
+  .mk-glyph .g { width: 11px; height: 11px; }
+  .mk-rail { position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 2px; }
+  /* Tone: monochrome by decision D6 — glyph shape carries the state, not colour. */
+  [data-origin="model"]   .mk .g { color: rgba(138, 150, 168, .95); }
+  [data-origin="claimed"] .mk .g { color: rgba(138, 150, 168, .65); }
+  [data-origin="unjudged"] .mk .g { color: rgba(138, 150, 168, .4); }
+  [data-origin="model"]   .mk-rail { background: rgba(138, 150, 168, .55); }
+  [data-origin="claimed"] .mk-rail { background: rgba(138, 150, 168, .22); }
+  [data-origin="unjudged"] .mk-rail { background: rgba(30, 42, 63, 1); }
+
+  #demo[data-opt="1"] .mk-chip,
+  #mdemo[data-opt="1"] .mk-chip { display: inline-flex; }
+  #demo[data-opt="2"] .mk-glyph,
+  #mdemo[data-opt="2"] .mk-glyph { display: inline-flex; }
+  #demo[data-opt="3"] .mk-rail,
+  #mdemo[data-opt="3"] .mk-rail { display: block; }
+  /* Option 4 is the only one with no element at all: the row itself carries the signal. */
+  #demo[data-opt="4"] .irow[data-origin="model"],
+  #mdemo[data-opt="4"] .irow[data-origin="model"] { background: rgba(79, 209, 224, .05); }
+  #demo[data-opt="4"] .irow[data-origin="unjudged"],
+  #mdemo[data-opt="4"] .irow[data-origin="unjudged"] { background: rgba(138, 150, 168, .045); }
+
+  /* ── Resting / hover / select modes ── */
+  #demo[data-mode="hover"] .irow.r1 { background: rgba(30, 42, 63, .3); }
+  #demo[data-mode="select"] .ilist { border: 0; background: transparent; }
+  #demo[data-mode="select"] .irow { border-top: 0; border-radius: 6px; padding: 8px;
+                                    margin-bottom: 2px; }
+  #demo[data-mode="select"] .chev { display: none; }
+  #demo[data-mode="select"] .cbx { border-color: rgba(138, 150, 168, .5); margin-top: 1px; }
+  #demo[data-mode="select"] .irow.r1 { background: rgba(79, 209, 224, .05);
+                                       box-shadow: inset 0 0 0 2px var(--a-teal); }
+  #demo[data-mode="select"] .irow.r1 .cbx { border-color: var(--a-teal); background: var(--a-teal); }
+  #demo[data-mode="select"] .bulkbar { display: flex; }
+  .bulkbar { display: none; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px;
+             border: 1px solid var(--a-border); border-radius: 12px; background: var(--a-surface);
+             color: var(--a-muted); font-size: 12px; }
+  .bulkbar b { color: var(--a-fg); font-weight: 600; }
+  .bulkbar .act { color: var(--a-teal); }
+
+  /* ── The option / mode switcher. Progressive enhancement: the markup already
+       carries option 1 + resting, so with scripting off this is a static mockup. ── */
+  .optbar { display: flex; flex-wrap: wrap; gap: 1.25rem; padding: .6rem .85rem;
+            border-bottom: 1px solid var(--line); background: var(--bg); }
+  .optgroup { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+  .optgroup .lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
+                   color: var(--faint); font-weight: 700; margin-right: .15rem; }
+  .optgroup button {
+    font: inherit; font-size: .76rem; cursor: pointer; border-radius: 999px;
+    padding: .18rem .6rem; border: 1px solid var(--line); background: var(--card);
+    color: var(--muted);
+  }
+  .optgroup button[aria-pressed="true"] {
+    border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 600;
+  }
+
+  /* Legend under the demo. */
+  .legend { display: flex; flex-wrap: wrap; gap: .5rem 1.4rem; margin-top: .9rem;
+            font-size: 12px; color: var(--a-muted); }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .legend .swatch { display: inline-flex; align-items: center; justify-content: center;
+                    width: 18px; height: 18px; }
+  .legend .swatch .g { width: 12px; height: 12px; color: rgba(138, 150, 168, .9); }
+  .legend .name { color: var(--a-fg); }
+
+  /* Mobile canvas. */
+  .mframe { width: 358px; max-width: 100%; }
+  .mcard { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+           padding: 4px; margin-bottom: 8px; }
+  .mcard .irow { border-top: 0; align-items: center; }
+  .mcard .mcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+  .mcard .ttl { flex: none; font-size: 15px; line-height: 1.375; }
+  .mcard .metas { flex: none; }
+
+  .opt-h { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .verdict { font-size: .84rem; }
+  .verdict .k { display: inline-block; min-width: 5.6rem; color: var(--faint);
+                text-transform: uppercase; letter-spacing: .05em; font-size: .68rem;
+                font-weight: 700; }
+  .ac { list-style: none; padding: 0; margin: .6rem 0; }
+  .ac li { position: relative; padding-left: 1.7rem; margin: .45rem 0; font-size: .93rem; }
+  .ac li::before { content: "☐"; position: absolute; left: .35rem; top: 0; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Story spec · epic ALF-158 (LLM processing)</p>
+<h1>ALF-180 — Add subtle visual indicators for AI-classified vs human claimed</h1>
+<p class="sub">
+  An Inbox row already knows who filled in its labels — the classifier, or you. Nothing shows it.
+  This story renders that one bit (well, one-of-three) on the row, and nothing else: no accept,
+  no reject, no confidence, no diff.
+</p>
+
+<div class="card teal">
+  <p style="margin:.2rem 0"><b>The whole change in a sentence.</b> Derive a three-way
+  <code>ClassificationOrigin</code> from two columns that already reach the browser
+  (<code>classified_at</code>, <code>classified_provider</code>), and draw a small monochrome mark
+  for it on Inbox rows only. No migration, no API change, no store change, no new query.</p>
+  <p class="small" style="margin:.5rem 0 .2rem">
+    <b>The one thing to decide:</b> which of the four drawn treatments in §4 ships. Everything else
+    in this spec is the same whichever you pick.
+  </p>
+</div>
+
+<h2>1 · Why this exists, and why it doesn't contradict the epic</h2>
+
+<p>
+  Epic <a href="epics/ALF-158.html">ALF-158</a>'s <b>D4</b> is blunt: guesses are written to the
+  item's real fields, and “a machine-set chip is <i>visually indistinguishable</i> from one the
+  owner set.” It rules out a suggestion sidecar, a confidence badge, ghosted styling and an
+  accept/reject affordance. This story adds a mark to the row. That looks like a reversal, so it is
+  worth being exact about what D4 was actually protecting, because the answer constrains the design.
+</p>
+
+<p>D4's argument has two halves, and only one of them is about pixels:</p>
+
+<table>
+  <thead>
+    <tr><th style="width:38%">What D4 rules out</th><th>Why</th><th style="width:18%">Still holds?</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>A “suggested” <b>state</b> with an approve/reject step</td>
+      <td>It creates a second thing to do on top of the thing you wanted, which was to glance and move on.</td>
+      <td class="yes">Yes — untouched</td>
+    </tr>
+    <tr>
+      <td>A proposed-vs-real split in the <b>data</b></td>
+      <td>Every store, selector, filter, count and view would have to know about it.</td>
+      <td class="yes">Yes — untouched</td>
+    </tr>
+    <tr>
+      <td>Ghosting / dimming the guessed <b>values</b></td>
+      <td>A label you're meant to act on shouldn't read as provisional.</td>
+      <td class="yes">Yes — the chips are drawn exactly as today</td>
+    </tr>
+    <tr>
+      <td>Any mark at all saying <b>who</b> filled the row in</td>
+      <td>Assumed to imply the three above.</td>
+      <td class="no">No — this is the amendment</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The distinction this story rests on is <b>provenance is not a proposal</b>. A provenance mark
+  answers “where did these labels come from?”, which is a fact about the past; a suggestion asks
+  “do you accept these?”, which is a task in the present. The first adds nothing to the queue of
+  things you must do — you can ignore it forever and the Inbox behaves exactly as it does today.
+  D4's real invariant is <i>no second job</i>, and this story keeps it: the mark has no click
+  target, no menu, no state of its own, and is derived from columns that already exist.
+</p>
+
+<p>What the mark buys, concretely, during a triage sitting:</p>
+<ul class="tight">
+  <li><b>It calibrates how hard you read a row.</b> A row you labelled yourself last Tuesday
+    doesn't need re-checking; a row the model labelled does. Today both look identical, so every
+    row gets the same suspicious second look — which is exactly the review tax D4 wanted to avoid.</li>
+  <li><b>It tells a blank row apart from a blank row.</b> Under D8 abstention is a first-class
+    answer, so a bare Inbox row is ambiguous today: the model looked and had nothing to say, or the
+    sweeper simply hasn't reached it yet. Those call for different behaviour (fill it in vs. wait
+    ten seconds and reload), and the data already distinguishes them.</li>
+  <li><b>It makes the correction loop legible.</b> D15 logs your overrides at dispatch, invisibly.
+    Seeing “this one is the model's, that one is mine” is the only place the loop surfaces at all —
+    still write-only, still no diff view.</li>
+</ul>
+
+<div class="callout">
+  <b>Guard rail for the implementation session.</b> If a change here would make any store, selector,
+  filter, count, sort or query read the classification columns, it has left this story's scope and
+  re-opened D4's second half. The columns are for <i>rendering one mark</i>, nothing else.
+</div>
+
+<h2>2 · The data already says all of this</h2>
+
+<p>
+  Migration <code>0029_llm_classifier.sql</code> shipped the provenance this story renders, and
+  the frontend already receives it: <code>getAllItems()</code> reads <code>task_items</code> with
+  <code>select('*')</code>, the view was re-expanded in <code>0029</code> §5 so the new columns ride
+  along, and <code>Item</code> (the generated row type) carries them. <b>Nothing needs fetching,
+  storing or migrating.</b>
+</p>
+
+<p>Two columns, read together, give four data states:</p>
+
+<div class="scroll">
+<table>
+  <thead>
+    <tr>
+      <th style="width:26%"><code>classified_at</code></th>
+      <th style="width:24%"><code>classified_provider</code></th>
+      <th style="width:26%">What happened</th>
+      <th>Rendered as</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>null</code></td>
+      <td><code>null</code></td>
+      <td>The sweeper hasn't judged this row (it is eligible, or it exhausted its attempts).</td>
+      <td><b>Not yet classified</b></td>
+    </tr>
+    <tr>
+      <td>set</td>
+      <td>set (<code>'anthropic'</code>)</td>
+      <td>The classifier wrote a verdict — including a verdict that abstained on every field.</td>
+      <td><b>Labelled by the classifier</b></td>
+    </tr>
+    <tr>
+      <td>set</td>
+      <td><code>null</code></td>
+      <td>The <code>items_claim_from_classifier</code> trigger stamped it: a human edited a
+        classifier-written field, so the row is yours and the sweeper will never revisit it.</td>
+      <td><b>Labelled by you</b></td>
+    </tr>
+    <tr>
+      <td>set</td>
+      <td>set, then edited</td>
+      <td>Not a state. The trigger's first condition is <code>new.classified_at is null</code>, so
+        once the classifier has stamped a row your later edits do <i>not</i> clear the provider.</td>
+      <td><b>Labelled by the classifier</b> (see D5)</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The mapping is therefore a two-line pure function, and the fourth row above is the reason it must
+  be written in exactly this order:
+</p>
+
+<pre><code>// frontend/lib/tasks/classification.ts
+export type ClassificationOrigin = 'model' | 'claimed' | 'unjudged';
+
+export function classificationOrigin(
+  item: Pick&lt;Item, 'classified_at' | 'classified_provider'&gt;,
+): ClassificationOrigin {
+  if (item.classified_at === null) return 'unjudged';
+  return item.classified_provider === null ? 'claimed' : 'model';
+}</code></pre>
+
+<h3>How a row moves between the three</h3>
+
+<svg viewBox="0 0 900 250" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">Lifecycle of an Inbox row's classification origin</title>
+  <desc id="flow-desc">
+    A capture starts as “Not yet classified”. The cron sweeper writes a verdict, moving it to
+    “Labelled by the classifier”, where later human edits leave the mark unchanged. Alternatively a
+    human edits the row before the sweeper reaches it, which the claim trigger moves to “Labelled by
+    you”. A row that exhausts its attempt ceiling stays at “Not yet classified” permanently.
+  </desc>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5" color="#8a94a0">
+    <rect x="14" y="98" width="188" height="54" rx="8" />
+    <rect x="330" y="20" width="230" height="54" rx="8" />
+    <rect x="330" y="176" width="230" height="54" rx="8" />
+    <rect x="660" y="98" width="226" height="54" rx="8" stroke-dasharray="4 3" />
+  </g>
+  <g font-size="13" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+     fill="currentColor" text-anchor="middle">
+    <text x="108" y="120">Capture lands</text>
+    <text x="108" y="139" font-size="11.5" fill="#8a94a0">Not yet classified</text>
+    <text x="445" y="42">Sweeper writes a verdict</text>
+    <text x="445" y="61" font-size="11.5" fill="#8a94a0">Labelled by the classifier</text>
+    <text x="445" y="198">You edit a label first</text>
+    <text x="445" y="217" font-size="11.5" fill="#8a94a0">Labelled by you</text>
+    <text x="773" y="120">Attempts exhausted</text>
+    <text x="773" y="139" font-size="11.5" fill="#8a94a0">stays Not yet classified</text>
+  </g>
+  <g stroke="#8a94a0" stroke-width="1.5" fill="none" marker-end="url(#ah)" color="#8a94a0">
+    <path d="M202 116 C 260 116, 275 47, 326 47" />
+    <path d="M202 134 C 260 134, 275 203, 326 203" />
+    <path d="M202 125 L 656 125" stroke-dasharray="4 3" />
+  </g>
+  <g font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+     fill="#8a94a0">
+    <text x="238" y="70">cron</text>
+    <text x="222" y="176">claim trigger</text>
+    <text x="392" y="118">5 failed attempts</text>
+  </g>
+  <g fill="none" stroke="#8a94a0" stroke-width="1.5" marker-end="url(#ah)" color="#8a94a0">
+    <path d="M560 47 C 600 47, 600 33, 566 33" />
+  </g>
+  <text x="608" y="37" font-size="11" fill="#8a94a0"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">your later edits</text>
+</svg>
+<p class="cap doc">
+  Three destinations, and the only one you can leave is the first. Once a row is marked — by the
+  classifier or by your own hand — it never changes mark again.
+</p>
+
+<h2>3 · Decisions</h2>
+
+<div class="dec">
+  <h3><span class="n">D1</span>Item-level provenance, never per-field <span class="owner">owner</span></h3>
+  <p>One mark per row, meaning “these labels came from …”. Not one mark per chip.</p>
+  <p class="why"><b>Why:</b> per-chip marking needs <code>classified_guess</code> parsed in the
+  browser and diffed against the live fields — a jsonb column <code>0029</code> documents as
+  “Never rendered, never read by the app”, whose one consumer is the dispatch-time diff trigger.
+  Reading it in the UI would put a second, drifting copy of the diff rule in the frontend and drag
+  the marking into the per-field chrome D4 rejected. Item-level costs two nullable columns already
+  on the row.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>Three states, including “not yet classified” <span class="owner">owner</span></h3>
+  <p><code>model</code> · <code>claimed</code> · <code>unjudged</code>. All three get a mark; the
+  vocabulary is identical across every option in §4.</p>
+  <p class="why"><b>Why the third:</b> without it a bare row is ambiguous between “the model
+  abstained” (D8's designed-for outcome — fill it in yourself) and “the sweeper hasn't run yet”
+  (wait). D10 makes those genuinely different rows, and the cron interval means the second is
+  common for the minute after a capture.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>Inbox rows only — top-level, undispatched, outside Completed <span class="owner">owner</span></h3>
+  <p>The gate is <code>node.parent_id === null &amp;&amp; !isCompletedView &amp;&amp; !isDispatched(node)</code>
+  — byte-for-byte the condition <code>task-row.tsx</code> already uses for the <i>Task</i> half of
+  <code>showTypeBadge</code>. Extract it once as a local <code>isInboxRow</code> and let both read it.</p>
+  <p class="why"><b>Why each clause:</b> <i>top-level</i> because the sweeper's predicate is
+  <code>parent_id is null</code> — a subtask is never eligible, so marking one “not yet classified”
+  would be a promise nothing intends to keep (and the claim trigger fires on subtask edits too,
+  stamping a meaningless <code>classified_at</code>). <i>Not dispatched</i> because provenance is a
+  triage aid; once the item is filed the question is settled. <i>Not Completed view</i> because an
+  Inbox item can be completed in place and the Completed view's rows are a history list, not a
+  queue. Together the three clauses are exactly “an Inbox row”, which is why folder, priority and
+  completed views need no change at all.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>The mark is inert — no click, no popover, no menu</h3>
+  <p>It renders as a <code>&lt;span&gt;</code> in every mode. Its accessible name comes from
+  <code>aria-label</code> (or an <code>sr-only</code> span where the treatment has no element of its
+  own), plus a native <code>title</code> so a pointer hover reveals the same words.</p>
+  <p class="why"><b>Why:</b> two reasons that point the same way. The moment it is clickable it is an
+  affordance, and the only actions it could offer — accept, reject, re-run — are precisely the
+  second job D4 forbids. And the select-mode row is a single <code>&lt;button&gt;</code>: a nested
+  interactive element there is invalid HTML with undefined activation behaviour, which is why every
+  chip in <code>RowMetaCluster</code> already has an <code>inert</code> form. An always-inert mark
+  needs no such fork. The repo has no tooltip primitive; <code>title=</code> is the established
+  fallback (<code>collapse-all-button.tsx</code>).</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>“Not yet classified” means <i>not judged</i>, not <i>judging now</i></h3>
+  <p>The frontend never mirrors the Worker's <code>ATTEMPT_CEILING</code>. A row that burned its
+  five attempts keeps the unjudged mark forever, and that is correct rather than tolerated.</p>
+  <p class="why"><b>Why:</b> the alternative is a fourth state whose only input is a constant that
+  lives in <code>workers/src/sweep.ts</code>, in a different npm workspace with no import path to
+  the frontend. Copying it buys a distinction the owner sees perhaps twice a year and creates a
+  number that can silently drift out of step with the sweeper. Wording the state as <i>not judged</i>
+  rather than <i>queued</i> makes the copy honest for both cases and deletes the whole question.
+  Same reasoning covers the once-classified-then-edited row in §2's fourth line: the mark says where
+  the labels came from, and they came from the model.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span>Monochrome — the shape carries the state, not the colour</h3>
+  <p>Every mark is drawn in the <code>muted-foreground</code> family at three weights. No new colour
+  token, and no reuse of an existing accent. (Option 4 is the single exception, and that is counted
+  against it in §4.)</p>
+  <p class="why"><b>Why:</b> the row's colour language is already fully spoken for — blue is
+  due/low/links/focus, amber is due-today, red is overdue/high, teal is interactive, selected and
+  drop-target, and the project palette cycles through all five. A sixth meaning in any of those
+  colours reads as one of the five it borrowed. Grey is the only unclaimed register, and “subtle” is
+  the word in the title.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>The mark flips live when you claim a row, with no new plumbing</h3>
+  <p>Edit a label on a model-classified row and the mark stays <i>classifier</i> (D5). Edit one on an
+  unjudged row and it becomes <i>yours</i> as soon as the PATCH settles — no reload.</p>
+  <p class="why"><b>Why it already works:</b> the claim happens in a database trigger, the route
+  returns the updated row (<code>.select().single()</code>), and <code>optimistic-mutation</code>
+  upserts what comes back. The stamped <code>classified_at</code> arrives on reconcile and the mark
+  re-derives from it. Worth a test precisely because nothing had to be built for it — an
+  optimistic-patch shortcut added later could quietly break it.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D8</span>No live update when the <i>classifier</i> writes — accepted</h3>
+  <p><code>items</code> has no realtime subscription (only <code>code_items</code> and
+  <code>epics</code> do). A verdict written by the cron Worker while the tab is open appears on the
+  next load or <code>router.refresh()</code>, so an unjudged mark can sit stale for a while.</p>
+  <p class="why"><b>Why not fix it here:</b> subscribing <code>items</code> to realtime is a
+  data-flow change affecting every view that reads the store — a bigger and independently valuable
+  story. Shipping the mark without it is strictly better than today, and the failure mode is a mark
+  that is momentarily pessimistic, never wrong in the other direction. Listed in §9.</p>
+</div>
+
+<h2>4 · The pick — four treatments, drawn <span class="pickme">decide this</span></h2>
+
+<p>
+  All four carry the same three states (D2), the same gate (D3), the same inertness (D4) and the
+  same wording. They differ only in <i>where the mark lives</i> and <i>how much chrome it costs</i>,
+  running from most explicit to most ambient. Flip between them below; the same four rows are drawn
+  each time.
+</p>
+
+<!-- Icon definitions: hand-drawn at 1:1 with the lucide outlines named in the option prose. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="g-model" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.13-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0z" />
+    </symbol>
+    <symbol id="g-claimed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.17 6.81a1 1 0 0 0-3.98-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.63l4.35-1.32a2 2 0 0 0 .83-.5z" />
+      <path d="m15 5 4 4" />
+    </symbol>
+    <symbol id="g-unjudged" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round">
+      <circle cx="12" cy="12" r="9" stroke-dasharray="3.4 3.2" />
+    </symbol>
+    <symbol id="g-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+    </symbol>
+    <symbol id="g-chevup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+      <path d="m17 11-5-5-5 5" />
+      <path d="m17 18-5-5-5 5" />
+    </symbol>
+  </defs>
+</svg>
+
+<div class="mock">
+  <div class="mock-bar">
+    <span>Inbox — mid-triage, four rows</span>
+    <span class="hmeta">alfred's real palette, dark UI in either reading mode</span>
+  </div>
+  <div class="optbar">
+    <div class="optgroup" id="opt-switch" role="group" aria-label="Indicator treatment">
+      <span class="lbl">Treatment</span>
+      <button type="button" data-opt="1" aria-pressed="true">1 · Provenance chip</button>
+      <button type="button" data-opt="2" aria-pressed="false">2 · Title glyph</button>
+      <button type="button" data-opt="3" aria-pressed="false">3 · Edge rail</button>
+      <button type="button" data-opt="4" aria-pressed="false">4 · Row wash</button>
+    </div>
+    <div class="optgroup" id="mode-switch" role="group" aria-label="Row state">
+      <span class="lbl">State</span>
+      <button type="button" data-mode="normal" aria-pressed="true">Resting</button>
+      <button type="button" data-mode="hover" aria-pressed="false">Hover row 1</button>
+      <button type="button" data-mode="select" aria-pressed="false">Select mode</button>
+    </div>
+  </div>
+
+  <div class="mock-body" id="demo" data-opt="1" data-mode="normal">
+    <p class="seclabel">Inbox</p>
+    <div class="ilist">
+
+      <div class="irow r1" data-origin="model">
+        <span class="mk mk-rail" aria-hidden="true"></span>
+        <span class="chev" aria-hidden="true"></span>
+        <span class="cbx" aria-hidden="true"></span>
+        <span class="ttl">Call the dentist friday to reschedule the cleaning<span
+          class="mk mk-glyph" title="Labelled by the classifier"><svg class="g" role="img"
+          aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span></span>
+        <span class="metas">
+          <span class="mk mk-chip" title="Labelled by the classifier"><svg class="g" role="img"
+            aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>
+          <span class="pill muted">Task</span>
+          <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+          <span class="pill due">Aug 7</span>
+          <span class="pill high"><svg class="ic" style="width:14px;height:14px" aria-hidden="true"><use href="#g-chevup" /></svg></span>
+        </span>
+      </div>
+
+      <div class="irow r2" data-origin="model">
+        <span class="mk mk-rail" aria-hidden="true"></span>
+        <span class="chev" aria-hidden="true"></span>
+        <span class="cbx spacer" aria-hidden="true"></span>
+        <span class="ttl">Alfred should let me snooze an item until next week<span
+          class="mk mk-glyph" title="Labelled by the classifier"><svg class="g" role="img"
+          aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span></span>
+        <span class="metas">
+          <span class="mk mk-chip" title="Labelled by the classifier"><svg class="g" role="img"
+            aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>
+          <span class="pill muted">Code</span>
+          <span class="pill proj">ALF</span>
+          <span class="pill proj">ALF-104</span>
+        </span>
+      </div>
+
+      <div class="irow r3" data-origin="claimed">
+        <span class="mk mk-rail" aria-hidden="true"></span>
+        <span class="chev" aria-hidden="true"></span>
+        <span class="cbx" aria-hidden="true"></span>
+        <span class="ttl">Book the van for the move<span
+          class="mk mk-glyph" title="Labelled by you"><svg class="g" role="img"
+          aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+        <span class="metas">
+          <span class="mk mk-chip" title="Labelled by you"><svg class="g" role="img"
+            aria-label="Labelled by you"><use href="#g-claimed" /></svg></span>
+          <span class="pill muted">Task</span>
+          <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Errands</span>
+        </span>
+      </div>
+
+      <div class="irow r4" data-origin="unjudged">
+        <span class="mk mk-rail" aria-hidden="true"></span>
+        <span class="chev" aria-hidden="true"></span>
+        <span class="cbx spacer" aria-hidden="true"></span>
+        <span class="ttl">That thing Mark mentioned about the roof<span
+          class="mk mk-glyph" title="Not yet classified"><svg class="g" role="img"
+          aria-label="Not yet classified"><use href="#g-unjudged" /></svg></span></span>
+        <span class="metas">
+          <span class="mk mk-chip" title="Not yet classified"><svg class="g" role="img"
+            aria-label="Not yet classified"><use href="#g-unjudged" /></svg></span>
+        </span>
+      </div>
+
+    </div>
+
+    <div class="bulkbar">
+      <b>1 selected</b> · <span class="act">Dispatch</span> · <span class="act">Move to folder ▾</span>
+      · <span class="act">Send to Code</span> · <span>Esc</span>
+    </div>
+
+    <div class="legend">
+      <span class="item"><span class="swatch"><svg class="g" aria-hidden="true"><use href="#g-model" /></svg></span>
+        <span class="name">Labelled by the classifier</span> — rows 1 &amp; 2</span>
+      <span class="item"><span class="swatch"><svg class="g" aria-hidden="true"><use href="#g-claimed" /></svg></span>
+        <span class="name">Labelled by you</span> — row 3</span>
+      <span class="item"><span class="swatch"><svg class="g" aria-hidden="true"><use href="#g-unjudged" /></svg></span>
+        <span class="name">Not yet classified</span> — row 4</span>
+    </div>
+    <p class="cap">
+      Row 3 is a capture you filed yourself before the sweeper reached it, so the claim trigger
+      stamped it with no provider. Row 4 landed seconds ago. In <b>Select mode</b> the whole row is
+      one button and every chip — including the mark — renders inert.
+    </p>
+  </div>
+</div>
+
+<p class="cap doc">
+  The <b>Edge rail</b> and <b>Row wash</b> treatments carry no visible glyph, so their accessible
+  name rides an <code>sr-only</code> span on the row; the legend above stays the reader's key either
+  way. With scripting off this mockup is the static Option 1 / Resting drawing.
+</p>
+
+<h3>The same four treatments on a phone</h3>
+
+<p>
+  Mobile is where the treatments diverge most, because the row becomes a card and the badge cluster
+  wraps to its own line beneath the title. Row 4 is the case to watch: a bare capture with no
+  labels at all.
+</p>
+
+<div class="mock">
+  <div class="mock-bar"><span>Inbox at 390px — rows 1 and 4</span><span class="hmeta">follows the treatment picked above</span></div>
+  <div class="mock-body" id="mdemo" data-opt="1">
+    <div class="mframe">
+      <div class="mcard">
+        <div class="irow" data-origin="model">
+          <span class="mk mk-rail" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="mcol">
+            <span class="ttl">Call the dentist friday to reschedule the cleaning<span
+              class="mk mk-glyph" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span></span>
+            <span class="metas">
+              <span class="mk mk-chip" title="Labelled by the classifier"><svg class="g" role="img"
+                aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>
+              <span class="pill muted">Task</span>
+              <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+              <span class="pill due">Aug 7</span>
+              <span class="pill high"><svg class="ic" style="width:14px;height:14px" aria-hidden="true"><use href="#g-chevup" /></svg></span>
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="mcard">
+        <div class="irow" data-origin="unjudged">
+          <span class="mk mk-rail" aria-hidden="true"></span>
+          <span class="cbx spacer" aria-hidden="true"></span>
+          <span class="mcol">
+            <span class="ttl">That thing Mark mentioned about the roof<span
+              class="mk mk-glyph" title="Not yet classified"><svg class="g" role="img"
+              aria-label="Not yet classified"><use href="#g-unjudged" /></svg></span></span>
+            <span class="metas">
+              <span class="mk mk-chip" title="Not yet classified"><svg class="g" role="img"
+                aria-label="Not yet classified"><use href="#g-unjudged" /></svg></span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      Under <b>Provenance chip</b>, row 4 grows a second line it does not have today — the badge
+      footer exists only when the row has metadata, and the mark now counts as metadata. Under
+      <b>Title glyph</b>, <b>Edge rail</b> and <b>Row wash</b> the bare row keeps its single line.
+    </p>
+  </div>
+</div>
+
+<h3 class="opt-h">Option 1 — Provenance chip <span class="pickme">recommended</span></h3>
+<p>
+  A glyph-only <code>Badge variant="muted"</code> in the first slot of <code>RowMetaCluster</code>,
+  before the Type badge: an 11px lucide glyph (<code>Sparkle</code> / <code>Pencil</code> /
+  <code>CircleDashed</code>) with tightened padding and no text. Reading order becomes
+  <i>provenance → type → folder → project → epic → due → repeat → priority → counts</i>.
+</p>
+<p class="verdict"><span class="k">Mounts in</span> <code>row-meta-cluster.tsx</code>, one new
+  element, no row-level change.</p>
+<p class="verdict"><span class="k">Buys</span> the existing pill vocabulary, the footer's mobile
+  wrap and the <code>display:contents</code> desktop inlining for free; an unambiguous test target
+  (<code>getByLabelText</code>); zero collision with any existing colour or state treatment.</p>
+<p class="verdict"><span class="k">Costs</span> a real element in the densest part of the row, and
+  the mobile second line on a bare capture drawn above — <code>hasMeta</code> must now include the
+  mark, so every Inbox row renders the footer.</p>
+
+<h3 class="opt-h">Option 2 — Title glyph</h3>
+<p>
+  The same three glyphs at 11px, set immediately after the title text inside the title line, at
+  <code>text-muted-foreground/60</code>. No pill.
+</p>
+<p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code>'s title span (and the
+  select-mode branch's title span — two sites).</p>
+<p class="verdict"><span class="k">Buys</span> the lightest visible chrome of the three glyph
+  treatments; anchors provenance to the <i>text</i>, which is what was classified, rather than to
+  the labels; no change to <code>hasMeta</code>, so bare rows keep their single line everywhere.</p>
+<p class="verdict"><span class="k">Costs</span> a second title site to keep in sync, and the title
+  wraps (<code>break-words</code>) — on a long title the glyph can end up alone on the last line,
+  which no other row element does.</p>
+
+<h3 class="opt-h">Option 3 — Edge rail</h3>
+<p>
+  A 2px full-height bar pinned to the row's leading edge, inside the row's <code>paddingLeft</code>
+  so nothing shifts: solid grey for the classifier, faint grey for yours, near-invisible
+  <code>border</code>-toned for unjudged. Plus an <code>sr-only</code> span for the name.
+</p>
+<p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code>'s row wrapper, as an
+  absolutely-positioned span (both branches).</p>
+<p class="verdict"><span class="k">Buys</span> zero horizontal space and, uniquely, a column you can
+  scan down the whole list at once rather than reading row by row.</p>
+<p class="verdict"><span class="k">Costs</span> three states that must stay legible as three widths
+  of the same grey — the weakest discrimination of the four. It also lands in the row's most
+  crowded state channel: the search highlight (<code>ring-2 ring-inset ring-accent-teal</code>), the
+  drop-target ring, and select mode's ring all draw on that same edge, so the rail is hidden or
+  ambiguous in exactly the states where the row is being acted on. On mobile it sits inside the
+  card's own border, 4px from it.</p>
+
+<h3 class="opt-h">Option 4 — Row wash</h3>
+<p>
+  No element at all: a whole-row background tint — <code>bg-accent-teal/[0.05]</code> for the
+  classifier, none for yours, <code>bg-muted-foreground/[0.045]</code> for unjudged — plus an
+  <code>sr-only</code> span for the name.
+</p>
+<p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code>'s row class list.</p>
+<p class="verdict"><span class="k">Buys</span> the least chrome possible; the Inbox reads as banded
+  groups at a glance with nothing added to any row.</p>
+<p class="verdict"><span class="k">Costs</span> D6 — it cannot be monochrome and still separate
+  three states, so it spends the teal. And the teal it spends is already taken: hover
+  (<code>bg-secondary/30</code>) paints over the wash, so the row you are pointing at is the one
+  that loses its provenance; select mode's selected row is <code>bg-accent-teal/5</code>, one
+  hundredth of an alpha from the classifier wash, so in select mode a classified row reads as
+  selected; and the drop-target wash is teal again. Flip the demo to <b>Hover row 1</b> and
+  <b>Select mode</b> with treatment 4 picked to see both.</p>
+
+<div class="card">
+  <p style="margin:.2rem 0"><b>The recommendation, in one line.</b> Option 1 — it is the only
+  treatment that reuses an existing vocabulary instead of inventing a channel, the only one whose
+  three states are discriminable without colour, and the only one that needs no second mount site.
+  Its cost is one line on bare mobile captures, and that line is arguably the point: the row with
+  no labels is exactly the row where “hold on, nobody has looked at this yet” is worth saying.</p>
+</div>
+
+<h2>5 · Implementation shape</h2>
+
+<p>The parts below are the same whichever treatment is picked; only the mount site moves.</p>
+
+<h4>New files</h4>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:42%">File</th><th>What it holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>frontend/lib/tasks/classification.ts</code></td>
+      <td>The <code>ClassificationOrigin</code> union, the <code>classificationOrigin()</code>
+        mapping from §2, and the origin → copy record used for the accessible name.</td></tr>
+    <tr><td><code>frontend/lib/tasks/classification.test.ts</code></td>
+      <td>The mapping, including both null-provider directions and the once-classified-then-edited row.</td></tr>
+    <tr><td><code>frontend/components/tasks/classification-mark.tsx</code></td>
+      <td>The presentational mark. Same file for every treatment — <code>TypeBadge</code> is the
+        precedent: a tiny feature component over an atom, holding the domain→label mapping.</td></tr>
+    <tr><td><code>frontend/components/tasks/classification-mark.test.tsx</code></td>
+      <td>One case per origin: the right glyph, the right accessible name, non-interactive.</td></tr>
+    <tr><td><code>frontend/components/tasks/classification-mark.stories.tsx</code></td>
+      <td>Three stories through <code>withVisualFrame</code>, mirroring <code>type-badge.stories.tsx</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Edited files</h4>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:42%">File</th><th>Change</th></tr></thead>
+  <tbody>
+    <tr><td><code>components/tasks/task-row.tsx</code></td>
+      <td>Extract the shared <code>isInboxRow</code> local out of the existing
+        <code>showTypeBadge</code> expression; derive <code>origin</code> from it; pass it to both
+        <code>RowMetaCluster</code> call sites (options 1) or render the mark inline in both
+        branches (options 2–4).</td></tr>
+    <tr><td><code>components/tasks/task-row/row-meta-cluster.tsx</code></td>
+      <td>Option 1 only: an <code>origin?: ClassificationOrigin | null</code> prop, folded into
+        <code>hasMeta</code> and rendered first.</td></tr>
+    <tr><td><code>components/tasks/task-row.styles.ts</code></td>
+      <td>Options 3–4 only: the rail / wash class strings, so the styles test locks them.</td></tr>
+    <tr><td><code>components/tasks/inbox-screen.stories.tsx</code></td>
+      <td>Give the <code>MidTriage</code> fixtures a realistic provenance mix and add a
+        <code>Provenance</code> story covering all three states. See the snapshot note below.</td></tr>
+    <tr><td><code>components/tasks/task-row.test.tsx</code></td>
+      <td>The visibility-gate cases (§6).</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>The wiring, for option 1</h4>
+<pre><code>// task-row.tsx — replacing the current showTypeBadge expression
+const isInboxRow = node.parent_id === null &amp;&amp; !isCompletedView &amp;&amp; !isDispatched(node);
+const showTypeBadge = node.item_type === 'code' || (node.item_type === 'task' &amp;&amp; isInboxRow);
+const origin = isInboxRow ? classificationOrigin(node) : null;
+
+// …passed to BOTH RowMetaCluster call sites — the ordinary row and the select-mode branch.
+&lt;RowMetaCluster … origin={origin} /&gt;</code></pre>
+<p class="small">
+  Passing the same prop to both branches is what makes D4's inertness free: the select-mode cluster
+  is already rendered without <code>editing</code>, and an always-<code>&lt;span&gt;</code> mark needs
+  no <code>inert</code> variant of its own.
+</p>
+
+<div class="callout">
+  <b>Committed visual baselines will move.</b> Every Inbox story fixture derives from
+  <code>BASE_NODE</code> with <code>classified_at: null</code>, so today's
+  <code>tasks-inboxscreen--desktop-inbox</code>, <code>--mobile-inbox</code>, <code>--mid-triage</code>
+  and <code>--undispatched-foldered-item</code> snapshots would all sprout an identical wall of
+  “not yet classified” marks. Set a realistic provenance mix on those fixtures in the same change,
+  then follow the <code>storybook</code> skill's capture-then-approve flow: embed the auto-emitted
+  diff image as the demo evidence, run <code>npm run test:storybook:update -w frontend</code>, and
+  commit the regenerated PNGs with the demo doc. Never hand-edit a baseline.
+</div>
+
+<h2>6 · Tests</h2>
+
+<p>
+  Red/Green TDD as usual. The behaviour splits cleanly into a pure mapping, a presentational
+  component and a visibility gate, so nearly all of it lands in <code>check:fast</code>.
+</p>
+
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:22%">Suite</th><th>Cases</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Unit</b><br /><code>classification.test.ts</code></td>
+      <td>
+        <code>classified_at</code> null → <code>unjudged</code> (with the provider both null and,
+        defensively, set). <code>classified_at</code> set + provider set → <code>model</code>.
+        <code>classified_at</code> set + provider null → <code>claimed</code>. The
+        <code>classified_at</code>-first ordering is the assertion that pins D5.
+      </td>
+    </tr>
+    <tr>
+      <td><b>RTL</b><br /><code>classification-mark.test.tsx</code></td>
+      <td>
+        One render per origin: the accessible name is exactly the copy in §4's legend, the element
+        is not a <code>button</code> and has no click handler, and the <code>title</code> matches
+        the accessible name.
+      </td>
+    </tr>
+    <tr>
+      <td><b>RTL</b><br /><code>task-row.test.tsx</code></td>
+      <td>
+        The D3 gate, one case each: <span class="yes">shown</span> on an undispatched top-level
+        Inbox row; <span class="no">absent</span> on a dispatched row, <span class="no">absent</span>
+        on a subtask of an Inbox row, <span class="no">absent</span> in the Completed view. Plus
+        select mode: the mark renders and is still not a button. Plus D7 — after a store update
+        whose reconciled row carries a stamped <code>classified_at</code> with a null provider, the
+        row's mark reads “Labelled by you”.
+      </td>
+    </tr>
+    <tr>
+      <td><b>Storybook</b></td>
+      <td>
+        Three atom-level stories (one per origin) and one <code>InboxScreen</code>
+        <code>Provenance</code> story with all three side by side, both under the image-snapshot
+        gate — this is what locks the <i>drawn</i> result of the option picked in §4.
+      </td>
+    </tr>
+    <tr>
+      <td><b>E2E</b></td>
+      <td>
+        None new. The gate and the mapping are fully covered above, and no user flow changes —
+        <code>inbox.spec.ts</code> and <code>inbox-multi-edit.spec.ts</code> must keep passing
+        untouched, which is itself the assertion that the row's behaviour is unchanged.
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>7 · Demo evidence</h2>
+
+<p>
+  This is a user-visible change, so it needs a demo doc at
+  <code>docs/demos/&lt;branch&gt;/&lt;name&gt;.md</code> built with the <code>showboat</code> skill's
+  CLI, and it is also a change that <i>moves committed visual snapshots</i> — which the
+  <code>showboat</code> and <code>storybook</code> skills already specify evidence rules for. Follow
+  those rather than a bespoke list here: the diff image the snapshot gate emits is the evidence for
+  the moved baselines, and a live screenshot of the running Inbox (<code>npm run screenshot -w
+  frontend</code>) is the evidence for the new mark. Confirm with <code>npm run demo -- verify</code>
+  before wrapping up, and link the doc from the PR description with
+  <code>npm run demo -- pr-link</code>.
+</p>
+
+<h2>8 · Acceptance criteria</h2>
+
+<ul class="ac">
+  <li>A pure <code>classificationOrigin()</code> maps <code>classified_at</code> +
+    <code>classified_provider</code> to <code>model</code> / <code>claimed</code> /
+    <code>unjudged</code>, checking <code>classified_at</code> first.</li>
+  <li>An Inbox row whose classifier verdict was written shows the <b>Labelled by the classifier</b>
+    mark, in the treatment picked from §4.</li>
+  <li>An Inbox row claimed by a human edit shows <b>Labelled by you</b>.</li>
+  <li>An Inbox row the sweeper has not judged shows <b>Not yet classified</b> — including a row
+    that has exhausted its attempts.</li>
+  <li>The mark appears <b>only</b> on top-level, undispatched rows outside the Completed view: no
+    mark on a subtask, a dispatched row, a folder-view row, a priority-view row or a completed row.</li>
+  <li>The mark is never interactive: it is not a button, has no click handler and opens nothing, in
+    both the ordinary row and the select-mode row.</li>
+  <li>Every mark carries an accessible name matching its legend copy, and the same words as a
+    <code>title</code>.</li>
+  <li>Editing a label on an unjudged Inbox row flips its mark to <b>Labelled by you</b> once the
+    PATCH reconciles, with no reload; editing one on a classifier-marked row leaves the mark alone.</li>
+  <li>No store, selector, filter, count, sort, query, API route or migration changed.</li>
+  <li>Inbox story fixtures carry a realistic provenance mix, and the regenerated image snapshots
+    are committed alongside the demo doc that shows their diff.</li>
+  <li><code>check</code> is green; no guardrail config was edited and no ignore directive added.</li>
+</ul>
+
+<h2>9 · Out of scope &amp; open questions</h2>
+
+<h4>Deliberately not in this story</h4>
+<ul class="tight">
+  <li><b>Per-field marking.</b> Which individual chip the model guessed vs. you set — D1. It needs
+    <code>classified_guess</code> read in the browser and is a separate decision.</li>
+  <li><b>Any accept / reject / re-run affordance.</b> D4 of the epic stands; manual re-classify is
+    epic story <b>G</b>.</li>
+  <li><b>Any surface outside the Inbox row</b> — no detail-panel provenance line, no folder or
+    priority view treatment, no correction-log view (the epic's D15 keeps that write-only).</li>
+  <li><b>Realtime for <code>items</code>.</b> D8 — a classifier write still needs a reload to show.
+    Worth its own story if the staleness ever grates; it touches every view that reads the tasks store.</li>
+  <li><b>Showing the model or prompt version.</b> <code>classified_model</code> and
+    <code>classified_prompt_version</code> stay unrendered; they exist for the future A/B query the
+    epic's D2 describes.</li>
+</ul>
+
+<h4>Open</h4>
+<ul class="tight">
+  <li><b>Which treatment ships</b> — §4. The one blocking decision; everything else is settled.</li>
+  <li><b>Does the “not yet classified” mark earn its place once the sweeper is fast and reliable?</b>
+    It is the state you see most often and care about least. Worth revisiting after a fortnight of
+    real use — if it reads as noise, dropping it is a two-line change and the other two states stand
+    on their own.</li>
+</ul>
+
+<h2>10 · Related reading</h2>
+<ul class="tight">
+  <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. D4
+    (write-through, no marking), D8 (abstention), D10 (the marker + claim rule), D15 (corrections).</li>
+  <li><code>database/migrations/0029_llm_classifier.sql</code> — the six provenance columns, the
+    <code>items_claim_from_classifier</code> trigger, and the <code>task_items</code> re-expansion.</li>
+  <li><code>workers/src/sweep.ts</code> — the sweep predicate, <code>ATTEMPT_CEILING</code>, and the
+    verdict write that sets <code>classified_provider</code>.</li>
+  <li><code>frontend/components/tasks/task-row/row-meta-cluster.tsx</code> — the chip cluster the
+    recommended treatment joins, and its inert/select-mode contract.</li>
+  <li><code>.claude/skills/frontend-architecture/SKILL.md</code>, <code>.../storybook/SKILL.md</code>,
+    <code>.../showboat/SKILL.md</code> — where the component belongs, the snapshot approve flow, and
+    the demo evidence rules.</li>
+</ul>
+
+<script>
+/*
+ * The §4 treatment / state switcher. Progressive enhancement only — the markup is authored at
+ * Option 1 + Resting, so with scripting off the document is still a static, correct mockup of the
+ * recommended treatment.
+ *
+ * Both canvases (desktop and mobile) follow the treatment; only the desktop one has row states,
+ * since hover and select mode are pointer/desktop concerns.
+ */
+(function () {
+  'use strict';
+
+  var demo = document.getElementById('demo');
+  var mdemo = document.getElementById('mdemo');
+
+  function wire(groupId, attribute, targets) {
+    var group = document.getElementById(groupId);
+    if (!group) return;
+    var buttons = group.querySelectorAll('button[data-' + attribute + ']');
+    group.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-' + attribute + ']');
+      if (!button) return;
+      var value = button.getAttribute('data-' + attribute);
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].setAttribute('aria-pressed', String(buttons[i] === button));
+      }
+      for (var j = 0; j < targets.length; j++) {
+        if (targets[j]) targets[j].setAttribute('data-' + attribute, value);
+      }
+    });
+  }
+
+  wire('opt-switch', 'opt', [demo, mdemo]);
+  wire('mode-switch', 'mode', [demo]);
+})();
+</script>
+
+</div>
+</body>
+</html>
