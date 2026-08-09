@@ -282,10 +282,11 @@ and always **verify a change with a follow-up query** — a fix without verifica
 
 `.github/workflows/migrate.yml` runs the applier (`database/src/deploy.ts`) on every push to
 `main`, as a `personal` / `work` matrix. Pending is decided per database from its own
-`public.schema_migrations` ledger, so re-runs are no-ops and a hand-applied file is skipped.
-**Shipping a migration is merging it** — apply by hand only to iterate before the PR lands, and
-say so in the PR body if you did. Mechanics live in
-[`database/README.md`](../../../database/README.md#applying-on-merge-the-default-path); don't
+`public.schema_migrations` ledger, so re-runs are no-ops. **Shipping a migration is merging it —
+there is no sanctioned way to hand-apply one to a live instance any more**, not even to iterate
+before the PR lands; validate a new migration against real Postgres with
+`npm run check:slow -w database` (the throwaway-cluster integration suite) instead. Mechanics live
+in [`database/README.md`](../../../database/README.md#applying-on-merge-the-default-path); don't
 restate them in a migration's rollout notes.
 
 A database with schema but no ledger is **refused**, not guessed at, and adopting one is an
@@ -303,12 +304,14 @@ Nothing orders that apply against Vercel's deploy of the same commit, so the cod
 beat before its schema. Write migrations **expand-then-contract**: the new schema must work with
 the code already running, and a column/table is dropped only in a later migration.
 
-### In the Claude Code web/remote sandbox, apply migrations via the Management API
+### In the Claude Code web/remote sandbox, query Postgres via the Management API
 
 The remote sandbox allows outbound **HTTPS only** (through the agent proxy); raw Postgres TCP
-to the pooler (5432 **and** 6543) is blocked, so `npm run migrate`, `psql`, and `pg.Client`
-all hang and fail with a bare `timeout expired`. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
-the environment, run migrations — and any ad-hoc SQL — over the **Management API** instead:
+to the pooler (5432 **and** 6543) is blocked, so `psql` and `pg.Client` both hang and fail with
+a bare `timeout expired`. There is no sanctioned way to hand-apply a migration any more (see
+above — CI applies on merge), but ad-hoc read SQL — e.g. verifying what a merge just applied —
+still has nowhere else to go from the sandbox. When a `SUPABASE_ACCESS_TOKEN` (a PAT) is in
+the environment, run it over the **Management API** instead:
 
 **Check the ENVIRONMENT for credentials, not `frontend/.env.local`.** That file is gitignored
 and absent from a fresh sandbox clone, so its absence proves nothing — `SUPABASE_ACCESS_TOKEN`
@@ -341,81 +344,32 @@ sends only half the new invariant** and decide the order deliberately: deploy fi
 merge in the same sitting. Say which in the PR body, with the `alter table … drop constraint …`
 escape hatch, so whoever picks it up knows the schema is ahead of the app.
 
-### Applying migrations / generating types without a personal access token
+### Regenerating `database.types.ts`
 
-Plain SQL migrations can be applied over the **session pooler** connection string (port
-5432) with any Postgres client (`pg`, `psql`). The transaction pooler (6543) is unreliable
-for multi-statement DDL — prefer the session pooler or direct connection for migrations.
+`npm run gen-types -w database` rebuilds `frontend/lib/database.types.ts` from
+`database/migrations/`: it applies them to a throwaway cluster and renders the result with
+postgres-meta's TypeScript template — the engine inside the CLI's typegen container, pinned in the
+lockfile. No live database, no access token, no Docker. `-- --check` reports a stale committed file
+(exit 1) without writing. Regenerate on the branch that adds the migration; never hand-edit the file.
 
-To apply **one** migration to the live DB by number, use `npm run migrate -w database <NNNN>`
-(accepts `11`, `0011`, or the full filename). It reads `DATABASE_URL` from `frontend/.env.local`,
-prints the target host, and confirms before writing (`--yes` skips the prompt). It records the
-file in that database's `public.schema_migrations` ledger, so the merge pipeline (below) then
-treats it as done; reach for raw `psql -f` for the schema bootstrap or seed.
+**`check:slow` enforces it**, so forgetting is a red push rather than a frontend typed against a
+schema that no longer exists. The assertion runs only on a branch that touches
+`database/migrations/` — nothing else can make the committed types stale.
 
-**Regenerating `database.types.ts` from `--db-url` is CLI-version-sensitive — pin a mid-2.9x
-version and have Docker running.** Token-free `--db-url` introspection only works on CLI
-versions that spin up a local Docker `postgres-meta` container, so **start Docker Desktop first**
-(`open -a Docker`, then poll `until docker info; do sleep 2; done`):
+Two consequences of describing a local cluster rather than a hosted project, both intended:
 
-```bash
-npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > frontend/lib/database.types.ts
-```
+- Supabase's managed schemas (`graphql_public`, `auth`, `storage`) are **absent** — app code only
+  ever reaches through `Database['public']`.
+- `__InternalSupabase.PostgrestVersion` can't be observed locally, so it's a constant in
+  `database/src/gen-types.ts`; bump it by hand when Supabase upgrades PostgREST.
 
-- **The current CLI (2.106.0) dropped the token-free path** — `gen types --db-url` errors
-  `LegacyPlatformAuthRequiredError` ("Access token not provided"), demanding `supabase login` /
-  `SUPABASE_ACCESS_TOKEN`. Don't reach for `@latest` here.
-- **Very old versions (≤2.40.x) work token-free via Docker but emit an outdated type format**
-  (no `SetofOptions`, drops `graphql_public` when you pass `--schema public`) → noisy format
-  churn vs. the committed file.
-- **2.6x–2.9x are the sweet spot:** token-free, Docker-based, and emit the *current* format
-  (`SetofOptions`, `graphql_public`, `__InternalSupabase`). Omit `--schema` so all exposed
-  schemas are included.
+**The formatting comes from the workspace-hoisted Prettier**, which postgres-meta calls internally —
+so a Prettier major bump reflows the whole file (3.9.x adds `X extends (Y extends …)` parens 3.8.x
+strips). That churn is the generator's to produce: re-run it, never hand-fix the file.
 
-**Generate against a local Postgres with the `@supabase/postgres-meta` npm server** — it's
-the exact engine inside the CLI's typegen container, so the output is byte-identical to the
-committed format after the CLI's formatting step. Reach for it when there's no live DB and no
-Docker-image pulls (a sandbox whose proxy 403s registry blobs), **and whenever prod carries
-tables the migrations don't create** — introspecting prod then drags those unrelated tables
-into `database.types.ts`, burying the additive diff. The local cluster is built from
-`database/migrations/` alone, so it yields exactly the repo's schema:
-
-1. Local cluster (server binaries ship in the sandbox): `initdb`/`pg_ctl` **as a non-root
-   user** (`useradd pguser` — initdb refuses root), then create the roles + publication the
-   migrations expect (`create role anon/authenticated/service_role nologin; create
-   publication supabase_realtime;`) and apply `database/migrations/0*.sql` in order with
-   `psql -v ON_ERROR_STOP=1` — which also *integration-tests a new migration for real*.
-   Two permission traps: put `PGDATA` under **`pguser`'s own home**, not the agent scratchpad
-   (whose parent dirs `pguser` can't traverse — `pg_ctl` dies with `could not access
-   directory`), and pass `-o '-k <dir>'` to point the socket at a writable path, else startup
-   fails on `could not create lock file "/var/run/postgresql/.s.PGSQL.<port>.lock"`.
-2. Parity stub for the graphql section: `create schema graphql_public;` plus a
-   `graphql_public.graphql("operationName" text default null, query text default null,
-   variables jsonb default null, extensions jsonb default null) returns jsonb` stub function.
-3. **`npm i @supabase/postgres-meta@0.95.2`, pinning `prettier` to the repo's version** — install
-   both outside the repo (a scratch dir) so nothing lands in the lockfile. Two versions decide the
-   *template*, not just the data. postgres-meta itself: 0.96.x emits different union wrapping.
-   And its **`prettier` dependency is a caret range**, so a fresh install resolves the latest —
-   3.9.x adds `X extends (Y extends …)` parens the committed file doesn't have, churning ~30 lines
-   with no schema change. Pin it in the scratch `package.json`:
-   `"overrides": { "prettier": "<the repo's version>" }`. Run `PG_META_DB_URL=<url> node
-   node_modules/@supabase/postgres-meta/dist/server/server.js`, then GET
-   `/generators/typescript?included_schemas=public,graphql_public&detect_one_to_one_relationships=true&postgrest_version=14.5`
-   (match `postgrest_version` to the committed file's `__InternalSupabase.PostgrestVersion`).
-4. Reproduce the CLI's formatting with **the repo's own Prettier**, not `npx prettier` (which
-   fetches the latest and rewraps unions/generics across the whole file, burying your additive
-   diff in churn):
-   `node node_modules/prettier/bin/prettier.cjs --parser typescript --no-config --no-semi`.
-   Diff against the committed file — only your additive changes should remain.
-
-**Adding a column? Generate BEFORE and AFTER the new migration and `patch` the delta onto the
-committed file** — instead of regenerating the whole file and hoping it matches. Apply the
-migrations up to the new one, generate; apply the new one, generate again; `diff -u before.ts
-after.ts | patch frontend/lib/database.types.ts`. The delta is still raw generator output (nothing
-hand-written), but every formatting difference — postgres-meta's version, prettier's version, a
-`graphql_public` the local cluster lacks — appears on **both** sides and cancels out, so churn is
-impossible by construction and steps 2–4's version-pinning stops mattering. `patch` locates the
-hunks by context, so the line offsets between the two files are irrelevant.
+Don't reach for `supabase gen types --db-url`: the current CLI (2.106.0) demands an access token for
+it, and introspecting a hosted project drags in whatever tables that database carries beyond the
+migrations, burying the real diff.
 
 **Direct connection is IPv6-only — use the session pooler from IPv4 networks.** The
 `DATABASE_URL` from the dashboard's *Direct connection* tab points at

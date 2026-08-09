@@ -8,9 +8,8 @@ import { MIGRATIONS_DIR, migrationFiles, resolveDatabaseUrl } from './migrate.ts
 
 /**
  * The per-database ledger of applied migrations — the source of truth for "what has THIS database
- * seen?". The committed `migrations-applied.log` records the shared history a human typed, but it
- * cannot answer that question per instance (Personal and Work are separate Supabase databases),
- * which is exactly what an unattended deploy must know before it runs a file.
+ * seen?" (Personal and Work are separate Supabase databases, so no single shared record could
+ * answer that per instance) — exactly what an unattended deploy must know before it runs a file.
  *
  * It lives in `public` so it travels with the schema-scoped nightly dump (`supabase db dump
  * --schema public`) — a database restored from a backup therefore still knows its own history. It
@@ -20,9 +19,9 @@ import { MIGRATIONS_DIR, migrationFiles, resolveDatabaseUrl } from './migrate.ts
 export const LEDGER_TABLE = 'public.schema_migrations';
 
 /**
- * Advisory-lock key held for the length of a deploy, so two runs — a merge racing a manual
- * `npm run migrate`, or a re-queued workflow — can never apply the same file twice. An arbitrary
- * fixed number is enough: alfred takes no other advisory locks.
+ * Advisory-lock key held for the length of a deploy, so two runs — a merge racing a re-queued
+ * workflow — can never apply the same file twice. An arbitrary fixed number is enough: alfred
+ * takes no other advisory locks.
  */
 export const MIGRATION_LOCK_KEY = 177;
 
@@ -148,30 +147,6 @@ export async function recordInLedger(client: Client, names: readonly string[]): 
 }
 
 /**
- * Whether this database's ledger can honestly gain a row for a hand-applied migration. True when
- * it is **adopted** (the ledger already records its history) or **empty** (no app schema, so the
- * hand-apply is building it from `0001`). False for an unadopted database that already has schema:
- * a lone row there would read as "this is everything it has ever had" and send the next merge back
- * to `0001`. Call this BEFORE applying the file — afterwards, a bootstrapping database looks like
- * an unadopted one.
- */
-export async function ledgerAcceptsManualApply(client: Client): Promise<boolean> {
-  const applied = await appliedMigrations(client);
-  if (applied.length > 0) return true;
-  return !(await hasAppSchema(client));
-}
-
-/**
- * Record a migration applied BY HAND (`npm run migrate`) in the target database's ledger, so the
- * merge pipeline sees it as done rather than applying it a second time. Only valid when
- * {@link ledgerAcceptsManualApply} said so before the file ran.
- */
-export async function recordManualApply(client: Client, file: string): Promise<void> {
-  await ensureLedger(client);
-  await recordInLedger(client, [path.basename(file)]);
-}
-
-/**
  * Run ONE migration file and record it, in a single transaction: a file that fails leaves neither
  * half-applied SQL nor a ledger row claiming it succeeded. The file is sent as one simple-query
  * batch (multi-statement, dollar-quoted bodies OK), exactly as production applies it — no migration
@@ -208,7 +183,7 @@ export interface DeployOptions {
  * Bring one database up to date with `database/migrations/`, and return what was done. Takes an
  * advisory lock before reading the ledger so a concurrent deploy can't plan against state this one
  * is about to change, then applies each pending file in filename order — the same order, and the
- * same raw SQL, that `npm run migrate` and the integration suite use.
+ * same raw SQL, that the integration suite uses.
  */
 export async function deployMigrations(
   client: Client,

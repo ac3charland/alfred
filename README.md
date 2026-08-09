@@ -83,12 +83,13 @@ If your network is IPv4-only, use the **Session pooler** connection string inste
 ### 4. Regenerate the schema types
 
 ```bash
-npx supabase gen types typescript --db-url "$DATABASE_URL" > frontend/lib/database.types.ts
+npm run gen-types -w database
 ```
 
-The committed `frontend/lib/database.types.ts` is hand-authored to match
-`database/migrations/0001_initial_schema.sql`; regenerating confirms it against the
-live DB. `--db-url` needs no Supabase access token.
+This rebuilds `frontend/lib/database.types.ts` from `database/migrations/` — it applies them to a
+throwaway local cluster and describes the result, so it needs no live database and no Supabase
+access token. Add `-- --check` to verify the committed file is current without rewriting it. See
+[`database/README.md`](database/README.md#regenerating-frontendlibdatabasetypests).
 
 ### 5. Create your login user
 

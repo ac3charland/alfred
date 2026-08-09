@@ -5,11 +5,11 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 ## Layout
 
 - `migrations/` — ordered SQL migrations (`NNNN_name.sql`). Applied in filename order.
-- `migrations-applied.log` — committed paper trail of which migrations reached a live DB (appended
-  by `npm run migrate`; commit it). Guards against the migration-drift class that caused ALF-119/124.
 - `seed.sql` — tiny development dataset (folders + a nested subtask tree).
 - `src/deploy.ts` — the applier the merge pipeline runs (see
   [Applying on merge](#applying-on-merge-the-default-path)); also usable locally.
+- `src/gen-types.ts` — regenerates the frontend's `Database` type from the migrations, with no live
+  database (see [Regenerating the types](#regenerating-frontendlibdatabasetypests)).
 
 ## Schema summary
 
@@ -66,16 +66,15 @@ the [instance-isolation rule](../docs/instance-isolation.md) that *every* migrat
 How it decides what to run:
 
 - **`public.schema_migrations`** — a ledger table **in each database**, one row per applied
-  migration filename. The committed `migrations-applied.log` records the shared history a human
-  typed; it can't answer "what has *this* database seen?", which is the only question an unattended
-  applier may act on. The deployer creates the ledger itself (`create table if not exists`) — it is
+  migration filename, which is the only thing an unattended applier can act on: "what has *this*
+  database seen?" The deployer creates the ledger itself (`create table if not exists`) — it is
   not a migration, because it has to exist before the first migration can be judged.
 - **Pending = every migration file the ledger doesn't record**, applied in filename order. Each file
   runs in **one transaction together with its ledger row**, so a failure leaves neither half-applied
-  SQL nor a row claiming success. A `pg_advisory_lock` around the run keeps a merge and a manual
-  apply from racing.
+  SQL nor a row claiming success. A `pg_advisory_lock` around the run keeps concurrent runs (a
+  re-queued workflow, say) from racing.
 - **An empty database** (a newly provisioned instance) has no schema and no ledger, so it simply
-  gets every migration from `0001`.
+  gets every migration from `0001` — provisioning a new instance needs no manual bootstrap step.
 - **An _unadopted_ database — schema but no ledger — is refused, loudly.** Its history is
   unknowable from the outside, and a guess is unrecoverable: recording an assumed history marks the
   gaps it actually has as applied and hides them forever. Both live databases proved the point when
@@ -85,10 +84,6 @@ How it decides what to run:
   at: `npm run deploy -w database -- --baseline 0017_grant_v_code_stories.sql`. Everything through
   that file is recorded as applied, the rest is applied normally, and the database is ordinary from
   then on. The workflow never passes `--baseline` — a merge must not adopt anything.
-- **`npm run migrate` writes the same ledger**, so a migration you apply by hand — during
-  development, or to unblock something — is never re-applied by the pipeline. Against an *unadopted*
-  database it deliberately records nothing and says so: a lone row there would read as that
-  database's entire history.
 
 Two things worth knowing:
 
@@ -102,7 +97,8 @@ Two things worth knowing:
   `schema_migrations` in `frontend/lib/database.types.ts` — expected, and unused by app code.
 
 Both live databases were adopted and caught up when this landed (Work: `0018`–`0026`; Personal:
-`0016`), and `migrations-applied.log` records those applies — so neither needs adopting again.
+`0016`), and each database's own `schema_migrations` ledger records those applies — so neither
+needs adopting again.
 
 Watch a run under **Actions → Migrate Databases**; a failure emails the repo owner like any other
 red workflow. To see what a live database is missing without writing anything:
@@ -112,36 +108,51 @@ red workflow. To see what a live database is missing without writing anything:
 npm run deploy -w database -- --dry-run
 ```
 
-## Applying to the hosted project by hand
+## Pre-merge iteration and generating types
 
-Reach for this when you're iterating on a migration before it merges, or bootstrapping a database
-from scratch — the merge pipeline above is the path for anything that has landed on `main`.
+There is no sanctioned way to hand-apply a migration to the hosted Personal or Work project
+any more — not even to iterate before a PR lands. That practice is exactly what let ALF-119/124
+drift silently, since a manual apply only reaches the repo if someone remembers to write it down.
+Validate a new migration against real Postgres with the integration suite instead (see
+[Testing the migrations against real Postgres](#testing-the-migrations-against-real-postgres)
+below), which applies every migration to a throwaway cluster on every run; preview what a live
+database is missing, without writing anything, with `npm run deploy -w database -- --dry-run`
+(see above).
 
-Env values live in `frontend/.env.local` (gitignored). Prefer the **Direct connection**
-URI (it's IPv6 and works from a normal machine). If your network is IPv4-only, use the
-**Session pooler** string (port 5432) instead — not the transaction pooler (6543), which
-is unreliable for multi-statement DDL.
+### Regenerating `frontend/lib/database.types.ts`
+
+The frontend's `Database` type comes from the **migrations**, not from a live database, so it can be
+regenerated on the branch that adds the migration — before anything merges:
 
 ```bash
-# Apply ONE migration to the live DB by number — reads DATABASE_URL from frontend/.env.local,
-# prints the target host, and confirms before writing (add --yes to skip the prompt):
-npm run migrate -w database 11           # accepts 11, 0011, or 0011_task_items_view_columns.sql
-# On success it appends a line to database/migrations-applied.log (the paper trail of what reached
-# a live DB) — COMMIT that change so the branch records the apply. It also records the migration in
-# that database's own schema_migrations ledger, so the merge pipeline won't re-apply it.
-
-# Or drive any file directly with psql (schema bootstrap, seed, a hand-picked migration):
-psql "$DATABASE_URL" -f database/migrations/0001_initial_schema.sql
-psql "$DATABASE_URL" -f database/seed.sql
-
-# Regenerate the TypeScript types after a schema change (Docker must be running; pin a
-# mid-2.9x CLI — the latest CLI requires an access token for --db-url, see the supabase skill):
-npx --yes supabase@2.95.0 gen types typescript --db-url "$DATABASE_URL" > frontend/lib/database.types.ts
+npm run gen-types -w database              # rewrite frontend/lib/database.types.ts
+npm run gen-types -w database -- --check   # exit 1 if the committed file is stale (writes nothing)
 ```
 
-Token-free `--db-url` introspection needs a local Docker `postgres-meta` container, so start
-Docker first. The current CLI dropped the token-free path; pin `supabase@2.95.0`. See the
-`supabase` skill ("Regenerating `database.types.ts`") for the version details.
+**Forgetting is a red push, not a surprise later.** The integration suite (`check:slow`, so the
+pre-push hook and CI) asserts the committed types match the migrations — but **only on a branch that
+adds or edits one**, since no other change can make them stale. It reuses the schema that suite has
+already migrated, so the gate costs a string compare rather than another cluster.
+
+`src/gen-types.ts` applies every committed migration to the same throwaway cluster the integration
+suite uses, then describes the result with **postgres-meta's TypeScript template** — the generator
+the Supabase CLI runs inside its container, pinned to the matching version. So it needs no
+credentials, no Docker, and no hosted project, and the schema it reads is the one *your branch*
+builds. Commit its output verbatim; the file is generated, so it's excluded from ESLint and Prettier
+and must never be hand-edited.
+
+Two things a local cluster cannot speak for, both deliberate:
+
+- **Supabase's managed schemas are absent.** `graphql_public` (the `pg_graphql` extension), `auth`
+  and `storage` exist only on a hosted project, so they aren't in the generated type. App code only
+  ever reaches through `Database['public']`, so nothing depends on them.
+- **`__InternalSupabase.PostgrestVersion`** describes the hosted platform's PostgREST, which a local
+  cluster has no notion of. It's carried as a constant in `src/gen-types.ts` — bump it by hand if
+  Supabase upgrades PostgREST.
+
+The generated formatting comes from whichever **Prettier the workspace hoists** (postgres-meta calls
+it internally and resolves the root copy), so a Prettier major bump will reflow this file — reflow it
+by re-running the generator, never by hand.
 
 ## Testing the migrations against real Postgres
 
