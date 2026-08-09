@@ -170,7 +170,13 @@ cleanup (the returned function) always runs when navigating away — use this fo
   pin-the-clock rule is for tests, where a moving "now" makes a fixed assertion flaky; a story is a
   depiction, so a literal renders the wrong thing the day after it is written. Use
   `todayISODate()` for the case being shown, permanently-past/future literals (`2020-…` / `2099-…`)
-  elsewhere.
+  elsewhere. This bites more than a literal "today": any fixture read by a today-relative
+  formatter (e.g. `formatDueDate`'s "Today"/"Tomorrow"/"Yesterday" window) re-enters that window on
+  the ~3 calendar days a year it lands within a day of the real date — a near-term literal
+  (`'2026-08-07'`) isn't safe just because it looked far away when written; only a `2020…`/`2099…`-
+  scale literal is. The drift can hide under a `visualTest` story's 1% threshold in a bigger crop
+  (more rows/whitespace) even while a tighter crop of the same fixture fails — grep sibling stories
+  for the same near-term literal and fix them together.
 
 - **Always import from `'storybook/test'`, never from `'@storybook/test'`.** The scoped package
   (`@storybook/test`) was the correct import in Storybook 8; it was consolidated into the core
