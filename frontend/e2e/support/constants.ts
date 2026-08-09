@@ -75,6 +75,7 @@ export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folde
     // Increasing rank, so a seeded folder list defaults to creation order in the sidebar
     // (ALF-153) — matching the DB backfill (row_number over created_at).
     sort_order: overrides.sort_order ?? nextSortOrder(),
+    description: overrides.description ?? null,
   };
 }
 
@@ -141,6 +142,7 @@ export function makeProject(name: string, overrides: Partial<Project> = {}): Pro
     repo_name: overrides.repo_name ?? 'alfred',
     github_url: overrides.github_url ?? null,
     ref_seq: overrides.ref_seq ?? 0,
+    description: overrides.description ?? null,
   };
 }
 

@@ -7,6 +7,7 @@ import type { Project } from '@/lib/types';
 import { ProjectKeyChip } from './project-key-chip';
 
 const ALFRED: Project = {
+  description: null,
   id: 'p-alf',
   name: 'Alfred',
   key: 'ALF',

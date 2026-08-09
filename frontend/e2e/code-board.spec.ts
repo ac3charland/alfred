@@ -143,3 +143,45 @@ test('creates an epic from the board toolbar (allocating the shared ref)', async
   // The empty state is gone now that the project has an epic.
   await expect(page.getByText(/no epics yet/i)).toBeHidden();
 });
+
+test('describes a project from the board header, and clears the description again', async ({
+  page,
+  seed,
+}) => {
+  // Real UUID id: the description PATCHes the project by id, which the route validates as a
+  // UUID (the readable `p1` the read-only tests use would 400 → roll back).
+  const project = makeProject('Alfred', { key: 'ALF' });
+  await seed({ projects: [project] });
+  await page.goto(`/code/${project.id}`);
+
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/projects/') && response.request().method() === 'PATCH',
+  );
+  await page.getByRole('button', { name: 'Add project description…' }).click();
+  await page
+    .getByRole('textbox', { name: 'Edit project description' })
+    .fill('My capture-first task system. Anything about alfred itself belongs here.');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await saved;
+  const described = page.getByRole('button', {
+    name: 'My capture-first task system. Anything about alfred itself belongs here.',
+  });
+  await expect(described).toBeVisible();
+
+  // Persisted on the row, not held in the client store: a reload reads it back.
+  await page.reload();
+  await expect(described).toBeVisible();
+
+  // Emptying it returns the board to the placeholder.
+  const cleared = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/projects/') && response.request().method() === 'PATCH',
+  );
+  await described.click();
+  await page.getByRole('textbox', { name: 'Edit project description' }).fill('');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await cleared;
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Add project description…' })).toBeVisible();
+});

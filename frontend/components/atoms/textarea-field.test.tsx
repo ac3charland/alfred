@@ -87,6 +87,16 @@ describe('TextareaField', () => {
     expect(onEscape).toHaveBeenCalledTimes(1);
   });
 
+  it('caps the textarea when maxLength is given', () => {
+    setup({ maxLength: 500 });
+    expect(screen.getByLabelText('Edit notes')).toHaveAttribute('maxLength', '500');
+  });
+
+  it('leaves the textarea uncapped when maxLength is omitted (every existing call site)', () => {
+    setup();
+    expect(screen.getByLabelText('Edit notes')).not.toHaveAttribute('maxLength');
+  });
+
   it('renders the warning variant with an amber confirm and a caption label', () => {
     setup({
       variant: 'warning',

@@ -8,6 +8,7 @@ import { NeedsHumanAction } from './needs-human-action';
 
 const PROJECTS: Project[] = [
   {
+    description: null,
     id: 'p1',
     name: 'Alfred',
     key: 'ALF',
@@ -18,6 +19,7 @@ const PROJECTS: Project[] = [
     created_at: '2025-01-01T00:00:00Z',
   },
   {
+    description: null,
     id: 'p2',
     name: 'Relay',
     key: 'RLP',

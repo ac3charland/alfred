@@ -17,7 +17,8 @@ Supabase (PostgreSQL) schema for alfred. See `docs/specs/product/SPEC.md` §3 fo
 
 - **`item_type`** enum: `unclassified | task | code | knowledge`
 - **`item_status`** enum: `active | completed`
-- **`folders`** — flat organizational buckets (`id`, `name`, `created_at`).
+- **`folders`** — flat organizational buckets (`id`, `name`, `created_at`, and an optional
+  `description` saying what belongs there — see `0028`).
 - **`items`** — the generic-item core (§3.2) plus task fields (§3.3):
   - base: `id`, `title`, `notes`, `source_url`, `item_type`, `created_at`, `raw_capture`
   - task: `due_date`, `status`, `completed_at`, `folder_id` (→ Inbox when null), `parent_id`
@@ -36,7 +37,8 @@ The Software Factory: Project / Epic / Story model + the refine→implement life
   in_development | ready_for_review | done | blocked | abandoned`.
 - **`code_lane`** enum: `human | local` (only `human` used now; `local` reserved for Lane 1).
 - **`projects`** — a project = a GitHub repo. Immutable 3-char `key` (`^[A-Z][A-Z0-9]{2}$`),
-  `repo_owner`/`repo_name`, and `ref_seq` (the shared per-project ref counter for epics AND stories).
+  `repo_owner`/`repo_name`, `ref_seq` (the shared per-project ref counter for epics AND stories),
+  and an optional `description` of what the project is and what work belongs in it (`0028`).
 - **`epics`** — grouping buckets with optional `notes`, a `ref` (`KEY-N`), and `archived_at`.
 - **`code_items`** — 1:1 sidecar on `items` (`item_type='code'`); presence = "in the factory".
   Carries `factory_state`, `lane`, `ref`, the spec snapshot (`spec_path`/`spec_sha`/`spec_markdown`),

@@ -188,6 +188,76 @@ describe('PATCH /api/folders/[id]', () => {
     });
   });
 
+  it('writes a description-only body, leaving the name and rank alone', async () => {
+    const described = { ...TEST_FOLDER, description: 'Doctors, dentist, the gym.' };
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: described, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ description: 'Doctors, dentist, the gym.' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toStrictEqual(described);
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({
+      description: 'Doctors, dentist, the gym.',
+    });
+  });
+
+  it('forwards an explicit null description — it clears the column rather than being dropped', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_FOLDER, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ description: null }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ description: null });
+  });
+
+  it('leaves the description untouched on a rename — an absent key never reaches the update', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_FOLDER, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Renamed' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(mockSupabase._chain.update).toHaveBeenCalledWith({ name: 'Renamed' });
+  });
+
+  it('returns 400 for a description over 500 characters, before any Supabase call', async () => {
+    const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
+    mockCreateClient.mockResolvedValue(mockSupabase as never);
+
+    const response = await PATCH(
+      new Request(`http://localhost/api/folders/${TEST_ID}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ description: 'x'.repeat(501) }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when sort_order is not a number', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: undefined, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);

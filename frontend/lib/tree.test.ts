@@ -476,6 +476,7 @@ describe('makeOptimisticEpic', () => {
 
 describe('makeOptimisticStory', () => {
   const PROJECT = {
+    description: null,
     id: 'p-1',
     name: 'Alfred',
     key: 'ALF',

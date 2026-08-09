@@ -22,6 +22,7 @@ const CHILDREN: EpicGateChild[] = [
 ];
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

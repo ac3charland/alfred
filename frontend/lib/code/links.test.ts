@@ -15,6 +15,7 @@ import {
  */
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
+    description: null,
     id: 'p1',
     name: 'Alfred',
     key: 'ALF',

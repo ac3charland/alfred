@@ -7,6 +7,7 @@ import type { CodeItem, CodeStory, Epic, Project } from '@/lib/types';
 import { Board } from './board';
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',
@@ -122,8 +123,34 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** A seeded project board: two epics, each expanded into its six happy-path swimlanes. */
+/**
+ * A seeded project board: two epics, each expanded into its six happy-path swimlanes. The
+ * project has no description yet, so the header carries the placeholder that advertises it.
+ */
 export const Seeded: Story = {};
+
+/** The same board once the project has been described — the line reads as prose, capped in width. */
+export const WithDescription: Story = {
+  decorators: [
+    (Story) => (
+      <CodeProvider
+        initialProjects={[
+          {
+            ...PROJECT,
+            description:
+              'My personal capture-first task system — Next.js on Vercel, Cloudflare Workers, Supabase. Anything about alfred itself belongs here.',
+          },
+        ]}
+        initialEpics={EPICS}
+        initialStories={STORIES}
+      >
+        <div data-testid="board-frame" className="w-[1100px] bg-background">
+          <Story />
+        </div>
+      </CodeProvider>
+    ),
+  ],
+};
 
 // ── Blocked stories in place (ALF-136) ──────────────────────────────────────────
 // Blocked work is always on the board — no toggle — sitting in the lane it was blocked from,

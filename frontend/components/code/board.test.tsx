@@ -28,6 +28,7 @@ jest.mock('next/navigation', () => ({
 // The epic-header archive/notes controls go through the store's updateEpic → api-client.
 jest.mock('@/lib/api-client');
 const mockUpdateEpic = jest.mocked(api.updateEpic);
+const mockUpdateProject = jest.mocked(api.updateProject);
 const mockCreateCodeStory = jest.mocked(api.createCodeStory);
 const mockCreateEpic = jest.mocked(api.createEpic);
 
@@ -90,7 +91,11 @@ const PROJECT: Project = {
   github_url: null,
   ref_seq: 9,
   created_at: '2025-01-01T00:00:00Z',
+  description: null,
 };
+
+/** The project with a description — the "already has text" state of the board header line. */
+const DESCRIBED_PROJECT: Project = { ...PROJECT, description: 'My capture-first task system.' };
 
 function makeEpic(id: string, overrides: Partial<Epic> = {}): Epic {
   return {
@@ -145,6 +150,11 @@ function makeStory(itemId: string, epicId: string, overrides: Partial<CodeStory>
     ...overrides,
   };
 }
+
+/** The description line's two faces: the placeholder that advertises it, and the open editor. */
+const descriptionPlaceholder = () =>
+  screen.getByRole('button', { name: 'Add project description…' });
+const descriptionEditor = () => screen.getByRole('textbox', { name: 'Edit project description' });
 
 /** Open the board toolbar's mobile ⋯ filter menu. */
 async function openFilterMenu(user: ReturnType<typeof userEvent.setup>) {
@@ -656,6 +666,165 @@ describe('Board', () => {
         'aria-expanded',
         'true',
       );
+    });
+  });
+
+  describe('the project description line', () => {
+    it('shows the placeholder when the project has no description', () => {
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      expect(descriptionPlaceholder()).toBeInTheDocument();
+    });
+
+    it('shows the placeholder when the description is an empty string, not just null', () => {
+      renderBoard({ projects: [{ ...PROJECT, description: '' }], epics: [makeEpic('e1')] });
+
+      expect(descriptionPlaceholder()).toBeInTheDocument();
+    });
+
+    it('shows the description when the project has one', () => {
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      expect(
+        screen.getByRole('button', { name: 'My capture-first task system.' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Add project description…')).not.toBeInTheDocument();
+    });
+
+    it('opens the editor in place, seeded with the current description', async () => {
+      const user = userEvent.setup();
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'My capture-first task system.' }));
+
+      expect(descriptionEditor()).toHaveValue('My capture-first task system.');
+    });
+
+    it('saves the trimmed description through the store', async () => {
+      mockUpdateProject.mockResolvedValue(DESCRIBED_PROJECT);
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      await user.click(descriptionPlaceholder());
+      await user.type(descriptionEditor(), '  My capture-first task system.  ');
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p1', {
+        description: 'My capture-first task system.',
+      });
+      expect(
+        await screen.findByRole('button', { name: 'My capture-first task system.' }),
+      ).toBeInTheDocument();
+    });
+
+    it('stores null — not an empty string — when the description is emptied', async () => {
+      mockUpdateProject.mockResolvedValue(PROJECT);
+      const user = userEvent.setup();
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'My capture-first task system.' }));
+      await user.clear(descriptionEditor());
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(mockUpdateProject).toHaveBeenCalledWith('p1', { description: null });
+      expect(await screen.findByRole('button', { name: 'Add project description…' })).toBeVisible();
+    });
+
+    it('issues no request when the description is saved unchanged', async () => {
+      const user = userEvent.setup();
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'My capture-first task system.' }));
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(mockUpdateProject).not.toHaveBeenCalled();
+    });
+
+    it('restores the display on Cancel without writing', async () => {
+      const user = userEvent.setup();
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'My capture-first task system.' }));
+      await user.type(descriptionEditor(), ' and more');
+      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+      expect(mockUpdateProject).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', { name: 'My capture-first task system.' }),
+      ).toBeInTheDocument();
+    });
+
+    it('restores the display on Escape without writing', async () => {
+      const user = userEvent.setup();
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'My capture-first task system.' }));
+      await user.type(descriptionEditor(), ' and more{Escape}');
+
+      expect(mockUpdateProject).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole('button', { name: 'My capture-first task system.' }),
+      ).toBeInTheDocument();
+    });
+
+    it('restores the previous description when the save fails', async () => {
+      mockUpdateProject.mockRejectedValue(new Error('network'));
+      const user = userEvent.setup();
+      renderBoard({ projects: [DESCRIBED_PROJECT], epics: [makeEpic('e1')] });
+
+      await user.click(screen.getByRole('button', { name: 'My capture-first task system.' }));
+      await user.clear(descriptionEditor());
+      await user.type(descriptionEditor(), 'Replaced');
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      expect(
+        await screen.findByRole('button', { name: 'My capture-first task system.' }),
+      ).toBeInTheDocument();
+    });
+
+    it('caps the editor at the 500 characters the API and the DB accept', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      await user.click(descriptionPlaceholder());
+
+      expect(descriptionEditor()).toHaveAttribute('maxLength', '500');
+    });
+
+    it('adds no button or menu entry to the board header — the line is the only way in', async () => {
+      const user = userEvent.setup();
+      renderBoard({ epics: [makeEpic('e1')] });
+
+      // The toolbar row keeps exactly the controls it has today: the description line sits on its
+      // own row beneath, and adds nothing here.
+      const createEpic = screen.getByRole('button', { name: 'Create epic' });
+      const toolbarRow = createEpic.parentElement ?? createEpic;
+      expect(
+        within(toolbarRow)
+          .getAllByRole('button')
+          .map((button) => button.getAttribute('aria-label') ?? button.textContent),
+      ).toStrictEqual([
+        'Create epic',
+        'Collapse all',
+        'Filter by status',
+        'Show abandoned',
+        'Board filters',
+      ]);
+      expect(within(toolbarRow).queryByText('Add project description…')).not.toBeInTheDocument();
+
+      // And the ⋯ menu still holds exactly what it holds today.
+      await user.click(within(toolbarRow).getByRole('button', { name: 'Board filters' }));
+      const menu = await screen.findByRole('menu');
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map((item) => item.textContent),
+      ).toStrictEqual(['Filter by status']);
+      expect(
+        within(menu)
+          .getAllByRole('menuitemcheckbox')
+          .map((item) => item.textContent),
+      ).toStrictEqual(['Show abandoned']);
     });
   });
 

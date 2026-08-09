@@ -1282,6 +1282,50 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const entityDescriptionResult = await attempt(
+    'folders and projects carry a nullable description capped at 500 chars (ALF-179)',
+    async () => {
+      const { rows } = await client.query<{ table_name: string; is_nullable: string }>(
+        `select table_name, is_nullable from information_schema.columns
+          where table_name in ('folders', 'projects') and column_name = 'description'
+          order by table_name`,
+      );
+      const missing = ['folders', 'projects'].filter(
+        (name) => !rows.some((row) => row.table_name === name),
+      );
+      if (missing.length > 0)
+        throw new Error(`missing description column on ${missing.join(', ')}`);
+      // Every row pre-dates the column, so NOT NULL would have failed the migration outright —
+      // and "undescribed" stays a legal state forever, not just until the first save.
+      const required = rows.filter((row) => row.is_nullable !== 'YES').map((row) => row.table_name);
+      if (required.length > 0)
+        throw new Error(`description must be nullable on ${required.join(', ')}`);
+
+      // The cap is the backstop under the zod `.max(500)`: the DB refuses an essay even if a
+      // caller reaches the table without passing through the route.
+      const tooLong = 'x'.repeat(501);
+      const rejected: string[] = [];
+      for (const [table, insert] of [
+        ['folders', `insert into folders (name, description) values ('Capped', $1)`],
+        [
+          'projects',
+          `insert into projects (key, name, repo_owner, repo_name, description)
+             values ('CAP', 'Capped', 'ac3charland', 'alfred', $1)`,
+        ],
+      ] as const) {
+        try {
+          await client.query(insert, [tooLong]);
+        } catch {
+          rejected.push(table);
+        }
+      }
+      const accepted = ['folders', 'projects'].filter((table) => !rejected.includes(table));
+      if (accepted.length > 0)
+        throw new Error(`${accepted.join(', ')} accepted a 501-character description`);
+      return 'both columns nullable; both CHECKs rejected 501 characters';
+    },
+  );
+
   const habitAnonResult = await attempt(
     'anon sees zero habits despite rows existing (RLS read)',
     async () => {
@@ -1617,6 +1661,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     habitCascadeResult,
     habitGrantsResult,
     folderSortOrderResult,
+    entityDescriptionResult,
     habitAnonResult,
     anonInsertResult,
     anonReadResult,

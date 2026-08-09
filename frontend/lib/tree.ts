@@ -271,6 +271,8 @@ export function makeOptimisticFolder(name: string): Folder {
     name,
     created_at: new Date().toISOString(),
     sort_order: OPTIMISTIC_APPEND_SORT_ORDER,
+    // Creation stays name-only: a folder is described afterwards, from its own view header.
+    description: null,
   };
 }
 
@@ -286,6 +288,9 @@ export function makeOptimisticProject(input: CreateProjectInput): Project {
     github_url: input.github_url,
     ref_seq: 0,
     created_at: new Date().toISOString(),
+    // As with a folder: the new-project dialog takes a name, key and repo; the description is a
+    // second, unhurried thought, written from the board header.
+    description: null,
   };
 }
 

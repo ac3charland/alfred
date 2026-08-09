@@ -8,6 +8,7 @@ import { ProjectFilterMenu } from './project-filter-menu';
 
 function makeProject(id: string, name: string, key: string): Project {
   return {
+    description: null,
     id,
     name,
     key,

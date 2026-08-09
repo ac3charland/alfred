@@ -191,18 +191,21 @@ export type Database = {
       folders: {
         Row: {
           created_at: string
+          description: string | null
           id: string
           name: string
           sort_order: number
         }
         Insert: {
           created_at?: string
+          description?: string | null
           id?: string
           name: string
           sort_order?: number
         }
         Update: {
           created_at?: string
+          description?: string | null
           id?: string
           name?: string
           sort_order?: number
@@ -397,6 +400,7 @@ export type Database = {
       projects: {
         Row: {
           created_at: string
+          description: string | null
           github_url: string | null
           id: string
           key: string
@@ -407,6 +411,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          description?: string | null
           github_url?: string | null
           id?: string
           key: string
@@ -417,6 +422,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          description?: string | null
           github_url?: string | null
           id?: string
           key?: string

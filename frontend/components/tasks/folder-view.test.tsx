@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
+import * as apiClient from '@/lib/api-client';
 import { useActiveEditorActions } from '@/lib/stores/active-editor-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { Folder } from '@/lib/types';
@@ -75,10 +76,34 @@ jest.mock('./capture-box', () => ({
   },
 }));
 
-const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
-  { id: 'f2', name: 'Home', created_at: '2025-01-02T00:00:00Z', sort_order: 2 },
-];
+// The description line writes through the folders store, whose seam is the api-client.
+jest.mock('@/lib/api-client');
+const mockUpdateFolder = jest.mocked(apiClient.updateFolder);
+
+const WORK: Folder = {
+  id: 'f1',
+  name: 'Work',
+  created_at: '2025-01-01T00:00:00Z',
+  sort_order: 1,
+  description: null,
+};
+const HOME: Folder = {
+  id: 'f2',
+  name: 'Home',
+  created_at: '2025-01-02T00:00:00Z',
+  sort_order: 2,
+  description: null,
+};
+const FOLDERS: Folder[] = [WORK, HOME];
+
+/** The same list with `Work` described — the "already has text" state of the header line. */
+const DESCRIBED_WORK: Folder = { ...WORK, description: 'Anything for my employer.' };
+const DESCRIBED: Folder[] = [DESCRIBED_WORK, HOME];
+
+/** The description line's two faces: the placeholder that advertises it, and the open editor. */
+const descriptionPlaceholder = () =>
+  screen.getByRole('button', { name: 'Add folder description…' });
+const descriptionEditor = () => screen.getByRole('textbox', { name: 'Edit folder description' });
 
 /** A sibling of the folder view that can steal the single-open-editor slot, as a task row would. */
 function OtherEditorProbe() {
@@ -139,6 +164,131 @@ describe('FolderView', () => {
 
       // "Capture something above." is true on the Inbox and false here — there is nothing above.
       expect(lastEmptyDescription).toBe('Add your first task to this folder.');
+    });
+  });
+
+  describe('the folder description line', () => {
+    it('shows the placeholder when the folder has no description', () => {
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      expect(descriptionPlaceholder()).toBeInTheDocument();
+    });
+
+    it('shows the placeholder when the description is an empty string, not just null', () => {
+      renderWithProviders(<FolderView folderId="f1" />, {
+        folders: [{ ...WORK, description: '' }],
+      });
+
+      expect(descriptionPlaceholder()).toBeInTheDocument();
+    });
+
+    it('shows the description when the folder has one', () => {
+      renderWithProviders(<FolderView folderId="f1" />, { folders: DESCRIBED });
+
+      expect(screen.getByRole('button', { name: 'Anything for my employer.' })).toBeInTheDocument();
+      expect(screen.queryByText('Add folder description…')).not.toBeInTheDocument();
+    });
+
+    it('opens the editor in place, seeded with the current description', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: DESCRIBED });
+
+      await user.click(screen.getByRole('button', { name: 'Anything for my employer.' }));
+
+      expect(descriptionEditor()).toHaveValue('Anything for my employer.');
+    });
+
+    it('saves the trimmed description through the store', async () => {
+      mockUpdateFolder.mockResolvedValue({
+        ...WORK,
+        description: 'Doctors, dentist, the gym.',
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      await user.click(descriptionPlaceholder());
+      await user.type(descriptionEditor(), '  Doctors, dentist, the gym.  ');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', {
+        description: 'Doctors, dentist, the gym.',
+      });
+      expect(
+        await screen.findByRole('button', { name: 'Doctors, dentist, the gym.' }),
+      ).toBeInTheDocument();
+    });
+
+    it('stores null — not an empty string — when the description is emptied', async () => {
+      mockUpdateFolder.mockResolvedValue(WORK);
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: DESCRIBED });
+
+      await user.click(screen.getByRole('button', { name: 'Anything for my employer.' }));
+      await user.clear(descriptionEditor());
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(mockUpdateFolder).toHaveBeenCalledWith('f1', { description: null });
+      expect(await screen.findByRole('button', { name: 'Add folder description…' })).toBeVisible();
+    });
+
+    it('issues no request when the description is saved unchanged', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: DESCRIBED });
+
+      await user.click(screen.getByRole('button', { name: 'Anything for my employer.' }));
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(mockUpdateFolder).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        'Cancel',
+        async (user: ReturnType<typeof userEvent.setup>) => {
+          await user.click(screen.getByRole('button', { name: 'Cancel' }));
+        },
+      ],
+      [
+        'Escape',
+        async (user: ReturnType<typeof userEvent.setup>) => {
+          await user.keyboard('{Escape}');
+        },
+      ],
+    ])('restores the display on %s without writing', async (_label, dismiss) => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: DESCRIBED });
+
+      await user.click(screen.getByRole('button', { name: 'Anything for my employer.' }));
+      await user.type(descriptionEditor(), ' and more');
+      await dismiss(user);
+
+      expect(mockUpdateFolder).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Anything for my employer.' })).toBeInTheDocument();
+    });
+
+    it('caps the editor at the 500 characters the API and the DB accept', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      await user.click(descriptionPlaceholder());
+
+      expect(descriptionEditor()).toHaveAttribute('maxLength', '500');
+    });
+
+    it('adds no menu or extra control to the header — the line is the only way in', () => {
+      renderWithProviders(<FolderView folderId="f1" />, { folders: FOLDERS });
+
+      const names = screen
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+      expect(names).toStrictEqual([
+        'Add task to Work',
+        'Sort by: Priority',
+        'Collapse all',
+        'Add folder description…',
+        // The task list's own empty-state action, not a header control.
+        'Add task',
+      ]);
     });
   });
 

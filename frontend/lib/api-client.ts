@@ -17,6 +17,7 @@ import type {
   UpdateFolderInput,
   UpdateHabitInput,
   UpdateItemInput,
+  UpdateProjectInput,
   UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
 import type {
@@ -256,6 +257,18 @@ export function createProject(input: CreateProjectInput): Promise<Project> {
   });
 }
 
+/**
+ * Patch a project's description — its only editable field (ALF-179). Lives in `lib/` (the
+ * null-aware layer) because clearing the description sends an explicit `null` — the Postgres
+ * absent value — which component code can't mint (unicorn/no-null). Returns the updated row.
+ */
+export function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
+  return apiRequest<Project>(`/api/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 /** List epics, optionally scoped to one project (the board / the gate's Epic selector). */
 export function listEpics(projectId?: string): Promise<Epic[]> {
   const qs = projectId === undefined ? '' : `?project=${encodeURIComponent(projectId)}`;
@@ -490,5 +503,6 @@ export {
   type UpdateEpicInput,
   type UpdateHabitInput,
   type UpdateItemInput,
+  type UpdateProjectInput,
   type UpsertHabitEntryInput,
 } from '@/lib/api/schemas';

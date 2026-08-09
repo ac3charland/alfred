@@ -21,6 +21,7 @@ jest.mock('@/lib/supabase/client', () => ({
 }));
 
 const PROJECT: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',

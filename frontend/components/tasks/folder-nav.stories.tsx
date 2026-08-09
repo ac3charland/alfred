@@ -12,9 +12,21 @@ const dueYMD = (offsetDays: number): string => {
 };
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
-  { id: 'f2', name: 'Personal', created_at: '2025-01-02T00:00:00Z', sort_order: 2 },
-  { id: 'f3', name: 'Someday', created_at: '2025-01-03T00:00:00Z', sort_order: 3 },
+  { description: null, id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+  {
+    description: null,
+    id: 'f2',
+    name: 'Personal',
+    created_at: '2025-01-02T00:00:00Z',
+    sort_order: 2,
+  },
+  {
+    description: null,
+    id: 'f3',
+    name: 'Someday',
+    created_at: '2025-01-03T00:00:00Z',
+    sort_order: 3,
+  },
 ];
 
 /** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */

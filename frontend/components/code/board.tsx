@@ -3,11 +3,13 @@
 import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
+import { InlineNoteField } from '@/components/atoms/inline-note-field';
 import { BoardDndProvider } from '@/components/code/board/board-dnd-provider';
 import { BoardToolbar } from '@/components/code/board/board-toolbar';
 import { EpicBlock, type OpenSessionHandler } from '@/components/code/board/epic-block';
 import { NewEpicDialog } from '@/components/code/new-epic-dialog';
 import { StoryDetailModal } from '@/components/code/story-detail-modal';
+import { ENTITY_DESCRIPTION_MAX } from '@/lib/api/schemas';
 import { useStatusFilter } from '@/lib/hooks/use-status-filter';
 import { HAPPY_PATH_STATES, useCodeActions, useProjectBoard } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
@@ -39,7 +41,7 @@ export interface BoardProperties {
  */
 export function Board({ projectId }: BoardProperties) {
   const { project, activeEpics, archivedEpics } = useProjectBoard(projectId);
-  const { openClaudeSession, createEpic } = useCodeActions();
+  const { openClaudeSession, createEpic, updateProjectDescription } = useCodeActions();
   // A `?story=<ref>` deep-link (e.g. from a Backlog row) opens that story's modal — see below.
   const storyParam = useSearchParams().get('story');
 
@@ -139,38 +141,55 @@ export function Board({ projectId }: BoardProperties) {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <h2 className="font-serif text-2xl text-foreground">{project.name}</h2>
-          <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-baseline gap-2">
+            <h2 className="font-serif text-2xl text-foreground">{project.name}</h2>
+            <span className="font-mono text-sm text-muted-foreground">{project.key}</span>
+          </div>
+          <BoardToolbar
+            onCreateEpic={() => {
+              setNewEpicOpen(true);
+            }}
+            hasVisibleEpics={visibleEpics.length > 0}
+            allCollapsed={allCollapsed}
+            onToggleCollapseAll={() => {
+              if (allCollapsed) {
+                openAll();
+              } else {
+                collapseAll(visibleEpics.map((b) => b.epic.id));
+              }
+            }}
+            statusOptions={HAPPY_PATH_STATES}
+            selectedStatuses={visibleStates}
+            onToggleStatus={toggleState}
+            isFiltering={isFiltering}
+            showAbandoned={showAbandoned}
+            onToggleAbandoned={() => {
+              setShowAbandoned((on) => !on);
+            }}
+            hasArchivedEpics={archivedEpics.length > 0}
+            showArchived={showArchived}
+            onToggleArchived={() => {
+              setShowArchived((on) => !on);
+            }}
+          />
         </div>
-        <BoardToolbar
-          onCreateEpic={() => {
-            setNewEpicOpen(true);
-          }}
-          hasVisibleEpics={visibleEpics.length > 0}
-          allCollapsed={allCollapsed}
-          onToggleCollapseAll={() => {
-            if (allCollapsed) {
-              openAll();
-            } else {
-              collapseAll(visibleEpics.map((b) => b.epic.id));
-            }
-          }}
-          statusOptions={HAPPY_PATH_STATES}
-          selectedStatuses={visibleStates}
-          onToggleStatus={toggleState}
-          isFiltering={isFiltering}
-          showAbandoned={showAbandoned}
-          onToggleAbandoned={() => {
-            setShowAbandoned((on) => !on);
-          }}
-          hasArchivedEpics={archivedEpics.length > 0}
-          showArchived={showArchived}
-          onToggleArchived={() => {
-            setShowArchived((on) => !on);
-          }}
-        />
+
+        {/* What this project is and what work belongs in it, in the owner's words (ALF-179).
+            Its own row under the name/key pair, so the toolbar keeps its row and its wrapping
+            behaviour. Capped in width because the board — unlike the folder column — is
+            full-width, and a line of prose running its whole span reads badly. */}
+        <div className="max-w-2xl">
+          <InlineNoteField
+            value={project.description}
+            emptyLabel="Add project description…"
+            placeholder="Project description…"
+            editLabel="Edit project description"
+            maxLength={ENTITY_DESCRIPTION_MAX}
+            onSave={(description) => updateProjectDescription(projectId, description)}
+          />
+        </div>
       </div>
 
       {hasAnyEpic ? (

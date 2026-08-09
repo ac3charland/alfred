@@ -12,6 +12,7 @@ import {
   DEFAULT_BACKLOG_STATUSES,
   HAPPY_PATH_STATES,
   codeItemToStoryPatch,
+  codeReducer,
   isEscapeState,
   useBacklog,
   useCodeActions,
@@ -31,6 +32,7 @@ const mockConvertToCodeEpic = jest.mocked(api.convertToCodeEpic);
 const mockCreateCodeStory = jest.mocked(api.createCodeStory);
 const mockUpdateCodeState = jest.mocked(api.updateCodeState);
 const mockUpdateEpic = jest.mocked(api.updateEpic);
+const mockUpdateProject = jest.mocked(api.updateProject);
 const mockUpdateItem = jest.mocked(api.updateItem);
 const mockMoveCodeEpic = jest.mocked(api.moveCodeEpic);
 const mockReorderCode = jest.mocked(api.reorderCode);
@@ -87,6 +89,7 @@ beforeEach(() => {
 });
 
 const PROJECT_A: Project = {
+  description: null,
   id: 'p1',
   name: 'Alfred',
   key: 'ALF',
@@ -2433,6 +2436,103 @@ describe('code-store', () => {
           );
         });
         expect(mockUpdateEpic).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('the patchProject reducer action', () => {
+      it('patches the matching project and leaves its siblings alone', () => {
+        const next = codeReducer(
+          { projects: [PROJECT_A, PROJECT_B], epics: [], stories: [] },
+          { type: 'patchProject', id: 'p2', patch: { description: 'Described' } },
+        );
+
+        expect(next.projects[0]?.description).toBeNull();
+        expect(next.projects[1]?.description).toBe('Described');
+      });
+
+      it('is a no-op for an id no longer in the list (the race rule)', () => {
+        const before = { projects: [PROJECT_A], epics: [], stories: [] };
+
+        const next = codeReducer(before, {
+          type: 'patchProject',
+          id: 'gone',
+          patch: { description: 'Described' },
+        });
+
+        expect(next.projects).toStrictEqual([PROJECT_A]);
+      });
+    });
+
+    describe('updateProjectDescription (board header inline edit)', () => {
+      it('optimistically patches the description, then reconciles with the saved row', async () => {
+        mockUpdateProject.mockResolvedValue({ ...PROJECT_A, description: 'Saved by the server.' });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateProjectDescription('p1', 'My task system.');
+        });
+
+        expect(mockUpdateProject).toHaveBeenCalledWith('p1', { description: 'My task system.' });
+        expect(result.current.board.project?.description).toBe('Saved by the server.');
+      });
+
+      it('applies the description before the request resolves', () => {
+        mockUpdateProject.mockReturnValue(new Promise<Project>(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        act(() => {
+          void result.current.actions.updateProjectDescription('p1', 'My task system.');
+        });
+
+        expect(result.current.board.project?.description).toBe('My task system.');
+      });
+
+      it('clears the description with null', async () => {
+        const described: Project = { ...PROJECT_A, description: 'The original.' };
+        mockUpdateProject.mockResolvedValue({ ...described, description: null });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [described] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.updateProjectDescription('p1', null);
+        });
+
+        expect(mockUpdateProject).toHaveBeenCalledWith('p1', { description: null });
+        expect(result.current.board.project?.description).toBeNull();
+      });
+
+      it('restores the previous description and toasts on failure', async () => {
+        mockUpdateProject.mockRejectedValue(new Error('patch failed'));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [{ ...PROJECT_A, description: 'The original.' }] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.actions.updateProjectDescription('p1', 'Replaced'),
+          ).rejects.toThrow('patch failed');
+        });
+
+        expect(result.current.board.project?.description).toBe('The original.');
+        expect(mockShowToast).toHaveBeenCalledWith("Couldn't save the project description");
+      });
+
+      it('throws when the project is not in the store', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A] }),
+        });
+
+        await act(async () => {
+          await expect(
+            result.current.updateProjectDescription('missing', 'Described'),
+          ).rejects.toThrow(/not found/i);
+        });
+        expect(mockUpdateProject).not.toHaveBeenCalled();
       });
     });
 

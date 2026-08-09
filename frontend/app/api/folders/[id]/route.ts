@@ -22,9 +22,11 @@ export const PATCH = withSession(
     if (input instanceof Response) return input;
 
     // PATCH semantics: only set the fields the caller actually provided, so a rename leaves the
-    // manual order alone and a reorder leaves the name alone. Building from defined-only fields
-    // also satisfies exactOptionalPropertyTypes (zod `.optional()` yields `T | undefined`).
-    const updates = toUpdatePayload<FolderUpdate>(input, ['name', 'sort_order']);
+    // manual order alone and a reorder leaves the name alone. A present key — even `null` — is
+    // forwarded (null clears the description); an absent one is left untouched. Building from
+    // defined-only fields also satisfies exactOptionalPropertyTypes (zod `.optional()` yields
+    // `T | undefined`).
+    const updates = toUpdatePayload<FolderUpdate>(input, ['name', 'sort_order', 'description']);
 
     const { data, error } = await supabase
       .from('folders')

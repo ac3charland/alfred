@@ -20,8 +20,21 @@ const withViewStores: Decorator = (Story) => (
 );
 
 const FOLDERS: Folder[] = [
-  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
-  { id: 'f2', name: 'Someday', created_at: '2025-01-02T00:00:00Z', sort_order: 2 },
+  {
+    id: 'f1',
+    name: 'Work',
+    created_at: '2025-01-01T00:00:00Z',
+    sort_order: 1,
+    description:
+      'Anything for my employer: meetings, deliverables, admin, and the people I work with.',
+  },
+  {
+    id: 'f2',
+    name: 'Someday',
+    created_at: '2025-01-02T00:00:00Z',
+    sort_order: 2,
+    description: null,
+  },
 ];
 
 /** Fixed residency stamp for a seeded FILED item — a fixture in a folder is one a human put there. */
@@ -72,9 +85,28 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** A folder with tasks, the capture box closed: the header's "+" sits left of Collapse-all. */
+/**
+ * A folder with tasks, the capture box closed: the header's "+" sits left of Collapse-all, and
+ * the folder's description sits on its own row beneath them.
+ */
 export const WithTasks: Story = {
   args: { folderId: 'f1' },
+};
+
+/** The description mid-edit: the line has been replaced in place by the textarea. */
+export const DescriptionEditing: Story = {
+  args: { folderId: 'f1' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole('button', {
+        name: 'Anything for my employer: meetings, deliverables, admin, and the people I work with.',
+      }),
+    );
+    await expect(canvas.getByRole('textbox', { name: 'Edit folder description' })).toHaveValue(
+      'Anything for my employer: meetings, deliverables, admin, and the people I work with.',
+    );
+  },
 };
 
 /** The same folder after pressing "+": the compact capture box sits between header and list. */
