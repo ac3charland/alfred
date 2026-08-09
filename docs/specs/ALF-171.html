@@ -116,7 +116,7 @@
 
 <p>Epic <a href="epics/ALF-158.html">ALF-158</a> splits into ten slices, A–J. Three of them are
 already shipped: <b>A</b> (Inbox residency) as ALF-168, and <b>B + E + I</b> (editing parity, the
-epic hint, the Dispatch action) as ALF-170. A fourth enabler, ALF-179, is refined and waiting. This
+epic hint, the Dispatch action) as ALF-170. A fourth enabler, ALF-179, shipped the descriptions this one reads. This
 story takes the three slices that contain the model:</p>
 
 <div class="scroll"><table>
@@ -167,30 +167,26 @@ story takes the three slices that contain the model:</p>
   <tr>
     <td><b>ALF-179</b></td>
     <td><code>folders.description</code> and <code>projects.description</code> — the owner-authored
-      sentences the prompt's closed-world block carries (<a href="#s7">S7</a>).</td>
-    <td class="no">Refined,<br />not built</td>
+      sentences the prompt's closed-world block carries (<a href="#s7">S7</a>). Both are
+      <code>text</code>, nullable, capped at 500 characters by a CHECK.</td>
+    <td class="yes">Merged<br /><span class="small">0028</span></td>
   </tr>
 </table></div>
 <p>
-  <b>ALF-179 must land before this story.</b> Its spec ships the column, the write path and the
-  authoring surface, and stops deliberately at the boundary — its D10 says in as many words that
-  "story D owns the prompt" and declines to guess the seam. <a href="#s7">S7</a> is that seam. Its own
-  framing is that it makes this prompt <i>better, not possible</i>, and that is true of the epic as a
-  whole — but it is not true of this story, which selects those two columns and would fail on a
-  database that lacks them.
-</p>
-<p>
-  <b>If ALF-171 is picked up before ALF-179 has merged, stop and say so</b> rather than building a
-  reduced version. A quietly-dropped field is a spec the reviewer never approved — the same posture
-  ALF-170 took toward ALF-168.
+  <b>All three are in place, so nothing blocks this story.</b> ALF-179 is the one worth a second
+  glance: it shipped the column, the write path and the authoring surface, then stopped deliberately
+  at the boundary — its D10 says in as many words that "story D owns the prompt" and declines to guess
+  the seam. <a href="#s7">S7</a> is that seam, and this story is where the two meet.
 </p>
 <div class="callout">
-  <b>Order note.</b> ALF-179 also wants to land <i>early</i> for a reason of its own: descriptions are
-  only worth reading once they have been written, so shipping the authoring surface first means this
-  story inherits real content on day one instead of a table of nulls.
+  <b>Write some descriptions before judging the output.</b> ALF-179 landing first was the point:
+  descriptions are only worth reading once they have been written. A database where every
+  <code>description</code> is still null degrades <a href="#s7">S7</a> to a bare list of names — which
+  is correct behaviour, but it is also the weakest version of this feature, and it will read as the
+  model classifying badly rather than as the prompt being underfed.
 </div>
 <p>
-  There is also one prerequisite that is <b>not</b> a story: the <b>Anthropic API key</b>, which is
+  There is one further prerequisite that is <b>not</b> a story: the <b>Anthropic API key</b>, which is
   set by hand against the already-live Worker and is not part of any merge. It can be done now, and
   doing it ahead of time is what makes this story work the moment it deploys — §7 covers what to
   obtain, the exact name, where it goes, the four places it must not go, and how to check it.
@@ -1301,8 +1297,8 @@ in here:</p>
   <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. D1–D18
     are the decisions this story implements; §6 is the slice map; §7 is where three of this story's
     four resolved questions came from.</li>
-  <li><a href="ALF-179.html"><code>docs/specs/ALF-179.html</code></a> — the prerequisite that is not
-    yet built: <code>folders.description</code> and <code>projects.description</code>. Its §1 states
+  <li><code>docs/specs/archive/ALF-179.html</code> — shipped (migration <code>0028</code>):
+    <code>folders.description</code> and <code>projects.description</code>. Its §1 states
     the problem <a href="#s7">S7</a> exists to solve, its D1 is why epic <code>notes</code> stays out,
     its D2 is why <code>description ?? undefined</code> suffices, its D3 is the 500-character cap, and
     its D10 is the seam it deliberately left for this story.</li>
