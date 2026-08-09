@@ -91,10 +91,26 @@ const BASE_NODE: ItemNode = {
   children: [],
 };
 
+/**
+ * The two provenance columns in the combinations a real row can hold. `BASE_NODE`'s own nulls
+ * are the third — nothing has judged the row yet. Spread one over a fixture to say who filled
+ * its labels in; the row draws a small grey glyph after its title accordingly.
+ */
+const CLASSIFIED_BY_MODEL = {
+  classified_at: '2025-01-01T10:02:00Z',
+  classified_provider: 'anthropic',
+  classified_model: 'claude-haiku-4-5',
+  classified_prompt_version: 1,
+} satisfies Partial<ItemNode>;
+
+/** What the claim trigger writes when a human edits a label first: a stamp, and no provider. */
+const CLAIMED_BY_HAND = { classified_at: '2025-01-01T10:02:00Z' } satisfies Partial<ItemNode>;
+
 const NODES: ItemNode[] = [
-  BASE_NODE,
+  { ...BASE_NODE, ...CLASSIFIED_BY_MODEL },
   {
     ...BASE_NODE,
+    ...CLAIMED_BY_HAND,
     id: 'item-2',
     title: 'Reply to the recruiter',
     created_at: '2025-01-01T09:00:00Z',
@@ -110,6 +126,7 @@ const NODES: ItemNode[] = [
 const UNDISPATCHED_NODES: ItemNode[] = [
   {
     ...BASE_NODE,
+    ...CLASSIFIED_BY_MODEL,
     id: 'item-3',
     title: 'Call the dentist to reschedule the cleaning',
     folder_id: 'f-health',
@@ -197,7 +214,8 @@ export const MobileInbox: Story = {
  * The Inbox mid-triage (ALF-170): four rows side by side — a task labelled with a folder and a
  * due date (Task badge + folder chip), a code item carrying both pre-factory hints (project +
  * epic chips), a bare task (badge only), and an unclassified capture (nothing). Every label the
- * dispatch decision rests on is on the rows.
+ * dispatch decision rests on is on the rows — including who filled it in: the first two came
+ * from the classifier, the third was claimed by a human edit, and the last has not been judged.
  */
 export const MidTriage: Story = {
   args: { open: true },
@@ -210,6 +228,7 @@ export const MidTriage: Story = {
       tasks: [
         {
           ...BASE_NODE,
+          ...CLASSIFIED_BY_MODEL,
           id: 'triage-1',
           title: 'Call the dentist friday to reschedule the cleaning',
           folder_id: 'f-health',
@@ -221,6 +240,7 @@ export const MidTriage: Story = {
         },
         {
           ...BASE_NODE,
+          ...CLASSIFIED_BY_MODEL,
           id: 'triage-2',
           title: 'Alfred should let me snooze an item until next week',
           item_type: 'code',
@@ -230,6 +250,7 @@ export const MidTriage: Story = {
         },
         {
           ...BASE_NODE,
+          ...CLAIMED_BY_HAND,
           id: 'triage-3',
           title: 'Book the van for the move',
           created_at: '2025-01-01T08:00:00Z',
@@ -239,6 +260,52 @@ export const MidTriage: Story = {
           id: 'triage-4',
           title: 'That thing Mark mentioned about the roof',
           item_type: 'unclassified',
+          created_at: '2025-01-01T07:00:00Z',
+        },
+      ],
+    },
+    visualTest: { target: '[data-testid="inbox-frame"]' },
+  },
+};
+
+/**
+ * The provenance mark (ALF-180) with all three states stacked: a row the classifier judged, a
+ * row a human edit claimed, a row nothing has judged yet — and a fourth whose title wraps, so
+ * the mark can be seen travelling with the last word rather than dropping to a line of its own.
+ * The mark is the only difference between these rows; everything else is deliberately bare.
+ */
+export const Provenance: Story = {
+  args: { open: true },
+  decorators: [withFrame('w-[640px]')],
+  parameters: {
+    store: {
+      tasks: [
+        {
+          ...BASE_NODE,
+          ...CLASSIFIED_BY_MODEL,
+          id: 'prov-1',
+          title: 'Ask the landlord about the boiler service',
+          created_at: '2025-01-01T10:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          ...CLAIMED_BY_HAND,
+          id: 'prov-2',
+          title: 'Book the van for the move',
+          created_at: '2025-01-01T09:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          id: 'prov-3',
+          title: 'That thing Mark mentioned about the roof',
+          created_at: '2025-01-01T08:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          ...CLASSIFIED_BY_MODEL,
+          id: 'prov-4',
+          title:
+            'Write up the long overdue retrospective on the kitchen renovation, including the bit about the tiles',
           created_at: '2025-01-01T07:00:00Z',
         },
       ],
