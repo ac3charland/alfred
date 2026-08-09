@@ -35,8 +35,6 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     intended_project_id: null,
     intended_epic_id: null,
     sort_order: 0,
-    // Classifier provenance columns are flat, unlike dispatched_at above — nothing here has
-    // been classified, so no derivation is needed.
     classified_at: null,
     classified_provider: null,
     classified_model: null,

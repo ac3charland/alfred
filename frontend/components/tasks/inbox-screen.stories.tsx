@@ -82,7 +82,6 @@ const BASE_NODE: ItemNode = {
   intended_project_id: null,
   intended_epic_id: null,
   sort_order: 0,
-  // Classifier provenance columns — flat defaults, nothing here has been classified.
   classified_at: null,
   classified_provider: null,
   classified_model: null,

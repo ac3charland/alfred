@@ -321,8 +321,6 @@ function newItem(input) {
     // absent value at insert); a seed skips straight to the end state.
     dispatched_at:
       input.dispatched_at === undefined ? inheritedDispatchedAt(input) : input.dispatched_at,
-    // Classifier provenance (migration 0029): flat, unlike dispatched_at above — no seed here has
-    // been classified, so there is nothing to derive; undefined/null/0 is simply correct.
     classified_at: input.classified_at ?? null,
     classified_provider: input.classified_provider ?? null,
     classified_model: input.classified_model ?? null,

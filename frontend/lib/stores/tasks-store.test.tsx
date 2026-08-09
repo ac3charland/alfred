@@ -58,7 +58,6 @@ const BASE: Item = {
   intended_project_id: null,
   intended_epic_id: null,
   sort_order: 0,
-  // Classifier provenance columns — flat defaults, nothing here has been classified.
   classified_at: null,
   classified_provider: null,
   classified_model: null,
@@ -75,7 +74,6 @@ function item(overrides: Partial<Item>): Item {
   // A fixture with a folder is a filed item, so it defaults to dispatched — every existing seed
   // that says `folder_id: 'f1'` keeps meaning "filed in f1". State `dispatched_at: null`
   // explicitly to seed the one state this story creates: foldered, but still in the Inbox.
-  // (Classifier columns above stay flat — unlike dispatched_at, nothing derives them.)
   if (overrides.dispatched_at === undefined && row.folder_id !== null) {
     return { ...row, dispatched_at: DISPATCHED_AT };
   }
