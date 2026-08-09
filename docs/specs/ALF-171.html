@@ -1334,6 +1334,113 @@ in here:</p>
     Phase 6.</li>
 </ul>
 
+<h2>13 · Suggested implementation split</h2>
+<p class="small">Guidance for the implementing session, not a requirement of the spec. Skip it and
+build the thing in one pass if that reads better on the day.</p>
+
+<p>
+  The work divides cleanly because most of it is pure functions behind one narrow I/O boundary. The
+  split below is drawn along <b>file ownership</b>, so parallel agents never edit the same file — which
+  is the property that actually makes fan-out safe, more than task size does.
+</p>
+
+<div class="callout">
+  <b>The lead does one thing before any fan-out: fix the shared types.</b> Write
+  <code>workers/src/verdict.ts</code>'s type declarations first — the <code>Verdict</code> shape, the
+  <code>ClosedWorld</code> (folders / projects / epics with their descriptions), and the
+  <code>ClassifyFailure</code> union of <a href="#s11">S11</a>. Three of the agents below consume those
+  types and two produce them; agreed up front they are a contract, discovered independently they are a
+  merge conflict in the one file everything imports.
+</div>
+
+<div class="scroll"><table>
+  <tr>
+    <th style="width:3rem">#</th><th style="width:22%">Agent</th><th>Owns (no other agent touches these)</th>
+    <th style="width:16%">Needs</th><th style="width:8%">Tier</th>
+  </tr>
+  <tr>
+    <td><b>1</b></td>
+    <td><b>Schema &amp; triggers</b></td>
+    <td><code>database/migrations/&lt;next&gt;_llm_classifier.sql</code>,
+      <code>database/src/assertions.ts</code>, <code>migrations-applied.log</code></td>
+    <td>—</td>
+    <td>strongest</td>
+  </tr>
+  <tr>
+    <td><b>2</b></td>
+    <td><b>Verdict validation</b></td>
+    <td><code>workers/src/verdict.ts</code> + test</td>
+    <td>the type contract</td>
+    <td>mid</td>
+  </tr>
+  <tr>
+    <td><b>3</b></td>
+    <td><b>Prompt assembly</b></td>
+    <td><code>workers/src/prompt.ts</code> + test</td>
+    <td>the type contract</td>
+    <td>mid</td>
+  </tr>
+  <tr>
+    <td><b>4</b></td>
+    <td><b>The Anthropic call</b></td>
+    <td><code>workers/src/classifier.ts</code> + test, the SDK dependency in
+      <code>workers/package.json</code></td>
+    <td>2, 3</td>
+    <td>mid</td>
+  </tr>
+  <tr>
+    <td><b>5</b></td>
+    <td><b>Supabase I/O</b></td>
+    <td><code>workers/src/supabase.ts</code> + test</td>
+    <td>1</td>
+    <td>mid</td>
+  </tr>
+  <tr>
+    <td><b>6</b></td>
+    <td><b>Types &amp; fixtures</b></td>
+    <td><code>frontend/lib/database.types.ts</code>, <code>e2e/support/constants.ts</code>, the
+      Storybook <code>task()</code> helpers, <code>scripts/mock-supabase.mjs</code></td>
+    <td>1 (applied)</td>
+    <td>cheap</td>
+  </tr>
+  <tr>
+    <td><b>7</b></td>
+    <td><b>Sweeper &amp; entrypoint</b></td>
+    <td><code>workers/src/sweep.ts</code> + test, <code>src/index.ts</code>,
+      <code>wrangler.toml</code></td>
+    <td>4, 5</td>
+    <td>strongest</td>
+  </tr>
+  <tr>
+    <td><b>8</b></td>
+    <td><b>Demo doc</b></td>
+    <td><code>docs/demos/&lt;name&gt;/</code></td>
+    <td>all, deployed</td>
+    <td>mid</td>
+  </tr>
+</table></div>
+
+<h4>Waves</h4>
+<ol>
+  <li><b>1 ‖ 2 ‖ 3</b> — three agents, no shared files, no ordering between them. Agent 1 is the long
+    pole and the riskiest (the cascade hazard in <a href="#s2">S2</a>, and the integration suite is the
+    only place it shows), so start it first and give it the strongest model.</li>
+  <li><b>4 ‖ 5 ‖ 6</b> — 4 needs the two pure modules; 5 and 6 need agent 1's migration applied.</li>
+  <li><b>7</b> — alone. It is the wiring, so it wants the whole picture in one context.</li>
+  <li><b>8</b> — after the secret is set and a real sweep runs.</li>
+</ol>
+
+<h4>Two things not to parallelise</h4>
+<ul>
+  <li><b>The commits.</b> Whatever the agent split, the wrap-up is one batch through the
+    <code>batch-commits</code> skill — grouped by concern, gate run once. Eight agents each running
+    <code>git commit</code> pays the <code>check:fast</code> cost eight times.</li>
+  <li><b>The acceptance pass.</b> §9's checklist is verified once, at the end, by one reader against
+    the running system. An agent confirming its own slice is not the same evidence, and the failure
+    this catches — a slice that is individually correct and collectively wrong — is exactly the one a
+    split introduces.</li>
+</ul>
+
 </div>
 </body>
 </html>
