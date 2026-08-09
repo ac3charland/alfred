@@ -181,6 +181,37 @@ describe('the closed-world block', () => {
   });
 });
 
+describe('the system preamble', () => {
+  // The model has no prior about alfred, so the preamble has to carry the setting itself. Each
+  // assertion below stands for one thing a reader with zero context needs before the rules that
+  // follow mean anything — not the wording, which is free to change, but the fact being stated.
+  it('establishes where this is happening, without assuming the reader knows alfred', () => {
+    const { system } = requestFor({});
+    expect(system).toContain("alfred is one person's personal task system");
+    expect(system).toContain('holding list');
+    expect(system).toContain('Inbox');
+  });
+
+  it('says what this step produces and that it is only a suggestion the owner reviews', () => {
+    const { system } = requestFor({});
+    expect(system).toContain('exactly one captured item');
+    expect(system).toContain('files nothing, completes nothing');
+    expect(system).toContain('overwrite anything you set');
+  });
+
+  it('explains why a blank beats a wrong answer, which is what the rules below rest on', () => {
+    const { system } = requestFor({});
+    expect(system).toContain('null is always a legal answer');
+    expect(system).toContain('a wrong answer costs more than a blank one');
+  });
+
+  it('grounds both item_type values, so "work on alfred itself" below is readable', () => {
+    const { system } = requestFor({});
+    expect(system).toContain('ordinary to-do (`task`)');
+    expect(system).toContain("alfred's own codebase (`code`)");
+  });
+});
+
 describe('the abstention rules', () => {
   it('states every field-specific abstention rule and the no-rewrite rule', () => {
     const { system } = requestFor({});
