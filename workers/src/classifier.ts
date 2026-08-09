@@ -19,6 +19,23 @@ export interface ClassifierEnv {
 /** Headroom over the ~100-token verdict, so a truncation is a config bug and not routine. */
 export const MAX_TOKENS = 512;
 
+/**
+ * Per-request budget, and one retry rather than the SDK's two. The default is a ten-MINUTE
+ * timeout, which a sweep cannot afford: ten items held that long run a single tick far past the
+ * two-minute cron cadence, and Cloudflare does not serialize scheduled invocations — so a slow
+ * tick is how two sweeps come to be classifying the same rows at once.
+ *
+ * Sized against the schedule rather than picked round: a full sweep of maximally slow requests is
+ * 10 × 10s × 2 attempts ≈ 200s, under two cadences, so at most one earlier tick can still be in
+ * flight when the next begins and a third can never pile on behind them. `sweep.ts` pins that
+ * arithmetic in a test, and its conditional write makes the one permitted overlap harmless.
+ *
+ * 10s is ample for a ~100-token verdict from Haiku while still leaving the retry room to absorb a
+ * blip inside the request, which is what keeps a transient 429 from reaching the attempt counter.
+ */
+export const REQUEST_TIMEOUT_MS = 10_000;
+export const MAX_RETRIES = 1;
+
 /** A short, log-friendly rendering of a thrown value — `Error#message` when there is one. */
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -75,7 +92,7 @@ export async function classify(
     return { failed: { reason: 'credentials', detail: 'ANTHROPIC_API_KEY is not set' } };
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: MAX_RETRIES });
 
   let message: Anthropic.Message;
   try {
@@ -98,8 +115,15 @@ export async function classify(
     ) {
       return { failed: { reason: 'credentials', detail: describe(error) } };
     }
-    // Everything else — 429, 5xx, a timeout, a raw network failure — after the SDK's own
-    // default retries have already run their course.
+    // A 400 is the deploy's fault too, and separated from transport for the same reason: the
+    // request shape and the model id are identical for every item, so if the API rejects one it
+    // rejects all ten, every tick, until someone changes the code. Counting that as a per-item
+    // failure is what would opt the whole Inbox out inside ten minutes.
+    if (error instanceof Anthropic.BadRequestError) {
+      return { failed: { reason: 'bad_request', detail: describe(error) } };
+    }
+    // Everything else — 429, 5xx, a timeout, a raw network failure — after the client's own
+    // retries have already run their course.
     return { failed: { reason: 'transport', detail: describe(error) } };
   }
 

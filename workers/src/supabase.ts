@@ -288,16 +288,26 @@ export async function fetchRecentCorrections(
 }
 
 /**
- * PATCH one item by id. Returns the number of rows updated (0 = the row vanished — e.g. deleted
- * between being read as eligible and the verdict coming back), and throws on a non-2xx response
- * so a rejected write (a CHECK-constraint violation, say) is a readable log line.
+ * PATCH one item by id. Returns the number of rows updated (0 = nothing matched — the row vanished
+ * between being read as eligible and the verdict coming back, or `onlyIfUnclassified` lost the
+ * race), and throws on a non-2xx response so a rejected write (a CHECK-constraint violation, say)
+ * is a readable log line.
+ *
+ * `onlyIfUnclassified` adds `classified_at=is.null` to the filter, making the verdict write a
+ * compare-and-set. Cloudflare does not serialize scheduled invocations, so a tick that runs long
+ * can overlap the next one and both read the same eligible rows — the marker is still null until
+ * the first write lands. With the filter, the loser matches zero rows and takes the existing
+ * "nothing to mark" branch instead of overwriting a verdict that is already recorded.
  */
 export async function patchItem(
   env: SupabaseEnv,
   id: string,
   updates: Record<string, unknown>,
+  options: { onlyIfUnclassified?: boolean } = {},
 ): Promise<number> {
-  const url = restQueryUrl(env, 'items', { id: `eq.${id}` });
+  const filters: Record<string, string> = { id: `eq.${id}` };
+  if (options.onlyIfUnclassified === true) filters['classified_at'] = 'is.null';
+  const url = restQueryUrl(env, 'items', filters);
   const rows = await fetchJson<unknown[]>(
     env,
     url,

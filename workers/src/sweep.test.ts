@@ -1,6 +1,14 @@
 import * as classifier from './classifier';
+import { MAX_RETRIES, REQUEST_TIMEOUT_MS } from './classifier';
 import { spyOnFetch } from './fetch-stub';
-import { ATTEMPT_CEILING, CREDENTIAL_FAILURE, SWEEP_LIMIT, type SweepEnv, runSweep } from './sweep';
+import {
+  ATTEMPT_CEILING,
+  CREDENTIAL_FAILURE,
+  REQUEST_FAILURE,
+  SWEEP_LIMIT,
+  type SweepEnv,
+  runSweep,
+} from './sweep';
 import type { ClassifyOutcome, Verdict } from './verdict';
 
 const env: SweepEnv = {
@@ -227,6 +235,62 @@ describe('the credential carve-out', () => {
   });
 });
 
+describe('the tick stays inside the cron cadence', () => {
+  it('bounds a full sweep of failing requests under the two-minute schedule', () => {
+    // wrangler.toml fires this every 2 minutes, and Cloudflare does not serialize scheduled
+    // invocations — so a tick that runs longer than its own cadence is how two sweeps come to be
+    // classifying the same rows. The SDK's DEFAULT timeout is ten minutes per request, which one
+    // slow item would blow straight through.
+    //
+    // Two cadences is the real bound: one earlier tick may still be in flight when the next
+    // starts (the conditional write makes that harmless), but a third must never pile on behind
+    // them. This pins the arithmetic rather than the values — raise SWEEP_LIMIT, the timeout or
+    // the retry count past what the schedule affords and this fails.
+    const CADENCE_MS = 2 * 60 * 1000;
+    const worstCase = SWEEP_LIMIT * REQUEST_TIMEOUT_MS * (MAX_RETRIES + 1);
+    expect(worstCase).toBeLessThan(CADENCE_MS * 2);
+  });
+});
+
+describe('the deploy-fault carve-outs', () => {
+  it('aborts the tick on a rejected REQUEST, counting nothing', async () => {
+    const { calls } = mockSupabase({ items: [row({ id: 'a' }), row({ id: 'b' })] });
+    const classify = mockClassify({
+      failed: { reason: 'bad_request', detail: 'model: not found' },
+    });
+    const logged = captureErrors();
+
+    const summary = await runSweep(env, NOW);
+
+    // The request shape and the model id are identical for every item, so a 400 on one is a 400
+    // on all of them. Counting it per-item would put the whole Inbox past the ceiling in ten
+    // minutes at this cadence, permanently — nothing resets the counter.
+    expect(patches(calls)).toHaveLength(0);
+    expect(classify).toHaveBeenCalledTimes(1);
+    expect(summary.aborted).toBe(true);
+    expect(logged.join(' ')).toContain(REQUEST_FAILURE);
+  });
+
+  it.each(['CLASSIFIER_MODEL', 'CLASSIFIER_TIMEZONE'] as const)(
+    'makes zero requests when %s did not arrive on the deploy',
+    async (name) => {
+      const { calls } = mockSupabase({ items: [row()] });
+      const classify = mockClassify();
+      const logged = captureErrors();
+      // `Env` types both as `string`, but a var is only as declared as the deploy makes it — a
+      // CLI `--var` that shadows the file's `[vars]` leaves these undefined at runtime.
+      const { [name]: _missing, ...withoutVar } = env;
+
+      const summary = await runSweep(withoutVar as SweepEnv, NOW);
+
+      expect(calls).toHaveLength(0);
+      expect(classify).not.toHaveBeenCalled();
+      expect(summary).toEqual({ eligible: 0, classified: 0, failed: 0, aborted: true });
+      expect(logged.join(' ')).toContain(name);
+    },
+  );
+});
+
 describe('the write', () => {
   it('lands every surviving guess and all of the provenance in one coherent UPDATE', async () => {
     const { calls } = mockSupabase({ items: [row({ id: 'a' })] });
@@ -238,7 +302,12 @@ describe('the write', () => {
 
     const written = patches(calls);
     expect(written).toHaveLength(1);
-    expect(written[0]?.url).toBe('https://proj.supabase.co/rest/v1/items?id=eq.a');
+    // Compare-and-set on the marker: Cloudflare does not serialize scheduled invocations, so a
+    // long tick can overlap the next one and both read the same still-unmarked rows. The loser
+    // matches nothing rather than overwriting a verdict already written.
+    expect(written[0]?.url).toBe(
+      'https://proj.supabase.co/rest/v1/items?id=eq.a&classified_at=is.null',
+    );
     expect(written[0]?.body).toEqual({
       item_type: 'task',
       priority: 'high',

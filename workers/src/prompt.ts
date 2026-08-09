@@ -312,16 +312,19 @@ export function selectExamples(corrections: Correction[], world: ClosedWorld): C
 }
 
 /** Assemble everything one classification request carries: the system prompt (rules, the closed
- *  world, the few-shot block), the per-item user message, and the live output schema. */
+ *  world, the few-shot block), the per-item user message, and the live output schema.
+ *
+ *  `examples` is the FINISHED selection, not the raw log: the draw is per-tick, this is per-item,
+ *  and running `selectExamples` here as well would apply it twice to every request. Idempotent
+ *  today, but only by accident of what the draw currently does. */
 export function buildRequest(input: {
   item: SweepItem;
   world: ClosedWorld;
-  corrections: Correction[];
+  examples: readonly Correction[];
   timeZone: string;
   now: Date;
 }): ClassifyRequest {
-  const { item, world, corrections, timeZone, now } = input;
-  const examples = selectExamples(corrections, world);
+  const { item, world, examples, timeZone, now } = input;
   return {
     system: buildSystemPrompt(world, examples, referenceDate(timeZone, now)),
     user: buildUserMessage(item),

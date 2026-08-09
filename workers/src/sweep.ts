@@ -55,6 +55,21 @@ export const PROVIDER = 'anthropic';
  */
 export const CREDENTIAL_FAILURE = 'classifier: aborting the sweep — credential failure';
 
+/**
+ * Its sibling for a request the API refuses outright. Separate text because the fix is different:
+ * a credential failure wants `wrangler secret put`, this wants a code or config change.
+ */
+export const REQUEST_FAILURE = 'classifier: aborting the sweep — the API rejected the request';
+
+/**
+ * And for a var that never arrived. `Env` types both as `string`, but a var is only as declared as
+ * the deploy makes it: if a CLI `--var` shadows the file's `[vars]` rather than merging with them,
+ * these are `undefined` at runtime with nothing in the type system to say so. Unchecked, the sweep
+ * would call the API with `model: undefined`, take a 400 on every item, and — before `bad_request`
+ * existed — have counted it against all of them.
+ */
+export const CONFIG_FAILURE = 'classifier: aborting the sweep — a required var is not set';
+
 /** Everything one sweep reads from the environment. */
 export interface SweepEnv extends SupabaseEnv, ClassifierEnv {
   CLASSIFIER_TIMEZONE: string;
@@ -67,6 +82,24 @@ export interface SweepSummary {
   failed: number;
   /** True when a configuration fault stopped the tick early, leaving every item untouched. */
   aborted: boolean;
+}
+
+/**
+ * Which of the required `[vars]` did not actually arrive on this deploy.
+ *
+ * The cast is the point rather than a workaround: `Env` declares these `string`, but a binding is
+ * only as real as the deploy makes it — a CLI `--var` that shadows the file's `[vars]` rather than
+ * merging with them leaves the field `undefined` with nothing in the type system to say so. Read
+ * at the declared type, the check below is dead code the compiler can prove unreachable; read at
+ * the type the runtime can actually produce, it is the difference between one log line and a
+ * permanently opted-out Inbox. The widening is what lets the check mean what it says.
+ */
+function unsetVars(env: SweepEnv): string[] {
+  const required = ['CLASSIFIER_MODEL', 'CLASSIFIER_TIMEZONE'] as const;
+  return required.filter((name) => {
+    const value = env[name] as string | undefined;
+    return value === undefined || value === '';
+  });
 }
 
 /**
@@ -85,6 +118,15 @@ export async function runSweep(env: SweepEnv, now: Date): Promise<SweepSummary> 
     return { eligible: 0, classified: 0, failed: 0, aborted: true };
   }
 
+  // The same carve-out for the two `[vars]`. Both are read on every item, so a missing one is
+  // systemic by definition — the tick that aborts on it costs one log line, where the tick that
+  // proceeds costs the Inbox.
+  const missing = unsetVars(env);
+  if (missing.length > 0) {
+    console.error(`${CONFIG_FAILURE}: ${missing.join(', ')}`);
+    return { eligible: 0, classified: 0, failed: 0, aborted: true };
+  }
+
   const items = await fetchEligibleItems(env, {
     limit: SWEEP_LIMIT,
     attemptCeiling: ATTEMPT_CEILING,
@@ -98,7 +140,9 @@ export async function runSweep(env: SweepEnv, now: Date): Promise<SweepSummary> 
     fetchRecentCorrections(env, CORRECTION_WINDOW),
   ]);
   // Drawn once per tick, not once per item: the draw is a pure function of the rows and the live
-  // world, and neither changes inside a sweep.
+  // world, and neither changes inside a sweep. `buildRequest` takes the finished selection, so
+  // the draw happens in exactly one place — it used to run again inside, which was harmless only
+  // because this particular selection is idempotent.
   const examples = selectExamples(corrections, world);
 
   let classified = 0;
@@ -113,17 +157,22 @@ export async function runSweep(env: SweepEnv, now: Date): Promise<SweepSummary> 
       buildRequest({
         item,
         world,
-        corrections: examples,
+        examples,
         timeZone: env.CLASSIFIER_TIMEZONE,
         now,
       }),
     );
 
     if ('failed' in outcome) {
-      if (outcome.failed.reason === 'credentials') {
-        console.error(`${CREDENTIAL_FAILURE}: ${outcome.failed.detail}`);
+      // The two deploy-fault reasons, which abort rather than count. Both are systemic by
+      // construction — the key, the request shape and the model id are the same for every item —
+      // so counting either per-item would set the whole Inbox aside for a fault no item caused.
+      if (outcome.failed.reason === 'credentials' || outcome.failed.reason === 'bad_request') {
+        const banner =
+          outcome.failed.reason === 'credentials' ? CREDENTIAL_FAILURE : REQUEST_FAILURE;
+        console.error(`${banner}: ${outcome.failed.detail}`);
         // Every remaining item is left exactly as it was — no write, no attempt counted — so
-        // fixing the key later loses nothing.
+        // fixing the deploy later loses nothing.
         return { eligible: items.length, classified, failed, aborted: true };
       }
       console.error(`classifier: item ${item.id} not classified (${outcome.failed.reason})`);
@@ -161,23 +210,30 @@ async function writeVerdict(
 ): Promise<boolean> {
   const guess = validateVerdict(raw, world);
   try {
-    const rows = await patchItem(env, item.id, {
-      // Only the fields this item does not already hold — the classifier fills gaps and never
-      // overwrites. `dispatched_at` is absent by construction: dispatch is a human act.
-      ...mergeIntoItem(guess, item),
-      classified_at: now.toISOString(),
-      classified_provider: PROVIDER,
-      classified_model: env.CLASSIFIER_MODEL,
-      classified_prompt_version: PROMPT_VERSION,
-      // The POST-validation verdict, not the raw model output, so the dispatch-time diff
-      // compares like with like: a field validation dropped was never shown to the owner.
-      // Abstained fields serialise away entirely, which the diff reads the same as a null.
-      classified_guess: guess,
-    });
+    const rows = await patchItem(
+      env,
+      item.id,
+      {
+        // Only the fields this item does not already hold — the classifier fills gaps and never
+        // overwrites. `dispatched_at` is absent by construction: dispatch is a human act.
+        ...mergeIntoItem(guess, item, world),
+        classified_at: now.toISOString(),
+        classified_provider: PROVIDER,
+        classified_model: env.CLASSIFIER_MODEL,
+        classified_prompt_version: PROMPT_VERSION,
+        // The POST-validation verdict, not the raw model output, so the dispatch-time diff
+        // compares like with like: a field validation dropped was never shown to the owner.
+        // Abstained fields serialise away entirely, which the diff reads the same as a null.
+        classified_guess: guess,
+      },
+      // Compare-and-set on the marker, so an overlapping tick cannot overwrite a verdict already
+      // written. The loser matches nothing and takes the branch below.
+      { onlyIfUnclassified: true },
+    );
     if (rows === 0) {
-      // The row was deleted between the sweep query and the write. There is nothing left to
-      // mark and nothing to count — the next tick simply won't see it.
-      console.error(`classifier: item ${item.id} vanished before its verdict could be written`);
+      // Nothing matched: the row was deleted between the sweep query and the write, or another
+      // tick classified it first. Either way there is nothing to mark and nothing to count.
+      console.error(`classifier: item ${item.id} was gone or already classified before its write`);
       return false;
     }
     return true;

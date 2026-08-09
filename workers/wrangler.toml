@@ -55,6 +55,10 @@ CLASSIFIER_TIMEZONE = "America/Chicago"
 # the running build came from, injected per deploy by the Deploy Worker workflow
 # (`wrangler deploy --var WORKER_VERSION:<sha>`) and reported by `GET /`. A default would defeat
 # it: a deploy that carries no stamp should say so ("unstamped"), because nothing vouches for
-# which commit it holds. `GET /` reports the resolved model and zone alongside that stamp, so if
-# a CLI `--var` ever SHADOWED this file's `[vars]` rather than merging with them, the classifier
-# falling back to its defaults in production is one curl to notice instead of a mystery.
+# which commit it holds.
+#
+# The two vars above have no fallback in code — these entries ARE the default. So if a CLI `--var`
+# ever SHADOWED this file's `[vars]` rather than merging with them, they would arrive `undefined`
+# despite `Env` typing them `string`. `runSweep` checks both before it spends a request and aborts
+# the tick if either is missing, counting nothing; `GET /` reports the resolved model and zone, so
+# the answer is also one curl away. Shadowing therefore costs a log line, not the Inbox.

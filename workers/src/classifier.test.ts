@@ -174,6 +174,25 @@ describe('classify — errors thrown by the SDK', () => {
     expect(outcome).toMatchObject({ failed: { reason: 'credentials' } });
   });
 
+  it('maps a 400 BadRequestError to bad_request, NOT transport', async () => {
+    // The distinction the sweep's abort hangs on. A 400 means the request shape or the model id
+    // is wrong — identical for every item, so it is a fault of the deploy. Counted as transport,
+    // it would burn an attempt on every eligible row every tick until the Inbox was set aside.
+    const error = Anthropic.APIError.generate(
+      400,
+      { error: { message: 'model: claude-nope not found' } },
+      'model: claude-nope not found',
+      new Headers(),
+    );
+    expect(error).toBeInstanceOf(Anthropic.BadRequestError);
+    mockCreate().mockRejectedValue(error);
+
+    const outcome = await classify(env, request);
+    expect(outcome).toMatchObject({
+      failed: { reason: 'bad_request', detail: expect.stringContaining('claude-nope') as string },
+    });
+  });
+
   it('maps a 429 RateLimitError to a transport failure', async () => {
     const error = Anthropic.APIError.generate(
       429,

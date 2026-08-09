@@ -60,7 +60,7 @@ function requestFor(overrides: {
   return buildRequest({
     item: overrides.item ?? makeItem(),
     world: overrides.world ?? WORLD,
-    corrections: overrides.corrections ?? [],
+    examples: overrides.corrections ?? [],
     timeZone: 'America/Chicago',
     now: new Date('2024-01-01T05:30:00Z'),
   });
