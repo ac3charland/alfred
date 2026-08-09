@@ -34,6 +34,13 @@ const BASE: Item = {
   intended_project_id: null,
   intended_epic_id: null,
   sort_order: 0,
+  // Classifier provenance columns — flat defaults, nothing here has been classified.
+  classified_at: null,
+  classified_provider: null,
+  classified_model: null,
+  classified_prompt_version: null,
+  classified_guess: null,
+  classify_attempts: 0,
 };
 
 function makeItem(id: string, overrides: Partial<Item> = {}): Item {

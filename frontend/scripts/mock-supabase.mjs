@@ -321,6 +321,14 @@ function newItem(input) {
     // absent value at insert); a seed skips straight to the end state.
     dispatched_at:
       input.dispatched_at === undefined ? inheritedDispatchedAt(input) : input.dispatched_at,
+    // Classifier provenance (migration 0029): flat, unlike dispatched_at above — no seed here has
+    // been classified, so there is nothing to derive; undefined/null/0 is simply correct.
+    classified_at: input.classified_at ?? null,
+    classified_provider: input.classified_provider ?? null,
+    classified_model: input.classified_model ?? null,
+    classified_prompt_version: input.classified_prompt_version ?? null,
+    classified_guess: input.classified_guess ?? null,
+    classify_attempts: input.classify_attempts ?? 0,
     // Manual subtask rank (migration 0018): explicit when seeded, else the next sequence value —
     // parked high so a POST-created row (e.g. a new subtask) appends at the bottom of its group.
     sort_order: input.sort_order ?? nextSortOrder++,
@@ -990,6 +998,11 @@ function handleRest(req, res, url, body) {
     const matched = applyFilters(table, url.searchParams);
     const now = new Date().toISOString();
     for (const row of matched) {
+      // Migration 0029's two triggers (the human-edit claim rule on items, and the
+      // dispatch-time correction-log diff) are deliberately NOT reproduced here — the JS mock
+      // can't reproduce real-Postgres trigger semantics, same call the residency and epic-hint
+      // stories made; that behaviour is proven by the database package's real-Postgres
+      // integration suite instead. This assignment stays a flat passthrough.
       Object.assign(row, body);
       // code_items bumps updated_at on every write (mirrors the table trigger).
       if (rest === 'code_items') row.updated_at = now;

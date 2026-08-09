@@ -252,6 +252,14 @@ export function makeOptimisticItem(
     recurrence: null,
     recurrence_series_id: null,
     sort_order: sortOrder,
+    // Classifier provenance columns — flat, unlike dispatchedAt above: nothing has classified a
+    // row that doesn't exist on the server yet, so there is nothing to predict or derive.
+    classified_at: null,
+    classified_provider: null,
+    classified_model: null,
+    classified_prompt_version: null,
+    classified_guess: null,
+    classify_attempts: 0,
   };
 }
 
