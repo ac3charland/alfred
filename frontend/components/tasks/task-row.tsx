@@ -16,6 +16,7 @@ import { EpicGateDialog } from '@/components/code/epic-gate-dialog';
 import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
+import { ClassificationMark } from '@/components/tasks/classification-mark';
 import { SubtaskGap } from '@/components/tasks/subtask-gap';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
 import { RowMetaCluster } from '@/components/tasks/task-row/row-meta-cluster';
@@ -44,6 +45,7 @@ import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { classificationOrigin } from '@/lib/tasks/classification';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
@@ -203,19 +205,27 @@ export function TaskRow({
   );
   const isTopLevelTask = isTask && node.parent_id === null;
 
+  // "An Inbox row": top-level, still undispatched, and not being listed as history. Read by the
+  // two things that only make sense while an item is still awaiting triage — the "Task" badge
+  // and the provenance mark — so the two can never gate differently.
+  const isInboxRow = node.parent_id === null && !isCompletedView && !isDispatched(node);
+
   // "Code" earns a row badge everywhere (the rare, meaningful distinction). "Task" shows one
-  // ONLY on an undispatched top-level row outside the Completed view — i.e. an Inbox root, the
-  // one surface that now holds unclassified, task and code rows side by side, where a bare task
-  // row and an unclassified row would otherwise be pixel-identical while behaving differently
-  // under Dispatch. Everywhere else (folder views, Completed, subtasks) a task keeps showing no
-  // badge — the ALF-67 / ALF-65 judgement, intact everywhere it was made about. An unclassified
-  // row has no badge.
-  const showTypeBadge =
-    node.item_type === 'code' ||
-    (node.item_type === 'task' &&
-      node.parent_id === null &&
-      !isCompletedView &&
-      !isDispatched(node));
+  // ONLY on an Inbox row, the one surface that now holds unclassified, task and code rows side
+  // by side, where a bare task row and an unclassified row would otherwise be pixel-identical
+  // while behaving differently under Dispatch. Everywhere else (folder views, Completed,
+  // subtasks) a task keeps showing no badge — the ALF-67 / ALF-65 judgement, intact everywhere
+  // it was made about. An unclassified row has no badge.
+  const showTypeBadge = node.item_type === 'code' || (node.item_type === 'task' && isInboxRow);
+
+  // Where this row's labels came from — the classifier, your own hand, or nothing yet (ALF-180).
+  // Inbox rows only, and each clause earns its place: the classifier's sweep predicate is
+  // `parent_id is null`, so marking a subtask "not yet classified" would promise a judgement
+  // nothing intends to make; once an item is dispatched the question is settled, since
+  // provenance is a triage aid; and the Completed view is a history list, not a queue. Derived
+  // per render from two columns that already ride along on the row — no store, selector, filter
+  // or query reads them.
+  const origin = isInboxRow ? classificationOrigin(node) : null;
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -645,7 +655,17 @@ export function TaskRow({
           >
             {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
           </span>
-          <span className="min-w-0 flex-1 truncate text-sm text-foreground">{node.title}</span>
+          {/* Title + provenance travel together in one flex-1 box, with the mark as the title's
+            SIBLING rather than its content. The title here is a single clipped `truncate` line,
+            so a mark nested inside it would be part of the overflowing content and any title
+            long enough to ellipsize would swallow it — in the one mode where you are choosing
+            what to dispatch. Outside it, the mark always renders; inside a shared box that
+            shrink-wraps the pair, it sits against the text (or the ellipsis) instead of drifting
+            to the row's far edge on a short title, where it would read as one more badge. */}
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="min-w-0 truncate text-sm text-foreground">{node.title}</span>
+            {origin !== null && <ClassificationMark origin={origin} />}
+          </span>
           <RowMetaCluster
             node={node}
             isTask={isTask}
@@ -872,6 +892,19 @@ export function TaskRow({
                       )}
                     >
                       {node.title}
+                      {/* Provenance — INSIDE the title span, glued to the last word by a
+                        non-breaking space. Appended as a plain sibling of the span the glyph
+                        would be its own inline box with a break opportunity in front of it, so a
+                        title that fills its final line to the edge would drop the mark onto a
+                        line of its own — a lone glyph floating under the row, which nothing else
+                        in the app does. The nbsp removes that break opportunity, so the mark
+                        always travels with the final word. */}
+                      {origin !== null && (
+                        <>
+                          {'\u00A0'}
+                          <ClassificationMark origin={origin} />
+                        </>
+                      )}
                     </span>
                     {/* Notes preview — a single muted line beneath the title when notes exist,
                     so the row stays scannable without opening the detail (ALF-67 §2). Clipped to
