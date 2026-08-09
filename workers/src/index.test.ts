@@ -1,3 +1,4 @@
+import { spyOnFetch } from './fetch-stub';
 import worker, { type Env } from './index';
 
 const env: Env = {
@@ -5,6 +6,9 @@ const env: Env = {
   GITHUB_TOKEN: 'pat-123',
   SUPABASE_URL: 'https://proj.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+  ANTHROPIC_API_KEY: 'sk-ant-test',
+  CLASSIFIER_MODEL: 'claude-haiku-4-5',
+  CLASSIFIER_TIMEZONE: 'America/Chicago',
 };
 
 type FetchArgs = Parameters<typeof worker.fetch>;
@@ -102,7 +106,7 @@ function mockRoutedFetch(
     encoding: 'base64',
     sha: 'blobsha',
   });
-  return jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+  return spyOnFetch().mockImplementation((input) => {
     const url = input as string;
     if (url.startsWith('https://api.github.com/')) {
       return Promise.resolve(new Response(contentsBody, { status: options.githubStatus ?? 200 }));
@@ -131,7 +135,9 @@ describe('worker.fetch', () => {
       WORKER_VERSION: 'abc1234',
     });
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('alfred workers ok (build abc1234)');
+    expect(await response.text()).toBe(
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago)',
+    );
   });
 
   it('GET / reports an UNSTAMPED build when no version was injected at deploy', async () => {
@@ -139,7 +145,24 @@ describe('worker.fetch', () => {
     // signal — the deploy did not come from CI, so nothing vouches for which commit it carries.
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('alfred workers ok (build unstamped)');
+    expect(await response.text()).toBe(
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago)',
+    );
+  });
+
+  it('GET / reports the RESOLVED classifier config, not the defaults it was written against', async () => {
+    // The deploy passes `--var WORKER_VERSION:<sha>`, and this is the first release to put
+    // anything else in [vars]. If a CLI --var ever shadowed the file's vars rather than merging
+    // with them, the classifier would quietly run on its defaults in production with no symptom
+    // at all; reporting what actually resolved turns that into one curl.
+    const { response } = await invoke(new Request('https://worker.dev/'), {
+      ...env,
+      CLASSIFIER_MODEL: 'claude-sonnet-5',
+      CLASSIFIER_TIMEZONE: 'Europe/London',
+    });
+    expect(await response.text()).toBe(
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London)',
+    );
   });
 
   it('404s an unknown route', async () => {
@@ -218,9 +241,7 @@ describe('worker.fetch', () => {
   });
 
   it('advances a ticket when an implementation PR opens', async () => {
-    const spy = jest
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(Response.json([{ ref: 'ALF-42' }], { status: 200 }));
+    const spy = spyOnFetch().mockResolvedValue(Response.json([{ ref: 'ALF-42' }], { status: 200 }));
 
     const request = await webhookRequest(
       prPayload({
@@ -249,7 +270,7 @@ describe('worker.fetch', () => {
       encoding: 'base64',
       sha: 'blobsha',
     });
-    const spy = jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const spy = spyOnFetch().mockImplementation((input) => {
       const url = input as string;
       if (url.startsWith('https://api.github.com/')) {
         return Promise.resolve(new Response(contentsBody, { status: 200 }));
@@ -285,7 +306,7 @@ describe('worker.fetch', () => {
       'https://api.github.com/repos/ac3charland/alfred/contents/docs/specs/ALF-42.md?ref=mergesha123',
     );
     const snapshotBodies = spy.mock.calls
-      .map(([, init]) => (init as RequestInit | undefined)?.body)
+      .map(([, init]) => init?.body)
       .filter((body): body is string => typeof body === 'string');
     const snapshotBody = snapshotBodies.find((body) => body.includes('spec_markdown'));
     expect(snapshotBody).toBeDefined();
@@ -293,9 +314,7 @@ describe('worker.fetch', () => {
   });
 
   it('records the PR url on the EPICS row when an epic-refinement PR opens', async () => {
-    const spy = jest
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(Response.json([{ ref: 'ALF-12' }], { status: 200 }));
+    const spy = spyOnFetch().mockResolvedValue(Response.json([{ ref: 'ALF-12' }], { status: 200 }));
 
     const request = await webhookRequest(
       prPayload({
@@ -321,7 +340,7 @@ describe('worker.fetch', () => {
       encoding: 'base64',
       sha: 'epicblobsha',
     });
-    const spy = jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const spy = spyOnFetch().mockImplementation((input) => {
       const url = input as string;
       if (url.startsWith('https://api.github.com/')) {
         return Promise.resolve(new Response(contentsBody, { status: 200 }));
@@ -355,7 +374,7 @@ describe('worker.fetch', () => {
       'https://proj.supabase.co/rest/v1/epics?ref=eq.ALF-12',
     ]);
     const bodies = spy.mock.calls
-      .map(([, init]) => (init as RequestInit | undefined)?.body)
+      .map(([, init]) => init?.body)
       .filter((body): body is string => typeof body === 'string');
     expect(bodies.some((body) => body.includes('docs/specs/epics/ALF-12.html'))).toBe(true);
     const snapshotBody = bodies.find((body) => body.includes('spec_markdown'));
@@ -497,5 +516,47 @@ describe('worker.fetch', () => {
       .filter((body): body is string => typeof body === 'string')
       .some((body) => body.includes('spec_markdown'));
     expect(patchedSpec).toBe(false);
+  });
+});
+
+describe('worker.scheduled', () => {
+  /** A cron invocation carries no request; only `env` and the execution context matter here. */
+  const controller = {} as unknown as Parameters<typeof worker.scheduled>[0];
+  const background: Promise<unknown>[] = [];
+  const ctx = {
+    waitUntil: (promise: Promise<unknown>) => background.push(promise),
+  } as unknown as Parameters<typeof worker.scheduled>[2];
+
+  it('runs a classifier sweep, and resolves only once the sweep has finished', async () => {
+    // The handler must AWAIT its own work: a scheduled invocation is torn down when the promise
+    // it returns settles, so a fire-and-forget sweep would be killed part-way through.
+    let settled = false;
+    const spy = spyOnFetch().mockImplementation(async () => {
+      await Promise.resolve();
+      settled = true;
+      return Response.json([], { status: 200 });
+    });
+
+    await worker.scheduled(controller, env, ctx);
+
+    expect(settled).toBe(true);
+    // Nothing eligible means exactly one database query and zero model calls — a steady state
+    // where everything is triaged is a steady state where the model is never invoked.
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [url] = spy.mock.calls[0] as [string];
+    expect(url).toContain('/rest/v1/items?');
+    expect(url).toContain('classified_at=is.null');
+  });
+
+  it('makes no request at all when the API key binding has never been set', async () => {
+    // Until someone runs `wrangler secret put` the binding is genuinely absent. Treating that as
+    // an outage would burn an attempt on every eligible item every two minutes, so the tick
+    // stops before it costs anything — and fixing the key later loses nothing.
+    const spy = spyOnFetch();
+    const { ANTHROPIC_API_KEY: _unset, ...withoutKey } = env;
+
+    await worker.scheduled(controller, withoutKey, ctx);
+
+    expect(spy).not.toHaveBeenCalled();
   });
 });
