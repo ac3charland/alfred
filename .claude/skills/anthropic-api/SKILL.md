@@ -121,9 +121,11 @@ const message = await client.messages.create({
   nullable field is an explicit `{ "type": "null" }` branch, never an omitted key — abstention
   has to be a value the model can *emit*.
 - **Put real ids in the `enum`, not `{ type: "string" }`.** That is the whole payoff: a
-  hallucinated id stops being a case your code has to handle. Re-validate anyway — the enum
-  closes the value space at generation time but not the *time gap*, since a row can be deleted
-  between assembling the prompt and writing the answer back.
+  hallucinated id stops being a case your code has to handle. Re-validate anyway, but be honest
+  about what that buys: validating against the **same snapshot** that built the enum catches a
+  structured-output failure, not a row deleted since — that check passes for exactly the ids the
+  enum already allowed. Only the database closes that gap, by rejecting the write. Reach for a
+  re-fetch before write-back only if you have a reason not to let the write fail.
 - **An empty `enum` is not a valid schema.** When the live list is empty (a fresh database with
   no folders), collapse the field to bare `{ "type": "null" }`.
 - **`messages.parse()` is not usable with a per-request schema** — it wants a static Zod schema.
