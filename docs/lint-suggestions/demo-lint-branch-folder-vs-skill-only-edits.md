@@ -64,3 +64,33 @@ refinement PR. Neither of the two prior refinement PRs (ALF-123, ALF-130) carrie
       branch owes no demo, and the spec is already linked from the PR via htmlpreview.
 - [ ] `docs/demos/alf-151-habit-edit-spec/` — same shape, same cause (a `commitlint` SKILL.md note
       on a spec-only branch). Delete the folder; the spec is linked from the PR via htmlpreview.
+
+---
+
+## Second instance — a root config file does it too (2026-08-09 · `claude/llm-classifier-cron-spec-3h5g0l`)
+
+Same rule, same mechanism, one class wider than `.claude/skills/**`.
+
+A refinement branch carrying only `docs/specs/ALF-171.html` needed a four-line `.gitignore`
+addition — the harness had created `.claude/worktrees/<id>/` for an isolated subagent, which is a
+transient *nested checkout* that must never be committed. Adding the ignore entry flipped the
+branch to "touches code" and `branch-folder` demanded a demo doc for an ignore rule, which has no
+behavior to demonstrate. The showboat skill names this case explicitly — "Trivial, non-behavioral
+changes (pure refactors, docs, **config**) don't need a demo doc" — so the gate and the skill
+disagree.
+
+**Why it widens the proposal above:** a `PROSE_PREFIXES` list covering `docs/` and
+`.claude/skills/` still wouldn't cover `.gitignore`, because the problem isn't only "prose lives
+outside `docs/`" — it's that the predicate asks *where a file lives* when the thing it cares about
+is *whether the change has observable behavior*. Repo-root hygiene files (`.gitignore`,
+`.gitattributes`, `.nvmrc`, editor config) are the other population with no demo to owe. Suggest
+extending the skip to an explicit allow-list of such files alongside the prefixes, kept narrow and
+enumerated rather than pattern-matched, so `package.json` and `wrangler.toml` — config that
+genuinely changes behavior — keep owing a demo.
+
+**Workaround used meanwhile:** dropped the `.gitignore` commit from the refinement branch entirely
+and left `.claude/worktrees/` untracked, cleaning the directory up by hand once the subagent
+finished. So the ignore entry this repo actually wants still isn't committed, and the next agent to
+use worktree isolation will rediscover the same untracked path.
+
+- [ ] Land the `.claude/worktrees/` ignore entry once a branch can carry it without owing a demo.
