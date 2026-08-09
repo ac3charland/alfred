@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      classification_corrections: {
+        Row: {
+          captured_text: string
+          chosen_value: string | null
+          created_at: string
+          direction: string
+          field: string
+          guessed_value: string | null
+          id: string
+          item_id: string | null
+          model: string
+          prompt_version: number
+          provider: string
+        }
+        Insert: {
+          captured_text: string
+          chosen_value?: string | null
+          created_at?: string
+          direction: string
+          field: string
+          guessed_value?: string | null
+          id?: string
+          item_id?: string | null
+          model: string
+          prompt_version: number
+          provider: string
+        }
+        Update: {
+          captured_text?: string
+          chosen_value?: string | null
+          created_at?: string
+          direction?: string
+          field?: string
+          guessed_value?: string | null
+          id?: string
+          item_id?: string | null
+          model?: string
+          prompt_version?: number
+          provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "classification_corrections_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "classification_corrections_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       code_items: {
         Row: {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
@@ -269,6 +326,12 @@ export type Database = {
       }
       items: {
         Row: {
+          classified_at: string | null
+          classified_guess: Json | null
+          classified_model: string | null
+          classified_prompt_version: number | null
+          classified_provider: string | null
+          classify_attempts: number
           completed_at: string | null
           created_at: string
           dispatched_at: string | null
@@ -291,6 +354,12 @@ export type Database = {
           title: string
         }
         Insert: {
+          classified_at?: string | null
+          classified_guess?: Json | null
+          classified_model?: string | null
+          classified_prompt_version?: number | null
+          classified_provider?: string | null
+          classify_attempts?: number
           completed_at?: string | null
           created_at?: string
           dispatched_at?: string | null
@@ -313,6 +382,12 @@ export type Database = {
           title: string
         }
         Update: {
+          classified_at?: string | null
+          classified_guess?: Json | null
+          classified_model?: string | null
+          classified_prompt_version?: number | null
+          classified_provider?: string | null
+          classify_attempts?: number
           completed_at?: string | null
           created_at?: string
           dispatched_at?: string | null
@@ -430,6 +505,12 @@ export type Database = {
     Views: {
       task_items: {
         Row: {
+          classified_at: string | null
+          classified_guess: Json | null
+          classified_model: string | null
+          classified_prompt_version: number | null
+          classified_provider: string | null
+          classify_attempts: number | null
           completed_at: string | null
           created_at: string | null
           dispatched_at: string | null
@@ -452,6 +533,12 @@ export type Database = {
           title: string | null
         }
         Insert: {
+          classified_at?: string | null
+          classified_guess?: Json | null
+          classified_model?: string | null
+          classified_prompt_version?: number | null
+          classified_provider?: string | null
+          classify_attempts?: number | null
           completed_at?: string | null
           created_at?: string | null
           dispatched_at?: string | null
@@ -474,6 +561,12 @@ export type Database = {
           title?: string | null
         }
         Update: {
+          classified_at?: string | null
+          classified_guess?: Json | null
+          classified_model?: string | null
+          classified_prompt_version?: number | null
+          classified_provider?: string | null
+          classify_attempts?: number | null
           completed_at?: string | null
           created_at?: string | null
           dispatched_at?: string | null
@@ -608,6 +701,12 @@ export type Database = {
       complete_subtree: {
         Args: { root_id: string }
         Returns: {
+          classified_at: string | null
+          classified_guess: Json | null
+          classified_model: string | null
+          classified_prompt_version: number | null
+          classified_provider: string | null
+          classify_attempts: number
           completed_at: string | null
           created_at: string
           dispatched_at: string | null
