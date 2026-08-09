@@ -189,6 +189,12 @@ story takes the three slices that contain the model:</p>
   only worth reading once they have been written, so shipping the authoring surface first means this
   story inherits real content on day one instead of a table of nulls.
 </div>
+<p>
+  There is also one prerequisite that is <b>not</b> a story: the <b>Anthropic API key</b>, which is
+  set by hand against the already-live Worker and is not part of any merge. It can be done now, and
+  doing it ahead of time is what makes this story work the moment it deploys — §7 covers what to
+  obtain, the exact name, where it goes, the four places it must not go, and how to check it.
+</p>
 
 <h3>What this story deliberately leaves</h3>
 <p>The epic's remaining three slices are <b>not</b> in scope and want their own tickets. Each is
@@ -259,7 +265,7 @@ this refinement, and all four are settled — a later session should not re-open
   <tr><td><b>D10</b></td><td>A processed marker; the sweeper is idempotent and never re-guesses over you.</td><td><a href="#s1">S1</a>, <a href="#s2">S2</a></td></tr>
   <tr><td><b>D12</b></td><td>The model's judgement is not a back-pressure gate; everything around it is.</td><td>§8</td></tr>
   <tr><td><b>D13</b></td><td>Degrade per field, retry only transport, no conversational repair loop.</td><td><a href="#s11">S11</a>, §5</td></tr>
-  <tr><td><b>D14</b></td><td>The key lives only in the Worker.</td><td>§7 — a Worker secret; the frontend gains no LLM code path.</td></tr>
+  <tr><td><b>D14</b></td><td>The key lives only in the Worker.</td><td>§7 — <i>The Anthropic API key</i>: where it goes, where it must not, and how to verify it.</td></tr>
   <tr><td><b>D15</b></td><td>Every override is recorded; the diff is taken at dispatch; nothing is shown.</td><td><a href="#s12">S12</a>, <a href="#s13">S13</a>, <a href="#s14">S14</a>, §6</td></tr>
   <tr><td><b>D16</b></td><td>Corrections feed back as few-shot examples, nothing more clever.</td><td><a href="#s15">S15</a>, §6</td></tr>
   <tr><td><b>D18</b></td><td>One item, one request — sequential within a sweep, never a batch.</td><td><a href="#s1">S1</a></td></tr>
@@ -598,7 +604,21 @@ Projects (choose at most one, by id):
     <li><b>Incrementing costs no extra read.</b> The sweep already selected
       <code>classify_attempts</code>, so a failure PATCHes <code>n + 1</code> from the value in
       hand.</li>
+    <li><b>One carve-out: a credential failure aborts the sweep and counts nothing.</b> A missing
+      <code>ANTHROPIC_API_KEY</code>, or a 401/403 from the API, is a configuration fault rather than
+      anything about the item. The handler checks the binding is present <i>before</i> the first
+      call, and treats an auth rejection as fatal to the tick: log one distinct message, stop the
+      loop, leave every item untouched — no PATCH, no attempt increment.</li>
   </ul>
+  <div class="callout">
+    <b>Why that carve-out is not optional.</b> Without it, an unset key is indistinguishable from a
+    transient outage: every eligible item burns an attempt per tick, and at a two-minute cadence the
+    whole Inbox is past the ceiling of 5 in ten minutes — <i>permanently</i>, since nothing resets the
+    counter. A single forgotten manual step would quietly and irreversibly opt every existing capture
+    out of the feature, and the only symptom would be that nothing ever gets labelled. Failing the
+    tick loudly instead makes the same mistake cost nothing but the ticks it takes to notice, and
+    <code>wrangler tail</code> names the cause on the first one.
+  </div>
   <p class="why"><b>Why every failure counts, including transport.</b> A taxonomy where transport
   failures retry freely is defensible, but it has no brake at all: a persistent misconfiguration
   would loop at 720 calls/day forever. Counting everything gives a uniform rule and, at a two-minute
@@ -852,6 +872,13 @@ accept low recall.</p>
   <tr><td><code>stop_reason: "max_tokens"</code></td><td>Nothing written. A config bug rather than model behaviour — the verdict is ~100 tokens against a 512 ceiling, so this should never fire.</td><td class="yes">+1</td></tr>
   <tr><td>Body is not valid JSON, or fails the shape check</td><td>Nothing written.</td><td class="yes">+1</td></tr>
   <tr><td>429 / 5xx / timeout / network (after the SDK's own retries)</td><td>Nothing written; the next tick tries again.</td><td class="yes">+1</td></tr>
+  <tr>
+    <td><b><code>ANTHROPIC_API_KEY</code> unset, or a 401 / 403 from the API</b></td>
+    <td><b>The whole sweep aborts</b> on one distinct log line. No item is written, and no item's
+      counter moves — this is a configuration fault, not an item fault. The binding is checked before
+      the first call, so an unset key costs zero requests.</td>
+    <td class="no">no</td>
+  </tr>
   <tr><td>Attempt ceiling reached (5)</td><td>The item drops out of the sweep predicate and stays an ordinary unclassified Inbox row.</td><td>—</td></tr>
   <tr><td>The write itself fails (a CHECK, a vanished row)</td><td>Logged, item left unmarked, next tick. The database has the last word by design.</td><td class="yes">+1</td></tr>
 </table></div>
@@ -966,9 +993,8 @@ not a devDependency). No other package gains an LLM dependency — D14.</p>
     block documenting secrets gains <code>ANTHROPIC_API_KEY</code>, and the new
     <code>[vars]</code> section explains why <code>WORKER_VERSION</code> is still deliberately
     <i>not</i> declared there.</li>
-  <li><b>The secret is set once, by hand:</b> <code>npx wrangler secret put ANTHROPIC_API_KEY</code>
-    from <code>workers/</code>. Secrets persist across deploys and are never re-uploaded by CI. For
-    <code>wrangler dev</code>, the same key goes in the gitignored <code>.dev.vars</code>.</li>
+  <li><b>The API key is the one manual step</b>, and it is not part of the merge — see the section
+    below.</li>
   <li><b>No CI change.</b> <code>.github/workflows/deploy-worker.yml</code> already deploys every push
     to <code>main</code> with no path filter, and <code>wrangler deploy</code> registers cron triggers
     from <code>wrangler.toml</code>. Merging is deploying, including for the schedule.</li>
@@ -976,6 +1002,78 @@ not a devDependency). No other package gains an LLM dependency — D14.</p>
     <code>/__scheduled</code> endpoint that fires the handler on demand, so a sweep can be triggered
     against a scratch Supabase without waiting two minutes or deploying.</li>
 </ul>
+
+<h3>The Anthropic API key — the one manual step</h3>
+<p>
+  Everything else in this story ships by merging. The key does not: it is a credential, so it is set
+  by hand, once, outside the repo. <b>It can and should be done before this story is built</b> —
+  Cloudflare secrets are stored against the Worker, not against a deploy, so setting it today on the
+  already-live <code>alfred-workers</code> Worker means the classifier finds it waiting the moment the
+  code lands. Nothing breaks in the meantime: no code reads it until this story merges.
+</p>
+
+<h4>What to obtain</h4>
+<p>
+  An <b>Anthropic Console API key</b> from <a href="https://console.anthropic.com">console.anthropic.com</a>
+  → API keys, on an account with pay-as-you-go billing enabled. Epic D1 is explicit that this is
+  <i>not</i> the Claude Pro/Max subscription: a subscription credential is for using Claude Code, and
+  a Worker is a V8 isolate that could not run the CLI anyway. Expect the key to look like
+  <code>sk-ant-api03-…</code>. Budget is the epic's ~$1–2/month (<a href="#s5">S5</a>), so the
+  smallest credit top-up is ample.
+</p>
+
+<h4>Where it goes — and where it must not</h4>
+<div class="scroll"><table>
+  <tr><th style="width:22%">Environment</th><th style="width:26%">Name</th><th>How it gets there</th></tr>
+  <tr>
+    <td><b>Production</b><br /><span class="small">the deployed Worker</span></td>
+    <td><code>ANTHROPIC_API_KEY</code><br /><span class="small">a Cloudflare <i>secret</i></span></td>
+    <td><code>npx wrangler secret put ANTHROPIC_API_KEY</code>, run from <code>workers/</code>. Paste
+      the key at the prompt. Secrets persist across every subsequent <code>wrangler deploy</code> and
+      are never re-uploaded by CI, so this is a one-time action. <b>This is the only place production
+      reads the key from.</b></td>
+  </tr>
+  <tr>
+    <td><b>Local</b><br /><span class="small">only if you run <code>wrangler dev</code></span></td>
+    <td><code>ANTHROPIC_API_KEY</code><br /><span class="small">a line in <code>workers/.dev.vars</code></span></td>
+    <td>Dotenv format, one <code>KEY=value</code> per line, alongside the four secrets already
+      documented there. <code>.dev.vars</code> is gitignored. Optional — needed only to exercise a
+      real sweep locally (and for the demo doc), not to run the test suites.</td>
+  </tr>
+</table></div>
+
+<div class="callout">
+  <b>Four places it must never go</b>, each of which someone reasonably expects to need:
+  <ul style="margin:.4rem 0 0">
+    <li><b>Not a GitHub Actions secret.</b> CI runs the suites, and D12 forbids a live model call in
+      any of them — the client is stubbed at the module boundary. CI never needs the key, and the
+      deploy job authenticates to Cloudflare with <code>CLOUDFLARE_API_TOKEN</code>, which already
+      exists.</li>
+    <li><b>Not a Vercel environment variable.</b> The frontend has no LLM code path at all (D14), and
+      a key in Vercel is one refactor away from the client bundle.</li>
+    <li><b>Not a <code>[vars]</code> entry in <code>wrangler.toml</code>.</b> Vars are plaintext and
+      committed; that file is where <code>CLASSIFIER_MODEL</code> and <code>CLASSIFIER_TIMEZONE</code>
+      live precisely because they are <i>not</i> secret.</li>
+    <li><b>Not <code>.env</code> / <code>.env.local</code> anywhere in the repo.</b> The Worker reads
+      <code>env</code>, never <code>process.env</code>.</li>
+  </ul>
+</div>
+
+<h4>Verifying it, before and after</h4>
+<ul>
+  <li><b>Before the story merges:</b> <code>npx wrangler secret list</code> from <code>workers/</code>
+    should show <code>ANTHROPIC_API_KEY</code> alongside the four existing secrets. It prints names
+    only, never values — which is the only check available, and it confirms presence, not validity.</li>
+  <li><b>After the deploy:</b> <code>curl &lt;worker-url&gt;/</code> reports the running build plus the
+    resolved model and timezone (<a href="#s16">S16</a>). That proves the config vars survived the
+    deploy; it deliberately says nothing about the key, because a health check must not probe a billed
+    endpoint.</li>
+  <li><b>The real proof is the first sweep.</b> Capture an item, wait a tick, and watch it gain
+    labels — or run <code>npx wrangler tail</code> and trigger one immediately. A bad key surfaces
+    there as the loud, distinct message described below.</li>
+</ul>
+<p class="small"><b>Rotation</b> is the same command again; it takes effect on the next invocation with
+no redeploy, since a secret is not part of the bundle.</p>
 
 <h3>Frontend — types and fixtures only</h3>
 <p><b>No component, store, route, schema or hook changes.</b> The claim rule and the dispatch diff both
@@ -1018,6 +1116,10 @@ API call.</b> The Anthropic client is stubbed at the module boundary in every un
       <b>The sweep:</b> the query's predicate and limit; sequential (not parallel) calls; zero
       eligible rows makes zero API calls; one item's failure does not abort the loop; the attempt
       counter increments on each failure row of §5; the ceiling removes an item from the predicate.<br />
+      <b>The credential carve-out:</b> an unset <code>ANTHROPIC_API_KEY</code> makes zero API calls and
+      zero writes, and a 401/403 stops the loop — in both cases no item's <code>classify_attempts</code>
+      moves, which is the assertion that matters (a stub returning 401 for the first item must leave
+      the second item untouched too).<br />
       <b>The health string</b> names the resolved model and zone.
     </td>
   </tr>
@@ -1100,6 +1202,9 @@ the model's own output is not, so capture it via <code>note</code>/paste rather 
     act.</li>
   <li>Each failure mode of §5 behaves as tabulated, and a run of failures sets an item aside rather
     than looping forever.</li>
+  <li>A missing or rejected API key aborts the tick with one distinct log line, costs zero requests
+    when the binding is unset, and leaves every item's attempt counter untouched — so fixing the key
+    later loses nothing.</li>
   <li>Nothing in this story can block, slow, or fail a capture: <code>POST /api/items</code> gains no
     LLM call and no new dependency.</li>
 </ul>
@@ -1131,8 +1236,11 @@ the model's own output is not, so capture it via <code>note</code>/paste rather 
 <h4>Guardrails</h4>
 <ul class="ac">
   <li>No test in <code>check:fast</code> or <code>check:slow</code> makes a live model call.</li>
-  <li><code>ANTHROPIC_API_KEY</code> exists only as a Worker secret — not in Vercel, not in the client
-    bundle, not in the repo.</li>
+  <li><code>ANTHROPIC_API_KEY</code> exists only as a Cloudflare Worker secret (plus, optionally, a
+    developer's gitignored <code>workers/.dev.vars</code>) — not in Vercel, not a GitHub Actions
+    secret, not a <code>[vars]</code> entry, not in the client bundle, not in the repo.</li>
+  <li>Setting the secret is a one-time manual step that can be completed <i>before</i> this story
+    merges, and requires no redeploy to take effect.</li>
   <li><code>task_items</code> is recreated in the same migration, and reading the new columns through
     the view resolves.</li>
   <li><code>GET /</code> reports the running build alongside the resolved classifier model and
