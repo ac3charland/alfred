@@ -6,6 +6,8 @@ import {
   checkboxSizeClass,
   chevronButtonClass,
   chevronIconClass,
+  classificationMarkClass,
+  classificationMarkGlyphClass,
   collapseClass,
   collapseInnerClass,
   confirmTitleClass,
@@ -218,6 +220,27 @@ describe('task-row styles', () => {
     expect(titleTextClass).toContain('transition-colors');
     expect(titleTextClass).toContain('delay-200');
     expect(titleTextClass).not.toContain('truncate');
+  });
+
+  it('provenance mark sits inline with the title and never shrinks', () => {
+    // Inline so it travels with the title text; shrink-0 so the select-mode row's truncating
+    // title can't squeeze it out.
+    expect(classificationMarkClass).toContain('inline-flex');
+    expect(classificationMarkClass).toContain('shrink-0');
+    expect(classificationMarkClass).toContain('items-center');
+  });
+
+  it('provenance glyph is 11px in three weights of the same muted grey', () => {
+    for (const glyphClass of Object.values(classificationMarkGlyphClass)) {
+      expect(glyphClass).toContain('h-[11px]');
+      expect(glyphClass).toContain('w-[11px]');
+      // Monochrome: no accent colour, which the row's palette has already spent five times over.
+      expect(glyphClass).not.toContain('accent-');
+    }
+    // The classifier's mark is the loudest, the unjudged row's the faintest.
+    expect(classificationMarkGlyphClass.model).toContain('text-muted-foreground/95');
+    expect(classificationMarkGlyphClass.claimed).toContain('text-muted-foreground/65');
+    expect(classificationMarkGlyphClass.unjudged).toContain('text-muted-foreground/40');
   });
 
   it('title is a compact, tight-leading size on mobile, text-sm at md+', () => {
