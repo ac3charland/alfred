@@ -258,8 +258,9 @@
   (<code>classified_at</code>, <code>classified_provider</code>), and draw a small monochrome mark
   for it on Inbox rows only. No migration, no API change, no store change, no new query.</p>
   <p class="small" style="margin:.5rem 0 .2rem">
-    <b>The one thing to decide:</b> which of the four drawn treatments in §4 ships. Everything else
-    in this spec is the same whichever you pick.
+    <b>Treatment — decided:</b> option 2, the <b>title glyph</b>. An 11px monochrome glyph set
+    immediately after the title text, no pill. §4 keeps all four drawings as the record of what it
+    was chosen against; §5 builds only this one.
   </p>
 </div>
 
@@ -553,13 +554,21 @@ export function classificationOrigin(
   that is momentarily pessimistic, never wrong in the other direction. Listed in §9.</p>
 </div>
 
-<h2>4 · The pick — four treatments, drawn <span class="pickme">decide this</span></h2>
+<h2>4 · The pick — four treatments, drawn <span class="pickme">decided · option 2</span></h2>
 
 <p>
   All four carry the same three states (D2), the same gate (D3), the same inertness (D4) and the
   same wording. They differ only in <i>where the mark lives</i> and <i>how much chrome it costs</i>,
   running from most explicit to most ambient. Flip between them below; the same four rows are drawn
   each time.
+</p>
+
+<p>
+  <b>The owner picked option 2, the title glyph</b>, over the chip this document originally
+  recommended. All four stay drawn: the rejected three are why the chosen one is the chosen one, and
+  a later session asking “why not just a pill?” should be able to see the answer rather than
+  re-derive it. The demo below opens on option 2, which is also what a reader with scripting off
+  sees.
 </p>
 
 <!-- Icon definitions: hand-drawn at 1:1 with the lucide outlines named in the option prose. -->
@@ -598,8 +607,8 @@ export function classificationOrigin(
   <div class="optbar">
     <div class="optgroup" id="opt-switch" role="group" aria-label="Indicator treatment">
       <span class="lbl">Treatment</span>
-      <button type="button" data-opt="1" aria-pressed="true">1 · Provenance chip</button>
-      <button type="button" data-opt="2" aria-pressed="false">2 · Title glyph</button>
+      <button type="button" data-opt="1" aria-pressed="false">1 · Provenance chip</button>
+      <button type="button" data-opt="2" aria-pressed="true">2 · Title glyph ✓</button>
       <button type="button" data-opt="3" aria-pressed="false">3 · Edge rail</button>
       <button type="button" data-opt="4" aria-pressed="false">4 · Row wash</button>
     </div>
@@ -611,7 +620,7 @@ export function classificationOrigin(
     </div>
   </div>
 
-  <div class="mock-body" id="demo" data-opt="1" data-mode="normal">
+  <div class="mock-body" id="demo" data-opt="2" data-mode="normal">
     <p class="seclabel">Inbox</p>
     <div class="ilist">
 
@@ -702,7 +711,8 @@ export function classificationOrigin(
 <p class="cap doc">
   The <b>Edge rail</b> and <b>Row wash</b> treatments carry no visible glyph, so their accessible
   name rides an <code>sr-only</code> span on the row; the legend above stays the reader's key either
-  way. With scripting off this mockup is the static Option 1 / Resting drawing.
+  way. With scripting off this mockup is the static Option 2 / Resting drawing — the chosen
+  treatment.
 </p>
 
 <h3>The same four treatments on a phone</h3>
@@ -715,7 +725,7 @@ export function classificationOrigin(
 
 <div class="mock">
   <div class="mock-bar"><span>Inbox at 390px — rows 1 and 4</span><span class="hmeta">follows the treatment picked above</span></div>
-  <div class="mock-body" id="mdemo" data-opt="1">
+  <div class="mock-body" id="mdemo" data-opt="2">
     <div class="mframe">
       <div class="mcard">
         <div class="irow" data-origin="model">
@@ -753,14 +763,15 @@ export function classificationOrigin(
       </div>
     </div>
     <p class="cap">
-      Under <b>Provenance chip</b>, row 4 grows a second line it does not have today — the badge
-      footer exists only when the row has metadata, and the mark now counts as metadata. Under
-      <b>Title glyph</b>, <b>Edge rail</b> and <b>Row wash</b> the bare row keeps its single line.
+      The chosen <b>Title glyph</b> leaves row 4 on its single line: it never touches the badge
+      footer, so a bare capture is one line on a phone exactly as it is today. Flip to
+      <b>Provenance chip</b> to see the contrast — there the footer exists only when the row has
+      metadata, and the mark counts as metadata, so row 4 grows a second line.
     </p>
   </div>
 </div>
 
-<h3 class="opt-h">Option 1 — Provenance chip <span class="pickme">recommended</span></h3>
+<h3 class="opt-h">Option 1 — Provenance chip <span class="owner">not picked</span></h3>
 <p>
   A glyph-only <code>Badge variant="muted"</code> in the first slot of <code>RowMetaCluster</code>,
   before the Type badge: an 11px lucide glyph (<code>Sparkle</code> / <code>Pencil</code> /
@@ -776,21 +787,63 @@ export function classificationOrigin(
   the mobile second line on a bare capture drawn above — <code>hasMeta</code> must now include the
   mark, so every Inbox row renders the footer.</p>
 
-<h3 class="opt-h">Option 2 — Title glyph</h3>
+<h3 class="opt-h">Option 2 — Title glyph <span class="pickme">chosen</span></h3>
 <p>
-  The same three glyphs at 11px, set immediately after the title text inside the title line, at
-  <code>text-muted-foreground/60</code>. No pill.
+  The three glyphs at 11px, set immediately after the title text, at
+  <code>text-muted-foreground/60</code>. No pill, no border, no fill.
 </p>
-<p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code>'s title span (and the
-  select-mode branch's title span — two sites).</p>
+<p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code> — the ordinary row's
+  title span and the select-mode branch's title, which are <b>not</b> the same mount (see below).</p>
 <p class="verdict"><span class="k">Buys</span> the lightest visible chrome of the three glyph
-  treatments; anchors provenance to the <i>text</i>, which is what was classified, rather than to
-  the labels; no change to <code>hasMeta</code>, so bare rows keep their single line everywhere.</p>
-<p class="verdict"><span class="k">Costs</span> a second title site to keep in sync, and the title
-  wraps (<code>break-words</code>) — on a long title the glyph can end up alone on the last line,
-  which no other row element does.</p>
+  treatments; anchors provenance to the <i>text</i>, which is the thing that was classified, rather
+  than to the labels, which are its output; no change to <code>hasMeta</code>, so a bare capture
+  keeps its single line on every viewport; and no collision with any existing colour or state
+  treatment, since it is grey and sits nowhere near the row's edges.</p>
+<p class="verdict"><span class="k">Costs</span> two mount sites rather than one, and a glyph living
+  inside running text — both of which have a specific consequence, resolved below rather than left
+  for the build to discover.</p>
 
-<h3 class="opt-h">Option 3 — Edge rail</h3>
+<h4>Two structural details the drawing hides</h4>
+<p>
+  Setting a glyph after the title is not one change made twice: the two branches treat the title
+  differently, and each treats it in a way that would swallow a naive mount.
+</p>
+<div class="scroll">
+<table>
+  <thead>
+    <tr><th style="width:22%">Branch</th><th style="width:34%">What the title does there</th><th>Where the mark goes, and why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>Ordinary row</b></td>
+      <td>The title span carries <code>titleTextClass</code>, which includes
+        <code>break-words</code> — a long title wraps across lines.</td>
+      <td><b>Inside</b> the title span, after the text, joined to it by a non-breaking space. Appended
+        as a plain sibling the glyph is a separate inline box with a break opportunity in front of
+        it, so a title that fills its last line to the edge pushes the glyph onto a line of its own —
+        a lone mark floating under the row, which nothing else in the app does. The
+        <code> </code> removes that break opportunity, so the glyph travels with the final word
+        instead.</td>
+    </tr>
+    <tr>
+      <td><b>Select mode</b></td>
+      <td>The title is <code>min-w-0 flex-1 truncate</code> — one nowrap line, clipped with an
+        ellipsis.</td>
+      <td><b>Outside</b> the title span, as its next sibling with <code>shrink-0</code>. Inside, the
+        mark is part of the overflowing content, so on any title long enough to truncate the ellipsis
+        eats it and the row silently loses its provenance — in the one mode where you are choosing
+        what to dispatch. As a sibling it always renders, immediately after the clipped text.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p class="small">
+  Both are worth an explicit test (§6): a long-title row in each branch, asserting the mark is still
+  found. They are also the reason the mark stays a self-contained component rather than two inline
+  snippets — the placement differs, the component does not.
+</p>
+
+<h3 class="opt-h">Option 3 — Edge rail <span class="owner">not picked</span></h3>
 <p>
   A 2px full-height bar pinned to the row's leading edge, inside the row's <code>paddingLeft</code>
   so nothing shifts: solid grey for the classifier, faint grey for yours, near-invisible
@@ -807,7 +860,7 @@ export function classificationOrigin(
   ambiguous in exactly the states where the row is being acted on. On mobile it sits inside the
   card's own border, 4px from it.</p>
 
-<h3 class="opt-h">Option 4 — Row wash</h3>
+<h3 class="opt-h">Option 4 — Row wash <span class="owner">not picked</span></h3>
 <p>
   No element at all: a whole-row background tint — <code>bg-accent-teal/[0.05]</code> for the
   classifier, none for yours, <code>bg-muted-foreground/[0.045]</code> for unjudged — plus an
@@ -824,17 +877,26 @@ export function classificationOrigin(
   selected; and the drop-target wash is teal again. Flip the demo to <b>Hover row 1</b> and
   <b>Select mode</b> with treatment 4 picked to see both.</p>
 
-<div class="card">
-  <p style="margin:.2rem 0"><b>The recommendation, in one line.</b> Option 1 — it is the only
-  treatment that reuses an existing vocabulary instead of inventing a channel, the only one whose
-  three states are discriminable without colour, and the only one that needs no second mount site.
-  Its cost is one line on bare mobile captures, and that line is arguably the point: the row with
-  no labels is exactly the row where “hold on, nobody has looked at this yet” is worth saying.</p>
+<div class="card teal">
+  <p style="margin:.2rem 0"><b>The decision.</b> <b>Option 2, the title glyph.</b> This document
+  originally recommended option 1 on reuse grounds — it borrows the existing pill vocabulary and
+  needs one mount site instead of two. The owner picked option 2, and the trade it makes is the
+  better one for a mark whose whole brief is the word <i>subtle</i>: a pill is a label, and the row
+  already carries four of them, so a fifth reads as a fifth fact about the item rather than as a
+  note about where the other four came from. A bare glyph beside the text reads as an annotation,
+  which is what it is. It also keeps the badge footer untouched, so a bare capture stays one line
+  on a phone — option 1's one real cost, avoided rather than accepted.</p>
+  <p class="small" style="margin:.5rem 0 .2rem">What the pick costs, and what §5 and §6 therefore
+  carry: two mount sites instead of one, each with a specific failure mode (the wrap orphan and the
+  truncate clip) that is now specified and tested rather than left to be found.</p>
 </div>
 
 <h2>5 · Implementation shape</h2>
 
-<p>The parts below are the same whichever treatment is picked; only the mount site moves.</p>
+<p>
+  Written for the chosen treatment (option 2). The helper, the component and the gate would have been
+  the same under any of the four; the mount is the part that is specific.
+</p>
 
 <h4>New files</h4>
 <div class="scroll">
@@ -847,8 +909,10 @@ export function classificationOrigin(
     <tr><td><code>frontend/lib/tasks/classification.test.ts</code></td>
       <td>The mapping, including both null-provider directions and the once-classified-then-edited row.</td></tr>
     <tr><td><code>frontend/components/tasks/classification-mark.tsx</code></td>
-      <td>The presentational mark. Same file for every treatment — <code>TypeBadge</code> is the
-        precedent: a tiny feature component over an atom, holding the domain→label mapping.</td></tr>
+      <td>The presentational mark: an <code>aria-hidden</code> 11px lucide glyph per origin, wrapped
+        in an inert <code>span</code> carrying the accessible name and the <code>title</code>.
+        <code>TypeBadge</code> is the precedent — a tiny feature component holding the domain→label
+        mapping. One component, two placements (§4), so the two branches can't drift.</td></tr>
     <tr><td><code>frontend/components/tasks/classification-mark.test.tsx</code></td>
       <td>One case per origin: the right glyph, the right accessible name, non-interactive.</td></tr>
     <tr><td><code>frontend/components/tasks/classification-mark.stories.tsx</code></td>
@@ -863,15 +927,16 @@ export function classificationOrigin(
   <thead><tr><th style="width:42%">File</th><th>Change</th></tr></thead>
   <tbody>
     <tr><td><code>components/tasks/task-row.tsx</code></td>
-      <td>Extract the shared <code>isInboxRow</code> local out of the existing
-        <code>showTypeBadge</code> expression; derive <code>origin</code> from it; pass it to both
-        <code>RowMetaCluster</code> call sites (options 1) or render the mark inline in both
-        branches (options 2–4).</td></tr>
-    <tr><td><code>components/tasks/task-row/row-meta-cluster.tsx</code></td>
-      <td>Option 1 only: an <code>origin?: ClassificationOrigin | null</code> prop, folded into
-        <code>hasMeta</code> and rendered first.</td></tr>
+      <td>The only edited component. Extract the shared <code>isInboxRow</code> local out of the
+        existing <code>showTypeBadge</code> expression, derive <code>origin</code> from it, and mount
+        the mark twice — inside the title span on the ordinary row, as the title's sibling in the
+        select-mode branch (§4).</td></tr>
     <tr><td><code>components/tasks/task-row.styles.ts</code></td>
-      <td>Options 3–4 only: the rail / wash class strings, so the styles test locks them.</td></tr>
+      <td>The mark's class string, so the styles test locks its tone and size the way it already
+        locks the row's other chrome.</td></tr>
+    <tr><td colspan="2" class="small"><b>Not edited:</b> <code>row-meta-cluster.tsx</code> — the
+      chosen treatment never touches the badge cluster or <code>hasMeta</code>, which is exactly why
+      a bare capture keeps its single line.</td></tr>
     <tr><td><code>components/tasks/inbox-screen.stories.tsx</code></td>
       <td>Give the <code>MidTriage</code> fixtures a realistic provenance mix and add a
         <code>Provenance</code> story covering all three states. See the snapshot note below.</td></tr>
@@ -881,18 +946,28 @@ export function classificationOrigin(
 </table>
 </div>
 
-<h4>The wiring, for option 1</h4>
+<h4>The wiring</h4>
 <pre><code>// task-row.tsx — replacing the current showTypeBadge expression
 const isInboxRow = node.parent_id === null &amp;&amp; !isCompletedView &amp;&amp; !isDispatched(node);
 const showTypeBadge = node.item_type === 'code' || (node.item_type === 'task' &amp;&amp; isInboxRow);
 const origin = isInboxRow ? classificationOrigin(node) : null;
 
-// …passed to BOTH RowMetaCluster call sites — the ordinary row and the select-mode branch.
-&lt;RowMetaCluster … origin={origin} /&gt;</code></pre>
+// Ordinary row — INSIDE the title span, bound to the last word so it can't be orphaned
+// onto a line of its own when the title wraps.
+&lt;span className={cn(titleTextClass, …)}&gt;
+  {node.title}
+  {origin !== null &amp;&amp; (
+    &lt;&gt;{' '}&lt;ClassificationMark origin={origin} /&gt;&lt;/&gt;
+  )}
+&lt;/span&gt;
+
+// Select-mode branch — the title truncates, so the mark is its SIBLING, not its content.
+&lt;span className="min-w-0 flex-1 truncate text-sm text-foreground"&gt;{node.title}&lt;/span&gt;
+{origin !== null &amp;&amp; &lt;ClassificationMark origin={origin} className="shrink-0" /&gt;}</code></pre>
 <p class="small">
-  Passing the same prop to both branches is what makes D4's inertness free: the select-mode cluster
-  is already rendered without <code>editing</code>, and an always-<code>&lt;span&gt;</code> mark needs
-  no <code>inert</code> variant of its own.
+  D4's inertness costs nothing in either place: the mark is always a <code>span</code>, so unlike
+  every chip in <code>RowMetaCluster</code> it needs no <code>inert</code> variant, and nesting it in
+  the select-mode row's single <code>button</code> stays valid HTML.
 </p>
 
 <div class="callout">
@@ -946,11 +1021,24 @@ const origin = isInboxRow ? classificationOrigin(node) : null;
       </td>
     </tr>
     <tr>
+      <td><b>RTL</b><br />the two placements</td>
+      <td>
+        The pair §4 names, each on a <b>long</b> title: on the ordinary row the mark is found
+        <i>within</i> the title element (so it is bound to the text and cannot be orphaned), and in
+        select mode it is found <i>outside</i> the truncating title element (so the ellipsis cannot
+        clip it). These are the two ways the chosen treatment can silently lose its mark, so they are
+        assertions rather than a review note. The repo already has long-title fixtures to borrow —
+        <code>tasks-taskrow--long-title</code> and <code>--long-title-unbroken</code>.
+      </td>
+    </tr>
+    <tr>
       <td><b>Storybook</b></td>
       <td>
         Three atom-level stories (one per origin) and one <code>InboxScreen</code>
         <code>Provenance</code> story with all three side by side, both under the image-snapshot
-        gate — this is what locks the <i>drawn</i> result of the option picked in §4.
+        gate — this is what locks the <i>drawn</i> result of option 2 against the §4 mockup. Worth
+        one long-title row in that story too: the wrap case is the one a reviewer should be able to
+        see rather than take on trust.
       </td>
     </tr>
     <tr>
@@ -986,7 +1074,7 @@ const origin = isInboxRow ? classificationOrigin(node) : null;
     <code>classified_provider</code> to <code>model</code> / <code>claimed</code> /
     <code>unjudged</code>, checking <code>classified_at</code> first.</li>
   <li>An Inbox row whose classifier verdict was written shows the <b>Labelled by the classifier</b>
-    mark, in the treatment picked from §4.</li>
+    mark as an 11px monochrome glyph immediately after the title text — option 2, drawn in §4.</li>
   <li>An Inbox row claimed by a human edit shows <b>Labelled by you</b>.</li>
   <li>An Inbox row the sweeper has not judged shows <b>Not yet classified</b> — including a row
     that has exhausted its attempts.</li>
@@ -996,6 +1084,11 @@ const origin = isInboxRow ? classificationOrigin(node) : null;
     both the ordinary row and the select-mode row.</li>
   <li>Every mark carries an accessible name matching its legend copy, and the same words as a
     <code>title</code>.</li>
+  <li>A row with a long, wrapping title keeps its mark attached to the title text rather than
+    dropped onto a line of its own; the same row in select mode keeps its mark rather than having it
+    clipped by the title's ellipsis.</li>
+  <li>The badge cluster is untouched: a bare unjudged capture renders no metadata footer, so it
+    stays a single line on a phone exactly as today.</li>
   <li>Editing a label on an unjudged Inbox row flips its mark to <b>Labelled by you</b> once the
     PATCH reconciles, with no reload; editing one on a classifier-marked row leaves the mark alone.</li>
   <li>No store, selector, filter, count, sort, query, API route or migration changed.</li>
@@ -1023,7 +1116,8 @@ const origin = isInboxRow ? classificationOrigin(node) : null;
 
 <h4>Open</h4>
 <ul class="tight">
-  <li><b>Which treatment ships</b> — §4. The one blocking decision; everything else is settled.</li>
+  <li><b>Nothing blocking.</b> The treatment — §4's one decision — is settled: option 2, the title
+    glyph. The spec is ready to build.</li>
   <li><b>Does the “not yet classified” mark earn its place once the sweeper is fast and reliable?</b>
     It is the state you see most often and care about least. Worth revisiting after a fortnight of
     real use — if it reads as noise, dropping it is a two-line change and the other two states stand
@@ -1038,8 +1132,9 @@ const origin = isInboxRow ? classificationOrigin(node) : null;
     <code>items_claim_from_classifier</code> trigger, and the <code>task_items</code> re-expansion.</li>
   <li><code>workers/src/sweep.ts</code> — the sweep predicate, <code>ATTEMPT_CEILING</code>, and the
     verdict write that sets <code>classified_provider</code>.</li>
-  <li><code>frontend/components/tasks/task-row/row-meta-cluster.tsx</code> — the chip cluster the
-    recommended treatment joins, and its inert/select-mode contract.</li>
+  <li><code>frontend/components/tasks/task-row.tsx</code> — the two title mounts, the
+    <code>showTypeBadge</code> expression the visibility gate comes out of, and the select-mode
+    branch's single-button contract.</li>
   <li><code>.claude/skills/frontend-architecture/SKILL.md</code>, <code>.../storybook/SKILL.md</code>,
     <code>.../showboat/SKILL.md</code> — where the component belongs, the snapshot approve flow, and
     the demo evidence rules.</li>
