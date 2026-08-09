@@ -28,3 +28,8 @@ stryker.log
 .env.*.local
 !.env.example
 !.env.*.example
+# The Worker's local secrets (dotenv format, read by `wrangler dev`). It holds the same values
+# as `wrangler secret put` — the Supabase service-role key and the Anthropic API key — so it is
+# the one file in this repo a real credential is most likely to be typed into by hand.
+.dev.vars
+.dev.vars.*

@@ -126,6 +126,12 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     recurrence: overrides.recurrence ?? null,
     recurrence_series_id: overrides.recurrence_series_id ?? null,
     sort_order: overrides.sort_order ?? nextSortOrder(),
+    classified_at: overrides.classified_at ?? null,
+    classified_provider: overrides.classified_provider ?? null,
+    classified_model: overrides.classified_model ?? null,
+    classified_prompt_version: overrides.classified_prompt_version ?? null,
+    classified_guess: overrides.classified_guess ?? null,
+    classify_attempts: overrides.classify_attempts ?? 0,
   };
 }
 

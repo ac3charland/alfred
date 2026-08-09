@@ -252,6 +252,12 @@ export function makeOptimisticItem(
     recurrence: null,
     recurrence_series_id: null,
     sort_order: sortOrder,
+    classified_at: null,
+    classified_provider: null,
+    classified_model: null,
+    classified_prompt_version: null,
+    classified_guess: null,
+    classify_attempts: 0,
   };
 }
 

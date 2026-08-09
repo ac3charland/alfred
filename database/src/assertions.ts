@@ -1578,6 +1578,385 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const classifierColumnsResult = await attempt(
+    'items carries the classifier provenance columns and task_items surfaces them (ALF-171)',
+    async () => {
+      const { rows } = await client.query<{
+        column_name: string;
+        is_nullable: string;
+        column_default: string | null;
+      }>(
+        `select column_name, is_nullable, column_default from information_schema.columns
+          where table_name = 'items'
+            and column_name in ('classified_at', 'classified_provider', 'classified_model',
+                                'classified_prompt_version', 'classified_guess',
+                                'classify_attempts')
+          order by column_name`,
+      );
+      if (rows.length !== 6)
+        throw new Error(`expected 6 provenance columns, found ${String(rows.length)}`);
+
+      // Every one is nullable except the attempt counter, which must default to 0 — the sweep
+      // predicate compares against it, and a null would drop every row out of `lt.5`.
+      const required = rows.filter((row) => row.is_nullable !== 'YES').map((r) => r.column_name);
+      if (required.join(',') !== 'classify_attempts')
+        throw new Error(`unexpected non-nullable columns: ${required.join(', ') || 'none'}`);
+      const attempts = rows.find((row) => row.column_name === 'classify_attempts');
+      if (attempts?.column_default !== '0')
+        throw new Error(`classify_attempts default is ${String(attempts?.column_default)}, not 0`);
+
+      // The view-recreation guard (the 0011/0013/0026 freeze): a column added to items after
+      // task_items was created stays invisible to `select i.*` until the view is recreated, and
+      // getAllItems() reads the view with the TABLE row type.
+      const { rows: viewRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('provenance probe', 'task') returning id`,
+      );
+      const probe = viewRows[0]?.id;
+      if (probe === undefined) throw new Error('could not seed the probe item');
+      const surfaced = await asRole(client, 'authenticated', () =>
+        client.query<{ classified_at: string | null; classified_guess: unknown }>(
+          `select classified_at, classified_guess, classify_attempts from task_items where id = $1`,
+          [probe],
+        ),
+      );
+      if (surfaced.rows.length !== 1)
+        throw new Error('task_items does not surface the new provenance columns');
+
+      return 'six columns, classify_attempts not null default 0, all readable through task_items';
+    },
+  );
+
+  const classifierClaimResult = await attempt(
+    'a human edit claims an unclassified item, and a referential cascade does not (ALF-171)',
+    async () => {
+      const insert = async (columns: string, values: readonly unknown[]): Promise<string> => {
+        const placeholders = values.map((_, index) => `$${String(index + 1)}`).join(', ');
+        const { rows } = await client.query<{ id: string }>(
+          `insert into items (${columns}) values (${placeholders}) returning id`,
+          [...values],
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error('insert returned no id');
+        return id;
+      };
+      const provenanceOf = async (
+        id: string,
+      ): Promise<{ classified_at: string | null; classified_provider: string | null }> => {
+        const { rows } = await client.query<{
+          classified_at: string | null;
+          classified_provider: string | null;
+        }>(
+          `select classified_at::text as classified_at, classified_provider
+             from items where id = $1`,
+          [id],
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('the item disappeared');
+        return row;
+      };
+
+      // 1. A watched edit on a never-classified row stamps the marker — and leaves the
+      //    provenance null, which is how a human claim stays distinguishable from a verdict.
+      const edited = await insert('title, item_type', ['rewrite me', 'task']);
+      await client.query(`update items set title = 'rewritten' where id = $1`, [edited]);
+      const afterEdit = await provenanceOf(edited);
+      if (afterEdit.classified_at === null)
+        throw new Error('editing a watched field did not claim the item');
+      if (afterEdit.classified_provider !== null)
+        throw new Error('a human claim wrongly stamped a provider');
+
+      // 2. The classifier stamping its own verdict is not double-stamped: the value it wrote
+      //    survives, even though the same statement changes watched fields.
+      const stamped = '2020-01-02 03:04:05+00';
+      const judged = await insert('title, item_type', ['judge me', 'task']);
+      await client.query(
+        `update items set item_type = 'task', priority = 'high', classified_at = $2,
+                          classified_provider = 'anthropic'
+           where id = $1`,
+        [judged, stamped],
+      );
+      const afterVerdict = await provenanceOf(judged);
+      if (!afterVerdict.classified_at?.startsWith('2020-01-02'))
+        throw new Error(
+          `the classifier's own stamp was overwritten: ${String(afterVerdict.classified_at)}`,
+        );
+
+      // 3. A later human edit of an already-claimed row leaves the original marker alone, so
+      //    the guess it was judged with stays paired with the timestamp that produced it.
+      await client.query(`update items set title = 'edited after judging' where id = $1`, [judged]);
+      const afterSecondEdit = await provenanceOf(judged);
+      if (afterSecondEdit.classified_at !== afterVerdict.classified_at)
+        throw new Error('editing an already-claimed row re-stamped classified_at');
+
+      // 4. An unwatched column is not a claim — the classifier writes this one itself.
+      const untouched = await insert('title, item_type', ['leave me eligible', 'task']);
+      await client.query(`update items set classify_attempts = 1 where id = $1`, [untouched]);
+      const unwatched = await provenanceOf(untouched);
+      if (unwatched.classified_at !== null)
+        throw new Error('an unwatched column change claimed the item');
+
+      // 5. The cascade case. Deleting a folder returns its undispatched items to the Inbox
+      //    (0026's trigger) AND nulls their folder_id (the FK). Neither may claim, or the rows
+      //    that most need re-triaging would be permanently hidden from the sweeper.
+      const { rows: folderRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Cascade') returning id`,
+      );
+      const folder = folderRows[0]?.id;
+      if (folder === undefined) throw new Error('could not seed a folder');
+      const filed = await insert('title, item_type, folder_id', ['guessed home', 'task', folder]);
+      await client.query(`update items set dispatched_at = null where id = $1`, [filed]);
+      await client.query(`delete from folders where id = $1`, [folder]);
+      const afterCascade = await provenanceOf(filed);
+      if (afterCascade.classified_at !== null)
+        throw new Error('a folder delete claimed the items it returned to the Inbox');
+
+      return 'watched edit claims (provider null); the verdict is not double-stamped; an unwatched column and a folder-delete cascade both leave the row eligible';
+    },
+  );
+
+  const classifierCorrectionsResult = await attempt(
+    'dispatch diffs the stored guess against the final labels, through every exit (ALF-171)',
+    async () => {
+      const { rows: folderRows } = await client.query<{ id: string; name: string }>(
+        `insert into folders (name) values ('Health'), ('Work') returning id, name`,
+      );
+      const health = folderRows.find((row) => row.name === 'Health')?.id;
+      const work = folderRows.find((row) => row.name === 'Work')?.id;
+      if (health === undefined || work === undefined) throw new Error('could not seed folders');
+
+      /** Insert an item and write a classifier verdict onto it, exactly as the Worker does. */
+      const classified = async (
+        title: string,
+        guess: Record<string, unknown>,
+        write: Record<string, unknown>,
+      ): Promise<string> => {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into items (title, notes, item_type) values ($1, 'as captured', 'unclassified')
+             returning id`,
+          [title],
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error('item insert returned no id');
+        const columns = Object.keys(write);
+        const assignments = columns
+          .map((column, index) => `${column} = $${String(index + 2)}`)
+          .join(', ');
+        await client.query(
+          `update items set ${assignments}, classified_at = now(),
+                            classified_provider = 'anthropic', classified_model = 'claude-haiku-4-5',
+                            classified_prompt_version = 1, classified_guess = $${String(columns.length + 2)}
+             where id = $1`,
+          [id, ...columns.map((column) => write[column]), JSON.stringify(guess)],
+        );
+        return id;
+      };
+      const correctionsFor = async (
+        id: string,
+      ): Promise<
+        { field: string; direction: string; guessed: string | null; chosen: string | null }[]
+      > => {
+        const { rows } = await client.query<{
+          field: string;
+          direction: string;
+          guessed: string | null;
+          chosen: string | null;
+        }>(
+          `select field, direction, guessed_value as guessed, chosen_value as chosen
+             from classification_corrections where item_id = $1 order by field`,
+          [id],
+        );
+        return rows;
+      };
+
+      // All three directions in one dispatch: the owner re-filed it, cleared the priority, and
+      // added the due date the model declined to guess. item_type agreed, so it teaches nothing.
+      const mixed = await classified(
+        'Call the dentist to reschedule',
+        {
+          item_type: 'task',
+          priority: 'high',
+          due_date: undefined,
+          folder_id: health,
+          intended_project_id: undefined,
+          intended_epic_id: undefined,
+        },
+        { item_type: 'task', priority: 'high', folder_id: health },
+      );
+      await client.query(
+        `update items set folder_id = $2, priority = null, due_date = '2026-08-07' where id = $1`,
+        [mixed, work],
+      );
+      await client.query(`update items set dispatched_at = now() where id = $1`, [mixed]);
+
+      const logged = await correctionsFor(mixed);
+      const described = logged
+        .map((row) => `${row.field}:${row.direction}(${row.guessed ?? '-'}→${row.chosen ?? '-'})`)
+        .join(', ');
+      if (logged.length !== 3)
+        throw new Error(`expected 3 corrections, got ${String(logged.length)}: ${described}`);
+      const byField = new Map(logged.map((row) => [row.field, row]));
+      if (byField.get('folder_id')?.direction !== 'changed')
+        throw new Error(`folder_id should be 'changed': ${described}`);
+      if (byField.get('folder_id')?.chosen !== work)
+        throw new Error(`folder_id chose the wrong folder: ${described}`);
+      if (byField.get('priority')?.direction !== 'blanked')
+        throw new Error(`priority should be 'blanked': ${described}`);
+      if (byField.get('due_date')?.direction !== 'filled_in')
+        throw new Error(`due_date should be 'filled_in': ${described}`);
+      // The date is compared as the calendar day it was written as, not as a timestamp string.
+      if (byField.get('due_date')?.chosen !== '2026-08-07')
+        throw new Error(
+          `due_date chose ${String(byField.get('due_date')?.chosen)}, not 2026-08-07`,
+        );
+
+      // Dispatching again is not a second lesson — the trigger keys on the transition.
+      await client.query(`update items set dispatched_at = now() where id = $1`, [mixed]);
+      const afterSecondDispatch = await correctionsFor(mixed);
+      if (afterSecondDispatch.length !== 3)
+        throw new Error('re-dispatching an already-dispatched item logged the diff twice');
+
+      // Agreement is silent, and so is a row no model judged.
+      const agreed = await classified(
+        'Book the MOT',
+        {
+          item_type: 'task',
+          priority: undefined,
+          due_date: undefined,
+          folder_id: work,
+          intended_project_id: undefined,
+          intended_epic_id: undefined,
+        },
+        { item_type: 'task', folder_id: work },
+      );
+      await client.query(`update items set dispatched_at = now() where id = $1`, [agreed]);
+      const agreedLog = await correctionsFor(agreed);
+      if (agreedLog.length > 0)
+        throw new Error('a verdict the owner agreed with was logged as a correction');
+
+      const { rows: claimedRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type, folder_id, classified_at)
+           values ('claimed by hand', 'task', $1, now()) returning id`,
+        [work],
+      );
+      const claimed = claimedRows[0]?.id;
+      if (claimed === undefined) throw new Error('could not seed a hand-claimed item');
+      await client.query(`update items set dispatched_at = now() where id = $1`, [claimed]);
+      const claimedLog = await correctionsFor(claimed);
+      if (claimedLog.length > 0)
+        throw new Error('an item with no stored guess produced corrections');
+
+      // The factory RPC is a dispatch too — and its due_date null-out is the correct lesson,
+      // not a special case: the owner decided this was code, so the due date was wrong.
+      const gated = await classified(
+        'Alfred should let me snooze an item',
+        {
+          item_type: 'task',
+          priority: undefined,
+          due_date: '2026-08-10',
+          folder_id: undefined,
+          intended_project_id: undefined,
+          intended_epic_id: undefined,
+        },
+        { item_type: 'task', due_date: '2026-08-10' },
+      );
+      await asRole(client, 'authenticated', () =>
+        client.query(`select enter_code_module($1, $2, $3)`, [gated, PROJECT, EPIC]),
+      );
+      const gatedLog = await correctionsFor(gated);
+      const gatedDescribed = gatedLog.map((row) => `${row.field}:${row.direction}`).join(', ');
+      if (gatedLog.length !== 2)
+        throw new Error(`enter_code_module logged ${String(gatedLog.length)}: ${gatedDescribed}`);
+      if (gatedDescribed !== 'due_date:blanked, item_type:changed')
+        throw new Error(`unexpected RPC-path corrections: ${gatedDescribed}`);
+
+      // A lesson outlives its item: the reference goes, the frozen text stays.
+      const { rows: beforeDelete } = await client.query<{ captured_text: string }>(
+        `select captured_text from classification_corrections where item_id = $1 limit 1`,
+        [mixed],
+      );
+      const frozen = beforeDelete[0]?.captured_text;
+      if (frozen !== 'Call the dentist to reschedule\nas captured')
+        throw new Error(`captured_text froze the wrong text: ${String(frozen)}`);
+      await client.query(`delete from items where id = $1`, [mixed]);
+      const { rows: orphaned } = await client.query<{ count: string }>(
+        `select count(*)::text as count from classification_corrections
+          where item_id is null and captured_text = $1`,
+        [frozen],
+      );
+      if (orphaned[0]?.count !== '3')
+        throw new Error(`deleting the item lost its lessons (${String(orphaned[0]?.count)} left)`);
+
+      return `three directions logged (${described}); re-dispatch, agreement and an unjudged row log nothing; enter_code_module logs ${gatedDescribed}; a deleted item leaves its lessons intact`;
+    },
+  );
+
+  const correctionsGrantsResult = await attempt(
+    'a browser-role dispatch can insert corrections through the trigger, and anon sees none (ALF-171)',
+    async () => {
+      const { rows: folderRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Browser') returning id`,
+      );
+      const folder = folderRows[0]?.id;
+      if (folder === undefined) throw new Error('could not seed a folder');
+
+      // The trigger is `security invoker`, so the INSERT runs as whoever dispatched. A browser
+      // dispatch is the `authenticated` role — miss the grant and every dispatch 500s.
+      const guess = {
+        item_type: 'task',
+        priority: 'low',
+        due_date: undefined,
+        folder_id: folder,
+        intended_project_id: undefined,
+        intended_epic_id: undefined,
+      };
+      // Seeded WITHOUT the folder: 0026's insert trigger reads a folder as "already dispatched",
+      // and a row that arrives dispatched never makes the null → non-null transition the diff
+      // keys on. The classifier's folder guess is applied below, in the dispatching UPDATE.
+      const inserted = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string }>(
+          `insert into items (title, item_type, priority, classified_at, classified_provider,
+                              classified_model, classified_prompt_version, classified_guess)
+             values ('as the browser sees it', 'task', 'low',
+                     now(), 'anthropic', 'claude-haiku-4-5', 1, $1)
+             returning id`,
+          [JSON.stringify(guess)],
+        ),
+      );
+      const item = inserted.rows[0]?.id;
+      if (item === undefined) throw new Error('authenticated could not seed the item');
+
+      await asRole(client, 'authenticated', () =>
+        client.query(
+          `update items set folder_id = $2, priority = 'high', dispatched_at = now()
+             where id = $1`,
+          [item, folder],
+        ),
+      );
+      const visible = await asRole(client, 'authenticated', () =>
+        client.query<{ field: string; direction: string }>(
+          `select field, direction from classification_corrections where item_id = $1`,
+          [item],
+        ),
+      );
+      if (visible.rows.length !== 1 || visible.rows[0]?.direction !== 'changed')
+        throw new Error(
+          `authenticated dispatch logged ${String(visible.rows.length)} correction(s), expected 1 'changed'`,
+        );
+
+      const hidden = await asRole(client, 'anon', () =>
+        client.query<{ count: string }>(
+          `select count(*)::text as count from classification_corrections`,
+        ),
+      );
+      if (hidden.rows[0]?.count !== '0')
+        throw new Error(
+          `anon saw ${String(hidden.rows[0]?.count)} corrections; RLS should hide all`,
+        );
+
+      return 'authenticated dispatched and the trigger inserted as that role; anon sees zero rows';
+    },
+  );
+
   const backupDriftResult = await attempt(
     'the nightly backup survives a production database migrated ahead of the repo, and stays quiet ' +
       'when the repo is ahead instead',
@@ -1670,6 +2049,10 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     dispatchFolderDeleteResult,
     dispatchCheckResult,
     dispatchOnGateResult,
+    classifierColumnsResult,
+    classifierClaimResult,
+    classifierCorrectionsResult,
+    correctionsGrantsResult,
     backupDriftResult,
   ];
 }

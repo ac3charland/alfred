@@ -2,12 +2,13 @@
 name: cloudflare-workers
 description: >
   Covers Cloudflare Workers development (TypeScript, Wrangler) for the workers/ package:
-  the ES-module fetch-handler shape, typed Env bindings, secrets and env vars, wrangler.toml
-  config, local dev (wrangler dev) and deploy (wrangler deploy), ctx.waitUntil, fetch to external services
-  (Supabase REST, Anthropic API), Node.js compat for SDKs, and typing via wrangler types.
-  Use when creating or modifying a Worker entrypoint, adding or reading a binding/secret, configuring
-  wrangler.toml, running or deploying a Worker, calling Supabase or an LLM from a Worker, or validating
-  an API key inside a Worker. Do NOT use for Next.js API routes (frontend/ package — use the nextjs skill).
+  the ES-module fetch-handler shape, cron triggers and the scheduled handler, typed Env
+  bindings, secrets and env vars, wrangler.toml, wrangler dev and wrangler deploy,
+  ctx.waitUntil, fetch to Supabase REST or the Anthropic API, Node.js compat for SDKs, and
+  wrangler types. Use when creating or modifying a Worker entrypoint, scheduling recurring
+  work, adding or reading a binding/secret, editing wrangler.toml, running or deploying a
+  Worker, calling Supabase or an LLM from a Worker, or validating an API key inside one.
+  Do NOT use for Next.js API routes (frontend/ package — use the nextjs skill).
 ---
 
 # Cloudflare Workers Skill
@@ -69,7 +70,7 @@ flags. `@cloudflare/workers-types` is a static package that can lag behind your 
 |---|---|---|
 | "a Worker endpoint that validates an API key" | Read `Authorization` header; compare with `env.API_KEY` secret using `crypto.subtle.timingSafeEqual()` | Never use `===` for secret comparison — timing side-channel. Encode both values to equal-length buffers first (e.g., via SHA-256 hash). Return `401` before any further processing if validation fails. |
 | "store a secret (API key, token, password)" | `npx wrangler secret put MY_SECRET_NAME` then access as `env.MY_SECRET_NAME` in the handler | Put local dev value in `.dev.vars` (dotenv format, never commit). Do not put secrets in `[vars]` — that section is visible in source. |
-| "non-sensitive config var (API URL, env name)" | `[vars]` section in `wrangler.toml`: `MY_VAR = "value"` | Values are plain text in source; fine for URLs/env names. Access as `env.MY_VAR`. |
+| "non-sensitive config var (API URL, env name, which model to call)" | `[vars]` section in `wrangler.toml`: `MY_VAR = "value"` | Values are plain text in source; fine for URLs, env names, model ids. Access as `env.MY_VAR`. A var is what turns "try a different model for a week" into a deploy flag rather than a code change. **Report the RESOLVED value from `GET /`** whenever the deploy also passes `--var` on the command line: if a CLI `--var` ever shadowed the file's `[vars]` rather than merging with them, the Worker would silently run on its defaults with no symptom at all, and the health string is what makes that a one-curl check. |
 | "call Supabase from a Worker" | `npm install @supabase/supabase-js` + `createClient(env.SUPABASE_URL, env.SUPABASE_KEY)` | Requires `nodejs_compat` flag. Store `SUPABASE_URL` and `SUPABASE_KEY` as secrets via `wrangler secret put`. Instantiate the client inside the handler (not at module level) to keep it request-scoped. |
 | "call the Anthropic (Claude) API from a Worker" | `npm install @anthropic-ai/sdk` + `new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })` | Requires `nodejs_compat` flag. Store key as a secret. The SDK uses `fetch` internally — it works with the Workers runtime. For streaming responses, use `stream.toReadableStream()` and return it in the `Response`. |
 | "type the env bindings" | Run `npx wrangler types` — generates `worker-configuration.d.ts` with `interface Env { ... }`. Reference it in the handler: `fetch(req: Request, env: Env, ctx: ExecutionContext)` | Re-run after every `wrangler.toml` change. Do not hand-write the `Env` interface — it will drift from config. The generated file is auto-referenced if `tsconfig.json` includes it. |
@@ -77,6 +78,7 @@ flags. `@cloudflare/workers-types` is a static package that can lag behind your 
 | "deploy the Worker" | Merge to `main` — `.github/workflows/deploy-worker.yml` runs `wrangler deploy` | Deploying by hand is only for a Cloudflare-side emergency; a manual `npx wrangler deploy` needs `wrangler login` first. Secrets set with `wrangler secret put` are already attached to the deployed Worker and are not re-uploaded on deploy. |
 | "enable Node.js compat for an SDK" | Add `compatibility_flags = ["nodejs_compat"]` to `wrangler.toml` + set `compatibility_date` to `2024-09-23` or later | With date ≥ 2024-09-23, `nodejs_compat` automatically includes v2 polyfills. Do not use the old `node_compat = true` key — it was removed in Wrangler v4. |
 | "run background work after the response" | `ctx.waitUntil(myAsyncFn())` inside the fetch handler | The response is sent immediately; the promise runs for up to 30 seconds after. Use for analytics, cache writes, webhook fire-and-forget. Never `await` work inside `waitUntil` calls — that defeats the purpose. |
+| "run something on a schedule (a sweep, a nightly job)" | `[triggers] crons = ["*/2 * * * *"]` in `wrangler.toml` + an `async scheduled(event, env, ctx)` export beside `fetch` | See *Cron triggers* below. `wrangler deploy` registers the schedule, so merging deploys the cron too. **Return/await the promise** — a scheduled invocation is torn down the moment the promise it returns settles. |
 | "route requests to different handlers (e.g., POST /tasks)" | Inspect `request.method` and `new URL(request.url).pathname` inside the fetch handler | Workers have one entry point. Build a simple router by hand with `if`/`switch`, or use a micro-router like `itty-router`. No built-in routing. |
 | "return JSON from a Worker" | `new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } })` | Always set `Content-Type`. `Response` is the Web-standard constructor — no framework needed. |
 | "parse a JSON request body" | `const body = await request.json()` inside an `async` handler | `request.body` is a `ReadableStream` — you can only consume it once. Call `.json()`, `.text()`, or `.arrayBuffer()` once and store the result. |
@@ -116,6 +118,45 @@ export default {
 
 ---
 
+## Cron triggers and the `scheduled` handler
+
+A cron trigger is two things: a `[triggers]` block in `wrangler.toml` and a `scheduled` export
+beside `fetch` on the same default export. One Worker can serve both; alfred's does.
+
+```toml
+[triggers]
+crons = ["*/2 * * * *"]   # standard 5-field cron, UTC
+```
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> { … },
+
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // AWAIT the work. A scheduled invocation is torn down the moment the promise this handler
+    // returns settles, so anything not awaited (or not handed to ctx.waitUntil) is silently
+    // killed part-way through — no error, just a job that mysteriously half-ran.
+    await runSweep(env, new Date());
+  },
+};
+```
+
+- **`wrangler deploy` registers the schedule**, so with a deploy-on-merge workflow, merging is
+  also how a cron goes live or changes cadence. There is no separate "install the cron" step.
+- **Exercise it without waiting** — `npx wrangler dev --test-scheduled` serves a `/__scheduled`
+  endpoint that fires the handler on demand.
+- **Keep the handler thin**, exactly as `fetch` delegates to its route handlers: the schedule is
+  wiring, and the work it triggers should be a separately testable module.
+- **Test it by calling the export directly.** `worker.scheduled(controller, env, ctx)` with a
+  stubbed `globalThis.fetch` needs no Workers runtime — the same seam the `fetch` tests use.
+  Cast the controller/context as `Parameters<typeof worker.scheduled>[0]` / `[2]`; the real
+  `ScheduledController` fields go unread by a handler that only needs `env`.
+- **A cadence is a cost decision.** Every tick that finds nothing still pays for whatever query
+  it runs to find that out, so the honest brake on a sweep is a hard per-tick item cap plus an
+  early return when the work queue is empty — not a shorter interval you later regret.
+
+---
+
 ## Common Pitfalls
 
 - **Never store per-request data at module scope.** Isolates reuse across requests. A global `let currentUser = null` will leak data between callers. All request state must flow through the handler parameters.
@@ -133,7 +174,8 @@ export default {
 - **Never use `node_compat = true`** (old boolean) — it was removed in Wrangler v4. Use `compatibility_flags = ["nodejs_compat"]` instead.
 - **`@cloudflare/workers-types` vs `@types/jest` conflict in `tsconfig.json`.** If you set `"types": ["@cloudflare/workers-types"]`, Jest globals (`describe`, `it`, `expect`) are not visible — TypeScript errors *"Cannot find name 'describe'"*. Fix: include both: `"types": ["@cloudflare/workers-types", "jest"]`. This means test files see Jest globals globally while source files see CF globals.
 - **No Node types in the `workers` package — tests use Web-standard primitives, not `node:*`.** The tsconfig `types` is `["@cloudflare/workers-types", "jest"]` with **no `@types/node`**, so `node:crypto` and `Buffer` fail to type-check even though they'd run under jest's node env. Sign/verify with `crypto.subtle` (HMAC importKey + sign, hex the ArrayBuffer yourself), and base64 with `btoa`/`atob` + `TextEncoder`/`TextDecoder` (loop bytes through `String.fromCodePoint` / `codePointAt` — `unicorn/prefer-code-point` bans `fromCharCode`/`charCodeAt`). This keeps test helpers identical to the runtime the Worker actually targets. Also note `crypto.subtle.timingSafeEqual` is a **Workers-only** extension absent from Node's Web Crypto — hand-roll a constant-time compare so it runs in both.
-- **Secret-only `Env` is hand-written, not generated.** `wrangler types` only emits types for `wrangler.toml` **bindings** — secrets set via `wrangler secret put` are invisible to it. So declare an `export interface Env { … }` of your secrets by hand in `src/index.ts` (the "don't hand-write Env" guidance applies to *binding* drift, which doesn't exist for secrets). `unicorn/no-null` is also on here — return/compare `undefined`, never `null`, in Worker source.
+- **Secret-only `Env` is hand-written, not generated.** `wrangler types` only emits types for `wrangler.toml` **bindings** — secrets set via `wrangler secret put` are invisible to it. So declare an `export interface Env { … }` of your secrets by hand in `src/index.ts` (the "don't hand-write Env" guidance applies to *binding* drift, which doesn't exist for secrets). Type a secret that may genuinely be unset (one nobody has `secret put` yet) as optional and branch on it, rather than discovering its absence as a 401 later.
+- **`unicorn/no-null` is on, and JSON speaks `null` — convert at the boundary.** Return/compare `undefined`, never `null`, in Worker source; `| null` in a *type* position is fine and is how you describe a wire shape. Map a fetched row's nulls to `undefined` with `?? undefined` where it is parsed, so the rest of the module never sees one, and let `JSON.stringify` drop the `undefined` keys on the way back out — an object of "only what changed" then serialises to exactly the PATCH body you want, with no filtering step. Two traps: **`typeof null === 'object'`**, so an object-shape guard must reject a bare JSON `null` explicitly or the next property read throws — loose `x == undefined` catches both without writing the banned literal; and in a **test fixture** you cannot write `null` either, so build wire-shaped fixtures from raw JSON text (`new Response('{"notes":null}')`, `JSON.parse('null')`) rather than object literals.
 - **`worker.fetch` is optional on `ExportedHandler`.** The TypeScript type for `ExportedHandler<Env>` makes the `fetch` property optional (can be `undefined`). In tests, you must null-check before calling it: `const fetch = worker.fetch; if (!fetch) throw new Error(...)`. Alternatively, type the module's default export as the handler function directly.
 - **Casting `new Request(...)` in unit tests.** The standard Web API `Request` constructor produces a `Request<unknown, CfProperties<unknown>>`, but `ExportedHandler.fetch` expects `Request<unknown, IncomingRequestCfProperties<unknown>>`. These are incompatible under `exactOptionalPropertyTypes: true`. Cast with `new Request(url) as unknown as Parameters<typeof fetch>[0]` — this is type-safe for unit tests since the CF-specific fields aren't used.
 - **Avoid `async fetch()` when there is no `await`.** `@typescript-eslint/require-await` fires on an `async` function with no `await` expression. If your fetch handler is synchronous, declare it as `fetch(): Response { ... }` — the `ExportedHandler` type accepts both sync and async.
@@ -213,7 +255,7 @@ export default {
     // 3. Call LLM
     const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const message = await anthropic.messages.create({
-      model: "claude-opus-4-5",
+      model: env.CLASSIFIER_MODEL, // a [vars] entry, not a literal — see the vars row above
       max_tokens: 1024,
       messages: [{ role: "user", content: body.prompt }],
     });
@@ -242,9 +284,8 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 }
 ```
 
-> Note: The Anthropic model ID in the example above (`claude-opus-4-5`) should be verified against the
-> claude-api skill before use — model IDs change. See `/home/user/alfred/.claude/skills/` for the
-> `claude-api` skill.
+> Note: never hard-code an Anthropic model id in a Worker — read it from `[vars]` as above, and
+> look the current ids up in the `anthropic-api` skill rather than from memory. They change.
 
 ---
 
@@ -255,7 +296,6 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
 - **Cloudflare Queues / Workflows** — useful for durable async work; out of scope for the MVP LLM-gateway pattern.
 - **Service bindings (Worker-to-Worker RPC)** — zero-cost inter-Worker calls; not relevant until alfred has multiple Workers that call each other.
 - **Wrangler environments (`[env.staging]`)** — multi-environment config; left out to keep the skill focused. Note that vars and secrets are non-inheritable in environments — you must redeclare them per environment block.
-- **Cron triggers / scheduled handler** — the `scheduled(event, env, ctx)` export; out of scope for the HTTP gateway use case.
 - **`@cloudflare/vitest-pool-workers` testing** — runs tests inside the real Workers runtime; left out to keep scope tight. Highly recommended for production but is a separate topic.
 - **Streaming LLM responses back to the client** — the pattern (return `new Response(stream.toReadableStream())`) works but was excluded to keep the example simple and focused on the validate-call-persist shape.
 - **Hyperdrive** — connection pooling for Postgres; alfred uses Supabase's HTTP client, not a raw Postgres connection, so Hyperdrive doesn't apply.

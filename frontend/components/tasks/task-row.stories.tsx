@@ -42,6 +42,12 @@ const BASE_NODE: ItemNode = {
   intended_project_id: null,
   intended_epic_id: null,
   sort_order: 0,
+  classified_at: null,
+  classified_provider: null,
+  classified_model: null,
+  classified_prompt_version: null,
+  classified_guess: null,
+  classify_attempts: 0,
   children: [],
 };
 

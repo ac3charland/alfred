@@ -1,3 +1,4 @@
+import { spyOnFetch } from './fetch-stub';
 import { type GithubEnv, fetchSpec } from './github';
 
 const env: GithubEnv = { GITHUB_TOKEN: 'pat-123' };
@@ -16,7 +17,7 @@ function githubBase64(text: string): string {
 }
 
 function mockFetch(response: Response): jest.SpyInstance {
-  return jest.spyOn(globalThis, 'fetch').mockResolvedValue(response);
+  return spyOnFetch().mockResolvedValue(response);
 }
 
 describe('fetchSpec', () => {
