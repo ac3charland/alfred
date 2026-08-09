@@ -1,28 +1,44 @@
 /**
- * alfred Software Factory — the GitHub PR webhook Worker.
+ * alfred's one Worker, serving two unrelated jobs from a single entrypoint.
  *
- * One signature-verified Worker, no LLM: it turns `pull_request` webhooks into deterministic
- * `code_items` state transitions. Because both lifecycle phases end in a PR, this single endpoint
- * tracks the whole factory. Flow per delivery:
+ * `fetch` is the GitHub PR webhook: signature-verified, no LLM, it turns `pull_request` webhooks
+ * into deterministic `code_items` state transitions. Because both lifecycle phases end in a PR,
+ * this single endpoint tracks the whole factory. Flow per delivery:
  *   verify HMAC → it's a pull_request → parse the `alfred` block → plan the transition →
  *   PATCH the ticket(s) → (on refinement-merge) snapshot the spec in the background.
+ *
+ * `scheduled` is the Inbox classifier, fired by the cron trigger in wrangler.toml. Both handlers
+ * stay thin and delegate — the webhook to `handleWebhook`, the cron to `runSweep`.
  */
 import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
 import { patchCodeItem, patchEpic } from './supabase';
+import { runSweep } from './sweep';
 import { type TransitionTarget, planTransition } from './transitions';
 
 /**
- * Worker secrets. Hand-written because these are SECRETS, not
- * `wrangler.toml` bindings — `wrangler types` only generates bindings, so secret typing must be
- * declared here. Values are set with `wrangler secret put`, never committed.
+ * The Worker's bindings. Hand-written because most of these are SECRETS, not `wrangler.toml`
+ * bindings — `wrangler types` only generates bindings, so secret typing must be declared here.
+ * Secret values are set with `wrangler secret put`, never committed; the two classifier vars
+ * below are plaintext and DO live in `wrangler.toml`, so they are declared alongside.
  */
 export interface Env {
   GITHUB_WEBHOOK_SECRET: string;
   GITHUB_TOKEN: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  /**
+   * The Anthropic Console key the Inbox classifier calls with — a secret, and the only place in
+   * the whole system that holds one. Optional because it is set by hand, once, outside any
+   * merge: until someone runs `wrangler secret put`, the binding is genuinely absent, and the
+   * sweep is written to notice that loudly rather than mistake it for an outage.
+   */
+  ANTHROPIC_API_KEY?: string;
+  /** Which model judges an Inbox item. A `[vars]` entry, so changing it is a deploy flag. */
+  CLASSIFIER_MODEL: string;
+  /** The IANA zone "friday" resolves against, e.g. `America/Chicago`. Also a `[vars]` entry. */
+  CLASSIFIER_TIMEZONE: string;
   /**
    * The commit this Worker was built from — a plain `[vars]` binding, NOT a secret, injected by
    * the deploy workflow (`--var WORKER_VERSION:<sha>`). Optional because a hand-run
@@ -65,8 +81,18 @@ export default {
     // Health check — and the deploy's receipt. It names the commit the running code was built
     // from so "is production current?" is one curl plus a `git rev-parse`, rather than the
     // guesswork that let a Worker sit three phases behind main for days (ALF-149).
+    //
+    // It reports the RESOLVED classifier config for the same reason. The deploy workflow passes
+    // `--var WORKER_VERSION:<sha>`, and this is the first release to put anything else in
+    // `[vars]`; if a CLI `--var` ever shadowed the file's vars rather than merging with them,
+    // the classifier would silently fall back to its defaults in production with no symptom.
+    // Naming them here makes that a one-curl check instead of a mystery. It deliberately says
+    // nothing about the API key: a health check must not probe a billed endpoint.
     if (request.method === 'GET' && url.pathname === '/') {
-      return new Response(`alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED})`);
+      return new Response(
+        `alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED}; ` +
+          `classifier ${env.CLASSIFIER_MODEL} @ ${env.CLASSIFIER_TIMEZONE})`,
+      );
     }
 
     if (request.method === 'POST' && url.pathname === '/github/webhook') {
@@ -74,6 +100,23 @@ export default {
     }
 
     return new Response('not found', { status: 404 });
+  },
+
+  /**
+   * The cron trigger's entrypoint. Thin by design — it delegates to `runSweep` exactly as
+   * `fetch` delegates to `handleWebhook`.
+   *
+   * The promise is AWAITED rather than handed to `ctx.waitUntil` or fired and forgotten: a
+   * scheduled invocation is torn down when the promise it returns settles, so unawaited work is
+   * silently killed part-way through the sweep.
+   */
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const summary = await runSweep(env, new Date());
+    console.log(
+      `classifier sweep: ${String(summary.eligible)} eligible, ` +
+        `${String(summary.classified)} classified, ${String(summary.failed)} failed` +
+        (summary.aborted ? ' (aborted)' : ''),
+    );
   },
 };
 

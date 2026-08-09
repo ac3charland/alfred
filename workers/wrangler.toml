@@ -5,17 +5,11 @@ compatibility_flags = ["nodejs_compat"]
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 # The Worker serves two paths from its one entrypoint (routed in src/index.ts):
-#   GET  /                → health check ("alfred workers ok")
+#   GET  /                → health check ("alfred workers ok"), plus the classifier's config
 #   POST /github/webhook  → the GitHub PR webhook ingress (HMAC-verified)
 # On the default *.workers.dev domain no `routes` block is needed — the path is
 # matched in code. Add a `routes`/`route` entry here only when fronting it with a
 # custom domain.
-
-# ── Vars (non-secret, injected at deploy time) ───────────────────────────────
-# WORKER_VERSION — the commit the running build came from, set by the Deploy Worker workflow
-#   (`wrangler deploy --var WORKER_VERSION:<sha>`) and reported by `GET /`. Deliberately NOT
-#   declared with a default here: a deploy that carries no stamp should say so ("unstamped"),
-#   because nothing vouches for which commit it holds.
 
 # ── Secrets (set with `wrangler secret put <NAME>`, never committed) ──────────────
 # These back the typed `Env` in src/index.ts. For local `wrangler dev`, put the
@@ -24,3 +18,43 @@ compatibility_flags = ["nodejs_compat"]
 #   GITHUB_TOKEN              — fine-grained PAT, Contents:read on the project repos (spec snapshot).
 #   SUPABASE_URL              — the project's Supabase URL (e.g. https://<ref>.supabase.co).
 #   SUPABASE_SERVICE_ROLE_KEY — service-role key; bypasses RLS for the trusted webhook write.
+#   ANTHROPIC_API_KEY         — pay-as-you-go Console key (sk-ant-api03-…) for the Inbox classifier.
+#     This is the one manual step in the whole feature: a secret is set by hand, once, outside
+#     the repo, and Cloudflare stores it against the WORKER rather than against a deploy — so it
+#     survives every subsequent `wrangler deploy` and CI never re-uploads it. It must never
+#     become a GitHub Actions secret (no suite may make a live model call), a Vercel env var (the
+#     frontend has no LLM code path at all), a `[vars]` entry below (vars are plaintext and
+#     committed), or a `.env` file. `npx wrangler secret list` shows the names, never the values.
+#     Rotation is the same command again, effective on the next invocation with no redeploy.
+
+# ── Cron triggers ─────────────────────────────────────────────────────────────
+# The Inbox classifier sweep. `wrangler deploy` registers this schedule, and the Deploy Worker
+# workflow runs on every push to main with no path filter — so merging IS deploying, the cron
+# included. Two minutes rather than one: nobody is waiting on a tick (the whole premise is
+# capture-now-refine-later), and it halves the idle query volume for latency no one perceives.
+# A tick with nothing eligible costs one database query and zero model calls.
+# Exercise it locally without waiting: `npx wrangler dev --test-scheduled`, then curl the
+# `/__scheduled` endpoint it serves.
+[triggers]
+crons = ["*/2 * * * *"]
+
+# ── Vars (non-secret, plaintext, committed) ──────────────────────────────────
+# CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a
+#   different model for a week is a deploy flag rather than a story. Haiku 4.5 by default: at
+#   this volume every option is inside noise, so the choice is decided by fit, and the property
+#   that matters is structured-output support.
+# CLASSIFIER_TIMEZONE — the IANA zone "friday" resolves against. It is the one piece of the
+#   prompt that is about the owner rather than the domain, and it changes if they move. The
+#   Worker computes an absolute reference date from it and hands the model that, so the model is
+#   never asked to know what day it is.
+[vars]
+CLASSIFIER_MODEL = "claude-haiku-4-5"
+CLASSIFIER_TIMEZONE = "America/Chicago"
+
+# WORKER_VERSION is deliberately NOT declared here, unlike the two vars above. It is the commit
+# the running build came from, injected per deploy by the Deploy Worker workflow
+# (`wrangler deploy --var WORKER_VERSION:<sha>`) and reported by `GET /`. A default would defeat
+# it: a deploy that carries no stamp should say so ("unstamped"), because nothing vouches for
+# which commit it holds. `GET /` reports the resolved model and zone alongside that stamp, so if
+# a CLI `--var` ever SHADOWED this file's `[vars]` rather than merging with them, the classifier
+# falling back to its defaults in production is one curl to notice instead of a mystery.
