@@ -247,13 +247,13 @@ describe('mergeIntoItem', () => {
       buildVerdict({ item_type: 'code', intended_epic_id: 'epic-alf' }),
     ],
   ])('never overwrites the existing %s with a different guess', (field, item, verdict) => {
-    expect(mergeIntoItem(verdict, item)[field]).toBeUndefined();
+    expect(mergeIntoItem(verdict, item, buildWorld())[field]).toBeUndefined();
   });
 
   it("treats item_type 'unclassified' as empty, writing the guessed type", () => {
     const item = buildItem({ item_type: 'unclassified' });
     const verdict = buildVerdict({ item_type: 'task', priority: 'medium' });
-    const result = mergeIntoItem(verdict, item);
+    const result = mergeIntoItem(verdict, item, buildWorld());
     expect(result.item_type).toBe('task');
     expect(result.priority).toBe('medium');
   });
@@ -266,7 +266,7 @@ describe('mergeIntoItem', () => {
       due_date: '2026-08-14',
       folder_id: 'folder-work',
     });
-    const result = mergeIntoItem(verdict, item);
+    const result = mergeIntoItem(verdict, item, buildWorld());
     expect(result.item_type).toBeUndefined();
     expect(result.priority).toBeUndefined();
     expect(result.due_date).toBeUndefined();
@@ -275,11 +275,60 @@ describe('mergeIntoItem', () => {
 
   it('lets an ALF:-prefixed capture keep its project and gain the guessed epic', () => {
     const item = buildItem({ item_type: 'code', intended_project_id: 'project-alf' });
-    const verdict = buildVerdict({ item_type: 'code', intended_epic_id: 'epic-alf' });
-    const result = mergeIntoItem(verdict, item);
+    // The verdict a real sweep produces: `validateVerdict` can never emit an epic without the
+    // project that owns it, so a test feeding a bare epic would exercise an unreachable input.
+    const verdict = validateVerdict(
+      buildVerdict({
+        item_type: 'code',
+        intended_project_id: 'project-alf',
+        intended_epic_id: 'epic-alf',
+      }),
+      buildWorld(),
+    );
+    const result = mergeIntoItem(verdict, item, buildWorld());
     expect(result.item_type).toBeUndefined();
+    // Already held, so not rewritten — but the epic underneath it is still coherent.
     expect(result.intended_project_id).toBeUndefined();
     expect(result.intended_epic_id).toBe('epic-alf');
+  });
+
+  it('drops an epic belonging to a project the item is not going to end up with', () => {
+    // The reachable failure: the human's `ALF:` prefix set project-alf, the model coherently
+    // proposed project-oth and ITS epic. The merge keeps the human's project, which would strand
+    // epic-oth under project-alf — and 0027's items_intended_epic_project is a DEFERRED
+    // constraint trigger, so it raises at commit and takes the entire PATCH down with it.
+    const item = buildItem({ item_type: 'code', intended_project_id: 'project-alf' });
+    const verdict = validateVerdict(
+      buildVerdict({
+        item_type: 'code',
+        intended_project_id: 'project-oth',
+        intended_epic_id: 'epic-oth',
+      }),
+      buildWorld(),
+    );
+    // The verdict itself is perfectly coherent — that is what makes this reachable.
+    expect(verdict.intended_epic_id).toBe('epic-oth');
+
+    const result = mergeIntoItem(verdict, item, buildWorld());
+    expect(result.intended_project_id).toBeUndefined();
+    expect(result.intended_epic_id).toBeUndefined();
+    // Nothing left to write, so no PATCH body at all rather than a doomed one.
+    expect(JSON.stringify(result)).toBe('{}');
+  });
+
+  it('keeps a guessed epic when the item holds no project of its own', () => {
+    const item = buildItem({ item_type: 'unclassified' });
+    const verdict = validateVerdict(
+      buildVerdict({
+        item_type: 'code',
+        intended_project_id: 'project-oth',
+        intended_epic_id: 'epic-oth',
+      }),
+      buildWorld(),
+    );
+    const result = mergeIntoItem(verdict, item, buildWorld());
+    expect(result.intended_project_id).toBe('project-oth');
+    expect(result.intended_epic_id).toBe('epic-oth');
   });
 
   it('carries no field the item already had, so JSON.stringify produces only the keys that will actually be written', () => {
@@ -290,7 +339,7 @@ describe('mergeIntoItem', () => {
       due_date: '2026-08-14',
       folder_id: 'folder-home',
     });
-    const result = mergeIntoItem(verdict, item);
+    const result = mergeIntoItem(verdict, item, buildWorld());
     // Serialised, because that is exactly what becomes the PATCH body: an untouched field is
     // `undefined`, and `JSON.stringify` drops it, so it never reaches the wire at all.
     expect(JSON.stringify(result)).toBe('{"due_date":"2026-08-14"}');

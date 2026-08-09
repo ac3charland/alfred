@@ -103,12 +103,25 @@ export interface SweepItem {
 }
 
 /**
- * Why one classification produced no verdict. `credentials` is the odd one out and the reason
- * the union exists: a missing key or a 401/403 is a fault of the configuration, not of the item,
- * so it aborts the whole tick rather than burning an attempt on every eligible row.
+ * Why one classification produced no verdict. Two of these are faults of the DEPLOY rather than of
+ * the item — `credentials` (no key, or a 401/403) and `bad_request` (the API rejected the request
+ * shape or the model id) — and both abort the whole tick instead of burning an attempt on every
+ * eligible row. That distinction is the reason this union exists rather than a boolean.
+ *
+ * Without it, a systemic 400 is indistinguishable from an outage: every eligible item would count
+ * a failure every tick, and at a two-minute cadence the whole Inbox is past the ceiling inside ten
+ * minutes — permanently, since nothing resets the counter. The first real request this feature
+ * ever makes happens in production, because no suite is allowed to call the live API, so the
+ * request shape being wrong is a first-deploy possibility rather than a hypothetical.
+ *
+ * The accepted cost: one genuinely item-specific 400 (an oversized capture, say) stalls the sweep
+ * until someone looks. For a single-user system that is the better failure — a stuck sweep names
+ * its cause on the first `wrangler tail`, while a silently opted-out Inbox looks like a feature
+ * that simply does nothing.
  */
 export type ClassifyFailure =
   | { reason: 'credentials'; detail: string }
+  | { reason: 'bad_request'; detail: string }
   | { reason: 'transport'; detail: string }
   | { reason: 'refusal' }
   | { reason: 'truncated' }
@@ -174,8 +187,12 @@ export function validateVerdict(verdict: Verdict, world: ClosedWorld): Verdict {
   const projectIds = new Set(world.projects.map((project) => project.id));
   const epicsById = new Map(world.epics.map((epic) => [epic.id, epic]));
 
-  // Layer 2's whole reason for existing: an id that was on the list when the prompt was built
-  // may have been deleted before the answer came back, and only this step notices.
+  // What this layer is actually for. It does NOT close the gap between building the prompt and
+  // writing the answer: `world` is one snapshot per tick, and the same object built the schema's
+  // enums, so a folder deleted after the snapshot passes here exactly as it passed there. The
+  // database is what refuses that write, and the next tick's fresh world stops offering the id.
+  // What this catches is the model answering outside its schema at all — a structured-output
+  // failure — and it is the one place the cross-field rules live.
   const folder = keepIf(verdict.folder_id, (id) => folderIds.has(id));
   const project = keepIf(verdict.intended_project_id, (id) => projectIds.has(id));
   let epic = keepIf(verdict.intended_epic_id, (id) => epicsById.has(id));
@@ -227,12 +244,29 @@ function decidedType(item: SweepItem): ItemType | undefined {
  * The type the row will END UP with decides which fields are legal, not the type the model
  * guessed: keeping an existing `code` while writing a task-shaped due date is exactly the
  * incoherent row `items_task_only_fields` refuses.
+ *
+ * The same "end up with" rule has to be applied to the epic, which is why this needs `world`.
+ * `validateVerdict` checked the epic against the VERDICT's project; if the item already holds a
+ * different one, that project is the one being kept and the epic is now orphaned under it. 0027's
+ * `items_intended_epic_project` is a DEFERRED constraint trigger, so it raises at commit and takes
+ * the whole PATCH down — losing the coherent fields alongside the incoherent one, and burning an
+ * attempt on an item whose next tick gets the identical prompt and plausibly guesses the same way.
  */
-export function mergeIntoItem(verdict: Verdict, item: SweepItem): Verdict {
+export function mergeIntoItem(verdict: Verdict, item: SweepItem, world: ClosedWorld): Verdict {
   const existingType = decidedType(item);
   const finalType = existingType ?? verdict.item_type;
   const gap = (held: string | undefined, guessed: string | undefined): string | undefined =>
     held === undefined ? guessed : undefined;
+
+  const project = gap(item.intended_project_id, verdict.intended_project_id);
+  let epic = gap(item.intended_epic_id, verdict.intended_epic_id);
+  // The project the ROW will hold, which is the held one whenever there is one — precisely the
+  // case where it differs from the one the epic was validated against.
+  const finalProject = item.intended_project_id ?? project;
+  if (epic !== undefined) {
+    const owner = world.epics.find((candidate) => candidate.id === epic)?.project_id;
+    if (owner !== finalProject) epic = undefined;
+  }
 
   return {
     item_type: existingType === undefined ? verdict.item_type : undefined,
@@ -242,9 +276,7 @@ export function mergeIntoItem(verdict: Verdict, item: SweepItem): Verdict {
         : undefined,
     due_date: finalType === 'task' ? gap(item.due_date, verdict.due_date) : undefined,
     folder_id: finalType === 'task' ? gap(item.folder_id, verdict.folder_id) : undefined,
-    intended_project_id:
-      finalType === 'code' ? gap(item.intended_project_id, verdict.intended_project_id) : undefined,
-    intended_epic_id:
-      finalType === 'code' ? gap(item.intended_epic_id, verdict.intended_epic_id) : undefined,
+    intended_project_id: finalType === 'code' ? project : undefined,
+    intended_epic_id: finalType === 'code' ? epic : undefined,
   };
 }
