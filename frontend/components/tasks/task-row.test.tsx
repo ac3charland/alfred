@@ -10,6 +10,7 @@ import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree } from '@/lib/tree';
 import type { Epic, Folder, Item, Project } from '@/lib/types';
 
+import { InboxSelectToggle } from './inbox-bulk-bar';
 import { TaskList } from './task-list';
 import { TaskRow } from './task-row';
 
@@ -3804,5 +3805,187 @@ describe('TaskRow — label chips & per-type detail fields (ALF-170)', () => {
         expect(mockUpdateItem).toHaveBeenCalledWith('code-1', { intended_epic_id: 'e2' });
       });
     });
+  });
+});
+
+/**
+ * ALF-180 — the provenance mark: one glyph per Inbox row saying where its labels came from.
+ * Read-only chrome derived from `classified_at` + `classified_provider`; nothing here mutates.
+ */
+describe('provenance mark', () => {
+  const CLASSIFIED_AT = '2026-07-20T08:00:00Z';
+  /** The classifier wrote a verdict on this row. */
+  const MODEL_ITEM: Item = {
+    ...BASE_ITEM,
+    classified_at: CLASSIFIED_AT,
+    classified_provider: 'anthropic',
+  };
+  /** The claim trigger stamped this row when a human edited a label first — no provider. */
+  const CLAIMED_ITEM: Item = { ...BASE_ITEM, classified_at: CLASSIFIED_AT };
+
+  const MODEL_MARK = 'Labelled by the classifier';
+  const CLAIMED_MARK = 'Labelled by you';
+  const UNJUDGED_MARK = 'Not yet classified';
+
+  /** Any of the three marks, for the "no mark at all" assertions. */
+  const ANY_MARK = new RegExp(`${MODEL_MARK}|${CLAIMED_MARK}|${UNJUDGED_MARK}`);
+
+  /** The Inbox with select mode available: the header toggle over a selectable list. */
+  function renderSelectableInbox(items: Item[]) {
+    return renderWithProviders(
+      <>
+        <InboxSelectToggle />
+        <TaskList scope={{ type: 'inbox' }} selectable />
+      </>,
+      { tasks: items },
+    );
+  }
+
+  describe('the three states', () => {
+    it('marks a row the classifier judged', () => {
+      renderTasks([MODEL_ITEM]);
+
+      expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
+    });
+
+    it('marks a row a human edit claimed', () => {
+      renderTasks([CLAIMED_ITEM]);
+
+      expect(screen.getByRole('img', { name: CLAIMED_MARK })).toBeInTheDocument();
+    });
+
+    it('marks a row nothing has judged', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(screen.getByRole('img', { name: UNJUDGED_MARK })).toBeInTheDocument();
+    });
+
+    // The frontend never mirrors the sweeper's attempt ceiling: a row that burned its attempts
+    // keeps the unjudged mark for good, and "not judged" stays true of it.
+    it('keeps the unjudged mark on a row that exhausted its classify attempts', () => {
+      renderTasks([{ ...BASE_ITEM, classify_attempts: 5 }]);
+
+      expect(screen.getByRole('img', { name: UNJUDGED_MARK })).toBeInTheDocument();
+    });
+  });
+
+  describe('the visibility gate — Inbox rows only', () => {
+    it('shows on an undispatched top-level Inbox row', () => {
+      renderTasks([MODEL_ITEM]);
+
+      expect(screen.getByRole('img', { name: ANY_MARK })).toBeInTheDocument();
+    });
+
+    it('shows on an unclassified capture, which is a row like any other in the Inbox', () => {
+      renderTasks([{ ...UNCLASSIFIED_ITEM, classified_at: CLASSIFIED_AT }]);
+
+      expect(screen.getByRole('img', { name: CLAIMED_MARK })).toBeInTheDocument();
+    });
+
+    it('is absent on a dispatched row — once it is filed the question is settled', () => {
+      renderTasks([{ ...MODEL_ITEM, folder_id: 'folder-1', dispatched_at: DISPATCHED_AT }], {
+        folders: [FOLDER],
+        scope: { type: 'folder', folderId: 'folder-1' },
+      });
+
+      expect(screen.queryByRole('img', { name: ANY_MARK })).not.toBeInTheDocument();
+    });
+
+    it('is absent on a subtask, which the sweeper never judges', async () => {
+      const user = userEvent.setup();
+      renderTasks([MODEL_ITEM, { ...CHILD_ITEM, classified_at: CLASSIFIED_AT }]);
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      const subtaskRow = rowFor('Write unit tests');
+      expect(within(subtaskRow).queryByRole('img', { name: ANY_MARK })).not.toBeInTheDocument();
+      // …while its Inbox parent still carries one, so this isn't just an absent fixture.
+      expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
+    });
+
+    it('is absent in the Completed view, a history list rather than a queue', () => {
+      renderTasks([{ ...MODEL_ITEM, status: 'completed' }], COMPLETED);
+
+      expect(screen.queryByRole('img', { name: ANY_MARK })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('select mode', () => {
+    it('renders the mark, still inert, inside the row button', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([MODEL_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      const mark = screen.getByRole('img', { name: MODEL_MARK });
+      expect(mark.tagName).toBe('SPAN');
+      // The row's own <button> is its only interactive element; the mark rides inside it.
+      expect(mark.closest('button')).toHaveAttribute('aria-pressed');
+    });
+  });
+
+  describe('placement — the two ways a mark can be silently lost', () => {
+    // The ordinary row's title wraps, so an appended sibling glyph could be pushed onto a line
+    // of its own. It lives INSIDE the title, glued to the last word by a non-breaking space.
+    it('binds the mark to the wrapping title text on the ordinary row', () => {
+      const title = 'A title long enough to wrap across more than one line in a narrow row';
+      renderTasks([{ ...MODEL_ITEM, title }]);
+
+      const titleElement = screen.getByText(title);
+      expect(within(titleElement).getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
+      // The nbsp is the mechanism: it removes the break opportunity before the glyph.
+      expect(titleElement.textContent).toContain('\u00A0');
+    });
+
+    // The select-mode title is one clipped line, so a mark inside it would be eaten by the
+    // ellipsis on exactly the titles long enough to truncate. It is the title's SIBLING.
+    it('keeps the mark outside the truncating title in select mode', async () => {
+      const title = 'A title long enough to be clipped by the ellipsis in the select-mode row';
+      const user = userEvent.setup();
+      renderSelectableInbox([{ ...MODEL_ITEM, title }]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      const titleElement = screen.getByText(title);
+      expect(titleElement).toHaveClass('truncate');
+      expect(within(titleElement).queryByRole('img', { name: MODEL_MARK })).not.toBeInTheDocument();
+      expect(titleElement.nextElementSibling).toBe(screen.getByRole('img', { name: MODEL_MARK }));
+    });
+  });
+
+  // Nothing was built for this: the claim happens in a database trigger, the PATCH route returns
+  // the updated row, and the optimistic store upserts what comes back. Worth pinning precisely
+  // because an optimistic-patch shortcut added later could quietly break it.
+  it('flips an unjudged row to "Labelled by you" when the claiming PATCH reconciles', async () => {
+    mockUpdateItem.mockResolvedValue({
+      ...BASE_ITEM,
+      title: 'Renamed by hand',
+      classified_at: CLASSIFIED_AT,
+      classified_provider: null,
+    });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    expect(screen.getByRole('img', { name: UNJUDGED_MARK })).toBeInTheDocument();
+
+    await user.dblClick(screen.getByText('Write tests'));
+    await user.clear(screen.getByLabelText('Edit title'));
+    await user.type(screen.getByLabelText('Edit title'), 'Renamed by hand{Enter}');
+
+    expect(await screen.findByRole('img', { name: CLAIMED_MARK })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: UNJUDGED_MARK })).not.toBeInTheDocument();
+  });
+
+  it('leaves a classifier-marked row alone when the owner edits it', async () => {
+    mockUpdateItem.mockResolvedValue({ ...MODEL_ITEM, title: 'Renamed by hand' });
+    const user = userEvent.setup();
+    renderTasks([MODEL_ITEM]);
+
+    await user.dblClick(screen.getByText('Write tests'));
+    await user.clear(screen.getByLabelText('Edit title'));
+    await user.type(screen.getByLabelText('Edit title'), 'Renamed by hand{Enter}');
+
+    expect(await screen.findByText('Renamed by hand')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
   });
 });

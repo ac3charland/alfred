@@ -1,3 +1,4 @@
+import type { ClassificationOrigin } from '@/lib/tasks/classification';
 import { cn } from '@/lib/utils';
 
 /**
@@ -182,6 +183,30 @@ export const confirmTitleClass = 'h-5 w-5 border-accent-teal bg-accent-teal';
  */
 export const titleTextClass =
   'text-[15px] leading-snug md:text-sm md:leading-5 break-words transition-colors duration-300 delay-200 motion-reduce:transition-none';
+
+/**
+ * The provenance mark's wrapper: an inline box that sits with the title text rather than beside
+ * it, nudged down a pixel so an 11px glyph optically centres on a 15px line. `shrink-0` keeps it
+ * whole in the select-mode row, where its sibling title is a `truncate` flex child.
+ */
+export const classificationMarkClass = 'inline-flex shrink-0 items-center align-[-1px]';
+
+/** 11px — smaller than every chip on the row, so the mark reads as an annotation, not a label. */
+const markGlyphSizeClass = 'h-[11px] w-[11px]';
+
+/**
+ * The mark's glyph, one class per origin: 11px, and three weights of the same muted grey. The
+ * shape is what names the state — the weight only seconds it, ordered so the row you most often
+ * see and least often care about (nothing has judged it yet) recedes furthest. The row's colours
+ * are fully spoken for (blue = due/links, amber = due-today, red = overdue/high, teal =
+ * interactive/selected), so grey is the only register a sixth meaning can borrow without
+ * reading as one of the five.
+ */
+export const classificationMarkGlyphClass: Record<ClassificationOrigin, string> = {
+  model: cn(markGlyphSizeClass, 'text-muted-foreground/95'),
+  claimed: cn(markGlyphSizeClass, 'text-muted-foreground/65'),
+  unjudged: cn(markGlyphSizeClass, 'text-muted-foreground/40'),
+};
 
 /**
  * The direct-subtask count pill (e.g. `2/5`) — moved out of the row's inline JSX into a named

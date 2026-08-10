@@ -326,6 +326,28 @@ describe('PriorityView', () => {
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
   });
 
+  // Provenance is an Inbox-triage aid (ALF-180), and By-Priority is a cross-view ranking, not a
+  // triage queue — so an undispatched row keeps its mark in the Inbox and shows none here.
+  it('shows no classification provenance mark, even on an undispatched row', () => {
+    renderWithProviders(<PriorityView />, {
+      tasks: [
+        makeItem('Ship the deck', {
+          priority: 'high',
+          classified_at: '2026-01-01T00:00:00Z',
+          classified_provider: 'anthropic',
+        }),
+        makeItem('Book the van', { priority: 'low', classified_at: '2026-01-01T00:00:00Z' }),
+        makeItem('An unjudged capture', { priority: 'medium' }),
+      ],
+    });
+
+    expect(
+      screen.queryByRole('img', {
+        name: /Labelled by the classifier|Labelled by you|Not yet classified/,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   describe('clicking a row navigates to the task and focuses it (ALF-96)', () => {
     it('links each row to its containing view — folder, or the inbox when unfiled', () => {
       const folders: Folder[] = [
