@@ -2,7 +2,13 @@ import path from 'node:path';
 
 import pg, { type Client } from 'pg';
 
-import { copiedTables, reconcileDriftStatements, schemaDrift } from './backup.ts';
+import {
+  buildVerifySchema,
+  copiedTables,
+  reconcileDriftStatements,
+  schemaDrift,
+} from './backup.ts';
+import { deployMigrations } from './deploy.ts';
 import { MIGRATIONS_DIR, applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 /** One integration check's outcome. `detail` is evidence on success, the failure reason otherwise. */
@@ -155,13 +161,13 @@ async function replayDispatchBackfill(
 }
 
 /**
- * Stand the nightly backup's verify database up as it stood the day it broke: every migration
- * BEFORE the dispatch one, i.e. a repo that has not yet caught up with a production database that
- * already has `items.dispatched_at`. Returns a live client on it; the caller ends it.
+ * Create an empty database on this cluster and return a live client on it, seeded with the objects
+ * a hosted Supabase project ships with and nothing else. Returned rather than scoped to a callback
+ * so a caller can hold two of them open side by side; the caller ends the client, and the cluster
+ * is thrown away wholesale rather than the database dropped.
  */
-async function staleVerifyDatabase(client: Client): Promise<Client> {
-  // A code literal, never user input — same footing as the `set role` interpolation above.
-  const database = 'alfred_backup_drift';
+async function throwawayDatabase(client: Client, database: string): Promise<Client> {
+  // The name is a code literal, never user input — same footing as the `set role` interpolation above.
   await client.query(`drop database if exists ${database}`);
   await client.query(`create database ${database}`);
   const probe = new pg.Client({
@@ -172,6 +178,16 @@ async function staleVerifyDatabase(client: Client): Promise<Client> {
   });
   await probe.connect();
   await bootstrapSupabase(probe);
+  return probe;
+}
+
+/**
+ * Stand the nightly backup's verify database up as it stood the day it broke: every migration
+ * BEFORE the dispatch one, i.e. a repo that has not yet caught up with a production database that
+ * already has `items.dispatched_at`. Returns a live client on it; the caller ends it.
+ */
+async function staleVerifyDatabase(client: Client): Promise<Client> {
+  const probe = await throwawayDatabase(client, 'alfred_backup_drift');
   await applyMigrations(probe, MIGRATIONS_DIR, (file) => path.basename(file) < DISPATCH_MIGRATION);
   return probe;
 }
@@ -2014,6 +2030,50 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const backupVerifierShapeResult = await attempt(
+    'the backup verifier builds every public table a deployed database carries',
+    async () => {
+      // The nightly went red every single night from 2026-08-08: `public.schema_migrations` is
+      // created by the DEPLOYER (it has to exist before the first migration can be judged, so it
+      // cannot itself be a migration), while the verify schema is built from `database/migrations`
+      // alone — so the ledger was permanently absent from it. The `--schema public` dump always
+      // carries the ledger, so every sound backup uploaded and then exited non-zero on a drift no
+      // migration could ever close. Whatever the deployer leaves in `public`, the verifier builds.
+      const deployed = await throwawayDatabase(client, 'alfred_backup_deployed');
+      try {
+        await deployMigrations(deployed);
+        const verifier = await throwawayDatabase(client, 'alfred_backup_verifier');
+        try {
+          await buildVerifySchema(verifier);
+          // What `supabase db dump --data-only --schema public` emits a COPY for: every public base
+          // table, with the columns it holds. Read off a really-deployed database rather than
+          // hand-written, so a table the deployer adds later is covered without touching this.
+          const dumped = [...(await publicColumns(deployed))].map(([table, columns]) => ({
+            table,
+            columns,
+          }));
+          if (!dumped.some(({ table }) => table === 'schema_migrations'))
+            throw new Error('precondition failed: the deployed database has no ledger to carry');
+
+          const drift = schemaDrift(dumped, await publicColumns(verifier));
+          if (drift.length > 0)
+            throw new Error(
+              `the verifier cannot build ${drift
+                .map(({ table, columns, absent }) =>
+                  absent ? `${table} (whole table)` : `${table}.${columns.join('+')}`,
+                )
+                .join(', ')}`,
+            );
+          return `${String(dumped.length)} deployed public tables, ledger included, all built by the verifier`;
+        } finally {
+          await verifier.end();
+        }
+      } finally {
+        await deployed.end();
+      }
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -2054,5 +2114,6 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     classifierCorrectionsResult,
     correctionsGrantsResult,
     backupDriftResult,
+    backupVerifierShapeResult,
   ];
 }
