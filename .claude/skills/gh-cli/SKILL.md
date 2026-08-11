@@ -92,6 +92,21 @@ entities in code, so `` `aria-current="true"` `` renders as the literal `aria-cu
 Keep quotes and apostrophes out of backticks in an MCP-posted body — name the attribute alone, or
 put the snippet in a fenced block.
 
+## Reading a failed Actions run's logs over MCP
+
+`mcp__github__get_job_logs` with `{run_id, failed_only: true, return_content: true}` is the way in,
+but it returns the **tail** of each failed job, and `tail_lines` defaults to 500 — for a job with a
+service container that's all post-job Docker/`initdb` noise, and the step output that actually
+explains the failure has scrolled off the top. Re-fetch the one `job_id` with a **smaller**
+`tail_lines` (~150–250) to land on the failing step. Two dead ends to skip:
+
+- `actions_list` with `list_workflow_runs` returns ~250k characters and is rejected for exceeding
+  the token limit; it's saved to a file, so parse that with `python3 -c "import json; …"` for the
+  run ids, statuses and head SHAs rather than trying to read it.
+- `actions_get`'s `get_workflow_run_logs_url` hands back a `results-receiver.actions.githubusercontent.com`
+  URL the agent proxy refuses (`curl: (56) CONNECT tunnel failed, response 403`). There is no
+  zip-download path from a remote session — stay with `get_job_logs`.
+
 ## What still works fine (don't over-correct)
 
 Only the project-card-fetching porcelain paths are affected. In this repo these worked

@@ -6,6 +6,7 @@ import process from 'node:process';
 
 import pg from 'pg';
 
+import { ensureLedger } from './deploy.ts';
 import { applyMigrations, bootstrapSupabase } from './migrate.ts';
 
 const { Client } = pg;
@@ -307,6 +308,25 @@ async function presentPublicColumns(
 }
 
 /**
+ * Build, in the throwaway database, the `public` schema a DEPLOYED database actually carries — the
+ * schema the dump's data has to land in. Two things put it there, and the verifier needs both:
+ *
+ *  - the committed migrations, over the Supabase-provided roles + publication they assume;
+ *  - the deployer's own `public.schema_migrations` ledger, which is NOT a migration (it has to exist
+ *    before the first migration can be judged pending) yet lives in `public` and so travels in every
+ *    `--schema public` dump. Built by calling `deploy.ts` rather than declared again here, so the
+ *    ledger has one definition and a column added to it can't drift from a second copy.
+ *
+ * Leave the ledger out and the drift check below reports it as *production ahead of the repo* on
+ * every single run — a gap no migration may ever close, since none is allowed to create it.
+ */
+export async function buildVerifySchema(client: InstanceType<typeof Client>): Promise<void> {
+  await bootstrapSupabase(client);
+  await applyMigrations(client);
+  await ensureLedger(client);
+}
+
+/**
  * Dump the Supabase database, prove the dump restores, then upload it — in that fixed order, so a
  * dump that won't restore never overwrites the day's slot or counts as a green run.
  *
@@ -367,12 +387,11 @@ async function main(): Promise<number> {
     const client = new Client({ connectionString: verifyUrl });
     await client.connect();
     try {
-      // Rebuild the schema from our committed migrations (seeding the Supabase-provided roles +
-      // publication they assume), then load the dump's DATA with the same FK guard, in one
-      // transaction that aborts on the first error. Using migrations for the schema keeps the
-      // throwaway free of the hosted `extensions` schema the dump's own DDL references.
-      await bootstrapSupabase(client);
-      await applyMigrations(client);
+      // Rebuild the schema the way production is built (see {@link buildVerifySchema}), then load
+      // the dump's DATA with the same FK guard, in one transaction that aborts on the first error.
+      // Using migrations for the schema keeps the throwaway free of the hosted `extensions` schema
+      // the dump's own DDL references.
+      await buildVerifySchema(client);
       // …but it also couples the verifier to repo↔production parity, and that can break in ways
       // this job cannot see: a scheduled run pins its commit (a re-run replays it while production
       // moves on), `db-backup-*` and `db-migrate-*` are separate concurrency groups so a merge can

@@ -463,6 +463,13 @@ project:
   payload still loads and counts, upload, then exit non-zero. Only that direction matters — a dump
   *short* of the repo defaults the rest and must stay green. `database/src/backup.ts` is the
   worked example.
+- **A verify schema built from the migrations alone is one table short.**
+  `public.schema_migrations` is created by `database/src/deploy.ts`, never by a migration (it has to
+  exist before the first migration can be judged pending), yet it lives in `public` and so rides in
+  every `--schema public` dump. Build the verify schema from the migrations **plus** `ensureLedger` —
+  whatever the deployer leaves in `public` is part of production's schema. Miss it and the drift
+  check above reports *production ahead of repo* on **every** run, on a gap no migration may ever
+  close: the backup uploads and the job still exits 1. `buildVerifySchema` is the worked example.
 - **Match the restore server's major version to Supabase's.** Supabase runs **Postgres 17**, whose
   `pg_dump` writes PG17-only GUCs into the dump preamble (e.g. `SET transaction_timeout = 0;`). Loading
   that into an older server fails with `unrecognized configuration parameter "transaction_timeout"` and
