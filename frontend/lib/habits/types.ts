@@ -83,7 +83,7 @@ export type FormationStage =
 export interface HabitStats {
   currentStreak: number;
   longestStreak: number;
-  /** Mean length of ENDED runs; null until one has ended (the live run is excluded). */
+  /** Mean length of every run, including the current one; null until a run exists. */
   averageStreak: number | null;
   allowanceRemaining: number;
   /** met / (met + partial + missed); null when that denominator is 0. */
