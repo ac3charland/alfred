@@ -38,8 +38,8 @@ export function statsWithBaseline(
   return {
     currentStreak,
     longestStreak: Math.max(baseline.longestStreak, live.longestStreak, currentStreak),
-    // A mean of ended runs over all history: deltas don't compose on a mean, and the current run
-    // is excluded from it by definition, so an edit can only move it one reload later.
+    // A mean over all runs, including the still-growing current one: deltas don't compose on a
+    // mean, so an in-session edit can only move it one reload later, same as before the edit.
     averageStreak: baseline.averageStreak ?? live.averageStreak,
     allowanceRemaining: live.allowanceRemaining,
     hitRate: live.hitRate,

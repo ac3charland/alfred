@@ -230,12 +230,10 @@ export function computeHabitStats(
   const metDaysTotal = days.filter((date) => byDate.get(date)?.status === 'met').length;
 
   const runLengths = runs.map((run) => metDaysIn(run, byDate));
-  // Only ENDED runs feed the average, so a long healthy streak doesn't drag it down while it
-  // is still growing. A run of nothing but forgiven days has no length to average.
-  const endedLengths = runs
-    .filter((run) => run !== currentRun)
-    .map((run) => metDaysIn(run, byDate))
-    .filter((length) => length > 0);
+  // The current run counts too, at whatever length it has reached so far — a habit with a
+  // single streak still going has an average, not a null. A run of nothing but forgiven days
+  // has no length to average.
+  const countedLengths = runLengths.filter((length) => length > 0);
 
   const rated = counts.met + counts.partial + counts.missed;
   const windowStart = addDays(today, -(ROLLING_WINDOW_DAYS - 1));
@@ -245,9 +243,9 @@ export function computeHabitStats(
     currentStreak: currentRun === undefined ? 0 : metDaysIn(currentRun, byDate),
     longestStreak: runLengths.length === 0 ? 0 : Math.max(...runLengths),
     averageStreak:
-      endedLengths.length === 0
+      countedLengths.length === 0
         ? null
-        : endedLengths.reduce((total, length) => total + length, 0) / endedLengths.length,
+        : countedLengths.reduce((total, length) => total + length, 0) / countedLengths.length,
     allowanceRemaining: Math.max(0, habit.allowance - spentThisWeek),
     hitRate: rated === 0 ? null : counts.met / rated,
     metDaysTotal,

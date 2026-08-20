@@ -482,7 +482,7 @@ describe('GET /api/habits', () => {
       expect(body.habits[0]?.stats).toStrictEqual({
         current_streak: 7,
         longest_streak: 7,
-        average_streak: null,
+        average_streak: 7,
         allowance_remaining: 1,
         hit_rate: 1,
         met_days_total: 7,

@@ -186,7 +186,7 @@ describe("the epic's five-week grid — a forgiven partial, a real break, and a 
     expect(stats).toMatchObject({
       currentStreak: 12,
       longestStreak: 14,
-      averageStreak: 14,
+      averageStreak: 13,
       allowanceRemaining: 1,
       metDaysTotal: 26,
       stage: 'gaining_momentum',
@@ -363,16 +363,22 @@ describe('the scalars', () => {
     expect(stats.counts).toEqual({ met: 1, partial: 0, missed: 1, skipped: 1, unknown: 2 });
   });
 
-  it('leaves the average streak null while the only run is still in progress', () => {
+  it('averages the current, still-growing run too, at its length so far', () => {
     const stats = computeHabitStats(habit, log('2026-07-27', 'mmm'), '2026-07-29');
-    expect(stats.averageStreak).toBeNull();
+    expect(stats.averageStreak).toBe(3);
     expect(stats.currentStreak).toBe(3);
   });
 
-  it('averages the ENDED runs only, so a growing run does not drag it down', () => {
+  it('leaves the average streak null when nothing has ever formed a run', () => {
+    const stats = computeHabitStats(habit, [], '2026-07-29');
+    expect(stats.averageStreak).toBeNull();
+    expect(stats.currentStreak).toBe(0);
+  });
+
+  it('folds a fresh, still-short run into the average alongside the one it followed', () => {
     // A run of 4, broken by a miss, then a run of 1 still going.
     const stats = computeHabitStats(habit, log('2026-07-27', 'mmmmxm'), '2026-08-01');
-    expect(stats.averageStreak).toBe(4);
+    expect(stats.averageStreak).toBe(2.5);
     expect(stats.longestStreak).toBe(4);
     expect(stats.currentStreak).toBe(1);
   });
@@ -419,7 +425,7 @@ describe('the optional stats window', () => {
       expect(stats.currentStreak).toBe(2);
       expect(stats.longestStreak).toBe(8);
       expect(stats.metDaysTotal).toBe(10);
-      expect(stats.averageStreak).toBe(8);
+      expect(stats.averageStreak).toBe(5);
       expect(stats.allowanceRemaining).toBe(0);
       expect(stats.stage).toBe('fully_deliberate');
     }
