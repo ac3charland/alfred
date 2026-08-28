@@ -40,7 +40,7 @@ import {
   useActiveEditorActions,
 } from '@/lib/stores/active-editor-store';
 import { useCodeActions } from '@/lib/stores/code-store';
-import { useDepartingItems } from '@/lib/stores/departing-items-store';
+import { useDepartingItems, useDepartingItemsActions } from '@/lib/stores/departing-items-store';
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
@@ -157,6 +157,7 @@ export function TaskRow({
   const { active: selectModeActive, selectedIds } = useInboxSelection();
   const { toggle: toggleSelection } = useInboxSelectionActions();
   const { departingIds } = useDepartingItems();
+  const { depart, clear: clearDeparting } = useDepartingItemsActions();
   // A selectable root row in active select mode is a selection checkbox, not a normal row.
   const inSelectMode = selectable && selectModeActive;
   const isSelected = selectedIds.has(node.id);
@@ -254,9 +255,10 @@ export function TaskRow({
     onCollapseEnd: handleDeleteCollapseEnd,
   } = useAnimatedRowExit(() => deleteTask(node.id), prefersReducedMotion);
 
-  // The departure exit: a bulk Dispatch sends every ready row off at once, so the flag comes
-  // from the shared store rather than a per-row trigger — the bar flips it, waits out the exit,
-  // then commits the mutation that filters these rows away (see departing-items-store).
+  // The departure exit: Dispatch sends a row off — the whole ready selection from the bulk bar,
+  // or this one row from its own ⋯ menu. Either way the flag lives in the shared store, because
+  // the bar's press has to reach rows it doesn't own; whoever pressed waits out the exit, then
+  // commits the mutation that filters the rows away (see departing-items-store).
   const isDeparting = departingIds.has(node.id);
 
   // Every exit collapses the row to nothing; deletion additionally fades the whole row out,
@@ -640,6 +642,10 @@ export function TaskRow({
       return;
     }
     void (async () => {
+      // Send the row off first (ALF-182): the mutation below filters it out of the Inbox, so
+      // running it now would unmount the row before it could move. The bulk bar's Dispatch does
+      // exactly the same on its whole selection, so both surfaces leave the same way.
+      await depart([node.id]);
       // The allocated story is caught on its way through, so a code dispatch can still announce
       // its ref and deep-link to the board — what the gate's own toast used to do.
       let story: CodeStory | undefined;
@@ -647,6 +653,7 @@ export function TaskRow({
         story = await convertTaskToCode(item, projectId, epicId);
         return story;
       });
+      clearDeparting();
       // A failure keeps the row where it is and has already toasted; nothing to announce.
       if (staying.length > 0) return;
       if (story === undefined) {
