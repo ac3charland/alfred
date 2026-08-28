@@ -25,6 +25,10 @@ interface ProjectNavProperties {
  * — each project is a `ViewLink` to `/code/[projectId]` (client-side nav), highlighted when
  * that's the active route. Reads the project list from the CodeProvider store.
  *
+ * Above the project list sit the two cross-project queues, ordered by urgency: **Needs human
+ * action** first — it is the module's default view (ALF-174), so it leads the menu and carries
+ * the highlight for the bare `/code` — then the full ranked **Backlog**.
+ *
  * Each project shows its 3-char key as the ref-prefix hint, since refs everywhere read
  * `KEY-N`. The `+` opens the same New-project dialog as the gate,
  * persisting through the optimistic `createProject` action and then routing to the new
@@ -51,23 +55,14 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
     onClose?.();
   };
 
-  // The Backlog is the default Code view (bare `/code` renders it too), so highlight the link
-  // for both `/code` and `/code/backlog`.
-  const backlogActive = pathname === '/code' || pathname === '/code/backlog';
-  // The Needs-human-action queue (ALF-103) is its own destination, highlighted on its exact route.
-  const needsHumanActionActive = pathname === '/code/needs-human-action';
+  // The Needs-human-action queue (ALF-103) is the default Code view (bare `/code` renders it too,
+  // ALF-174), so highlight its link for both `/code` and `/code/needs-human-action`.
+  const needsHumanActionActive = pathname === '/code' || pathname === '/code/needs-human-action';
+  // The Backlog is now a destination like any other, highlighted on its exact route.
+  const backlogActive = pathname === '/code/backlog';
 
   return (
     <nav aria-label="Projects" className="flex flex-col gap-1 py-2">
-      <ViewLink
-        href="/code/backlog"
-        className={cn(navLinkClass(backlogActive), 'min-w-0')}
-        {...closeProperty}
-      >
-        <ListOrdered size={14} className="shrink-0" />
-        <span className="truncate">Backlog</span>
-      </ViewLink>
-
       <ViewLink
         href="/code/needs-human-action"
         className={cn(navLinkClass(needsHumanActionActive), 'min-w-0')}
@@ -75,6 +70,15 @@ export function ProjectNav({ onClose }: ProjectNavProperties) {
       >
         <UserCheck size={14} className="shrink-0" />
         <span className="truncate">Needs human action</span>
+      </ViewLink>
+
+      <ViewLink
+        href="/code/backlog"
+        className={cn(navLinkClass(backlogActive), 'min-w-0')}
+        {...closeProperty}
+      >
+        <ListOrdered size={14} className="shrink-0" />
+        <span className="truncate">Backlog</span>
       </ViewLink>
 
       <div className="flex items-center justify-between px-3 py-1">

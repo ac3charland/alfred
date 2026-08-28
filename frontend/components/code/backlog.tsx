@@ -17,9 +17,10 @@ import {
 } from '@/lib/stores/code-store';
 
 /**
- * The Backlog — the default Code view (bare `/code` and `/code/backlog`). A single global,
- * priority-ordered list of every OUTSTANDING story across all projects and epics, that the owner
- * re-ranks with chevron swaps; the project boards fall in line beneath this one ranking.
+ * The Backlog (`/code/backlog`). A single global, priority-ordered list of every OUTSTANDING
+ * story across all projects and epics, that the owner re-ranks with chevron swaps; the project
+ * boards fall in line beneath this one ranking. It was the module's default view until ALF-174
+ * handed that role to the "Needs human action" queue, so the bare `/code` no longer lands here.
  *
  * - **Header (the repurposed hero):** the old `CodeLanding` treatment — the `GitBranch` badge and
  *   the `font-serif` "The Software Factory" title — re-copied to describe the Backlog, with two

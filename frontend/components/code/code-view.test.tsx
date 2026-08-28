@@ -82,21 +82,29 @@ describe('CodeView navigation refetch (ALF-69)', () => {
 });
 
 describe('CodeView view routing', () => {
-  it('renders the Backlog for the bare /code and /code/backlog paths', () => {
+  it('renders Needs human action for the bare /code and /code/needs-human-action paths (ALF-174)', () => {
     mockPathname = '/code';
     const { rerender } = renderWithProviders(<CodeView />);
-    expect(screen.getByText('backlog')).toBeInTheDocument();
-
-    mockPathname = '/code/backlog';
-    rerender(<CodeView />);
-    expect(screen.getByText('backlog')).toBeInTheDocument();
-  });
-
-  it('renders the Needs human action view for the /code/needs-human-action segment (ALF-103)', () => {
-    mockPathname = '/code/needs-human-action';
-    renderWithProviders(<CodeView />);
     expect(screen.getByText('needs-human-action')).toBeInTheDocument();
     expect(screen.queryByText('backlog')).not.toBeInTheDocument();
+
+    mockPathname = '/code/needs-human-action';
+    rerender(<CodeView />);
+    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
+  });
+
+  it('renders Needs human action for a trailing-slash /code/ path (ALF-174)', () => {
+    mockPathname = '/code/';
+    renderWithProviders(<CodeView />);
+    expect(screen.getByText('needs-human-action')).toBeInTheDocument();
+    expect(screen.queryByText('board')).not.toBeInTheDocument();
+  });
+
+  it('renders the Backlog only for the explicit /code/backlog path (ALF-174)', () => {
+    mockPathname = '/code/backlog';
+    renderWithProviders(<CodeView />);
+    expect(screen.getByText('backlog')).toBeInTheDocument();
+    expect(screen.queryByText('needs-human-action')).not.toBeInTheDocument();
     expect(screen.queryByText('board')).not.toBeInTheDocument();
   });
 

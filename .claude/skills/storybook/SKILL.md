@@ -371,6 +371,10 @@ Turn that failure into a reviewable, self-approving event:
    approval; the embedded diff is the proof. **Never hand-edit a baseline PNG** — only the
    generator (the update script) may write it.
 
+**Already approved before capturing the diff?** The diff is written only on a mismatch, which
+`:update` has just removed. Copy the regenerated PNG aside, `git checkout --` the baseline,
+re-run `npm run test:storybook -w frontend` to fail and write the diff, then copy the PNG back.
+
 Do not silently re-run `:update` and move on — without the diff in the demo doc the
 baseline change is invisible to review. This is the whole point: the agent approves its
 own intended visual changes, with evidence, so a human doesn't have to drive the

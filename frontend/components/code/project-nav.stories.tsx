@@ -52,8 +52,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * The Code sidebar: a Backlog link plus the project list, each project carrying its assigned
- * palette colour on both the branch icon and the key pill — the same tinted-badge treatment as
- * the Backlog rows, so the two surfaces feel unified.
+ * The Code sidebar: the two cross-project queues — Needs human action (the module's default view,
+ * ALF-174) above the Backlog — plus the project list, each project carrying its assigned palette
+ * colour on both the branch icon and the key pill, the same tinted-badge treatment as the Backlog
+ * rows, so the two surfaces feel unified.
  */
 export const Coloured: Story = {};

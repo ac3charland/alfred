@@ -140,7 +140,7 @@ describe('ProjectNav', () => {
     expect(screen.getByText('Projects')).toBeInTheDocument();
   });
 
-  it('links the Backlog and Needs human action destinations at the top of the nav', () => {
+  it('links the Needs human action and Backlog destinations at the top of the nav', () => {
     renderNav(PROJECTS);
 
     expect(screen.getByRole('link', { name: /backlog/i })).toHaveAttribute('href', '/code/backlog');
@@ -150,13 +150,37 @@ describe('ProjectNav', () => {
     );
   });
 
-  it('highlights the Needs human action link only on its own route (ALF-103)', () => {
+  it('lists Needs human action above the Backlog (ALF-174)', () => {
+    renderNav(PROJECTS);
+
+    const links = screen.getAllByRole('link').map((link) => link.textContent);
+    expect(links.indexOf('Needs human action')).toBeLessThan(links.indexOf('Backlog'));
+  });
+
+  it('highlights Needs human action on the bare /code route, the module default (ALF-174)', () => {
+    mockPathname.mockReturnValue('/code');
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /needs human action/i })).toHaveClass('bg-secondary');
+    expect(screen.getByRole('link', { name: /^backlog$/i })).not.toHaveClass('bg-secondary');
+  });
+
+  it('highlights Needs human action on its own route (ALF-103)', () => {
     mockPathname.mockReturnValue('/code/needs-human-action');
     renderNav(PROJECTS);
 
     expect(screen.getByRole('link', { name: /needs human action/i })).toHaveClass('bg-secondary');
-    // The Backlog link (active for /code and /code/backlog) is not highlighted here.
     expect(screen.getByRole('link', { name: /^backlog$/i })).not.toHaveClass('bg-secondary');
+  });
+
+  it('highlights the Backlog only on its explicit route (ALF-174)', () => {
+    mockPathname.mockReturnValue('/code/backlog');
+    renderNav(PROJECTS);
+
+    expect(screen.getByRole('link', { name: /^backlog$/i })).toHaveClass('bg-secondary');
+    expect(screen.getByRole('link', { name: /needs human action/i })).not.toHaveClass(
+      'bg-secondary',
+    );
   });
 
   it('lists each project as a link with its key', () => {
