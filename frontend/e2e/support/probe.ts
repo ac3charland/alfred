@@ -118,6 +118,18 @@ export async function sampleDuring(
   return collectSamples(page);
 }
 
+/**
+ * Pull the translateX (the 5th value) out of a computed `matrix(...)` transform string — how
+ * far right an element has slid, in px. `none` (or anything unparsable) reads as 0.
+ */
+export function translateXOf(transform: string): number {
+  const match = /matrix\(([^)]+)\)/.exec(transform);
+  const group = match?.[1];
+  if (group === undefined) return 0;
+  const parts = group.split(',').map((value) => Number(value.trim()));
+  return parts[4] ?? 0;
+}
+
 /** Render frames as a readable, deterministic timeline for debug output / demo docs. */
 export function formatTimeline(frames: ProbeFrame[]): string {
   return frames
