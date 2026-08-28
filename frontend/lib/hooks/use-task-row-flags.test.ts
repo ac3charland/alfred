@@ -45,34 +45,19 @@ const child = (overrides: Partial<ItemNode>): ItemNode => ({
 // The hook holds no state or effects — call it directly (it's a pure derivation).
 describe('useTaskRowFlags', () => {
   describe('item-type flags', () => {
-    it('marks a task node isTask, canConvert, and nothing else', () => {
+    it('marks a task node isTask, and nothing else', () => {
       const flags = useTaskRowFlags({ ...BASE_NODE, item_type: 'task' }, false, EMPTY);
-      expect(flags).toMatchObject({
-        isTask: true,
-        isUnclassified: false,
-        isCode: false,
-        canConvert: true,
-      });
+      expect(flags).toMatchObject({ isTask: true, isUnclassified: false, isCode: false });
     });
 
-    it('marks an unclassified node isUnclassified and canConvert', () => {
+    it('marks an unclassified node isUnclassified', () => {
       const flags = useTaskRowFlags({ ...BASE_NODE, item_type: 'unclassified' }, false, EMPTY);
-      expect(flags).toMatchObject({
-        isTask: false,
-        isUnclassified: true,
-        isCode: false,
-        canConvert: true,
-      });
+      expect(flags).toMatchObject({ isTask: false, isUnclassified: true, isCode: false });
     });
 
-    it('marks a code node isCode and NOT canConvert', () => {
+    it('marks a code node isCode', () => {
       const flags = useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY);
-      expect(flags).toMatchObject({
-        isTask: false,
-        isUnclassified: false,
-        isCode: true,
-        canConvert: false,
-      });
+      expect(flags).toMatchObject({ isTask: false, isUnclassified: false, isCode: true });
     });
   });
 
@@ -91,60 +76,24 @@ describe('useTaskRowFlags', () => {
       ).toBe(false);
     });
 
-    it('marks a code root with children isCodeParent, and a nested code row isCodeChild', () => {
+    it('marks only a code ROOT with children isCodeParent', () => {
       const parent = {
         ...BASE_NODE,
         item_type: 'code' as const,
         children: [child({ item_type: 'code' })],
       };
-      expect(useTaskRowFlags(parent, false, EMPTY)).toMatchObject({
-        isCodeParent: true,
-        isCodeChild: false,
-      });
+      expect(useTaskRowFlags(parent, false, EMPTY).isCodeParent).toBe(true);
+      // A nested code row is a story-to-be: it converts with its parent, never on its own.
       expect(
-        useTaskRowFlags({ ...BASE_NODE, item_type: 'code', parent_id: 'p' }, false, EMPTY),
-      ).toMatchObject({ isCodeParent: false, isCodeChild: true });
-      expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY)).toMatchObject({
-        isCodeParent: false,
-        isCodeChild: false,
-      });
-    });
-
-    it('enables Convert to Code Story only for a convertible row with no children', () => {
-      expect(useTaskRowFlags(BASE_NODE, false, EMPTY).canConvertToStory).toBe(true);
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, item_type: 'unclassified' }, false, EMPTY)
-          .canConvertToStory,
-      ).toBe(true);
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, children: [child({})] }, false, EMPTY).canConvertToStory,
+        useTaskRowFlags({ ...BASE_NODE, item_type: 'code', parent_id: 'p' }, false, EMPTY)
+          .isCodeParent,
       ).toBe(false);
+      expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).isCodeParent).toBe(
+        false,
+      );
+      // A TASK with children is not an epic under construction — its Dispatch files it.
       expect(
-        useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).canConvertToStory,
-      ).toBe(false);
-    });
-
-    it('enables Convert to Code Epic for a task with ≥1 active child and no grandchildren', () => {
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, children: [child({})] }, false, EMPTY).canConvertToEpic,
-      ).toBe(true);
-    });
-
-    it('disables Convert to Code Epic with no children, only completed children, or grandchildren', () => {
-      expect(useTaskRowFlags(BASE_NODE, false, EMPTY).canConvertToEpic).toBe(false);
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, children: [child({ status: 'completed' })] }, false, EMPTY)
-          .canConvertToEpic,
-      ).toBe(false);
-      const withGrandchild = {
-        ...BASE_NODE,
-        children: [
-          child({ children: [{ ...BASE_NODE, id: 'gc-1', parent_id: 'child-1', children: [] }] }),
-        ],
-      };
-      expect(useTaskRowFlags(withGrandchild, false, EMPTY).canConvertToEpic).toBe(false);
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, item_type: 'unclassified' }, false, EMPTY).canConvertToEpic,
+        useTaskRowFlags({ ...BASE_NODE, children: [child({})] }, false, EMPTY).isCodeParent,
       ).toBe(false);
     });
   });

@@ -18,7 +18,7 @@ export type DispatchBlocker =
   | 'needs a folder'
   | 'needs a project'
   | 'needs an epic'
-  | 'convert from its own row menu'
+  | 'dispatch from its own row menu'
   | 'still saving';
 
 export type DispatchReadiness = { ready: true } | { ready: false; blocker: DispatchBlocker };
@@ -30,12 +30,13 @@ export type DispatchCandidate = Pick<
 >;
 
 /**
- * Whether one selected root can be dispatched, and what it's missing when it can't.
+ * Whether one selected root can be dispatched **from the bulk bar**, and what it's missing when
+ * it can't.
  *
  * - A **task** is ready once it carries a folder (its subtree travels with it).
  * - A **code** item is ready once it carries both hints — and has no children, because an
  *   epic-shaped row converts through `convert_to_code_epic`, not `enter_code_module`, so its
- *   path stays the row menu's.
+ *   path stays the row menu's (see {@link rowDispatchAction}).
  * - An **unclassified** row is never ready, and a row still carrying a temp id can't be
  *   PATCHed or passed to an RPC at all.
  */
@@ -48,12 +49,43 @@ export function dispatchReadiness(
     return item.folder_id === null ? { ready: false, blocker: 'needs a folder' } : { ready: true };
   }
   if (item.item_type === 'code') {
-    if (hasChildren) return { ready: false, blocker: 'convert from its own row menu' };
+    if (hasChildren) return { ready: false, blocker: 'dispatch from its own row menu' };
     if (item.intended_project_id === null) return { ready: false, blocker: 'needs a project' };
     if (item.intended_epic_id === null) return { ready: false, blocker: 'needs an epic' };
     return { ready: true };
   }
   return { ready: false, blocker: 'needs a type' };
+}
+
+/**
+ * What a row's ⋯-menu **Dispatch** would do — the row's twin of {@link dispatchReadiness}, and
+ * the only place the two surfaces differ.
+ *
+ * - `send` — the ordinary dispatch: a task (with its subtree) to its folder, a childless code
+ *   row through the factory gate. Exactly `dispatchReadiness`'s "ready".
+ * - `epic` — an epic-shaped code row, which travels through `convert_to_code_epic` instead. Only
+ *   the row can run it (the parent becomes the epic and its children the stories), which is why
+ *   the bulk bar sends that shape here. It needs a project, not an epic hint — the conversion
+ *   creates the epic — so an unset project just means the project dialog opens (`opensDialog`).
+ * - `blocked` — not dispatchable yet, carrying the same blocker the bulk bar's readiness line
+ *   names. `groupHasTempIds` covers the children the item alone can't see: the conversion RPC
+ *   needs real ids for every row in the group.
+ */
+export type RowDispatchAction =
+  | { kind: 'send' }
+  | { kind: 'epic'; opensDialog: boolean }
+  | { kind: 'blocked'; blocker: DispatchBlocker };
+
+export function rowDispatchAction(
+  item: DispatchCandidate,
+  { hasChildren, groupHasTempIds }: { hasChildren: boolean; groupHasTempIds: boolean },
+): RowDispatchAction {
+  if (groupHasTempIds) return { kind: 'blocked', blocker: 'still saving' };
+  if (item.item_type === 'code' && hasChildren && !isTempId(item.id)) {
+    return { kind: 'epic', opensDialog: item.intended_project_id === null };
+  }
+  const readiness = dispatchReadiness(item, hasChildren);
+  return readiness.ready ? { kind: 'send' } : { kind: 'blocked', blocker: readiness.blocker };
 }
 
 /** Singular / plural phrasing per blocker, so a grouped count reads as a sentence. */
@@ -62,9 +94,9 @@ const BLOCKER_PHRASES: Record<DispatchBlocker, { one: string; many: string }> = 
   'needs a folder': { one: 'needs a folder', many: 'need a folder' },
   'needs a project': { one: 'needs a project', many: 'need a project' },
   'needs an epic': { one: 'needs an epic', many: 'need an epic' },
-  'convert from its own row menu': {
-    one: 'convert from its own row menu',
-    many: 'convert from their own row menus',
+  'dispatch from its own row menu': {
+    one: 'dispatch from its own row menu',
+    many: 'dispatch from their own row menus',
   },
   'still saving': { one: 'still saving', many: 'still saving' },
 };
@@ -75,7 +107,7 @@ const BLOCKER_ORDER: DispatchBlocker[] = [
   'needs a folder',
   'needs a project',
   'needs an epic',
-  'convert from its own row menu',
+  'dispatch from its own row menu',
   'still saving',
 ];
 

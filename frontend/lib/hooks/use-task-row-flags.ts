@@ -13,31 +13,16 @@ export interface TaskRowFlags {
    * offered ONLY while still unclassified.
    */
   isUnclassified: boolean;
-  /** A `code`-classified-but-not-yet-sent row — still in the inbox, offering the gate. */
+  /** A `code`-classified-but-not-yet-sent row — still in the inbox, awaiting its dispatch. */
   isCode: boolean;
-  /**
-   * Eligible for the gate's convert paths (a task or unclassified row, both safe to convert;
-   * a `code` row uses "Send to Code module" instead). Renders BOTH "Convert to Code Story…"
-   * and "Convert to Code Epic…", each individually enabled by the two flags below.
-   */
-  canConvert: boolean;
   /**
    * May host subtasks: any task, or a code ROOT (a code child never nests further — the
    * 1-deep rule, enforced here and by the DB trigger). Drives the desktop `+` and the mobile
    * "Add subtask" / "Add story" menu item.
    */
   canAddSubtask: boolean;
-  /** A code root with ≥1 child — the epic under construction ("Send to Code module" converts it). */
+  /** A code root with ≥1 child — the epic under construction (its Dispatch converts it). */
   isCodeParent: boolean;
-  /** A code child (a story-to-be) — reorders among code siblings, converts with its parent. */
-  isCodeChild: boolean;
-  /** "Convert to Code Story…" applies: a convertible row with no subtasks (a story is one item). */
-  canConvertToStory: boolean;
-  /**
-   * "Convert to Code Epic…" applies: a task with ≥1 active child and no grandchildren (the
-   * epic's stories must themselves be 1-deep leaves).
-   */
-  canConvertToEpic: boolean;
   /**
    * A valid drop target lights up: a different, active, reconciled task outside the dragged
    * item's own subtree (re-parenting onto self/a descendant would make a cycle). A non-`task`
@@ -71,17 +56,9 @@ export function useTaskRowFlags(
   const isTask = node.item_type === 'task';
   const isUnclassified = node.item_type === 'unclassified';
   const isCode = node.item_type === 'code';
-  const canConvert = isTask || isUnclassified;
   const isCodeRoot = isCode && node.parent_id === null;
   const canAddSubtask = isTask || isCodeRoot;
   const isCodeParent = isCodeRoot && node.children.length > 0;
-  const isCodeChild = isCode && node.parent_id !== null;
-  const canConvertToStory = canConvert && node.children.length === 0;
-  const activeChildren = node.children.filter((child) => child.status === 'active');
-  const canConvertToEpic =
-    isTask &&
-    activeChildren.length > 0 &&
-    node.children.every((child) => child.children.length === 0);
   const isValidDropTarget =
     isTask &&
     !isCompleted &&
@@ -94,12 +71,8 @@ export function useTaskRowFlags(
     isTask,
     isUnclassified,
     isCode,
-    canConvert,
     canAddSubtask,
     isCodeParent,
-    isCodeChild,
-    canConvertToStory,
-    canConvertToEpic,
     isValidDropTarget,
     canChangeType,
   };

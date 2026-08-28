@@ -102,6 +102,29 @@ const FOLDER: Folder = {
   sort_order: 1,
 };
 
+/** A second folder, so a "Move to…" pick lands somewhere the row isn't already. */
+const ARCHIVE: Folder = {
+  description: null,
+  id: 'folder-2',
+  name: 'Archive',
+  created_at: '2025-01-01T09:30:00Z',
+  sort_order: 2,
+};
+
+/** The folder view "Move to…" still serves: an item filed in Archive, with its subtree. */
+const FILED_ITEM: Item = { ...BASE_ITEM, folder_id: ARCHIVE.id, dispatched_at: DISPATCHED_AT };
+const FILED_CHILD: Item = { ...CHILD_ITEM, folder_id: ARCHIVE.id, dispatched_at: DISPATCHED_AT };
+const FILED_GRANDCHILD: Item = {
+  ...GRANDCHILD_ITEM,
+  folder_id: ARCHIVE.id,
+  dispatched_at: DISPATCHED_AT,
+};
+/** The Archive folder view — where a filed row's menu is exercised. */
+const ARCHIVE_VIEW = {
+  scope: { type: 'folder', folderId: ARCHIVE.id } as const,
+  folders: [FOLDER, ARCHIVE],
+};
+
 /**
  * Render rows through TaskList, seeding the flat item list into the store. Rows come from
  * the scoped selector, so changing an item's status/folder (complete/move) filters it out
@@ -694,11 +717,14 @@ describe('TaskRow', () => {
     // (activateMenuItem / openSubmenu) walk by item NAME so they're robust to the menu's
     // type-gated ordering. Inside the open "Move to…" submenu, "Inbox" is auto-focused;
     // ArrowDown → the first folder.
+    //
+    // Since ALF-185 "Move to…" belongs to rows that have already LEFT the Inbox, so these run
+    // in a folder view: the fixtures are filed in Archive and move to Work.
 
     it('calls updateItem once when moving a leaf task to a folder', async () => {
       mockUpdateItem.mockResolvedValue(BASE_ITEM);
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM], { folders: [FOLDER] });
+      renderTasks([FILED_ITEM], ARCHIVE_VIEW);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
@@ -717,7 +743,7 @@ describe('TaskRow', () => {
     it('calls updateItem for parent and all descendants when moving to a folder', async () => {
       mockUpdateItem.mockResolvedValue(BASE_ITEM);
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM], { folders: [FOLDER] });
+      renderTasks([FILED_ITEM, FILED_CHILD, FILED_GRANDCHILD], ARCHIVE_VIEW);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
@@ -744,7 +770,7 @@ describe('TaskRow', () => {
     it('calls moveToInbox once when moving a leaf task to the inbox', async () => {
       mockMoveToInbox.mockResolvedValue(BASE_ITEM);
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM], { folders: [FOLDER] });
+      renderTasks([FILED_ITEM], ARCHIVE_VIEW);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
@@ -760,7 +786,7 @@ describe('TaskRow', () => {
     it('calls moveToInbox for parent and all descendants when moving to the inbox', async () => {
       mockMoveToInbox.mockResolvedValue(BASE_ITEM);
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM], { folders: [FOLDER] });
+      renderTasks([FILED_ITEM, FILED_CHILD, FILED_GRANDCHILD], ARCHIVE_VIEW);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
@@ -2516,128 +2542,230 @@ describe('TaskRow — classification & type-gating', () => {
   // computed indent left to assert here.
 
   // ---------------------------------------------------------------------------
-  // The gate: Send to Code module / Convert to Code Story menu entries
+  // ALF-185 — Dispatch: the one row-menu entry that sends an item where it belongs
   // ---------------------------------------------------------------------------
 
-  describe('the gate menu entries', () => {
-    it('offers "Send to Code module…" on a code-classified item', async () => {
+  describe('Dispatch — the row menu (ALF-185)', () => {
+    const PROJECT: Project = {
+      description: null,
+      id: 'p1',
+      name: 'Alfred',
+      key: 'ALF',
+      repo_owner: 'ac3charland',
+      repo_name: 'alfred',
+      github_url: null,
+      ref_seq: 0,
+      created_at: '2025-01-01T00:00:00Z',
+    };
+    const EPIC: Epic = {
+      id: 'e1',
+      project_id: 'p1',
+      name: 'Firewall',
+      notes: null,
+      ref_number: 1,
+      ref: 'ALF-1',
+      archived_at: null,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+      created_at: '2025-01-01T00:00:00Z',
+    };
+    /** A task already wearing its folder label — the shape Dispatch files. */
+    const LABELLED_TASK: Item = { ...BASE_ITEM, folder_id: FOLDER.id };
+    /** A code row wearing both hints — the shape Dispatch sends through the factory gate. */
+    const LABELLED_CODE: Item = {
+      ...BASE_ITEM,
+      item_type: 'code',
+      intended_project_id: 'p1',
+      intended_epic_id: 'e1',
+    };
+
+    const STORY = {
+      item_id: 'item-1',
+      project_id: 'p1',
+      epic_id: 'e1',
+      ref_number: 42,
+      ref: 'ALF-42',
+      factory_state: 'needs_refinement' as const,
+      lane: 'human' as const,
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+      implementation_pr_url: null,
+      blocked_reason: null,
+      blocked_from: null,
+      requires_refinement: true,
+      created_at: '2025-01-02T00:00:00Z',
+      updated_at: '2025-01-02T00:00:00Z',
+      priority: 1,
+    };
+
+    it('replaces the send/convert entries with a single Dispatch', async () => {
+      // The three entries ALF-185 folded in are gone from every shape that used to carry one.
       const user = userEvent.setup();
-      renderTasks([CODE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByRole('menuitem', { name: /send to code module/i })).toBeInTheDocument();
-      // A code item is NOT a task/unclassified, so it does not offer Convert.
-      expect(
-        screen.queryByRole('menuitem', { name: /convert to code story/i }),
-      ).not.toBeInTheDocument();
+      for (const item of [BASE_ITEM, CODE_ITEM, UNCLASSIFIED_ITEM]) {
+        const view = renderTasks([item]);
+        await openMenuFor(user, 'Write tests');
+        expect(screen.getByRole('menuitem', { name: /^dispatch/i })).toBeInTheDocument();
+        expect(screen.queryByRole('menuitem', { name: /send to code module/i })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: /convert to code/i })).toBeNull();
+        view.unmount();
+      }
     });
 
-    it('offers "Convert to Code Story…" on a task (not Send to Code module)', async () => {
+    it('files a labelled task into its folder and links the toast to it', async () => {
+      mockUpdateItem.mockResolvedValue({ ...LABELLED_TASK, dispatched_at: DISPATCHED_AT });
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
+      renderTasks([LABELLED_TASK], { folders: [FOLDER] });
 
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
+      await openMenuFor(user, 'Write tests');
+      await activateMenuItem(user, /^dispatch$/i);
 
-      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).toBeInTheDocument();
-      expect(
-        screen.queryByRole('menuitem', { name: /send to code module/i }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('offers "Convert to Code Story…" on an unclassified item', async () => {
-      const user = userEvent.setup();
-      renderTasks([UNCLASSIFIED_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-
-      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).toBeInTheDocument();
-    });
-
-    it('opens the gate dialog from "Send to Code module…"', async () => {
-      const user = userEvent.setup();
-      renderTasks([CODE_ITEM]);
-
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /send to code module/i);
-
-      // The gate dialog opens, naming the item it will admit.
-      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
-      expect(within(dialog).getByText(/write tests/i)).toBeInTheDocument();
-    });
-
-    it('removes the item and toasts the ref when the gate completes', async () => {
-      // One project + epic seeded into the CodeProvider so the gate can be confirmed end to end.
-      const project: Project = {
-        description: null,
-        id: 'p1',
-        name: 'Alfred',
-        key: 'ALF',
-        repo_owner: 'ac3charland',
-        repo_name: 'alfred',
-        github_url: null,
-        ref_seq: 0,
-        created_at: '2025-01-01T00:00:00Z',
-      };
-      const epic: Epic = {
-        id: 'e1',
-        project_id: 'p1',
-        name: 'Firewall',
-        notes: null,
-        ref_number: 1,
-        ref: 'ALF-1',
-        archived_at: null,
-        spec_path: null,
-        spec_sha: null,
-        spec_markdown: null,
-        refinement_pr_url: null,
-        created_at: '2025-01-01T00:00:00Z',
-      };
-      mockEnterCodeModule.mockResolvedValue({
-        item_id: 'item-1',
-        project_id: 'p1',
-        epic_id: 'e1',
-        ref_number: 42,
-        ref: 'ALF-42',
-        factory_state: 'needs_refinement',
-        lane: 'human',
-        spec_path: null,
-        spec_sha: null,
-        spec_markdown: null,
-        refinement_pr_url: null,
-        implementation_pr_url: null,
-        blocked_reason: null,
-        blocked_from: null,
-        requires_refinement: true,
-        created_at: '2025-01-02T00:00:00Z',
-        updated_at: '2025-01-02T00:00:00Z',
-        priority: 1,
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { dispatched: true });
       });
+      // The toast names the destination and jumps to it…
+      expect(await screen.findByRole('link', { name: 'Dispatched to Work' })).toHaveAttribute(
+        'href',
+        '/folders/folder-1',
+      );
+      // …and the row has left the Inbox for that folder.
+      await waitFor(() => {
+        expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+      });
+    });
 
+    it('dispatches a decomposed task with its whole subtree', async () => {
+      // Residency travels with the subtree — one coherent write per row, as bulk Move does.
+      mockUpdateItem.mockResolvedValue({ ...LABELLED_TASK, dispatched_at: DISPATCHED_AT });
       const user = userEvent.setup();
-      renderTasks([CODE_ITEM], { projects: [project], epics: [epic] });
+      renderTasks(
+        [
+          LABELLED_TASK,
+          { ...CHILD_ITEM, folder_id: FOLDER.id },
+          { ...GRANDCHILD_ITEM, folder_id: FOLDER.id },
+        ],
+        { folders: [FOLDER] },
+      );
 
-      await user.click(screen.getByRole('button', { name: /more actions/i }));
-      await screen.findByRole('menu');
-      await activateMenuItem(user, /send to code module/i);
+      await openMenuFor(user, 'Write tests');
+      await activateMenuItem(user, /^dispatch$/i);
 
-      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
-      await user.click(await within(dialog).findByRole('option', { name: /alfred/i }));
-      await user.click(await within(dialog).findByRole('option', { name: /firewall/i }));
-      await user.click(within(dialog).getByRole('button', { name: /send to code module/i }));
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledTimes(3);
+      });
+      for (const id of ['item-1', 'item-2', 'item-3']) {
+        expect(mockUpdateItem).toHaveBeenCalledWith(id, { dispatched: true });
+      }
+    });
 
-      // The toast announces the new ref and deep-links to the story's board modal…
+    it('toasts without a link when the labelled folder is no longer around', async () => {
+      // The label is a bare id: if the folder has gone the dispatch still stands, it just has
+      // no name to announce or view to open.
+      mockUpdateItem.mockResolvedValue({ ...LABELLED_TASK, dispatched_at: DISPATCHED_AT });
+      const user = userEvent.setup();
+      renderTasks([LABELLED_TASK], { folders: [] });
+
+      await openMenuFor(user, 'Write tests');
+      await activateMenuItem(user, /^dispatch$/i);
+
+      expect(await screen.findByText('Dispatched')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /dispatched/i })).toBeNull();
+    });
+
+    it('leaves the row in the Inbox when the dispatch fails', async () => {
+      mockUpdateItem.mockRejectedValue(new Error('Network error'));
+      const user = userEvent.setup();
+      renderTasks([LABELLED_TASK], { folders: [FOLDER] });
+
+      await openMenuFor(user, 'Write tests');
+      await activateMenuItem(user, /^dispatch$/i);
+
+      // The store's own failure toast stands; no success toast, and the row rolls back.
+      expect(await screen.findByText("1 of 1 couldn't be dispatched")).toBeInTheDocument();
+      expect(screen.queryByText(/dispatched to/i)).toBeNull();
+      expect(screen.getByText('Write tests')).toBeInTheDocument();
+    });
+
+    it('sends a fully-labelled code row through the factory with no dialog', async () => {
+      mockEnterCodeModule.mockResolvedValue(STORY);
+      const user = userEvent.setup();
+      renderTasks([LABELLED_CODE], { projects: [PROJECT], epics: [EPIC] });
+
+      await openMenuFor(user, 'Write tests');
+      await activateMenuItem(user, /^dispatch$/i);
+
+      // No gate opens — the labels already answered everything it would have asked.
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await waitFor(() => {
+        expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1');
+      });
+      // The toast keeps the gate's own confirmation: the allocated ref, deep-linked.
       expect(await screen.findByRole('link', { name: 'Created ALF-42' })).toHaveAttribute(
         'href',
         '/code/p1?story=ALF-42',
       );
-      // …and the gated item has left the inbox view (removed from the store).
       await waitFor(() => {
         expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('the disabled hints — what the row is still missing', () => {
+      // The blocker IS the hint, in the same words the bulk bar's readiness line uses.
+      it.each([
+        ['an unclassified row', UNCLASSIFIED_ITEM, 'Not ready — needs a type'],
+        ['a task with no folder', BASE_ITEM, 'Not ready — needs a folder'],
+        ['a code row with no project', CODE_ITEM, 'Not ready — needs a project'],
+        [
+          'a code row with no epic',
+          { ...CODE_ITEM, intended_project_id: 'p1' },
+          'Not ready — needs an epic',
+        ],
+        [
+          'a row still saving',
+          { ...BASE_ITEM, id: 'temp-1', folder_id: FOLDER.id },
+          'Not ready — still saving',
+        ],
+      ])('disables Dispatch on %s', async (_label, item, hint) => {
+        const user = userEvent.setup();
+        renderTasks([item], { folders: [FOLDER], projects: [PROJECT] });
+
+        await openMenuFor(user, 'Write tests');
+        const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
+        expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
+        expect(dispatchItem).toHaveAttribute('title', hint);
+      });
+    });
+
+    describe('the visibility gate — Inbox rows only', () => {
+      it('offers no Dispatch on a subtask (residency travels with its root)', async () => {
+        const user = userEvent.setup();
+        renderTasks([LABELLED_TASK, { ...CHILD_ITEM, folder_id: FOLDER.id }], {
+          folders: [FOLDER],
+        });
+
+        await expandRow(user, 'Write tests');
+        await openMenuFor(user, 'Write unit tests');
+        expect(screen.queryByRole('menuitem', { name: /^dispatch/i })).toBeNull();
+      });
+
+      it('offers Move to… instead of Dispatch once the row has been filed', async () => {
+        const user = userEvent.setup();
+        renderTasks([FILED_ITEM], ARCHIVE_VIEW);
+
+        await openMenuFor(user, 'Write tests');
+        expect(screen.queryByRole('menuitem', { name: /^dispatch/i })).toBeNull();
+        expect(screen.getByRole('menuitem', { name: /move to…/i })).toBeInTheDocument();
+      });
+
+      it('offers neither on a completed history row', async () => {
+        const user = userEvent.setup();
+        renderTasks([COMPLETED_FOLDER_ITEM], { ...COMPLETED, folders: [FOLDER] });
+
+        await openMenuFor(user, 'Write tests');
+        expect(screen.queryByRole('menuitem', { name: /^dispatch/i })).toBeNull();
       });
     });
   });
@@ -2726,14 +2854,13 @@ describe('TaskRow — epic construction (ALF-129)', () => {
       expect(within(childRow).queryByRole('button', { name: 'Add subtask' })).toBeNull();
     });
 
-    it('offers no send/convert entry in a code child’s menu (it converts with its parent)', async () => {
+    it('offers no dispatch entry in a code child’s menu (it converts with its parent)', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_PARENT, ...CODE_CHILDREN]);
 
       await expandRow(user, 'Construction inbox');
       await openMenuFor(user, 'S1');
-      expect(screen.queryByRole('menuitem', { name: /send to code module/i })).toBeNull();
-      expect(screen.queryByRole('menuitem', { name: /convert to code/i })).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /^dispatch/i })).toBeNull();
       expect(screen.queryByRole('menuitem', { name: /add story/i })).toBeNull();
     });
 
@@ -2757,76 +2884,13 @@ describe('TaskRow — epic construction (ALF-129)', () => {
     });
   });
 
-  describe('the convert menu matrix', () => {
-    it('a childless task: Story enabled, Epic disabled with the epic-shape hint', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
-
-      await openMenuFor(user, 'Write tests');
-      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).not.toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-      const epicItem = screen.getByRole('menuitem', { name: /convert to code epic/i });
-      expect(epicItem).toHaveAttribute('aria-disabled', 'true');
-      expect(epicItem).toHaveAttribute(
-        'title',
-        expect.stringMatching(/needs at least one subtask/i),
-      );
-    });
-
-    it('a task with an active child: Epic enabled, Story disabled with the story hint', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
-
-      await openMenuFor(user, 'Write tests');
-      const storyItem = screen.getByRole('menuitem', { name: /convert to code story/i });
-      expect(storyItem).toHaveAttribute('aria-disabled', 'true');
-      expect(storyItem).toHaveAttribute('title', expect.stringMatching(/single item/i));
-      expect(screen.getByRole('menuitem', { name: /convert to code epic/i })).not.toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-    });
-
-    it('a task with grandchildren: both entries disabled (visible, hinted)', async () => {
-      const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM, GRANDCHILD_ITEM]);
-
-      await openMenuFor(user, 'Write tests');
-      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-      expect(screen.getByRole('menuitem', { name: /convert to code epic/i })).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-    });
-
-    it('an unclassified row: Story enabled, Epic disabled', async () => {
-      const user = userEvent.setup();
-      renderTasks([UNCLASSIFIED_ITEM]);
-
-      await openMenuFor(user, 'Write tests');
-      expect(screen.getByRole('menuitem', { name: /convert to code story/i })).not.toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-      expect(screen.getByRole('menuitem', { name: /convert to code epic/i })).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
-    });
-  });
-
-  describe('the code parent send', () => {
-    it('keeps the "…" on the send label when the project dialog will open (no intended project)', async () => {
+  describe('the code parent dispatch', () => {
+    it('keeps the "…" on Dispatch when the project dialog will open (no intended project)', async () => {
       const user = userEvent.setup();
       renderTasks([CODE_PARENT, ...CODE_CHILDREN], { projects: [PROJECT] });
 
       await openMenuFor(user, 'Construction inbox');
-      expect(screen.getByRole('menuitem', { name: 'Send to Code module…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Dispatch…' })).toBeInTheDocument();
     });
 
     it('drops the "…" and converts immediately when an intended project is set', async () => {
@@ -2837,7 +2901,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
       });
 
       await openMenuFor(user, 'Construction inbox');
-      await activateMenuItem(user, /^send to code module$/i);
+      await activateMenuItem(user, /^dispatch$/i);
 
       // No dialog opens — the conversion fires straight away…
       expect(screen.queryByRole('dialog')).toBeNull();
@@ -2861,7 +2925,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
       renderTasks([CODE_PARENT, ...CODE_CHILDREN], { projects: [PROJECT] });
 
       await openMenuFor(user, 'Construction inbox');
-      await activateMenuItem(user, /send to code module…/i);
+      await activateMenuItem(user, /^dispatch…$/i);
 
       const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
       // The read-only preview lists the epic name and the ordered story titles — no epic picker.
@@ -2886,31 +2950,48 @@ describe('TaskRow — epic construction (ALF-129)', () => {
         expect(screen.queryByText('Construction inbox')).not.toBeInTheDocument();
       });
     });
+
+    it('disables Dispatch while a story in the group is still saving', async () => {
+      // The conversion RPC needs real ids for the parent AND every child.
+      const user = userEvent.setup();
+      renderTasks(
+        [
+          { ...CODE_PARENT, intended_project_id: 'p1' },
+          { ...CODE_CHILDREN[0], id: 'temp-story' } as Item,
+        ],
+        { projects: [PROJECT] },
+      );
+
+      await openMenuFor(user, 'Construction inbox');
+      const dispatchItem = screen.getByRole('menuitem', { name: /^dispatch$/i });
+      expect(dispatchItem).toHaveAttribute('aria-disabled', 'true');
+      expect(dispatchItem).toHaveAttribute('title', 'Not ready — still saving');
+    });
   });
 
-  describe('Convert to Code Epic… on a task', () => {
-    it('opens the epic gate; on success the parent completes and leaves the active inbox', async () => {
-      mockConvertToCodeEpic.mockResolvedValue({
-        ...CONVERTED,
-        stories: [{ ...CONVERTED_STORY_1, item_id: 'item-2' }],
-      });
+  describe('a decomposed TASK is filed, not converted (ALF-185)', () => {
+    it('dispatches to its folder — the epic path belongs to code rows now', async () => {
+      mockUpdateItem.mockResolvedValue(BASE_ITEM);
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM], { projects: [PROJECT] });
+      renderTasks(
+        [
+          { ...BASE_ITEM, folder_id: FOLDER.id },
+          { ...CHILD_ITEM, folder_id: FOLDER.id },
+        ],
+        {
+          folders: [FOLDER],
+          projects: [PROJECT],
+        },
+      );
 
       await openMenuFor(user, 'Write tests');
-      await activateMenuItem(user, /convert to code epic/i);
-
-      const dialog = await screen.findByRole('dialog', { name: /send to code module/i });
-      await user.click(within(dialog).getByRole('option', { name: /alfred/i }));
-      await user.click(within(dialog).getByRole('button', { name: /^send to code$/i }));
+      expect(screen.queryByRole('menuitem', { name: /convert to code/i })).toBeNull();
+      await activateMenuItem(user, /^dispatch$/i);
 
       await waitFor(() => {
-        expect(mockConvertToCodeEpic).toHaveBeenCalledWith('item-1', 'p1');
+        expect(mockConvertToCodeEpic).not.toHaveBeenCalled();
       });
-      // The parent is completed (not deleted): it leaves the ACTIVE inbox view.
-      await waitFor(() => {
-        expect(screen.queryByText('Write tests')).not.toBeInTheDocument();
-      });
+      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { dispatched: true });
     });
   });
 });
@@ -3101,9 +3182,20 @@ describe('TaskRow — ⋯ menu (ALF-67)', () => {
     expect(screen.queryByRole('menuitem', { name: /duplicate/i })).not.toBeInTheDocument();
   });
 
-  it('still offers Move to… and Delete', async () => {
+  it('offers Dispatch and Delete on an Inbox row, and no Move to…', async () => {
+    // Inside the Inbox a folder is a LABEL (the chip) that Dispatch acts on, not a move.
     const user = userEvent.setup();
     renderTasks([BASE_ITEM], { folders: [FOLDER] });
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    expect(screen.getByRole('menuitem', { name: /^dispatch$/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /^delete$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /move to/i })).toBeNull();
+  });
+
+  it('still offers Move to… and Delete on a filed row', async () => {
+    const user = userEvent.setup();
+    renderTasks([FILED_ITEM], ARCHIVE_VIEW);
     await user.click(screen.getByRole('button', { name: /more actions/i }));
     await screen.findByRole('menu');
     expect(screen.getByRole('menuitem', { name: /move to/i })).toBeInTheDocument();
