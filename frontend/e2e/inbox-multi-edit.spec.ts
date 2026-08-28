@@ -24,8 +24,16 @@ test.describe('inbox multi-edit', () => {
     });
     await page.goto('/?view=inbox');
 
+    // ALF-105: browsing the Inbox, an untriaged row stays bare…
+    await expect(page.getByText('Unclassified')).toHaveCount(0);
+
     // Enter select mode; each row becomes a selection checkbox.
     await page.getByRole('button', { name: 'Select' }).click();
+
+    // …and inside select mode every row names its type, since that is what the bulk actions
+    // gate on: all three captures are unclassified, so all three wear the badge.
+    await expect(page.getByText('Unclassified')).toHaveCount(3);
+
     await page.getByRole('button', { name: /select "Email the accountant about Q2"/i }).click();
     await page.getByRole('button', { name: /select "Draft the onboarding doc"/i }).click();
 

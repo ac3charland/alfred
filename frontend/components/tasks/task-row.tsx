@@ -215,8 +215,18 @@ export function TaskRow({
   // by side, where a bare task row and an unclassified row would otherwise be pixel-identical
   // while behaving differently under Dispatch. Everywhere else (folder views, Completed,
   // subtasks) a task keeps showing no badge — the ALF-67 / ALF-65 judgement, intact everywhere
-  // it was made about. An unclassified row has no badge.
-  const showTypeBadge = node.item_type === 'code' || (node.item_type === 'task' && isInboxRow);
+  // it was made about.
+  //
+  // "Unclassified" is narrower still: select mode only (ALF-105). That is the one surface where
+  // the type is not context you can infer but the input to the press — every bulk action gates
+  // on it (Classify needs a childless root, Move refuses a code row, Dispatch skips an
+  // unclassified one) — so all three types must name themselves or the readiness line is the
+  // only place the composition of the selection shows. Outside select mode an untriaged row
+  // stays bare: browsing the Inbox, "no badge yet" is the quieter, already-correct signal.
+  const showTypeBadge =
+    node.item_type === 'code' ||
+    (node.item_type === 'task' && isInboxRow) ||
+    (node.item_type === 'unclassified' && inSelectMode);
 
   // Where this row's labels came from — the classifier, your own hand, or nothing yet (ALF-180).
   // Inbox rows only, and each clause earns its place: the classifier's sweep predicate is
