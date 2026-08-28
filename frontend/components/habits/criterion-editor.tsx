@@ -5,7 +5,8 @@ import * as React from 'react';
 import { Button } from '@/components/atoms/button';
 import { OptionButton } from '@/components/atoms/option-button';
 import { TextField } from '@/components/atoms/text-field';
-import { minutesToTime, timeToMinutes } from '@/components/habits/habit-format';
+import { UnitField } from '@/components/atoms/unit-field';
+import { DURATION_UNIT, minutesToTime, timeToMinutes } from '@/components/habits/habit-format';
 import type { Comparator, CriterionKind, HabitCriterion } from '@/lib/habits';
 
 /** A criterion without its key — the key is minted (and then frozen) by the form that owns it. */
@@ -148,9 +149,12 @@ export function CriterionEditor({
           </div>
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <label htmlFor={`${fieldId}-target`}>{COMPARATOR_WORDS[kind][comparator]}</label>
-            <TextField
+            <UnitField
               id={`${fieldId}-target`}
               type={kind === 'time' ? 'time' : 'number'}
+              // A duration is typed as bare minutes, so the field has to say so; a count's unit
+              // is whatever the label above already calls the things being counted.
+              unit={kind === 'duration' ? DURATION_UNIT : undefined}
               value={target}
               onChange={(event_) => {
                 setTarget(event_.target.value);

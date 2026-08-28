@@ -140,6 +140,38 @@ describe('NewHabitDialog — building a criterion', () => {
     ).toBeInTheDocument();
   });
 
+  it('adds a duration criterion whose target says the minutes it is counted in', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await addCriterion(user, 'A duration', 'meditate', '20');
+
+    // The number is stored as bare minutes, so the sentence is where that unit gets said.
+    expect(
+      screen.getByRole('button', { name: 'Edit criterion: meditate 20 min' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says the unit beside the duration target being typed, not only after saving', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(screen.getByRole('button', { name: 'Add a criterion' }));
+    await user.click(screen.getByRole('button', { name: /A duration/ }));
+
+    expect(screen.getByLabelText('At least')).toHaveAccessibleDescription('min');
+  });
+
+  it('leaves a count target unitless — its unit is whatever the label says', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.click(screen.getByRole('button', { name: 'Add a criterion' }));
+    await user.click(screen.getByRole('button', { name: /A count/ }));
+
+    expect(screen.getByLabelText('At least')).toHaveAccessibleDescription('');
+  });
+
   it('reopens the same editor prefilled when an existing chip is clicked', async () => {
     const user = userEvent.setup();
     renderDialog();

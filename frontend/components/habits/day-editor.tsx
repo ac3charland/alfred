@@ -12,8 +12,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/atoms/dropdown-menu';
 import { IconButton } from '@/components/atoms/icon-button';
-import { TextField } from '@/components/atoms/text-field';
+import { UnitField } from '@/components/atoms/unit-field';
 import {
+  DURATION_UNIT,
   STATUS_WORD,
   formatShortDate,
   minutesToTime,
@@ -144,8 +145,10 @@ function MeasuredField({
   };
 
   return (
-    <TextField
+    <UnitField
       type={isTime ? 'time' : 'number'}
+      // The value stored for a duration is bare minutes; nothing else on this row says so.
+      unit={criterion.kind === 'duration' ? DURATION_UNIT : undefined}
       aria-label={criterion.label}
       value={text}
       onChange={(event_) => {
