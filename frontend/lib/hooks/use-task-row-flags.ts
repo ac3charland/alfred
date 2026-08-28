@@ -21,8 +21,6 @@ export interface TaskRowFlags {
    * "Add subtask" / "Add story" menu item.
    */
   canAddSubtask: boolean;
-  /** A code root with ≥1 child — the epic under construction (its Dispatch converts it). */
-  isCodeParent: boolean;
   /**
    * A valid drop target lights up: a different, active, reconciled task outside the dragged
    * item's own subtree (re-parenting onto self/a descendant would make a cycle). A non-`task`
@@ -58,7 +56,6 @@ export function useTaskRowFlags(
   const isCode = node.item_type === 'code';
   const isCodeRoot = isCode && node.parent_id === null;
   const canAddSubtask = isTask || isCodeRoot;
-  const isCodeParent = isCodeRoot && node.children.length > 0;
   const isValidDropTarget =
     isTask &&
     !isCompleted &&
@@ -72,7 +69,6 @@ export function useTaskRowFlags(
     isUnclassified,
     isCode,
     canAddSubtask,
-    isCodeParent,
     isValidDropTarget,
     canChangeType,
   };

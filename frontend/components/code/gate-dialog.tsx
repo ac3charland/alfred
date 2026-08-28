@@ -234,10 +234,12 @@ function GateForm({ items, onOpenChange, onComplete }: Omit<GateDialogProperties
 }
 
 /**
- * The gate: a Radix Dialog that admits an item to the Software Factory. Entered from
- * either "Send to Code module…" (a code-classified inbox item) or "Convert to Code
- * Story…" (a task). The user picks a Project then an Epic (both blank until chosen; both
- * offer "+ New …"); Confirm is disabled until BOTH are set, then calls `enter_code_module`.
+ * The gate: a Radix Dialog that admits an item to the Software Factory. Entered from the
+ * Inbox bulk bar's "Send to Code…" — the "choose the project and epic now" path, and the
+ * only one that can create either on the way through (a row whose hints are already set
+ * dispatches from its own menu instead). The user picks a Project then an Epic (both blank
+ * until chosen; both offer "+ New …"); Confirm is disabled until BOTH are set, then calls
+ * `enter_code_module`.
  *
  * Since ALF-27 the CodeProvider is seeded at the shared shell layout, so it wraps the Tasks
  * view too: the gate reads the project/epic lists from the store and routes its creates + the

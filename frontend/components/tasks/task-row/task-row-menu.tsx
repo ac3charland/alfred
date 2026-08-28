@@ -80,10 +80,10 @@ interface TaskRowMenuProperties {
  * inline "+" button is desktop-only, so the affordance collapses into this menu below `md`
  * (ALF-118); the item is `md:hidden` so desktop never doubles up. Then the triage pair, in the
  * order the Inbox is worked: **Classify as…** sets the labels, **Dispatch** acts on them —
- * one entry for every destination, disabled with the blocker as its hint until the labels are
- * complete (ALF-185 folded "Send to Code module" and the two Convert entries into it). A row
- * that has already left the Inbox offers **Move to…** instead, the only place a folder is
- * still a move rather than a label. Finally a destructive Delete below a divider. Every
+ * one entry for every destination (a folder, the factory, a new epic), disabled with the
+ * blocker as its hint until the labels are complete (ALF-185). A row that has already left the
+ * Inbox offers **Move to…** instead, the only place a folder is still a move rather than a
+ * label. Finally a destructive Delete below a divider. Every
  * conditional stays encapsulated here so the row body composes the menu without restating them.
  */
 export function TaskRowMenu({

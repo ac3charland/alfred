@@ -159,11 +159,12 @@ function EpicGateForm({
 }
 
 /**
- * The epic gate (ALF-129): a sibling of `GateDialog` for converting a 1-deep parent (a code
- * inbox item without an intended project, or a task via "Convert to Code Epic…") into a new
- * epic plus its ordered stories. A project picker plus a read-only preview — there is no epic
- * picker, because the epic is being created. Confirm is disabled until a project is chosen;
- * on confirm it calls the store's `convertToCodeEpic` and hands the result to `onComplete`.
+ * The epic gate (ALF-129): a sibling of `GateDialog` for converting a 1-deep code parent that
+ * carries no intended project into a new epic plus its ordered stories — where the row menu's
+ * Dispatch lands when the target still has to be asked for. A project picker plus a read-only
+ * preview — there is no epic picker, because the epic is being created. Confirm is disabled
+ * until a project is chosen; on confirm it calls the store's `convertToCodeEpic` and hands the
+ * result to `onComplete`.
  */
 export function EpicGateDialog({
   open,

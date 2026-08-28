@@ -61,7 +61,7 @@ describe('useTaskRowFlags', () => {
     });
   });
 
-  describe('subtask affordance + epic-shape flags (ALF-129)', () => {
+  describe('the subtask affordance', () => {
     it('lets a task and a code ROOT add subtasks, but not a code child or unclassified row', () => {
       expect(useTaskRowFlags(BASE_NODE, false, EMPTY).canAddSubtask).toBe(true);
       expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).canAddSubtask).toBe(
@@ -73,27 +73,6 @@ describe('useTaskRowFlags', () => {
       ).toBe(false);
       expect(
         useTaskRowFlags({ ...BASE_NODE, item_type: 'unclassified' }, false, EMPTY).canAddSubtask,
-      ).toBe(false);
-    });
-
-    it('marks only a code ROOT with children isCodeParent', () => {
-      const parent = {
-        ...BASE_NODE,
-        item_type: 'code' as const,
-        children: [child({ item_type: 'code' })],
-      };
-      expect(useTaskRowFlags(parent, false, EMPTY).isCodeParent).toBe(true);
-      // A nested code row is a story-to-be: it converts with its parent, never on its own.
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, item_type: 'code', parent_id: 'p' }, false, EMPTY)
-          .isCodeParent,
-      ).toBe(false);
-      expect(useTaskRowFlags({ ...BASE_NODE, item_type: 'code' }, false, EMPTY).isCodeParent).toBe(
-        false,
-      );
-      // A TASK with children is not an epic under construction — its Dispatch files it.
-      expect(
-        useTaskRowFlags({ ...BASE_NODE, children: [child({})] }, false, EMPTY).isCodeParent,
       ).toBe(false);
     });
   });

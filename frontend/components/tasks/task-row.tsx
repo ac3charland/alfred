@@ -183,10 +183,14 @@ export function TaskRow({
   // be dragged to re-parent it; an active task can also be filed into a folder. A completed
   // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
   const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
-  // Item-type flags + drop-target validity (completion/due-date/subtask gating, the epic-shaped
-  // dispatch, the drop highlight) all derive from the node — see useTaskRowFlags.
-  const { isTask, isCode, canAddSubtask, isCodeParent, isValidDropTarget, canChangeType } =
-    useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
+  // Item-type flags + drop-target validity (completion/due-date/subtask gating, the drop
+  // highlight) all derive from the node — see useTaskRowFlags.
+  const { isTask, isCode, canAddSubtask, isValidDropTarget, canChangeType } = useTaskRowFlags(
+    node,
+    isCompleted,
+    draggedSubtreeIds,
+    activeDragItemType,
+  );
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
   // Repeat control. A subtask or non-task row never recurs (the control is hidden there).
@@ -558,14 +562,13 @@ export function TaskRow({
   // unreconciled temp id (the same guard canDrag applies).
   const groupHasTempIds = isTempId(node.id) || node.children.some((child) => isTempId(child.id));
 
-  // Settle the conversion: the children have left task_items and the parent is consumed —
-  // deleted for a code row, completed for a task (its history stays). Toast deep-links to the
-  // project board (the same toast-with-href seam the story gate uses).
+  // Settle the conversion: the children have left task_items and the RPC has consumed the
+  // parent, so the whole group leaves the store. Toast deep-links to the project board (the
+  // same toast-with-href seam the story gate uses).
   const handleEpicComplete = (result: ConvertedEpic) => {
     settleEpicConversion({
       parentId: node.id,
       childIds: result.stories.map((story) => story.item_id),
-      parentOutcome: isCode ? 'removed' : 'completed',
     });
     const count = result.stories.length;
     showToast(
@@ -576,10 +579,11 @@ export function TaskRow({
   };
 
   // A code parent captured with a project prefix converts immediately — no dialog; without one
-  // the project-only epic gate opens and asks. Reached only through Dispatch (ALF-185).
+  // the project-only epic gate opens and asks. Reached only through Dispatch, and only for a
+  // code parent (`rowDispatchAction`'s `epic`), so the shape needs no re-checking here.
   const handleConvertToEpic = () => {
     const intendedProjectId = node.intended_project_id;
-    if (isCodeParent && intendedProjectId !== null) {
+    if (intendedProjectId !== null) {
       void (async () => {
         try {
           const result = await convertToCodeEpic(

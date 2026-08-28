@@ -42,7 +42,7 @@ test.describe('inbox classification', () => {
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Classify as…' }).hover();
     await page.keyboard.press('ArrowRight');
-    // `exact` so "Code" doesn't also match the "Convert to Code Story…" menu item.
+    // `exact` so the submenu's own "Code" is the match, not a longer entry containing the word.
     await expect(page.getByRole('menuitem', { name: 'Code', exact: true })).toBeVisible();
     // ArrowDown moves from "Task" (first) to "Code"; wait for focus before selecting.
     await page.keyboard.press('ArrowDown');

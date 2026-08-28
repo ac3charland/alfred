@@ -200,9 +200,9 @@ export interface CodeActions {
    */
   enterCodeModule: (itemId: string, projectId: string, epicId: string) => Promise<CodeStory>;
   /**
-   * Convert a task surfaced inside the Code view into a code story — same RPC + same
-   * optimistic insert as `enterCodeModule`; distinct name so the call site reads as the
-   * "Convert to Code Story" intent.
+   * Admit an item that lives in the Tasks domain — an Inbox row, through the gate or its own
+   * Dispatch — to the factory. Same RPC and same optimistic insert as `enterCodeModule`;
+   * distinct name so the call site reads as the crossing between the two domains.
    */
   convertTaskToCode: (
     item: { id: string; title: string; notes: string | null; source_url: string | null },
@@ -210,8 +210,8 @@ export interface CodeActions {
     epicId: string,
   ) => Promise<CodeStory>;
   /**
-   * The epic conversion (ALF-129): turn a 1-deep parent (a code inbox item or a decomposed
-   * task) into a NEW epic plus one story per child, in the children's display order. The
+   * The epic conversion (ALF-129): turn a 1-deep code parent into a NEW epic plus one story
+   * per child, in the children's display order. The
    * caller passes the children already in display order; the optimistic cards mirror the
    * server's bottom-up priority walk so they sort into the same slots the RPC reconciles to.
    * The parent's tasks-store settlement (`settleEpicConversion`) is the caller's, on success.
@@ -655,8 +655,8 @@ export function CodeProvider({
   }, [showToast]);
 
   const actions = React.useMemo<CodeActions>(() => {
-    // Shared insert-optimistic-then-reconcile path for both gate entry points (the
-    // "Send to Code module" and "Convert to Code Story"), so neither relies on `this`.
+    // Shared insert-optimistic-then-reconcile path for both entry points (an item already
+    // known to the Code view, and one crossing from Tasks), so neither relies on `this`.
     async function admitToFactory(
       item: { id: string; title: string; notes: string | null; source_url: string | null },
       projectId: string,

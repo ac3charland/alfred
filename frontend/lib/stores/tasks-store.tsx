@@ -193,16 +193,12 @@ interface TaskActions {
   removeGatedItem: (id: string) => void;
   /**
    * Reflect a completed epic conversion (ALF-129): the converted children have left
-   * `task_items` (they now have sidecars), and the parent is either completed (a task keeps
-   * its history + completed children) or removed (a code inbox row, which the RPC deletes).
-   * Like `removeGatedItem`, a pure client-side reconciliation — the rows already changed
+   * `task_items` (they now have sidecars) and the parent — an epic-shaped code row, the only
+   * shape that can be converted — has been deleted by the RPC, so the whole group leaves this
+   * store. Like `removeGatedItem`, a pure client-side reconciliation: the rows already changed
    * server-side, so there is no API call, nothing to reconcile and nothing to roll back.
    */
-  settleEpicConversion: (input: {
-    parentId: string;
-    childIds: string[];
-    parentOutcome: 'completed' | 'removed';
-  }) => void;
+  settleEpicConversion: (input: { parentId: string; childIds: string[] }) => void;
 }
 
 type TaskAction = SimpleAction<Item>;
@@ -965,17 +961,8 @@ export function TasksProvider({
         // just that row (no subtree, no server call).
         dispatch({ type: 'remove', ids: [id] });
       },
-      settleEpicConversion({ parentId, childIds, parentOutcome }) {
-        if (childIds.length > 0) dispatch({ type: 'remove', ids: childIds });
-        if (parentOutcome === 'removed') {
-          dispatch({ type: 'remove', ids: [parentId] });
-        } else {
-          dispatch({
-            type: 'patch',
-            ids: [parentId],
-            patch: { status: 'completed', completed_at: new Date().toISOString() },
-          });
-        }
+      settleEpicConversion({ parentId, childIds }) {
+        dispatch({ type: 'remove', ids: [parentId, ...childIds] });
       },
     }),
     // Stryker disable next-line ArrayDeclaration: AT_CEILING — a non-empty literal dep array holds a constant string that is Object.is-equal every render, so React never recomputes this memo; identical to [].
