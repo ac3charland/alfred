@@ -2052,7 +2052,7 @@ describe('deleteTask', () => {
 });
 
 describe('settleEpicConversion', () => {
-  it('drops the children and the parent for a converted code parent (removed)', () => {
+  it('drops the converted parent and its children', () => {
     const parent = item({ id: 'code-parent', item_type: 'code' });
     const children = [
       item({ id: 'c-1', item_type: 'code', parent_id: 'code-parent' }),
@@ -2064,37 +2064,25 @@ describe('settleEpicConversion', () => {
       result.current.actions.settleEpicConversion({
         parentId: 'code-parent',
         childIds: ['c-1', 'c-2'],
-        parentOutcome: 'removed',
       });
     });
 
     expect(result.current.tasks).toStrictEqual([]);
   });
 
-  it('completes a task parent, dropping its converted children but keeping completed ones', () => {
-    const parent = item({ id: 'task-parent' });
-    const active = item({ id: 'c-1', parent_id: 'task-parent' });
-    const done = item({
-      id: 'c-done',
-      parent_id: 'task-parent',
-      status: 'completed',
-      completed_at: '2025-01-02T00:00:00Z',
+  it('leaves every other row alone', () => {
+    const parent = item({ id: 'code-parent', item_type: 'code' });
+    const child = item({ id: 'c-1', item_type: 'code', parent_id: 'code-parent' });
+    const bystander = item({ id: 'other' });
+    const { result } = renderHook(useTasksTest, {
+      wrapper: makeWrapper([parent, child, bystander]),
     });
-    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent, active, done]) });
 
     act(() => {
-      result.current.actions.settleEpicConversion({
-        parentId: 'task-parent',
-        childIds: ['c-1'],
-        parentOutcome: 'completed',
-      });
+      result.current.actions.settleEpicConversion({ parentId: 'code-parent', childIds: ['c-1'] });
     });
 
-    const ids = result.current.tasks.map((t) => t.id);
-    expect(new Set(ids)).toStrictEqual(new Set(['task-parent', 'c-done']));
-    const settledParent = result.current.tasks.find((t) => t.id === 'task-parent');
-    expect(settledParent?.status).toBe('completed');
-    expect(settledParent?.completed_at).not.toBeNull();
+    expect(result.current.tasks.map((t) => t.id)).toStrictEqual(['other']);
   });
 
   it('never calls the API (a pure client-side settlement)', () => {
@@ -2102,11 +2090,7 @@ describe('settleEpicConversion', () => {
     const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([parent]) });
 
     act(() => {
-      result.current.actions.settleEpicConversion({
-        parentId: 'code-parent',
-        childIds: [],
-        parentOutcome: 'removed',
-      });
+      result.current.actions.settleEpicConversion({ parentId: 'code-parent', childIds: [] });
     });
 
     expect(mockUpdateItem).not.toHaveBeenCalled();

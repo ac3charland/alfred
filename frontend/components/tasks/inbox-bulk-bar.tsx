@@ -29,7 +29,7 @@ import {
 
 const CLASSIFY_DISABLED_HINT = 'Only a top-level item with no subtasks can change type';
 const MOVE_DISABLED_HINT = 'Only tasks and unclassified items can be filed into a folder';
-const SEND_DISABLED_HINT = 'An item with subtasks is sent from its own row menu';
+const SEND_DISABLED_HINT = 'An item with subtasks is dispatched from its own row menu';
 const DISPATCH_DISABLED_HINT = 'Nothing in the selection is ready to dispatch';
 
 /**

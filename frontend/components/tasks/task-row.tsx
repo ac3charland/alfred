@@ -13,7 +13,6 @@ import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { IconButton } from '@/components/atoms/icon-button';
 import { InlineEditField } from '@/components/atoms/inline-edit-field';
 import { EpicGateDialog } from '@/components/code/epic-gate-dialog';
-import { GateDialog } from '@/components/code/gate-dialog';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { ClassificationMark } from '@/components/tasks/classification-mark';
@@ -46,9 +45,11 @@ import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { classificationOrigin } from '@/lib/tasks/classification';
+import { rowDispatchAction } from '@/lib/tasks/dispatch';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
+import type { CodeStory } from '@/lib/types';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 import { cn } from '@/lib/utils';
 
@@ -136,7 +137,7 @@ export function TaskRow({
     setIntendedEpic,
     deleteTask,
     classifyItem,
-    removeGatedItem,
+    dispatchItems,
     settleEpicConversion,
   } = useTaskActions();
   const { showToast } = useToastActions();
@@ -182,20 +183,14 @@ export function TaskRow({
   // be dragged to re-parent it; an active task can also be filed into a folder. A completed
   // or temp (unreconciled) id can't be PATCHed yet, so neither is draggable.
   const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
-  // Item-type flags + drop-target validity (completion/due-date/subtask gating, classify vs
-  // send-to-code, the drop highlight) all derive from the node — see useTaskRowFlags.
-  const {
-    isTask,
-    isCode,
-    canConvert,
-    canAddSubtask,
-    isCodeParent,
-    isCodeChild,
-    canConvertToStory,
-    canConvertToEpic,
-    isValidDropTarget,
-    canChangeType,
-  } = useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
+  // Item-type flags + drop-target validity (completion/due-date/subtask gating, the drop
+  // highlight) all derive from the node — see useTaskRowFlags.
+  const { isTask, isCode, canAddSubtask, isValidDropTarget, canChangeType } = useTaskRowFlags(
+    node,
+    isCompleted,
+    draggedSubtreeIds,
+    activeDragItemType,
+  );
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
   // Repeat control. A subtask or non-task row never recurs (the control is hidden there).
@@ -288,16 +283,11 @@ export function TaskRow({
   });
   const { draft: draftTitle, setDraft: setDraftTitle } = titleEdit;
 
-  // The gate: "Send to Code module…" (code rows) / "Convert to Code Story…" (task or
-  // unclassified rows). Both open the SAME dialog, which (since ALF-27) routes through the
-  // shell-seeded CodeProvider. On confirm the item leaves task_items server-side, so we drop
-  // it from the tasks store and toast the allocated ref.
-  const [showGate, setShowGate] = React.useState(false);
   // The epic gate (ALF-129): converts this 1-deep parent into a new epic + its ordered
   // stories. Opens only when no intended project decides the target — otherwise the
   // conversion fires straight from the menu (see handleConvertToEpic).
   const [showEpicGate, setShowEpicGate] = React.useState(false);
-  const { convertToCodeEpic } = useCodeActions();
+  const { convertToCodeEpic, convertTaskToCode } = useCodeActions();
 
   const canDrag = !isCompleted && !isTempId(node.id);
   const {
@@ -582,14 +572,13 @@ export function TaskRow({
   // unreconciled temp id (the same guard canDrag applies).
   const groupHasTempIds = isTempId(node.id) || node.children.some((child) => isTempId(child.id));
 
-  // Settle the conversion: the children have left task_items and the parent is consumed —
-  // deleted for a code row, completed for a task (its history stays). Toast deep-links to the
-  // project board (the same toast-with-href seam the story gate uses).
+  // Settle the conversion: the children have left task_items and the RPC has consumed the
+  // parent, so the whole group leaves the store. Toast deep-links to the project board (the
+  // same toast-with-href seam the story gate uses).
   const handleEpicComplete = (result: ConvertedEpic) => {
     settleEpicConversion({
       parentId: node.id,
       childIds: result.stories.map((story) => story.item_id),
-      parentOutcome: isCode ? 'removed' : 'completed',
     });
     const count = result.stories.length;
     showToast(
@@ -599,12 +588,12 @@ export function TaskRow({
     );
   };
 
-  // A code parent captured with a project prefix converts immediately — no dialog. Every
-  // other epic conversion (a code parent without a project, or a task via "Convert to Code
-  // Epic…") opens the project-only epic gate.
+  // A code parent captured with a project prefix converts immediately — no dialog; without one
+  // the project-only epic gate opens and asks. Reached only through Dispatch, and only for a
+  // code parent (`rowDispatchAction`'s `epic`), so the shape needs no re-checking here.
   const handleConvertToEpic = () => {
     const intendedProjectId = node.intended_project_id;
-    if (isCodeParent && intendedProjectId !== null) {
+    if (intendedProjectId !== null) {
       void (async () => {
         try {
           const result = await convertToCodeEpic(
@@ -620,6 +609,54 @@ export function TaskRow({
       return;
     }
     setShowEpicGate(true);
+  };
+
+  // What this row's Dispatch does, or null when the row offers none: only an Inbox row — a
+  // top-level item a human hasn't triaged yet — has a destination to be sent to. A subtask's
+  // residency travels with its root, and a dispatched row has already gone.
+  const dispatchAction = isInboxRow
+    ? rowDispatchAction(node, { hasChildren: node.children.length > 0, groupHasTempIds })
+    : null;
+
+  // Dispatch (ALF-185): send this row where its labels already say it goes. An epic-shaped code
+  // row runs the conversion above; every other ready row goes through the SAME store action the
+  // bulk bar presses, on a set of one — the subtree residency cascade, the factory RPC, the
+  // rollback and the failure toast are all its, so the two surfaces can't drift. The success
+  // toast is the row's own, since here there IS a single destination to name and link to.
+  const handleDispatch = () => {
+    if (dispatchAction === null || dispatchAction.kind === 'blocked') return;
+    if (dispatchAction.kind === 'epic') {
+      handleConvertToEpic();
+      return;
+    }
+    void (async () => {
+      // The allocated story is caught on its way through, so a code dispatch can still announce
+      // its ref and deep-link to the board — what the gate's own toast used to do.
+      let story: CodeStory | undefined;
+      const staying = await dispatchItems([node.id], async (item, projectId, epicId) => {
+        story = await convertTaskToCode(item, projectId, epicId);
+        return story;
+      });
+      // A failure keeps the row where it is and has already toasted; nothing to announce.
+      if (staying.length > 0) return;
+      if (story === undefined) {
+        // A task: it landed in the folder its chip named, and the toast links to that view.
+        const folder = folders.find((candidate) => candidate.id === node.folder_id);
+        showToast(
+          folder === undefined ? 'Dispatched' : `Dispatched to ${folder.name}`,
+          'default',
+          folder === undefined ? undefined : `/folders/${folder.id}`,
+        );
+        return;
+      }
+      const ref = story.ref ?? '';
+      const projectId = story.project_id;
+      showToast(
+        `Created ${ref}`,
+        'default',
+        projectId === null ? undefined : storyBoardHref(projectId, ref),
+      );
+    })();
   };
 
   // "Move up" / "Move down" (ALF-117) — the keyboard/screen-reader-friendly reorder path.
@@ -989,15 +1026,10 @@ export function TaskRow({
                 <TaskRowMenu
                   canChangeType={canChangeType}
                   isCode={isCode}
-                  isCodeChild={isCodeChild}
-                  isCodeParent={isCodeParent}
-                  sendConvertsImmediately={isCodeParent && node.intended_project_id !== null}
-                  canConvert={canConvert}
-                  canConvertToStory={canConvertToStory}
-                  canConvertToEpic={canConvertToEpic}
-                  groupHasTempIds={groupHasTempIds}
                   canAddSubtask={canAddSubtask}
+                  dispatch={dispatchAction}
                   folders={folders}
+                  canMoveToFolder={isDispatched(node)}
                   canMoveUp={isActiveSubtask && canMoveUp}
                   canMoveDown={isActiveSubtask && canMoveDown}
                   onMoveUp={handleMoveUp}
@@ -1009,10 +1041,7 @@ export function TaskRow({
                   onClassify={(itemType) => {
                     void handleClassify(itemType);
                   }}
-                  onOpenGate={() => {
-                    setShowGate(true);
-                  }}
-                  onConvertToEpic={handleConvertToEpic}
+                  onDispatch={handleDispatch}
                   onMoveToFolder={(targetFolderId) => {
                     void handleMoveToFolder(targetFolderId);
                   }}
@@ -1184,37 +1213,9 @@ export function TaskRow({
         isPending={false}
       />
 
-      {/* The gate — Send to Code module / Convert to Code Story. On success the item
-          has left task_items, so drop it from the store and toast its new ref. */}
-      <GateDialog
-        open={showGate}
-        onOpenChange={setShowGate}
-        items={[
-          {
-            id: node.id,
-            title: node.title,
-            notes: node.notes,
-            source_url: node.source_url,
-            intendedProjectId: node.intended_project_id,
-            intendedEpicId: node.intended_epic_id,
-          },
-        ]}
-        onComplete={(stories) => {
-          removeGatedItem(node.id);
-          // The reconciled story always carries its allocated ref + project_id by now (`?? ''`
-          // only satisfies the all-nullable view row type). Deep-link the toast to the new
-          // story's board modal so a click jumps straight there (see board.tsx's `?story=` seam).
-          const story = stories[0];
-          const ref = story?.ref ?? '';
-          const projectId = story?.project_id ?? null;
-          const href = projectId === null ? undefined : storyBoardHref(projectId, ref);
-          showToast(`Created ${ref}`, 'default', href);
-        }}
-      />
-
-      {/* The epic gate (ALF-129) — a code parent without an intended project, or a task via
-          "Convert to Code Epic…", picks the target project here; the read-only preview shows
-          the epic (this row's title) and its ordered stories. */}
+      {/* The epic gate (ALF-129) — where a code parent's Dispatch lands when no intended project
+          decides the target: the project picker, plus the read-only preview of the epic (this
+          row's title) and its ordered stories. */}
       <EpicGateDialog
         open={showEpicGate}
         onOpenChange={setShowEpicGate}

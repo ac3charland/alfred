@@ -78,6 +78,18 @@ still fetches all. The store has no optimistic machinery: nothing in the app wri
 cache. The selection only moves once the document is in hand, so the view never blanks
 mid-switch and a failed fetch just toasts.
 
+## Inbox residency: a label is not a move
+
+`folder_id` says where an item *would* land; `dispatched_at` says whether it has actually left
+the Inbox — and only a human act writes the second (`lib/tasks/residency.ts` holds the predicate
+every view, badge and location label reads). So inside the Inbox the folder / project / epic chips
+only **label** (`setFolder`, `setIntendedProject`, `setIntendedEpic`), and **Dispatch** — the row's
+⋯ menu for one item, the bulk bar for a selection, both through `dispatchItems` and both gated by
+`lib/tasks/dispatch.ts` — is what acts on those labels. Once a row is dispatched its chips are
+hidden and the menu's **Move to…** (`moveTask`) is the only mover: the two surfaces are
+complementary, so collapsing them strands one half of the model. Residency travels with the whole
+subtree, exactly like `folder_id` — every write that files rows stamps both on each of them.
+
 ## Realtime: the code module's one push path
 
 Seed-once works because the **only** writer is the user in their own browser — except in the
@@ -296,6 +308,9 @@ action closures can fire it without it becoming a memo dep.
   the per-view collapse-all control that dispatches `collapseAll(viewIds)`.
 - `frontend/lib/tree.ts` — pure helpers: `buildTree`, `collectSubtree`, `getDescendantIds`,
   `makeOptimisticItem`.
+- `frontend/lib/tasks/{residency,dispatch}.ts` — the pure Inbox rules: who lives where, and what
+  each surface's Dispatch may send (`dispatchReadiness` for the bulk bar, `rowDispatchAction` for
+  the row menu).
 - `frontend/lib/api-client.ts` — typed `fetch` wrappers over the `app/api/**` route handlers.
 - `frontend/app/api/**/route.ts` — the HTTP write boundary (auth + validation + Supabase).
 - `frontend/app/(tasks)/layout.tsx` — fetches folders + all items once, mounts both stores.

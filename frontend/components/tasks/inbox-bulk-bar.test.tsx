@@ -397,6 +397,22 @@ describe('Dispatch (ALF-170)', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('points an epic-shaped code row at its own row menu (ALF-185)', async () => {
+    // The bulk bar has no epic path; the row's Dispatch runs the conversion, and the line
+    // names that entry by the word it now wears.
+    const user = userEvent.setup();
+    renderInbox([
+      makeItem('parent', { item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
+      makeItem('story', { item_type: 'code', parent_id: 'parent' }),
+    ]);
+
+    await selectRows(user, ['parent']);
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '1 not ready — 1 dispatch from its own row menu',
+    );
+  });
+
   it('sends a mixed selection: task subtree PATCHed, code item gated, unready row left selected', async () => {
     mockUpdateItem.mockImplementation((id) =>
       Promise.resolve(

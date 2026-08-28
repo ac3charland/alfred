@@ -1,7 +1,12 @@
 import { tempId } from '@/lib/tree';
 import type { ItemType } from '@/lib/types';
 
-import { type DispatchBlocker, dispatchReadiness, summarizeBlockers } from './dispatch';
+import {
+  type DispatchBlocker,
+  dispatchReadiness,
+  rowDispatchAction,
+  summarizeBlockers,
+} from './dispatch';
 
 function candidate(
   overrides: Partial<{
@@ -64,15 +69,15 @@ describe('dispatchReadiness', () => {
     ).toEqual({ ready: false, blocker: 'needs an epic' });
   });
 
-  it('a code item with children converts from its own row menu, whatever its hints', () => {
+  it('a code item with children dispatches from its own row menu, whatever its hints', () => {
     // An epic-shaped row goes through convert_to_code_epic, not enter_code_module — full hints
-    // don't change that.
+    // don't change that, and the bulk bar has no epic path.
     expect(
       dispatchReadiness(
         candidate({ item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
         true,
       ),
-    ).toEqual({ ready: false, blocker: 'convert from its own row menu' });
+    ).toEqual({ ready: false, blocker: 'dispatch from its own row menu' });
   });
 
   it('an unclassified row is never ready', () => {
@@ -114,11 +119,94 @@ describe('summarizeBlockers', () => {
   });
 
   it('reads naturally for the row-menu and still-saving reasons', () => {
-    expect(summarizeBlockers(['convert from its own row menu'])).toBe(
-      '1 not ready — 1 convert from its own row menu',
+    expect(summarizeBlockers(['dispatch from its own row menu'])).toBe(
+      '1 not ready — 1 dispatch from its own row menu',
     );
     expect(summarizeBlockers(['still saving', 'still saving'])).toBe(
       '2 not ready — 2 still saving',
     );
+  });
+});
+
+describe('rowDispatchAction', () => {
+  // The row's Dispatch covers one shape the bulk bar can't: an epic-shaped code row, which
+  // travels through convert_to_code_epic. Everything else defers to dispatchReadiness, so the
+  // two surfaces can never disagree about what "ready" means.
+  it('sends a ready task', () => {
+    expect(
+      rowDispatchAction(candidate({ item_type: 'task', folder_id: 'f1' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+      }),
+    ).toEqual({ kind: 'send' });
+  });
+
+  it('sends a ready childless code row', () => {
+    expect(
+      rowDispatchAction(
+        candidate({ item_type: 'code', intended_project_id: 'p1', intended_epic_id: 'e1' }),
+        { hasChildren: false, groupHasTempIds: false },
+      ),
+    ).toEqual({ kind: 'send' });
+  });
+
+  it('converts a code parent, opening the project dialog when no project is set', () => {
+    expect(
+      rowDispatchAction(candidate({ item_type: 'code' }), {
+        hasChildren: true,
+        groupHasTempIds: false,
+      }),
+    ).toEqual({ kind: 'epic', opensDialog: true });
+  });
+
+  it('converts a code parent straight away when an intended project is set', () => {
+    // No epic hint needed: the conversion CREATES the epic from the parent.
+    expect(
+      rowDispatchAction(candidate({ item_type: 'code', intended_project_id: 'p1' }), {
+        hasChildren: true,
+        groupHasTempIds: false,
+      }),
+    ).toEqual({ kind: 'epic', opensDialog: false });
+  });
+
+  it('blocks a code parent while any row in the group is still saving', () => {
+    // The conversion RPC needs real ids for the parent AND its children.
+    expect(
+      rowDispatchAction(candidate({ item_type: 'code', intended_project_id: 'p1' }), {
+        hasChildren: true,
+        groupHasTempIds: true,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'still saving' });
+  });
+
+  it('blocks an unready row with the blocker readiness names', () => {
+    expect(
+      rowDispatchAction(candidate({ item_type: 'task' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'needs a folder' });
+    expect(rowDispatchAction(candidate(), { hasChildren: false, groupHasTempIds: false })).toEqual({
+      kind: 'blocked',
+      blocker: 'needs a type',
+    });
+  });
+
+  it('blocks a code parent whose own id is still a temp id', () => {
+    expect(
+      rowDispatchAction(candidate({ id: tempId(), item_type: 'code', intended_project_id: 'p1' }), {
+        hasChildren: true,
+        groupHasTempIds: false,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'still saving' });
+  });
+
+  it('blocks a row still carrying its own temp id', () => {
+    expect(
+      rowDispatchAction(candidate({ id: tempId(), item_type: 'task', folder_id: 'f1' }), {
+        hasChildren: false,
+        groupHasTempIds: false,
+      }),
+    ).toEqual({ kind: 'blocked', blocker: 'still saving' });
   });
 });

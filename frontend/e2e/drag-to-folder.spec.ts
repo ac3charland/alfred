@@ -52,4 +52,36 @@ test.describe('drag a task to a folder', () => {
     await workFolder.click();
     await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Drag me')).toBeVisible();
   });
+
+  test('filing an unclassified capture by drag classifies it as a task (ALF-72)', async ({
+    page,
+    seed,
+  }) => {
+    // Folders hold tasks, so the move classifies in the same write — otherwise the item would
+    // land in a folder still unclassified, with none of the task affordances. The drag is the
+    // live path for this now: inside the Inbox the row menu labels and dispatches instead of
+    // moving (ALF-185).
+    const work = makeFolder('Work');
+    await seed({ folders: [work], items: [makeItem('Unfiled thought')] });
+    await page.goto('/?view=inbox');
+
+    // No completion checkbox while it is an unclassified inbox capture.
+    await expect(
+      page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
+    ).toBeHidden();
+
+    await dragOnto(
+      page,
+      page.getByText('Unfiled thought'),
+      page.getByRole('link', { name: 'Work' }),
+    );
+
+    // In the folder it is a task: the completion checkbox (task-only) is unlocked.
+    await page.getByRole('link', { name: 'Work' }).click();
+    const list = page.getByRole('list', { name: 'Tasks' });
+    await expect(list.getByText('Unfiled thought')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
+    ).toBeVisible();
+  });
 });
