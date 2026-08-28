@@ -6,6 +6,7 @@ import * as React from 'react';
 import { CaptureBox } from '@/components/tasks/capture-box';
 import { CollapseAllButton } from '@/components/tasks/collapse-all-button';
 import { InboxBulkBar, InboxSelectToggle } from '@/components/tasks/inbox-bulk-bar';
+import { InboxEyebrow } from '@/components/tasks/inbox-eyebrow';
 import { TaskList } from '@/components/tasks/task-list';
 import { ViewLink } from '@/components/tasks/view-link';
 import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
@@ -103,9 +104,7 @@ export function InboxScreen({ open }: InboxScreenProperties) {
           <div className="overflow-hidden">
             <div className="mt-6">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground/70">
-                  Inbox
-                </span>
+                <InboxEyebrow />
                 <div className="flex items-center gap-1">
                   <InboxSelectToggle />
                   <CollapseAllButton scope={{ type: 'inbox' }} />

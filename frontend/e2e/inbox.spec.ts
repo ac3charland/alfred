@@ -16,6 +16,38 @@ test('inbox reveals seeded active items', async ({ page, seed }) => {
   await expect(tasks.getByText('Call the dentist')).toBeVisible();
 });
 
+test('the inbox header counts the items waiting, and keeps up with a capture', async ({
+  page,
+  seed,
+}) => {
+  await seed({ items: [makeItem('Buy milk'), makeItem('Call the dentist')] });
+
+  await page.goto('/?view=inbox');
+
+  const header = page.getByText(/^Inbox( \(\d+\))?$/);
+  await expect(header).toHaveText('Inbox (2)');
+
+  // The tally is live: a captured thought lands in the list and the header follows it up.
+  const box = page.getByRole('combobox', { name: 'Capture box' });
+  await box.fill('Water the plants');
+  await box.press('Enter');
+
+  await expect(
+    page.getByRole('list', { name: 'Tasks' }).getByText('Water the plants'),
+  ).toBeVisible();
+  await expect(header).toHaveText('Inbox (3)');
+});
+
+test('the inbox header drops the tally when there is nothing waiting', async ({ page, seed }) => {
+  await seed({});
+
+  await page.goto('/?view=inbox');
+
+  // No "(0)": an empty inbox says so in its own empty state.
+  await expect(page.getByText(/^Inbox( \(\d+\))?$/)).toHaveText('Inbox');
+  await expect(page.getByText('Your inbox is empty')).toBeVisible();
+});
+
 test('the landing screen reveals and closes the inbox list', async ({ page, seed }) => {
   await seed({ items: [makeItem('Existing thought')] });
 
