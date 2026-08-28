@@ -7,11 +7,15 @@ import { BacklogList } from '@/components/code/backlog/backlog-list';
 import { HUMAN_REVIEW_STATUSES, useBacklog } from '@/lib/stores/code-store';
 
 /**
- * The "Needs human action" view (`/code/needs-human-action`) — a focused, cross-project queue of
- * every story awaiting the owner's eyes: a spec in review (`in_refinement`) and the two ready-for
- * gates (`ready_for_dev`, `ready_for_review`). Promoted from the Backlog's old "Human Review"
- * filter macro (ALF-103) into its own sidebar destination, so the states that need a human are one
- * click away rather than buried in a filter preset.
+ * The "Needs human action" view — a focused, cross-project queue of every story awaiting the
+ * owner's eyes: a spec in review (`in_refinement`) and the two ready-for gates (`ready_for_dev`,
+ * `ready_for_review`). Promoted from the Backlog's old "Human Review" filter macro (ALF-103) into
+ * its own sidebar destination, so the states that need a human are one click away rather than
+ * buried in a filter preset.
+ *
+ * It is the module's DEFAULT view (ALF-174): both the bare `/code` and the explicit
+ * `/code/needs-human-action` render it, and it leads the sidebar above the Backlog. Entering the
+ * Code module should open on the work blocked on the owner, not the full ranked backlog.
  *
  * It reuses the Backlog's ranked, reorderable `BacklogList` with a FIXED status set (no filter
  * menu — the view itself IS the filter). `HUMAN_REVIEW_STATUSES` is a module constant, so it's

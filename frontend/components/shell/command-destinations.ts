@@ -64,7 +64,8 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
   { id: 'go-habits', group: 'go', label: 'Habits', href: '/habits', icon: 'habits' },
   { id: 'go-completed', group: 'go', label: 'Completed', href: '/completed', icon: 'completed' },
   { id: 'go-code', group: 'go', label: 'Code', href: '/code', icon: 'code' },
-  { id: 'go-backlog', group: 'go', label: 'Backlog', href: '/code/backlog', icon: 'backlog' },
+  // Needs human action leads the Code destinations — it is the module's default view (ALF-174),
+  // and this order mirrors the sidebar's.
   {
     id: 'go-needs-human-action',
     group: 'go',
@@ -72,6 +73,7 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
     href: '/code/needs-human-action',
     icon: 'needs-human-action',
   },
+  { id: 'go-backlog', group: 'go', label: 'Backlog', href: '/code/backlog', icon: 'backlog' },
 ];
 
 /** Trim + lowercase so matching is whitespace- and case-insensitive. */
