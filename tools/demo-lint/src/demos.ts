@@ -251,7 +251,11 @@ function gatherTrunkRefFacts(): TrunkRefFacts {
  * Repo-relative paths changed on the current branch vs the trunk merge-base, or
  * `undefined` when git can't tell us — no git, no usable trunk ref (see
  * {@link chooseTrunkRef}), or any command failing. Git emits POSIX, repo-relative paths
- * already; we trim and drop blank lines. The CLI passes this into {@link gatherDemos}
+ * already; we trim and drop blank lines.
+ *
+ * `--no-renames` is load-bearing: git's default rename detection prints only a move's
+ * destination, so `git mv frontend/e2e/tasks.spec.ts docs/` would read as a docs-only change
+ * and hand a code-deleting branch the `branch-folder` exemption. The CLI passes this into {@link gatherDemos}
  * (mirroring how it passes {@link currentBranch}); an `undefined` result yields the
  * conservative `hasChangesOutsideDocs === true` default.
  */
@@ -262,7 +266,9 @@ export function changedPathsSinceTrunk(): readonly string[] | undefined {
   if (base.status !== 0) return undefined;
   const mergeBase = base.stdout.trim();
   if (mergeBase.length === 0) return undefined;
-  const diff = spawnSync('git', ['diff', '--name-only', mergeBase, 'HEAD'], { encoding: 'utf8' });
+  const diff = spawnSync('git', ['diff', '--no-renames', '--name-only', mergeBase, 'HEAD'], {
+    encoding: 'utf8',
+  });
   if (diff.status !== 0) return undefined;
   return diff.stdout
     .split(/\r?\n/)
