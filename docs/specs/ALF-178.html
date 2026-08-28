@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-178 — Somehow visually distinguish inbox items which are ready for dispatch</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  ul.ac li { margin: .4rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--muted); border: 1px solid var(--line);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+  .pickme { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+            text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+            border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .verdict { margin: .3rem 0; font-size: .9rem; }
+  .verdict .k { display: inline-block; min-width: 5.4rem; font-size: .68rem; font-weight: 700;
+                letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+  .opt-h { border-top: 1px solid var(--line); padding-top: 1.2rem; }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              flex-wrap: wrap;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+  .optbar { display: flex; flex-wrap: wrap; gap: .6rem 1.2rem; padding: .55rem .85rem;
+            border-bottom: 1px solid var(--line); background: var(--bg); }
+  .optgroup { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+  .optgroup .lbl { font-size: .64rem; font-weight: 700; letter-spacing: .08em;
+                   text-transform: uppercase; color: var(--muted); margin-right: .15rem; }
+  .optgroup button { font: inherit; font-size: .74rem; cursor: pointer; color: var(--muted);
+                     background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+                     padding: .16rem .6rem; }
+  .optgroup button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
+                                          background: var(--accent-bg); font-weight: 600; }
+
+  /* The mockup canvas IS the app: every value below is lifted from source, so the mockup reads
+     in alfred's real dark palette whichever mode this document is read in.
+       bg / surface / border / fg / muted / secondary / teal / green / red / amber / blue
+                                              → frontend/app/globals.css
+       list panel (r16, border, bg-surface,
+         divide-y divide-border/50 at md+)    → task-row.styles.ts (taskListContainerClass)
+       row line (flex, gap-2, py-2, pr-2,
+         paddingLeft depth*1.25 + .75rem)     → task-row.styles.ts (rowBaseClass) + use-indentation.ts
+       hover wash bg-secondary/30             → task-row.styles.ts (rowHoverClass)
+       checkbox 16px, border muted-fg/50      → task-row.styles.ts (checkboxSizeClass,
+                                                 checkboxIncompleteClass)
+       title text-sm leading-5, foreground    → task-row.styles.ts (titleTextClass)
+       provenance glyph 11px, three greys     → task-row.styles.ts (classificationMarkGlyphClass)
+       badges (r999, px-2 py-0.5, text-xs)    → atoms/badge.tsx (muted / due variants)
+       project + epic chips (accent/15 fill,
+         font-mono)                           → lib/code/project-color.ts (projectBadgeClasses)
+       select-mode row (bg-accent-teal/5 +
+         ring-2 ring-inset ring-accent-teal)  → task-row.tsx (inSelectMode branch)
+       bulk bar (r12, border-accent-teal,
+         bg-surface/95, Dispatch = accent)    → inbox-bulk-bar.styles.ts + atoms/button.tsx
+       readiness line (r8, border-border/60,
+         text-xs text-muted-foreground)       → inbox-bulk-bar.styles.ts (readinessLineClass)
+       Inbox eyebrow + Select / Collapse all  → inbox-screen.tsx */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-fg: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0;
+    --a-green: #34d399; --a-red: #f87171; --a-amber: #f0b429; --a-blue: #60a5fa;
+    --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* Inline code inside a mockup sits on the app canvas, so it takes the app's plate. */
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); }
+  .seclabel { color: rgba(138, 150, 168, .7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0; }
+  .inbox-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+                margin-bottom: 8px; }
+  .ghostbtn { color: var(--a-muted); font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+
+  /* The list panel: md+ rounded-2xl border bg-surface divide-y divide-border/50. */
+  .ilist { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+           overflow: hidden; }
+  .irow { position: relative; display: flex; align-items: flex-start; gap: 8px;
+          padding: 8px 8px 8px 12px; border-bottom: 1px solid rgba(30, 42, 63, .5); }
+  .irow:last-child { border-bottom: 0; }
+  .chev { width: 16px; height: 20px; flex: none; color: var(--a-muted); opacity: 0; }
+  .cbx { width: 16px; height: 16px; flex: none; margin-top: 2px; border-radius: 4px;
+         border: 1px solid rgba(138, 150, 168, .5); }
+  .ttl { flex: 1; min-width: 0; font-size: 14px; line-height: 20px; color: var(--a-fg); }
+  .metas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 1px; }
+  .acts { width: 52px; flex: none; display: flex; justify-content: flex-end; gap: 4px;
+          color: var(--a-muted); opacity: 0; }          /* md+ resting: opacity-0, space reserved */
+  /* Badge atom: rounded-full px-2 py-0.5 text-xs (12px / 16px line). */
+  .pill { display: inline-flex; align-items: center; gap: 4px; flex: none; border-radius: 999px;
+          padding: 2px 8px; font-size: 12px; line-height: 16px; font-weight: 500; }
+  .pill.muted { border: 1px solid rgba(30, 42, 63, .7); color: var(--a-muted); }
+  .pill.due { border: 1px solid rgba(96, 165, 250, .5); color: var(--a-blue); }
+  .pill.proj { background: rgba(96, 165, 250, .15); color: var(--a-blue);
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ic { width: 10px; height: 10px; flex: none; }
+  /* Provenance mark (ALF-180): 11px glyph, three weights of the same grey. */
+  .prov { display: inline-flex; width: 11px; height: 11px; vertical-align: -1px; }
+  .prov.model { color: rgba(138, 150, 168, .95); }
+  .prov.claimed { color: rgba(138, 150, 168, .65); }
+  .prov.unjudged { color: rgba(138, 150, 168, .4); }
+  .g { width: 100%; height: 100%; }
+
+  /* ── The four readiness treatments — all hidden until their option is picked ── */
+  .rk { display: none; }
+  /* 1 · title glyph */
+  .demo[data-opt="1"] .irow[data-ready="yes"] .rk-glyph { display: inline-flex; width: 11px;
+      height: 11px; vertical-align: -1px; color: rgba(52, 211, 153, .9); }
+  /* 2 · ready pip — last in the meta cluster, so it right-aligns into a column */
+  .demo[data-opt="2"] .irow[data-ready="yes"] .rk-pip { display: inline-flex; width: 6px;
+      height: 6px; border-radius: 999px; background: rgba(52, 211, 153, .8); margin: 5px 2px; }
+  /* 3 · leading edge rail */
+  .demo[data-opt="3"] .irow[data-ready="yes"] .rk-rail { display: block; position: absolute;
+      left: 0; top: 4px; bottom: 4px; width: 2px; border-radius: 999px;
+      background: rgba(52, 211, 153, .7); }
+  /* 4 · unready dim — the only treatment that touches the NOT-ready rows */
+  .demo[data-opt="4"] .irow[data-ready="no"] .ttl { color: var(--a-muted); }
+  .demo[data-opt="4"] .irow[data-ready="no"] .metas { opacity: .55; }
+
+  /* Row states. Hover paints bg-secondary/30 over row 1; select mode rebuilds the row as one
+     button, with the two selected rows carrying bg-accent-teal/5 + ring-2 ring-inset teal. */
+  .demo[data-mode="hover"] .irow.r1 { background: rgba(30, 42, 63, .3); }
+  .demo[data-mode="hover"] .irow.r1 .acts { opacity: 1; }
+  .demo[data-mode="select"] .chev { display: none; }
+  .demo[data-mode="select"] .acts { display: none; }
+  .demo[data-mode="select"] .irow { align-items: center; padding: 8px; border-radius: 4px; }
+  .demo[data-mode="select"] .irow .ttl { overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; }
+  .demo[data-mode="select"] .irow .cbx { margin-top: 0; }
+  .demo[data-mode="select"] .irow.sel { background: rgba(79, 209, 224, .05);
+      box-shadow: inset 0 0 0 2px var(--a-teal); }
+  .demo[data-mode="select"] .irow.sel .cbx { background: var(--a-teal); border-color: var(--a-teal);
+      color: var(--a-bg); display: flex; align-items: center; justify-content: center; }
+  .tick { display: none; }
+  .demo[data-mode="select"] .irow.sel .tick { display: block; width: 10px; height: 10px; }
+  .bulkbar { display: none; }
+  .demo[data-mode="select"] .bulkbar { display: block; margin-top: 14px; }
+  .bulkpill { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+              border: 1px solid var(--a-teal); border-radius: 12px; padding: 10px 12px;
+              background: rgba(15, 22, 38, .95); }
+  .bulkpill .cnt { color: var(--a-teal); font-size: 14px; font-weight: 600; margin-right: 4px; }
+  .btn { border-radius: 4px; padding: 4px 12px; font-size: 12px; font-weight: 500; line-height: 20px; }
+  .btn.accent { background: var(--a-teal); color: var(--a-bg); }
+  .btn.outline { border: 1px solid var(--a-border); color: var(--a-fg); }
+  .btn.ghost { color: var(--a-fg); margin-left: auto; }
+  .readline { margin-top: 6px; border: 1px solid rgba(30, 42, 63, .6); border-radius: 8px;
+              padding: 6px 12px; font-size: 12px; color: var(--a-muted);
+              background: rgba(15, 22, 38, .95); }
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; margin-top: 14px;
+            padding-top: 10px; border-top: 1px solid rgba(30, 42, 63, .6);
+            font-size: 11.5px; color: var(--a-muted); }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .name { color: var(--a-fg); }
+  .swatch { display: inline-flex; align-items: center; justify-content: center; width: 14px;
+            height: 14px; }
+  .dotsw { width: 6px; height: 6px; border-radius: 999px; background: rgba(52, 211, 153, .8); }
+
+
+  /* The legend is part of the mockup, so its key changes with the treatment it explains. */
+  .legend .sw-glyph, .legend .sw-pip, .legend .sw-rail, .legend .l-dim { display: none; }
+  .demo[data-opt="1"] .legend .sw-glyph { display: inline-flex; width: 11px; height: 11px;
+      color: rgba(52, 211, 153, .9); }
+  .demo[data-opt="2"] .legend .sw-pip { display: inline-flex; width: 6px; height: 6px;
+      border-radius: 999px; background: rgba(52, 211, 153, .8); }
+  .demo[data-opt="3"] .legend .sw-rail { display: inline-block; width: 2px; height: 14px;
+      border-radius: 999px; background: rgba(52, 211, 153, .7); }
+  .demo[data-opt="4"] .legend .l-mark { display: none; }
+  .demo[data-opt="4"] .legend .l-dim { display: inline-flex; }
+  .legend .sw-dim { color: var(--a-muted); font-size: 11px; }
+
+  /* Phone frame — 390px viewport, the mobile card layout. */
+  .phones { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .phone { width: 300px; max-width: 100%; }
+  .pcard { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+           padding: 4px; margin-bottom: 8px; position: relative; }
+  .prow { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; }
+  .pcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .ptitle { font-size: 15px; line-height: 1.375; }
+
+  /* Mobile card variant of the same row markup: the chips wrap to their own line under the
+     title (metaFooterClass), and the actions are always visible (rowActionsClass at < md). */
+  .irow.mob { align-items: center; padding: 8px 8px 8px 12px; border-bottom: 0; }
+  .irow.mob .pcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .irow.mob .ttl { flex: none; font-size: 15px; line-height: 1.375; }
+  .irow.mob .metas { padding-top: 0; }
+  .irow.mob .acts { width: auto; opacity: 1; font-size: 12px; }
+  .phone .opt-name { color: var(--a-muted); font-size: 11px; font-weight: 600;
+                     letter-spacing: .1em; text-transform: uppercase; margin: 0 0 6px; }
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 720px) { .side { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Refinement spec · Tasks module · Inbox</p>
+  <h1>ALF-178 — Somehow visually distinguish inbox items which are ready for dispatch</h1>
+  <p class="sub">
+    A cue on the Inbox row that says <i>this one will go when you press Dispatch</i> — derived from
+    the readiness rule that already exists, drawn in four candidate treatments for the owner to pick
+    between. Subtle enough not to clutter a triage list, glanceable enough to read the whole Inbox in
+    one pass.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+
+  <p>
+    ALF-170 shipped <b>Dispatch</b>: in the Inbox's select mode, one press sends every <i>ready</i>
+    selected item to its own destination — a task to its labelled folder, a code item through the
+    factory gate — and leaves the unready ones selected with a line naming what each is missing.
+    The rule behind "ready" lives in one pure function,
+    <a href="../../frontend/lib/tasks/dispatch.ts"><code>frontend/lib/tasks/dispatch.ts</code></a>,
+    and is already fully unit-tested.
+  </p>
+
+  <p>
+    The problem is <b>when</b> you learn the verdict. Today readiness is invisible until you have
+    already entered select mode <i>and</i> chosen a set — the readiness line renders inside
+    <code>InboxBulkBar</code>, which only mounts once at least one row is selected. So the ordinary
+    Inbox — the list you actually triage in, the one you scan to decide what to fix and what to send
+    — shows the <b>inputs</b> to the decision (the Type badge, the Folder chip, the Project and Epic
+    chips, all put there by ALF-170 precisely because "a label you cannot see is a label you cannot
+    check") but never the <b>verdict</b>. You re-derive it per row, in your head, every pass.
+  </p>
+
+  <div class="card teal">
+    <p style="margin:.2rem 0">
+      <b>What the row is missing is one bit, not a new fact.</b> Every input to
+      <code>dispatchReadiness</code> is already on screen. The row can therefore say "ready" without
+      any new column, endpoint, store field or fetch — this story is a rendering change and nothing
+      else. That is what keeps it small enough to be worth doing, and it is the constraint the whole
+      spec is written against.
+    </p>
+  </div>
+
+  <p>
+    The ticket's refinement note sets the bar for the cue itself: <i>subtle enough to not clutter the
+    inbox or distract, but clear enough to be glanceable.</i> §4 offers four treatments against that
+    bar, each drawn in the app's real palette, in every row state it has to survive.
+  </p>
+
+  <h2>2 · What "ready" already means</h2>
+
+  <p>
+    Straight from <code>dispatchReadiness(item, hasChildren)</code> and epic
+    <a href="epics/ALF-158.html">ALF-158</a>'s D17. This story adds no case to this table and changes
+    no row of it — it only renders the left-hand column's verdict.
+  </p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:14%">Verdict</th><th style="width:24%">Row</th>
+        <th style="width:30%">Condition</th><th>Blocker the bulk bar names</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="yes">Ready</span></td><td><b>Task</b></td>
+        <td><code>item_type = 'task'</code> and <code>folder_id</code> set</td>
+        <td>—<br /><span class="small">Its subtree travels with it, so children never block.</span></td>
+      </tr>
+      <tr>
+        <td><span class="yes">Ready</span></td><td><b>Code</b>, childless</td>
+        <td><code>item_type = 'code'</code>, <code>intended_project_id</code> <i>and</i>
+            <code>intended_epic_id</code> set</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><span class="no">Not ready</span></td><td><b>Task</b></td>
+        <td>no <code>folder_id</code></td><td><code>needs a folder</code></td>
+      </tr>
+      <tr>
+        <td><span class="no">Not ready</span></td><td><b>Code</b></td>
+        <td>no project / no epic</td>
+        <td><code>needs a project</code> · <code>needs an epic</code></td>
+      </tr>
+      <tr>
+        <td><span class="no">Not ready</span></td><td><b>Code</b> with children</td>
+        <td>an epic-shaped row converts through <code>convert_to_code_epic</code>, not
+            <code>enter_code_module</code></td>
+        <td><code>convert from its own row menu</code></td>
+      </tr>
+      <tr>
+        <td><span class="no">Not ready</span></td><td><b>Unclassified</b></td>
+        <td>always</td><td><code>needs a type</code></td>
+      </tr>
+      <tr>
+        <td><span class="no">Not ready</span></td><td><b>Any</b>, optimistic</td>
+        <td><code>isTempId(item.id)</code> — the capture has not been reconciled yet</td>
+        <td><code>still saving</code></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="small">
+    The last row matters more than it looks: it is what stops a freshly-captured item from flashing a
+    "ready" cue for one frame before the POST comes back. A temp-id row is never ready, so the cue
+    simply appears on the reconcile, like every other chip on the row.
+  </p>
+
+  <h3>Where the verdict is computed today, and what this story adds</h3>
+
+  <svg viewBox="0 0 900 236" role="img"
+       aria-label="dispatchReadiness is called today by the bulk bar and the dispatch store action; this story adds a third caller, the task row.">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="#8a94a0" />
+      </marker>
+      <style>
+        .bx { fill: none; stroke: #8a94a0; stroke-width: 1.4; }
+        .bx.acc { stroke: #0d7d7d; stroke-width: 2; }
+        .bx.new { stroke: #2ea36b; stroke-width: 2; stroke-dasharray: 5 4; }
+        .tx { fill: #1b1f24; font: 600 13px -apple-system, sans-serif; }
+        .tm { fill: #5c6672; font: 400 11px ui-monospace, monospace; }
+        .lb { fill: #5c6672; font: 400 11px -apple-system, sans-serif; }
+        .ln { stroke: #8a94a0; stroke-width: 1.4; fill: none; }
+        @media (prefers-color-scheme: dark) {
+          .tx { fill: #e6eaef; } .tm, .lb { fill: #9aa5b1; }
+          .bx { stroke: #6b7682; } .bx.acc { stroke: #46c9c9; } .bx.new { stroke: #3fbf82; }
+          .ln { stroke: #6b7682; }
+        }
+      </style>
+    </defs>
+
+    <rect class="bx acc" x="283" y="94" width="284" height="52" rx="9" />
+    <text class="tx" x="425" y="116" text-anchor="middle">dispatchReadiness(item, hasChildren)</text>
+    <text class="tm" x="425" y="134" text-anchor="middle">dispatch.ts — pure, unchanged</text>
+
+    <rect class="bx" x="14" y="14" width="216" height="50" rx="9" />
+    <text class="tx" x="122" y="35" text-anchor="middle">bulk bar readiness line</text>
+    <text class="tm" x="122" y="52" text-anchor="middle">inbox-bulk-bar.tsx</text>
+
+    <rect class="bx" x="14" y="176" width="216" height="50" rx="9" />
+    <text class="tx" x="122" y="197" text-anchor="middle">dispatchItems()</text>
+    <text class="tm" x="122" y="214" text-anchor="middle">tasks-store.tsx — the gate</text>
+
+    <rect class="bx new" x="620" y="94" width="266" height="52" rx="9" />
+    <text class="tx" x="753" y="115" text-anchor="middle">the Inbox row's cue</text>
+    <text class="tm" x="753" y="133" text-anchor="middle">task-row.tsx — this story</text>
+
+    <path class="ln" d="M230 39 L258 39 L258 108 L277 108" marker-end="url(#ar)" />
+    <path class="ln" d="M230 201 L258 201 L258 132 L277 132" marker-end="url(#ar)" />
+    <line class="ln" x1="567" y1="120" x2="614" y2="120" marker-end="url(#ar)" />
+
+    <text class="lb" x="196" y="82">already</text>
+    <text class="lb" x="196" y="166">already</text>
+    <text class="lb" x="576" y="112">new</text>
+  </svg>
+
+  <p class="small">
+    Three callers of one pure function, which is the whole point: the cue on the row and the items the
+    press actually sends can never disagree, because they ask the same question of the same code. A
+    cue derived any other way — a second predicate, a stored flag, a "looks filled in" heuristic —
+    could drift, and a cue that lies about what Dispatch will do is worse than no cue.
+  </p>
+
+  <h2>3 · Decisions</h2>
+
+  <p>
+    These hold whichever treatment §4's pick lands on. They are the part of the story that is
+    <i>not</i> a matter of taste.
+  </p>
+
+  <div class="dec">
+    <h3><span class="n">D1</span>Derived per render from <code>dispatchReadiness</code> — never stored, never fetched</h3>
+    <p>
+      The row calls the same pure function the bulk bar and the store already call. No column, no
+      view change, no API field, no store selector, no memo cache.
+    </p>
+    <p class="why">
+      <b>Why:</b> readiness is a function of fields already on the row, and it changes the instant one
+      of them does. Anything persisted would need invalidating on every label edit — the exact class
+      of bug the residency and readiness modules were both built to make impossible by staying pure.
+      It also means this story adds <b>zero</b> migration, route or store surface; see §5.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D2</span>Mark the <i>ready</i> rows, not the gaps</h3>
+    <p>
+      The cue appears on rows that <b>will</b> dispatch. An unready row gets nothing added (option 4
+      in §4 is the deliberate exception — it de-emphasises the unready rows instead, and is offered
+      precisely so the owner can weigh that inversion).
+    </p>
+    <p class="why">
+      <b>Why:</b> the ticket asks to distinguish the ready ones, and the two framings are not
+      equivalent in cost. Marking gaps means the majority of a fresh Inbox carries chrome, and it
+      duplicates a job the bulk bar already does better — the readiness line names <i>which</i> gap,
+      in words, where marking a row could only say "something's missing". Marking readiness says the
+      one thing the row cannot otherwise say and the bulk bar cannot say early enough.
+      <br />
+      <b>Consequence:</b> if in practice nearly every row is ready — a plausible end state once the
+      classifier is good — the cue stops discriminating and the inverse becomes the better read. That
+      is a real risk, not a hypothetical; it is logged as the one open question in §9 and is a
+      one-line flip if it materialises.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D3</span>The same gate as the provenance mark: top-level, undispatched, outside Completed</h3>
+    <p>
+      The cue renders only where <code>isInboxRow</code> is already true in
+      <code>task-row.tsx</code> — <code>parent_id === null &amp;&amp; !isCompletedView &amp;&amp;
+      !isDispatched(node)</code> — and then only when readiness says yes. No cue in a folder view, the
+      priority view, the weekly plan, the Completed view, or on a subtask.
+    </p>
+    <p class="why">
+      <b>Why:</b> Dispatch is an Inbox action over top-level rows. A "ready to dispatch" cue on a row
+      that has already been dispatched is a contradiction; on a subtask it promises an action that
+      row will never be offered. Reusing the existing constant rather than writing a second condition
+      is what keeps the Type badge, the provenance mark and this cue from ever gating differently.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D4</span>Binary. The row says <i>ready</i>; the bulk bar still owns <i>why not</i></h3>
+    <p>
+      One state, present or absent. The row never renders <code>needs a folder</code> /
+      <code>needs an epic</code> / <code>still saving</code>.
+    </p>
+    <p class="why">
+      <b>Why:</b> six blockers rendered per row is a second metadata cluster, and the row already
+      carries the answer — a task with no Folder chip is missing a folder, visibly. The blocker
+      strings exist to summarise a <i>selection</i> ("2 not ready — 1 needs a type, 1 needs a
+      folder"), which is a sentence only the bulk bar is positioned to write. Splitting the labour
+      this way also keeps the cue's whole visual budget at one bit, which is what lets it be as small
+      as §4's treatments are.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D5</span>Inert, and present in both the ordinary row and select mode</h3>
+    <p>
+      A <code>&lt;span&gt;</code> in every mode — no click, no popover, no menu — carrying an
+      accessible name and a native <code>title</code> of <b>“Ready to dispatch”</b>. It renders in the
+      ordinary row <i>and</i> in the select-mode branch.
+    </p>
+    <p class="why">
+      <b>Why inert:</b> the only action it could offer is Dispatch, which is the bulk bar's, and
+      select mode's row is one <code>&lt;button&gt;</code> — a nested control there is invalid HTML
+      with undefined activation behaviour. Being inert by construction means one component works in
+      both branches, exactly as <code>ClassificationMark</code> does.
+      <br />
+      <b>Why both modes:</b> the ordinary row is where you decide <i>what to select</i>; select mode
+      is where you watch the set you are about to send. A cue that vanished on entering select mode
+      would disappear at the moment of the press. The wording matches the bulk bar's own disabled
+      hint (“Nothing in the selection is ready to dispatch”) so the row and the bar speak one
+      vocabulary.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D6</span>Green is the only free row-state colour — and presence, not hue, carries the signal</h3>
+    <p>
+      Where a treatment needs a colour it takes <code>--color-accent-green</code>
+      (<code>#34d399</code>). Teal, blue, amber and red are all spoken for as <i>row states</i>
+      (interactive / selected / drop target / search highlight; due; due today; overdue and high
+      priority), and grey is now the provenance register.
+    </p>
+    <p class="why">
+      <b>Why green survives the audit:</b> it appears on a task row today only inside a chip's own
+      fill — a project whose palette slot is green (<code>project-color.ts</code>) — and in Habits.
+      It has no row-state meaning to collide with. The residual collision is honest and worth naming:
+      a code row whose project is the green one shows a green chip near a green cue. It is tolerable
+      because the two differ in shape, size and position, and because the cue is drawn once per row
+      while the chip is a label.
+      <br />
+      <b>Why this passes WCAG 1.4.1 rather than leaning on colour:</b> the cue is <i>binary presence
+      or absence</i>, never green-versus-another-hue, so no hue discrimination is required to read it;
+      and D5's accessible name makes the state available to a screen reader outright. Option 4 is the
+      one treatment that encodes by contrast instead of presence, which is the weakest channel for
+      low-vision reading — stated in its costs rather than buried here.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D7</span>The cue is not the provenance mark's second job</h3>
+    <p>
+      It is a separate element with its own name, never a fourth state of
+      <code>ClassificationMark</code>, and never a recolouring of it.
+    </p>
+    <p class="why">
+      <b>Why:</b> ALF-180's D4 is explicit that the mark answers "where did these labels come from?",
+      a fact about the past — never "do you accept these?", a task in the present. Readiness is a fact
+      about the <i>future</i> ("what will happen when you press Dispatch"), and the two are
+      independent: a classifier-labelled row can be unready and a hand-claimed row can be ready. One
+      glyph cannot carry two orthogonal axes without meaning neither. Options 1 and 2 place the cue
+      next to the mark, which is a layout adjacency, not a merge.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D8</span>It flips live, with no new plumbing — and it costs no mobile row height</h3>
+    <p>
+      Picking a folder from the row's Folder chip flips the cue on when the PATCH reconciles, through
+      the store update the row already re-renders on. Nothing is subscribed to, nothing polls.
+    </p>
+    <p class="why">
+      <b>Why it's free:</b> the row re-renders from the tasks store on every optimistic patch, and D1
+      re-derives readiness during that render.
+      <br />
+      <b>And the mobile footer is safe:</b> <code>RowMetaCluster</code> renders nothing at all when a
+      row has no metadata, so on a phone a bare capture stays one line. A <b>ready</b> row always
+      carries at least one chip already (a ready task has its Folder chip; a ready code item has its
+      Project and Epic chips; both carry a Type badge), so <code>hasMeta</code> is already true
+      wherever the cue can appear. Adding the cue to that cluster therefore cannot grow a second line
+      on any row — the cost ALF-180 declined to pay for the provenance chip is simply not incurred
+      here. This is the strongest argument for option 2 and it applies to <b>no other</b> element that
+      could be added to that cluster.
+    </p>
+  </div>
+
+  <h2>4 · The pick — four treatments, drawn</h2>
+
+  <p>
+    All four carry the same rule (§2), the same gate (D3), the same single state (D4), the same
+    inertness and accessible name (D5), and the same live flip (D8). They differ only in
+    <i>where the cue lives</i> and <i>how much chrome it costs</i>, running from most explicit to
+    most ambient. Flip between them below; the same four rows are drawn each time, and they are the
+    four rows of the existing <code>InboxScreen · MidTriage</code> story fixture — two ready, two not.
+  </p>
+
+  <div class="card teal">
+    <p style="margin:.2rem 0">
+      <b>The design question underneath the pick.</b> "Glanceable" in a <i>list</i> has a specific
+      meaning: a cue you can read without reading the rows. That needs <b>alignment</b> — a cue at the
+      same x on every row forms a column the eye resolves in one saccade, while a cue whose position
+      depends on the title length has to be hunted row by row. Set against that is <b>proximity</b>:
+      a cue next to the title annotates <i>the item</i>, while one out at the row's edge annotates
+      <i>the row</i>. The four options trade these against each other, and that trade — not the
+      prettiness of the glyph — is what the pick is really choosing between.
+    </p>
+  </div>
+
+  <!-- Icon definitions: hand-drawn at 1:1 with the lucide outlines named in the option prose. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="g-model" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.13-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.13a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.13 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0z" />
+      </symbol>
+      <symbol id="g-claimed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21.17 6.81a1 1 0 0 0-3.98-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.63l4.35-1.32a2 2 0 0 0 .83-.5z" />
+        <path d="m15 5 4 4" />
+      </symbol>
+      <symbol id="g-unjudged" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round">
+        <circle cx="12" cy="12" r="9" stroke-dasharray="3.4 3.2" />
+      </symbol>
+      <symbol id="g-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+      </symbol>
+      <!-- lucide `circle-arrow-right` — the readiness glyph of option 1. -->
+      <symbol id="g-ready" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+              stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M8 12h8" />
+        <path d="m12 16 4-4-4-4" />
+      </symbol>
+      <symbol id="g-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5" />
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="mock">
+    <div class="mock-bar">
+      <span>Inbox — mid-triage, four rows, two of them dispatch-ready</span>
+      <span class="hmeta">alfred's real palette, dark UI in either reading mode</span>
+    </div>
+    <div class="optbar">
+      <div class="optgroup" id="opt-switch" role="group" aria-label="Readiness treatment">
+        <span class="lbl">Treatment</span>
+        <button type="button" data-opt="1" aria-pressed="false">1 · Title glyph</button>
+        <button type="button" data-opt="2" aria-pressed="true">2 · Ready pip</button>
+        <button type="button" data-opt="3" aria-pressed="false">3 · Edge rail</button>
+        <button type="button" data-opt="4" aria-pressed="false">4 · Unready dim</button>
+      </div>
+      <div class="optgroup" id="mode-switch" role="group" aria-label="Row state">
+        <span class="lbl">State</span>
+        <button type="button" data-mode="normal" aria-pressed="true">Resting</button>
+        <button type="button" data-mode="hover" aria-pressed="false">Hover row 1</button>
+        <button type="button" data-mode="select" aria-pressed="false">Select mode</button>
+      </div>
+    </div>
+
+    <div class="mock-body demo" id="demo" data-opt="2" data-mode="normal">
+      <div class="inbox-head">
+        <p class="seclabel">Inbox</p>
+        <span><span class="ghostbtn">Select</span><span class="ghostbtn">Collapse all</span></span>
+      </div>
+
+      <div class="ilist">
+
+        <div class="irow r1 sel" data-ready="yes">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"><svg class="tick"><use href="#g-tick" /></svg></span>
+          <span class="ttl">Call the dentist friday to reschedule the cleaning&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img"
+              aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Task</span>
+            <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+            <span class="pill due">Aug 7</span>
+            <span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+
+        <div class="irow r2 sel" data-ready="yes">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"><svg class="tick"><use href="#g-tick" /></svg></span>
+          <span class="ttl">Alfred should let me snooze an item until next week&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img"
+              aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Code</span>
+            <span class="pill proj">ALF</span>
+            <span class="pill proj">ALF-104</span>
+            <span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+
+        <div class="irow r3 sel" data-ready="no">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"><svg class="tick"><use href="#g-tick" /></svg></span>
+          <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img"
+              aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Task</span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+
+        <div class="irow r4 sel" data-ready="no">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"><svg class="tick"><use href="#g-tick" /></svg></span>
+          <span class="ttl">That thing Mark mentioned about the roof&nbsp;<span class="prov unjudged" title="Not yet classified"><svg class="g" role="img"
+              aria-label="Not yet classified"><use href="#g-unjudged" /></svg></span></span>
+          <span class="metas"></span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+
+      </div>
+
+      <div class="bulkbar">
+        <div class="bulkpill">
+          <span class="cnt">4 selected</span>
+          <span class="btn accent">Dispatch</span>
+          <span class="btn outline">Classify as ▾</span>
+          <span class="btn outline">Move to folder ▾</span>
+          <span class="btn outline">Send to Code…</span>
+          <span class="btn ghost">Done</span>
+        </div>
+        <div class="readline">2 not ready — 1 needs a type, 1 needs a folder</div>
+      </div>
+
+      <div class="legend">
+        <span class="item l-mark"><span class="swatch">
+            <span class="sw-glyph"><svg class="g"><use href="#g-ready" /></svg></span>
+            <span class="sw-pip"></span>
+            <span class="sw-rail"></span>
+          </span>
+          <span class="name">Ready to dispatch</span> — rows 1 &amp; 2 carry the cue; rows 3 &amp; 4 are drawn exactly as today</span>
+        <span class="item l-dim"><span class="swatch sw-dim">Aa</span>
+          <span class="name">Not ready</span> — rows 3 &amp; 4 step back; the ready rows are the ones drawn as today</span>
+        <span class="item"><span class="swatch"><svg class="g" style="width:11px;height:11px;color:rgba(138,150,168,.8)" aria-hidden="true"><use href="#g-model" /></svg></span>
+          <span class="name">provenance (ALF-180)</span> — unchanged, and a different question</span>
+      </div>
+
+      <p class="cap">
+        Row 1 is a task with a folder; row 2 a childless code item with a project and an epic — both
+        ready. Row 3 is a task with no folder and row 4 an unclassified capture, so neither goes.
+        <b>Select mode</b> is the state the cue has to survive intact: the whole row becomes one
+        button, every chip renders inert, and the readiness line names exactly the two rows the cue
+        does not mark. <b>Hover row 1</b> is where a background-tinted treatment would lose its cue —
+        which is why no wash is offered here.
+      </p>
+    </div>
+  </div>
+
+  <p class="cap doc">
+    With scripting off this mockup is the static <b>option 2 · Resting</b> drawing — the treatment
+    this spec recommends. Each option is also drawn on its own, statically, beside its prose below, so
+    every treatment is visible either way.
+  </p>
+
+  <h3 class="opt-h">Option 1 — Title glyph</h3>
+
+  <div class="mock">
+    <div class="mock-body demo" data-opt="1" data-mode="normal">
+      <div class="ilist">
+        <div class="irow" data-ready="yes">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Call the dentist friday to reschedule the cleaning&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img"
+              aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Task</span>
+            <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+            <span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+        <div class="irow" data-ready="no">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img"
+              aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+          <span class="metas"><span class="pill muted">Task</span></span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    An 11px lucide <code>CircleArrowRight</code> in <code>text-accent-green/90</code>, set immediately
+    after the provenance mark at the end of the title, joined to it the same way the mark is joined to
+    the text. No pill, no border, no fill.
+  </p>
+  <p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code> — the ordinary row's
+    title span <b>and</b> the select-mode branch's title, which are not the same mount (see the two
+    structural details below).</p>
+  <p class="verdict"><span class="k">Buys</span> the mount pattern ALF-180 already solved, specified
+    and tested; proximity — the cue annotates the item you are reading rather than the row's
+    furniture; no interaction with <code>hasMeta</code> at all; and a shape, not only a colour, so it
+    survives being printed in greyscale.</p>
+  <p class="verdict"><span class="k">Costs</span> the alignment the design question above says is the
+    whole point of "glanceable": the glyph's x position follows the title, so scanning ten rows for
+    the ready ones is ten separate reads. It also puts a <i>second</i> glyph on the title line, and
+    the two are 11px annotations of unrelated axes (D7) sitting shoulder to shoulder — the one place
+    the reader is most likely to fuse them into a single "status" they then misread. A right-arrow
+    glyph adjacent to a title also has a link-like affordance it does not honour.</p>
+
+  <h4>The two structural details a naive mount would get wrong</h4>
+  <p class="small">
+    Both are inherited verbatim from the provenance mark and would need the same handling — which is
+    part of what this option buys, since the answers are already written down and covered by tests.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th style="width:22%">Branch</th><th style="width:34%">What the title does there</th><th>Where the cue goes, and why</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>Ordinary row</b></td>
+        <td><code>titleTextClass</code> includes <code>break-words</code> — a long title wraps.</td>
+        <td><b>Inside</b> the title span, after the provenance mark, joined by a non-breaking space.
+          As a plain sibling it is its own inline box with a break opportunity in front of it, so a
+          title that fills its last line drops the cue onto a line of its own.</td>
+      </tr>
+      <tr>
+        <td><b>Select mode</b></td>
+        <td>The title is <code>min-w-0 flex-1 truncate</code> — one clipped line.</td>
+        <td><b>Outside</b> the title span, as a <code>shrink-0</code> sibling. Inside, it is part of
+          the overflowing content, so any title long enough to ellipsize silently loses its cue — in
+          the one mode where you are choosing what to dispatch.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="opt-h">Option 2 — Ready pip <span class="pickme">recommended</span></h3>
+
+  <div class="mock">
+    <div class="mock-body demo" data-opt="2" data-mode="normal">
+      <div class="ilist">
+        <div class="irow" data-ready="yes">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Call the dentist friday to reschedule the cleaning&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img"
+              aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Task</span>
+            <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+            <span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+        <div class="irow" data-ready="no">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img"
+              aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+          <span class="metas"><span class="pill muted">Task</span></span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    A 6px filled dot — <code>h-1.5 w-1.5 rounded-full bg-accent-green/80</code> — rendered as the
+    <b>last</b> child of <code>RowMetaCluster</code>, after the subtask and overdue counts. Not a pill:
+    no border, no padding, no text.
+  </p>
+  <p class="verdict"><span class="k">Mounts in</span> <code>row-meta-cluster.tsx</code> — one mount,
+    shared by the ordinary row and the select-mode row, which already render the same cluster.</p>
+  <p class="verdict"><span class="k">Buys</span> <b>alignment</b>: the title is <code>flex-1</code>, so
+    the cluster is pushed to the row's right and its <i>last</i> child sits at a fixed offset from the
+    row's right edge on every row (the actions cluster is <code>opacity-0</code>, not
+    <code>display:none</code>, so it reserves its width even at rest). Ten rows read as one column. It
+    also lands the cue among the very chips readiness is computed from, so the verdict sits at the end
+    of the evidence; it is the smallest element of the three that add one; and by D8 it is the only
+    added element that provably cannot grow a mobile row, because every row it can appear on already
+    renders the footer.</p>
+  <p class="verdict"><span class="k">Costs</span> a symbol you learn once — a bare dot names itself
+    only through its <code>title</code> and accessible name (D5). It sits adjacent to the count badges,
+    so on a decomposed row it reads at the tail of a small numeric cluster. And on a phone the footer
+    is left-aligned under the title, so the column property — its main advantage — holds on desktop
+    only.</p>
+
+  <h3 class="opt-h">Option 3 — Edge rail</h3>
+
+  <div class="mock">
+    <div class="mock-body demo" data-opt="3" data-mode="normal">
+      <div class="ilist">
+        <div class="irow" data-ready="yes">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Call the dentist friday to reschedule the cleaning&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img"
+              aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Task</span>
+            <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+            <span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+        <div class="irow" data-ready="no">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img"
+              aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+          <span class="metas"><span class="pill muted">Task</span></span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    A 2px green bar pinned to the row's leading edge, inset vertically by 4px, drawn inside the row's
+    existing <code>paddingLeft</code> so nothing shifts. Absolutely positioned, plus an
+    <code>sr-only</code> span carrying the name.
+  </p>
+  <p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code>'s row wrapper — both
+    branches — and needs the wrapper to become <code>relative</code>.</p>
+  <p class="verdict"><span class="k">Buys</span> the strongest column of the four and zero horizontal
+    space: nothing on the row moves, no cluster grows, and the Inbox reads as a marked margin you can
+    take in without reading a single title. Unlike ALF-180's rejected rail this one carries a
+    <b>single</b> state, so it never asks a reader to tell two weights of a colour apart.</p>
+  <p class="verdict"><span class="k">Costs</span> the row's busiest state channel. The search
+    highlight, the drag drop-target and select mode's selected row are all
+    <code>ring-2 ring-inset ring-accent-teal</code> drawn on that exact edge, so a selected ready row
+    shows a green sliver inside a teal ring — flip the big mockup to <b>Select mode</b> with treatment
+    3 to judge it. On a phone the rail sits ~4px inside the card's own border, reading as a second
+    border rather than a mark. It is also the least self-explanatory: an unlabelled edge stripe has no
+    hover target of its own, so the <code>title</code> affordance the other options get for free is
+    not available.</p>
+
+  <h3 class="opt-h">Option 4 — Unready dim</h3>
+
+  <div class="mock">
+    <div class="mock-body demo" data-opt="4" data-mode="normal">
+      <div class="ilist">
+        <div class="irow" data-ready="yes">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Call the dentist friday to reschedule the cleaning&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img"
+              aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img"
+              aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+          <span class="metas">
+            <span class="pill muted">Task</span>
+            <span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span>
+            <span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span>
+          </span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+        <div class="irow" data-ready="no">
+          <span class="rk rk-rail" aria-hidden="true"></span>
+          <span class="chev" aria-hidden="true"></span>
+          <span class="cbx" aria-hidden="true"></span>
+          <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img"
+              aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+          <span class="metas"><span class="pill muted">Task</span></span>
+          <span class="acts" aria-hidden="true">+ ⋯</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    No element at all, and the one treatment that inverts D2: a <b>ready</b> row is drawn exactly as
+    today, and an <b>unready</b> row steps down a level of contrast — its title to
+    <code>text-muted-foreground</code> and its chip cluster to <code>opacity-55</code> — plus an
+    <code>sr-only</code> span so the state is still announced.
+  </p>
+  <p class="verdict"><span class="k">Mounts in</span> <code>task-row.tsx</code>'s title and
+    <code>RowMetaCluster</code>'s wrapper class lists — no new node anywhere.</p>
+  <p class="verdict"><span class="k">Buys</span> the least chrome physically possible: nothing is
+    added, no colour is spent, and the ready rows are the ones that look normal. It groups the list
+    into two bands readable in one glance, and it is the only option whose cost <i>falls</i> as the
+    classifier improves — a fully-labelled Inbox looks like an ordinary Inbox.</p>
+  <p class="verdict"><span class="k">Costs</span> the emphasis, backwards: the rows that need your
+    attention are the ones it pushes away, and a fresh capture — the row you most want to act on —
+    arrives pre-faded. It also collides with an existing meaning: a muted title in this app is a
+    <b>completed</b> row (<code>titleTextClass</code> fades to <code>text-muted-foreground</code> on
+    completion), so an Inbox of dimmed rows reads as an inbox of done things. And it is the one
+    treatment that encodes by contrast rather than presence, which is the channel that fails first for
+    low-vision reading (D6).</p>
+
+  <div class="card teal">
+    <p style="margin:.2rem 0"><b>The recommendation: option 2, the ready pip.</b> It is the only
+    treatment that gets <i>alignment</i> — the property that makes a list cue glanceable rather than
+    merely present — without spending the row's contested leading edge (option 3) or its contrast
+    channel (option 4). It mounts once instead of twice, in the cluster that already holds every
+    label readiness is computed from, so the verdict reads as the last word of the evidence rather
+    than as a sixth independent fact. And D8's argument is uniquely available to it: because a ready
+    row always already renders a chip, adding the pip to that cluster cannot cost a mobile row a
+    second line — the exact price ALF-180 declined to pay for a provenance chip.</p>
+    <p class="small" style="margin:.5rem 0 .2rem">What the pick costs, and what §5 and §6 therefore
+    carry: a bare dot is a symbol rather than a word, so its accessible name and <code>title</code>
+    are load-bearing and get their own assertions; and its column property is a desktop property, so
+    the phone drawing below is part of what is being signed off, not an afterthought.</p>
+  </div>
+
+  <h3>The same four treatments on a phone</h3>
+
+  <p>
+    390px, where the row becomes a card: the chips wrap to their own line under the title
+    (<code>metaFooterClass</code>), and the actions are always visible rather than hover-revealed.
+    Option 2's pip travels with the footer, so it is left-aligned here — the honest cost named above.
+    Option 3's rail sits just inside the card's own border.
+  </p>
+
+  <div class="mock">
+    <div class="mock-bar"><span>390px — the mobile card layout</span>
+      <span class="hmeta">one ready row, one not, in each treatment</span></div>
+    <div class="mock-body">
+      <div class="phones">
+        <div class="phone">
+          <p class="opt-name">1 · Title glyph</p>
+          <div class="demo" data-opt="1" data-mode="normal">
+          <div class="pcard">
+            <div class="irow mob" data-ready="yes">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Call the dentist friday&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img" aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img" aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span><span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span><span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          <div class="pcard">
+            <div class="irow mob" data-ready="no">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img" aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="phone">
+          <p class="opt-name">2 · Ready pip</p>
+          <div class="demo" data-opt="2" data-mode="normal">
+          <div class="pcard">
+            <div class="irow mob" data-ready="yes">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Call the dentist friday&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img" aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img" aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span><span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span><span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          <div class="pcard">
+            <div class="irow mob" data-ready="no">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img" aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="phone">
+          <p class="opt-name">3 · Edge rail</p>
+          <div class="demo" data-opt="3" data-mode="normal">
+          <div class="pcard">
+            <div class="irow mob" data-ready="yes">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Call the dentist friday&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img" aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img" aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span><span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span><span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          <div class="pcard">
+            <div class="irow mob" data-ready="no">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img" aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="phone">
+          <p class="opt-name">4 · Unready dim</p>
+          <div class="demo" data-opt="4" data-mode="normal">
+          <div class="pcard">
+            <div class="irow mob" data-ready="yes">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Call the dentist friday&nbsp;<span class="prov model" title="Labelled by the classifier"><svg class="g" role="img" aria-label="Labelled by the classifier"><use href="#g-model" /></svg></span>&nbsp;<span class="rk rk-glyph" title="Ready to dispatch"><svg class="g" role="img" aria-label="Ready to dispatch"><use href="#g-ready" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span><span class="pill muted"><svg class="ic" aria-hidden="true"><use href="#g-folder" /></svg>Health</span><span class="rk rk-pip" role="img" aria-label="Ready to dispatch" title="Ready to dispatch"></span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          <div class="pcard">
+            <div class="irow mob" data-ready="no">
+              <span class="rk rk-rail" aria-hidden="true"></span>
+              <span class="cbx" aria-hidden="true"></span>
+              <div class="pcol">
+                <span class="ttl">Book the van for the move&nbsp;<span class="prov claimed" title="Labelled by you"><svg class="g" role="img" aria-label="Labelled by you"><use href="#g-claimed" /></svg></span></span>
+                <span class="metas"><span class="pill muted">Task</span></span>
+              </div>
+              <span class="acts" aria-hidden="true">⋯</span>
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap">
+        Row 1 is ready, row 2 is not, in all four. Treatment 4 is the only one that changes the
+        <i>unready</i> card; the other three leave it exactly as it is today.
+      </p>
+    </div>
+  </div>
+
+  <h2>5 · Implementation shape</h2>
+
+  <p>
+    Written for the recommended treatment (option 2). The rule, the gate, the wording and the tests
+    are the same under any of the four; the <b>mount</b> is the part that is option-specific, and the
+    table at the end of this section says what each other pick would change instead.
+  </p>
+
+  <h3>5.1 · The five edits</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:38%">File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>lib/tasks/dispatch.ts</code></td>
+        <td>Export <code>DISPATCH_READY_LABEL = 'Ready to dispatch'</code> beside the blocker
+          phrases. The readiness vocabulary already lives here; the row must not invent its own
+          copy of it.</td>
+      </tr>
+      <tr>
+        <td><code>components/tasks/task-row.styles.ts</code></td>
+        <td>Add <code>dispatchReadyPipClass</code>. The row's cosmetic classes are locked by
+          <code>task-row.styles.test.ts</code>, so the pip's appearance is asserted rather than
+          sprinkled inline.</td>
+      </tr>
+      <tr>
+        <td><code>components/tasks/dispatch-ready-mark.tsx</code> <b>(new)</b></td>
+        <td>A dozen lines: an inert <code>&lt;span&gt;</code> with <code>role="img"</code>, the
+          label as both <code>aria-label</code> and <code>title</code>, and the class above. Inert by
+          construction (D5), so it is valid inside select mode's single
+          <code>&lt;button&gt;</code> — the same construction as
+          <code>ClassificationMark</code>.</td>
+      </tr>
+      <tr>
+        <td><code>components/tasks/task-row.tsx</code></td>
+        <td>One derivation beside the existing <code>showTypeBadge</code> / <code>origin</code>
+          pair, and one new prop passed at <b>both</b> <code>RowMetaCluster</code> mounts (the
+          ordinary row and the select-mode branch).</td>
+      </tr>
+      <tr>
+        <td><code>components/tasks/task-row/row-meta-cluster.tsx</code></td>
+        <td>Accept the prop, add it to the <code>hasMeta</code> disjunction, render the mark as the
+          cluster's <b>last</b> child — after the subtask and overdue counts.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>
+    <b>Nothing else.</b> No migration, no SQL view, no API route, no store action, no selector, no
+    Worker change, and no change to <code>dispatch.ts</code>'s logic — D1, made concrete.
+  </p>
+
+  <h3>5.2 · The derivation, and where the gate lives</h3>
+
+<pre><code>// task-row.tsx — beside the existing isInboxRow / showTypeBadge / origin derivations.
+// The gate (D3) is `isInboxRow`, reused rather than re-expressed, so the Type badge, the
+// provenance mark and this cue can never gate differently. `node.children.length > 0` is the
+// same hasChildren the bulk bar passes, so the row and the press agree by construction.
+const isDispatchReady =
+  isInboxRow &amp;&amp; dispatchReadiness(node, node.children.length &gt; 0).ready;</code></pre>
+
+<pre><code>// row-meta-cluster.tsx — LAST, after the overdue tally: the verdict reads as the closing word
+// of the evidence, and last is what puts it at a fixed offset from the row's right edge.
+{showReadyPip &amp;&amp; &lt;DispatchReadyMark /&gt;}</code></pre>
+
+  <div class="callout">
+    <b>Add <code>showReadyPip</code> to <code>hasMeta</code> even though it is provably redundant.</b>
+    The cluster returns <code>null</code> when a row carries no metadata, and by D8 a ready row always
+    carries a chip — so the term can never be the one that flips <code>hasMeta</code> true, and
+    therefore can never cost a phone a second line. Include it anyway: it makes the component
+    correct on its own terms instead of correct only by an argument made in another file, and a unit
+    case pins that a cluster whose <i>only</i> content is the pip still renders.
+  </div>
+
+  <h3>5.3 · What a different pick would change instead</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:20%">If the pick is…</th><th style="width:40%">The mount becomes</th><th>And these tests change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>1 · Title glyph</b></td>
+        <td>Two mounts in <code>task-row.tsx</code> (inside the ordinary title span joined by
+          <code> </code>; outside the truncating select-mode title as a
+          <code>shrink-0</code> sibling). <code>row-meta-cluster.tsx</code> is untouched.</td>
+        <td>Add the two long-title placement cases §4 names — the wrap orphan and the truncate clip
+          — exactly as ALF-180 tests them for the provenance mark.</td>
+      </tr>
+      <tr>
+        <td><b>2 · Ready pip</b></td>
+        <td>As written above.</td>
+        <td>The §6 table as written.</td>
+      </tr>
+      <tr>
+        <td><b>3 · Edge rail</b></td>
+        <td>An absolutely-positioned span in <code>task-row.tsx</code>'s row wrapper in both
+          branches; the wrapper gains <code>relative</code>. The name moves to an
+          <code>sr-only</code> span (an edge stripe has no hover target for a
+          <code>title</code>).</td>
+        <td>Swap the <code>title</code> assertion for an <code>sr-only</code> one, and add a
+          select-mode case asserting the rail still renders under the teal ring.</td>
+      </tr>
+      <tr>
+        <td><b>4 · Unready dim</b></td>
+        <td>No new node: conditional classes on the title in <code>task-row.tsx</code> and on the
+          cluster wrapper in <code>row-meta-cluster.tsx</code>, plus an <code>sr-only</code> span.
+          The condition inverts — it fires on <b>un</b>ready rows.</td>
+        <td>Every gate case inverts (assert the dim class is <i>absent</i> on a ready row), and the
+          styles test gains the dimmed variants. The completed-row fade must be asserted still
+          distinguishable from the unready dim.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>6 · Tests</h2>
+
+  <p>
+    Red/Green TDD as usual. Every requirement here is a rendering gate over a pure predicate, so all
+    of it lands in <code>check:fast</code> except the two visual/flow cases at the end.
+  </p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th style="width:24%">Suite</th><th>Cases</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>Unit</b><br /><code>dispatch.test.ts</code></td>
+        <td>No new readiness cases — the table in §2 is already covered there, and this story adds
+          no branch to it. One case only: <code>DISPATCH_READY_LABEL</code> is the string the mark
+          and the bulk bar's disabled hint both read, so the vocabulary can't fork.</td>
+      </tr>
+      <tr>
+        <td><b>Unit</b><br /><code>task-row.styles.test.ts</code></td>
+        <td>The pip's class string, locked like the row's other cosmetic classes.</td>
+      </tr>
+      <tr>
+        <td><b>RTL</b><br /><code>dispatch-ready-mark.test.tsx</code></td>
+        <td>Accessible name is exactly <b>Ready to dispatch</b>; <code>title</code> carries the same
+          words; the element is <b>not</b> a <code>button</code> and has no click handler.</td>
+      </tr>
+      <tr>
+        <td><b>RTL</b><br /><code>detail-chips.test.tsx</code> / cluster</td>
+        <td>The cluster renders when the pip is its only content (the <code>hasMeta</code> term of
+          §5.2), and the pip is the cluster's <b>last</b> child when counts are also present — the
+          assertion that pins the alignment the pick was made for.</td>
+      </tr>
+      <tr>
+        <td><b>RTL</b><br /><code>task-row.test.tsx</code> — readiness</td>
+        <td>One case per row of §2's table: <span class="yes">shown</span> for a task with a folder
+          and for a childless code item with project + epic; <span class="no">absent</span> for a
+          task with no folder, a code item missing either hint, a code item <i>with</i> children, an
+          unclassified row, and a row still carrying a temp id.</td>
+      </tr>
+      <tr>
+        <td><b>RTL</b><br /><code>task-row.test.tsx</code> — the gate</td>
+        <td>D3, one case each: <span class="no">absent</span> on a dispatched row (it would be a
+          contradiction), on a subtask of a ready Inbox row, and in the Completed view — each with
+          fields that would otherwise read ready, so the assertion is about the gate and not about
+          the data.</td>
+      </tr>
+      <tr>
+        <td><b>RTL</b><br /><code>task-row.test.tsx</code> — select mode</td>
+        <td>The cue renders in the select-mode branch too, and is still not a
+          <code>button</code> — the mode where the row is one button and the cue is closest to the
+          press.</td>
+      </tr>
+      <tr>
+        <td><b>RTL</b><br /><code>task-row.test.tsx</code> — the live flip</td>
+        <td>D8: an unready task row gains the cue once a folder is set through the row's own Folder
+          chip and the store reconciles, with no remount and no reload.</td>
+      </tr>
+      <tr>
+        <td><b>Storybook</b></td>
+        <td>Extend <code>InboxScreen · MidTriage</code> — it already holds two ready and two unready
+          rows, so it becomes the canonical drawing of §4 under the image-snapshot gate. Seed the
+          <code>Health</code> folder into <code>UndispatchedFolderedItem</code>'s store while you are
+          there: that fixture is dispatch-ready but renders no Folder chip today because its folder
+          isn't in the store, which would draw a cue with no visible reason for it. The baselines that
+          move are the ones whose fixtures contain a ready Inbox row — run the gate and rebaseline
+          exactly what it reports rather than guessing the list.</td>
+      </tr>
+      <tr>
+        <td><b>E2E</b><br /><code>inbox-dispatch.spec.ts</code></td>
+        <td>One assertion added to the existing flow, not a new spec: before selecting anything, the
+          rows carrying the cue are exactly the rows the subsequent Dispatch press sends. That is the
+          single claim no unit test can make — that the row's promise and the button's behaviour
+          agree end to end.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>7 · Demo evidence</h2>
+
+  <p>
+    A user-visible change, so it needs a demo doc in its own folder under <code>docs/demos/</code>
+    built with the <code>showboat</code> CLI — and it is also a change that <b>moves committed visual
+    snapshots</b>. The <code>showboat</code> and <code>storybook</code> skills already specify the
+    evidence rules for both; follow those rather than a bespoke list here. In short: the diff image
+    the snapshot gate emits is the evidence for the moved baselines, and a live screenshot of the
+    running Inbox (<code>npm run screenshot -w frontend</code>) is the evidence for the cue itself.
+    Confirm with <code>npm run demo -- verify</code> before wrapping up, and link the doc from the PR
+    description with <code>npm run demo -- pr-link</code>.
+  </p>
+
+  <p class="small">
+    Worth capturing beyond the default: the Inbox <i>before and after</i> filling in a folder on one
+    row, since the live flip (D8) is the behaviour a static screenshot can't show; and, if the pick is
+    option 2 or 3, one shot in select mode, where the cue has to coexist with the teal ring.
+  </p>
+
+  <h2>8 · Acceptance criteria</h2>
+
+  <p class="small">
+    Written against §4's pick. Where a criterion says "the cue", read it as the treatment chosen in
+    review — <b>option 2, the ready pip</b>, unless the PR discussion lands elsewhere, in which case
+    §5.3 says what moves.
+  </p>
+
+  <ul class="ac">
+    <li>An Inbox row that <code>dispatchReadiness</code> calls ready shows the cue, drawn as §4's
+      picked treatment; a row it calls unready does not.</li>
+    <li>Readiness on the row is computed by calling <code>dispatchReadiness</code> itself — no second
+      predicate, no stored flag, no new column, route, store field or fetch.</li>
+    <li>Every row of §2's table is honoured on screen: a task with a folder and a childless code item
+      with both hints are marked; a task with no folder, a code item missing either hint, a code item
+      with children, an unclassified row and a temp-id row are not.</li>
+    <li>The cue appears <b>only</b> on top-level, undispatched rows outside the Completed view — no
+      cue in a folder view, the priority view, the weekly plan, the Completed view, or on a
+      subtask — and the gate is the existing <code>isInboxRow</code> constant, not a second
+      expression.</li>
+    <li>The cue renders in <b>both</b> the ordinary row and the select-mode row, and is never
+      interactive in either: not a <code>button</code>, no click handler, opens nothing.</li>
+    <li>It carries the accessible name <b>“Ready to dispatch”</b>, from the same exported constant the
+      bulk bar's disabled hint reads, so the row and the bar can't drift apart in wording.</li>
+    <li>The row never renders a blocker reason; naming what is missing stays the bulk bar's readiness
+      line (D4).</li>
+    <li>Setting a folder on an unready Inbox row from the row's own Folder chip makes the cue appear
+      once the PATCH reconciles — no reload, no remount, no new subscription.</li>
+    <li>The metadata footer's height is unchanged on mobile: no row that did not render a footer
+      before renders one now.</li>
+    <li>The provenance mark is untouched — same glyphs, same three states, same greys, same placement
+      — and the readiness cue is a separate element with its own name (D7).</li>
+    <li>The rows the Inbox marks are exactly the rows a subsequent Dispatch press sends, asserted end
+      to end in <code>inbox-dispatch.spec.ts</code>.</li>
+    <li>Story fixtures show both states side by side, and the image snapshots the change moves are
+      regenerated with the repo's own tooling and committed alongside the demo doc that shows their
+      diff.</li>
+    <li><code>check</code> is green; no guardrail config was edited and no ignore directive added.</li>
+  </ul>
+
+  <h2>9 · Out of scope &amp; open questions</h2>
+
+  <h4>Deliberately not in this story</h4>
+  <ul class="tight">
+    <li><b>Any per-row Dispatch affordance.</b> The cue reports readiness; it does not become a
+      button, and no “Dispatch this one” entry is added to the row menu. Dispatch stays the bulk
+      bar's, which is where partial-settle behaviour lives.</li>
+    <li><b>Sorting or filtering the Inbox by readiness.</b> Floating ready rows to the top, or a
+      “ready only” filter, is a different story with its own argument — and it would fight the
+      capture-order reading the Inbox depends on.</li>
+    <li><b>A count anywhere.</b> No “3 ready” in the Inbox header, no folder-style badge. The bulk
+      bar already counts the selection; counting the whole Inbox is a separate claim about what the
+      header is for.</li>
+    <li><b>Blocker reasons on the row</b> — D4. The words stay in the bulk bar.</li>
+    <li><b>Any animation.</b> The cue appears on the reconcile like any other chip; a row you have
+      just given a folder should not flash. If a transition is ever wanted it is a motion-token
+      question, and the <code>motion</code> skill owns it.</li>
+    <li><b>Touching <code>dispatchReadiness</code>'s rules.</b> If a rule is wrong (say, a code item
+      with only completed children ought to be dispatchable) that is its own ticket — this story
+      renders the rule as it stands.</li>
+    <li><b>A row wash.</b> Not offered, on purpose: ALF-180 measured that treatment and it lost to
+      the row's own state channel — hover (<code>bg-secondary/30</code>), the selected row
+      (<code>bg-accent-teal/5</code>) and the drop target all paint over a background tint, so the
+      row you point at is the one that loses its cue. Re-offering it here would ask the owner to
+      re-decide a settled question.</li>
+  </ul>
+
+  <h4>Open</h4>
+  <ul class="tight">
+    <li><b>The treatment — §4's one decision.</b> Four are drawn; this document recommends option 2
+      and the pick is the owner's, in review on this PR. Everything else in the spec holds
+      regardless, and §5.3 says exactly what a different pick moves.</li>
+    <li><b>Does positive marking survive a good classifier?</b> D2's consequence. If most Inbox rows
+      arrive ready, a cue on nearly every row stops discriminating and the informative signal becomes
+      its absence — at which point option 4's inversion is the better read. Worth revisiting after a
+      fortnight of real use rather than guessing now; the predicate and the gate are shared either
+      way, so the flip is small.</li>
+  </ul>
+
+  <h2>10 · Related reading</h2>
+  <ul class="tight">
+    <li><a href="epics/ALF-158.html"><code>docs/specs/epics/ALF-158.html</code></a> — the epic. D5
+      (residency), D6 (only a human dispatches), D17 (the Dispatch action and the readiness table),
+      and §4's drawing of the Inbox this cue lands on.</li>
+    <li><a href="archive/ALF-180.html"><code>docs/specs/archive/ALF-180.html</code></a> — the
+      provenance mark. Its §4 is where the row's colour registers were audited and where the chip,
+      rail and wash treatments were measured; D4 there is why readiness must not be folded into that
+      glyph.</li>
+    <li><code>frontend/lib/tasks/dispatch.ts</code> — the readiness predicate, the blocker
+      vocabulary, and <code>summarizeBlockers</code>.</li>
+    <li><code>frontend/lib/tasks/residency.ts</code> — <code>isDispatched</code>, the other half of
+      the gate.</li>
+    <li><code>frontend/components/tasks/inbox-bulk-bar.tsx</code> — the Dispatch press, the readiness
+      line, and the disabled hint whose wording this cue shares.</li>
+    <li><code>frontend/components/tasks/task-row.tsx</code> and
+      <code>task-row/row-meta-cluster.tsx</code> — the two branches, the
+      <code>isInboxRow</code> gate, and the cluster the pip joins.</li>
+    <li><code>database/migrations/0026_inbox_dispatch.sql</code> — where residency became a column,
+      and the table of what renders where.</li>
+  </ul>
+
+  <p class="small" style="margin-top:2.5rem">
+    Refinement spec for ALF-178 · no implementation in this PR · the treatment is picked in review.
+  </p>
+</div>
+
+<script>
+  // Progressive enhancement only: with scripting off the document is the static option 2 / Resting
+  // drawing, and every treatment is still drawn beside its own prose in §4.
+  (function () {
+    var demo = document.getElementById('demo');
+    if (!demo) return;
+    function wire(id, attribute, key) {
+      var group = document.getElementById(id);
+      if (!group) return;
+      group.addEventListener('click', function (event) {
+        var button = event.target.closest('button[' + key + ']');
+        if (!button) return;
+        demo.setAttribute(attribute, button.getAttribute(key));
+        var buttons = group.querySelectorAll('button[' + key + ']');
+        for (var i = 0; i < buttons.length; i++) {
+          buttons[i].setAttribute('aria-pressed', String(buttons[i] === button));
+        }
+      });
+    }
+    wire('opt-switch', 'data-opt', 'data-opt');
+    wire('mode-switch', 'data-mode', 'data-mode');
+  })();
+</script>
+</body>
+</html>
