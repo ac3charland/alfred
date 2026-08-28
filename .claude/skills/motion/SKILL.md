@@ -35,6 +35,7 @@ The project's reusable motion tokens (defined in `globals.css`):
 | `--animate-fade-in` | `animate-fade-in` | opacity 0 → 1 over 200ms ease-out |
 | `--animate-fade-out` | `animate-fade-out` | opacity 1 → 0 over 150ms ease-in (exit is slightly quicker than entry — feels responsive). Ends with `forwards` so it **holds** opacity 0 — see the flash pitfall below. |
 | `--animate-check-pop` | `animate-check-pop` | snappy scale overshoot (0.7 → 1.18 → 1) over 200ms — a responsive "press" for a control flipping to active (the task checkbox). |
+| `--animate-send-off` | `animate-send-off` | opacity 1 → 0 with `translateX(0 → 2rem)` over 300ms ease-out, `forwards` — the "sent off somewhere else" flourish. Shared by the capture ghost and a dispatched Inbox row, so the two can't drift. |
 | `--animate-expand-y` | `animate-expand-y` | `grid-template-rows: 0fr → 1fr` over 300ms ease-out — expands a grid-rows wrapper from 0 height to its natural content height. Pair with `overflow-hidden` inner div (same two-div pattern as the grid-rows transition). |
 | `--animate-collapse-y` | `animate-collapse-y` | `grid-template-rows: 1fr → 0fr` over 300ms ease-out, `forwards` so it **holds** at 0fr between `animationend` and the React unmount (same flash-prevention reason as `fade-out`). |
 
@@ -110,6 +111,7 @@ Content is conditionally rendered ({open && <X/>})?
 | **Read `prefers-reduced-motion` in a component** | `usePrefersReducedMotion()` from `@/lib/use-prefers-reduced-motion` | Shared hook (don't re-inline the `matchMedia` plumbing). Lint-clean and SSR-safe; gate one-shot motion on it and take the immediate path when it returns `true`. |
 | **Hover lift on a card/row** | `transition-transform duration-150 ease-out hover:-translate-y-0.5 motion-reduce:hover:translate-y-0` | Transition, not animation. Still needs a `motion-reduce:` guard. |
 | **Animate a list whose rows _reorder_** (a DOM sibling reorder, e.g. a priority re-rank) | The FLIP `useFlipList` hook (below) | CSS can't transition a sibling reorder on its own. FLIP measures before/after rects and glides each row. Gate on reduced motion (rows snap). |
+| **Animate a whole _selection_ of rows out at once** (a bulk action that retires several rows in one mutation) | The bulk-departure store (below): flag the ids, wait out the exit, then commit | One `transitionend` per row is N events with no "last one" to hook, and the trigger lives outside the rows — so the flag goes in a coordination store and the wait is a timer. |
 | **Animate a brand-new row _entering_ a visible list** (a capture, a new subtask) | `AnimatedHeightEnter`, keyed on the optimistic temp id (the row-entrance pattern below) | Height expands `0fr → 1fr` (pushing the rows below down) + content fades/slides from above. Keyframes, so they play once on mount; the temp→server-id reconcile remounts the row and ends the one-shot. |
 
 ---
@@ -240,6 +242,25 @@ see the pitfall above) for a `leaving` one. Removal is timer-driven, **not** `an
 so reduced motion (`motion-reduce:animate-none`) simply holds the toast for `EXIT_MS` then drops
 it — no stranded toast, no `animationend`-that-never-fires branch. Used by `toast-store.tsx` +
 `toast-viewport.tsx`.
+
+### The bulk departure (many rows, one mutation, a trigger outside them)
+
+When ONE action retires SEVERAL rows — the Inbox's bulk Dispatch — the same inversion applies,
+but neither the row nor the store that owns the data can hold the flag: the trigger (the bulk
+bar) and the rows are in different subtrees, and N simultaneous exits have no single
+`transitionend` to commit on. Put the flag in a **cross-row coordination store** (the
+`ExpansionProvider` shape — `lib/stores/departing-items-store.tsx`), and make its one action do
+the waiting: `await depart(ids)` flags every row and resolves after an `EXIT_MS` matched to the
+exit, then the caller runs the mutation and `clear()`s. Rows just read `departingIds.has(id)`.
+
+- **Reduced motion flags nothing and resolves immediately**, so the caller commits with no
+  animation to strand — the same clean degradation the timer buys the toast queue.
+- **`clear()` after the mutation settles**, so a row a failed unit rolled back renders at rest
+  instead of stuck collapsed and invisible.
+- **Check WHICH BRANCH the row renders in when the exit fires.** A row component with an early
+  return for a mode (`TaskRow`'s select-mode branch) renders entirely different markup — the
+  exit machinery on the main branch is simply absent there, and a bulk action pressed *in* that
+  mode animates nothing. Give that branch the exit too (`task-row/row-departure.tsx`).
 
 A **sound cue counts as motion**: gate it on `prefers-reduced-motion` too (silent when reduced).
 Fire it from the **imperative store action** (the single `showToast` call), not a mount effect —
@@ -411,6 +432,12 @@ glide. Key things:
   delayed unmount — the store-modeled exit below): if the exit animation and the removal timer
   are the same length, the
   revert frame can still paint in the gap before the unmount commits. Used by `toast-viewport.tsx`.
+
+- **`overflow-hidden` on the collapsing grid item does NOT clip that item's own transform.** A
+  row that slides sideways while its height collapses is clipped by its *ancestors*, not by the
+  clip it carries — so on a list with no clip of its own it can push the page sideways for the
+  length of the exit. Add the clip to the collapse **wrapper** as well, and only while the exit
+  runs (a permanent clip shaves the row's focus ring).
 
 - **`onAnimationEnd` bubbles from descendants.** Guard with
   `event.target === event.currentTarget` so a child's animation doesn't trigger parent logic.
