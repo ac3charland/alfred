@@ -25,6 +25,13 @@ const WAKE: HabitCriterion = {
   comparator: 'lte',
 };
 const LIGHT: HabitCriterion = { key: 'light', label: 'Outside for light', kind: 'boolean' };
+const MEDITATE: HabitCriterion = {
+  key: 'meditate',
+  label: 'Meditate',
+  kind: 'duration',
+  target: 20,
+  comparator: 'gte',
+};
 
 const HABIT: Habit = {
   id: HABIT_ID,
@@ -166,6 +173,29 @@ describe('DayEditor — committing a day', () => {
     await waitFor(() => {
       expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { wake: 364 });
     });
+  });
+
+  it('says the minutes a duration field is recorded in, beside the field', async () => {
+    const user = userEvent.setup();
+    renderEditor({ criteria: [MEDITATE], results: {} });
+
+    const field = screen.getByLabelText('Meditate');
+    expect(field).toHaveAccessibleDescription('min');
+
+    // The unit is a caption on the field, not something typed into it.
+    await user.type(field, '25');
+    await user.tab();
+    await waitFor(() => {
+      expect(logDay).toHaveBeenCalledWith(HABIT_ID, DATE, { meditate: 25 });
+    });
+  });
+
+  it('leaves a count field unitless, since its label carries the unit', () => {
+    renderEditor({
+      criteria: [{ key: 'glasses', label: 'Glasses', kind: 'count', target: 3, comparator: 'gte' }],
+    });
+
+    expect(screen.getByLabelText('Glasses')).toHaveAccessibleDescription('');
   });
 
   it('flushes a change the editor is closed on top of, rather than dropping it', async () => {

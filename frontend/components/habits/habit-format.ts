@@ -97,13 +97,30 @@ export function timeToMinutes(value: string): number | undefined {
   return hours * 60 + minutes;
 }
 
-/** How a recorded value reads back: a time as `HH:MM`, anything else as its own number. */
-export function formatValue(criterion: HabitCriterion, value: boolean | number): string {
-  if (typeof value === 'boolean') return value ? 'yes' : 'no';
-  return criterion.kind === 'time' ? minutesToTime(value) : String(value);
+/**
+ * The unit a `duration` is stored in. Durations are plain minutes with nothing on the number
+ * itself to say so, unlike a `count`, whose unit is in the label its owner wrote ("3 glasses").
+ * So every duration on screen is captioned from here — the text and the fields' captions read
+ * the same constant, and can't drift into disagreeing about what the number means.
+ */
+export const DURATION_UNIT = 'min';
+
+/** `20` → `20 min` — the stored minutes, said. */
+export function formatDuration(minutes: number): string {
+  return `${String(minutes)} ${DURATION_UNIT}`;
 }
 
-/** How a criterion's target reads inside the sentence: `06:15`, `3`, `20`. */
+/**
+ * How a recorded value reads back: a time as `HH:MM`, a duration as its minutes, anything else
+ * as its own number.
+ */
+export function formatValue(criterion: HabitCriterion, value: boolean | number): string {
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  if (criterion.kind === 'time') return minutesToTime(value);
+  return criterion.kind === 'duration' ? formatDuration(value) : String(value);
+}
+
+/** How a criterion's target reads inside the sentence: `06:15`, `3`, `20 min`. */
 export function formatTarget(criterion: HabitCriterion): string {
   return criterion.kind === 'boolean' ? '' : formatValue(criterion, criterion.target);
 }

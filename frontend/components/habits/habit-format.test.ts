@@ -12,6 +12,7 @@ import {
   formatBanked,
   formatDayMonth,
   formatDaysSlot,
+  formatDuration,
   formatHitRate,
   formatLongDate,
   formatShortDate,
@@ -36,6 +37,20 @@ const WAKE: HabitCriterion = {
   comparator: 'lte',
 };
 const LIGHT: HabitCriterion = { key: 'light', label: 'Outside for light', kind: 'boolean' };
+const MEDITATE: HabitCriterion = {
+  key: 'meditate',
+  label: 'Meditate',
+  kind: 'duration',
+  target: 20,
+  comparator: 'gte',
+};
+const GLASSES: HabitCriterion = {
+  key: 'glasses',
+  label: 'Glasses',
+  kind: 'count',
+  target: 3,
+  comparator: 'gte',
+};
 
 describe('date formatting', () => {
   it('reads a calendar date as itself, never shifted by the machine zone', () => {
@@ -69,10 +84,26 @@ describe('time conversion', () => {
 
   it('renders a time criterion’s target as a clock and everything else as a number', () => {
     expect(formatTarget(WAKE)).toBe('06:15');
-    expect(
-      formatTarget({ key: 'g', label: 'Glasses', kind: 'count', target: 3, comparator: 'gte' }),
-    ).toBe('3');
+    expect(formatTarget(GLASSES)).toBe('3');
     expect(formatTarget(LIGHT)).toBe('');
+  });
+});
+
+describe('duration formatting', () => {
+  it('names the minutes a duration is counted in, which nothing else on screen says', () => {
+    expect(formatDuration(20)).toBe('20 min');
+    expect(formatDuration(90)).toBe('90 min');
+    expect(formatTarget(MEDITATE)).toBe('20 min');
+  });
+
+  it('leaves a count bare — a count\u2019s unit is in the label its owner wrote', () => {
+    expect(formatTarget(GLASSES)).toBe('3');
+  });
+
+  it('carries the unit into the day\u2019s clause, where a bare number reads as anything', () => {
+    expect(dayAccessibleName('2026-07-23', 'met', [MEDITATE], { meditate: 25 }, null)).toBe(
+      'Thursday 23 July \u2014 met. Meditate: met (25 min).',
+    );
   });
 });
 
