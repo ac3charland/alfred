@@ -4,6 +4,7 @@ import React from 'react';
 import '../app/globals.css';
 import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { CodeFilterProvider } from '../lib/stores/code-filter-store';
+import { DepartingItemsProvider } from '../lib/stores/departing-items-store';
 import { ExpansionProvider } from '../lib/stores/expansion-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
 import { HabitsProvider } from '../lib/stores/habits-store';
@@ -48,29 +49,33 @@ const preview: Preview = {
                 React.createElement(
                   InboxSelectionProvider,
                   null,
-                  // CodeFilterProvider mirrors the shell layout: a server-data-free coordination
-                  // store the Backlog/board views read for their persisted status filter.
                   React.createElement(
-                    CodeFilterProvider,
+                    DepartingItemsProvider,
                     null,
+                    // CodeFilterProvider mirrors the shell layout: a server-data-free coordination
+                    // store the Backlog/board views read for their persisted status filter.
                     React.createElement(
-                      WeeklyPlanProvider,
-                      {
-                        initialIndex: seed.weeklyPlans?.index ?? [],
-                        initialLatest: seed.weeklyPlans?.latest,
-                      },
+                      CodeFilterProvider,
+                      null,
                       React.createElement(
-                        HabitsProvider,
+                        WeeklyPlanProvider,
                         {
-                          initialHabits: seed.habits?.habits ?? [],
-                          initialEntries: seed.habits?.entries ?? [],
-                          // A fixed date, so a grid baseline doesn't move with the calendar.
-                          serverToday: seed.habits?.today ?? '2026-07-30',
+                          initialIndex: seed.weeklyPlans?.index ?? [],
+                          initialLatest: seed.weeklyPlans?.latest,
                         },
                         React.createElement(
-                          'div',
-                          { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                          React.createElement(Story),
+                          HabitsProvider,
+                          {
+                            initialHabits: seed.habits?.habits ?? [],
+                            initialEntries: seed.habits?.entries ?? [],
+                            // A fixed date, so a grid baseline doesn't move with the calendar.
+                            serverToday: seed.habits?.today ?? '2026-07-30',
+                          },
+                          React.createElement(
+                            'div',
+                            { className: 'dark min-h-screen bg-background text-foreground p-8' },
+                            React.createElement(Story),
+                          ),
                         ),
                       ),
                     ),

@@ -13,6 +13,7 @@ import { getInstanceConfig } from '@/lib/instance';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { DepartingItemsProvider } from '@/lib/stores/departing-items-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
@@ -71,37 +72,39 @@ export default async function ShellLayout({ children }: { children: React.ReactN
             <ActiveEditorProvider>
               <ExpansionProvider>
                 <InboxSelectionProvider>
-                  <CodeProvider
-                    initialProjects={projects}
-                    initialEpics={epics}
-                    initialStories={stories}
-                  >
-                    <CodeFilterProvider>
-                      <FolderSortProvider>
-                        <SearchProvider>
-                          {/* Only the index + the latest document are seeded — an older week's
+                  <DepartingItemsProvider>
+                    <CodeProvider
+                      initialProjects={projects}
+                      initialEpics={epics}
+                      initialStories={stories}
+                    >
+                      <CodeFilterProvider>
+                        <FolderSortProvider>
+                          <SearchProvider>
+                            {/* Only the index + the latest document are seeded — an older week's
                             HTML is pulled on demand (see the weekly plan store). */}
-                          <WeeklyPlanProvider
-                            initialIndex={weeklyPlanIndex}
-                            initialLatest={latestWeeklyPlan}
-                          >
-                            {/* The server can't know the browser's zone, so today is seeded in
-                              UTC and corrected in a mount effect (see the habits store). */}
-                            <HabitsProvider
-                              initialHabits={habitSeed.habits}
-                              initialEntries={habitSeed.entries}
-                              initialStats={habitSeed.stats}
-                              serverToday={todayIn('UTC')}
+                            <WeeklyPlanProvider
+                              initialIndex={weeklyPlanIndex}
+                              initialLatest={latestWeeklyPlan}
                             >
-                              <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
-                                {children}
-                              </AppShell>
-                            </HabitsProvider>
-                          </WeeklyPlanProvider>
-                        </SearchProvider>
-                      </FolderSortProvider>
-                    </CodeFilterProvider>
-                  </CodeProvider>
+                              {/* The server can't know the browser's zone, so today is seeded in
+                              UTC and corrected in a mount effect (see the habits store). */}
+                              <HabitsProvider
+                                initialHabits={habitSeed.habits}
+                                initialEntries={habitSeed.entries}
+                                initialStats={habitSeed.stats}
+                                serverToday={todayIn('UTC')}
+                              >
+                                <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
+                                  {children}
+                                </AppShell>
+                              </HabitsProvider>
+                            </WeeklyPlanProvider>
+                          </SearchProvider>
+                        </FolderSortProvider>
+                      </CodeFilterProvider>
+                    </CodeProvider>
+                  </DepartingItemsProvider>
                 </InboxSelectionProvider>
               </ExpansionProvider>
             </ActiveEditorProvider>
