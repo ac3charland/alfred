@@ -98,10 +98,19 @@ Only the fan-out is wrapped — `demo-lint` stays ahead of it, because a docs-on
 when it has something to say. One wiring serves both callers of the tier: the pre-push hook and
 CI's `check-slow` job.
 
-**Every uncertain case runs the full tier**: an unknown diff (no git, no trunk ref, a shallow
-checkout), an empty one (trunk itself), or `CHECK_SCOPE_ALL=1` — the escape hatch for forcing the
-full tier on a docs-only branch. A stale local trunk only ever *inflates* the changed set, so the
-worst it costs is a needless full run, never a skipped gate.
+**Every uncertain case runs the full tier**: an unknown diff (no git, no usable trunk ref), an
+empty one (trunk itself), or `CHECK_SCOPE_ALL=1` — the escape hatch for forcing the full tier on a
+docs-only branch.
+
+Two ways a changed-set diff lies about what a push carries, both of which a skip-gate must close:
+
+- **Rename detection hides the source side.** `git diff --name-only` prints only a rename's
+  destination, so moving a spec or a snapshot baseline into `docs/` reads as a docs-only change
+  while actually deleting code. Diff with `--no-renames`.
+- **A local trunk can shrink the changed set.** A local `main` holding commits `origin` has not
+  seen pushes the merge-base *forward* and hides them, so a docs-only branch stacked on an
+  unpushed code commit would skip while the push carries that code out. Never fall back to a local
+  trunk while an origin remote exists — treat trunk as unknown and run.
 
 "docs-only" means exactly what `demo-lint`'s `branch-folder` exemption means — `docs` itself or
 anything under `docs/`. Keep the two definitions identical; two gates disagreeing about what

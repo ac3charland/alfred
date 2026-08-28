@@ -129,6 +129,18 @@ assemble that file list itself, and two defaults quietly break it:
   until it's added, so a gate keyed on "did this branch add one?" skips exactly the case it exists
   for — and skips it *silently*, reading as a pass. Union the diff with
   `git ls-files --others --exclude-standard`.
+- **Rename detection prints only the destination.** `git diff --name-only` reports a move as its
+  new path alone, so the source side — a *deleted* file — is invisible. A gate that decides "this
+  branch only touched `docs/`" then green-lights `git mv frontend/e2e/tasks.spec.ts docs/archive/`,
+  which deleted an E2E spec. Pass **`--no-renames`** so a move reads as the delete plus add it
+  physically is. (`-M0` does not do this; only `--no-renames` works.)
+- **A local trunk ref can *shrink* the changed set.** Diffing against a local `main` that holds
+  commits `origin` has not seen pushes the merge-base forward and hides them, so a branch stacked
+  on an unpushed code commit looks innocent while the push carries that code out. Prefer the
+  remote-tracking ref, and when an `origin` remote exists but its trunk ref is missing, treat trunk
+  as **unknown** rather than trusting the local branch.
+- **`core.quotePath` C-escapes non-ASCII paths**, so `docs/café.md` arrives as
+  `"docs/caf\303\251.md"` and fails a prefix match. Run git with `-c core.quotePath=false`.
 - **The two commands disagree on path roots.** `git diff --name-only` prints repo-root-relative
   paths; **`git ls-files` prints cwd-relative** ones, so from inside a package the same file arrives
   as `migrations/0028.sql` from one and `database/migrations/0028.sql` from the other, and a prefix
