@@ -52,6 +52,12 @@ A code item used to sit in the Inbox until the factory gate call came back, so a
 
 ![a task and a code item leave together while the gate call is still in flight](dispatch-send-off-video-2.gif)
 
+## The row's own ⋯ menu sends one off the same way
+
+Dispatching a single row from its ⋯ menu (ALF-185) leaves on the very same send-off, so triaging one item and triaging a batch look alike.
+
+![a row dispatched from its own menu slides out while the row below moves up](dispatch-send-off-video-3.gif)
+
 ## Reduced motion
 
 With `prefers-reduced-motion`, nothing is flagged and nothing is waited on — the rows simply go the moment Dispatch is pressed, exactly as before. That branch is pinned by a unit test rather than a GIF, since there is no motion to record.
