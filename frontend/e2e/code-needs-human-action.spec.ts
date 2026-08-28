@@ -5,7 +5,9 @@ import { expect, test } from './support/fixtures';
  * The "Needs human action" view (ALF-103): a dedicated Code-module destination at
  * `/code/needs-human-action` that lists every story awaiting the owner's eyes — the human-review
  * states `in_refinement`, `ready_for_dev`, and `ready_for_review` — ranked by global priority.
- * Promoted from the Backlog's old "Human Review" filter macro into its own sidebar link.
+ * Promoted from the Backlog's old "Human Review" filter macro into its own sidebar link, and made
+ * the module's DEFAULT view (ALF-174): the bare `/code` opens it, and it leads the sidebar above
+ * the Backlog.
  *
  * A code story only surfaces in `v_code_stories` when a backing `items` row with the same id is
  * ALSO seeded (the view's inner join), so each story is an item + a code_items sidecar.
@@ -103,6 +105,30 @@ test('lists only the human-review stories, ranked by priority, with no filter co
   await expect(rows.nth(0)).toContainText('ALF-3');
   await expect(rows.nth(1)).toContainText('ALF-4');
   await expect(rows.nth(2)).toContainText('ALF-5');
+});
+
+test('is the default Code view at the bare /code, listed above the Backlog (ALF-174)', async ({
+  page,
+  seed,
+}) => {
+  await seed({ projects: [project], epics: [epic], items, codeItems });
+  await page.goto('/code');
+
+  // Entering the module lands on the human-review queue, not the full ranked Backlog.
+  await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /software factory/i })).toHaveCount(0);
+  await expect(page.getByRole('listitem')).toHaveCount(3);
+
+  // The sidebar puts it above the Backlog and highlights it for the bare `/code`.
+  const projectNav = page.getByRole('navigation', { name: 'Projects' });
+  const navLinks = projectNav.getByRole('link');
+  await expect(navLinks.nth(0)).toHaveText('Needs human action');
+  await expect(navLinks.nth(1)).toHaveText('Backlog');
+
+  // The Backlog is still one click away, on its own explicit route.
+  await projectNav.getByRole('link', { name: 'Backlog' }).click();
+  await expect(page).toHaveURL('/code/backlog');
+  await expect(page.getByRole('heading', { name: /software factory/i })).toBeVisible();
 });
 
 test('navigates to the view from the sidebar link', async ({ page, seed }) => {

@@ -20,9 +20,9 @@ test('switches from Tasks to Code via the header switcher', async ({ page, seed 
   await page.getByRole('link', { name: 'Code' }).click();
   await expect(page).toHaveURL('/code');
 
-  // The Code landing guides the user to pick a project, and the switch back works —
-  // Tasks lands on the module's default By-Priority view.
-  await expect(page.getByRole('heading', { name: /software factory/i })).toBeVisible();
+  // The Code module opens on its default view — the Needs-human-action queue (ALF-174) — and
+  // the switch back works: Tasks lands on the module's default By-Priority view.
+  await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
   await page.getByRole('link', { name: 'Tasks' }).click();
   await expect(page).toHaveURL('/priority');
 });

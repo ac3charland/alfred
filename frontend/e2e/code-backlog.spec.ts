@@ -2,8 +2,9 @@ import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/consta
 import { expect, test } from './support/fixtures';
 
 /**
- * The Backlog (ALF-35): the default Code view at `/code` lists every outstanding story across
- * projects, ranked by global priority. The owner re-ranks with up/down chevrons (an atomic
+ * The Backlog (ALF-35): `/code/backlog` lists every outstanding story across projects, ranked by
+ * global priority. It was the default Code view until ALF-174 handed that role to the
+ * Needs-human-action queue; it now lives on its own explicit route. The owner re-ranks with up/down chevrons (an atomic
  * `swap_code_priority`), and a row's body deep-links into the story's detail modal on its board.
  *
  * A code story only surfaces in `v_code_stories` when a backing `items` row with the same id is
@@ -51,9 +52,9 @@ const codeItems = [
   }),
 ];
 
-test('renders the Backlog as the default Code view, ranked by priority', async ({ page, seed }) => {
+test('renders the Backlog at /code/backlog, ranked by priority', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
-  await page.goto('/code');
+  await page.goto('/code/backlog');
 
   await expect(page.getByRole('heading', { name: /software factory/i })).toBeVisible();
 
@@ -380,7 +381,7 @@ test('keeps the Backlog status filter active across SPA navigation (ALF-79)', as
 
 test('opens a story modal on its project board from a Backlog row', async ({ page, seed }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
-  await page.goto('/code');
+  await page.goto('/code/backlog');
 
   await page.getByRole('link', { name: /Open ALF-5/ }).click();
   await expect(page).toHaveURL(/\/code\/p1\?story=ALF-5/);

@@ -113,7 +113,7 @@ test('switches Tasks ⇄ Code client-side, with no document reload or RSC round-
   // Tasks → Code: URL, main content, sidebar, and switcher highlight all flip to Code.
   await page.getByRole('link', { name: 'Code' }).click();
   await expect(page).toHaveURL('/code');
-  await expect(page.getByText('The Software Factory')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
   await expect(
     page.getByRole('navigation', { name: 'Projects' }).getByRole('link', { name: /alfred/i }),
   ).toBeVisible();
@@ -141,7 +141,7 @@ test('keeps browser back/forward working across a module switch', async ({ page,
   // Tasks → Code (client-side), then walk history back to Tasks and forward again.
   await page.getByRole('link', { name: 'Code' }).click();
   await expect(page).toHaveURL('/code');
-  await expect(page.getByText('The Software Factory')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
 
   await page.goBack();
   await expect(page).toHaveURL('/?view=inbox');
@@ -149,7 +149,7 @@ test('keeps browser back/forward working across a module switch', async ({ page,
 
   await page.goForward();
   await expect(page).toHaveURL('/code');
-  await expect(page.getByText('The Software Factory')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
 });
 
 test('keeps deep links and browser back/forward working across views', async ({ page, seed }) => {

@@ -45,8 +45,8 @@ describe('buildDestinations', () => {
       'Habits',
       'Completed',
       'Code',
-      'Backlog',
       'Needs human action',
+      'Backlog',
     ]);
     expect(grouped.folders.map((d) => d.label)).toEqual(['Software']);
     expect(grouped.projects.map((d) => d.label)).toEqual(['Alfred']);
@@ -63,8 +63,8 @@ describe('buildDestinations', () => {
       Habits: '/habits',
       Completed: '/completed',
       Code: '/code',
-      Backlog: '/code/backlog',
       'Needs human action': '/code/needs-human-action',
+      Backlog: '/code/backlog',
     });
   });
 
