@@ -1,5 +1,6 @@
 import { makeFolder, makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
+import { type ProbeFrame, sampleDuring, translateXOf } from './support/probe';
 
 /**
  * Inbox residency: an item is in the Inbox until a human dispatches it, whatever `folder_id`
@@ -249,4 +250,122 @@ test('a row is labelled with the folder chip, then dispatched from its own ⋯ m
   await expect(
     page.getByRole('list', { name: 'Tasks' }).getByText('Call the dentist'),
   ).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// ALF-182 — every dispatched row leaves together, on the capture box's own
+// send-off slide, and the rows that stay glide up into the gap. jsdom runs no
+// CSS, so the unit tests can only assert the markup; here we sample the real
+// computed values every frame in a real browser.
+// ---------------------------------------------------------------------------
+
+/**
+ * Four ready tasks, all filed to Health and all still awaiting triage. Seeded oldest-first and
+ * the Inbox lists newest-first, so "Stays behind" ends up BELOW the three that leave — the row
+ * whose position the closing gap has to pull upward.
+ */
+const READY_ITEMS = [
+  makeItem('Stays behind', {
+    id: 'e4444444-4444-4444-8444-444444444444',
+    item_type: 'task',
+    folder_id: HEALTH.id,
+    dispatched_at: null,
+  }),
+  makeItem('Third to go', {
+    id: 'e3333333-3333-4333-8333-333333333333',
+    item_type: 'task',
+    folder_id: HEALTH.id,
+    dispatched_at: null,
+  }),
+  makeItem('Second to go', {
+    id: 'e2222222-2222-4222-8222-222222222222',
+    item_type: 'task',
+    folder_id: HEALTH.id,
+    dispatched_at: null,
+  }),
+  makeItem('First to go', {
+    id: 'e1111111-1111-4111-8111-111111111111',
+    item_type: 'task',
+    folder_id: HEALTH.id,
+    dispatched_at: null,
+  }),
+];
+
+/** The row whose select-mode button carries `label` — matched by its aria-label, so the
+ * assertion never depends on where the row happens to sort. */
+function rowSelector(label: string): string {
+  return `li:has(button[aria-label='${label}'])`;
+}
+
+test('a dispatched row that is NOT the top one still slides out', async ({ page, seed }) => {
+  await seed({ folders: [HEALTH], items: READY_ITEMS });
+
+  await page.goto('/?view=inbox');
+  await page.getByRole('button', { name: 'Select' }).click();
+  for (const title of ['First to go', 'Second to go', 'Third to go']) {
+    await page.getByRole('button', { name: `Select "${title}"` }).click();
+  }
+
+  // The third row is the regression: before ALF-182 the store mutation unmounted every
+  // dispatched row on the spot, so the ones below the first simply blinked out.
+  const frames: ProbeFrame[] = await sampleDuring(
+    page,
+    {
+      selector: `${rowSelector('Deselect "Third to go"')} [data-testid="task-collapse"] > div`,
+      read: { kind: 'style', props: ['opacity', 'transform'] },
+      durationMs: 800,
+    },
+    () => page.getByRole('button', { name: 'Dispatch' }).click(),
+  );
+
+  const present = frames.filter((frame) => frame.values !== null);
+  expect(present.length).toBeGreaterThan(0);
+  // It faded…
+  const opacities = present.map((frame) => Number(frame.values?.['opacity']));
+  expect(Math.min(...opacities)).toBeLessThan(0.5);
+  // …and slid right, exactly as a captured thought leaves the capture box.
+  const offsets = present.map((frame) => translateXOf(String(frame.values?.['transform'])));
+  expect(Math.max(...offsets)).toBeGreaterThan(8);
+  // Only then did it go.
+  expect(frames.at(-1)?.values).toBeNull();
+});
+
+test('the rows that stay glide up into the gap rather than jumping', async ({ page, seed }) => {
+  await seed({ folders: [HEALTH], items: READY_ITEMS });
+
+  await page.goto('/?view=inbox');
+  await page.getByRole('button', { name: 'Select' }).click();
+  for (const title of ['First to go', 'Second to go', 'Third to go']) {
+    await page.getByRole('button', { name: `Select "${title}"` }).click();
+  }
+
+  // "Stays behind" is never selected, so it keeps its Select label — and its own position is
+  // what the three collapsing rows above it pull upward.
+  const frames: ProbeFrame[] = await sampleDuring(
+    page,
+    {
+      selector: `button[aria-label='Select "Stays behind"']`,
+      read: { kind: 'rect', props: ['y'] },
+      durationMs: 800,
+    },
+    () => page.getByRole('button', { name: 'Dispatch' }).click(),
+  );
+
+  const ys = frames
+    .filter((frame) => frame.values !== null)
+    .map((frame) => Number(frame.values?.['y']));
+  expect(ys.length).toBeGreaterThan(0);
+
+  const [start] = ys;
+  const end = ys.at(-1);
+  expect(start).toBeDefined();
+  expect(end).toBeDefined();
+  const first = start ?? 0;
+  const last = end ?? 0;
+  // It ended higher up the page than it started — the gap closed.
+  expect(last).toBeLessThan(first - 20);
+  // And it GLIDED: at least one frame sits strictly between the two ends, which a single
+  // instant removal (the old behaviour) could never produce.
+  const travelled = ys.filter((y) => y < first - 5 && y > last + 5);
+  expect(travelled.length).toBeGreaterThan(2);
 });
