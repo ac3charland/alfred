@@ -24,8 +24,8 @@ export const Code: Story = {
   args: { itemType: 'code' },
 };
 
-// Unclassified renders nothing — the row shows no badge until it's classified. Kept as a
-// story so the "no chrome" state is documented (it captures an empty padded frame).
+// The third label (ALF-105) — same muted pill as Task and Code, since it is one value of a
+// three-way field, not a warning. The row decides where it shows (select mode only).
 export const Unclassified: Story = {
   args: { itemType: 'unclassified' },
 };
