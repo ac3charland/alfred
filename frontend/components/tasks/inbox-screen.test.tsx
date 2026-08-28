@@ -30,6 +30,14 @@ jest.mock('./inbox-bulk-bar', () => ({
   },
 }));
 
+// The eyebrow reads the tasks store for its tally; stub it like the other store-reading
+// children (its own test covers the count). It keeps the bare "Inbox" text these tests target.
+jest.mock('./inbox-eyebrow', () => ({
+  InboxEyebrow: function MockInboxEyebrow() {
+    return <span>Inbox</span>;
+  },
+}));
+
 // Capture the last-rendered scope so tests can assert on it.
 let lastTaskListScope: unknown;
 jest.mock('./task-list', () => ({
