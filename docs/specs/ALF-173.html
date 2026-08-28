@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-173 — Make spikes a first-class item</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .new { display: inline-block; font-size: .6rem; font-weight: 700; letter-spacing: .05em;
+         text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+         border-radius: 999px; padding: 0 .4rem; margin-left: .35rem; vertical-align: middle; }
+  .owner { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent);
+           border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+
+  /* ── Mockup chrome ───────────────────────────────────────────── */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+
+  /* The mockup canvas IS the app: every value below is lifted from source, so the mockup reads
+     in alfred's real dark palette whichever mode this document is read in.
+       bg / surface / border / fg / muted / secondary / teal / blue / amber / red
+                                              → frontend/app/globals.css
+       radius scale (sm 4 / md 6 / lg 8 / 2xl 16, full 9999) → Tailwind v4 defaults (no @theme override)
+       story card (rounded-lg border bg-surface,
+         body px-3 py-2, chip row px-3 pb-2 gap-1.5) → components/code/story-card.tsx
+       ref (font-mono text-xs font-medium teal)      → components/code/story-card.tsx
+       Spike badge (rounded-full px-2 py-0.5 text-xs,
+         variant "muted" = border-border/70 + muted) → atoms/badge.tsx (as tasks/type-badge.tsx uses it)
+       launch chip (rounded-md border px-2 py-1 text-xs
+         font-medium, accent tone teal/40 + teal/10) → atoms/card-chip.tsx + atoms/launch-button.tsx
+       Review PR chip (same chrome, link tone blue)  → atoms/review-pr-chip.tsx
+       modal shell (rounded-2xl border bg-surface p-6,
+         max-w-2xl)                                  → atoms/dialog.tsx
+       state chip (badge accent + font-semibold
+         uppercase tracking-wide)                    → components/code/state-chip.tsx
+       solid launch button (h-8 rounded-sm px-3
+         text-xs, variant accent = bg-teal/text-bg)  → atoms/button.tsx + atoms/launch-button.tsx
+       PR link (ExternalLink 13px + blue label)      → components/code/story-detail/pr-link.tsx
+       section eyebrow (text-xs font-semibold
+         uppercase tracking-wide muted)              → components/code/spec-view.tsx
+       findings frame (rounded-md border border/60,
+         h-[28rem], white canvas, sandboxed iframe)  → components/code/spec-view.tsx */
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-card: #0f1626; --a-border: #1e2a3f;
+    --a-fg: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0;
+    --a-red: #f87171; --a-amber: #f0b429; --a-blue: #60a5fa; --a-plate: #141d2e;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* Inline code inside a mockup sits on the app canvas, so it takes the app's plate. */
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); }
+  .seclabel { color: rgba(138, 150, 168, .7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0 0 .5rem; }
+
+  /* ── App primitives, drawn from source ───────────────────────── */
+  /* Story card: rounded-lg border border-border bg-surface. */
+  .scard { width: 260px; max-width: 100%; border: 1px solid var(--a-border); border-radius: 8px;
+           background: var(--a-surface); }
+  .scard.hl { border-color: rgba(79, 209, 224, .5); }
+  .scard-body { padding: 8px 12px; }
+  .scard-head { display: flex; align-items: center; gap: 8px; }
+  .sref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+          font-weight: 500; color: var(--a-teal); }
+  .stitle { margin-top: 4px; font-size: 14px; color: var(--a-fg); line-height: 1.35; }
+  .schips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+  /* Badge atom: rounded-full px-2 py-0.5 text-xs; "muted" = border-border/70 + muted-foreground. */
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px;
+           font-size: 12px; line-height: 16px; font-weight: 500; }
+  .badge.muted { border: 1px solid rgba(30, 42, 63, .7); color: var(--a-muted); }
+  .badge.accent { background: rgba(79, 209, 224, .15); color: var(--a-teal);
+                  font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  /* CardChip: inline-flex gap-1.5 rounded-md border px-2 py-1 text-xs font-medium. */
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent;
+          border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 500; }
+  .chip.teal { border-color: rgba(79, 209, 224, .4); background: rgba(79, 209, 224, .1);
+               color: var(--a-teal); }
+  .chip.sub { border-color: var(--a-border); color: var(--a-muted); }
+  .chip.link { border-color: rgba(96, 165, 250, .4); background: rgba(96, 165, 250, .1);
+               color: var(--a-blue); }
+  /* Button size sm + variant accent: h-8 rounded-sm px-3 text-xs, bg-accent-teal/text-background. */
+  .btn { display: inline-flex; align-items: center; justify-content: center; height: 32px;
+         border-radius: 4px; padding: 0 12px; font-size: 12px; font-weight: 500; }
+  .btn.accent { background: var(--a-teal); color: var(--a-bg); }
+  .btn.outline { border: 1px solid var(--a-border); color: var(--a-fg); }
+  /* Dialog: w-full max-w-2xl rounded-2xl border border-border bg-surface p-6. */
+  .dlg { border: 1px solid var(--a-border); border-radius: 16px; background: var(--a-surface);
+         padding: 20px; }
+  .dtitle { font-size: 18px; font-weight: 600; margin: 6px 0 0; }
+  .crumb { font-size: 12px; color: var(--a-muted); margin: 6px 0 0; }
+  .hdrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 16px; }
+  .prlink { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--a-blue); }
+  .eyeb { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+          color: var(--a-muted); }
+  .frame { margin-top: 8px; border: 1px solid rgba(30, 42, 63, .6); border-radius: 6px;
+           background: #ffffff; color: #1b1f24; padding: 12px 14px; font-size: 11px; }
+  .empty { margin-top: 8px; border: 1px dashed var(--a-border); border-radius: 6px;
+           padding: 12px; font-size: 13px; color: var(--a-muted); }
+  .cbx { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--a-fg); }
+  .cbx .box { width: 16px; height: 16px; border: 1px solid rgba(138, 150, 168, .5);
+              border-radius: 4px; display: inline-block; }
+  .strike { text-decoration: line-through; opacity: .45; }
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 720px) { .side { grid-template-columns: 1fr; } }
+  .legend { margin: .6rem 0 0; padding: 0; list-style: none; font-size: .78rem; color: var(--a-muted); }
+  .legend li { margin: .2rem 0; }
+  .legend b { color: var(--a-fg); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Refinement spec · Code module (Software Factory)</p>
+  <h1>ALF-173 — Make spikes a first-class item</h1>
+  <p class="sub">
+    Give a story titled <code>Spike: …</code> its own factory phase — its own launch prompt, its own
+    committed skill, its own <code>phase:</code> value in the machine-readable <code>alfred</code>
+    block, and its own rows in the Worker's transition table — whose deliverable is a
+    <strong>self-contained HTML findings document in <code>docs/spikes/</code></strong> rather than a
+    feature spec or code changes.
+  </p>
+
+  <h2>1 · Context &amp; problem</h2>
+
+  <p>
+    The Software Factory recognises exactly three phases today. Each one is the same four things
+    wired together:
+  </p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Phase</th><th>Launch prompt</th><th>Committed skill</th><th>Deliverable</th><th>Worker rows</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>epic-refinement</code></td>
+        <td><code>buildEpicRefinementUrl</code></td>
+        <td><code>.claude/skills/epic-refinement/</code></td>
+        <td><code>docs/specs/epics/&lt;EPIC-REF&gt;.html</code></td>
+        <td>epic: record PR / spec</td>
+      </tr>
+      <tr>
+        <td><code>refinement</code></td>
+        <td><code>buildRefinementUrl</code></td>
+        <td><code>.claude/skills/refinement/</code></td>
+        <td><code>docs/specs/&lt;REF&gt;.html</code></td>
+        <td>→ <code>ready_for_dev</code> on merge</td>
+      </tr>
+      <tr>
+        <td><code>implementation</code></td>
+        <td><code>buildImplementationUrl</code></td>
+        <td><code>.claude/skills/implement-spec/</code></td>
+        <td>code + the archived spec</td>
+        <td>→ <code>ready_for_review</code> / <code>done</code></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>
+    <strong>Research doesn't fit any of them.</strong> A story called <em>“Spike: outbound
+    notifications via Telegram”</em> has only two doors out of <code>needs_refinement</code>: <b>Refine
+    in Claude Code</b>, which writes an implementation spec for work nobody has yet decided to do; or
+    <b>Skip to Development</b>, which tells the agent to build something when the whole point was to
+    find out <em>what</em> to build. The code-module spec already records the gap in its own words —
+    §5.2's manual-fallback note opens “<em>Spikes, research, and abandoned items have no PR
+    signal</em>”, so today the only honest way to run a spike is to drive the card by hand.
+  </p>
+
+  <p>
+    Meanwhile the repo already contains two spike findings documents, both written outside the
+    factory: <code>docs/notifications-spike.md</code> and <code>docs/scheduled-cloud-backups.md</code>.
+    They independently converged on the same shape — <em>Where we landed</em> (the decision, up
+    front) → <em>Why</em> → <em>Technical shape (for the implementation spec to expand)</em> →
+    <em>Sidebars: appealing alternatives we're not taking</em> → <em>Cost &amp; open questions</em> →
+    <em>Sources</em>. That is the house spike form, waiting to be named and made repeatable.
+  </p>
+
+  <p>
+    ALF-173 makes the spike the factory's <strong>fourth phase</strong>, built the same way as the
+    other three, and gives its output a home at <code>docs/spikes/</code>.
+  </p>
+
+  <h2>2 · Resolved scope <span class="owner">from refinement Q&amp;A</span></h2>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Question asked</th><th>Answer</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Where does a <code>phase: spike</code> PR land the story?</td>
+        <td><strong>Spike replaces both phases.</strong> Launch → <code>in_development</code>; PR
+        opened → <code>ready_for_review</code>; merged → <code>done</code>; closed-unmerged →
+        <code>ready_for_dev</code>. No new states, no migration. Follow-up work becomes new stories.</td>
+      </tr>
+      <tr>
+        <td>Which launch buttons does a spike show?</td>
+        <td><strong>Only “Run spike in Claude Code”.</strong> It replaces Refine / Skip to
+        Development / Implement in every launch-eligible state.</td>
+      </tr>
+      <tr>
+        <td>How are the merged findings recorded and displayed?</td>
+        <td><strong>Reuse <code>spec_path</code> / <code>spec_sha</code> /
+        <code>spec_markdown</code></strong> and the block's <code>spec-path</code> key; the detail
+        modal renders them in the existing sandboxed frame under a <strong>Findings</strong> heading.</td>
+      </tr>
+      <tr>
+        <td>Is a spike visually marked on the board?</td>
+        <td><strong>Yes — a muted “Spike” badge</strong> on the story card and the detail-modal
+        header, derived from the title prefix.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>3 · Decisions locked in this refinement</h2>
+
+  <div class="dec">
+    <h3><span class="n">D1</span>“Spike-ness” is derived from the title. Nothing is persisted.</h3>
+    <p>
+      One new pure module, <code>frontend/lib/code/spike.ts</code>, exports
+      <code>isSpike(story)</code>: true when the title, left-trimmed and lower-cased, starts with
+      <code>spike:</code>.
+    </p>
+    <p class="why">
+      <b>Why:</b> the ticket names the title prefix as the signal, and it costs no migration, no view
+      change, and no new column to keep in sync. Renaming a story re-classifies it instantly — which
+      is the right behaviour for a judgement the human makes in the title anyway.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D2</span>A spike offers exactly one launch action, in both pre-work states.</h3>
+    <p>
+      <code>launchPhasesFor</code> takes the <em>story</em> instead of the bare state. For a spike it
+      returns <code>['spike']</code> in <code>needs_refinement</code> <em>and</em> in
+      <code>ready_for_dev</code>, and <code>[]</code> everywhere else. Non-spike stories keep today's
+      behaviour exactly.
+    </p>
+    <p class="why">
+      <b>Why:</b> Refine and Implement are both wrong for a spike, so offering them invites the wrong
+      session. Covering <em>both</em> pre-work states matters because a story reaches
+      <code>ready_for_dev</code> by several routes (the “Needs refinement” toggle, a closed-unmerged
+      PR revert) — a spike must stay launchable however it got there, and it is also the state a
+      closed-unmerged spike PR reverts into (D3).
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D3</span>The lifecycle reuses the existing states — no enum value, no migration.</h3>
+    <p>
+      Launching writes <code>in_development</code> (<code>LAUNCH_TARGET_STATE.spike</code>); the
+      Worker moves the story to <code>ready_for_review</code> when the spike PR opens,
+      <code>done</code> when it merges, and back to <code>ready_for_dev</code> when it closes unmerged.
+    </p>
+    <p class="why">
+      <b>Why:</b> a new <code>in_spike</code> state would mean a migration, a seventh swimlane, new
+      labels, and a wider <code>laneStateFor</code> — for a story that occupies it for one session.
+      The existing lanes already read correctly: the spike is <em>being worked</em>, then its PR is
+      <em>waiting on you</em>, then it's <em>done</em>. The <code>Review PR</code> chip
+      (<code>reviewPrUrlFor</code>) already links <code>implementation_pr_url</code> in
+      <code>ready_for_review</code>, so the spike PR surfaces on the card with no change at all.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D4</span>Findings reuse the spec columns and the <code>spec-path</code> key.</h3>
+    <p>
+      The spike PR carries <code>spec-path: docs/spikes/&lt;file&gt;</code>. On merge the Worker
+      records it into <code>spec_path</code> and snapshots the file into <code>spec_sha</code> /
+      <code>spec_markdown</code> — the same <code>snapshotSpec</code> path the two refinement phases
+      use. The detail modal renders it through the existing <code>SpecView</code>, which already
+      sniffs HTML and frames it sandboxed.
+    </p>
+    <p class="why">
+      <b>Why:</b> those three columns mean “the long-form document this ticket produced”, and a spike
+      produces exactly one. New <code>findings_*</code> columns would buy a nicer name at the cost of
+      a migration, a view replace, a second parser field, a second snapshot path and a second render
+      branch. The only visible difference is the label, and a label is cheap (D7).
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D5</span>A findings document is never archived.</h3>
+    <p>
+      The enforcing check's archive rule stays scoped to <code>phase: implementation</code> and paths
+      under <code>docs/specs/</code>. <code>docs/spikes/</code> is outside it, so nothing to exclude.
+      The spike prompt and skill both say so explicitly.
+    </p>
+    <p class="why">
+      <b>Why:</b> a spec is scaffolding consumed by its implementation; findings are the durable
+      answer later sessions keep reading — the same reasoning that exempts epic specs. The prompt has
+      to state it, because the implementation prompt in the same family <em>does</em> tell the agent
+      to git-move its document.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D6</span>Findings live in <code>docs/spikes/</code>; the skill owns the exact filename.</h3>
+    <p>
+      The <strong>prompt</strong> names no path — it carries the same
+      <code>&lt;path-or-folder-of-the-spec&gt;</code> placeholder the refinement prompt does and tells
+      the agent to follow the skill, with a one-line fallback (“a self-contained HTML findings
+      document under the repo's spikes directory”) for a repo that has no skill. The
+      <strong>skill</strong> pins alfred's convention:
+      <code>docs/spikes/&lt;REF&gt;-&lt;short-slug&gt;.html</code>, e.g.
+      <code>docs/spikes/ALF-173-spike-phase.html</code>.
+    </p>
+    <p class="why">
+      <b>Why:</b> prompt-thin / skill-thick is the existing division of labour, and it's what lets
+      another project put its findings somewhere else. The slug (unlike <code>docs/specs/</code>'s bare
+      ref) earns its keep because findings are browsed as a library long after the ticket is closed —
+      the ref alone is opaque a year later, and the two hand-written spikes already in the repo are
+      named for their subject.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D7</span>A spike's detail modal drops the refinement toggle and relabels two things.</h3>
+    <p>
+      On a spike story: the <b>Needs refinement</b> checkbox is not rendered; the
+      <code>implementation_pr_url</code> link reads <b>Spike PR</b> rather than <b>Implementation
+      PR</b>; and the document section's heading reads <b>Findings</b> (empty copy: “No findings yet.
+      The spike PR writes them when it merges.”). Launching a spike also records
+      <code>requires_refinement: false</code>, exactly as “Skip to Development” does.
+    </p>
+    <p class="why">
+      <b>Why:</b> a spike is never refined, so a toggle promising refinement is a control that can
+      only mislead — and the flag it writes is the one a future dispatcher would query, so the launch
+      should set it honestly. The two label swaps are the whole cost of reusing the spec columns (D4).
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D8</span>The two hand-written spike docs move into <code>docs/spikes/</code>.</h3>
+    <p>
+      <code>git mv docs/notifications-spike.md docs/spikes/</code> and
+      <code>git mv docs/scheduled-cloud-backups.md docs/spikes/</code>, fixing the four relative links
+      the move breaks (listed in §6.1). Filenames are unchanged, so the two documents' links to
+      <em>each other</em> keep working untouched.
+    </p>
+    <p class="why">
+      <b>Why:</b> it creates the directory the new skill points at (git tracks no empty folder) and
+      puts real content in it, so the first agent to open <code>docs/spikes/</code> sees the house
+      form rather than a promise. <b>Severable:</b> this is two moves and four link edits and touches
+      nothing else in the change — drop it if you'd rather the folder start empty.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D9</span>The spike skill is a per-repo setup artifact, like the refinement skills.</h3>
+    <p>
+      <code>.claude/skills/spike/SKILL.md</code> is written here <em>and</em> listed in
+      <code>docs/code-module/repo-setup/README.md</code> as a file to copy into each project repo,
+      alongside the two refinement skills. The enforcing check
+      (<code>docs/code-module/repo-setup/alfred-frontmatter.yml</code>) learns the new phase in the
+      same commit.
+    </p>
+    <p class="why">
+      <b>Why:</b> the launch prompt references the skill by path in <em>whatever</em> repo the session
+      opens in, so a phase whose skill only exists here would degrade to the one-line fallback
+      everywhere else. Actually installing it into other repos stays the credentialed per-repo step it
+      already is (§9).
+    </p>
+  </div>
+
+  <h2>4 · The behaviour</h2>
+
+  <h3>4.1 · What counts as a spike</h3>
+
+  <pre><code>// frontend/lib/code/spike.ts
+/** The title prefix that marks a story as a spike — matched case-insensitively. */
+const SPIKE_PREFIX = 'spike:';
+
+/**
+ * Is this story a spike? Derived from the title alone (nothing is persisted), so renaming a
+ * story re-classifies it. Matched on the left-trimmed, lower-cased title so "Spike: ",
+ * "spike:" and a stray leading space all read the same.
+ */
+export function isSpike(story: Pick&lt;CodeStory, 'title'&gt;): boolean {
+  return (story.title ?? '').trimStart().toLowerCase().startsWith(SPIKE_PREFIX);
+}</code></pre>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Title</th><th><code>isSpike</code></th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>Spike: outbound notifications via Telegram</code></td><td class="yes">true</td><td>the canonical form</td></tr>
+      <tr><td><code>spike: which queue?</code></td><td class="yes">true</td><td>case-insensitive</td></tr>
+      <tr><td><code>&nbsp;&nbsp;Spike: trailing thought</code></td><td class="yes">true</td><td>leading whitespace trimmed</td></tr>
+      <tr><td><code>Spike:no space after the colon</code></td><td class="yes">true</td><td>the colon ends the prefix; spacing after it is free</td></tr>
+      <tr><td><code>Spike out the retry policy</code></td><td class="no">false</td><td>no colon — the prefix is <code>Spike:</code>, not the word</td></tr>
+      <tr><td><code>Fix the CPU spike: on dashboards</code></td><td class="no">false</td><td>the prefix must lead the title</td></tr>
+      <tr><td><code>null</code> (view row with no title)</td><td class="no">false</td><td>coalesced to <code>''</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>4.2 · The lifecycle</h3>
+
+  <svg viewBox="0 0 900 208" role="img" aria-labelledby="lifecycle-title lifecycle-desc">
+    <title id="lifecycle-title">The spike lifecycle</title>
+    <desc id="lifecycle-desc">
+      A spike story in Needs Refinement or Ready for Dev launches into In Development. The spike PR
+      opening moves it to Ready for Review; merging it moves it to Done; closing it unmerged sends
+      it back to Ready for Dev.
+    </desc>
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)" />
+      </marker>
+    </defs>
+    <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12.5">
+      <rect x="8" y="24" width="150" height="42" rx="8" fill="var(--card)" stroke="var(--line)" />
+      <text x="83" y="50" text-anchor="middle" fill="var(--fg)">Needs Refinement</text>
+      <rect x="8" y="104" width="150" height="42" rx="8" fill="var(--card)" stroke="var(--line)" />
+      <text x="83" y="130" text-anchor="middle" fill="var(--fg)">Ready for Dev</text>
+
+      <path d="M 158 45 H 200 V 85 H 244" fill="none" stroke="var(--muted)" marker-end="url(#ah)" />
+      <path d="M 158 125 H 200 V 85" fill="none" stroke="var(--muted)" />
+      <text x="200" y="40" fill="var(--accent)" font-size="11.5" font-weight="600">Run spike in Claude Code</text>
+
+      <rect x="248" y="64" width="160" height="42" rx="8" fill="var(--accent-bg)" stroke="var(--accent)" />
+      <text x="328" y="90" text-anchor="middle" fill="var(--fg)">In Development</text>
+
+      <path d="M 408 85 H 466" fill="none" stroke="var(--muted)" marker-end="url(#ah)" />
+      <text x="437" y="56" text-anchor="middle" fill="var(--muted)" font-size="11">PR opened</text>
+
+      <rect x="470" y="64" width="168" height="42" rx="8" fill="var(--accent-bg)" stroke="var(--accent)" />
+      <text x="554" y="90" text-anchor="middle" fill="var(--fg)">Ready for Review</text>
+
+      <path d="M 638 85 H 694" fill="none" stroke="var(--muted)" marker-end="url(#ah)" />
+      <text x="666" y="56" text-anchor="middle" fill="var(--muted)" font-size="11">merged</text>
+
+      <rect x="698" y="64" width="120" height="42" rx="8" fill="var(--card)" stroke="var(--line)" />
+      <text x="758" y="90" text-anchor="middle" fill="var(--fg)">Done</text>
+
+      <path d="M 554 106 V 180 H 83 V 150" fill="none" stroke="var(--muted)" stroke-dasharray="4 4" marker-end="url(#ah)" />
+      <text x="330" y="197" text-anchor="middle" fill="var(--muted)" font-size="11">spike PR closed, unmerged → back to Ready for Dev</text>
+    </g>
+  </svg>
+
+  <p class="small">
+    Teal boxes are the states a spike passes <em>through</em>; the two on the left are where the
+    launch button lives. No new state, no new swimlane — the six happy-path lanes are unchanged.
+  </p>
+
+  <p>The Worker's transition table gains three rows (and only three):</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Phase</th><th>Action</th><th>Target</th><th>Columns patched</th><th>Snapshot?</th></tr></thead>
+    <tbody>
+      <tr>
+        <td rowspan="3"><code>spike</code></td>
+        <td><code>opened</code></td>
+        <td>story</td>
+        <td><code>factory_state: 'ready_for_review'</code>, <code>implementation_pr_url</code></td>
+        <td>no</td>
+      </tr>
+      <tr>
+        <td><code>closed</code> &amp; merged</td>
+        <td>story</td>
+        <td><code>factory_state: 'done'</code>, <code>spec_path</code> (when the block carries one)</td>
+        <td><span class="yes">yes</span></td>
+      </tr>
+      <tr>
+        <td><code>closed</code> &amp; !merged</td>
+        <td>story</td>
+        <td><code>factory_state: 'ready_for_dev'</code></td>
+        <td>no</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout">
+    <strong>Merge is the snapshot point, not open.</strong> Unlike <code>implementation</code> (whose
+    spec was recorded a phase earlier) a spike's document only exists on its own PR, so
+    <code>spec_path</code> is written and the file snapshotted when the PR <em>merges</em>. While the
+    story sits in <code>ready_for_review</code> the modal's Findings section is empty and the card's
+    <b>Review PR</b> chip is how you read the draft — which is exactly what a review state is for.
+  </div>
+
+  <h3>4.3 · The launch prompt</h3>
+
+  <p>
+    <code>buildSpikeUrl(project, story)</code> joins <code>buildRefinementUrl</code>'s family and
+    reuses its shared pieces verbatim: <code>epicContextLines</code>, <code>htmlPreviewStep</code>,
+    <code>notesContext</code>, <code>frontmatterBlock</code>, <code>SPEC_PATH_PLACEHOLDER</code>, and
+    the ref-plus-title first line that makes the new tab scannable. The numbered body:
+  </p>
+
+  <pre><code>ALF-173: Spike: make spikes a first-class item
+
+You are running a SPIKE for the ticket ALF-173. Produce a FINDINGS DOCUMENT ONLY — answer the
+question and record what you found, in enough detail that a later refinement or implementation
+session can act on it. Do NOT implement anything (no app or source changes) and do NOT write a
+feature spec.
+
+1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or
+   CLAUDE.md — and base your findings on the code that already exists.
+2. If the title and context below don't pin down the question this spike has to answer, ASK ME
+   HERE before investigating — you don't need to guess, I'm in this tab. Otherwise go ahead.
+3. Investigate, then write the findings following the spike skill at
+   `.claude/skills/spike/SKILL.md` (it auto-loads in a spike session) — it defines this repo's
+   findings format, structure, and where the document lives. If the skill is absent, write a
+   single self-contained HTML findings document under the repo's spikes directory.
+4. The findings document is LONG-LIVED reference material — later sessions keep reading it. Do
+   not archive or move it, and do not add it to the specs directory.
+5. Open a pull request whose description carries this machine-readable block — the orchestrator
+   (alfred) reads it to advance the ticket and a CI check enforces it. Reproduce the
+   `alfred-ticket` and `phase` lines exactly, and set `spec-path` to where you saved the findings
+   document:
+
+```alfred
+alfred-ticket: ALF-173
+phase: spike
+spec-path: &lt;path-or-folder-of-the-spec&gt;
+```
+
+6. &lt;the shared htmlPreviewStep sentence&gt;
+7. Before opening the PR, confirm the findings document is saved, `spec-path` above names that
+   document (not the placeholder), the preview link is there, and the block is reproduced exactly.
+
+Context (from the ticket):
+&lt;notes&gt;</code></pre>
+
+  <p class="small">
+    Step 4 is the one line with no analogue in the other prompts, and it is load-bearing: the
+    <em>implementation</em> prompt in the same module tells the agent to git-move its document into
+    an archive, and a model that has internalised that family resemblance will helpfully do the same
+    here. Step 6 is <code>htmlPreviewStep(project)</code> unchanged — the findings document is always
+    HTML, so the “if the spec is an HTML file” conditional in the shared sentence is simply always
+    true.
+  </p>
+
+  <h3>4.4 · The block and the enforcing check</h3>
+
+  <p>
+    <code>phase</code> gains a fourth legal value in three places that must stay in lockstep — the
+    Worker's parser, the enforcing Action, and the repo-setup contract table:
+  </p>
+
+  <pre><code>// workers/src/frontmatter.ts
+export type CodePhase = 'epic-refinement' | 'refinement' | 'implementation' | 'spike';
+
+// Alternation order still matters for the epic-/refinement pair; `spike` shares no
+// suffix with the others, so it is safe anywhere in the list.
+const PHASE_RE = /phase:[ \t]*(epic-refinement|refinement|implementation|spike)/;</code></pre>
+
+  <p>
+    In <code>alfred-frontmatter.yml</code> the same alternation change, plus <code>spike</code> joins
+    the phases that <strong>require</strong> <code>spec-path</code> (a spike PR with no findings path
+    would merge into a story with nothing to snapshot):
+  </p>
+
+  <pre><code>const SPEC_PATH_PHASES = ["refinement", "epic-refinement", "spike"];
+if (SPEC_PATH_PHASES.includes(phase[1]) &amp;&amp; !specPath) {
+  console.error("refinement and spike PRs need spec-path"); process.exit(1);
+}</code></pre>
+
+  <p>
+    The archive rule is <strong>untouched</strong>: it only fires on <code>phase:
+    "implementation"</code> and only for paths under <code>docs/specs/</code>, so a spike's
+    <code>docs/spikes/…</code> path never reaches it. No exclusion needed.
+  </p>
+
+  <h2>5 · The surface</h2>
+
+  <p class="small">
+    Every mockup below is drawn in alfred's real dark palette and geometry, taken from source (the
+    provenance list sits in this document's stylesheet). It shows <em>behaviour and layout intent</em>
+    — a hover wash or a pixel of padding may differ — but everything <em>present</em> here is
+    required, and everything required is drawn here.
+  </p>
+
+  <h3>5.1 · The board card: one action instead of two</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>Board · Needs Refinement swimlane</span><span class="hmeta">components/code/story-card.tsx</span></div>
+    <div class="mock-body">
+      <div class="side">
+        <div>
+          <p class="seclabel">A spike <span style="color:var(--a-teal)">— new</span></p>
+          <div class="scard">
+            <div class="scard-body">
+              <div class="scard-head">
+                <span class="sref">ALF-173</span>
+                <span class="badge muted">Spike</span>
+              </div>
+              <div class="stitle">Spike: make spikes a first-class item</div>
+            </div>
+            <div class="schips">
+              <span class="chip teal">Run spike in Claude Code</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="seclabel">Any other story — unchanged</p>
+          <div class="scard">
+            <div class="scard-body">
+              <div class="scard-head">
+                <span class="sref">ALF-174</span>
+              </div>
+              <div class="stitle">Tasks: keyboard shortcut for the capture box</div>
+            </div>
+            <div class="schips">
+              <span class="chip teal">Refine in Claude Code</span>
+              <span class="chip sub">Skip to Development</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="legend">
+        <li><b>Spike badge</b> — the <code>Badge</code> atom, <code>muted</code> tone (bordered pill,
+          muted text), sitting immediately after the teal ref. Deliberately <em>not</em> teal: it
+          labels a category, it is not a call to action, and the launch chip below already owns the
+          card's accent.</li>
+        <li><b>One chip, teal.</b> <em>Refine</em> and <em>Skip to Development</em> are not rendered
+          for a spike in any state.</li>
+        <li>The card body, ref, title, hover and drag behaviour are untouched.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>5.2 · The badge persists; the review chip is unchanged</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>Board · Ready for Review swimlane</span><span class="hmeta">the spike PR is open</span></div>
+    <div class="mock-body">
+      <div class="scard">
+        <div class="scard-body">
+          <div class="scard-head">
+            <span class="sref">ALF-173</span>
+            <span class="badge muted">Spike</span>
+          </div>
+          <div class="stitle">Spike: make spikes a first-class item</div>
+        </div>
+        <div class="schips">
+          <span class="chip link">↗&nbsp; Review PR</span>
+        </div>
+      </div>
+      <ul class="legend">
+        <li>The badge renders unconditionally on a spike, so it shows in every lane — Needs
+          Refinement (§5.1), Ready for Review here, Done (§5.4), and equally on a blocked or
+          abandoned card, whose own edge treatment is unchanged.</li>
+        <li><b>Review PR</b> arrives with no code change: <code>reviewPrUrlFor</code> already returns
+          <code>implementation_pr_url</code> in <code>ready_for_review</code>, and the spike PR is
+          recorded there.</li>
+        <li>No launch chip here — a spike offers one only in Needs Refinement and Ready for Dev.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>5.3 · The detail modal, before the spike runs</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>Story detail · Needs Refinement</span><span class="hmeta">components/code/story-detail-modal.tsx</span></div>
+    <div class="mock-body">
+      <div class="dlg">
+        <div class="scard-head">
+          <span class="sref" style="font-size:14px">ALF-173</span>
+          <span class="badge accent">Needs Refinement</span>
+          <span class="badge muted">Spike</span>
+        </div>
+        <div class="dtitle">Spike: make spikes a first-class item</div>
+        <div class="crumb">alfred &rsaquo; Software Factory</div>
+
+        <div class="hdrow">
+          <span class="btn accent">Run spike in Claude Code</span>
+        </div>
+
+        <div style="margin-top:20px">
+          <p class="eyeb" style="margin:0 0 8px">Notes</p>
+          <div style="font-size:13px">Should a spike get its own phase, or is it a refinement with a
+            different template?</div>
+        </div>
+
+        <div style="margin-top:20px">
+          <p class="eyeb" style="margin:0">Findings</p>
+          <div class="empty">No findings yet. The spike PR writes them when it merges.</div>
+        </div>
+
+        <div style="margin-top:20px;border-top:1px solid rgba(30,42,63,.6);padding-top:14px">
+          <p class="eyeb" style="margin:0 0 8px">Move this story</p>
+          <span class="btn outline">Needs Refinement ⌄</span>
+        </div>
+      </div>
+      <p class="cap">And the rarer fallback — the path is recorded but the snapshot failed, so the
+        section offers the repo link instead. The subject follows the heading here too:</p>
+      <div class="dlg" style="margin-top:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <p class="eyeb" style="margin:0">Findings</p>
+          <span class="prlink" style="font-size:13px">↗&nbsp; View in repo</span>
+        </div>
+        <div class="empty">No findings snapshot yet — open it in the repo via the link above.</div>
+      </div>
+      <ul class="legend">
+        <li><b>Header row:</b> ref → state chip → <b>Spike badge</b>, then the title and the
+          Project&nbsp;›&nbsp;Epic breadcrumb, all as today.</li>
+        <li><b>One launch button</b>, the solid teal <code>accent</code> variant. There is no
+          subordinate outline button beside it.</li>
+        <li><b>No “Needs refinement” checkbox.</b> It is not rendered for a spike — the control is
+          absent, not disabled.</li>
+        <li><b>“Findings”</b> replaces the “Spec” eyebrow, and drives <em>both</em> empty lines —
+          the one above when nothing is recorded, and the snapshot fallback beneath the modal. Notes,
+          priority controls and the “Move this story” stepper are unchanged (priority elided here).</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>5.4 · The detail modal, after the spike PR merged</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>Story detail · Done</span><span class="hmeta">findings snapshotted on merge</span></div>
+    <div class="mock-body">
+      <div class="dlg">
+        <div class="scard-head">
+          <span class="sref" style="font-size:14px">ALF-173</span>
+          <span class="badge accent">Done</span>
+          <span class="badge muted">Spike</span>
+        </div>
+        <div class="dtitle">Spike: make spikes a first-class item</div>
+        <div class="crumb">alfred &rsaquo; Software Factory</div>
+
+        <div class="hdrow">
+          <span class="prlink">↗&nbsp; Spike PR</span>
+        </div>
+
+        <div style="margin-top:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <p class="eyeb" style="margin:0">Findings</p>
+            <span class="prlink" style="font-size:13px">↗&nbsp; View in repo</span>
+          </div>
+          <div class="frame">
+            <div style="font-weight:700;font-size:13px">ALF-173 — spike findings</div>
+            <div style="color:#5c6672;margin-top:2px">Where we landed</div>
+            <div style="margin-top:8px;line-height:1.5">The spike becomes the factory's fourth
+              phase, reusing the existing states…</div>
+            <div style="margin-top:10px;height:1px;background:#e4e8ee"></div>
+            <div style="margin-top:8px;color:#5c6672">Why · Technical shape · Sidebars · Open questions</div>
+          </div>
+        </div>
+      </div>
+      <ul class="legend">
+        <li><b>“Spike PR”</b> is the label on the <code>implementation_pr_url</code> link for a spike
+          story — same <code>PrLink</code>, same blue, same external-link icon.</li>
+        <li>The findings render in the <b>existing sandboxed frame</b> (white canvas, no scripts) that
+          already renders HTML specs — the document is the same self-contained HTML the reviewer read
+          on the PR.</li>
+        <li><b>“View in repo”</b> is the existing sha-pinned blob link, driven by
+          <code>spec_path</code> / <code>spec_sha</code> — it now points into
+          <code>docs/spikes/</code>.</li>
+        <li>Nothing is offered to launch: a spike ends at Done, and follow-up work is a new story.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>6 · The shape of the change</h2>
+
+  <h3>6.1 · Files touched, at a glance</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>File</th><th></th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td colspan="3"><b>Frontend — the pure launch layer</b></td></tr>
+      <tr><td><code>frontend/lib/code/spike.ts</code></td><td><span class="new">new</span></td><td><code>isSpike(story)</code> — the title-prefix predicate (§4.1).</td></tr>
+      <tr><td><code>frontend/lib/code/launch.ts</code></td><td></td><td><code>LaunchPhase</code> gains <code>'spike'</code>; <code>launchPhasesFor</code> takes the story; new label + target-state entries.</td></tr>
+      <tr><td><code>frontend/lib/code/links.ts</code></td><td></td><td><code>buildSpikeUrl</code>; <code>SPIKE_SKILL_PATH</code>; <code>frontmatterBlock</code>'s phase union gains <code>'spike'</code>.</td></tr>
+      <tr><td><code>frontend/lib/stores/code-store.tsx</code></td><td></td><td><code>buildUrlForPhase.spike</code>; the <code>requires_refinement: false</code> write extends to the spike launch.</td></tr>
+      <tr><td colspan="3"><b>Frontend — the surface</b></td></tr>
+      <tr><td><code>frontend/components/code/spike-badge.tsx</code></td><td><span class="new">new</span></td><td>Renders the muted <code>Spike</code> badge, or nothing for a non-spike. Shared by the card and the modal.</td></tr>
+      <tr><td><code>frontend/components/code/story-card.tsx</code></td><td></td><td>Renders <code>&lt;SpikeBadge&gt;</code> after the ref; passes the story to <code>launchPhasesFor</code>.</td></tr>
+      <tr><td><code>frontend/components/code/story-detail/primary-action.tsx</code></td><td></td><td>Passes the story to <code>launchPhasesFor</code>.</td></tr>
+      <tr><td><code>frontend/components/code/spec-view.tsx</code></td><td></td><td>New optional <code>heading</code> prop (default <code>'Spec'</code>) driving both the eyebrow and the “no snapshot yet” line.</td></tr>
+      <tr><td><code>frontend/components/code/story-detail/spec-body.tsx</code></td><td></td><td>Passes <code>heading</code> + empty copy per <code>isSpike</code>.</td></tr>
+      <tr><td><code>frontend/components/code/story-detail-modal.tsx</code></td><td></td><td>Badge in the header; <b>Spike PR</b> label; <code>RefinementMark</code> not rendered for a spike.</td></tr>
+      <tr><td colspan="3"><b>Worker — the state machine</b></td></tr>
+      <tr><td><code>workers/src/frontmatter.ts</code></td><td></td><td><code>CodePhase</code> + <code>PHASE_RE</code> gain <code>spike</code>.</td></tr>
+      <tr><td><code>workers/src/transitions.ts</code></td><td></td><td>The three spike rows (§4.2) and the doc-comment table beside them.</td></tr>
+      <tr><td colspan="3"><b>Conventions — the per-repo contract</b></td></tr>
+      <tr><td><code>.claude/skills/spike/SKILL.md</code></td><td><span class="new">new</span></td><td>The spike-guide convention (§6.3).</td></tr>
+      <tr><td><code>docs/code-module/repo-setup/alfred-frontmatter.yml</code></td><td></td><td>Phase alternation + the <code>spec-path</code>-required list (§4.4); header contract comment.</td></tr>
+      <tr><td><code>docs/code-module/repo-setup/README.md</code></td><td></td><td>The <code>phase</code> row, a bullet describing the spike PR, the skill's row in the copy-me table, and step 2 of the checklist.</td></tr>
+      <tr><td><code>docs/specs/code-module/code-module-spec.md</code></td><td></td><td>§5.2's manual-fallback note no longer claims spikes have no PR signal (§6.4).</td></tr>
+      <tr><td><code>docs/spikes/notifications-spike.md</code><br /><code>docs/spikes/scheduled-cloud-backups.md</code></td><td>moved</td><td>D8: <code>git mv</code> from <code>docs/</code>, plus four relative-link fixes (§6.5).</td></tr>
+      <tr><td><code>docs/demos/&lt;branch&gt;/…</code></td><td><span class="new">new</span></td><td>The demo doc (§8).</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="small">
+    Tests and stories accompany each of the above; §7 lists them. No migration, no view replace, no
+    change to <code>frontend/lib/database.types.ts</code>.
+  </p>
+
+  <h3>6.2 · The launch layer</h3>
+
+  <pre><code>// frontend/lib/code/launch.ts
+export type LaunchPhase = 'refinement' | 'implementation' | 'bypass' | 'spike';
+
+/**
+ * The ordered list of launch phases a story offers. A SPIKE offers exactly one — its own
+ * session — from either pre-work state: `needs_refinement` and `ready_for_dev` are both
+ * reachable before the spike runs (the refinement mark, a reverted PR), and neither
+ * `refinement` nor `implementation` is the session a spike wants.
+ */
+export function launchPhasesFor(story: Pick&lt;CodeStory, 'factory_state' | 'title'&gt;): LaunchPhase[] {
+  const state = story.factory_state;
+  if (isSpike(story)) {
+    return state === 'needs_refinement' || state === 'ready_for_dev' ? ['spike'] : [];
+  }
+  if (state === 'needs_refinement') return ['refinement', 'bypass'];
+  if (state === 'ready_for_dev') return ['implementation'];
+  return [];
+}
+
+export const LAUNCH_LABELS: Record&lt;LaunchPhase, { idle: string; busy: string }&gt; = {
+  // …unchanged…
+  spike: { idle: 'Run spike in Claude Code', busy: 'Opening spike' },
+};
+
+export const LAUNCH_TARGET_STATE: Record&lt;LaunchPhase, CodeFactoryState&gt; = {
+  // …unchanged…
+  spike: 'in_development', // one session produces the findings; there is no separate build phase
+};</code></pre>
+
+  <p>
+    In the store, the spike launch joins <code>bypass</code> in recording the judgement that this
+    story will never get a spec:
+  </p>
+
+  <pre><code>// frontend/lib/stores/code-store.tsx — openClaudeSession
+const NO_SPEC_PHASES: LaunchPhase[] = ['bypass', 'spike'];
+await transitionState(
+  ref,
+  LAUNCH_TARGET_STATE[phase],
+  NO_SPEC_PHASES.includes(phase) ? { requires_refinement: false } : {},
+  "Couldn't start session",
+);</code></pre>
+
+  <p class="small">
+    The clipboard paste-fallback, the await-then-open ordering and the toast are all shared code and
+    are untouched — the spike launch inherits them by construction.
+  </p>
+
+  <h3>6.3 · The spike skill</h3>
+
+  <p>
+    <code>.claude/skills/spike/SKILL.md</code> is the highest-leverage file in this change: it steers
+    every future spike session in every repo it is copied into. Per CLAUDE.md, <strong>read the
+    <code>skill-creator</code> skill before writing it</strong>, walk its
+    “Writing a description that triggers” checklist against the draft, and run
+    <code>npm run lint:skills -w tools/skill-lint</code> <em>while drafting</em>. It must cover:
+  </p>
+
+  <ul class="tight">
+    <li><b>The deliverable:</b> one self-contained HTML findings document —
+      inline <code>&lt;style&gt;</code>, no build step, no external dependencies, opens in a browser,
+      mobile-friendly — at <code>docs/spikes/&lt;REF&gt;-&lt;short-slug&gt;.html</code>, with a
+      <code>&lt;title&gt;</code>/<code>&lt;h1&gt;</code> of <code>&lt;REF&gt; — &lt;spike title&gt;</code>.</li>
+    <li><b>The document's shape</b>, which is the form the repo's two existing spike documents
+      already converged on: <em>Where we landed</em> (the recommendation stated first, not buried) →
+      <em>Why</em>, with the evidence → <em>Technical shape for a later spec to expand</em> →
+      <em>Sidebars: appealing alternatives we're not taking</em> → <em>Cost &amp; open questions</em>
+      → <em>Sources</em>, with real links.</li>
+    <li><b>Findings must be grounded.</b> Read the code, run the command, hit the endpoint, check
+      the version — record what was actually observed and cite it (file paths, command output,
+      source links). A spike that only reasons from memory is the failure mode this skill exists to
+      prevent.</li>
+    <li><b>No implementation in the PR.</b> Throwaway experimentation is encouraged <em>locally</em>;
+      the PR contains the findings document (and, under D8's convention, nothing else). Do not write
+      a feature spec either — a spike answers a question; the answer may or may not become one.</li>
+    <li><b>Never archived, never moved</b> — the mirror of the implement-spec archive rule, stated
+      because the sibling convention pulls the other way.</li>
+    <li><b>The <code>alfred</code> block</b> with <code>phase: spike</code> and
+      <code>spec-path</code> pointing at the findings document; <em>one story per spike PR</em>;
+      iteration happens in PR comments.</li>
+    <li><b>Say so when it isn't a spike.</b> If the question is already answered in the repo, or the
+      story is really an implementation ticket wearing a <code>Spike:</code> prefix, stop and tell
+      the human rather than manufacturing findings — the counterpart of the refinement skill's
+      “not a clean one-story spec? say so”.</li>
+  </ul>
+
+  <h3>6.4 · The code-module spec's stale sentence</h3>
+
+  <p>§5.2's manual-fallback note currently opens:</p>
+
+  <pre><code>**Manual fallback (required).** Spikes, research, and abandoned items have no PR signal.</code></pre>
+
+  <p>which this change makes false. Replace the first sentence with:</p>
+
+  <pre><code>**Manual fallback (required).** Research one-offs and abandoned items have no PR signal
+(a **spike** does — see the `spike` phase).</code></pre>
+
+  <p>and add the spike's three rows to §5.2's transition table so the document's state machine and
+  the Worker's stay in step. Nothing else in that spec changes.</p>
+
+  <h3>6.5 · The four link fixes D8 owes</h3>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>In</th><th>From</th><th>To</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2"><code>docs/spikes/notifications-spike.md</code></td><td><code>(../workers/src/index.ts)</code></td><td><code>(../../workers/src/index.ts)</code></td></tr>
+      <tr><td><code>(./siri-capture.md)</code></td><td><code>(../siri-capture.md)</code></td></tr>
+      <tr><td rowspan="2"><code>docs/spikes/scheduled-cloud-backups.md</code></td><td><code>(../.github/workflows/ci.yml)</code></td><td><code>(../../.github/workflows/ci.yml)</code></td></tr>
+      <tr><td><code>(../database/migrations/)</code></td><td><code>(../../database/migrations/)</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p class="small">
+    The two documents' links to <em>each other</em> are <code>./</code>-relative and both files move
+    together, so they need no edit. Neither document is referenced from anywhere else in the repo.
+  </p>
+
+  <h2>7 · Tests</h2>
+
+  <p>
+    TDD per CLAUDE.md: every requirement below is pinned by at least one test, and each one should
+    fail before the corresponding code exists.
+  </p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Suite</th><th>File</th><th>Pins</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Jest</td><td><code>frontend/lib/code/spike.test.ts</code> <span class="new">new</span></td>
+        <td>Every row of the §4.1 table — casing, leading whitespace, no-colon, mid-title match, null title.</td>
+      </tr>
+      <tr>
+        <td>Jest</td><td><code>frontend/lib/code/launch.test.ts</code></td>
+        <td>A spike returns <code>['spike']</code> from <code>needs_refinement</code> <em>and</em>
+          <code>ready_for_dev</code>, <code>[]</code> from every other state and from <code>null</code>;
+          a non-spike keeps today's lists (existing cases updated to pass a story);
+          <code>LAUNCH_LABELS.spike</code> and <code>LAUNCH_TARGET_STATE.spike</code>.</td>
+      </tr>
+      <tr>
+        <td>Jest</td><td><code>frontend/lib/code/links.test.ts</code></td>
+        <td><code>buildSpikeUrl</code>: the <code>repo</code> param; the decoded prompt leads with
+          <code>&lt;REF&gt;: &lt;title&gt;</code>; carries <code>phase: spike</code> and the unresolved
+          <code>spec-path</code> placeholder; names the spike skill path; carries the never-archive
+          line and the htmlpreview sentence; includes the epic-context line only when the epic has a
+          spec; clips over-long notes; and <strong>never mentions <code>docs/specs</code> or an archive
+          move</strong>.</td>
+      </tr>
+      <tr>
+        <td>Jest</td><td><code>workers/src/frontmatter.test.ts</code></td>
+        <td><code>phase: spike</code> parses (with its <code>spec-path</code>); the existing
+          <code>epic-refinement</code>/<code>refinement</code> alternation cases still pass.</td>
+      </tr>
+      <tr>
+        <td>Jest</td><td><code>workers/src/transitions.test.ts</code></td>
+        <td>The three spike rows exactly as §4.2 states, including <code>snapshotSpec</code> true only
+          on merge, <code>spec_path</code> omitted when the block carries none, and
+          <code>undefined</code> for non-<code>opened</code>/<code>closed</code> actions.</td>
+      </tr>
+      <tr>
+        <td>RTL</td><td><code>frontend/components/code/story-card.test.tsx</code></td>
+        <td>A spike card renders the <code>Spike</code> badge and exactly one launch control, labelled
+          <em>Run spike in Claude Code</em>; clicking it calls <code>onOpenSession</code> with
+          <code>'spike'</code>; a non-spike card renders no badge and its existing chips.</td>
+      </tr>
+      <tr>
+        <td>RTL</td><td><code>frontend/components/code/story-detail-modal.test.tsx</code></td>
+        <td>For a spike: the badge; the single solid launch button; <strong>no</strong> “Needs
+          refinement” checkbox; the <em>Findings</em> heading with its empty copy; the
+          <em>Spike PR</em> link label. For a non-spike: still <em>Spec</em>, still the checkbox,
+          still <em>Implementation PR</em>.</td>
+      </tr>
+      <tr>
+        <td>RTL</td><td><code>frontend/lib/stores/code-store.test.tsx</code></td>
+        <td>Launching a spike awaits a write of <code>in_development</code> +
+          <code>requires_refinement: false</code>, then opens a URL whose prompt carries
+          <code>phase: spike</code>.</td>
+      </tr>
+      <tr>
+        <td>Storybook</td>
+        <td><code>story-card.stories.tsx</code>, <code>story-detail-modal.stories.tsx</code></td>
+        <td>A spike story in <code>needs_refinement</code> and one in <code>ready_for_review</code> on
+          the card; a spike in the modal. New committed PNG baselines, approved with
+          <code>npm run test:storybook:update -w frontend</code> per the <code>storybook</code> skill —
+          never hand-edited.</td>
+      </tr>
+      <tr>
+        <td>Playwright</td><td><code>frontend/e2e/code-links.spec.ts</code></td>
+        <td>A seeded <code>Spike: …</code> story in <code>needs_refinement</code> shows one button;
+          clicking it moves the card into the In Development lane <em>and then</em> opens a
+          claude.ai/code URL whose <code>q</code> carries <code>phase: spike</code> (via the existing
+          <code>window.open</code> stub).</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>8 · Demo evidence</h2>
+
+  <p>
+    A user-visible change, so it owes a demo doc. Follow the <code>showboat</code> skill for the
+    command set, the folder-per-demo layout <code>demo-lint</code> enforces, and the evidence rules —
+    those stay the source of truth; this section only says <em>what</em> to show:
+  </p>
+
+  <ol class="tight">
+    <li>The board with a spike card and an ordinary card in the same lane — one action versus two,
+      and the badge (§5.1).</li>
+    <li>The spike's detail modal before the run: no refinement checkbox, the <em>Findings</em>
+      empty state (§5.3).</li>
+    <li><strong>The prompt the launch actually builds</strong>, captured from the live launch URL
+      into a committed <code>launch-prompt.txt</code> beside the demo and shown with a
+      <code>cat</code> <code>exec</code> block — the same technique
+      <code>docs/demos/ALF-137-skip-refinement/</code> uses. It is the one piece of evidence that
+      proves the new phase end-to-end, so it belongs in the doc verbatim.</li>
+    <li>The Storybook snapshot diffs the gate emits for the new/changed stories, with the approved
+      baselines committed alongside.</li>
+  </ol>
+
+  <p class="small">
+    Keep the <code>exec</code> blocks deterministic so <code>npm run demo -- verify</code> stays
+    green, and don't run the test suite inside one — <code>demo-lint</code>'s
+    <code>no-test-in-demo</code> rule rejects it.
+  </p>
+
+  <h2 id="oos">9 · Out of scope</h2>
+
+  <ul class="tight">
+    <li><b>Installing anything into other project repos.</b> Copying the new skill and the updated
+      <code>alfred-frontmatter.yml</code> into each project repo stays the credentialed, per-repo
+      Phase-C step the repo-setup README already describes. This ticket writes the artifacts and
+      documents the step.</li>
+    <li><b>Creating follow-up stories from findings.</b> A merged spike lands at <code>done</code>;
+      turning its recommendation into a refinement ticket is a human action in the board's New Story
+      dialog. No auto-creation, no linkage column.</li>
+    <li><b>A “Spike” option in the New Story dialog.</b> Typing the prefix in the title is the whole
+      interface (D1); a checkbox that types it for you is a separate, later convenience.</li>
+    <li><b>Converting the two moved documents to HTML.</b> D8 moves
+      <code>notifications-spike.md</code> and <code>scheduled-cloud-backups.md</code> as they are.
+      They predate the convention and stay markdown; only new findings are HTML.</li>
+    <li><b>A spikes index or browse surface.</b> <code>docs/spikes/</code> is a directory, not a view
+      in the app. The detail modal renders the one findings document attached to its story.</li>
+    <li><b>An <code>in_spike</code> state, lane, or filter</b> — explicitly rejected in D3.</li>
+  </ul>
+
+  <h3>Open questions</h3>
+
+  <ul class="tight">
+    <li><b>Does a spike ever want a second session?</b> Today a closed-unmerged spike PR reverts to
+      <code>ready_for_dev</code>, where the button is offered again — that is the retry path. If it
+      turns out spikes routinely need a follow-up run <em>after</em> merging, the answer is a new
+      story, not a new state; revisit only if that proves wrong in practice.</li>
+    <li><b>Nothing in the app enforces that a spike's findings landed in
+      <code>docs/spikes/</code></b> — the skill says so and the reviewer sees the path in the PR, but
+      the enforcing check only requires that <em>some</em> <code>spec-path</code> is present.
+      Deliberate: the path convention is per-repo (D6), so the check stays path-agnostic.</li>
+  </ul>
+
+  <h2>10 · Acceptance criteria</h2>
+
+  <p class="small">A reviewer (and the implementation session) can tick each of these off.</p>
+
+  <h4>Detection &amp; launch</h4>
+  <ul class="tight">
+    <li>☐ <code>isSpike</code> matches the §4.1 table exactly, case-insensitively, on the
+      left-trimmed title, and never throws on a null title.</li>
+    <li>☐ A spike story in <code>needs_refinement</code> or <code>ready_for_dev</code> offers exactly
+      one launch control, labelled <b>Run spike in Claude Code</b>, on both the board card and the
+      detail modal; it offers none in any other state.</li>
+    <li>☐ <b>Refine in Claude Code</b>, <b>Skip to Development</b> and <b>Implement in Claude Code</b>
+      never appear on a spike story.</li>
+    <li>☐ Non-spike stories' launch controls, labels and ordering are byte-for-byte unchanged.</li>
+    <li>☐ Launching a spike awaits a write of <code>in_development</code> and
+      <code>requires_refinement: false</code> before the tab opens, and copies the prompt to the
+      clipboard exactly as the other launches do.</li>
+  </ul>
+
+  <h4>The prompt</h4>
+  <ul class="tight">
+    <li>☐ The built prompt leads with <code>&lt;REF&gt;: &lt;title&gt;</code>, states findings-only /
+      no implementation / no feature spec, carries the ground-yourself step, the ask-me-here
+      clarification gate, the spike-skill reference with its no-skill fallback, the never-archive
+      line, the <code>alfred</code> block with <code>phase: spike</code> and the unresolved
+      <code>spec-path</code> placeholder, the htmlpreview step, and the final self-check.</li>
+    <li>☐ It carries the epic-context paragraph when (and only when) the story's epic has a spec, and
+      the notes block, clipped with its truncation warning past the shared cap.</li>
+    <li>☐ It never names <code>docs/specs/</code>, an archive path, or a spec file to read.</li>
+  </ul>
+
+  <h4>The contract &amp; the state machine</h4>
+  <ul class="tight">
+    <li>☐ <code>parseFrontmatter</code> accepts <code>phase: spike</code>, and the existing
+      <code>epic-refinement</code>-before-<code>refinement</code> alternation still resolves
+      correctly.</li>
+    <li>☐ <code>planTransition</code> implements the three spike rows of §4.2 and no-ops on every
+      other action; the doc-comment transition table beside it lists them.</li>
+    <li>☐ The findings document is snapshotted into <code>spec_markdown</code>/<code>spec_sha</code>
+      and its path recorded in <code>spec_path</code> <em>on merge</em>, through the existing
+      <code>snapshotSpec</code> path — no new column, no migration, no view change.</li>
+    <li>☐ <code>alfred-frontmatter.yml</code> accepts <code>phase: spike</code>, requires
+      <code>spec-path</code> on it, and its archive rule is unchanged and never fires for a spike.</li>
+  </ul>
+
+  <h4>The surface</h4>
+  <ul class="tight">
+    <li>☐ The muted <b>Spike</b> badge renders after the ref on the story card and after the state
+      chip in the detail modal, in every state, and only for a spike.</li>
+    <li>☐ The detail modal renders <b>no</b> “Needs refinement” checkbox for a spike.</li>
+    <li>☐ The document section reads <b>Findings</b> with the empty copy “No findings yet. The spike
+      PR writes them when it merges.”, and the recorded-but-unsnapshotted line names findings rather
+      than a spec; a non-spike story still reads <b>Spec</b> with its existing copy, and the epic
+      spec modal is unaffected.</li>
+    <li>☐ The <code>implementation_pr_url</code> link reads <b>Spike PR</b> on a spike and
+      <b>Implementation PR</b> everywhere else; the <b>Review PR</b> card chip works in
+      <code>ready_for_review</code> with no change to <code>reviewPrUrlFor</code>.</li>
+  </ul>
+
+  <h4>Conventions &amp; docs</h4>
+  <ul class="tight">
+    <li>☐ <code>.claude/skills/spike/SKILL.md</code> exists, covers everything in §6.3, and passes
+      <code>npm run lint:skills -w tools/skill-lint</code>.</li>
+    <li>☐ <code>docs/code-module/repo-setup/README.md</code> documents the spike phase in the contract
+      table, describes the spike PR alongside the other phases, lists the spike skill as a copy-me
+      artifact, and names it in the per-repo checklist.</li>
+    <li>☐ <code>docs/specs/code-module/code-module-spec.md</code> §5.2 no longer says spikes have no
+      PR signal, and its transition table carries the spike rows.</li>
+    <li>☐ (D8, severable) <code>docs/spikes/</code> contains the two moved findings documents with the
+      four relative links of §6.5 fixed, and no link in the repo is broken.</li>
+    <li>☐ A demo doc per §8 exists and <code>npm run demo -- verify</code> passes on it.</li>
+    <li>☐ <code>npm run check</code> is green: type-check, lint/format, unit, Storybook snapshots, E2E.</li>
+  </ul>
+
+</div>
+</body>
+</html>
