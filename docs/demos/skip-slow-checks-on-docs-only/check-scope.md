@@ -174,3 +174,51 @@ SUITES RAN
 check-scope: the diff vs trunk is unknown — running the full tier.
 SUITES RAN
 ```
+
+The same blind spot sat in the repo's two other branch-scoped gates, so they get the same fix. `demo-lint` uses the identical docs-only test to decide whether a branch owes a demo doc: a branch that archives an E2E spec into `docs/` used to look docs-only and walk away exempt. It no longer does —
+
+```bash
+cli="$PWD/tools/demo-lint/src/cli.ts"
+cd "$(mktemp -d)"
+git init -q -b main; git config user.email demo@alfred.test; git config user.name demo
+mkdir -p frontend/e2e docs/demos
+printf 'test\n' > frontend/e2e/tasks.spec.ts; printf '# demos\n' > docs/demos/README.md
+git add -A; git commit -qm base
+git checkout -qb archive-the-spec
+git mv frontend/e2e/tasks.spec.ts docs/tasks.spec.ts; git commit -qm archive
+node "$cli" docs/demos; echo "demo-lint exit: $?"
+```
+
+```output
+
+docs/demos
+  ✗ error [branch-folder] branch "archive-the-spec" has no demo. Capture it in its own folder under docs/demos/ — npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>" records this branch in the doc's front matter automatically.
+
+demo-lint: 1 error(s), 0 warning(s).
+demo-lint exit: 1
+```
+
+And the underlying git default that caused it, shown directly — plus every call site that now opts out of it (`skill-lint` scopes which skills get re-linted the same way, so a file moved out of a skill would have left it silently unlinted):
+
+```bash
+repo="$PWD"
+( cd "$(mktemp -d)"
+  git init -q -b main; git config user.email demo@alfred.test; git config user.name demo
+  mkdir -p a b; printf 'x\n' > a/file.ts; git add -A; git commit -qm base
+  git mv a/file.ts b/file.ts; git commit -qm move
+  echo "git diff --name-only            -> $(git diff --name-only HEAD~1 HEAD | tr '\n' ' ')"
+  echo "git diff --no-renames --name-only -> $(git diff --no-renames --name-only HEAD~1 HEAD | tr '\n' ' ')" )
+echo
+echo "call sites opting out of rename detection:"
+cd "$repo" && grep -rn "no-renames', '--name-only" tools/*/src/*.ts | sed 's|:.*|  ✓|'
+```
+
+```output
+git diff --name-only            -> b/file.ts 
+git diff --no-renames --name-only -> a/file.ts b/file.ts 
+
+call sites opting out of rename detection:
+tools/check-scope/src/git.ts  ✓
+tools/demo-lint/src/demos.ts  ✓
+tools/skill-lint/src/git.ts  ✓
+```
