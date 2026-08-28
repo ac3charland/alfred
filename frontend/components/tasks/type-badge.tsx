@@ -3,10 +3,11 @@ import * as React from 'react';
 import { Badge } from '@/components/atoms/badge';
 import type { ItemType } from '@/lib/types';
 
-/** Human-readable label per classified type. Only types with a label render a badge. */
+/** Human-readable label per type. Only types with a label render a badge. */
 const TYPE_LABELS: Partial<Record<ItemType, string>> = {
   task: 'Task',
   code: 'Code',
+  unclassified: 'Unclassified',
   // knowledge: reserved — leave room, don't render a badge yet.
 };
 
@@ -15,10 +16,14 @@ interface TypeBadgeProperties {
 }
 
 /**
- * A small muted chip naming an item's classified type — `Task` or `Code` — shown on
- * inbox/task rows once `item_type !== 'unclassified'`. An `unclassified` (or the
- * reserved `knowledge`) item renders nothing, so the row carries no type affordance until
- * it's classified. Styling mirrors the row's count chips (the muted bordered pill).
+ * A small muted chip naming an item's type — `Task`, `Code` or `Unclassified` — on the row's
+ * metadata cluster. All three tones are identical: the badge is a label, not a verdict, so an
+ * untriaged row reads as one value of a three-way field rather than an alert. Only the reserved
+ * `knowledge` type renders nothing. Styling mirrors the row's count chips (the muted pill).
+ *
+ * The badge never decides WHERE it shows — that gate is the row's (`showTypeBadge` in TaskRow),
+ * and it differs per type: `Code` everywhere, `Task` on an undispatched Inbox root, and
+ * `Unclassified` in select mode only, where the bulk actions gate on type.
  */
 export function TypeBadge({ itemType }: TypeBadgeProperties) {
   const label = TYPE_LABELS[itemType];

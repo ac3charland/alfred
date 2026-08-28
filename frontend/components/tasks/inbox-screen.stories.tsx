@@ -1,4 +1,5 @@
 import type { Decorator, Meta, StoryObj } from '@storybook/nextjs';
+import { expect, userEvent, within } from 'storybook/test';
 
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { ItemNode } from '@/lib/tree';
@@ -265,6 +266,51 @@ export const MidTriage: Story = {
       ],
     },
     visualTest: { target: '[data-testid="inbox-frame"]' },
+  },
+};
+
+/**
+ * Select mode with all three types stacked (ALF-105): a task, a code item, and an untriaged
+ * capture, each naming itself. This is the one surface where the third badge renders — the bulk
+ * actions gate on type, so the row that says nothing is the row whose eligibility you cannot
+ * read. Every row is deliberately bare otherwise, so the badge is the only difference.
+ */
+export const SelectMode: Story = {
+  args: { open: true },
+  decorators: [withFrame('w-[640px]')],
+  parameters: {
+    store: {
+      tasks: [
+        {
+          ...BASE_NODE,
+          ...CLASSIFIED_BY_MODEL,
+          id: 'sel-1',
+          title: 'Draft the launch announcement',
+          created_at: '2025-01-01T10:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          ...CLASSIFIED_BY_MODEL,
+          id: 'sel-2',
+          title: 'Alfred should let me snooze an item until next week',
+          item_type: 'code',
+          created_at: '2025-01-01T09:00:00Z',
+        },
+        {
+          ...BASE_NODE,
+          id: 'sel-3',
+          title: 'That thing Mark mentioned about the roof',
+          item_type: 'unclassified',
+          created_at: '2025-01-01T08:00:00Z',
+        },
+      ],
+    },
+    visualTest: { target: '[data-testid="inbox-frame"]' },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Select' }));
+    await expect(canvas.getByText('Unclassified')).toBeInTheDocument();
   },
 };
 

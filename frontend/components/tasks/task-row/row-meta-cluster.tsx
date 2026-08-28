@@ -41,7 +41,10 @@ interface RowMetaClusterProperties {
   isTopLevelTask: boolean;
   /** The parsed recurrence rule, or null when the task doesn't repeat. */
   recurrenceRule: RecurrenceRule | null;
-  /** Whether the type badge shows (Code everywhere; Task only on an undispatched Inbox root). */
+  /**
+   * Whether the type badge shows (Code everywhere; Task only on an undispatched Inbox root;
+   * Unclassified only in select mode) — the gate is the row's, see TaskRow's `showTypeBadge`.
+   */
   showTypeBadge: boolean;
   /**
    * True inside the Completed view, where the folder chip stays off: the row's context label

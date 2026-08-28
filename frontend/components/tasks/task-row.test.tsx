@@ -119,6 +119,20 @@ function renderTasks(
   });
 }
 
+/**
+ * The Inbox with select mode available: the header toggle over a selectable list. Press
+ * "Select" to enter multi-edit mode, where every root row becomes one toggle button.
+ */
+function renderSelectableInbox(items: Item[]) {
+  return renderWithProviders(
+    <>
+      <InboxSelectToggle />
+      <TaskList scope={{ type: 'inbox' }} selectable />
+    </>,
+    { tasks: items },
+  );
+}
+
 const COMPLETED = { scope: { type: 'completed' } as const };
 
 /** The <li> for the root row carrying `title`, for scoping within() queries. */
@@ -2236,6 +2250,56 @@ describe('TaskRow — classification & type-gating', () => {
 
       expect(screen.queryByText('Task')).not.toBeInTheDocument();
       expect(screen.queryByText('Code')).not.toBeInTheDocument();
+      expect(screen.queryByText('Unclassified')).not.toBeInTheDocument();
+    });
+
+    // ALF-105 — select mode is the one place the THIRD type earns a badge. There the bulk
+    // actions gate on type (Move refuses a code row, Dispatch skips an unclassified one), and
+    // a bare row was the only one whose type you could not read: unclassified and task were
+    // pixel-identical wherever the row carried no other metadata. Everywhere else the absent
+    // badge still means "nothing to say yet".
+    it('shows an "Unclassified" badge on an unclassified row in select mode', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      expect(screen.getByText('Unclassified')).toBeInTheDocument();
+    });
+
+    it('keeps the "Task" and "Code" badges in select mode, so all three types read alike', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([BASE_ITEM, { ...CODE_ITEM, id: 'item-code', title: 'Ship it' }]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      expect(screen.getByText('Task')).toBeInTheDocument();
+      expect(screen.getByText('Code')).toBeInTheDocument();
+    });
+
+    it('drops the "Unclassified" badge again when select mode ends', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+      expect(screen.getByText('Unclassified')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Done' }));
+
+      expect(screen.queryByText('Unclassified')).not.toBeInTheDocument();
+    });
+
+    // The badge rides inside the row's single <button> like every other select-mode chip: a
+    // nested control there would be invalid HTML, so it stays an inert span.
+    it('renders the select-mode badge inert, inside the row button', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([UNCLASSIFIED_ITEM]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      const badge = screen.getByText('Unclassified');
+      expect(badge.tagName).toBe('SPAN');
+      expect(badge.closest('button')).toHaveAttribute('aria-pressed');
     });
 
     // ALF-170 reverses part of ALF-67 in the one place it matters: the Inbox now holds
@@ -3829,17 +3893,6 @@ describe('provenance mark', () => {
 
   /** Any of the three marks, for the "no mark at all" assertions. */
   const ANY_MARK = new RegExp(`${MODEL_MARK}|${CLAIMED_MARK}|${UNJUDGED_MARK}`);
-
-  /** The Inbox with select mode available: the header toggle over a selectable list. */
-  function renderSelectableInbox(items: Item[]) {
-    return renderWithProviders(
-      <>
-        <InboxSelectToggle />
-        <TaskList scope={{ type: 'inbox' }} selectable />
-      </>,
-      { tasks: items },
-    );
-  }
 
   describe('the three states', () => {
     it('marks a row the classifier judged', () => {

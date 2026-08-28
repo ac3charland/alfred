@@ -18,10 +18,13 @@ describe('TypeBadge', () => {
     expect(screen.getByText('Code')).toBeInTheDocument();
   });
 
-  it('renders nothing for an unclassified item (no badge until classified)', () => {
-    const { container } = render(<TypeBadge itemType="unclassified" />);
+  // ALF-105: an unclassified item now names itself too. The badge is a plain label for all
+  // three types; WHERE it renders (select mode only, for this one) is the row's gate, not the
+  // badge's — see TaskRow's `showTypeBadge`.
+  it('renders "Unclassified" for an unclassified item', () => {
+    render(<TypeBadge itemType="unclassified" />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText('Unclassified')).toBeInTheDocument();
   });
 
   it('renders nothing for a knowledge item (reserved, not built)', () => {
