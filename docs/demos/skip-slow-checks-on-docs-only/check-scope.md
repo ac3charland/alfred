@@ -141,3 +141,36 @@ demo-only push skips the Storybook, Playwright, and database suites it cannot br
 ```
 
 Net effect: a refinement or demo-only push now clears `check:slow` in about a second — `demo-lint` still runs, since that is the one gate a docs change *can* trip — instead of waiting on the Storybook, Playwright, and Postgres suites it cannot affect. The same wiring serves the pre-push hook and CI's `check-slow` job.
+
+Two wrong-skip vectors the gate has to resist, since both *look* docs-only at a glance. First, a **rename out of a code directory into `docs/`**: git's default rename detection prints only the destination, so `git mv frontend/e2e/tasks.spec.ts docs/archive/` — a deleted E2E spec — would read as a pure docs change. `--no-renames` makes the move what it physically is, a delete plus an add. Second, an **unpushed commit on a local trunk**: if `origin/main` has not been fetched, a local `main` carrying code the remote has never seen would push the merge-base forward and hide that code, while the push still carries it out. The gate refuses a local trunk whenever an origin remote exists, and unknown trunk means run:
+
+```bash
+cli="$PWD/tools/check-scope/src/cli.ts"
+
+echo "== a Playwright spec moved into docs/ =="
+( cd "$(mktemp -d)"
+  git init -q -b main; git config user.email demo@alfred.test; git config user.name demo
+  mkdir -p frontend/e2e docs/archive; printf 'test\n' > frontend/e2e/tasks.spec.ts
+  git add -A; git commit -qm base
+  git checkout -qb move-spec
+  git mv frontend/e2e/tasks.spec.ts docs/archive/tasks.spec.ts; git commit -qm move
+  node "$cli" echo "SUITES RAN" )
+
+echo "== docs-only branch stacked on an unpushed code commit =="
+( d=$(mktemp -d); cd "$d"; git init -q --bare remote.git; git init -q -b main work; cd work
+  git config user.email demo@alfred.test; git config user.name demo
+  mkdir -p frontend docs/specs; printf 'v1\n' > frontend/app.ts; git add -A; git commit -qm base
+  git remote add origin ../remote.git
+  printf 'v2\n' >> frontend/app.ts; git add -A; git commit -qm "unpushed code"
+  git checkout -qb spec-branch; printf 'spec\n' > docs/specs/x.md; git add -A; git commit -qm spec
+  node "$cli" echo "SUITES RAN" )
+```
+
+```output
+== a Playwright spec moved into docs/ ==
+check-scope: 1 change(s) outside docs/ (e.g. frontend/e2e/tasks.spec.ts) — running the full tier.
+SUITES RAN
+== docs-only branch stacked on an unpushed code commit ==
+check-scope: the diff vs trunk is unknown — running the full tier.
+SUITES RAN
+```
