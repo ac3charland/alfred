@@ -22,6 +22,7 @@ import {
   rowContentColClass,
   rowDropTargetClass,
   rowHoverClass,
+  sendOffClass,
   subtaskCountBadgeClass,
   subtreeClass,
   taskListContainerClass,
@@ -58,6 +59,13 @@ describe('task-row styles', () => {
   it('delete fade transitions opacity and is disabled under reduced motion', () => {
     expect(deleteFadeClass).toContain('transition-opacity');
     expect(deleteFadeClass).toContain('motion-reduce:transition-none');
+  });
+
+  it("send-off is the capture ghost's own slide-out, disabled under reduced motion", () => {
+    // The shared `--animate-send-off` token — the SAME motion the capture box gives a
+    // just-captured thought, so a dispatched row leaves exactly as a new one arrived.
+    expect(sendOffClass).toContain('animate-send-off');
+    expect(sendOffClass).toContain('motion-reduce:animate-none');
   });
 
   it('row base is a flex layout with a colour transition', () => {

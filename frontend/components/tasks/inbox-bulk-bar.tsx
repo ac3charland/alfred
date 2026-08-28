@@ -13,10 +13,12 @@ import {
 import { GateDialog, type GateItem } from '@/components/code/gate-dialog';
 import { projectBoardHref } from '@/lib/code/board-links';
 import { useCodeActions } from '@/lib/stores/code-store';
+import { useDepartingItemsActions } from '@/lib/stores/departing-items-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
 import { useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
+import type { DispatchBlocker } from '@/lib/tasks/dispatch';
 import { dispatchReadiness, summarizeBlockers } from '@/lib/tasks/dispatch';
 import type { CodeStory } from '@/lib/types';
 
@@ -74,6 +76,7 @@ export function InboxBulkBar() {
   const { exit, prune } = useInboxSelectionActions();
   const { bulkClassify, bulkMove, dispatchItems, removeGatedItem } = useTaskActions();
   const { convertTaskToCode } = useCodeActions();
+  const { depart, clear: clearDeparting } = useDepartingItemsActions();
   const { showToast } = useToastActions();
   const folders = useFolders();
   const inboxNodes = useScopedTasks({ type: 'inbox' });
@@ -121,12 +124,17 @@ export function InboxBulkBar() {
   const anySelectedHasChildren = selectedItems.some((i) => i.children.length > 0);
 
   // Dispatch readiness, derived live from the selection: the ready ones go on press, and the
-  // second line names what every unready one is missing — before the press, not after.
-  const blockers = selectedItems.flatMap((item) => {
+  // second line names what every unready one is missing — before the press, not after. The
+  // ready ids are what the press sends off, so exactly the rows that leave are the rows that
+  // animate — an unready one never so much as flickers.
+  const blockers: DispatchBlocker[] = [];
+  const readyIds: string[] = [];
+  for (const item of selectedItems) {
     const readiness = dispatchReadiness(item, item.children.length > 0);
-    return readiness.ready ? [] : [readiness.blocker];
-  });
-  const readyCount = count - blockers.length;
+    if (readiness.ready) readyIds.push(item.id);
+    else blockers.push(readiness.blocker);
+  }
+  const readyCount = readyIds.length;
   const readinessLine = summarizeBlockers(blockers);
 
   // After a bulk action: full success exits; a partial outcome narrows the selection to the
@@ -145,10 +153,17 @@ export function InboxBulkBar() {
   };
 
   const handleDispatch = async () => {
+    // Send every ready row off FIRST, all together (ALF-182). The mutation is what filters
+    // them out of the Inbox, so calling it now would unmount each row before it could move —
+    // the animate-then-commit inversion, hoisted here because one press retires the whole
+    // selection at once. `depart` resolves when the exit has played (immediately under reduced
+    // motion), and `clearDeparting` afterwards releases any row a failure put back.
+    await depart(readyIds);
     // One press, each ready item to its own destination; unready ∪ failed stay selected. The
     // toast counts what actually went, with no deep link — a mixed dispatch has no single
     // destination to link to.
     const staying = await dispatchItems(ids, convertTaskToCode);
+    clearDeparting();
     const sent = count - staying.length;
     if (sent > 0) showToast(`Dispatched ${String(sent)} item${sent === 1 ? '' : 's'}`);
     settle(staying);

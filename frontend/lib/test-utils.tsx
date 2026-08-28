@@ -6,6 +6,7 @@ import type { HabitStats } from '@/lib/habits';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { DepartingItemsProvider } from '@/lib/stores/departing-items-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
@@ -77,29 +78,31 @@ export function renderWithProviders(
             <ActiveEditorProvider>
               <ExpansionProvider>
                 <InboxSelectionProvider>
-                  <CodeProvider
-                    initialProjects={projects}
-                    initialEpics={epics}
-                    initialStories={stories}
-                  >
-                    <CodeFilterProvider>
-                      <FolderSortProvider>
-                        <WeeklyPlanProvider
-                          initialIndex={weeklyPlans.index}
-                          initialLatest={weeklyPlans.latest}
-                        >
-                          <HabitsProvider
-                            initialHabits={habits.habits}
-                            initialEntries={habits.entries}
-                            initialStats={habits.stats ?? {}}
-                            serverToday={habits.today}
+                  <DepartingItemsProvider>
+                    <CodeProvider
+                      initialProjects={projects}
+                      initialEpics={epics}
+                      initialStories={stories}
+                    >
+                      <CodeFilterProvider>
+                        <FolderSortProvider>
+                          <WeeklyPlanProvider
+                            initialIndex={weeklyPlans.index}
+                            initialLatest={weeklyPlans.latest}
                           >
-                            {children}
-                          </HabitsProvider>
-                        </WeeklyPlanProvider>
-                      </FolderSortProvider>
-                    </CodeFilterProvider>
-                  </CodeProvider>
+                            <HabitsProvider
+                              initialHabits={habits.habits}
+                              initialEntries={habits.entries}
+                              initialStats={habits.stats ?? {}}
+                              serverToday={habits.today}
+                            >
+                              {children}
+                            </HabitsProvider>
+                          </WeeklyPlanProvider>
+                        </FolderSortProvider>
+                      </CodeFilterProvider>
+                    </CodeProvider>
+                  </DepartingItemsProvider>
                 </InboxSelectionProvider>
               </ExpansionProvider>
             </ActiveEditorProvider>

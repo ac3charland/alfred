@@ -137,9 +137,9 @@ second ordering source — the board *reflects* priority, it doesn't set it:
 
 Per-row UI state stays in the row's own `useState` — an input draft, the meta panel, the
 title-edit text. It graduates to a tiny Context store **only** when an invariant or command
-spans rows and so can't live in any single one. Two such coordination stores exist, both
-mounted in the layout beside the data stores, both **seeded with no server data**, both
-split into state + actions contexts (so actions-only callers don't re-render on every change):
+spans rows and so can't live in any single one. Each such coordination store is mounted in the
+layout beside the data stores, **seeded with no server data**, and split into state + actions
+contexts (so actions-only callers don't re-render on every change):
 
 - **`ActiveEditorProvider`** (`lib/stores/active-editor-store.tsx`) — only one inline input
   (a title edit **or** an add-subtask box) may be open across all rows. Rows derive their
@@ -160,6 +160,14 @@ split into state + actions contexts (so actions-only callers don't re-render on 
   Corollary: scope each action to what the store flag actually controls — an action that only
   opens the meta panel (editing a parent's due date/notes) must **not** also expand its
   subtree, since the panel renders as a sibling of the tree, not inside it.
+
+- **`InboxSelectionProvider`** (`lib/stores/inbox-selection-store.tsx`) — the Inbox's
+  multi-edit mode: an `active` flag plus the set of selected root ids, which the bulk action
+  bar reads whole and "Done"/Esc clears for every row at once. `prune(validIds)` drops ids that
+  have left the Inbox, returning the SAME set when nothing changed so the sync effect can't loop.
+- **`DepartingItemsProvider`** (`lib/stores/departing-items-store.tsx`) — which rows are
+  currently playing their exit, so a bulk action can animate them out before the mutation that
+  removes them runs. See the `motion` skill's bulk-departure pattern.
 
 Reach for a coordination store only for a genuine cross-row invariant or command — not to
 hoist ordinary local state. **Consuming one needs no explanatory comment:** reading a store's

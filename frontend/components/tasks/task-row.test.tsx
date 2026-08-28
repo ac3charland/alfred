@@ -5,6 +5,7 @@ import * as React from 'react';
 import * as apiClient from '@/lib/api-client';
 import { todayISODate } from '@/lib/date-utils';
 import { pinClock } from '@/lib/pin-clock';
+import { DEPARTURE_MS } from '@/lib/stores/departing-items-store';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree } from '@/lib/tree';
@@ -2679,6 +2680,36 @@ describe('TaskRow — classification & type-gating', () => {
       }
     });
 
+    it('sends the row off before the mutation removes it (ALF-182)', async () => {
+      jest.useFakeTimers();
+      try {
+        mockUpdateItem.mockResolvedValue({ ...LABELLED_TASK, dispatched_at: DISPATCHED_AT });
+        const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+        renderTasks([LABELLED_TASK], { folders: [FOLDER] });
+
+        await openMenuFor(user, 'Write tests');
+        await activateMenuItem(user, /^dispatch$/i);
+
+        // Mid-exit: the row is still mounted, collapsing and sliding right on the capture
+        // box's own send-off — and the PATCH that unmounts it has not gone yet.
+        const collapse = collapseWrapperFor('Write tests');
+        expect(collapse).toHaveClass('grid-rows-[0fr]');
+        expect(collapse.firstElementChild).toHaveClass('animate-send-off');
+        expect(mockUpdateItem).not.toHaveBeenCalled();
+
+        await act(async () => {
+          jest.advanceTimersByTime(DEPARTURE_MS);
+          await Promise.resolve();
+        });
+
+        await waitFor(() => {
+          expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { dispatched: true });
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('files a labelled task into its folder and links the toast to it', async () => {
       mockUpdateItem.mockResolvedValue({ ...LABELLED_TASK, dispatched_at: DISPATCHED_AT });
       const user = userEvent.setup();
@@ -3052,10 +3083,12 @@ describe('TaskRow — epic construction (ALF-129)', () => {
       expect(screen.queryByRole('menuitem', { name: /convert to code/i })).toBeNull();
       await activateMenuItem(user, /^dispatch$/i);
 
+      // The row plays its send-off first, so wait for the PATCH rather than reading it the
+      // instant the menu item is activated.
       await waitFor(() => {
-        expect(mockConvertToCodeEpic).not.toHaveBeenCalled();
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { dispatched: true });
       });
-      expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { dispatched: true });
+      expect(mockConvertToCodeEpic).not.toHaveBeenCalled();
     });
   });
 });

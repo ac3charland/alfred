@@ -26,6 +26,15 @@ export const deleteFadeClass =
   'transition-opacity duration-200 ease-out motion-reduce:transition-none';
 
 /**
+ * The *departure* treatment — a dispatched row is sent off with the same `send-off` flourish
+ * the capture box gives a just-captured thought (`captureGhostClass`): it fades while sliding
+ * to the right, so leaving the Inbox looks the same as arriving in it. It rides on top of the
+ * shared `collapseClass` height collapse, whose `delay-200` lets the slide lead before the
+ * remaining rows pull up into the gap.
+ */
+export const sendOffClass = 'animate-send-off motion-reduce:animate-none';
+
+/**
  * The collapse wrapper's inner child — the single grid item inside the `display:grid`
  * collapse track (it also carries the mobile card chrome at depth 0). A grid item's automatic
  * minimum size is `min-content`, so without `min-w-0` the `nowrap` notes preview (see

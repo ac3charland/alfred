@@ -18,6 +18,7 @@ import { CascadeModal } from '@/components/tasks/cascade-modal';
 import { ClassificationMark } from '@/components/tasks/classification-mark';
 import { SubtaskGap } from '@/components/tasks/subtask-gap';
 import { useTaskDrag } from '@/components/tasks/task-dnd-provider';
+import { RowDeparture } from '@/components/tasks/task-row/row-departure';
 import { RowMetaCluster } from '@/components/tasks/task-row/row-meta-cluster';
 import { TaskDetailPanel } from '@/components/tasks/task-row/task-detail-panel';
 import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
@@ -39,6 +40,7 @@ import {
   useActiveEditorActions,
 } from '@/lib/stores/active-editor-store';
 import { useCodeActions } from '@/lib/stores/code-store';
+import { useDepartingItems, useDepartingItemsActions } from '@/lib/stores/departing-items-store';
 import { useExpansion, useExpansionActions } from '@/lib/stores/expansion-store';
 import { useFolders } from '@/lib/stores/folders-store';
 import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-selection-store';
@@ -74,6 +76,7 @@ import {
   rowContentColClass,
   rowDropTargetClass,
   rowHoverClass,
+  sendOffClass,
   subtreeClass,
   titleInputClass,
   titleTextClass,
@@ -153,6 +156,8 @@ export function TaskRow({
     useExpansionActions();
   const { active: selectModeActive, selectedIds } = useInboxSelection();
   const { toggle: toggleSelection } = useInboxSelectionActions();
+  const { departingIds } = useDepartingItems();
+  const { depart, clear: clearDeparting } = useDepartingItemsActions();
   // A selectable root row in active select mode is a selection checkbox, not a normal row.
   const inSelectMode = selectable && selectModeActive;
   const isSelected = selectedIds.has(node.id);
@@ -250,8 +255,15 @@ export function TaskRow({
     onCollapseEnd: handleDeleteCollapseEnd,
   } = useAnimatedRowExit(() => deleteTask(node.id), prefersReducedMotion);
 
-  // Either exit collapses the row to nothing; the deletion additionally fades the whole row out.
-  const isExiting = isCompleting || isDeleting;
+  // The departure exit: Dispatch sends a row off — the whole ready selection from the bulk bar,
+  // or this one row from its own ⋯ menu. Either way the flag lives in the shared store, because
+  // the bar's press has to reach rows it doesn't own; whoever pressed waits out the exit, then
+  // commits the mutation that filters the rows away (see departing-items-store).
+  const isDeparting = departingIds.has(node.id);
+
+  // Every exit collapses the row to nothing; deletion additionally fades the whole row out,
+  // and a departure slides it off to the right.
+  const isExiting = isCompleting || isDeleting || isDeparting;
 
   // Only one inline input may be open across all rows, so the title-edit and add-subtask
   // flags are derived from the shared active-editor store, not held per-row. Opening
@@ -630,6 +642,10 @@ export function TaskRow({
       return;
     }
     void (async () => {
+      // Send the row off first (ALF-182): the mutation below filters it out of the Inbox, so
+      // running it now would unmount the row before it could move. The bulk bar's Dispatch does
+      // exactly the same on its whole selection, so both surfaces leave the same way.
+      await depart([node.id]);
       // The allocated story is caught on its way through, so a code dispatch can still announce
       // its ref and deep-link to the board — what the gate's own toast used to do.
       let story: CodeStory | undefined;
@@ -637,6 +653,7 @@ export function TaskRow({
         story = await convertTaskToCode(item, projectId, epicId);
         return story;
       });
+      clearDeparting();
       // A failure keeps the row where it is and has already toasted; nothing to announce.
       if (staying.length > 0) return;
       if (story === undefined) {
@@ -678,50 +695,52 @@ export function TaskRow({
   if (inSelectMode) {
     return (
       <li className="group/row list-none">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            toggleSelection(node.id);
-          }}
-          aria-pressed={isSelected}
-          aria-label={`${isSelected ? 'Deselect' : 'Select'} "${node.title}"`}
-          className={cn(
-            // Reset the Button atom's centred, fixed-height chrome into a full-width row.
-            'h-auto w-full justify-start gap-2 px-2 py-2 text-left font-normal',
-            isSelected && 'bg-accent-teal/5 ring-2 ring-inset ring-accent-teal',
-          )}
-          style={{ paddingLeft: indentLeft }}
-        >
-          <span
-            aria-hidden="true"
+        <RowDeparture departing={isDeparting}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              toggleSelection(node.id);
+            }}
+            aria-pressed={isSelected}
+            aria-label={`${isSelected ? 'Deselect' : 'Select'} "${node.title}"`}
             className={cn(
-              checkboxSizeClass,
-              'flex items-center justify-center rounded border',
-              isSelected ? 'border-accent-teal bg-accent-teal' : checkboxIncompleteClass,
+              // Reset the Button atom's centred, fixed-height chrome into a full-width row.
+              'h-auto w-full justify-start gap-2 px-2 py-2 text-left font-normal',
+              isSelected && 'bg-accent-teal/5 ring-2 ring-inset ring-accent-teal',
             )}
+            style={{ paddingLeft: indentLeft }}
           >
-            {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
-          </span>
-          {/* Title + provenance travel together in one flex-1 box, with the mark as the title's
+            <span
+              aria-hidden="true"
+              className={cn(
+                checkboxSizeClass,
+                'flex items-center justify-center rounded border',
+                isSelected ? 'border-accent-teal bg-accent-teal' : checkboxIncompleteClass,
+              )}
+            >
+              {isSelected && <Check size={10} className="text-background" strokeWidth={3} />}
+            </span>
+            {/* Title + provenance travel together in one flex-1 box, with the mark as the title's
             SIBLING rather than its content. The title here is a single clipped `truncate` line,
             so a mark nested inside it would be part of the overflowing content and any title
             long enough to ellipsize would swallow it — in the one mode where you are choosing
             what to dispatch. Outside it, the mark always renders; inside a shared box that
             shrink-wraps the pair, it sits against the text (or the ellipsis) instead of drifting
             to the row's far edge on a short title, where it would read as one more badge. */}
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="min-w-0 truncate text-sm text-foreground">{node.title}</span>
-            {origin !== null && <ClassificationMark origin={origin} />}
-          </span>
-          <RowMetaCluster
-            node={node}
-            isTask={isTask}
-            isTopLevelTask={isTopLevelTask}
-            recurrenceRule={recurrenceRule}
-            showTypeBadge={showTypeBadge}
-            isCompletedView={isCompletedView}
-          />
-        </Button>
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="min-w-0 truncate text-sm text-foreground">{node.title}</span>
+              {origin !== null && <ClassificationMark origin={origin} />}
+            </span>
+            <RowMetaCluster
+              node={node}
+              isTask={isTask}
+              isTopLevelTask={isTopLevelTask}
+              recurrenceRule={recurrenceRule}
+              showTypeBadge={showTypeBadge}
+              isCompletedView={isCompletedView}
+            />
+          </Button>
+        </RowDeparture>
       </li>
     );
   }
@@ -757,20 +776,24 @@ export function TaskRow({
           the rows below it down (ALF-20). For an existing row this wrapper is a no-op
           passthrough. */}
       <AnimatedHeightEnter entering={isEntering}>
-        {/* Both exits (complete + delete) collapse the row (and its expanded subtree): a
-          transition on the grid row track from 1fr to 0fr shrinks the height to nothing,
-          pulling the rows below up. `ease-out` (a transition, not a keyframe) makes the
-          collapse start briskly, then settle. Completion uses `collapseClass` (delay-200 holds
-          the collapse back until the 200ms checkbox pop finishes); deletion uses
+        {/* All three exits (complete + delete + dispatch) collapse the row (and its expanded
+          subtree): a transition on the grid row track from 1fr to 0fr shrinks the height to
+          nothing, pulling the rows below up. `ease-out` (a transition, not a keyframe) makes
+          the collapse start briskly, then settle. Completion uses `collapseClass` (delay-200
+          holds the collapse back until the 200ms checkbox pop finishes), and a departure reuses
+          it so the send-off slide leads the same way before the gap closes; deletion uses
           `deleteCollapseClass` (no delay — nothing to wait on) and fades the whole row out via
           `deleteFadeClass` on the clipped inner child. The inner child is clipped so it can
-          shrink past its content. Kept bespoke (not AnimatedHeightCollapse) for the 300ms
-          timing and the commit-on-end contract. Both exits' onTransitionEnd handlers run; each
-          only acts on its own `grid-template-rows` transition while its flag is set. */}
+          shrink past its content; a departure additionally clips HERE so its rightward slide
+          can't push the page sideways. Kept bespoke (not AnimatedHeightCollapse) for the 300ms
+          timing and the commit-on-end contract. Both row-owned exits' onTransitionEnd handlers
+          run; each only acts on its own `grid-template-rows` transition while its flag is set
+          (a departure commits on the bar's timer instead — nothing to hook here). */}
         <div
           className={cn(
             isDeleting ? deleteCollapseClass : collapseClass,
             isExiting ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
+            isDeparting && 'overflow-hidden',
           )}
           data-testid="task-collapse"
           onTransitionEnd={(event) => {
@@ -790,6 +813,8 @@ export function TaskRow({
               isCard && cardChromeClass,
               isExiting && 'overflow-hidden',
               isDeleting && cn(deleteFadeClass, 'opacity-0'),
+              // Dispatched: sent off with the capture ghost's own fade + slide-right.
+              isDeparting && sendOffClass,
             )}
           >
             {/* Main row — the whole surface is the drag handle (the row sensors let the

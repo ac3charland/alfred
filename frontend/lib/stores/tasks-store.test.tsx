@@ -1410,6 +1410,20 @@ describe('dispatchItems', () => {
     expect(stay).toEqual([]);
   });
 
+  it('drops a ready code item optimistically, before the gate RPC resolves (ALF-182)', () => {
+    // The task half already leaves the Inbox on the optimistic stamp; the code half used to
+    // linger until the RPC answered, so a mixed dispatch left one row behind after the others
+    // had gone. Both now go on the same beat — and a failure puts this one back (below).
+    const sendToCode = jest.fn().mockReturnValue(new Promise<void>(() => {}));
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([readyCode]) });
+
+    act(() => {
+      void result.current.actions.dispatchItems(['ready-code'], sendToCode);
+    });
+
+    expect(result.current.tasks).toHaveLength(0);
+  });
+
   it('never sends an unready item, returns it to stay selected, and does not count it as a failure', async () => {
     mockUpdateItem.mockImplementation((id) =>
       Promise.resolve(item({ id, item_type: 'task', folder_id: 'f1' })),

@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
+import { DEPARTURE_MS } from '@/lib/stores/departing-items-store';
 import { renderWithProviders } from '@/lib/test-utils';
 import type { CodeItem, Epic, Folder, Item, Project } from '@/lib/types';
 
@@ -347,6 +348,32 @@ describe('Inbox select mode', () => {
 // ALF-170 — Dispatch, the readiness line, and the select-mode metadata cluster
 // ---------------------------------------------------------------------------
 
+/**
+ * Force a `prefers-reduced-motion` result for the duration of a test. `restoreMocks`
+ * (jest.config) reverts the spy to the jest.setup stub after each test.
+ */
+function mockReducedMotion(matches: boolean): void {
+  const mql = {
+    matches,
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  } as unknown as MediaQueryList;
+  jest.spyOn(globalThis, 'matchMedia').mockReturnValue(mql);
+}
+
+/** The grid-rows collapse wrapper for `title`'s row, and the clipped child it drives. */
+function exitLayersFor(title: string): { collapse: HTMLElement; content: HTMLElement } {
+  const li = screen.getByText(title).closest('li');
+  if (!li) throw new Error(`no row found for "${title}"`);
+  const collapse = li.querySelector<HTMLElement>('[data-testid="task-collapse"]');
+  const content = collapse?.firstElementChild;
+  if (!collapse || !(content instanceof HTMLElement)) throw new Error('no collapse wrapper');
+  return { collapse, content };
+}
+
 /** Enter select mode and select each of `titles`. */
 async function selectRows(
   user: ReturnType<typeof userEvent.setup>,
@@ -461,6 +488,160 @@ describe('Dispatch (ALF-170)', () => {
     // The dispatched rows have left the Inbox view.
     expect(screen.queryByText('ready task')).not.toBeInTheDocument();
     expect(screen.queryByText('ready code')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ALF-182 — every dispatched row leaves TOGETHER, on the capture box's own
+// send-off slide, and the rows that stay pull up into the gap. The mutation is
+// what unmounts them, so it waits until the exit has played (animate-then-commit,
+// hoisted to the bar because the whole selection leaves at once).
+// ---------------------------------------------------------------------------
+
+describe('Dispatch sends every ready row off at once (ALF-182)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** The server's answer to a dispatch: the row comes back stamped with its residency. */
+  function mockDispatchSucceeds(): void {
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(
+        makeItem(id, { item_type: 'task', folder_id: 'f1', dispatched_at: '2025-01-02T00:00:00Z' }),
+      ),
+    );
+  }
+
+  const READY_ROWS = [
+    makeItem('first', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+    makeItem('second', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+    makeItem('third', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+  ];
+
+  it('slides every dispatched row out at once while the mutation waits', async () => {
+    mockDispatchSucceeds();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox([...READY_ROWS, makeItem('stays', { item_type: 'task', folder_id: 'f1' })]);
+
+    await selectRows(user, ['first', 'second', 'third']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    // Every selected row — not just the first — is still mounted and playing the SAME exit:
+    // the capture box's send-off slide over a height collapse that pulls the rest up.
+    for (const title of ['first', 'second', 'third']) {
+      const { collapse, content } = exitLayersFor(title);
+      expect(collapse).toHaveClass('grid-rows-[0fr]');
+      expect(content).toHaveClass('animate-send-off');
+    }
+    // The mutation that actually removes them has NOT fired yet — that's what would have
+    // unmounted them mid-slide.
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('leaves the rows that stay untouched', async () => {
+    mockDispatchSucceeds();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox([...READY_ROWS, makeItem('stays', { item_type: 'task', folder_id: 'f1' })]);
+
+    await selectRows(user, ['first', 'second', 'third']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    const { collapse, content } = exitLayersFor('stays');
+    expect(collapse).toHaveClass('grid-rows-[1fr]');
+    expect(content).not.toHaveClass('animate-send-off');
+  });
+
+  it('commits the dispatch once the exit has run, and the rows are gone', async () => {
+    mockDispatchSucceeds();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox(READY_ROWS);
+
+    await selectRows(user, ['first', 'second', 'third']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    await act(async () => {
+      jest.advanceTimersByTime(DEPARTURE_MS);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('first', { dispatched: true });
+    });
+    expect(mockUpdateItem).toHaveBeenCalledWith('second', { dispatched: true });
+    expect(mockUpdateItem).toHaveBeenCalledWith('third', { dispatched: true });
+    await waitFor(() => {
+      expect(screen.queryByText('first')).not.toBeInTheDocument();
+    });
+  });
+
+  it('never sends an unready row off — it stays put while the ready ones leave', async () => {
+    mockDispatchSucceeds();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox([
+      makeItem('ready', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+      makeItem('not ready', { item_type: 'task' }),
+    ]);
+
+    await selectRows(user, ['ready', 'not ready']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    expect(exitLayersFor('ready').content).toHaveClass('animate-send-off');
+    expect(exitLayersFor('not ready').content).not.toHaveClass('animate-send-off');
+  });
+
+  it('drops the exit flag when a failed dispatch puts the row back', async () => {
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox([makeItem('first', { item_type: 'task', folder_id: 'f1', dispatched_at: null })]);
+
+    await selectRows(user, ['first']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+    await act(async () => {
+      jest.advanceTimersByTime(DEPARTURE_MS);
+      await Promise.resolve();
+    });
+
+    // The rollback restores the row; it must render at rest, not stuck collapsed and invisible.
+    await waitFor(() => {
+      expect(exitLayersFor('first').collapse).toHaveClass('grid-rows-[1fr]');
+    });
+    expect(exitLayersFor('first').content).not.toHaveClass('animate-send-off');
+  });
+
+  it('keeps the exit playing when select mode is left mid-flight', async () => {
+    mockDispatchSucceeds();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox(READY_ROWS);
+
+    await selectRows(user, ['first', 'second', 'third']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+    // "Done" swaps every row back to its ordinary shape while the send-off is still running —
+    // it must carry on from where it is, not snap back to full height and then blink out.
+    const bar = screen.getByRole('region', { name: /bulk actions/i });
+    await user.click(within(bar).getByRole('button', { name: 'Done' }));
+
+    const { collapse, content } = exitLayersFor('first');
+    expect(collapse).toHaveClass('grid-rows-[0fr]');
+    expect(content).toHaveClass('animate-send-off');
+  });
+
+  it('under reduced motion the rows just go, with no exit to wait on', async () => {
+    mockReducedMotion(true);
+    mockDispatchSucceeds();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    renderInbox(READY_ROWS);
+
+    await selectRows(user, ['first', 'second', 'third']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    // No timer advanced: the mutation fired straight away.
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('first', { dispatched: true });
+    });
   });
 });
 

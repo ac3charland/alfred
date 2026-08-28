@@ -716,17 +716,20 @@ export function TasksProvider({
             });
           } else {
             // A ready code item has both hints — the gate has nothing left to ask, so the
-            // existing RPC runs straight off the row. Its optimistic board card (and its
-            // rollback) live in the code store; success is reconciled here by dropping the
-            // row, which has left task_items server-side.
+            // existing RPC runs straight off the row. Its optimistic board card lives in the
+            // code store; here the row leaves the Inbox on the same beat as every dispatched
+            // task (it has left task_items server-side anyway), so a mixed selection goes as
+            // one rather than the code rows lingering until the RPC answers (ALF-182).
             const { intended_project_id: projectId, intended_epic_id: epicId } = item;
             if (projectId === null || epicId === null) continue;
             codeIds.push(id);
             units.push({
               id,
-              // Nothing in THIS store changes optimistically for a code dispatch, so there is
-              // nothing to restore on failure.
-              snapshot: [],
+              // The row itself is the optimistic change, so it is also the rollback: a failed
+              // gate call restores it exactly as a failed task PATCH restores its subtree. A
+              // ready code row has no children (readiness rejects an epic-shaped one), so the
+              // single row is the whole snapshot.
+              snapshot: [item],
               request: async () => {
                 await sendToCode(
                   {
@@ -752,16 +755,17 @@ export function TasksProvider({
             patch: { dispatched_at: new Date().toISOString() },
           });
         }
+        // A gated code row leaves task_items outright, so its optimistic form is a removal —
+        // dispatched in the same commit as the stamp above, so every dispatched row leaves the
+        // Inbox together. `applyBulkSettled` upserts each failed unit's snapshot, putting a row
+        // whose gate call failed straight back.
+        if (codeIds.length > 0) dispatch({ type: 'remove', ids: codeIds });
         const failedIds = await applyBulkSettled(
           dispatch,
           showToastRef.current,
           units,
           (failed, total) => `${String(failed)} of ${String(total)} couldn't be dispatched`,
         );
-        // A gated code item has left task_items — drop the settled ones from this store.
-        const failed = new Set(failedIds);
-        const gatedIds = codeIds.filter((id) => !failed.has(id));
-        if (gatedIds.length > 0) dispatch({ type: 'remove', ids: gatedIds });
         return [...unreadyIds, ...failedIds];
       },
       async reparentTask(id, newParentId) {

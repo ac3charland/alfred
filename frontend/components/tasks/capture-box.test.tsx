@@ -195,7 +195,7 @@ describe('CaptureBox', () => {
 
     const ghost = await screen.findByTestId('capture-ghost');
     expect(ghost).toHaveTextContent('Buy milk');
-    expect(ghost).toHaveClass('animate-out', 'slide-out-to-right-8');
+    expect(ghost).toHaveClass('animate-send-off');
   });
 
   it('removes the ghost once its slide-out animation ends', async () => {
