@@ -55,8 +55,8 @@ describe('runCommand', () => {
   });
 
   it('fails when the command could not be spawned at all', () => {
-    expect(runCommand('nope', [], () => ({ status: undefined, error: new Error('ENOENT') }))).toBe(
-      1,
-    );
+    // status 0 alongside the error, so this only passes if the error is actually inspected —
+    // with `status: undefined` the `?? 1` fallback would return 1 whether or not it is.
+    expect(runCommand('nope', [], () => ({ status: 0, error: new Error('ENOENT') }))).toBe(1);
   });
 });
