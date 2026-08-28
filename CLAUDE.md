@@ -85,7 +85,9 @@ The hooks enforce the suites automatically, so you do **not** need to run
 `check` manually before committing:
 
 - **pre-commit** → root `check:fast` (type-check → lint+format → unit).
-- **pre-push** → root `check:slow` (frontend Storybook snapshots + Playwright E2E).
+- **pre-push** → root `check:slow` (frontend Storybook snapshots + Playwright E2E). A
+  branch whose every change lives under `docs/` skips the package suites — see the
+  `backpressure` skill.
 - **commit-msg** → commitlint (one-line Conventional Commits: subject + scope
   **required**, body and footer **always empty**, subject **lowercase**, e.g.
   `feat(backpressure): lowercase conventional commit`).

@@ -14,6 +14,10 @@ const SKILL_PATH = /(?:^|\/)\.claude\/skills\/([^/]+)\//;
  * `HEAD`) so a skill that's edited or staged but not yet committed still counts — skill-lint
  * runs at pre-commit, before the commit exists. An `undefined` result is the caller's signal
  * to lint **everything** (conservative: never silently skip on an unknown diff).
+ *
+ * `--no-renames` is load-bearing: git's default rename detection prints only a move's
+ * destination, so a file moved out of a skill would leave that skill looking untouched and
+ * silently unlinted.
  */
 export function changedPathsSinceTrunk(): readonly string[] | undefined {
   const trunk = TRUNK_REFS.find((ref) => {
@@ -25,7 +29,9 @@ export function changedPathsSinceTrunk(): readonly string[] | undefined {
   if (base.status !== 0) return undefined;
   const mergeBase = base.stdout.trim();
   if (mergeBase.length === 0) return undefined;
-  const diff = spawnSync('git', ['diff', '--name-only', mergeBase], { encoding: 'utf8' });
+  const diff = spawnSync('git', ['diff', '--no-renames', '--name-only', mergeBase], {
+    encoding: 'utf8',
+  });
   if (diff.status !== 0) return undefined;
   return diff.stdout
     .split(/\r?\n/)

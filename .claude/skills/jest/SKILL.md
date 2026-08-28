@@ -230,6 +230,24 @@ working.
 
 **Always scope `jest.spyOn` to `beforeEach` + `afterEach` (or rely on `restoreAllMocks: true`).** A spy that isn't restored persists its replacement across tests, producing hard-to-diagnose failures.
 
+**In the `tools/*` packages there is no `jest` global.** They run Jest in ESM mode
+(`NODE_OPTIONS=--experimental-vm-modules` + `preset: 'ts-jest/presets/default-esm'`), which does
+not inject the globals — `jest.fn()` there throws `ReferenceError: jest is not defined`. Import
+what you need from `@jest/globals`, or, for a single injected collaborator, drop the mocking API
+altogether and pass a closure that records its calls:
+
+```typescript
+const calls: { command: string; args: readonly string[] }[] = [];
+const spawn = (command: string, args: readonly string[]) => {
+  calls.push({ command, args });
+  return { status: 0 };
+};
+expect(runCommand('npm', ['run', 'check:slow'], spawn)).toBe(0);
+expect(calls).toEqual([{ command: 'npm', args: ['run', 'check:slow'] }]);
+```
+
+These CLIs take their side effects as parameters precisely so a plain function is enough.
+
 ---
 
 ## Version Gotchas (Jest 29 → Jest 30)
