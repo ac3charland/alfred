@@ -3,7 +3,7 @@
  *
  * The full arc: capture a code item with a `<project>:` prefix (so it carries an intended
  * project), build it out with three stories via the "Add story" affordance, reorder them with
- * the deterministic Move up / Move down menu actions, then "Send to Code module" — which
+ * the deterministic Move up / Move down menu actions, then "Dispatch" — which
  * converts immediately (no dialog, the project is known) into a new epic whose stories rank at
  * the top of the project's Backlog in display order. The mock implements convert_to_code_epic
  * faithfully (the bottom-up top_of_project_priority walk), so this is a genuine integration
@@ -71,10 +71,10 @@ test('capture with a project prefix → add stories → reorder → send → epi
   await page.getByRole('menuitem', { name: 'Move up' }).click();
   await expect(subtaskRows).toHaveText([/First story/, /Third story/, /Second story/]);
 
-  // 4. Send: the intended project is set, so the conversion fires straight from the menu
+  // 4. Dispatch: the intended project is set, so the conversion fires straight from the menu
   //    (the label carries no "…" — no dialog opens).
   await parentRow.getByRole('button', { name: 'More actions' }).first().click();
-  await page.getByRole('menuitem', { name: 'Send to Code module', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Dispatch', exact: true }).click();
 
   // 5. The toast announces the epic (ALF-3 — the shared counter's next value) + story count,
   //    and the whole group has left the inbox.
@@ -124,7 +124,7 @@ test('a code parent without an intended project sends through the project-only e
   });
   await page.goto('/?view=inbox');
 
-  // The send keeps its "…" — a dialog will open (no intended project).
+  // Dispatch keeps its "…" — a dialog will open (no intended project).
   await page
     .getByRole('listitem')
     .filter({ hasText: 'Bare epic' })
@@ -132,7 +132,7 @@ test('a code parent without an intended project sends through the project-only e
     .getByRole('button', { name: 'More actions' })
     .first()
     .click();
-  await page.getByRole('menuitem', { name: 'Send to Code module…' }).click();
+  await page.getByRole('menuitem', { name: 'Dispatch…' }).click();
 
   // The epic gate: a project picker + the read-only preview (epic name + ordered stories),
   // no epic picker. Confirm enables once a project is chosen.

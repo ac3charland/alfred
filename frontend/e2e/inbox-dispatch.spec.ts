@@ -195,3 +195,58 @@ test('setting a folder from the detail panel labels the row without moving it', 
   await page.getByRole('link', { name: 'Health' }).click();
   await expect(page.getByText('No tasks in Health')).toBeVisible();
 });
+
+// ---------------------------------------------------------------------------
+// ALF-185 — Dispatch from the row's own ⋯ menu: label the row, then send it.
+// ---------------------------------------------------------------------------
+
+test('a row is labelled with the folder chip, then dispatched from its own ⋯ menu', async ({
+  page,
+  seed,
+}) => {
+  await seed({
+    folders: [HEALTH],
+    items: [
+      makeItem('Call the dentist', {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        item_type: 'task',
+      }),
+    ],
+  });
+
+  await page.goto('/?view=inbox');
+
+  // Unlabelled, Dispatch is there but disabled — and says what the row is still missing.
+  await page.getByRole('button', { name: 'More actions' }).click();
+  const blocked = page.getByRole('menuitem', { name: 'Dispatch' });
+  await expect(blocked).toHaveAttribute('aria-disabled', 'true');
+  await expect(blocked).toHaveAttribute('title', 'Not ready — needs a folder');
+  // The entries ALF-185 folded into it are gone.
+  await expect(page.getByRole('menuitem', { name: /send to code module/i })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /convert to code/i })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /move to…/i })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // Label it from the detail panel's Folder chip…
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Open details' }).click();
+  await page.getByRole('button', { name: 'Folder', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Health' }).click();
+
+  // …then dispatch it: one press, and it goes where the label says.
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Dispatch', exact: true }).click();
+
+  // The toast names the destination and links to it; the row has left the Inbox.
+  const toast = page.getByRole('link', { name: 'Dispatched to Health' });
+  await expect(toast).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Tasks' }).getByText('Call the dentist'),
+  ).toBeHidden();
+
+  // Following the toast lands on the folder holding it.
+  await toast.click();
+  await expect(
+    page.getByRole('list', { name: 'Tasks' }).getByText('Call the dentist'),
+  ).toBeVisible();
+});

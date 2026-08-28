@@ -334,14 +334,17 @@ test.describe('inline editing', () => {
 });
 
 test.describe('move and delete', () => {
-  test('moves a task into a folder', async ({ page, seed }) => {
-    // Real UUID folder id: moving PATCHes folder_id, which the route validates as a UUID.
+  test('moves a filed task to another folder', async ({ page, seed }) => {
+    // Real UUID folder ids: moving PATCHes folder_id, which the route validates as a UUID.
+    // Since ALF-185 "Move to…" belongs to rows that have already left the Inbox, so this
+    // starts in a folder view — inside the Inbox a folder is a label, and Dispatch acts on it.
     const work = makeFolder('Work');
+    const archive = makeFolder('Archive');
     await seed({
-      folders: [work],
-      items: [makeTask('Inbox task')],
+      folders: [work, archive],
+      items: [makeTask('Filed task', { folder_id: archive.id })],
     });
-    await page.goto('/?view=inbox');
+    await page.goto(`/folders/${archive.id}`);
 
     await page.getByRole('button', { name: 'More actions' }).click();
     // Drive the Radix submenu by keyboard: synthetic pointer clicks on a nested
@@ -357,52 +360,12 @@ test.describe('move and delete', () => {
     await expect(page.getByRole('menuitem', { name: 'Work' })).toBeFocused();
     await page.keyboard.press('Enter');
 
-    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Inbox task')).toBeHidden();
+    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Filed task')).toBeHidden();
 
     // Navigate client-side via the sidebar link: it reads the already-reconciled
     // store, avoiding a full reload that could race the server-side PATCH persisting.
     await page.getByRole('link', { name: 'Work' }).click();
-    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Inbox task')).toBeVisible();
-  });
-
-  test('moving an unclassified item into a folder classifies it as a task (ALF-72)', async ({
-    page,
-    seed,
-  }) => {
-    // An unclassified capture has no completion checkbox. Filing it into a folder should
-    // classify it as a task, so it lands in the folder WITH the task affordances unlocked.
-    const work = makeFolder('Work');
-    await seed({
-      folders: [work],
-      items: [makeItem('Unfiled thought')],
-    });
-    await page.goto('/?view=inbox');
-
-    // No checkbox while it's an unclassified inbox item.
-    await expect(
-      page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
-    ).toBeHidden();
-
-    await page.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Move to…' }).hover();
-    await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('menuitem', { name: 'Work' })).toBeVisible();
-    await page.keyboard.press('ArrowDown');
-    await expect(page.getByRole('menuitem', { name: 'Work' })).toBeFocused();
-    await page.keyboard.press('Enter');
-
-    await expect(
-      page.getByRole('list', { name: 'Tasks' }).getByText('Unfiled thought'),
-    ).toBeHidden();
-
-    // In the folder it's now a task: the completion checkbox (a task-only affordance) is shown.
-    await page.getByRole('link', { name: 'Work' }).click();
-    await expect(
-      page.getByRole('list', { name: 'Tasks' }).getByText('Unfiled thought'),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Mark "Unfiled thought" complete' }),
-    ).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Tasks' }).getByText('Filed task')).toBeVisible();
   });
 
   test('deletes a task', async ({ page, seed }) => {

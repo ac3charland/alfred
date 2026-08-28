@@ -2,12 +2,15 @@ import { makeItem } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
- * The gate: an inbox item is classified as Code, sent to the Code module through
- * the gate (creating a brand-new project + epic), and the resulting story leaves the inbox
- * and appears on the board in Needs Refinement under its epic. Also covers Convert to Code
- * Story on a task.
+ * The two ways an inbox item enters the Code module, end to end:
  *
- * The mock implements create_epic / enter_code_module and the task_items ↔ v_code_stories
+ * 1. **The gate** — the "choose the project and epic now" path, opened from the bulk bar. It is
+ *    the only place a brand-new project or epic can be created on the way through.
+ * 2. **Dispatch** — the row menu's "use the labels already set" path (ALF-185): a code row
+ *    wearing both hints goes straight to the board, no dialog.
+ *
+ * Either way the story leaves the inbox and appears on the board in Needs Refinement under its
+ * epic. The mock implements create_epic / enter_code_module and the task_items ↔ v_code_stories
  * membership split, so this is a genuine integration run against the real route handlers,
  * stores, and dialogs.
  *
@@ -31,16 +34,21 @@ test('classify as Code → gate (new project + epic) → leaves inbox, lands on 
   await page.getByRole('menuitem', { name: 'Classify as…' }).hover();
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowDown'); // Task → Code
-  // `exact` so "Code" doesn't also match the "Convert to Code Story…" item.
+  // `exact` so the submenu's own "Code" is the match, not a longer entry containing the word.
   await expect(page.getByRole('menuitem', { name: 'Code', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
 
   const row = page.getByRole('listitem').filter({ hasText: 'Ship the inbound webhook' });
   await expect(row.getByText('Code', { exact: true })).toBeVisible();
 
-  // 2. Open the gate via "Send to Code module…".
-  await page.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: /send to code module/i }).click();
+  // 2. Open the gate — the bulk bar's "Send to Code…", the "choose it all now" path (the row
+  //    menu dispatches with the labels it already has instead; see the Dispatch test below).
+  await page.getByRole('button', { name: 'Select' }).click();
+  await page.getByRole('button', { name: 'Select "Ship the inbound webhook"' }).click();
+  await page
+    .getByRole('region', { name: 'Bulk actions' })
+    .getByRole('button', { name: /send to code/i })
+    .click();
   const gate = page.getByRole('dialog', { name: /send to code module/i });
   await expect(gate).toBeVisible();
 
@@ -78,15 +86,16 @@ test('classify as Code → gate (new project + epic) → leaves inbox, lands on 
   await gate.getByRole('button', { name: /send to code module/i }).click();
   await expect(gate).toBeHidden();
 
-  // 6. A toast announces the new ref, and the item has left the inbox. Epics and stories
+  // 6. A toast announces the batch, and the item has left the inbox. Epics and stories
   //    SHARE the per-project counter: the new epic took ALF-1, so this story is ALF-2.
-  await expect(page.getByText(/created alf-2/i)).toBeVisible();
+  await expect(page.getByText(/sent 1 item to code/i)).toBeVisible();
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Ship the inbound webhook' }),
   ).toHaveCount(0);
 
-  // 7. Navigate to Code → the story is a card in Needs Refinement under its epic.
-  await page.getByRole('link', { name: 'Code' }).click();
+  // 7. Navigate to Code → the story is a card in Needs Refinement under its epic. `exact` so
+  //    the "Sent 1 item to Code" toast link isn't a second match for the module nav link.
+  await page.getByRole('link', { name: 'Code', exact: true }).click();
   await expect(page).toHaveURL('/code');
   await page
     .getByRole('navigation', { name: 'Projects' })
@@ -100,18 +109,20 @@ test('classify as Code → gate (new project + epic) → leaves inbox, lands on 
   await expect(needsRefinement.getByText('Ship the inbound webhook')).toBeVisible();
 });
 
-test('Convert to Code Story on a task → it leaves Tasks and lands on the board', async ({
+test('Dispatch on a labelled code row → it leaves the inbox and lands on the board', async ({
   page,
   seed,
 }) => {
-  // Seed an existing project + epic so the gate just needs a selection.
+  // The ALF-185 path: the row already wears both hints, so Dispatch has nothing to ask.
   const projectId = '11111111-1111-4111-8111-111111111111';
   const epicId = '22222222-2222-4222-8222-222222222222';
   await seed({
     items: [
       makeItem('Refactor the parser', {
         id: '99999999-9999-4999-8999-999999999999',
-        item_type: 'task',
+        item_type: 'code',
+        intended_project_id: projectId,
+        intended_epic_id: epicId,
       }),
     ],
     projects: [
@@ -146,17 +157,12 @@ test('Convert to Code Story on a task → it leaves Tasks and lands on the board
   });
   await page.goto('/?view=inbox');
 
-  // A task offers "Convert to Code Story…", not "Send to Code module…".
+  // One press from the row menu — no dialog, because the labels already answered it.
   await page.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: /convert to code story/i }).click();
+  await page.getByRole('menuitem', { name: 'Dispatch', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  const gate = page.getByRole('dialog', { name: /send to code module/i });
-  await gate.getByRole('option', { name: /alfred/i }).click();
-  await gate.getByRole('option', { name: /core/i }).click();
-  await gate.getByRole('button', { name: /send to code module/i }).click();
-  await expect(gate).toBeHidden();
-
-  // Toast shows the next ref (ref_seq was 4 → ALF-5), and the task left the inbox.
+  // Toast shows the next ref (ref_seq was 4 → ALF-5), and the row left the inbox.
   await expect(page.getByText(/created alf-5/i)).toBeVisible();
   await expect(page.getByRole('listitem').filter({ hasText: 'Refactor the parser' })).toHaveCount(
     0,
@@ -177,7 +183,7 @@ test('the "Created …" toast is clickable and deep-links to the new story (ALF-
   page,
   seed,
 }) => {
-  // Seed a project + epic so the gate is a single selection and the created ref is deterministic
+  // Seed a project + epic the row already points at, so the created ref is deterministic
   // (ref_seq 4 → ALF-5). We know the project id, so we can assert the toast's deep-link target.
   const projectId = '11111111-1111-4111-8111-111111111111';
   const epicId = '22222222-2222-4222-8222-222222222222';
@@ -185,7 +191,9 @@ test('the "Created …" toast is clickable and deep-links to the new story (ALF-
     items: [
       makeItem('Refactor the parser', {
         id: '99999999-9999-4999-8999-999999999999',
-        item_type: 'task',
+        item_type: 'code',
+        intended_project_id: projectId,
+        intended_epic_id: epicId,
       }),
     ],
     projects: [
@@ -220,14 +228,9 @@ test('the "Created …" toast is clickable and deep-links to the new story (ALF-
   });
   await page.goto('/?view=inbox');
 
-  // Convert the task through the gate.
+  // Dispatch the labelled row from its own menu.
   await page.getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: /convert to code story/i }).click();
-  const gate = page.getByRole('dialog', { name: /send to code module/i });
-  await gate.getByRole('option', { name: /alfred/i }).click();
-  await gate.getByRole('option', { name: /core/i }).click();
-  await gate.getByRole('button', { name: /send to code module/i }).click();
-  await expect(gate).toBeHidden();
+  await page.getByRole('menuitem', { name: 'Dispatch', exact: true }).click();
 
   // The toast is now a LINK (ALF-68), not inert text, pointing at the story's board modal.
   const toast = page.getByRole('link', { name: /created alf-5/i });
