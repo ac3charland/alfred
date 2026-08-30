@@ -9,7 +9,7 @@ justification and shape for a future implementation spec — not the spec itself
 ## Where we landed
 
 - **What runs:** `.github/workflows/backup.yml`, a scheduled workflow (`on: schedule: cron`) —
-  sibling to the existing [`ci.yml`](../.github/workflows/ci.yml).
+  sibling to the existing [`ci.yml`](../../.github/workflows/ci.yml).
 - **How the dump is produced:** the `supabase` CLI (`supabase db dump`), a hardened wrapper over
   `pg_dump`, run natively on the Ubuntu runner; output gzipped.
 - **Where it goes:** a Cloudflare **R2** bucket, via `aws s3 cp` against R2's S3-compatible
@@ -40,7 +40,7 @@ battle-tested tool runs as-is. Additional fit:
 - **Secrets + tooling built in** — Actions secrets hold the DB and R2 credentials; the runner has
   the Postgres client / can install the Supabase CLI.
 - **Lives beside what it protects** — the workflow sits next to
-  [`database/migrations/`](../database/migrations/), our schema source of truth, and a restore can
+  [`database/migrations/`](../../database/migrations/), our schema source of truth, and a restore can
   be exercised in CI.
 
 ## Technical shape (for the implementation spec to expand)
