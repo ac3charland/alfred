@@ -3,6 +3,7 @@
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { LaunchButton } from '@/components/atoms/launch-button';
 import { ReviewPrChip } from '@/components/atoms/review-pr-chip';
+import { SpikeBadge } from '@/components/code/spike-badge';
 import { type LaunchPhase, launchPhasesFor } from '@/lib/code/launch';
 import { reviewPrUrlFor } from '@/lib/code/review-pr';
 import { dragSurfaceProperty } from '@/lib/dnd/pointer-sensor';
@@ -30,7 +31,9 @@ export interface StoryCardProperties {
  * A single story on the board: a compact card showing its **ref** and **title**, plus the
  * **phase-appropriate "Open Claude Code" actions** when any apply — *Refine* + the subordinate
  * *Skip to Development* in `needs_refinement`, *Implement* in `ready_for_dev`, hidden in every
- * other state (one `LaunchButton` per phase `launchPhasesFor` returns).
+ * other state (one `LaunchButton` per phase `launchPhasesFor` returns). A **spike** story carries
+ * a muted *Spike* badge after its ref and offers exactly one action, *Run spike in Claude Code*,
+ * from either pre-work state.
  *
  * In the two review states it instead grows a **Review PR** chip linking to the open PR the
  * human must review (`reviewPrUrlFor`) — `in_refinement` → the spec PR, `ready_for_review` →
@@ -43,7 +46,7 @@ export interface StoryCardProperties {
 export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties) {
   const escape = isEscapeState(story.factory_state);
   const blocked = story.factory_state === 'blocked';
-  const phases = launchPhasesFor(story.factory_state);
+  const phases = launchPhasesFor(story);
   const reviewPrUrl = reviewPrUrlFor(story);
 
   return (
@@ -71,6 +74,7 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
       >
         <span className="flex items-center gap-2">
           <span className="font-mono text-xs font-medium text-accent-teal">{story.ref}</span>
+          <SpikeBadge story={story} />
           {escape ? (
             <span
               className={cn(

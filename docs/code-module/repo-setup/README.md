@@ -13,7 +13,7 @@ PRs machine-readable.
 
 ## The PR ↔ ticket contract
 
-Every Software-Factory PR (all three phases) carries a **machine-readable fenced block** in its
+Every Software-Factory PR (all four phases) carries a **machine-readable fenced block** in its
 description, tagged `alfred`. The webhook Worker regexes this block to drive deterministic
 ticket-state transitions; there is no Anthropic session API, so **the PR is the only signal**.
 
@@ -28,8 +28,8 @@ spec-path: docs/specs/ALF-42.html
 | Field | Meaning | Rules |
 |---|---|---|
 | `alfred-ticket` | The ref(s) this PR advances — story refs, or the **epic's** ref on `epic-refinement`. | One ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR closing several stories. Always parsed as a list. |
-| `phase` | Which phase the PR belongs to. | `epic-refinement` \| `refinement` \| `implementation`. The phase alone decides what the Worker patches — `epic-refinement` targets the **epic**, the other two target the **story**; refs come from one shared per-project counter, so there is no fallback. |
-| `spec-path` | Where the spec (a self-contained HTML plan) lives in the repo. | **Required on both refinement phases** — declares the path so alfred renders from the *recorded* path, never an inferred one. **Implementation PRs carry it too** so the archive rule (below) knows which spec to retire. |
+| `phase` | Which phase the PR belongs to. | `epic-refinement` \| `refinement` \| `implementation` \| `spike`. The phase alone decides what the Worker patches — `epic-refinement` targets the **epic**, the other three target the **story**; refs come from one shared per-project counter, so there is no fallback. |
+| `spec-path` | Where the long-form document the PR produced (a self-contained HTML plan, or a spike's findings) lives in the repo. | **Required on both refinement phases and on a spike** — declares the path so alfred renders from the *recorded* path, never an inferred one. **Implementation PRs carry it too** so the archive rule (below) knows which spec to retire. |
 
 - An **epic-refinement** PR writes the *epic's* long-lived context/decisions spec (conventionally
   `docs/specs/epics/<EPIC-REF>.html`) and opens with `phase: epic-refinement` + the epic's ref.
@@ -44,6 +44,15 @@ spec-path: docs/specs/ALF-42.html
   `docs/specs/archive/<REF>.html` in the same PR — so the active `docs/specs/` directory only ever
   holds specs still awaiting work. Opening the PR moves the story `in_development → ready_for_review`;
   merging it moves it to `done`.
+- A **spike** PR answers a research question and writes a **findings document** — no code, no
+  spec — opening with `phase: spike` + `spec-path: docs/spikes/<REF>-<short-slug>.html`. A spike
+  reuses the ordinary states: opening the PR moves the story `in_development → ready_for_review`
+  (the findings are reviewed like any other change), merging it moves the story to `done` and
+  records + snapshots the findings, and closing it unmerged reverts to `ready_for_dev`, where
+  the spike launch is offered again. **Merge is the snapshot point**, not open: unlike an
+  implementation PR (whose spec was recorded a phase earlier) a spike's document only exists on
+  its own PR. Findings are **never archived** — they are long-lived reference material later
+  sessions keep reading.
 
 > **Archive rule.** The enforcing check **fails an implementation PR whose `spec-path` still
 > resolves to a file in the active `docs/specs/` directory** (i.e. the spec was left un-archived).
@@ -58,9 +67,10 @@ A refinement PR *opening* is a **no-op** for the state machine — the Worker ju
 
 | File | Copy it to | Purpose |
 |---|---|---|
-| [`alfred-frontmatter.yml`](alfred-frontmatter.yml) | the project repo's `.github/workflows/alfred-frontmatter.yml` | The enforcing check: fails the PR when the `alfred` block is missing/malformed, when a refinement PR omits `spec-path`, or when an implementation PR leaves its spec un-archived (the archive rule above). Coding agents fix failing checks, so they self-correct. |
+| [`alfred-frontmatter.yml`](alfred-frontmatter.yml) | the project repo's `.github/workflows/alfred-frontmatter.yml` | The enforcing check: fails the PR when the `alfred` block is missing/malformed, when a refinement or spike PR omits `spec-path`, or when an implementation PR leaves its spec un-archived (the archive rule above). Coding agents fix failing checks, so they self-correct. |
 | the refinement skill (`.claude/skills/refinement/SKILL.md`) | the project repo's `.claude/skills/refinement/SKILL.md` | The refinement-guide convention: how a refinement session must write the spec artifact and open its PR. The Claude Code refinement prompt references this committed skill. |
 | the epic-refinement skill (`.claude/skills/epic-refinement/SKILL.md`) | the project repo's `.claude/skills/epic-refinement/SKILL.md` | The same convention one altitude up: how an epic-refinement session writes the epic's context/decisions spec and opens its PR. The epic launch prompt references this committed skill. |
+| the spike skill (`.claude/skills/spike/SKILL.md`) | the project repo's `.claude/skills/spike/SKILL.md` | The spike-guide convention: how a spike session grounds its research, shapes the findings document, and where that document lives. The spike launch prompt references this committed skill; without it a spike session degrades to the prompt's one-line fallback. |
 
 ## One-time per-repo setup checklist (Phase C — credentialed)
 
@@ -68,16 +78,17 @@ Run once per project repo, in a local session (needs GitHub admin + the Worker s
 
 1. **Commit the enforcing Action.** Copy `alfred-frontmatter.yml` → `.github/workflows/` in the
    project repo and commit it.
-2. **Commit the refinement guides.** Drop the refinement skill into
-   `.claude/skills/refinement/SKILL.md` and the epic-refinement skill into
-   `.claude/skills/epic-refinement/SKILL.md`, and commit them.
+2. **Commit the session guides.** Drop the refinement skill into
+   `.claude/skills/refinement/SKILL.md`, the epic-refinement skill into
+   `.claude/skills/epic-refinement/SKILL.md`, and the spike skill into
+   `.claude/skills/spike/SKILL.md`, and commit them.
 3. **Add the GitHub webhook.** Repo → Settings → Webhooks → Add webhook:
    - **Payload URL:** the deployed Worker's `POST /github/webhook` route.
    - **Content type:** `application/json`.
    - **Secret:** the shared `GITHUB_WEBHOOK_SECRET` (also set as a Worker secret).
    - **Events:** *Let me select individual events* → **Pull requests** only.
 4. **Provision the read token.** Ensure the Worker's fine-grained PAT (`GITHUB_TOKEN`) has
-   **Contents: read** on this repo (used to snapshot the spec on refinement-merge).
+   **Contents: read** on this repo (used to snapshot the document on refinement- or spike-merge).
 5. **Smoke test.** Open a real refinement PR carrying the `alfred` block → confirm the Worker
    advances the ticket and snapshots the spec.
 

@@ -2672,6 +2672,36 @@ describe('code-store', () => {
         expect(prompt).toContain('SKIP-REFINEMENT');
       });
 
+      it('writes in_development AND records the mark for a spike launch, then opens the spike prompt', async () => {
+        mockUpdateCodeState.mockResolvedValue(
+          makeSavedSidecar({ factory_state: 'in_development', requires_refinement: false }),
+        );
+        const story = makeStory('i1', 'e1', 'p1', {
+          ref: 'ALF-42',
+          title: 'Spike: outbound notifications via Telegram',
+          factory_state: 'needs_refinement',
+        });
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+        });
+
+        await act(async () => {
+          await result.current.actions.openClaudeSession('ALF-42', 'spike');
+        });
+
+        // A spike is never refined, so the launch records the flag honestly — same row a
+        // "Skip to Development" launch leaves.
+        expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'in_development', {
+          requires_refinement: false,
+        });
+        expect(findStoryState(result.current.board)).toBe('in_development');
+        expect(findStory(result.current.board)?.requires_refinement).toBe(false);
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const prompt = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(prompt).toContain('phase: spike');
+        expect(prompt).toContain('FINDINGS DOCUMENT ONLY');
+      });
+
       it('opens the SKIP-REFINEMENT prompt for a ready_for_dev story with no committed spec', async () => {
         mockUpdateCodeState.mockResolvedValue(
           makeSavedSidecar({ factory_state: 'in_development' }),

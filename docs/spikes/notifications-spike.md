@@ -13,7 +13,7 @@ justification and shape for a future implementation spec — not the spec itself
 - **Transport:** one HTTPS call from the Worker —
   `POST https://api.telegram.org/bot<TOKEN>/sendMessage` with `{ chat_id, text }`. That's the
   entire outbound integration. It fits the Worker's existing "route matched in code, secrets in
-  a typed `Env`" model (see [`workers/src/index.ts`](../workers/src/index.ts)).
+  a typed `Env`" model (see [`workers/src/index.ts`](../../workers/src/index.ts)).
 - **Secrets:** `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, set with `wrangler secret put` and
   added to the Worker's `Env` interface — never committed, exactly like the existing
   `GITHUB_*` / `SUPABASE_*` secrets.
@@ -59,7 +59,7 @@ the same integration buys four things the walled-garden alternatives buy none of
   the bot. Store it only as a Worker secret; rotate via BotFather `/revoke` if leaked. For any
   future *inbound* handler, authorize on `chat_id` (only act on the owner's chat) — the same
   single-user trust posture as the `INGEST_API_KEY` path in
-  [`docs/siri-capture.md`](./siri-capture.md).
+  [`docs/siri-capture.md`](../siri-capture.md).
 
 ### Forward-compatibility with the Communication Firewall
 

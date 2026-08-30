@@ -13,6 +13,7 @@ import {
   buildDevelopmentUrl,
   buildEpicRefinementUrl,
   buildRefinementUrl,
+  buildSpikeUrl,
   promptFromLaunchUrl,
 } from '@/lib/code/links';
 import { refinementMarkTarget } from '@/lib/code/refinement-mark';
@@ -64,6 +65,13 @@ export const STATE_LABELS: Record<HappyPathState, string> = {
   ready_for_review: 'Ready for Review',
   done: 'Done',
 };
+
+/**
+ * The launch phases whose session will never produce a story spec, so launching one records
+ * `requires_refinement: false` alongside the state move: "Skip to Development" declares the
+ * story is clear enough to build without one, and a spike is never refined at all.
+ */
+const NO_SPEC_PHASES = new Set<LaunchPhase>(['bypass', 'spike']);
 
 /** The off-board escape states — rendered via a card treatment, never a column of their own. */
 export function isEscapeState(state: CodeFactoryState | null): boolean {
@@ -1120,15 +1128,18 @@ export function CodeProvider({
           // on the lane alone — a story can reach `ready_for_dev` without one.
           implementation: () => buildDevelopmentUrl(project, story),
           bypass: () => buildBypassUrl(project, story),
+          spike: () => buildSpikeUrl(project, story),
         };
         const url = buildUrlForPhase[phase]();
         const prompt = promptFromLaunchUrl(url);
         // Pressing "Skip to Development" IS declaring that no refinement is needed, so it
-        // records the same mark the modal toggle would — both routes leave identical rows.
+        // records the same mark the modal toggle would — both routes leave identical rows. A
+        // spike is the same judgement arrived at differently: it is never refined, so the launch
+        // records the flag honestly rather than leaving a promise of a spec that never comes.
         await transitionState(
           ref,
           LAUNCH_TARGET_STATE[phase],
-          phase === 'bypass' ? { requires_refinement: false } : {},
+          NO_SPEC_PHASES.has(phase) ? { requires_refinement: false } : {},
           "Couldn't start session",
         );
         // The link prefills the prompt on web + desktop, but the mobile Claude app opens the

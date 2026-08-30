@@ -26,7 +26,7 @@ export interface PrEvent {
   /** `pull_request.merged` — only meaningful when `action === 'closed'`. */
   merged: boolean;
   prUrl: string;
-  /** `spec-path` from the frontmatter (refinement PRs); `undefined` otherwise. */
+  /** `spec-path` from the frontmatter (refinement + spike PRs); `undefined` otherwise. */
   specPath: string | undefined;
 }
 
@@ -70,6 +70,9 @@ export interface TransitionPlan {
  *   implementation + opened          → ready_for_review; record implementation_pr_url
  *   implementation + closed & merged → done
  *   implementation + closed & !merged→ ready_for_dev (revert)
+ *   spike          + opened          → ready_for_review; record implementation_pr_url
+ *   spike          + closed & merged → done; record spec_path; snapshot findings
+ *   spike          + closed & !merged→ ready_for_dev (revert; the button is offered again)
  */
 export function planTransition(event: PrEvent): TransitionPlan | undefined {
   const { phase, action, merged, prUrl, specPath } = event;
@@ -104,6 +107,32 @@ export function planTransition(event: PrEvent): TransitionPlan | undefined {
         updates: { factory_state: 'needs_refinement' },
         snapshotSpec: false,
       };
+    }
+    return undefined;
+  }
+
+  if (phase === 'spike') {
+    // A spike is ONE session that both answers the question and writes the findings, so it
+    // reuses the existing states: the PR opening parks the story in review (the Review PR chip
+    // links it, exactly as for an implementation PR), merging finishes it, and a closed-unmerged
+    // PR reverts to ready_for_dev — where the spike button is offered again, the retry path.
+    if (action === 'opened') {
+      return {
+        target: 'story',
+        updates: { factory_state: 'ready_for_review', implementation_pr_url: prUrl },
+        snapshotSpec: false,
+      };
+    }
+    if (action === 'closed') {
+      if (merged) {
+        // MERGE is the snapshot point, not open: unlike implementation (whose spec was recorded
+        // a phase earlier) a spike's document only exists on its own PR, so the path is recorded
+        // and the file snapshotted here — through the same spec columns any story document uses.
+        const updates: TicketUpdate = { factory_state: 'done' };
+        if (specPath !== undefined) updates.spec_path = specPath;
+        return { target: 'story', updates, snapshotSpec: true };
+      }
+      return { target: 'story', updates: { factory_state: 'ready_for_dev' }, snapshotSpec: false };
     }
     return undefined;
   }

@@ -43,6 +43,11 @@ function makeStory(overrides: Partial<CodeStory> = {}): CodeStory {
   };
 }
 
+/** A spike story — classified purely by the title prefix. */
+function makeSpike(overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory({ title: 'Spike: outbound notifications via Telegram', ...overrides });
+}
+
 describe('StoryCard', () => {
   it('shows the ref and title', () => {
     render(<StoryCard story={makeStory()} />);
@@ -250,6 +255,73 @@ describe('StoryCard', () => {
         expect(launch).toBeEnabled();
       });
       expect(screen.queryByRole('status', { name: /opening/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('a spike story', () => {
+    it('carries a muted Spike badge immediately after the ref, in every state', () => {
+      const { rerender } = render(<StoryCard story={makeSpike()} />);
+      const badge = screen.getByText('Spike');
+      // Position and tone are both requirements: the badge sits right after the teal ref, and
+      // it is the muted pill — it labels a category, so it must not take the accent.
+      expect(badge.previousElementSibling).toHaveTextContent('ALF-42');
+      expect(badge).toHaveClass('border-border/70', 'text-muted-foreground');
+
+      rerender(<StoryCard story={makeSpike({ factory_state: 'ready_for_review' })} />);
+      expect(screen.getByText('Spike')).toBeInTheDocument();
+
+      rerender(<StoryCard story={makeSpike({ factory_state: 'done' })} />);
+      expect(screen.getByText('Spike')).toBeInTheDocument();
+    });
+
+    it('renders no badge on an ordinary story', () => {
+      render(<StoryCard story={makeStory()} />);
+      expect(screen.queryByText('Spike')).not.toBeInTheDocument();
+    });
+
+    it.each(['needs_refinement', 'ready_for_dev'] as const)(
+      'offers exactly one launch control in %s — Run spike in Claude Code',
+      (factory_state) => {
+        render(<StoryCard story={makeSpike({ factory_state })} onOpenSession={jest.fn()} />);
+
+        const launches = screen.getAllByRole('button', {
+          name: /claude code|skip to development/i,
+        });
+        expect(launches.map((button) => button.textContent)).toEqual(['Run spike in Claude Code']);
+      },
+    );
+
+    it('never offers Refine, Skip to Development or Implement', () => {
+      render(<StoryCard story={makeSpike()} onOpenSession={jest.fn()} />);
+
+      expect(
+        screen.queryByRole('button', { name: /refine in claude code/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /skip to development/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
+    });
+
+    it('calls onOpenSession with the spike phase', async () => {
+      const onOpenSession = jest.fn();
+      const story = makeSpike();
+      const user = userEvent.setup();
+      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+
+      await user.click(screen.getByRole('button', { name: /run spike in claude code/i }));
+
+      await waitFor(() => {
+        expect(onOpenSession).toHaveBeenCalledWith(story, 'spike');
+      });
+    });
+
+    it('offers nothing to launch once the spike is running or finished', () => {
+      for (const factory_state of ['in_development', 'ready_for_review', 'done'] as const) {
+        const { unmount } = render(<StoryCard story={makeSpike({ factory_state })} />);
+        expect(screen.queryByRole('button', { name: /claude code/i })).not.toBeInTheDocument();
+        unmount();
+      }
     });
   });
 

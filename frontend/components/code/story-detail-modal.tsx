@@ -13,6 +13,7 @@ import {
 import { EditableTextField } from '@/components/atoms/editable-text-field';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextareaField } from '@/components/atoms/textarea-field';
+import { SpikeBadge } from '@/components/code/spike-badge';
 import { StateChip } from '@/components/code/state-chip';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
@@ -21,6 +22,7 @@ import { PriorityControls } from '@/components/code/story-detail/priority-contro
 import { RefinementMark } from '@/components/code/story-detail/refinement-mark';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
 import type { LaunchPhase } from '@/lib/code/launch';
+import { isSpike } from '@/lib/code/spike';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Project } from '@/lib/types';
 
@@ -195,6 +197,9 @@ function DetailBody({
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
+  // A spike is never refined: its PR is the spike PR, and a "Needs refinement" toggle would
+  // promise a phase that never runs, so the control is absent rather than disabled.
+  const spike = isSpike(story);
 
   return (
     <>
@@ -203,6 +208,7 @@ function DetailBody({
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm font-medium text-accent-teal">{story.ref}</span>
             <StateChip state={story.factory_state} />
+            <SpikeBadge story={story} />
           </div>
           <EditableTitle story={story} />
           <p className="text-xs text-muted-foreground">
@@ -220,9 +226,12 @@ function DetailBody({
           <PrLink label="Refinement PR" url={story.refinement_pr_url} />
         )}
         {story.implementation_pr_url === null ? null : (
-          <PrLink label="Implementation PR" url={story.implementation_pr_url} />
+          <PrLink
+            label={spike ? 'Spike PR' : 'Implementation PR'}
+            url={story.implementation_pr_url}
+          />
         )}
-        <RefinementMark story={story} />
+        {spike ? null : <RefinementMark story={story} />}
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">

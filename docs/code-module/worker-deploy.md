@@ -55,7 +55,7 @@ you set them:
 | Secret | Where it comes from |
 |---|---|
 | `GITHUB_WEBHOOK_SECRET` | **You invent it.** Any high-entropy string — generate one with `openssl rand -hex 32`. You'll paste the *same* value into each repo's webhook config (step 4). |
-| `GITHUB_TOKEN` | A **fine-grained PAT**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Scope it to the project repos with **Repository permissions → Contents: Read-only**. Used to snapshot the spec on refinement-merge. |
+| `GITHUB_TOKEN` | A **fine-grained PAT**: GitHub → Settings → Developer settings → Fine-grained tokens → Generate. Scope it to the project repos with **Repository permissions → Contents: Read-only**. Used to snapshot the document on refinement- or spike-merge. |
 | `SUPABASE_URL` | Supabase dashboard → Project Settings → Data API → **Project URL** (`https://<ref>.supabase.co`). Same value as `frontend/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL`. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API Keys → **`service_role`** secret. This bypasses RLS — treat it like a password; it only ever lives as a Worker secret, never in the frontend. |
 

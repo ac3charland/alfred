@@ -97,7 +97,7 @@
     (<code>database/migrations/</code>), so it can always be rebuilt; the <strong>data cannot</strong>.
   </p>
   <p>
-    The spike <a href="../scheduled-cloud-backups.md"><code>docs/scheduled-cloud-backups.md</code></a>
+    The spike <a href="../../spikes/scheduled-cloud-backups.md"><code>docs/spikes/scheduled-cloud-backups.md</code></a>
     already investigated this and <strong>landed the architecture</strong>: a scheduled GitHub Actions
     workflow takes a daily logical dump with <code>supabase db dump</code> (a hardened
     <code>pg_dump</code> wrapper), gzips it, and uploads it to a <strong>Cloudflare R2</strong> bucket
@@ -408,7 +408,7 @@ jobs:
 
   <hr style="border:none;border-top:1px solid var(--line);margin:2.5rem 0 1rem" />
   <p class="small">
-    Grounded in: the spike <code>docs/scheduled-cloud-backups.md</code>,
+    Grounded in: the spike <code>docs/spikes/scheduled-cloud-backups.md</code>,
     <code>.github/workflows/ci.yml</code> (workflow shape), the <code>database/</code> package
     (<code>src/run.ts</code>, <code>src/cluster.ts</code>, <code>src/migrate.test.ts</code> — the
     throwaway-Postgres + testable-script patterns), and <code>database/README.md</code>. Follows the

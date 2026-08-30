@@ -178,6 +178,72 @@ test('a needs_refinement story can SKIP refinement: bypass launches development 
   expect(prompt).not.toMatch(/merged spec/i);
 });
 
+test('a Spike: story offers only the spike launch, and it advances to In Development', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Spike: outbound notifications via Telegram', {
+    id: ITEM_ID,
+    item_type: 'code',
+  });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 6,
+    ref: 'ALF-6',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+
+  await stubWindowOpen(page);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  // Spike-ness is derived from the title prefix: the card is badged, and the two ordinary
+  // needs_refinement actions are replaced by the single spike launch.
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  await expect(needsRefinement.getByText('ALF-6')).toBeVisible();
+  await expect(needsRefinement.getByText('Spike', { exact: true })).toBeVisible();
+  await expect(
+    needsRefinement.getByRole('button', { name: /refine in claude code/i }),
+  ).toBeHidden();
+  await expect(needsRefinement.getByRole('button', { name: /skip to development/i })).toBeHidden();
+  const launch = needsRefinement.getByRole('button', { name: /run spike in claude code/i });
+  await expect(launch).toBeVisible();
+
+  await launch.click();
+
+  // One session produces the findings, so the spike launch lands the card in In Development.
+  const inDevelopment = page.getByRole('region', { name: 'In Development' });
+  await expect(inDevelopment.getByText('ALF-6')).toBeVisible();
+  await expect(needsRefinement.getByText('ALF-6')).toBeHidden();
+
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const opened = await getOpenedUrls(page);
+  const url = opened[0] ?? '';
+  expect(url).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
+  const prompt = new URL(url).searchParams.get('q') ?? '';
+  expect(prompt).toContain('ALF-6: Spike: outbound notifications via Telegram');
+  expect(prompt).toContain('phase: spike');
+  expect(prompt).toContain('FINDINGS DOCUMENT ONLY');
+  // The findings are long-lived: the prompt never sends the agent at the specs directory.
+  expect(prompt).not.toContain('docs/specs');
+});
+
 test('a ready_for_dev story launches an implementation session and advances to In Development', async ({
   page,
   seed,

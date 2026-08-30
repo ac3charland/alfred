@@ -19,20 +19,26 @@ export interface SpecViewProperties {
    * "No epic spec yet…") and the action that writes one, so it stays with the caller.
    */
   emptyCopy: string;
+  /**
+   * What the document IS, as the section eyebrow — and the noun the "recorded but not
+   * snapshotted" line uses, so both read of the same subject. Defaults to `Spec`; a spike's
+   * story renders the same view under `Findings`.
+   */
+  heading?: string;
 }
 
 /**
  * The rendered spec — an HTML plan in an isolated frame, legacy markdown as prose, else an
  * empty-state note — with a "View in repo" link when the spec's path is recorded. Presentational
- * and subject-free: both the story detail modal and the epic spec modal render through this, each
- * deriving `spec`/`repoUrl` from its own row.
+ * and subject-free: the story detail modal, the epic spec modal and a spike's findings all render
+ * through this, each deriving `spec`/`repoUrl` and its own `heading`/`emptyCopy` from its row.
  */
-export function SpecView({ spec, repoUrl, emptyCopy }: SpecViewProperties) {
+export function SpecView({ spec, repoUrl, emptyCopy, heading = 'Spec' }: SpecViewProperties) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Spec
+          {heading}
         </h3>
         {repoUrl === undefined ? null : <PrLink label="View in repo" url={repoUrl} />}
       </div>
@@ -40,12 +46,12 @@ export function SpecView({ spec, repoUrl, emptyCopy }: SpecViewProperties) {
         <p className="rounded-md border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
           {repoUrl === undefined
             ? emptyCopy
-            : 'No spec snapshot yet — open it in the repo via the link above.'}
+            : `No ${heading.toLowerCase()} snapshot yet — open it in the repo via the link above.`}
         </p>
       ) : looksLikeHtmlDocument(spec) ? (
         <iframe
           data-testid="spec-html"
-          title="Rendered spec"
+          title={`Rendered ${heading.toLowerCase()}`}
           // The spec is a committed, PR-reviewed, then snapshotted HTML plan. Render it in an
           // isolated frame so its own <style> can't leak into the app, and sandbox WITHOUT
           // allow-scripts so any <script> stays inert — we only want its static layout/CSS/SVG.

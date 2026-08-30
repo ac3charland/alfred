@@ -52,6 +52,23 @@ describe('parseFrontmatter', () => {
     });
   });
 
+  it('parses a spike block with its findings path', () => {
+    const result = parseFrontmatter(
+      block(
+        [
+          'alfred-ticket: ALF-173',
+          'phase: spike',
+          'spec-path: docs/spikes/ALF-173-spike-phase.html',
+        ].join('\n'),
+      ),
+    );
+    expect(result).toEqual({
+      tickets: ['ALF-173'],
+      phase: 'spike',
+      specPath: 'docs/spikes/ALF-173-spike-phase.html',
+    });
+  });
+
   it('returns undefined when there is no alfred block (PR is not ours)', () => {
     expect(parseFrontmatter('Just a normal PR description.')).toBeUndefined();
     expect(parseFrontmatter()).toBeUndefined();

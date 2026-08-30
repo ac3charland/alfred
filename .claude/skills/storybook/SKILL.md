@@ -385,6 +385,14 @@ accept-baseline dance by hand.
 and runs its play function, just without a screenshot. This keeps the baseline set small
 and intentional. Gate on the **parameter**, not on the title — titles drift.
 
+**Opting ONE story out of a meta-level `visualTest` takes `null`, not `undefined`.** Storybook's
+parameter merge *skips* undefined values, so `parameters: { visualTest: undefined }` on a story
+leaves the meta's object in place and the capture still runs. `visualTest: null` is falsy, so
+`postVisit`'s `if (!visual) return` skips it. You need this when one story of a captured
+component can't be screenshotted — a dialog containing a **sandboxed `srcDoc` iframe** hangs
+`postVisit` until the 30 s test timeout (the reason `epic-spec-modal.stories.tsx` opts out
+wholesale), while the same capture driven straight from Playwright takes under a second.
+
 **Capturing interactive states — the part the docs skip.** The official page never
 explains hover/focus. Two hard-won rules:
 

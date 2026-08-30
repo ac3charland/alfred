@@ -1,0 +1,19 @@
+ALF-8: Spike: outbound notifications via Telegram
+
+You are running a SPIKE for the ticket ALF-8. Produce a FINDINGS DOCUMENT ONLY — answer the question and record what you found, in enough detail that a later refinement or implementation session can act on it. Do NOT implement anything (no app or source changes) and do NOT write a feature spec.
+
+1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your findings on the code that already exists.
+2. If the title and context below don't pin down the question this spike has to answer, ASK ME HERE before investigating — you don't need to guess, I'm in this tab. Otherwise go ahead.
+3. Investigate, then write the findings following the spike skill at `.claude/skills/spike/SKILL.md` (it auto-loads in a spike session) — it defines this repo's findings format, structure, and where the document lives. If the skill is absent, write a single self-contained HTML findings document under the repo's spikes directory.
+4. The findings document is LONG-LIVED reference material — later sessions keep reading it. Do not archive or move it, and do not add it to the specs directory.
+5. Open a pull request whose description carries this machine-readable block — the orchestrator (alfred) reads it to advance the ticket and a CI check enforces it. Reproduce the `alfred-ticket` and `phase` lines exactly, and set `spec-path` to where you saved the findings document:
+
+```alfred
+alfred-ticket: ALF-8
+phase: spike
+spec-path: <path-or-folder-of-the-spec>
+```
+
+6. If the spec is an HTML file, also link it in the description so a reviewer can read the plan rather than the markup — GitHub serves a committed `.html` as raw source. On a public repo, route it through htmlpreview: `https://htmlpreview.github.io/?https://github.com/ac3charland/alfred/blob/<head-branch>/<spec-path>`. htmlpreview can't reach a private repo — if this one is private, link the file directly instead (`https://github.com/ac3charland/alfred/blob/<head-branch>/<spec-path>`) so the reviewer can download and open it. Either way point at this PR's head branch; the spec isn't on main yet.
+7. Before opening the PR, confirm the findings document is saved, `spec-path` above names that document (not the placeholder), the preview link is there, and the block is reproduced exactly.
+
