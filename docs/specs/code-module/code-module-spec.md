@@ -579,8 +579,8 @@ spec-path: docs/specs/ALF-42.md
 
 - `alfred-ticket` — one ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR that closes
   several stories. Parsed as a list, always.
-- `phase` — `refinement | implementation`.
-- `spec-path` — **required on refinement PRs**; declares where the spec lives so Alfred renders from
+- `phase` — `epic-refinement | refinement | implementation | spike`.
+- `spec-path` — **required on the refinement phases and on a spike**; declares where the document lives so Alfred renders from
   the *recorded* path, never an inferred one (§10). **Implementation PRs carry it too** so the
   archive rule below knows which spec to retire.
 
@@ -637,7 +637,7 @@ string-match + DB write. Because both phases end in a PR, this single Worker tra
 
 ### 13.3 Spec snapshot
 
-On refinement-merge, fetch the spec file via the **GitHub Contents API**
+On refinement- or spike-merge, fetch the document via the **GitHub Contents API**
 (`GET /repos/{owner}/{name}/contents/{spec_path}?ref=<merge sha>`) using a **fine-grained PAT**
 (`GITHUB_TOKEN` secret; read-only Contents on the project repos — single-user, simplest; a GitHub App
 is the documented upgrade path). Store the decoded markdown in `code_items.spec_markdown`, plus
@@ -772,7 +772,7 @@ is a **new view** reached by a **Tasks⇄Code switcher** in the header; **Inbox 
 inbox via the `alfred` wordmark, closed by default).
 
 **Resolved (this spec's defaults — change deliberately):** spec render = **Supabase snapshot** (the
-Worker writes the rendered spec on refinement-merge; the modal reads Supabase);
+Worker writes the rendered document on refinement- or spike-merge; the modal reads Supabase);
 **no separate `spec_review` state** (refinement-PR-merged → `ready_for_dev` directly); enforcing
 GitHub **check = committed Action**; Worker→GitHub auth = **fine-grained PAT** (GitHub App = upgrade
 path); refinement/impl **links derived client-side**, not stored; PR-closed-unmerged **reverts**
@@ -825,6 +825,10 @@ and reused. **Do not build any of it now.**
 
 ### 19.3 Enforcing workflow (copy-ready sketch)
 
+> The artifact this sketches is committed at
+> [`docs/code-module/repo-setup/alfred-frontmatter.yml`](../../code-module/repo-setup/alfred-frontmatter.yml)
+> — copy **that**, not this abridged sketch, and keep the two in step when either changes.
+
 ```yaml
 name: alfred-frontmatter
 on: { pull_request: { types: [opened, edited, synchronize] } }
@@ -843,11 +847,14 @@ jobs:
             if (!m) { console.error("missing ```alfred block"); process.exit(1); }
             const blk = m[1];
             const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
-            const phase  = /phase:\s*(refinement|implementation)/.exec(blk);
+            // Alternation order matters: "epic-refinement" ends with "refinement", so the
+            // longer phase leads. "spike" shares no suffix, so its position is free.
+            const phase  = /phase:\s*(epic-refinement|refinement|implementation|spike)/.exec(blk);
             if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
             const specPath = (/spec-path:\s*(\S+)/.exec(blk) || [])[1];
-            if (phase[1] === "refinement" && !specPath) {
-              console.error("refinement PRs need spec-path"); process.exit(1);
+            const SPEC_PATH_PHASES = ["refinement", "epic-refinement", "spike"];
+            if (SPEC_PATH_PHASES.includes(phase[1]) && !specPath) {
+              console.error("refinement and spike PRs need spec-path"); process.exit(1);
             }
             // Implementation PRs must archive the spec out of the active docs/specs/ directory.
             if (phase[1] === "implementation" && specPath && specPath.startsWith("docs/specs/")
