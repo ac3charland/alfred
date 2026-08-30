@@ -13,6 +13,7 @@ import {
   confirmTitleClass,
   deleteCollapseClass,
   deleteFadeClass,
+  dispatchReadyPipClass,
   dropPlusClass,
   metaFooterClass,
   mobileTapClass,
@@ -249,6 +250,17 @@ describe('task-row styles', () => {
     expect(classificationMarkGlyphClass.model).toContain('text-muted-foreground/95');
     expect(classificationMarkGlyphClass.claimed).toContain('text-muted-foreground/65');
     expect(classificationMarkGlyphClass.unjudged).toContain('text-muted-foreground/40');
+  });
+
+  it('dispatch-ready pip is a small filled accent-green dot, never shrunk', () => {
+    expect(dispatchReadyPipClass).toContain('h-1.5');
+    expect(dispatchReadyPipClass).toContain('w-1.5');
+    expect(dispatchReadyPipClass).toContain('rounded-full');
+    expect(dispatchReadyPipClass).toContain('bg-accent-green/80');
+    expect(dispatchReadyPipClass).toContain('shrink-0');
+    // No pill: no border, no padding, no text — just the dot.
+    expect(dispatchReadyPipClass).not.toContain('border');
+    expect(dispatchReadyPipClass).not.toContain('px-');
   });
 
   it('title is a compact, tight-leading size on mobile, text-sm at md+', () => {

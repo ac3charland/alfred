@@ -2,6 +2,7 @@ import { tempId } from '@/lib/tree';
 import type { ItemType } from '@/lib/types';
 
 import {
+  DISPATCH_READY_LABEL,
   type DispatchBlocker,
   dispatchReadiness,
   rowDispatchAction,
@@ -91,6 +92,14 @@ describe('dispatchReadiness', () => {
     expect(
       dispatchReadiness(candidate({ id: tempId(), item_type: 'task', folder_id: 'f1' }), false),
     ).toEqual({ ready: false, blocker: 'still saving' });
+  });
+});
+
+describe('DISPATCH_READY_LABEL', () => {
+  // ALF-178: the row's ready cue and the bulk bar's disabled hint both read this one constant,
+  // so the wording can't fork between the two surfaces.
+  it('is the wording a ready row and the bulk bar share', () => {
+    expect(DISPATCH_READY_LABEL).toBe('Ready to dispatch');
   });
 });
 
