@@ -263,6 +263,12 @@ describe('task-row styles', () => {
     expect(dispatchReadyPipClass).not.toContain('px-');
   });
 
+  it('dispatch-ready pip centres itself on the row line, whatever the ancestor aligns to', () => {
+    // The ordinary row top-aligns its dissolved metadata children (md:items-start); a bare 6px
+    // dot needs its own self-center to land on the badges' visual middle instead of their top.
+    expect(dispatchReadyPipClass).toContain('self-center');
+  });
+
   it('title is a compact, tight-leading size on mobile, text-sm at md+', () => {
     // A slightly-shrunk 15px with snug leading so long wrapped titles stay compact on a phone.
     expect(titleTextClass).toContain('text-[15px]');

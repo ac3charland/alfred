@@ -23,3 +23,5 @@ Labelling it with a folder from its own Folder chip (no per-row Dispatch afforda
 And in select mode — the state the cue has to survive intact — it coexists with the selected row's teal ring, and Dispatch is enabled because the selection has a ready item:
 
 ![](dispatch-ready-pip-image-4.png)
+
+Fix: the pip sat flush with the row's top edge rather than centred with the badges next to it — the ordinary row's dissolved metadata cluster top-aligns at md+ (rowBaseClass's md:items-start), which a text-bearing badge absorbs in its own padding but a bare 6px dot does not. dispatchReadyPipClass now carries self-center (a no-op in select mode, where the row is a <Button> that already centers). All four screenshots above are the corrected render.
