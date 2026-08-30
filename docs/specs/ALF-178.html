@@ -264,9 +264,9 @@
   <h1>ALF-178 — Somehow visually distinguish inbox items which are ready for dispatch</h1>
   <p class="sub">
     A cue on the Inbox row that says <i>this one will go when you press Dispatch</i> — derived from
-    the readiness rule that already exists, drawn in four candidate treatments for the owner to pick
-    between. Subtle enough not to clutter a triage list, glanceable enough to read the whole Inbox in
-    one pass.
+    the readiness rule that already exists. Four treatments were drawn; the owner picked
+    <b>option 2, the ready pip</b>. Subtle enough not to clutter a triage list, glanceable enough to
+    read the whole Inbox in one pass.
   </p>
 
   <h2>1 · Context &amp; problem</h2>
@@ -580,7 +580,7 @@
     </p>
   </div>
 
-  <h2>4 · The pick — four treatments, drawn</h2>
+  <h2>4 · The pick — four treatments, drawn <span class="pickme">decided · option 2</span></h2>
 
   <p>
     All four carry the same rule (§2), the same gate (D3), the same single state (D4), the same
@@ -588,6 +588,14 @@
     <i>where the cue lives</i> and <i>how much chrome it costs</i>, running from most explicit to
     most ambient. Flip between them below; the same four rows are drawn each time, and they are the
     four rows of the existing <code>InboxScreen · MidTriage</code> story fixture — two ready, two not.
+  </p>
+
+  <p>
+    <b>The owner picked option 2, the ready pip</b>, which is also the option this document argued
+    for. All four stay drawn: the rejected three are why the chosen one is the chosen one, and a
+    later session asking “why not just put it on the title?” should be able to see the answer rather
+    than re-derive it. The demo opens on option 2, which is also what a reader with scripting off
+    sees.
   </p>
 
   <div class="card teal">
@@ -598,7 +606,7 @@
       depends on the title length has to be hunted row by row. Set against that is <b>proximity</b>:
       a cue next to the title annotates <i>the item</i>, while one out at the row's edge annotates
       <i>the row</i>. The four options trade these against each other, and that trade — not the
-      prettiness of the glyph — is what the pick is really choosing between.
+      prettiness of the glyph — is what the pick was really choosing between.
     </p>
   </div>
 
@@ -645,7 +653,7 @@
       <div class="optgroup" id="opt-switch" role="group" aria-label="Readiness treatment">
         <span class="lbl">Treatment</span>
         <button type="button" data-opt="1" aria-pressed="false">1 · Title glyph</button>
-        <button type="button" data-opt="2" aria-pressed="true">2 · Ready pip</button>
+        <button type="button" data-opt="2" aria-pressed="true">2 · Ready pip ✓</button>
         <button type="button" data-opt="3" aria-pressed="false">3 · Edge rail</button>
         <button type="button" data-opt="4" aria-pressed="false">4 · Unready dim</button>
       </div>
@@ -758,12 +766,12 @@
   </div>
 
   <p class="cap doc">
-    With scripting off this mockup is the static <b>option 2 · Resting</b> drawing — the treatment
-    this spec recommends. Each option is also drawn on its own, statically, beside its prose below, so
-    every treatment is visible either way.
+    With scripting off this mockup is the static <b>option 2 · Resting</b> drawing — the chosen
+    treatment. Each option is also drawn on its own, statically, beside its prose below, so every
+    treatment is visible either way.
   </p>
 
-  <h3 class="opt-h">Option 1 — Title glyph</h3>
+  <h3 class="opt-h">Option 1 — Title glyph <span class="owner">not picked</span></h3>
 
   <div class="mock">
     <div class="mock-body demo" data-opt="1" data-mode="normal">
@@ -843,7 +851,7 @@
   </table>
   </div>
 
-  <h3 class="opt-h">Option 2 — Ready pip <span class="pickme">recommended</span></h3>
+  <h3 class="opt-h">Option 2 — Ready pip <span class="pickme">chosen</span></h3>
 
   <div class="mock">
     <div class="mock-body demo" data-opt="2" data-mode="normal">
@@ -896,7 +904,7 @@
     is left-aligned under the title, so the column property — its main advantage — holds on desktop
     only.</p>
 
-  <h3 class="opt-h">Option 3 — Edge rail</h3>
+  <h3 class="opt-h">Option 3 — Edge rail <span class="owner">not picked</span></h3>
 
   <div class="mock">
     <div class="mock-body demo" data-opt="3" data-mode="normal">
@@ -948,7 +956,7 @@
     hover target of its own, so the <code>title</code> affordance the other options get for free is
     not available.</p>
 
-  <h3 class="opt-h">Option 4 — Unready dim</h3>
+  <h3 class="opt-h">Option 4 — Unready dim <span class="owner">not picked</span></h3>
 
   <div class="mock">
     <div class="mock-body demo" data-opt="4" data-mode="normal">
@@ -1001,7 +1009,7 @@
     low-vision reading (D6).</p>
 
   <div class="card teal">
-    <p style="margin:.2rem 0"><b>The recommendation: option 2, the ready pip.</b> It is the only
+    <p style="margin:.2rem 0"><b>The decision: option 2, the ready pip.</b> It is the only
     treatment that gets <i>alignment</i> — the property that makes a list cue glanceable rather than
     merely present — without spending the row's contested leading edge (option 3) or its contrast
     channel (option 4). It mounts once instead of twice, in the cluster that already holds every
@@ -1012,7 +1020,7 @@
     <p class="small" style="margin:.5rem 0 .2rem">What the pick costs, and what §5 and §6 therefore
     carry: a bare dot is a symbol rather than a word, so its accessible name and <code>title</code>
     are load-bearing and get their own assertions; and its column property is a desktop property, so
-    the phone drawing below is part of what is being signed off, not an afterthought.</p>
+    the phone drawing below is part of what was signed off, not an afterthought.</p>
   </div>
 
   <h3>The same four treatments on a phone</h3>
@@ -1020,7 +1028,7 @@
   <p>
     390px, where the row becomes a card: the chips wrap to their own line under the title
     (<code>metaFooterClass</code>), and the actions are always visible rather than hover-revealed.
-    Option 2's pip travels with the footer, so it is left-aligned here — the honest cost named above.
+    Option 2's pip travels with the footer, so it is left-aligned here — the honest cost the pick accepts.
     Option 3's rail sits just inside the card's own border.
   </p>
 
@@ -1148,9 +1156,10 @@
   <h2>5 · Implementation shape</h2>
 
   <p>
-    Written for the recommended treatment (option 2). The rule, the gate, the wording and the tests
-    are the same under any of the four; the <b>mount</b> is the part that is option-specific, and the
-    table at the end of this section says what each other pick would change instead.
+    Written for the chosen treatment (option 2). The rule, the gate, the wording and the tests
+    would have been the same under any of the four; the <b>mount</b> is the part that is
+    option-specific, so §5.3 keeps a record of what each rejected treatment would have moved
+    instead — history for a later reader, not work for this story.
   </p>
 
   <h3>5.1 · The five edits</h3>
@@ -1221,11 +1230,17 @@ const isDispatchReady =
     case pins that a cluster whose <i>only</i> content is the pip still renders.
   </div>
 
-  <h3>5.3 · What a different pick would change instead</h3>
+  <h3>5.3 · What the rejected treatments would have changed <span class="owner">record only</span></h3>
+
+  <p class="small">
+    Kept for the same reason the four drawings are kept: so a later reader can see why the pip's
+    one mount was preferred to the alternatives rather than re-deriving it. <b>Row 2 is the story to
+    build</b>; the other three rows describe roads not taken.
+  </p>
 
   <div class="scroll">
   <table>
-    <thead><tr><th style="width:20%">If the pick is…</th><th style="width:40%">The mount becomes</th><th>And these tests change</th></tr></thead>
+    <thead><tr><th style="width:20%">Treatment</th><th style="width:40%">The mount it would need</th><th>And the tests it would move</th></tr></thead>
     <tbody>
       <tr>
         <td><b>1 · Title glyph</b></td>
@@ -1236,8 +1251,8 @@ const isDispatchReady =
           — exactly as ALF-180 tests them for the provenance mark.</td>
       </tr>
       <tr>
-        <td><b>2 · Ready pip</b></td>
-        <td>As written above.</td>
+        <td><b>2 · Ready pip</b> <span class="pickme">chosen</span></td>
+        <td>As written in §5.1 and §5.2 — this is the story.</td>
         <td>The §6 table as written.</td>
       </tr>
       <tr>
@@ -1355,26 +1370,29 @@ const isDispatchReady =
 
   <p class="small">
     Worth capturing beyond the default: the Inbox <i>before and after</i> filling in a folder on one
-    row, since the live flip (D8) is the behaviour a static screenshot can't show; and, if the pick is
-    option 2 or 3, one shot in select mode, where the cue has to coexist with the teal ring.
+    row, since the live flip (D8) is the behaviour a static screenshot can't show; and one shot in
+    select mode, where the pip has to coexist with the selected row's teal ring.
   </p>
 
   <h2>8 · Acceptance criteria</h2>
 
   <p class="small">
-    Written against §4's pick. Where a criterion says "the cue", read it as the treatment chosen in
-    review — <b>option 2, the ready pip</b>, unless the PR discussion lands elsewhere, in which case
-    §5.3 says what moves.
+    Written against §4's pick. Where a criterion says "the cue", read it as
+    <b>option 2, the ready pip</b> — a 6px <code>bg-accent-green/80</code> dot as the last child of
+    <code>RowMetaCluster</code>, drawn in §4.
   </p>
 
   <ul class="ac">
-    <li>An Inbox row that <code>dispatchReadiness</code> calls ready shows the cue, drawn as §4's
-      picked treatment; a row it calls unready does not.</li>
+    <li>An Inbox row that <code>dispatchReadiness</code> calls ready shows the pip, drawn as §4's
+      option 2; a row it calls unready does not.</li>
     <li>Readiness on the row is computed by calling <code>dispatchReadiness</code> itself — no second
       predicate, no stored flag, no new column, route, store field or fetch.</li>
     <li>Every row of §2's table is honoured on screen: a task with a folder and a childless code item
       with both hints are marked; a task with no folder, a code item missing either hint, a code item
       with children, an unclassified row and a temp-id row are not.</li>
+    <li>The pip is the <b>last</b> child of the metadata cluster, after the subtask and overdue
+      counts, so it lands at a fixed offset from the row's right edge — the alignment the pick was
+      made for.</li>
     <li>The cue appears <b>only</b> on top-level, undispatched rows outside the Completed view — no
       cue in a folder view, the priority view, the weekly plan, the Completed view, or on a
       subtask — and the gate is the existing <code>isInboxRow</code> constant, not a second
@@ -1428,9 +1446,8 @@ const isDispatchReady =
 
   <h4>Open</h4>
   <ul class="tight">
-    <li><b>The treatment — §4's one decision.</b> Four are drawn; this document recommends option 2
-      and the pick is the owner's, in review on this PR. Everything else in the spec holds
-      regardless, and §5.3 says exactly what a different pick moves.</li>
+    <li><b>Nothing blocking.</b> §4's one decision is settled — <b>option 2, the ready pip</b> —
+      so the spec is ready to build. The other three treatments stay drawn as the record of why.</li>
     <li><b>Does positive marking survive a good classifier?</b> D2's consequence. If most Inbox rows
       arrive ready, a cue on nearly every row stops discriminating and the informative signal becomes
       its absence — at which point option 4's inversion is the better read. Worth revisiting after a
@@ -1461,7 +1478,8 @@ const isDispatchReady =
   </ul>
 
   <p class="small" style="margin-top:2.5rem">
-    Refinement spec for ALF-178 · no implementation in this PR · the treatment is picked in review.
+    Refinement spec for ALF-178 · no implementation in this PR · treatment settled: option 2, the
+    ready pip.
   </p>
 </div>
 
