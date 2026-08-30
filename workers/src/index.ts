@@ -5,7 +5,7 @@
  * into deterministic `code_items` state transitions. Because both lifecycle phases end in a PR,
  * this single endpoint tracks the whole factory. Flow per delivery:
  *   verify HMAC → it's a pull_request → parse the `alfred` block → plan the transition →
- *   PATCH the ticket(s) → (on refinement-merge) snapshot the spec in the background.
+ *   PATCH the ticket(s) → (on refinement- or spike-merge) snapshot the document in the background.
  *
  * `scheduled` is the Inbox classifier, fired by the cron trigger in wrangler.toml. Both handlers
  * stay thin and delegate — the webhook to `handleWebhook`, the cron to `runSweep`.
@@ -169,7 +169,8 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
   );
   const matched = results.filter((result) => result.count > 0).map((result) => result.ref);
 
-  // 6. Snapshot the spec in the background on refinement-merge — best-effort, post-response.
+  // 6. Snapshot the document in the background on refinement- or spike-merge — best-effort,
+  //    post-response. A spike snapshots on MERGE, not open: its findings only exist on its own PR.
   if (plan.snapshotSpec && frontmatter.specPath !== undefined && matched.length > 0) {
     ctx.waitUntil(snapshotSpec(env, payload, matched, frontmatter.specPath, plan.target));
   }

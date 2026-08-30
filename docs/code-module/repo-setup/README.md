@@ -88,7 +88,7 @@ Run once per project repo, in a local session (needs GitHub admin + the Worker s
    - **Secret:** the shared `GITHUB_WEBHOOK_SECRET` (also set as a Worker secret).
    - **Events:** *Let me select individual events* → **Pull requests** only.
 4. **Provision the read token.** Ensure the Worker's fine-grained PAT (`GITHUB_TOKEN`) has
-   **Contents: read** on this repo (used to snapshot the spec on refinement-merge).
+   **Contents: read** on this repo (used to snapshot the document on refinement- or spike-merge).
 5. **Smoke test.** Open a real refinement PR carrying the `alfred` block → confirm the Worker
    advances the ticket and snapshots the spec.
 

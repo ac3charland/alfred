@@ -1,8 +1,8 @@
 /**
  * Fetch a spec file from a project repo via the GitHub Contents API.
  *
- * On refinement-merge the Worker snapshots the spec into Supabase so the detail modal renders it
- * instantly, offline, and without a GitHub token at view time. We read it with a
+ * On refinement- or spike-merge the Worker snapshots that document into Supabase so the detail
+ * modal renders it instantly, offline, and without a GitHub token at view time. We read it with a
  * fine-grained PAT (Contents:read) pinned to the merge SHA so the snapshot is exactly what merged.
  */
 
