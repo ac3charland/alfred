@@ -14,10 +14,11 @@ interface PrimaryActionProperties {
  * presentation of the shared {@link LaunchButton}, one per phase the state offers (mapping over
  * `launchPhasesFor`). In `needs_refinement` this renders "Refine in Claude Code" (solid accent)
  * followed by the subordinate "Skip to Development" (outline); in `ready_for_dev`, just
- * "Implement in Claude Code". Renders nothing outside the launch-eligible states.
+ * "Implement in Claude Code"; on a spike story, the single "Run spike in Claude Code". Renders
+ * nothing outside the launch-eligible states.
  */
 export function PrimaryAction({ story, onOpenSession }: PrimaryActionProperties) {
-  const phases = launchPhasesFor(story.factory_state);
+  const phases = launchPhasesFor(story);
   if (phases.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">

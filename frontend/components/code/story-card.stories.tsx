@@ -105,6 +105,38 @@ export const ReadyForReviewWithPr: Story = {
   },
 };
 
+/**
+ * A **spike** story in `needs_refinement` — classified by its `Spike: ` title prefix. It carries
+ * the muted **Spike** badge after the ref and offers exactly ONE launch chip, **Run spike in
+ * Claude Code**: neither *Refine* nor *Skip to Development* is the session a spike wants.
+ */
+export const Spike: Story = {
+  args: {
+    story: {
+      ...BASE_STORY,
+      ref: 'ALF-48',
+      title: 'Spike: outbound notifications via Telegram',
+    },
+  },
+};
+
+/**
+ * The same spike once its findings PR is open: the badge persists into `ready_for_review`, the
+ * **Review PR** chip links the spike PR (recorded in `implementation_pr_url`, so no change to
+ * the chip), and nothing is offered to launch.
+ */
+export const SpikeReadyForReview: Story = {
+  args: {
+    story: {
+      ...BASE_STORY,
+      factory_state: 'ready_for_review',
+      ref: 'ALF-48',
+      title: 'Spike: outbound notifications via Telegram',
+      implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/63',
+    },
+  },
+};
+
 /** A blocked story: amber edge + a Blocked tag, surfaced via the board's filter toggle. */
 export const Blocked: Story = {
   args: { story: { ...BASE_STORY, factory_state: 'blocked', ref: 'ALF-43' } },

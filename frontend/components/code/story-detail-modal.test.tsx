@@ -201,6 +201,11 @@ function renderModalWithEpics(story: CodeStory, epics: Epic[]) {
   return within(screen.getByRole('dialog'));
 }
 
+/** A spike story — classified purely by the title prefix, nothing persisted. */
+function makeSpike(overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory({ title: 'Spike: outbound notifications via Telegram', ...overrides });
+}
+
 describe('StoryDetailModal', () => {
   it('renders nothing visible when closed', () => {
     render(
@@ -488,6 +493,102 @@ describe('StoryDetailModal', () => {
         expect(dialog.getByRole('checkbox', { name: mark })).toBeChecked();
       });
       expect(dialog.getByRole('button', { name: /refine in claude/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('a spike story', () => {
+    it('marks the header with the Spike badge, beside the state chip', () => {
+      const { dialog } = renderModal(makeSpike());
+      expect(dialog.getByText('Spike')).toBeInTheDocument();
+    });
+
+    it('renders no badge on an ordinary story', () => {
+      const { dialog } = renderModal(makeStory());
+      expect(dialog.queryByText('Spike')).not.toBeInTheDocument();
+    });
+
+    it('offers exactly one launch button — Run spike in Claude Code', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const story = makeSpike({ factory_state: 'needs_refinement' });
+      const { dialog } = renderModal(story, { onOpenSession });
+
+      const launches = dialog.getAllByRole('button', { name: /claude code|skip to development/i });
+      expect(launches.map((button) => button.textContent)).toEqual(['Run spike in Claude Code']);
+
+      await userEvent
+        .setup()
+        .click(dialog.getByRole('button', { name: /run spike in claude code/i }));
+      await waitFor(() => {
+        expect(onOpenSession).toHaveBeenCalledWith(
+          expect.objectContaining({ ref: story.ref }),
+          'spike',
+        );
+      });
+    });
+
+    it('renders no "Needs refinement" checkbox — a spike is never refined', () => {
+      const { dialog } = renderModal(makeSpike());
+      expect(dialog.queryByRole('checkbox', { name: /needs refinement/i })).not.toBeInTheDocument();
+    });
+
+    it('still renders the checkbox on an ordinary story', () => {
+      const { dialog } = renderModal(makeStory());
+      expect(dialog.getByRole('checkbox', { name: /needs refinement/i })).toBeInTheDocument();
+    });
+
+    it('titles the document section Findings, with its own empty copy', () => {
+      const { dialog } = renderModal(makeSpike({ spec_markdown: null, spec_path: null }));
+
+      expect(dialog.getByText('Findings')).toBeInTheDocument();
+      expect(dialog.queryByText('Spec')).not.toBeInTheDocument();
+      expect(
+        dialog.getByText('No findings yet. The spike PR writes them when it merges.'),
+      ).toBeInTheDocument();
+    });
+
+    it('names findings, not a spec, when the path is recorded but the snapshot is missing', () => {
+      const { dialog } = renderModal(
+        makeSpike({
+          spec_markdown: null,
+          spec_path: 'docs/spikes/ALF-42-telegram.html',
+          spec_sha: 'abc',
+        }),
+      );
+
+      expect(dialog.getByText(/no findings snapshot yet/i)).toBeInTheDocument();
+      expect(dialog.getByRole('link', { name: /view in repo/i })).toHaveAttribute(
+        'href',
+        'https://github.com/ac3charland/alfred/blob/abc/docs/spikes/ALF-42-telegram.html',
+      );
+    });
+
+    it('renders the merged findings in the same sandboxed frame the specs use', () => {
+      const html = '<!doctype html><html><body><h1>ALF-42 — spike findings</h1></body></html>';
+      const { dialog } = renderModal(
+        makeSpike({
+          factory_state: 'done',
+          spec_markdown: html,
+          spec_path: 'docs/spikes/ALF-42-telegram.html',
+          spec_sha: 'abc',
+        }),
+      );
+
+      expect(dialog.getByTestId('spec-html')).toHaveAttribute('srcdoc', html);
+    });
+
+    it('labels the recorded PR "Spike PR" rather than "Implementation PR"', () => {
+      const { dialog } = renderModal(
+        makeSpike({
+          factory_state: 'ready_for_review',
+          implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/9',
+        }),
+      );
+
+      expect(dialog.getByRole('link', { name: /spike pr/i })).toHaveAttribute(
+        'href',
+        'https://github.com/ac3charland/alfred/pull/9',
+      );
+      expect(dialog.queryByRole('link', { name: /implementation pr/i })).not.toBeInTheDocument();
     });
   });
 

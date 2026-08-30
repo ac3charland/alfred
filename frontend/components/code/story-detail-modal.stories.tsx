@@ -91,6 +91,29 @@ const NEIGHBOURS: CodeStory[] = [
   { ...STORY, item_id: 'i2', ref: 'ALF-43', title: 'Rate-limit the sender', priority: 2 },
 ];
 
+/** A merged spike's findings — the self-contained HTML document the spike PR committed. */
+const SPIKE_FINDINGS = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ALF-52 — spike findings</title>
+    <style>
+      body { font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 1.5rem; }
+      h1 { font-size: 1.3rem; margin: 0 0 .75rem; }
+      h2 { font-size: 1rem; margin: 1.4rem 0 .4rem; }
+    </style>
+  </head>
+  <body>
+    <h1>ALF-52 — spike findings</h1>
+    <h2>Where we landed</h2>
+    <p>Telegram's Bot API is the cheapest outbound path: no per-message cost and no phone number.</p>
+    <h2>Why</h2>
+    <p>The Worker already speaks <code>fetch</code>; the bot token is one more secret.</p>
+    <h2>Sidebars: appealing alternatives we're not taking</h2>
+    <p>ntfy needs a self-hosted server; SMS bills per message.</p>
+  </body>
+</html>`;
+
 const meta = {
   title: 'Code/StoryDetailModal',
   component: StoryDetailModal,
@@ -203,6 +226,58 @@ export const ReadyForDevNoSpec: Story = {
       spec_markdown: null,
       refinement_pr_url: null,
       title: 'Bump the wrangler compatibility date',
+    },
+  },
+};
+
+/**
+ * A **spike** story in `needs_refinement`, classified by its `Spike: ` title prefix: the header
+ * carries the muted **Spike** badge beside the state chip and a single solid **Run spike in
+ * Claude Code** button, the "Needs refinement" checkbox is absent (a spike is never refined),
+ * and the document section reads **Findings** with its own empty copy.
+ */
+export const SpikeNeedsRefinement: Story = {
+  args: {
+    story: {
+      ...STORY,
+      factory_state: 'needs_refinement',
+      ref: 'ALF-52',
+      title: 'Spike: outbound notifications via Telegram',
+      notes: 'Should a spike get its own phase, or is it a refinement with a different template?',
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+    },
+  },
+};
+
+/**
+ * The same spike once its PR merged: the findings render in the sandboxed frame the specs use,
+ * the sha-pinned **View in repo** link points into `docs/spikes/`, and the recorded PR reads
+ * **Spike PR**. Nothing is offered to launch — a spike ends at Done, and follow-up is a new story.
+ */
+export const SpikeDone: Story = {
+  parameters: {
+    // No image-snapshot capture: a dialog holding a sandboxed HTML frame hangs the
+    // test-runner's postVisit screenshot until the 30 s timeout — the same reason
+    // `epic-spec-modal.stories.tsx` opts out wholesale. The story still smoke-tests the render,
+    // and the Findings frame is asserted in `story-detail-modal.test.tsx`. `null`, not
+    // `undefined` — Storybook's parameter merge SKIPS undefined values, so the meta-level
+    // `visualTest` would win and the capture would run anyway.
+    visualTest: null,
+  },
+  args: {
+    story: {
+      ...STORY,
+      factory_state: 'done',
+      ref: 'ALF-52',
+      title: 'Spike: outbound notifications via Telegram',
+      spec_path: 'docs/spikes/ALF-52-telegram.html',
+      spec_sha: 'f00dcafe',
+      spec_markdown: SPIKE_FINDINGS,
+      refinement_pr_url: null,
+      implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/64',
     },
   },
 };
