@@ -8,7 +8,7 @@ import { pinClock } from '@/lib/pin-clock';
 import { DEPARTURE_MS } from '@/lib/stores/departing-items-store';
 import type { TaskScope } from '@/lib/stores/tasks-store';
 import { renderWithProviders } from '@/lib/test-utils';
-import { buildTree } from '@/lib/tree';
+import { buildTree, tempId } from '@/lib/tree';
 import type { Epic, Folder, Item, Project } from '@/lib/types';
 
 import { InboxSelectToggle } from './inbox-bulk-bar';
@@ -4165,5 +4165,163 @@ describe('provenance mark', () => {
 
     expect(await screen.findByText('Renamed by hand')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
+  });
+});
+
+/**
+ * ALF-178 — the dispatch-ready pip: the row's own verdict on whether Dispatch will send it,
+ * derived per render from the SAME `dispatchReadiness` predicate the bulk bar and the store
+ * action already call. Read-only chrome; nothing here mutates except the live-flip case at the
+ * end, which exercises the one place a row's own edit changes the verdict.
+ */
+describe('dispatch-ready pip', () => {
+  const PIP_NAME = 'Ready to dispatch';
+  const PROJECT: Project = {
+    description: null,
+    id: 'p1',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 0,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+  const EPIC: Epic = {
+    id: 'e1',
+    project_id: 'p1',
+    name: 'Inbox triage',
+    notes: null,
+    ref_number: 104,
+    ref: 'ALF-104',
+    archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+
+  describe('the readiness table', () => {
+    it('marks a task with a folder', () => {
+      renderTasks([{ ...BASE_ITEM, folder_id: FOLDER.id }], { folders: [FOLDER] });
+
+      expect(screen.getByRole('img', { name: PIP_NAME })).toBeInTheDocument();
+    });
+
+    it('marks a childless code item with both hints', () => {
+      renderTasks([{ ...CODE_ITEM, intended_project_id: 'p1', intended_epic_id: 'e1' }], {
+        projects: [PROJECT],
+        epics: [EPIC],
+      });
+
+      expect(screen.getByRole('img', { name: PIP_NAME })).toBeInTheDocument();
+    });
+
+    it('is absent from a task with no folder', () => {
+      renderTasks([BASE_ITEM]);
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+
+    it('is absent from a code item missing either hint', () => {
+      renderTasks([{ ...CODE_ITEM, intended_project_id: 'p1' }], { projects: [PROJECT] });
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+
+    it('is absent from a code item with children — it converts through its own row menu', async () => {
+      const user = userEvent.setup();
+      renderTasks(
+        [
+          { ...CODE_ITEM, intended_project_id: 'p1', intended_epic_id: 'e1' },
+          { ...CHILD_ITEM, item_type: 'code' },
+        ],
+        { projects: [PROJECT], epics: [EPIC] },
+      );
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+
+    it('is absent from an unclassified row', () => {
+      renderTasks([UNCLASSIFIED_ITEM]);
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+
+    it('is absent from a row still carrying a temp id, whatever else it has', () => {
+      renderTasks([{ ...BASE_ITEM, id: tempId(), folder_id: FOLDER.id }], { folders: [FOLDER] });
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the gate — Inbox rows only (D3)', () => {
+    // Each case carries fields that would otherwise read ready, so the assertion is about the
+    // gate and not about the data.
+    it('is absent on a dispatched row — a contradiction for one that has already gone', () => {
+      renderTasks([{ ...BASE_ITEM, folder_id: FOLDER.id, dispatched_at: DISPATCHED_AT }], {
+        folders: [FOLDER],
+        scope: { type: 'folder', folderId: FOLDER.id },
+      });
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+
+    it('is absent on a subtask — its residency travels with its root, not its own row', async () => {
+      const user = userEvent.setup();
+      renderTasks(
+        [
+          { ...BASE_ITEM, folder_id: FOLDER.id },
+          { ...CHILD_ITEM, folder_id: FOLDER.id },
+        ],
+        { folders: [FOLDER] },
+      );
+
+      await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
+
+      const subtaskRow = rowFor('Write unit tests');
+      expect(within(subtaskRow).queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+      // …while its Inbox parent still carries the cue, so this isn't just an absent fixture.
+      expect(screen.getByRole('img', { name: PIP_NAME })).toBeInTheDocument();
+    });
+
+    it('is absent in the Completed view, a history list rather than a queue', () => {
+      renderTasks([COMPLETED_FOLDER_ITEM], COMPLETED);
+
+      expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('select mode', () => {
+    it('renders the cue, still inert, inside the row button', async () => {
+      const user = userEvent.setup();
+      renderSelectableInbox([{ ...BASE_ITEM, folder_id: FOLDER.id }]);
+
+      await user.click(screen.getByRole('button', { name: 'Select' }));
+
+      const mark = screen.getByRole('img', { name: PIP_NAME });
+      expect(mark.tagName).toBe('SPAN');
+      // The row's own <button> is its only interactive element; the cue rides inside it.
+      expect(mark.closest('button')).toHaveAttribute('aria-pressed');
+    });
+  });
+
+  // Nothing was built for this: the row re-renders from the tasks store on every optimistic
+  // patch, and the cue is re-derived during that render — no subscription, no poll.
+  it("gains the cue once a folder is set through the row's own Folder chip and the store reconciles", async () => {
+    mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, folder_id: FOLDER.id, dispatched_at: null });
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM], { folders: [FOLDER] });
+
+    expect(screen.queryByRole('img', { name: PIP_NAME })).not.toBeInTheDocument();
+
+    const panel = await openDetails(user);
+    await user.click(within(panel).getByRole('button', { name: 'Folder' }));
+    await user.click(await screen.findByRole('button', { name: 'Work' }));
+
+    expect(await screen.findByRole('img', { name: PIP_NAME })).toBeInTheDocument();
   });
 });

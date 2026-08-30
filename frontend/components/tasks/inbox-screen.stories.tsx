@@ -188,13 +188,20 @@ export const DesktopInbox: Story = {
 /**
  * The Inbox with an item that already carries a folder but has never been dispatched, sitting
  * beside a plain capture. Both are in the Inbox, and they look the same — the folder is where the
- * item WOULD land, not where it lives.
+ * item WOULD land, not where it lives. The folder is seeded into the store (ALF-178) so the row's
+ * Folder chip actually renders — without it the first row would be dispatch-ready with no visible
+ * reason why, since `FolderChip` draws nothing for a folder id the store can't resolve.
  */
 export const UndispatchedFolderedItem: Story = {
   args: { open: true },
   decorators: [withFrame('w-[640px]')],
   parameters: {
-    store: { tasks: UNDISPATCHED_NODES },
+    store: {
+      folders: [
+        { id: 'f-health', name: 'Health', created_at: '2025-01-01T00:00:00Z', sort_order: 1 },
+      ],
+      tasks: UNDISPATCHED_NODES,
+    },
     visualTest: { target: '[data-testid="inbox-frame"]' },
   },
 };

@@ -136,6 +136,25 @@ test('Dispatch sends a mixed selection each to its own destination, leaving the 
   });
 
   await page.goto('/?view=inbox');
+
+  // ALF-178: before anything is selected, the rows carrying the ready cue are exactly the
+  // rows the Dispatch press below actually sends — the claim no unit test can make, since it
+  // spans the row's cue and the bar's press end to end.
+  const rows = page.getByRole('listitem');
+  await expect(
+    rows.filter({ hasText: 'Call the dentist' }).getByRole('img', { name: 'Ready to dispatch' }),
+  ).toBeVisible();
+  await expect(
+    rows
+      .filter({ hasText: 'Snooze an item until next week' })
+      .getByRole('img', { name: 'Ready to dispatch' }),
+  ).toBeVisible();
+  await expect(
+    rows
+      .filter({ hasText: 'That thing Mark mentioned' })
+      .getByRole('img', { name: 'Ready to dispatch' }),
+  ).toBeHidden();
+
   await page.getByRole('button', { name: 'Select' }).click();
   await page.getByRole('button', { name: 'Select "Call the dentist"' }).click();
   await page.getByRole('button', { name: 'Select "Snooze an item until next week"' }).click();

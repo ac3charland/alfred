@@ -224,6 +224,21 @@ export const classificationMarkGlyphClass: Record<ClassificationOrigin, string> 
 export const subtaskCountBadgeClass = 'bg-[#1b2438] px-3 py-[3px] text-[13px] text-[#8b97a9]';
 
 /**
+ * The dispatch-ready pip (ALF-178): a 6px filled dot, the metadata cluster's LAST child on a row
+ * `dispatchReadiness` calls ready — no pill, no border, no text. `accent-green` is the one
+ * row-state colour nothing else on a task row already owns (teal/blue/amber/red are all spoken
+ * for), and presence — not hue — carries the signal, so the dot is binary shown/hidden rather
+ * than a colour swap (WCAG 1.4.1). `self-center`: at md+ the cluster's `display:contents`
+ * dissolves it into the row's own flex line, which top-aligns (`rowBaseClass`'s `md:items-start`)
+ * — fine for a badge whose own height roughly matches the line, but a bare 6px dot would then
+ * sit flush with the row's top edge instead of on the badges' visual centre. Select mode's row
+ * is a `<Button>`, whose base class is `items-center`, so this is a no-op there — the class holds
+ * for both mounts rather than depending on which ancestor happens to centre.
+ */
+export const dispatchReadyPipClass =
+  'h-1.5 w-1.5 shrink-0 self-center rounded-full bg-accent-green/80';
+
+/**
  * The tasks list container. On mobile it's a gapped column so each top-level item is a
  * free-standing card (the card chrome lives on the depth-0 row); at `md`+ it restores today's
  * one rounded, hairline-divided `surface` panel.

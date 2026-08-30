@@ -23,6 +23,12 @@ export type DispatchBlocker =
 
 export type DispatchReadiness = { ready: true } | { ready: false; blocker: DispatchBlocker };
 
+/**
+ * The wording for a ready row — the row's cue (ALF-178) and the bulk bar's disabled hint both
+ * read this constant, so the two surfaces can't drift apart in vocabulary.
+ */
+export const DISPATCH_READY_LABEL = 'Ready to dispatch';
+
 /** The item fields readiness reads — satisfied by both a flat `Item` and an `ItemNode`. */
 export type DispatchCandidate = Pick<
   Item,

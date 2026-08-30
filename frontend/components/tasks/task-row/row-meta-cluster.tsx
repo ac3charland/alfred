@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
 import { RecurrenceChip } from '@/components/atoms/recurrence-chip';
+import { DispatchReadyMark } from '@/components/tasks/dispatch-ready-mark';
 import { DueDateChip } from '@/components/tasks/due-date-chip';
 import { PriorityChip } from '@/components/tasks/priority-chip';
 import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
@@ -51,6 +52,11 @@ interface RowMetaClusterProperties {
    * already names where the item lives, and an undispatched leftover label would shout over it.
    */
   isCompletedView?: boolean;
+  /**
+   * Whether `dispatchReadiness` calls this row ready (ALF-178) — the gate (Inbox row, undispatched,
+   * outside Completed) is the caller's, same as `showTypeBadge`.
+   */
+  showReadyPip: boolean;
   /** Interactive handlers — omit to render every chip as an inert span (select mode). */
   editing?: RowMetaEditing | undefined;
 }
@@ -70,6 +76,7 @@ export function RowMetaCluster({
   recurrenceRule,
   showTypeBadge,
   isCompletedView = false,
+  showReadyPip,
   editing,
 }: RowMetaClusterProperties) {
   // The folder chip shows the folder an item is LABELLED with while it is still in the Inbox —
@@ -98,7 +105,11 @@ export function RowMetaCluster({
     showPriorityChip ||
     // No `overdueSubtasks` term needed: an overdue descendant implies at least one child, so
     // `totalSubtasks > 0` already covers every row that can carry the overdue tally.
-    totalSubtasks > 0;
+    totalSubtasks > 0 ||
+    // Provably redundant (a ready row always carries a chip already — see the pip's own mount
+    // below), included anyway so the component is correct on its own terms, not only by an
+    // argument made in the caller.
+    showReadyPip;
   if (!hasMeta) return null;
 
   return (
@@ -187,6 +198,11 @@ export function RowMetaCluster({
           {overdueSubtasks}
         </Badge>
       )}
+
+      {/* Dispatch-ready cue (ALF-178) — LAST: the verdict reads as the closing word of the
+          evidence above it, and "last" is what puts it at a fixed offset from the row's right
+          edge on every row, the alignment that makes it glanceable down a list. */}
+      {showReadyPip && <DispatchReadyMark />}
     </div>
   );
 }
