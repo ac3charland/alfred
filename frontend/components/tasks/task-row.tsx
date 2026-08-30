@@ -47,7 +47,7 @@ import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-
 import { useTaskActions, useTasks } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import { classificationOrigin } from '@/lib/tasks/classification';
-import { rowDispatchAction } from '@/lib/tasks/dispatch';
+import { dispatchReadiness, rowDispatchAction } from '@/lib/tasks/dispatch';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import type { ItemNode } from '@/lib/tree';
 import { getAncestorTitles, getDescendantIds, hasActiveDescendant, isTempId } from '@/lib/tree';
@@ -236,6 +236,14 @@ export function TaskRow({
   // per render from two columns that already ride along on the row — no store, selector, filter
   // or query reads them.
   const origin = isInboxRow ? classificationOrigin(node) : null;
+
+  // The dispatch-ready cue (ALF-178): whether Dispatch will actually send this row, derived per
+  // render from the SAME pure predicate the bulk bar and dispatchItems() call — never a second
+  // predicate, a stored flag, or a "looks filled in" heuristic, so the cue and the press can
+  // never disagree. The gate is `isInboxRow`, reused rather than re-expressed, so the Type badge,
+  // the provenance mark and this cue can never gate differently; `node.children.length > 0` is
+  // the same hasChildren the bulk bar passes, so the row and the press agree by construction.
+  const isDispatchReady = isInboxRow && dispatchReadiness(node, node.children.length > 0).ready;
 
   // The completion exit: the once-only mutation fire, the navigate-away fallback, and the
   // collapse-end commit, encapsulated. Begin plays the animation (or commits immediately under
@@ -738,6 +746,7 @@ export function TaskRow({
               recurrenceRule={recurrenceRule}
               showTypeBadge={showTypeBadge}
               isCompletedView={isCompletedView}
+              showReadyPip={isDispatchReady}
             />
           </Button>
         </RowDeparture>
@@ -1009,6 +1018,7 @@ export function TaskRow({
                   recurrenceRule={recurrenceRule}
                   showTypeBadge={showTypeBadge}
                   isCompletedView={isCompletedView}
+                  showReadyPip={isDispatchReady}
                   editing={metaEditing}
                 />
               </div>

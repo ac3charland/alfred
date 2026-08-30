@@ -19,7 +19,7 @@ import { useInboxSelection, useInboxSelectionActions } from '@/lib/stores/inbox-
 import { useScopedTasks, useTaskActions } from '@/lib/stores/tasks-store';
 import { useToastActions } from '@/lib/stores/toast-store';
 import type { DispatchBlocker } from '@/lib/tasks/dispatch';
-import { dispatchReadiness, summarizeBlockers } from '@/lib/tasks/dispatch';
+import { DISPATCH_READY_LABEL, dispatchReadiness, summarizeBlockers } from '@/lib/tasks/dispatch';
 import type { CodeStory } from '@/lib/types';
 
 import {
@@ -32,7 +32,8 @@ import {
 const CLASSIFY_DISABLED_HINT = 'Only a top-level item with no subtasks can change type';
 const MOVE_DISABLED_HINT = 'Only tasks and unclassified items can be filed into a folder';
 const SEND_DISABLED_HINT = 'An item with subtasks is dispatched from its own row menu';
-const DISPATCH_DISABLED_HINT = 'Nothing in the selection is ready to dispatch';
+// Lower-cased mid-sentence — DISPATCH_READY_LABEL itself is the row's title-cased cue (ALF-178).
+const DISPATCH_DISABLED_HINT = `Nothing in the selection is ${DISPATCH_READY_LABEL.toLowerCase()}`;
 
 /**
  * The Inbox header's "Select" / "Done" toggle. Pressing it enters multi-edit mode (rows become
