@@ -310,9 +310,14 @@ Plus two escape states reachable manually (and, where noted, automatically): `bl
 | `in_development` | implementation PR **opened** | `ready_for_review` | webhook → Worker |
 | `ready_for_review` | implementation PR **merged** | `done` | webhook → Worker |
 | `in_development`/`ready_for_review` | implementation PR **closed, unmerged** | `ready_for_dev` | webhook → Worker (revert) |
+| `needs_refinement`/`ready_for_dev` | user clicks **spike** link (a `Spike: …` story) | `in_development` | client handler: await write (also records `requires_refinement: false`) → open tab (§11.3) |
+| `in_development` | spike PR **opened** | `ready_for_review` | webhook → Worker records `implementation_pr_url` |
+| `ready_for_review` | spike PR **merged** | `done` | webhook → Worker; snapshot the findings (`spec_path`,`spec_sha`,`spec_markdown`) |
+| `in_development`/`ready_for_review` | spike PR **closed, unmerged** | `ready_for_dev` | webhook → Worker (revert; the spike link is offered again) |
 | any | manual action in detail modal | any (notably `blocked`, `abandoned`, or a corrective hop) | app: PATCH `/api/code/:ref` (§10, §13 fallback) |
 
-**Manual fallback (required).** Spikes, research, and abandoned items have no PR signal. The detail
+**Manual fallback (required).** Research one-offs and abandoned items have no PR signal (a
+**spike** does — see the `spike` phase). The detail
 modal (§10) must offer manual state controls — at minimum *Block*, *Abandon*, and *Advance/Revert
 one step* — so a human can move any story without a PR.
 
