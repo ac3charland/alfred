@@ -140,11 +140,65 @@ describe('planTransition', () => {
     });
   });
 
+  describe('spike phase', () => {
+    it('opened → ready_for_review, records the spike PR as implementation_pr_url', () => {
+      const plan = planTransition(
+        event({ phase: 'spike', action: 'opened', prUrl: 'https://x/pr/5' }),
+      );
+      // The spike PR reuses implementation_pr_url, so the card's Review PR chip links it with
+      // no change to reviewPrUrlFor.
+      expect(plan).toEqual({
+        target: 'story',
+        updates: { factory_state: 'ready_for_review', implementation_pr_url: 'https://x/pr/5' },
+        snapshotSpec: false,
+      });
+    });
+
+    it('closed & merged → done, records spec_path, snapshots the findings', () => {
+      const plan = planTransition(
+        event({
+          phase: 'spike',
+          action: 'closed',
+          merged: true,
+          specPath: 'docs/spikes/ALF-173-spike-phase.html',
+        }),
+      );
+      // MERGE is the snapshot point — a spike's document only exists on its own PR.
+      expect(plan).toEqual({
+        target: 'story',
+        updates: { factory_state: 'done', spec_path: 'docs/spikes/ALF-173-spike-phase.html' },
+        snapshotSpec: true,
+      });
+    });
+
+    it('closed & merged without a spec-path still finishes the story', () => {
+      const plan = planTransition(
+        event({ phase: 'spike', action: 'closed', merged: true, specPath: undefined }),
+      );
+      // toStrictEqual so a stray `spec_path: undefined` key is caught.
+      expect(plan).toStrictEqual({
+        target: 'story',
+        updates: { factory_state: 'done' },
+        snapshotSpec: true,
+      });
+    });
+
+    it('closed & unmerged → reverts to ready_for_dev, where the spike button is offered again', () => {
+      const plan = planTransition(event({ phase: 'spike', action: 'closed', merged: false }));
+      expect(plan).toStrictEqual({
+        target: 'story',
+        updates: { factory_state: 'ready_for_dev' },
+        snapshotSpec: false,
+      });
+    });
+  });
+
   it.each(['edited', 'synchronize', 'reopened', 'assigned'])(
     'returns undefined for the no-op action %s',
     (action) => {
       expect(planTransition(event({ action }))).toBeUndefined();
       expect(planTransition(event({ phase: 'implementation', action }))).toBeUndefined();
+      expect(planTransition(event({ phase: 'spike', action }))).toBeUndefined();
     },
   );
 });

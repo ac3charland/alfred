@@ -14,13 +14,16 @@
  * (`alfred-frontmatter.yml`) field-for-field so a PR that passes CI always parses here too.
  */
 
-export type CodePhase = 'epic-refinement' | 'refinement' | 'implementation';
+export type CodePhase = 'epic-refinement' | 'refinement' | 'implementation' | 'spike';
 
 export interface AlfredFrontmatter {
   /** Every ref the PR advances. `alfred-ticket` is always parsed as a list. */
   tickets: string[];
   phase: CodePhase;
-  /** Declared by the two refinement phases (story + epic); `undefined` when absent. */
+  /**
+   * Declared by the two refinement phases (story + epic) and by a spike (its findings
+   * document); `undefined` when absent.
+   */
   specPath: string | undefined;
 }
 
@@ -37,9 +40,10 @@ const TICKET_RE = /alfred-ticket:[ \t]*(.*)/;
  * Alternation order matters: `epic-refinement` ENDS with `refinement`, and JS alternation is
  * first-match-wins, so listing `refinement` first would match the tail of `phase:
  * epic-refinement` (the `[ \t]*` separator doesn't anchor the value's start) and route an epic
- * PR at a story. Keep the longer phase first.
+ * PR at a story. Keep the longer phase first. `spike` shares no suffix with the others, so its
+ * position in the list is free.
  */
-const PHASE_RE = /phase:[ \t]*(epic-refinement|refinement|implementation)/;
+const PHASE_RE = /phase:[ \t]*(epic-refinement|refinement|implementation|spike)/;
 const SPEC_PATH_RE = /spec-path:[ \t]*(\S+)/;
 
 /**
