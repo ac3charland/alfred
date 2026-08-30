@@ -33,10 +33,14 @@ const EPIC_REFINEMENT_SKILL_PATH = '.claude/skills/epic-refinement/SKILL.md';
 /** The implementation-guide skill; an implementation/bypass session loads it where present. */
 const IMPLEMENT_SKILL_PATH = '.claude/skills/implement-spec/SKILL.md';
 
+/** The spike-guide skill dropped into each project repo; a spike session auto-loads it. */
+const SPIKE_SKILL_PATH = '.claude/skills/spike/SKILL.md';
+
 /**
- * Refinement PRs record where the spec ended up rather than alfred guessing it up front. The
- * refinement skill — not this prompt — decides the spec's shape and location (a single file here,
- * a multi-file folder elsewhere), so the agent replaces this placeholder with the real path.
+ * Document-writing PRs (both refinement phases, and a spike) record where their document ended
+ * up rather than alfred guessing it up front. The session's skill — not this prompt — decides the
+ * document's shape and location (a single file here, a multi-file folder elsewhere), so the agent
+ * replaces this placeholder with the real path.
  */
 const SPEC_PATH_PLACEHOLDER = '<path-or-folder-of-the-spec>';
 
@@ -103,11 +107,12 @@ export function specBlobUrl({
  * `spec-path` line when there's a spec to name. Refinement and implementation PRs pass one (the
  * spec they write / consume); the skip-refinement bypass PR omits it entirely (ALF-75 — there is
  * no committed spec, so naming one only implied a never-read file). CI requires `spec-path` on
- * refinement PRs only, so an implementation block is valid without it.
+ * the two refinement phases and on a spike (whose findings document is the thing to snapshot),
+ * so an implementation block is valid without it.
  */
 function frontmatterBlock(
   ref: string,
-  phase: 'epic-refinement' | 'refinement' | 'implementation',
+  phase: 'epic-refinement' | 'refinement' | 'implementation' | 'spike',
   specPath?: string,
 ): string {
   const lines = ['```alfred', `alfred-ticket: ${ref}`, `phase: ${phase}`];
@@ -234,6 +239,47 @@ export function buildRefinementUrl(project: Project, story: CodeStory): string {
     '',
     `5. ${htmlPreviewStep(project)}`,
     `6. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), the preview link is there if the spec is HTML, and the block is reproduced exactly.`,
+    notesContext(story.notes, 'the ticket'),
+  ].join('\n');
+  return buildUrl(project, prompt);
+}
+
+/**
+ * Build the SPIKE link prompt (the single launch a `Spike: …` story offers, from either
+ * pre-work state): investigate the question and produce a FINDINGS DOCUMENT ONLY — no
+ * implementation, and no feature spec either — then open a PR carrying `phase: spike`.
+ *
+ * Deliberately the same shape as `buildRefinementUrl`, reusing its shared pieces verbatim (the
+ * scannable ref-plus-title first line, the epic-context paragraph, the notes block, the
+ * placeholder `spec-path`, the html-preview step, the verbatim-block self-check) — a spike is
+ * the same contract with a different deliverable. Like refinement it stays THIN on conventions:
+ * the findings' format and location are the spike skill's job, with a one-line fallback for a
+ * repo where the skill is absent, so another project can put its findings elsewhere.
+ *
+ * The one step with no analogue in the sibling prompts is the never-archive line, and it is
+ * load-bearing: the implementation prompt in the same family tells the agent to git-move its
+ * document into an archive, and a model that has internalised that family resemblance will
+ * helpfully do the same here. Findings are long-lived reference material — later sessions keep
+ * reading them — so they are never archived and never land in the specs directory.
+ */
+export function buildSpikeUrl(project: Project, story: CodeStory): string {
+  const ref = refOf(story);
+  const prompt = [
+    `${ref}: ${titleOf(story)}`,
+    '',
+    `You are running a SPIKE for the ticket ${ref}. Produce a FINDINGS DOCUMENT ONLY — answer the question and record what you found, in enough detail that a later refinement or implementation session can act on it. Do NOT implement anything (no app or source changes) and do NOT write a feature spec.`,
+    '',
+    ...epicContextLines(story),
+    `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and base your findings on the code that already exists.`,
+    `2. If the title and context below don't pin down the question this spike has to answer, ASK ME HERE before investigating — you don't need to guess, I'm in this tab. Otherwise go ahead.`,
+    `3. Investigate, then write the findings following the spike skill at \`${SPIKE_SKILL_PATH}\` (it auto-loads in a spike session) — it defines this repo's findings format, structure, and where the document lives. If the skill is absent, write a single self-contained HTML findings document under the repo's spikes directory.`,
+    `4. The findings document is LONG-LIVED reference material — later sessions keep reading it. Do not archive or move it, and do not add it to the specs directory.`,
+    `5. Open a pull request whose description carries this machine-readable block — the orchestrator (alfred) reads it to advance the ticket and a CI check enforces it. Reproduce the \`alfred-ticket\` and \`phase\` lines exactly, and set \`spec-path\` to where you saved the findings document:`,
+    '',
+    frontmatterBlock(ref, 'spike', SPEC_PATH_PLACEHOLDER),
+    '',
+    `6. ${htmlPreviewStep(project)}`,
+    `7. Before opening the PR, confirm the findings document is saved, \`spec-path\` above names that document (not the placeholder), the preview link is there, and the block is reproduced exactly.`,
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);

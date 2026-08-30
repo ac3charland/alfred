@@ -6,6 +6,7 @@ import {
   buildEpicRefinementUrl,
   buildImplementationUrl,
   buildRefinementUrl,
+  buildSpikeUrl,
   promptFromLaunchUrl,
 } from './links';
 
@@ -526,6 +527,100 @@ describe('buildBypassUrl', () => {
   });
 });
 
+/** A spike story — classified by the title prefix, nothing persisted. */
+function makeSpike(overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory({ title: 'Spike: outbound notifications via Telegram', ...overrides });
+}
+
+describe('buildSpikeUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const { base, repo } = parse(buildSpikeUrl(makeProject(), makeSpike()));
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('leads the prompt with the ref and title so the browser tab is scannable', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt.split('\n', 1)[0]).toBe('ALF-42: Spike: outbound notifications via Telegram');
+  });
+
+  it('asks for findings only — no implementation and no feature spec', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toMatch(/FINDINGS DOCUMENT ONLY/);
+    expect(prompt).toMatch(/do NOT implement anything/i);
+    expect(prompt).toMatch(/do NOT write a feature spec/i);
+  });
+
+  it('tells Claude to ground itself in the repo and its own conventions first', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+  });
+
+  it('gates on context: ask the human before investigating when the ticket is thin', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/before investigating/i);
+  });
+
+  it('defers the findings format and location to the spike skill, with a no-skill fallback', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toContain('.claude/skills/spike/SKILL.md');
+    expect(prompt).toMatch(/it defines this repo's findings format/i);
+    expect(prompt).toMatch(/if the skill is absent/i);
+    expect(prompt).toMatch(/self-contained HTML findings document/i);
+  });
+
+  it('tells the agent the findings are long-lived — never archived, never in the specs dir', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    // The sibling implementation prompt DOES archive its document, so this must be explicit.
+    expect(prompt).toMatch(/LONG-LIVED/);
+    expect(prompt).toMatch(/do not archive or move it/i);
+    expect(prompt).toMatch(/do not add it to the specs directory/i);
+  });
+
+  it('never names the specs directory, an archive path, or a spec file to read', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).not.toContain('docs/specs');
+    expect(prompt).not.toMatch(/git-move/i);
+    expect(prompt).not.toMatch(/ARCHIVE the spec/i);
+  });
+
+  it('embeds the alfred block with the spike phase and a fill-in spec-path', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-42');
+    expect(prompt).toContain('phase: spike');
+    expect(prompt).toContain('spec-path: <path-or-folder-of-the-spec>');
+  });
+
+  it('carries the rendered-preview step — the findings are always HTML', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toMatch(/htmlpreview/i);
+  });
+
+  it('ends with the verbatim-block self-check', () => {
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike())).prompt ?? '';
+    expect(prompt).toMatch(/not the placeholder/i);
+    expect(prompt).toMatch(/the block is reproduced exactly/i);
+  });
+
+  it('inlines the ticket notes as context', () => {
+    const prompt =
+      parse(buildSpikeUrl(makeProject(), makeSpike({ notes: 'Telegram or ntfy?' }))).prompt ?? '';
+    expect(prompt).toContain('Context (from the ticket):');
+    expect(prompt).toContain('Telegram or ntfy?');
+  });
+
+  it('clips over-long notes and says so', () => {
+    const notes = 'x'.repeat(1500);
+    const prompt = parse(buildSpikeUrl(makeProject(), makeSpike({ notes }))).prompt ?? '';
+    expect(prompt).toContain('TRUNCATED');
+    expect(prompt).toContain(`${'x'.repeat(1000)}…`);
+    expect(prompt).not.toContain('x'.repeat(1001));
+  });
+});
+
 describe('promptFromLaunchUrl', () => {
   it('round-trips the exact (decoded) prompt a builder embedded in `q`', () => {
     const story = makeStory();
@@ -677,8 +772,16 @@ describe('the HTML spec preview link', () => {
     ['buildBypassUrl', buildBypassUrl],
   ] as const)('%s does NOT carry it — those sessions write no spec', (_name, build) => {
     const prompt = parse(build(makeProject(), makeStory())).prompt ?? '';
-    // Only the two refinement phases author a spec, so only they have one to preview-link.
+    // Only the document-writing phases author one, so only they have something to preview-link.
     expect(prompt).not.toMatch(/htmlpreview/i);
+  });
+
+  it.each([
+    ['buildRefinementUrl', buildRefinementUrl],
+    ['buildSpikeUrl', buildSpikeUrl],
+  ] as const)('%s carries it — those sessions commit an HTML document', (_name, build) => {
+    const prompt = parse(build(makeProject(), makeStory())).prompt ?? '';
+    expect(prompt).toMatch(/htmlpreview/i);
   });
 });
 
@@ -692,6 +795,7 @@ describe('the epic-spec reference in the story prompts', () => {
     ['buildRefinementUrl', buildRefinementUrl],
     ['buildImplementationUrl', buildImplementationUrl],
     ['buildBypassUrl', buildBypassUrl],
+    ['buildSpikeUrl', buildSpikeUrl],
   ] as const;
 
   it.each(builders)('%s points at the epic spec when the story’s epic has one', (_name, build) => {
