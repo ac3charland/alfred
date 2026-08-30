@@ -342,6 +342,35 @@ describe('StoryDetailModal', () => {
       expect(dialog.queryByTestId('markdown')).not.toBeInTheDocument();
       expect(dialog.getByText(/no spec yet/i)).toBeInTheDocument();
     });
+
+    it('titles the section Spec on an ordinary story, with the refinement-PR empty copy', () => {
+      // The other half of the spike's Findings swap: an ordinary story must keep BOTH the
+      // heading and the copy naming a spec, or the ternary could be dropped unnoticed.
+      const { dialog } = renderModal(makeStory({ spec_markdown: null, spec_path: null }));
+
+      expect(dialog.getByRole('heading', { name: 'Spec' })).toBeInTheDocument();
+      expect(dialog.queryByRole('heading', { name: 'Findings' })).not.toBeInTheDocument();
+      expect(
+        dialog.getByText('No spec yet. The refinement PR writes it when it merges.'),
+      ).toBeInTheDocument();
+    });
+
+    it('names the spec, not findings, when the path is recorded but the snapshot is missing', () => {
+      const { dialog } = renderModal(
+        makeStory({ spec_markdown: null, spec_path: 'docs/specs/ALF-42.html', spec_sha: 'abc' }),
+      );
+
+      expect(dialog.getByText(/no spec snapshot yet/i)).toBeInTheDocument();
+    });
+
+    it('gives the rendered frame an accessible name naming the document', () => {
+      const html = '<!doctype html><html><body><h1>The plan</h1></body></html>';
+      const { dialog } = renderModal(
+        makeStory({ spec_markdown: html, spec_path: 'docs/specs/ALF-42.html', spec_sha: 'abc' }),
+      );
+
+      expect(dialog.getByTitle('Rendered spec')).toBe(dialog.getByTestId('spec-html'));
+    });
   });
 
   describe('PR links', () => {
@@ -497,9 +526,14 @@ describe('StoryDetailModal', () => {
   });
 
   describe('a spike story', () => {
-    it('marks the header with the Spike badge, beside the state chip', () => {
+    it('marks the header with the Spike badge, immediately after the state chip', () => {
       const { dialog } = renderModal(makeSpike());
-      expect(dialog.getByText('Spike')).toBeInTheDocument();
+      const badge = dialog.getByText('Spike');
+      expect(badge).toBeInTheDocument();
+      // Position is the requirement, not mere presence: the badge sits in the ref/state row,
+      // right after the state chip — a badge rendered anywhere else in the dialog is a bug.
+      expect(badge.previousElementSibling).toHaveTextContent('Needs Refinement');
+      expect(badge.previousElementSibling?.previousElementSibling).toHaveTextContent('ALF-42');
     });
 
     it('renders no badge on an ordinary story', () => {
@@ -573,7 +607,10 @@ describe('StoryDetailModal', () => {
         }),
       );
 
-      expect(dialog.getByTestId('spec-html')).toHaveAttribute('srcdoc', html);
+      const frame = dialog.getByTestId('spec-html');
+      expect(frame).toHaveAttribute('srcdoc', html);
+      // The heading drives the frame's accessible name too, so a spike's frame is "findings".
+      expect(dialog.getByTitle('Rendered findings')).toBe(frame);
     });
 
     it('labels the recorded PR "Spike PR" rather than "Implementation PR"', () => {

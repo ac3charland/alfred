@@ -146,8 +146,9 @@ describe('planTransition', () => {
         event({ phase: 'spike', action: 'opened', prUrl: 'https://x/pr/5' }),
       );
       // The spike PR reuses implementation_pr_url, so the card's Review PR chip links it with
-      // no change to reviewPrUrlFor.
-      expect(plan).toEqual({
+      // no change to reviewPrUrlFor. toStrictEqual so a stray `spec_path` key is caught — the
+      // findings are recorded on MERGE, never when the PR opens.
+      expect(plan).toStrictEqual({
         target: 'story',
         updates: { factory_state: 'ready_for_review', implementation_pr_url: 'https://x/pr/5' },
         snapshotSpec: false,

@@ -259,9 +259,13 @@ describe('StoryCard', () => {
   });
 
   describe('a spike story', () => {
-    it('carries a muted Spike badge, in every state', () => {
+    it('carries a muted Spike badge immediately after the ref, in every state', () => {
       const { rerender } = render(<StoryCard story={makeSpike()} />);
-      expect(screen.getByText('Spike')).toBeInTheDocument();
+      const badge = screen.getByText('Spike');
+      // Position and tone are both requirements: the badge sits right after the teal ref, and
+      // it is the muted pill — it labels a category, so it must not take the accent.
+      expect(badge.previousElementSibling).toHaveTextContent('ALF-42');
+      expect(badge).toHaveClass('border-border/70', 'text-muted-foreground');
 
       rerender(<StoryCard story={makeSpike({ factory_state: 'ready_for_review' })} />);
       expect(screen.getByText('Spike')).toBeInTheDocument();
