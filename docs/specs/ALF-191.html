@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-191 — Contextual label dropdowns in the row ⋯ menu</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.65rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.22rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.03rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .9rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .eyebrow { color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .16em;
+             text-transform: uppercase; margin: 0 0 .5rem; }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: .9rem 1rem; overflow-x: auto; font-size: .78rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .87rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  td code, th code { white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 1rem 1.2rem; margin: 1rem 0; }
+  .callout { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+             padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+             border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent); }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); color: inherit; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .8rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--ok); font-weight: 700; }
+  .nope { color: var(--no); font-weight: 700; }
+
+  /* Decision blocks — the spec library's shared vocabulary. */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .92rem; }
+  .dec ul { font-size: .92rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .88rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* Acceptance-criteria checklist. */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .92rem; }
+  ul.ac li::before { content: ""; position: absolute; left: 0; top: .35rem; width: 1rem; height: 1rem;
+                     border: 1px solid var(--faint); border-radius: 3px; }
+  ul.ac li.h { padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .78rem;
+               text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  ul.ac li.h::before { content: none; }
+
+  /* ── Mockup frame + app canvas ───────────────────────────────────────────
+     Every value inside .mock-body is lifted from source so the drawing reads in alfred's real
+     dark UI whichever mode this document is viewed in:
+       bg / surface / border / fg / muted / secondary / teal / red / amber / blue / green
+                                                → frontend/app/globals.css
+       menu surface (min-w 8rem, rounded-md, border-border, bg-surface, p-1, shadow-md),
+       item (rounded-sm px-2 py-1.5 text-sm gap-2), SubTrigger (justify-between),
+       Separator (-mx-1 my-1 h-px bg-border), destructive + disabled(opacity-50)
+                                                → components/atoms/dropdown-menu.tsx
+       "Open details" teal emphasis + ⋯ trigger → components/tasks/task-row/task-row-menu.tsx
+       ⋯ button geometry (IconButton size md, 24px, MoreHorizontal 14px)
+                                                → components/atoms/icon-button.tsx
+       picker popover chrome (r12, #0d1320 on #25324a, soft drop shadow)
+                                                → components/atoms/popover.tsx
+       calendar (w-64 p-2, 7-col grid, h-8 cells, today tint, Clear/Today footer)
+                                                → components/atoms/calendar.tsx
+       priority glyph colours (red / amber / blue) → lib/priority.ts
+       project-coloured mono epic pill           → lib/code/project-color.ts + tasks/project-key-chip.tsx
+       row line + hover-revealed actions cluster → components/tasks/task-row.styles.ts        */
+  .mock { border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          background: var(--card); font-size: .8rem; margin: 1.1rem 0; }
+  .mock-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+              padding: .5rem .85rem; border-bottom: 1px solid var(--line);
+              background: var(--bg); font-weight: 600; font-size: .8rem; }
+  .mock-bar .hmeta { color: var(--muted); font-size: .72rem; font-weight: 400; }
+  .mock-body {
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-card: #0f1626; --a-border: #1e2a3f;
+    --a-fg: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f; --a-teal: #4fd1e0;
+    --a-red: #f87171; --a-amber: #f0b429; --a-blue: #60a5fa; --a-green: #34d399;
+    --a-plate: #141d2e; --a-pop: #0d1320; --a-popline: #25324a;
+    padding: 1.1rem; background: var(--a-bg); color: var(--a-fg);
+    font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .mock-body code { background: var(--a-plate); color: var(--a-fg); font-size: .78em; }
+  .cap { color: var(--a-muted); font-size: .78rem; margin: .75rem 0 0; }
+  .cap.doc { color: var(--muted); }
+  .seclabel { color: rgba(138,150,168,.7); font-size: 10px; font-weight: 600;
+              letter-spacing: .16em; text-transform: uppercase; margin: 0 0 .5rem; }
+
+  /* Row line — flex items-center gap-2, py-2, pr-3 (task-row.styles.ts). */
+  .prow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px;
+          border: 1px solid var(--a-border); background: var(--a-surface); }
+  .cbx { width: 16px; height: 16px; flex: none; border: 1px solid rgba(138,150,168,.5); border-radius: 4px; }
+  .ptitle { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; flex: none; border-radius: 999px;
+          padding: 2px 8px; font-size: 12px; font-weight: 500; line-height: 16px; }
+  .pill.code { background: rgba(79,209,224,.15); color: var(--a-teal); }
+  .pill.muted { background: var(--a-plate); color: var(--a-muted); }
+  .pill.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .dots { width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center;
+          border-radius: 4px; color: var(--a-fg); background: rgba(30,42,63,.5); letter-spacing: 1px; font-size: 15px; }
+
+  /* Dropdown menu — min-w-[8rem] rounded-md border border-border bg-surface p-1 shadow-md. */
+  .menu { min-width: 178px; border: 1px solid var(--a-border); border-radius: 6px;
+          background: var(--a-surface); padding: 4px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.75); }
+  .mi { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        border-radius: 2px; padding: 6px 8px; font-size: 14px; color: var(--a-fg); }
+  .mi .lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .mi .ico { width: 16px; flex: none; color: var(--a-muted); text-align: center; font-size: 13px; }
+  .mi .arrow { color: var(--a-muted); font-size: 11px; flex: none; }
+  .mi .tick { color: var(--a-teal); font-size: 12px; flex: none; }
+  .mi.primary { color: var(--a-teal); font-weight: 600; background: rgba(79,209,224,.1); }
+  .mi.danger { color: var(--a-red); }
+  .mi.hl { background: var(--a-secondary); }                 /* focus:bg-secondary / sub open */
+  .mi.dis { opacity: .5; }                                   /* data-[disabled]:opacity-50 */
+  .mi .sec { color: var(--a-muted); }
+  .mi .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+              color: rgba(138,150,168,.7); flex: none; }
+  .msep { height: 1px; background: var(--a-border); margin: 4px -4px; }
+  .menus { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+  .anchor { display: flex; justify-content: flex-end; padding-right: 4px; margin-top: 4px; }
+  .stack { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+           align-items: start; }
+  .col { min-width: 0; }
+
+  /* Picker popover (Custom… → Calendar) — popover.tsx chrome + calendar.tsx geometry. */
+  .pop { border: 1px solid var(--a-popline); border-radius: 12px; background: var(--a-pop);
+         padding: 4px; box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); width: 256px; }
+  .cal { padding: 8px; }
+  .calhead { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px;
+             font-size: 14px; font-weight: 500; }
+  .calhead .nav { color: var(--a-muted); }
+  .calgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 4px; }
+  .calgrid .dow { height: 24px; display: flex; align-items: center; justify-content: center;
+                  font-size: 11px; font-weight: 500; color: #5A677C; }
+  .calgrid .day { height: 30px; display: flex; align-items: center; justify-content: center;
+                  border-radius: 6px; font-size: 13px; color: #cdd6e4; }
+  .calgrid .day.out { color: #46526c; }
+  .calgrid .day.today { background: rgba(96,165,250,.28); font-weight: 600; color: #fff; }
+  .calfoot { display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 0;
+             font-size: 12px; font-weight: 500; color: var(--a-blue); }
+
+  .legend { font-size: .78rem; color: var(--a-muted); margin: .8rem 0 0; }
+  .legend b { color: var(--a-fg); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Refinement spec · Tasks module</p>
+  <h1>ALF-191 — Contextually show dropdowns in the three-dots menu to set epic (for code stories) and priority / folder / due date (for tasks)</h1>
+  <p class="sub">
+    Give the task row's <strong>⋯ “More actions”</strong> menu a set of type-contextual label
+    submenus, so an Inbox row can be made <em>dispatch-ready</em> without opening the detail panel —
+    and retire <strong>“Classify as…”</strong> the moment a row has a type, because a type change
+    after the fields are filled is not worth supporting.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>1 · Context &amp; problem</h2>
+
+  <p>
+    Two independent frictions in the same menu, which is why they land in one ticket.
+  </p>
+
+  <h3>1.1 · Setting an empty field costs a detour</h3>
+  <p>
+    The row's metadata chips (<code>RowMetaCluster</code>) are editable in place — but only
+    <em>once a field is set</em>. Its own doc comment states the rule:
+    <em>“A chip appears only when its field is set — filling an empty field is the detail panel's
+    job.”</em> So the exact rows that need attention are the ones with no affordance: an Inbox row
+    with no folder shows no folder chip, a code story with no epic shows no epic chip.
+  </p>
+  <p>
+    That is precisely the state <code>dispatchReadiness</code> calls <em>not ready</em>. Its
+    blockers — <code>needs a folder</code>, <code>needs a project</code>,
+    <code>needs an epic</code> — name the empty fields, the row's Dispatch entry sits disabled with
+    that blocker as its hint, and the only way to clear it is
+    <em>⋯ → Open details → click the chip → pick → ⋯ → Dispatch</em>. Triaging a full Inbox means
+    paying that detour per row.
+  </p>
+
+  <h3>1.2 · “Classify as…” outlived its usefulness</h3>
+  <p>
+    Today <code>Classify as…</code> renders on <em>every</em> childless root, so a typed row can be
+    re-typed. That was a deliberate widening (<em>“correcting a type is an ordinary act now”</em>),
+    and <code>classifyPatch</code> exists to make each flip coherent by clearing the fields the new
+    type forbids. But a flip after the fields are filled silently destroys work — a task→code flip
+    drops <code>due_date</code> and <code>recurrence</code>; a code→task flip drops both pre-factory
+    hints — and it is the one entry in the menu that can lose data without saying so.
+  </p>
+  <p class="card">
+    <strong>The ticket's call:</strong> <em>“If other fields have been set, it's too complicated to
+    handle converting once type is set, so just remove the option. Users can delete and start over
+    if need be.”</em> A mis-typed row is rare, caught immediately, and cheap to re-capture — the
+    menu's own <strong>Delete</strong> is the escape hatch.
+  </p>
+
+  <h3>1.3 · The two halves are the same change</h3>
+  <p>
+    Both edits act on the same slot in the menu. An <strong>unclassified</strong> row has no fields
+    to set (the detail panel renders no chip row at all for one — <em>“classify from the ⋯ menu
+    first; the fields appear once there is a type to hang them on”</em>), and a <strong>typed</strong>
+    row has no type left to change. So one group replaces the other, and the menu carries exactly
+    one of them at any time.
+  </p>
+
+  <figure style="margin:1.4rem 0">
+  <svg viewBox="0 0 760 250" role="img" aria-label="State diagram: an unclassified row offers Classify as…; once typed it offers its own label submenus and Classify as… is gone. The only way back is Delete and re-capture.">
+    <defs>
+      <marker id="ar" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+        <path d="M0,0 L7.5,3.2 L0,6.4 z" fill="currentColor" />
+      </marker>
+    </defs>
+    <g fill="none" stroke="currentColor" color="#8a94a0" stroke-width="1.4">
+      <rect x="18" y="86" width="176" height="78" rx="10" />
+      <rect x="330" y="14" width="220" height="98" rx="10" />
+      <rect x="330" y="140" width="220" height="98" rx="10" />
+    </g>
+    <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" fill="currentColor">
+      <text x="106" y="112" font-size="14" font-weight="700" text-anchor="middle">unclassified</text>
+      <text x="106" y="134" font-size="11.5" text-anchor="middle" opacity=".75">menu shows</text>
+      <text x="106" y="150" font-size="12" text-anchor="middle" font-weight="600">Classify as… ▸</text>
+
+      <text x="440" y="38" font-size="14" font-weight="700" text-anchor="middle">task</text>
+      <text x="440" y="60" font-size="11.5" text-anchor="middle" opacity=".75">menu shows</text>
+      <text x="440" y="78" font-size="12" text-anchor="middle" font-weight="600">Due date ▸ · Priority ▸</text>
+      <text x="440" y="96" font-size="12" text-anchor="middle" font-weight="600">Folder ▸</text>
+
+      <text x="440" y="164" font-size="14" font-weight="700" text-anchor="middle">code</text>
+      <text x="440" y="186" font-size="11.5" text-anchor="middle" opacity=".75">menu shows</text>
+      <text x="440" y="204" font-size="12" text-anchor="middle" font-weight="600">Project ▸</text>
+      <text x="440" y="222" font-size="12" text-anchor="middle" font-weight="600">Epic ▸ <tspan opacity=".7">(story only)</tspan></text>
+    </g>
+    <g stroke="currentColor" color="#0d7d7d" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+      <path d="M194,112 C255,112 265,63 328,63" />
+      <path d="M194,138 C255,138 265,189 328,189" />
+    </g>
+    <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+       fill="#0d7d7d" font-size="11.5" font-weight="600">
+      <text x="262" y="78" text-anchor="middle">Classify → Task</text>
+      <text x="262" y="176" text-anchor="middle">Classify → Code</text>
+    </g>
+    <g stroke="currentColor" color="#d1544a" stroke-width="1.4" fill="none"
+       stroke-dasharray="5 4" marker-end="url(#ar)">
+      <path d="M550,126 C640,126 690,126 690,180 C690,236 400,244 200,180 C150,164 120,166 106,166" />
+    </g>
+    <text x="676" y="118" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+          fill="#d1544a" font-size="11.5" font-weight="600" text-anchor="middle">Delete + re-capture</text>
+    <text x="676" y="134" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+          fill="#d1544a" font-size="10.5" text-anchor="middle" opacity=".8">(the only way back)</text>
+  </svg>
+  <figcaption class="diagram-cap">
+    One slot, two occupants. Classifying is one-way; the menu never offers both groups at once.
+  </figcaption>
+  </figure>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>2 · What changes</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>Change</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Five new type-contextual submenus — <b>Due date</b>, <b>Priority</b>, <b>Folder</b>, <b>Project</b>, <b>Epic</b> — writing through the store actions the row chips and detail panel already use</td><td><code>components/tasks/task-row/task-row-menu.tsx</code></td></tr>
+      <tr><td>2</td><td><b>Classify as…</b> renders only on an <code>unclassified</code> row; the disabled-with-a-hint branch goes away entirely</td><td><code>task-row-menu.tsx</code></td></tr>
+      <tr><td>3</td><td>The bulk bar's <b>Classify as</b> gate narrows from “every selected row is a childless root” to “every selected row is unclassified”</td><td><code>components/tasks/inbox-bulk-bar.tsx</code></td></tr>
+      <tr><td>4</td><td>New shared atom <code>DropdownMenuSelectSub</code> — the menu twin of <code>PickerChip</code> (a submenu of check-marked single-select options)</td><td><code>components/atoms/dropdown-menu-select-sub.tsx</code></td></tr>
+      <tr><td>5</td><td>Shared option builders for folders / projects / epics, adopted by both the chips and the menu</td><td><code>lib/tasks/label-options.tsx</code></td></tr>
+      <tr><td>6</td><td><code>addDays</code> hoisted to <code>lib/date-utils.ts</code> (the due-date presets need it; habits keeps working through a re-export)</td><td><code>lib/date-utils.ts</code>, <code>lib/habits/dates.ts</code></td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    <strong>Nothing about the data model changes.</strong> No migration, no route handler, no store
+    action, no schema. Every write this ticket adds already exists:
+    <code>updateTask</code> (due date, priority), <code>setFolder</code>,
+    <code>setIntendedProject</code>, <code>setIntendedEpic</code> — reached through the very same
+    <code>RowMetaEditing</code> handler bundle <code>RowMetaCluster</code> takes today.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>3 · Decisions</h2>
+
+  <div class="dec">
+    <h3><span class="n">D1</span>The label group and “Classify as…” are mutually exclusive, and occupy one slot</h3>
+    <p>
+      An unclassified row shows <code>Classify as…</code> and no label submenus. A typed row shows
+      its label submenus and no <code>Classify as…</code>. They render in the same position — where
+      <code>Classify as…</code> sits today, between the reorder items and <code>Dispatch</code>.
+    </p>
+    <p class="why">
+      <b>Why:</b> the menu's own doc comment already frames this pair as “the order the Inbox is
+      worked: <em>Classify as…</em> sets the labels, <em>Dispatch</em> acts on them.” The label
+      submenus <em>are</em> the label-setting step now, so they inherit that slot and that sentence.
+      It also mirrors the detail panel exactly: no chip row for an unclassified row, a per-type chip
+      set once there is a type to hang the fields on.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D2</span>Each submenu's gate is the field's own domain rule, not a blanket <code>isTask</code>/<code>isCode</code></h3>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Entry</th><th>Renders when</th><th>Why that gate</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Due date ▸</b></td>
+          <td><code>isTask</code></td>
+          <td>Due dates are task-only (the DB <code>CHECK</code>) — the same gate the panel's Due chip uses.</td>
+        </tr>
+        <tr>
+          <td><b>Priority ▸</b></td>
+          <td><code>isTask</code></td>
+          <td>Same gate as the panel's Priority chip.</td>
+        </tr>
+        <tr>
+          <td><b>Folder ▸</b></td>
+          <td><code>isTask &amp;&amp; parent_id === null &amp;&amp; !isDispatched(node)</code></td>
+          <td>This is the <em>folder-as-label</em> case — exactly <code>dispatchReadiness</code>'s <code>needs a folder</code>. Once dispatched, <b>Move to…</b> in this same menu owns the folder (it is a <em>move</em>, not a label) and two folder entries would be a puzzle. A subtask's residency travels with its root, so it has no folder of its own to label.</td>
+        </tr>
+        <tr>
+          <td><b>Project ▸</b></td>
+          <td><code>isCode &amp;&amp; parent_id === null</code></td>
+          <td>Both code dispatch paths need a project: a story's factory gate, and an epic-shaped row's <code>convert_to_code_epic</code> (whose <code>opensDialog</code> is literally “no project set”). Setting it here removes that dialog step.</td>
+        </tr>
+        <tr>
+          <td><b>Epic ▸</b></td>
+          <td><code>isCode &amp;&amp; parent_id === null &amp;&amp; children.length === 0</code></td>
+          <td>Only a <b>code story</b> carries an epic hint — the ticket's own wording. A code row <em>with</em> children is an epic-in-waiting: the conversion <em>creates</em> its epic. A code child becomes a story under its parent-turned-epic and inherits it.</td>
+        </tr>
+        <tr>
+          <td><b>Classify as… ▸</b></td>
+          <td><code>isUnclassified &amp;&amp; canChangeType</code></td>
+          <td>The ticket's rule (§1.2), keeping the existing structural guard as a conjunct — see D3.</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="why">
+      <b>Why not just “the panel's chip set”:</b> the panel is laxer about Folder (it offers the chip
+      on any task row). The menu can afford to be stricter because it already carries
+      <b>Move to…</b>, and because tying each gate to <code>dispatch.ts</code>'s blockers keeps the
+      cue, the disabled hint and the fix in one vocabulary.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D3</span>Absent, not disabled — and <code>canChangeType</code> survives as a structural guard</h3>
+    <p>
+      Delete <code>CLASSIFY_DISABLED_HINT</code> and the <code>disabled</code>/<code>title</code>
+      pair on the sub-trigger. <code>Classify as…</code> is either offered or not there. Keep the
+      <code>canChangeType</code> prop and <code>useTaskRowFlags.canChangeType</code>, now as a
+      <em>render</em> conjunct rather than a disabled gate.
+    </p>
+    <p class="why">
+      <b>Why keep <code>canChangeType</code> at all,</b> when an unclassified row is provably a
+      childless root today (capture only creates unclassified rows at the root; a subtask inherits
+      <code>task</code>/<code>code</code> from its parent; <code>canAddSubtask</code> is
+      <code>isTask || isCodeRoot</code>, so nothing can give an unclassified row children)? Because
+      that proof lives in the capture logic, not here — and the flag's own doc explains the hole it
+      plugs: <code>enforce_subtask_shape</code> returns early on a parentless row and never
+      re-validates the untouched children, so <em>“the database cannot catch that one, so the UI
+      must.”</em> A one-token conjunct is cheaper than re-deriving that argument later.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D4</span>Due date is presets + <b>Custom…</b>, not a calendar grid inside the menu</h3>
+    <p>The submenu lists, in order:</p>
+    <ul>
+      <li><b>Today</b> · <b>Tomorrow</b> · <b>Next week</b> — <code>todayISODate()</code>, <code>+1</code>, <code>+7</code>, ticked when they equal the row's current date</li>
+      <li>a separator, then <b>No due date</b> (only when a date is set)</li>
+      <li><b>Custom…</b>, which closes the menu and opens the existing <code>Calendar</code> in a popover anchored to the ⋯ button</li>
+    </ul>
+    <p class="why">
+      <b>Why:</b> a 7-column button grid inside <code>DropdownMenuSubContent</code> breaks Radix's
+      roving-focus model (arrow keys move between menu <em>items</em>, not grid cells) and is a
+      cramped touch target on mobile. Presets cover the overwhelmingly common picks in one keystroke
+      and stay keyboard-navigable like every other entry; <b>Custom…</b> keeps every other date one
+      step away through the component that already owns that job.
+    </p>
+    <p class="why">
+      <b>Clearing:</b> route <b>No due date</b> through <code>onClearDueDate</code>, not
+      <code>onSelectDueDate(null)</code> — clearing a due date also clears any recurrence rule
+      (a rule has nowhere to anchor without one). That's why the entry hides when no date is set:
+      the handler already no-ops there.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D5</span>Every submenu always renders for its type, with the current value check-marked</h3>
+    <p>
+      A task row always carries Due date / Priority (and Folder while it qualifies); a code story
+      always carries Project / Epic — set or unset. The active option wears the trailing teal
+      <code>Check</code>, exactly as <code>PriorityMenu</code> and <code>PickerListItem</code> do.
+    </p>
+    <p class="why">
+      <b>Why not hide a submenu once its field is set</b> (“the row chip is clickable now”)? Because
+      a menu whose shape shifts as you fill fields in is a menu you have to re-read every time, and
+      the row chips are hover-revealed and tiny — on mobile the ⋯ menu is the reliable surface. A
+      fixed per-type shape is learnable in one sitting; it is also what the detail panel does.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D6</span>Epic disables — with the chip's exact words — until a project is set</h3>
+    <p>
+      With <code>intended_project_id === null</code> the <b>Epic ▸</b> sub-trigger renders
+      <code>disabled</code> with <code>title="Pick a project first"</code> — the verbatim hint
+      <code>IntendedEpicChip</code> already shows, so the two surfaces never drift.
+    </p>
+    <p class="why">
+      <b>Why disabled rather than absent</b> (the opposite of D3)? Here the entry's absence would be
+      unexplained — the field exists and the row needs it — whereas <code>Classify as…</code> is
+      gone because the action itself no longer exists. Disabled-with-a-hint also teaches the
+      dependency: pick the project directly above, and Epic lights up.
+    </p>
+    <p class="why">
+      <b>Consequence to expect:</b> picking a project always clears the epic hint in the same PATCH
+      (<code>setIntendedProject</code> sends <code>{ intended_project_id, intended_epic_id: null }</code>,
+      matching the DB trigger). So changing a project from the menu resets Epic to “No epic” — the
+      same behaviour the panel's Project chip has.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D7</span>One new atom for the submenu; the menu keeps <code>RowMetaCluster</code>'s prop shape</h3>
+    <p>
+      Five submenus of check-marked single-select options is the rule-of-three, twice over. Add
+      <code>DropdownMenuSelectSub</code> to <code>components/atoms/</code> — a
+      <code>DropdownMenuSub</code> whose content is a list of options with a trailing
+      <code>Check</code> on the active one. It takes the repo's existing single-select option shape,
+      <code>PickerChipOption</code>, so the menu and the popover pickers describe their choices
+      identically.
+    </p>
+    <p>
+      <code>TaskRowMenu</code> already takes 17 props; five more fields plus five more handlers would
+      double it. Instead it takes <code>node: ItemNode</code> and the
+      <code>editing: RowMetaEditing</code> bundle and derives its own render gates — <em>exactly</em>
+      what <code>RowMetaCluster</code> does, with the same handler bundle
+      <code>TaskRow.metaEditing</code> already builds.
+    </p>
+    <p class="why">
+      <b>Why not read the stores inside the menu</b> for folders/projects/epics? Folders already
+      arrive as a prop and the row is the composition root — but note <code>FolderChip</code> and
+      <code>IntendedEpicChip</code> <em>do</em> read them via <code>useFolders</code> /
+      <code>useEpics</code>. Either is defensible; keep <code>folders</code> as the prop it already
+      is and read <code>useProjects()</code> / <code>useEpics()</code> inside the menu, matching
+      <code>detail-chips.tsx</code>, so no new plumbing crosses <code>TaskRow</code>.
+    </p>
+  </div>
+
+  <div class="dec">
+    <h3><span class="n">D8</span>The bulk bar narrows to match — one rule for “can this be classified?”</h3>
+    <p>
+      <code>allChildlessRoots</code> becomes <code>allUnclassified</code>:
+      <code>count &gt; 0 &amp;&amp; every(i =&gt; i.item_type === 'unclassified' &amp;&amp; i.parent_id === null &amp;&amp; i.children.length === 0)</code>.
+      The hint becomes a single sentence: <code>Only unclassified items can be classified</code>.
+    </p>
+    <p class="why">
+      <b>Why include the bulk bar:</b> the ticket's reasoning — a type change after the fields are
+      filled destroys them — is about the <em>write</em>, not the surface. Leaving the bulk bar able
+      to re-type a filled row would leave the hole open behind a second door, and
+      <code>bulkClassify</code> runs the same <code>classifyPatch</code>. The childless-root terms
+      stay as the same structural guard as D3.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>4 · The menu, drawn</h2>
+
+  <p>
+    Drawn in the app's own tokens (see the stylesheet comment for the source of every value).
+    Fidelity caveat: this is behaviour and layout intent, not a pixel spec — but every entry, glyph,
+    tick, hint and separator below is a requirement.
+  </p>
+
+  <h3>4.1 · The three base menus</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>Inbox · ⋯ “More actions”, by row type</span><span class="hmeta">desktop, md+</span></div>
+    <div class="mock-body">
+      <div class="stack">
+
+        <div class="col">
+          <p class="seclabel">unclassified row</p>
+          <div class="prow">
+            <div class="ptitle">Ship the inbound webhook</div>
+            <div class="dots">⋯</div>
+          </div>
+          <div class="anchor"><div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi"><span class="lead"><span class="ico">＋</span>Add subtask</span></div>
+            <div class="mi hl"><span class="lead">Classify as…</span><span class="arrow">▸</span></div>
+            <div class="mi dis"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div></div>
+          <p class="cap">Unchanged from today, minus the disabled state: <code>Classify as…</code>
+          is the only label entry, and Dispatch sits disabled on <em>needs a type</em>.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">task row · undispatched inbox root</p>
+          <div class="prow">
+            <div class="ptitle">Plan the sprint</div>
+            <span class="pill muted">Task</span>
+            <div class="dots">⋯</div>
+          </div>
+          <div class="anchor"><div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi"><span class="lead"><span class="ico">＋</span>Add subtask</span></div>
+            <div class="mi"><span class="lead">Due date…</span><span class="arrow">▸</span></div>
+            <div class="mi"><span class="lead">Priority…</span><span class="arrow">▸</span></div>
+            <div class="mi"><span class="lead">Folder…</span><span class="arrow">▸</span></div>
+            <div class="mi dis"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div></div>
+          <p class="cap">No <code>Classify as…</code>. Three label submenus in the slot it vacated,
+          in the panel's own order (Due → Priority → Folder). Dispatch still reads
+          <em>needs a folder</em> until Folder is picked.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">code story · childless root</p>
+          <div class="prow">
+            <div class="ptitle">Add the retry backoff</div>
+            <span class="pill code">Code</span>
+            <div class="dots">⋯</div>
+          </div>
+          <div class="anchor"><div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi"><span class="lead">Project…</span><span class="arrow">▸</span></div>
+            <div class="mi dis" title="Pick a project first"><span class="lead">Epic…</span><span class="arrow">▸</span></div>
+            <div class="mi dis"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div></div>
+          <p class="cap">With no project yet: <code>Epic…</code> is dimmed
+          (<code>data-[disabled]:opacity-50</code>) and hovering it reads
+          <em>“Pick a project first”</em>. No “Add story” — a code <em>story</em> hosts none.</p>
+        </div>
+
+      </div>
+      <p class="legend">
+        <b>▸</b> a submenu · <b>✓</b> the current value · <b>dimmed</b> disabled with a
+        <code>title</code> hint · <b>➤</b> the Dispatch glyph (<code>SendHorizontal</code>) ·
+        <b>＋</b> the mobile-only Add subtask / Add story glyph (<code>Plus</code>, <code>md:hidden</code>).
+      </p>
+    </div>
+  </div>
+
+  <h3>4.2 · The submenus</h3>
+
+  <div class="mock">
+    <div class="mock-bar"><span>Submenu contents</span><span class="hmeta">opened from the entries above</span></div>
+    <div class="mock-body">
+      <div class="stack">
+
+        <div class="col">
+          <p class="seclabel">Due date ▸ <span style="text-transform:none">(no date set)</span></p>
+          <div class="menus">
+            <div class="menu" style="min-width:150px">
+              <div class="mi hl"><span class="lead">Due date…</span><span class="arrow">▸</span></div>
+            </div>
+            <div class="menu" style="min-width:158px">
+              <div class="mi"><span class="lead">Today</span></div>
+              <div class="mi"><span class="lead">Tomorrow</span></div>
+              <div class="mi"><span class="lead">Next week</span></div>
+              <div class="msep"></div>
+              <div class="mi"><span class="lead">Custom…</span></div>
+            </div>
+          </div>
+          <p class="cap">With a date already set, a matching preset carries the ✓ and a
+          <b>No due date</b> entry appears above <b>Custom…</b>:</p>
+          <div class="menus" style="margin-top:.5rem">
+            <div class="menu" style="min-width:158px">
+              <div class="mi"><span class="lead">Today</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead">Tomorrow</span></div>
+              <div class="mi"><span class="lead">Next week</span></div>
+              <div class="msep"></div>
+              <div class="mi"><span class="lead sec">No due date</span></div>
+              <div class="mi"><span class="lead">Custom…</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">Priority ▸</p>
+          <div class="menus">
+            <div class="menu" style="min-width:150px">
+              <div class="mi hl"><span class="lead">Priority…</span><span class="arrow">▸</span></div>
+            </div>
+            <div class="menu" style="min-width:150px">
+              <div class="mi"><span class="lead sec">No priority</span></div>
+              <div class="msep"></div>
+              <div class="mi"><span class="lead"><span class="ico" style="color:var(--a-red)">⌃⌃</span>High</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead"><span class="ico" style="color:var(--a-amber)">＝</span>Medium</span></div>
+              <div class="mi"><span class="lead"><span class="ico" style="color:var(--a-blue)">⌄⌄</span>Low</span></div>
+            </div>
+          </div>
+          <p class="cap">Byte-for-byte <code>PriorityMenu</code>'s own list — “No priority”, a
+          separator, then the three <code>PRIORITY_OPTIONS</code> with their
+          <code>ChevronsUp</code> / <code>Equal</code> / <code>ChevronsDown</code> glyphs in their
+          accent colours.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">Folder ▸</p>
+          <div class="menus">
+            <div class="menu" style="min-width:150px">
+              <div class="mi hl"><span class="lead">Folder…</span><span class="arrow">▸</span></div>
+            </div>
+            <div class="menu" style="min-width:150px">
+              <div class="mi"><span class="lead sec">No folder</span></div>
+              <div class="mi"><span class="lead">Work</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead">Home</span></div>
+              <div class="mi"><span class="lead">Someday</span></div>
+            </div>
+          </div>
+          <p class="cap">The folders in sidebar order. <b>No folder</b> is offered because the row is
+          undispatched — the same <code>allowClear</code> rule <code>FolderChip</code> applies.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">Project ▸</p>
+          <div class="menus">
+            <div class="menu" style="min-width:150px">
+              <div class="mi hl"><span class="lead">Project…</span><span class="arrow">▸</span></div>
+            </div>
+            <div class="menu" style="min-width:178px">
+              <div class="mi"><span class="lead sec">No project</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead">Alfred</span><span class="mono">ALF</span></div>
+              <div class="mi"><span class="lead">Forscore</span><span class="mono">FSC</span></div>
+            </div>
+          </div>
+          <p class="cap">Name left, key right in mono — the gate's and the Project chip's listbox
+          convention, unchanged.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">Epic ▸ <span style="text-transform:none">(project set)</span></p>
+          <div class="menus">
+            <div class="menu" style="min-width:150px">
+              <div class="mi hl"><span class="lead">Epic…</span><span class="arrow">▸</span></div>
+            </div>
+            <div class="menu" style="min-width:196px">
+              <div class="mi"><span class="lead sec">No epic</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead">Inbox triage</span><span class="mono">ALF-140</span></div>
+              <div class="mi"><span class="lead">Code module</span><span class="mono">ALF-146</span></div>
+            </div>
+          </div>
+          <p class="cap">Only the selected project's epics. Name left, ref right in mono —
+          <code>epicOptions</code>, shared with the Epic chip.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">Custom… → the calendar</p>
+          <div class="pop"><div class="cal">
+            <div class="calhead"><span class="nav">‹</span><span>September 2026</span><span class="nav">›</span></div>
+            <div class="calgrid">
+              <span class="dow">S</span><span class="dow">M</span><span class="dow">T</span><span class="dow">W</span>
+              <span class="dow">T</span><span class="dow">F</span><span class="dow">S</span>
+              <span class="day out">30</span><span class="day out">31</span><span class="day">1</span><span class="day">2</span>
+              <span class="day today">3</span><span class="day">4</span><span class="day">5</span>
+              <span class="day">6</span><span class="day">7</span><span class="day">8</span><span class="day">9</span>
+              <span class="day">10</span><span class="day">11</span><span class="day">12</span>
+              <span class="day">13</span><span class="day">14</span><span class="day">15</span><span class="day">16</span>
+              <span class="day">17</span><span class="day">18</span><span class="day">19</span>
+            </div>
+            <div class="calfoot"><span>Clear</span><span>Today</span></div>
+          </div></div>
+          <p class="cap">The unmodified <code>Calendar</code> atom in the standard picker popover,
+          anchored to the ⋯ button. The menu closes first; Escape or an outside press dismisses it.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <h3>4.3 · Mobile</h3>
+  <div class="mock">
+    <div class="mock-bar"><span>Task row · below <code>md</code></span><span class="hmeta">360px</span></div>
+    <div class="mock-body">
+      <div style="max-width:320px">
+        <div class="prow" style="align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div class="ptitle">Plan the sprint</div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <span class="pill muted">Task</span><span class="pill muted">Work</span>
+            </div>
+          </div>
+          <div class="dots">⋯</div>
+        </div>
+        <div class="anchor"><div class="menu">
+          <div class="mi primary"><span class="lead">Open details</span></div>
+          <div class="msep"></div>
+          <div class="mi"><span class="lead"><span class="ico">＋</span>Add subtask</span></div>
+          <div class="mi"><span class="lead">Due date…</span><span class="arrow">▸</span></div>
+          <div class="mi"><span class="lead">Priority…</span><span class="arrow">▸</span></div>
+          <div class="mi"><span class="lead">Folder…</span><span class="arrow">▸</span></div>
+          <div class="mi"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+          <div class="msep"></div>
+          <div class="mi danger"><span class="lead">Delete</span></div>
+        </div></div>
+      </div>
+      <p class="cap">Identical entries — the label group is <em>not</em> breakpoint-gated. Only
+      <b>Add subtask / Add story</b> keeps its <code>md:hidden</code>. This is where the change pays
+      most: the row chips are hover-revealed at md+, and on a phone the ⋯ menu is the only reliable
+      way in.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>5 · Implementation</h2>
+
+  <h3>5.1 · Menu order (final)</h3>
+  <pre><code>Open details                       (teal, unchanged)
+─────────────────────────────────  DropdownMenuSeparator (unchanged)
+Add subtask / Add story            md:hidden, canAddSubtask     (unchanged)
+Move up / Move down                active subtask               (unchanged)
+┌─ the one slot ──────────────────────────────────────────────────────┐
+│ Classify as…  ▸                  isUnclassified &amp;&amp; canChangeType     │
+│      — or —                                                          │
+│ Due date…     ▸                  isTask                              │
+│ Priority…     ▸                  isTask                              │
+│ Folder…       ▸                  isTask &amp;&amp; root &amp;&amp; !isDispatched     │
+│ Project…      ▸                  isCode &amp;&amp; root                      │
+│ Epic…         ▸                  isCode &amp;&amp; root &amp;&amp; childless         │
+└──────────────────────────────────────────────────────────────────────┘
+Dispatch                           dispatch !== null            (unchanged)
+Move to…       ▸                   canMoveToFolder              (unchanged)
+─────────────────────────────────  DropdownMenuSeparator (unchanged)
+Delete                             (unchanged)</code></pre>
+  <p class="small">
+    <strong>No new separators.</strong> The existing two stay exactly where they are. The label
+    group inherits <code>Classify as…</code>'s position, so the menu's block structure is untouched
+    and no conditional-separator logic is introduced.
+  </p>
+
+  <h3>5.2 · The new atom</h3>
+  <p>
+    <code>components/atoms/dropdown-menu-select-sub.tsx</code> — the menu twin of
+    <code>PickerChip</code>. Sketch:
+  </p>
+  <pre><code>import type { PickerChipOption } from '@/components/atoms/picker-chip';
+
+interface DropdownMenuSelectSubProperties {
+  /** The sub-trigger's label, e.g. "Priority…". */
+  label: string;
+  /** The current value, ticked in the list. `null` matches a clear entry. */
+  value: string | null;
+  options: readonly PickerChipOption[];
+  onSelect: (value: string | null) =&gt; void;
+  /** Disable the trigger; `hint` becomes its `title` (e.g. "Pick a project first"). */
+  disabled?: boolean;
+  hint?: string;
+  /** Index after which a `DropdownMenuSeparator` is drawn (the Priority / Due lists). */
+  separatorAfter?: number;
+}</code></pre>
+  <p>
+    It renders <code>DropdownMenuSub</code> → <code>DropdownMenuSubTrigger</code> (label +
+    <code>ChevronRight size={12}</code>, matching the existing sub-triggers) →
+    <code>DropdownMenuSubContent</code> of <code>DropdownMenuItem</code>s, each
+    <code>className="justify-between"</code> with a trailing
+    <code>&lt;Check size={12} className="text-accent-teal" /&gt;</code> when active — the convention
+    <code>PriorityMenu</code> and <code>PickerListItem</code> already share. Give it its own
+    <code>*.test.tsx</code>: renders options, ticks the active one, calls back with the picked
+    value, respects <code>disabled</code>.
+  </p>
+  <div class="callout">
+    <strong>Adopt it everywhere in the same change.</strong> The five submenus are its call sites.
+    Do <em>not</em> also rewrite <code>PriorityMenu</code>, <code>PickerChip</code> or
+    <code>Move to…</code> to use it — those are a top-level menu, a popover and a bespoke list
+    respectively. This atom is for submenus.
+  </div>
+
+  <h3>5.3 · Shared option builders</h3>
+  <p>
+    <code>epicOptions</code> is private to <code>detail-chips.tsx</code> today, and the project and
+    folder lists are built inline there too. The menu needs all three, so extract them to
+    <code>lib/tasks/label-options.tsx</code> and <strong>adopt them in
+    <code>detail-chips.tsx</code> in the same change</strong> (per the frontend-architecture rule:
+    a half-adopted primitive is worse than none):
+  </p>
+  <pre><code>export function folderOptions(folders: readonly Folder[], allowClear: boolean): PickerChipOption[]
+export function projectOptions(projects: readonly Project[]): PickerChipOption[]   // name · KEY
+export function epicOptions(epics: readonly Epic[]): PickerChipOption[]            // name · REF</code></pre>
+  <p class="small">
+    A <code>.tsx</code> because the labels are two-column <code>ReactNode</code>s. Pure functions of
+    their inputs, so they unit-test without rendering. Behaviour must be identical — the existing
+    chip tests stay green with no assertion changes.
+  </p>
+
+  <h3>5.4 · Due-date presets</h3>
+  <p>
+    <code>lib/habits/dates.ts</code> already exports a correct
+    <code>addDays(iso: string, days: number): string</code> over <code>YYYY-MM-DD</code> strings.
+    Don't write a second one: <strong>move it into <code>lib/date-utils.ts</code></strong> (the
+    module that already owns the app's calendar-date helpers) and have
+    <code>lib/habits/dates.ts</code> re-export it, so every habits call site — including
+    <code>lib/habits/index.ts</code>'s barrel — is untouched and its tests stay green.
+  </p>
+  <pre><code>// The presets, derived once per open.
+const today = todayISODate();
+const DUE_PRESETS = [
+  { value: today,             label: 'Today'     },
+  { value: addDays(today, 1), label: 'Tomorrow'  },
+  { value: addDays(today, 7), label: 'Next week' },
+];</code></pre>
+
+  <h3>5.5 · The <code>Custom…</code> popover</h3>
+  <p>
+    Selecting a <code>DropdownMenuItem</code> closes the menu, so the calendar cannot live inside
+    it. Wrap the trigger in a <code>PopoverAnchor</code> (already exported from
+    <code>atoms/popover.tsx</code>) and hold the popover's open state in <code>TaskRowMenu</code>:
+  </p>
+  <pre><code>&lt;Popover open={calendarOpen} onOpenChange={setCalendarOpen}&gt;
+  &lt;DropdownMenu&gt;
+    &lt;DropdownMenuTrigger asChild&gt;
+      &lt;PopoverAnchor asChild&gt;
+        &lt;IconButton size="md" aria-label="More actions"&gt;…&lt;/IconButton&gt;
+      &lt;/PopoverAnchor&gt;
+    &lt;/DropdownMenuTrigger&gt;
+    &lt;DropdownMenuContent align="end"&gt;…&lt;/DropdownMenuContent&gt;
+  &lt;/DropdownMenu&gt;
+  &lt;PopoverContent align="end"&gt;
+    &lt;Calendar selected={node.due_date} onSelect={…} onClear={…} /&gt;
+  &lt;/PopoverContent&gt;
+&lt;/Popover&gt;</code></pre>
+  <div class="callout">
+    <strong>Radix focus trap to watch for.</strong> The menu returns focus to its trigger on close
+    while the popover is mounting. If the popover flickers shut or the calendar never takes focus,
+    defer the open by one frame from the item's <code>onSelect</code> rather than reaching for
+    <code>event.preventDefault()</code> (which would keep the menu open on top of it). Whichever way
+    it lands, <strong>record the finding in the <code>shadcn-ui</code> skill</strong> — read
+    <code>compounding-learning</code> first for the house style.
+  </div>
+
+  <h3>5.6 · Prop &amp; flag changes</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>task-row/task-row-menu.tsx</code></td>
+        <td>
+          <b>+</b> <code>node: ItemNode</code>, <code>isTask: boolean</code>,
+          <code>isUnclassified: boolean</code>, <code>editing: RowMetaEditing</code>.<br>
+          <b>−</b> <code>CLASSIFY_DISABLED_HINT</code> and the sub-trigger's
+          <code>disabled</code>/<code>title</code>.<br>
+          <code>onClassify</code> and <code>canChangeType</code> stay. Update the component's doc
+          comment: the triage pair is now “the label group sets the labels, Dispatch acts on them”,
+          and <code>Classify as…</code> is the unclassified row's stand-in for it.
+        </td>
+      </tr>
+      <tr>
+        <td><code>task-row.tsx</code></td>
+        <td>Pass <code>node</code>, <code>isTask</code>, <code>isUnclassified</code> (already
+        returned by <code>useTaskRowFlags</code> but not currently destructured) and the existing
+        <code>metaEditing</code> bundle. No new handlers — all six already exist.</td>
+      </tr>
+      <tr>
+        <td><code>lib/hooks/use-task-row-flags.ts</code></td>
+        <td>No logic change. Refresh <code>isUnclassified</code>'s doc comment — “offered ONLY while
+        still unclassified” becomes true again — and <code>canChangeType</code>'s, which now
+        describes a render gate.</td>
+      </tr>
+      <tr>
+        <td><code>inbox-bulk-bar.tsx</code></td>
+        <td>D8: <code>allChildlessRoots</code> → <code>allUnclassified</code>;
+        <code>CLASSIFY_DISABLED_HINT</code> becomes
+        <code>'Only unclassified items can be classified'</code>.</td>
+      </tr>
+      <tr>
+        <td><code>task-row/detail-chips.tsx</code></td>
+        <td>Adopt the extracted option builders (§5.3). No visual or behavioural change.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>5.7 · Accessible names</h3>
+  <p>
+    Every entry is a plain <code>menuitem</code> whose accessible name is its visible text, so tests
+    query by role and name. Two collisions to avoid:
+  </p>
+  <ul>
+    <li><b>Today</b> appears both as a Due-date preset and in the <code>Calendar</code> footer, so a
+      test with both open must scope its query to the menu or the popover.</li>
+    <li>The <code>Classify as…</code> submenu's <b>Code</b> already needs <code>exact: true</code> in
+      the e2e specs (a longer entry contains the word); keep that, and prefer
+      <code>exact: true</code> for the new short entries — <b>Today</b>, <b>Work</b>, <b>Alfred</b> —
+      for the same reason.</li>
+  </ul>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>6 · Tests</h2>
+
+  <p>
+    Red/Green TDD, per <code>CLAUDE.md</code>. Every behaviour below must break at least one test if
+    removed.
+  </p>
+
+  <h3>6.1 · Unit (Jest)</h3>
+  <ul>
+    <li><code>lib/date-utils.test.ts</code> — <code>addDays</code> after the hoist: month rollover,
+      year rollover, negative shift, leap day. (Move the existing cases from
+      <code>lib/habits/dates.test.ts</code> or keep both; the habits re-export must still resolve.)</li>
+    <li><code>lib/tasks/label-options.test.tsx</code> — each builder's option order, the clear entry
+      appearing only with <code>allowClear</code>, and an epic with an empty <code>ref</code>
+      rendering no ref column (today's <code>epicOptions</code> behaviour).</li>
+  </ul>
+
+  <h3>6.2 · Component (RTL)</h3>
+  <ul>
+    <li><code>components/atoms/dropdown-menu-select-sub.test.tsx</code> — new: renders its options,
+      ticks the active one, reports the picked value (including <code>null</code>), and renders
+      disabled with its hint.</li>
+    <li><code>components/tasks/task-row.test.tsx</code> — rewrite the
+      <em>“the Classify as… submenu”</em> block (currently ~lines 2412–2530):
+      <ul>
+        <li><span class="yes">keep</span> “offers Classify as… on an unclassified row”</li>
+        <li><span class="nope">replace</span> “keeps Classify as… enabled on a classified childless
+          root (task and code)” → <b>hides Classify as… once a row is typed</b>, for both types</li>
+        <li><span class="nope">replace</span> the two disabled-hint tests (row with subtasks, subtask
+          row) → assert the entry is <b>absent</b>, and that no hint text renders anywhere</li>
+      </ul>
+      and add a new block for the label group: each entry's presence/absence per row type against
+      D2's table; the tick on the current value; picking calls the right store action with the right
+      argument; <b>No due date</b> routes through the clear path (so a recurrence is dropped too);
+      Epic disabled with <em>“Pick a project first”</em> when no project; picking a project resets
+      Epic to “No epic”.</li>
+    <li><code>components/tasks/inbox-bulk-bar.test.tsx</code> — update
+      <em>“gates Classify by shape (childless roots) and Move by type”</em> to the new rule: Classify
+      is live for an all-unclassified selection and disabled with the new hint the moment a typed
+      row joins it.</li>
+  </ul>
+
+  <h3>6.3 · Storybook</h3>
+  <ul>
+    <li>Add stories to <code>task-row.stories.tsx</code> that open the menu in a <code>play</code>
+      function for each row type (unclassified / task / code story with and without a project), so
+      the menu's shape per type is snapshot-covered. Read the <code>storybook</code> skill first —
+      an open Radix menu renders in a portal, which the image-snapshot setup must be able to see.</li>
+  </ul>
+
+  <h3>6.4 · E2E (Playwright)</h3>
+  <ul>
+    <li>New <code>frontend/e2e/inbox-labels.spec.ts</code>: a captured item → Classify as Task →
+      <b>Folder ▸ Work</b> from the menu → the row's folder chip appears, the ready pip lights,
+      Dispatch enables → dispatch lands it in Work. The code twin: Classify as Code →
+      <b>Project ▸ Alfred</b> → <b>Epic ▸ ALF-140</b> → Dispatch, no gate dialog.</li>
+    <li>Existing <code>classify.spec.ts</code> and <code>code-gate.spec.ts</code> classify from
+      <em>unclassified</em> rows and should pass unchanged — <strong>verify, don't assume</strong>.
+      Drive submenus by keyboard (hover the sub-trigger → <code>ArrowRight</code> →
+      <code>ArrowDown</code>/<code>Enter</code>); synthetic pointer clicks race Radix's safe
+      triangle, as those specs already document.</li>
+  </ul>
+
+  <h3>6.5 · Demo doc</h3>
+  <p>
+    A user-visible change, so it needs one: <code>docs/demos/ALF-191-contextual-label-menus/</code>
+    (folder-per-demo, branch claimed in front matter — see the <code>demo-lint</code> skill). Capture
+    it with <code>npm run demo</code> and screenshot the running app via
+    <code>npm run screenshot -w frontend</code>. <strong>Follow the <code>showboat</code> skill's
+    evidence rules</strong> — it is the source of truth for what counts as evidence and for keeping
+    <code>exec</code> blocks deterministic; this spec does not restate them. If the Storybook
+    stories move a committed baseline, embed the auto-emitted diff image and approve the new
+    baseline per the <code>storybook</code> skill.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>7 · Acceptance criteria</h2>
+
+  <ul class="ac">
+    <li class="h">The label group</li>
+    <li>A <b>task</b> row's ⋯ menu shows <b>Due date…</b> and <b>Priority…</b> submenus.</li>
+    <li>An <b>undispatched top-level task</b> also shows <b>Folder…</b>; a dispatched task and a subtask do not (a dispatched task still shows <b>Move to…</b>).</li>
+    <li>A <b>code root</b> shows <b>Project…</b>; a <b>childless</b> code root also shows <b>Epic…</b>. A code root with children shows Project but not Epic; a code child shows neither.</li>
+    <li>An <b>unclassified</b> row shows none of the five.</li>
+    <li>Each submenu marks the row's current value with the teal check, including the clear entry (“No folder” / “No project” / “No epic” / “No priority”).</li>
+    <li>The submenus render at every breakpoint — no <code>md:hidden</code> on the label group.</li>
+
+    <li class="h">Writes</li>
+    <li><b>Due date</b> offers Today / Tomorrow / Next week / Custom…, plus <b>No due date</b> only when a date is set; each preset persists that exact ISO date.</li>
+    <li><b>No due date</b> goes through the clear path, so a task with a recurrence rule loses the rule too.</li>
+    <li><b>Custom…</b> closes the menu and opens the <code>Calendar</code> popover anchored to the ⋯ button; picking a day persists it, “Clear” clears it, Escape dismisses without a write.</li>
+    <li><b>Priority</b> offers “No priority” + High / Medium / Low with their glyphs, matching <code>PriorityMenu</code>.</li>
+    <li><b>Folder</b> lists the folders plus “No folder”, and writes through <code>setFolder</code> — a label, not a move: the row stays in the Inbox.</li>
+    <li><b>Epic</b> is disabled with <code>title="Pick a project first"</code> while <code>intended_project_id</code> is null, and lists only the selected project's epics otherwise.</li>
+    <li>Changing the <b>project</b> from the menu clears the epic hint in the same write (Epic falls back to “No epic”).</li>
+    <li>Every pick auto-saves optimistically and rolls back with the store's existing failure toast — no new error handling.</li>
+
+    <li class="h">Dispatch readiness</li>
+    <li>Setting the missing label from the menu flips the row's ready pip on and enables <b>Dispatch</b> in the same menu-open session, with no page reload and no detail panel.</li>
+    <li>The bulk bar's readiness line updates from the same store change.</li>
+
+    <li class="h">Classify</li>
+    <li><b>Classify as…</b> is <b>absent</b> — not disabled — on any row whose <code>item_type</code> is <code>task</code> or <code>code</code>.</li>
+    <li>It still appears, enabled, on an unclassified row, and both Task and Code still work from it.</li>
+    <li>No “Only a top-level item with no subtasks can change type” hint remains anywhere in the row menu.</li>
+    <li>The bulk bar's <b>Classify as</b> button is enabled only when every selected row is unclassified, and its disabled hint reads <em>“Only unclassified items can be classified”</em>.</li>
+
+    <li class="h">Structure &amp; guardrails</li>
+    <li>The five submenus are built from one shared atom, not five copies of the sub-trigger + item markup.</li>
+    <li><code>detail-chips.tsx</code> uses the extracted option builders, and its existing tests pass with no assertion changes.</li>
+    <li>Exactly one <code>addDays</code> exists in the frontend; habits call sites are unchanged.</li>
+    <li><code>npm run check</code> is green, with no new <code>eslint-disable</code>, <code>@ts-expect-error</code>, <code>.skip</code>, or tooling-config edit.</li>
+    <li>A demo doc reproduces via <code>npm run demo -- verify</code>, and the PR description links it as a live blob URL (<code>npm run demo -- pr-link</code>).</li>
+  </ul>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <h2>8 · Out of scope</h2>
+  <ul>
+    <li><b>Repeat</b> stays panel-only. It is not in the ticket, and its “Custom…” opens a full modal editor — a heavier detour than the calendar popover, for a field that is set far less often.</li>
+    <li><b>Notes</b> stay panel-only (a textarea is not a menu).</li>
+    <li><b>Creating</b> a project, epic or folder from the menu. The pickers select from what exists — creation stays the gate's and the sidebar's affordance, exactly as the detail chips have it.</li>
+    <li><b>The Code module's own surfaces</b> (board, backlog, story detail, <code>epic-block</code>'s ⋯). This ticket is the Tasks row menu; a code story's epic <em>after</em> it reaches the factory is a different field on a different table.</li>
+    <li><b>The By-Priority view's ⋯ menu</b> (ALF-162). Not implemented yet; when it is, it reuses <code>TaskRowMenu</code> and inherits this change for free.</li>
+    <li><b>A confirmation or undo for the removed re-classify path.</b> Delete + re-capture is the accepted recovery, per the ticket.</li>
+  </ul>
+
+  <h2>9 · Open questions</h2>
+  <p>
+    Scope, gates, presets and the Classify removal were settled with the owner during refinement.
+    One decision is deliberately deferred to the implementation session, because only the running
+    code can answer it:
+  </p>
+  <ul>
+    <li>
+      <b>Does the <code>Custom…</code> → popover handoff need a deferred open?</b> §5.5 names both
+      shapes and the tell. Take whichever works, and record the answer in the
+      <code>shadcn-ui</code> skill.
+    </li>
+  </ul>
+
+  <p class="small" style="margin-top:2.5rem">
+    Spec for ALF-191 · refinement phase · no implementation in this PR.
+  </p>
+
+</div>
+</body>
+</html>
