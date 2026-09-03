@@ -587,6 +587,151 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const respaceOnCreateResult = await attempt(
+    'a creation respaces the Backlog when the float gap between two ranks has closed (the dispatch 409 outage)',
+    async () => {
+      // The production failure: every code dispatch lands at the MIDPOINT of two ranks, so each
+      // one halves the gap. After ~50 dispatches into the same project the two bounding ranks are
+      // ADJACENT doubles, their midpoint rounds onto one of them, and the unique index rejects it
+      // — `duplicate key value violates unique constraint "code_items_priority_key"`, a permanent
+      // 409 on every subsequent dispatch (the transaction rolls back, so the next attempt
+      // recomputes the same collision).
+      const projectGap = 'f1111111-1111-4111-8111-111111111111';
+      const epicGap = 'f2222222-2222-4222-8222-222222222222';
+      const projectRan = 'f3333333-3333-4333-8333-333333333333';
+      const epicRan = 'f4444444-4444-4444-8444-444444444444';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'GAP', 'Gapless', 'ac3charland', 'gapless'),
+                  ($2, 'RAN', 'Ranked', 'ac3charland', 'ranked')`,
+        [projectGap, projectRan],
+      );
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Gap Epic', 1, 'GAP-1'), ($3, $4, 'Ran Epic', 1, 'RAN-1')`,
+        [epicGap, projectGap, epicRan, projectRan],
+      );
+
+      // 20000 sits in [2^14, 2^15), so its ULP is 2^-38: `20000 + 2^-38` is the very next double,
+      // and there is no representable rank between them. Assert that degeneracy from Postgres
+      // rather than trusting the arithmetic — if a future column type made the midpoint land
+      // cleanly, this check would be proving nothing and should say so.
+      const { rows: mathRows } = await client.query<{ degenerate: boolean }>(
+        `select (a + b) / 2.0 = a as degenerate
+           from (values (20000::float8, 20000::float8 + power(2::float8, -38))) as t(a, b)`,
+      );
+      if (mathRows[0]?.degenerate !== true)
+        throw new Error(
+          'the two seeded ranks are not adjacent doubles — the fixture proves nothing',
+        );
+
+      const above = await createStory(client, 'the rank above', projectGap, epicGap);
+      const top = await createStory(client, 'the project top', projectRan, epicRan);
+      await client.query(`update code_items set priority = 20000 where ref = $1`, [above.ref]);
+      await client.query(
+        `update code_items set priority = 20000 + power(2::float8, -38) where ref = $1`,
+        [top.ref],
+      );
+
+      // The whole Backlog order, so the respace can be held to preserving it.
+      const orderOf = async (): Promise<string[]> => {
+        const { rows } = await client.query<{ ref: string }>(
+          `select ref from code_items order by priority`,
+        );
+        return rows.map((row) => row.ref);
+      };
+      const before = await orderOf();
+
+      // The dispatch a browser makes: gate an inbox item into RAN, whose top rank has no room
+      // above it. Before the respacing guard this raised 23505 and PostgREST answered 409.
+      const { rows: itemRows } = await client.query<{ id: string }>(
+        `insert into items (title, item_type) values ('a story with nowhere to land', 'task')
+           returning id`,
+      );
+      const itemId = itemRows[0]?.id;
+      if (itemId === undefined) throw new Error('could not seed an inbox item');
+      const { rows: gated } = await asRole(client, 'authenticated', () =>
+        client.query<{ ref: string }>(`select ref from enter_code_module($1, $2, $3)`, [
+          itemId,
+          projectRan,
+          epicRan,
+        ]),
+      );
+      const freshRef = gated[0]?.ref;
+      if (freshRef === undefined) throw new Error('enter_code_module returned no row');
+
+      // Respacing is a renumbering, never a reordering: the same refs in the same sequence, with
+      // the new story slotted between the two ranks that had no room between them.
+      const after = await orderOf();
+      const withoutFresh = after.filter((ref) => ref !== freshRef);
+      if (withoutFresh.join(',') !== before.join(','))
+        throw new Error(
+          `respacing reordered the Backlog: ${before.join(',')} → ${withoutFresh.join(',')}`,
+        );
+      const freshAt = after.indexOf(freshRef);
+      if (after[freshAt - 1] !== above.ref || after[freshAt + 1] !== top.ref)
+        throw new Error(
+          `new story landed at ${String(freshAt)} (between ${String(after[freshAt - 1])} and ` +
+            `${String(after[freshAt + 1])}), not between ${above.ref} and ${top.ref}`,
+        );
+
+      const freshPriority = await priorityOf(client, freshRef);
+      return `two adjacent doubles respaced to whole ranks; the gated story landed at ${String(freshPriority)} between ${above.ref} and ${top.ref}`;
+    },
+  );
+
+  const respaceOnMoveResult = await attempt(
+    'a project-scoped bump respaces the Backlog when the float gap has closed (the dispatch 409 outage)',
+    async () => {
+      // The reorder twin of the creation check: move_code_priority_in_project midpoints against
+      // the same two bounds, so the chevron hits the same wall the dispatch did.
+      const projectTig = 'f5555555-5555-4555-8555-555555555555';
+      const epicTig = 'f6666666-6666-4666-8666-666666666666';
+      const projectVEL = 'f7777777-7777-4777-8777-777777777777';
+      const epicVel = 'f8888888-8888-4888-8888-888888888888';
+      await client.query(
+        `insert into projects (id, key, name, repo_owner, repo_name)
+           values ($1, 'TIG', 'Tight', 'ac3charland', 'tight'),
+                  ($2, 'VEL', 'Velum', 'ac3charland', 'velum')`,
+        [projectTig, projectVEL],
+      );
+      await client.query(
+        `insert into epics (id, project_id, name, ref_number, ref)
+           values ($1, $2, 'Tig Epic', 1, 'TIG-1'), ($3, $4, 'Vel Epic', 1, 'VEL-1')`,
+        [epicTig, projectTig, epicVel, projectVEL],
+      );
+
+      // 40000 is in [2^15, 2^16), so its ULP is 2^-37 — the same adjacency one binade up, kept
+      // clear of the ranks the creation check left behind.
+      const above = await createStory(client, 'the tight rank above', projectVEL, epicVel);
+      const top = await createStory(client, 'the tight project top', projectTig, epicTig);
+      const low = await createStory(client, 'the story being bumped', projectTig, epicTig);
+      await client.query(`update code_items set priority = 40000 where ref = $1`, [above.ref]);
+      await client.query(
+        `update code_items set priority = 40000 + power(2::float8, -37) where ref = $1`,
+        [top.ref],
+      );
+      await client.query(`update code_items set priority = 41000 where ref = $1`, [low.ref]);
+
+      await asRole(client, 'authenticated', () =>
+        client.query(`select move_code_priority_in_project($1, $2)`, [low.ref, true]),
+      );
+
+      const { rows } = await client.query<{ ref: string }>(
+        `select ref from code_items where ref = any($1) order by priority`,
+        [[above.ref, top.ref, low.ref]],
+      );
+      const order = rows.map((row) => row.ref);
+      if (order.join(',') !== [above.ref, low.ref, top.ref].join(','))
+        throw new Error(
+          `bumped story landed in order ${order.join(',')}, expected ` +
+            [above.ref, low.ref, top.ref].join(','),
+        );
+
+      return `bumped above ${top.ref} without crossing ${above.ref}, through a respace`;
+    },
+  );
+
   const taskItemsColumnsResult = await attempt(
     'task_items view surfaces late-added items columns (priority, recurrence) (0011)',
     async () => {
@@ -2369,6 +2514,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     inProjectRpcContractResult,
     outstandingProjectDefaultResult,
     outstandingProjectMoveResult,
+    respaceOnCreateResult,
+    respaceOnMoveResult,
     taskItemsColumnsResult,
     intendedProjectResult,
     intendedEpicResult,
