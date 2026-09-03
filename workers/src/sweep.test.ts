@@ -36,6 +36,10 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     id: 'item-1',
     title: 'Call the dentist friday',
     notes: WIRE_NULL,
+    // Not null in the database, defaulted to 'unclassified' — the absence of a decision, and the
+    // shape every capture arrives in. It rides the verdict write as a compare-and-set filter, so
+    // a fixture that left it out would be testing a row shape that cannot exist.
+    item_type: 'unclassified',
     // Not null in the database, defaulted to 0, and always selected by the sweep — so a fixture
     // that left it out would be testing a row shape that cannot exist.
     classify_attempts: 0,
@@ -302,11 +306,12 @@ describe('the write', () => {
 
     const written = patches(calls);
     expect(written).toHaveLength(1);
-    // Compare-and-set on the marker: Cloudflare does not serialize scheduled invocations, so a
-    // long tick can overlap the next one and both read the same still-unmarked rows. The loser
-    // matches nothing rather than overwriting a verdict already written.
+    // Compare-and-set on the marker AND on the type the verdict was judged under: Cloudflare does
+    // not serialize scheduled invocations, so a long tick can overlap the next one and both read
+    // the same still-unmarked rows, and a hand-classify no longer stamps the marker at all. The
+    // loser matches nothing rather than overwriting an answer already recorded.
     expect(written[0]?.url).toBe(
-      'https://proj.supabase.co/rest/v1/items?id=eq.a&classified_at=is.null',
+      'https://proj.supabase.co/rest/v1/items?id=eq.a&classified_at=is.null&item_type=eq.unclassified',
     );
     expect(written[0]?.body).toEqual({
       item_type: 'task',
@@ -315,7 +320,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 1,
+      classified_prompt_version: 2,
       classified_guess: { item_type: 'task', priority: 'high', due_date: '2026-08-07' },
     });
   });
@@ -346,7 +351,7 @@ describe('the write', () => {
       classified_at: NOW.toISOString(),
       classified_provider: 'anthropic',
       classified_model: 'claude-haiku-4-5',
-      classified_prompt_version: 1,
+      classified_prompt_version: 2,
       classified_guess: {},
     });
     expect(summary.classified).toBe(1);
@@ -392,5 +397,74 @@ describe('the write', () => {
     // There is no row left to mark and nothing to count — the next tick simply won't see it.
     expect(patches(calls)).toHaveLength(1);
     expect(summary).toEqual({ eligible: 1, classified: 0, failed: 1, aborted: false });
+  });
+
+  it('sends the compare-and-set on the type it read, for an item the owner already typed', async () => {
+    const { calls } = mockSupabase({ items: [row({ id: 'a', item_type: 'task' })] });
+    mockClassify({ ok: verdict({ item_type: 'task', folder_id: FOLDER }) });
+
+    await runSweep(env, NOW);
+
+    expect(patches(calls)[0]?.url).toBe(
+      `https://proj.supabase.co/rest/v1/items?id=eq.a&classified_at=is.null&item_type=eq.task`,
+    );
+  });
+
+  it('leaves a row re-typed mid-flight for the next tick, burning no attempt', async () => {
+    // The race the filter exists for: the sweep read `unclassified`, the owner set a type while
+    // the request was in flight, and the verdict was judged under a type the row no longer has.
+    const { calls } = mockSupabase({
+      items: [row({ id: 'a' }), row({ id: 'b' })],
+      patchRows: () => [],
+    });
+    mockClassify({ ok: verdict({ item_type: 'task' }) });
+    const logged = captureErrors();
+
+    const summary = await runSweep(env, NOW);
+
+    // One PATCH per item and no attempt counter among them — the retry mechanism is the loop,
+    // and the next tick re-reads the owner's type and judges under it.
+    expect(patches(calls)).toHaveLength(2);
+    for (const call of patches(calls)) {
+      expect(Object.keys(call.body ?? {})).not.toContain('classify_attempts');
+    }
+    expect(summary).toEqual({ eligible: 2, classified: 0, failed: 2, aborted: false });
+    expect(logged.join(' ')).toContain('re-typed before its write');
+  });
+
+  it("fills a hand-classified row's gaps without ever restating its type", async () => {
+    // The common case now that classifying no longer claims the row: the owner typed it `task` so
+    // it could hold children, and the sweep is filling in what it left blank.
+    const { calls } = mockSupabase({ items: [row({ item_type: 'task' })] });
+    mockClassify({
+      ok: verdict({ item_type: 'task', priority: 'high', due_date: '2026-08-09' }),
+    });
+
+    await runSweep(env, NOW);
+
+    const body = patches(calls)[0]?.body ?? {};
+    expect(body).not.toHaveProperty('item_type');
+    expect(body).toMatchObject({ priority: 'high', due_date: '2026-08-09' });
+  });
+
+  it('fills nothing at all when the verdict disagrees about a held type', async () => {
+    const { calls } = mockSupabase({ items: [row({ item_type: 'task' })] });
+    mockClassify({
+      ok: verdict({ item_type: 'code', intended_project_id: 'project-1', priority: 'high' }),
+    });
+
+    await runSweep(env, NOW);
+
+    // Task-only fields die in validation (the verdict says code); code-only fields die in the
+    // merge (the row will still be a task). The row is stamped anyway — one wasted call, zero
+    // fields, no second chance. Pinning item_type to the held value in the OUTPUT SCHEMA is what
+    // makes this unreachable in production, and this is the outcome it buys off.
+    expect(patches(calls)[0]?.body).toEqual({
+      classified_at: NOW.toISOString(),
+      classified_provider: 'anthropic',
+      classified_model: 'claude-haiku-4-5',
+      classified_prompt_version: 2,
+      classified_guess: { item_type: 'code' },
+    });
   });
 });

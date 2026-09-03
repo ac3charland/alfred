@@ -230,8 +230,13 @@ function keepIf(
  * The item's own decision about its type, or absent when nobody has made one. `unclassified` is
  * the column's default and the shape every capture arrives in, so it is emphatically not a value
  * the classifier must leave alone.
+ *
+ * Exported because the prompt asks the same question the merge does: a row that already holds a
+ * type is told so, and has that type pinned in its output schema, precisely so the verdict it
+ * gets back is one the merge can use. Two readings of "has the owner decided?" would be one
+ * rename away from disagreeing.
  */
-function decidedType(item: SweepItem): ItemType | undefined {
+export function decidedType(item: SweepItem): ItemType | undefined {
   return item.item_type === 'task' || item.item_type === 'code' ? item.item_type : undefined;
 }
 

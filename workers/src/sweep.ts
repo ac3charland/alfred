@@ -226,14 +226,20 @@ async function writeVerdict(
         // Abstained fields serialise away entirely, which the diff reads the same as a null.
         classified_guess: guess,
       },
-      // Compare-and-set on the marker, so an overlapping tick cannot overwrite a verdict already
-      // written. The loser matches nothing and takes the branch below.
-      { onlyIfUnclassified: true },
+      // Compare-and-set on the marker AND on the type this verdict was judged under, so neither
+      // an overlapping tick nor the owner re-typing the row mid-flight can be written over. The
+      // whole payload is derived from the type as READ — which fields are legal, which are gaps —
+      // so the precondition is simply "nothing about the type moved under me".
+      { onlyIfUnclassified: true, onlyIfItemType: item.item_type },
     );
     if (rows === 0) {
-      // Nothing matched: the row was deleted between the sweep query and the write, or another
-      // tick classified it first. Either way there is nothing to mark and nothing to count.
-      console.error(`classifier: item ${item.id} was gone or already classified before its write`);
+      // Nothing matched: the row was deleted between the sweep query and the write, another tick
+      // classified it first, or the owner re-typed it. Either way there is nothing to mark and
+      // nothing to count — and a re-typed row is simply still eligible on the next tick, which
+      // re-reads the owner's type and judges under it.
+      console.error(
+        `classifier: item ${item.id} was gone, already classified, or re-typed before its write`,
+      );
       return false;
     }
     return true;
