@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spike — Composable shared skills across repos</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: .7rem; font-weight: 700;
+             color: var(--accent); margin: 0 0 .5rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.2rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+  .card.teal { border-left: 3px solid var(--accent); }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  ul.tight li, ol.tight li { margin: .25rem 0; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--no); font-weight: 600; }
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .alt { border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; }
+  .alt h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--muted); }
+  .alt p { margin: .35rem 0; font-size: .92rem; }
+  .verdict { font-size: .88rem; margin-top: .5rem; }
+  .verdict .k { display: inline-block; min-width: 5.4rem; font-size: .68rem; font-weight: 700;
+                letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">Spike · findings</p>
+<h1>Composable shared skills across repos</h1>
+<p class="sub">
+  Can the SDLC skills be decomposed so the general guidance lives once in <code>oddobot-skills</code>
+  and each consuming repo contributes its own project-specific material — without either half rotting?
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>1 · Where we landed</h2>
+
+<div class="card teal">
+<p><b>Build a small composer, not a framework.</b> Each shared skill becomes a template in
+<code>oddobot-skills</code> carrying variables and named slots. Consuming repos vendor a committed copy of
+those templates, supply their own <code>vars.json</code> and fragment files, and a compose step emits a
+<b>generated-but-committed</b> <code>SKILL.md</code>. Insights discovered in a project flow back up through an
+inbox in the shared repo, with the one judgment step — integrating prose — left to a human or an LLM,
+never to a script.</p>
+<p><b>On the larger question:</b> the plumbing is commodity (<code>copier</code>, <code>cruft</code>), and the
+skills-specific tooling genuinely does not exist. But demand is currently thin, and only one piece of this
+is novel: <b>LLM-mediated semantic merge of prose, with bidirectional flow</b>. Build the composer as a
+standalone package, instrument which mechanisms actually fire, and revisit the “is this a product” question
+in 60 days with data rather than a hunch.</p>
+</div>
+
+<h3>Decisions</h3>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Question</th><th>Decision</th><th>Rationale in one line</th></tr></thead>
+<tbody>
+<tr><td>How shared content reaches a repo</td><td><b>Vendor + commit</b> into <code>.claude/shared-skills/</code>, synced by script, manifest pins the source SHA</td><td>Network required only on a deliberate sync — never at <code>npm ci</code> or session start.</td></tr>
+<tr><td>Where composed output lives</td><td><code>SKILL.md</code> is <b>generated and committed</b>, with a DO-NOT-EDIT banner</td><td>Skills load at session start, before any build runs; a gitignored SKILL.md means no skill in a fresh container.</td></tr>
+<tr><td>Composition mechanisms</td><td><b>Variables + named slots.</b> No conditionals.</td><td>Vars cover phrase-level drift; slots cover added sections. Conditionals are avoided by writing shared prose that is universally true.</td></tr>
+<tr><td>Override power</td><td><b>Add-only.</b> A project can fill and insert, never delete or rewrite shared sentences.</td><td>Forces the shared prose to stay honest; a silently-forked body is most of the value gone.</td></tr>
+<tr><td>Missing config</td><td><b>Fail loud, unless explicitly opted out</b> (<code>"slot-name": null</code>)</td><td>Nothing is ever silently absent, but a repo needn't invent content to make compose pass.</td></tr>
+<tr><td>Where project content lives</td><td><code>local/vars.json</code> + <code>local/fragments/*.md</code>, inside the skill folder</td><td>Discoverable from an <code>ls</code>; an agent can answer “where does this go” in one tool call.</td></tr>
+<tr><td>Upstream flow</td><td>Three stages: CI files fragments into an <b>inbox</b> → integration into template prose → sync PRs downstream</td><td>Deterministic halves in CI; the one judgment step isolated in a single place.</td></tr>
+<tr><td>First wave</td><td><code>refinement</code> + <code>implement-spec</code></td><td>Real, well-understood divergence; small enough to discard if the design is wrong.</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>2 · Why</h2>
+
+<h3>2.1 &nbsp;The divergence is phrase-level, not section-level</h3>
+
+<p>Diffing the four candidate skills between <code>alfred</code> and <code>motivic</code> produces roughly ten
+distinct divergences. <b>Exactly one</b> is a self-contained block that plain concatenation could express
+(motivic's “Publish the spec as a Claude Artifact” step). Every other one is woven into a sentence:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Skill</th><th>Divergence</th><th>Shape</th></tr></thead>
+<tbody>
+<tr><td><code>refinement</code></td><td><code>docs/specs/ALF-42.html</code> → <code>MOT-42</code></td><td>Token substitution</td></tr>
+<tr><td><code>refinement</code></td><td>Mockup sources: <code>frontend/app/globals.css</code> + <code>*.styles.ts</code> → <code>frontend/components/atoms/</code></td><td>Path substitution</td></tr>
+<tr><td><code>refinement</code></td><td>“a <b>migration number</b> above all” → “a fixture index, anything handed out in order”</td><td>Example substitution</td></tr>
+<tr><td><code>refinement</code></td><td>Whole Claude-Artifact publishing step</td><td class="yes">Appendable section</td></tr>
+<tr><td><code>implement-spec</code>, <code>epic-refinement</code></td><td>“The check enforces…” → “<b>Where installed</b>, the check enforces…”</td><td>Conditional hedge</td></tr>
+<tr><td><code>compounding-learning</code></td><td>Three separate hand-maintained lists of which skills exist in the repo</td><td>Enumeration</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Two consequences. First, a concatenation-only composer — the Vercel shape — captures one divergence in
+ten. Variables are not optional. Second, the <b>conditional-hedge class dissolves without machinery</b>: write
+the shared sentence as <i>“Where the <code>alfred-frontmatter</code> check is installed, a PR missing the block
+fails CI”</i>, which is true in both repos, and no <code>{{#if}}</code> is ever needed.</p>
+
+<div class="callout">
+<b>One candidate needs no composition at all.</b> <code>compounding-learning</code>'s entire divergence is
+three hand-maintained enumerations of which skills exist in the repo. An agent can run
+<code>ls .claude/skills/</code>. Deleting those lists makes the skill 100% shareable with zero machinery.
+The cheapest composition is the divergence you delete — audit each candidate for this before building it a composer.
+</div>
+
+<h3>2.2 &nbsp;Manual copying has already rotted</h3>
+
+<p>The <code>What to produce</code> list in <code>refinement</code>, as committed today:</p>
+
+<div class="scroll">
+<table>
+<thead><tr><th></th><th>alfred</th><th>motivic</th></tr></thead>
+<tbody>
+<tr><td>1.</td><td>A spec at <code>docs/specs/&lt;REF&gt;.html</code></td><td>A spec at <code>docs/specs/&lt;REF&gt;.html</code></td></tr>
+<tr><td>2.</td><td class="no">— missing —</td><td>Publish the spec as a Claude Artifact</td></tr>
+<tr><td>3.</td><td>A pull request</td><td>A pull request</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><code>alfred/.claude/skills/refinement/SKILL.md:62</code> is literally numbered <code>3.</code> with no
+<code>2.</code> above it — a hole left by copying between the repos. This is the failure the spike exists to
+fix, and it also constrains the mechanism: <b>an ordered list inside a composable region is a trap</b>, because
+inserting a slot shifts every ordinal after it. Shared templates should use lazy <code>1.</code> numbering
+(markdown auto-numbers) or named steps.</p>
+
+<h3>2.3 &nbsp;The generated-file trap is the sharpest risk</h3>
+
+<p><code>CLAUDE.md</code>'s compounding-learning rule instructs every agent to record an insight <b>into the
+SKILL.md, the same turn it hits the gotcha</b>. If <code>SKILL.md</code> becomes generated output, that edit is
+silently wiped on the next compose. This is the most likely way the system rots, and it needs three defences,
+not one:</p>
+
+<ul class="tight">
+<li>A <code>DO-NOT-EDIT — generated from &lt;source&gt;</code> banner atop every composed <code>SKILL.md</code>.</li>
+<li>A <b>recompose-diff check in <code>check:fast</code></b> that fails when the committed output differs from a
+fresh build — catching the wipe before it merges.</li>
+<li>An edit to <code>compounding-learning</code> itself teaching the routing decision, so “where does this go” is
+answered explicitly rather than by vibes.</li>
+</ul>
+
+<h3>2.4 &nbsp;Vercel's pattern does not transfer</h3>
+
+<p><code>vercel-labs/agent-skills</code> composes <code>react-best-practices</code> from ~40 files under
+<code>rules/</code>, each with <code>title</code> / <code>impact</code> / <code>tags</code> frontmatter, compiled
+by <code>pnpm build</code> into <code>AGENTS.md</code>. That works because the atoms are <b>independent rules</b>.
+The SDLC skills are <b>narrative workflows</b>, where project detail is woven mid-sentence.</p>
+
+<p>More importantly, the <code>rules/</code> split is <b>authoring convenience for Vercel, not a consumer
+extension point</b>. The <code>npx skills</code> CLI has no idea those files exist; a consumer cannot add a rule.
+Their model is one-directional publish: <code>add</code> defaults to <b>symlinking each agent to one canonical
+copy</b>, <code>update</code> overwrites, there is no lockfile, no drift detection, no merge strategy, and no
+documented story for local modification or contributing back. Skills are read-only artifacts; if you disagree
+with one, you fork. That is coherent — and it is the opposite of what we need.</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>3 · Technical shape</h2>
+
+<h3>3.1 &nbsp;Layout</h3>
+
+<pre><code>oddobot-skills/
+  skills/refinement/
+    SKILL.md.tpl              shared prose + {{VARS}} + &lt;!-- slot: name --&gt;
+    skill.json                declares vars and slots (required | optional)
+  scripts/compose.mjs         zero-dep; vendored alongside the content
+  inbox/&lt;repo&gt;/&lt;skill&gt;/*.md   fragments awaiting integration
+
+alfred/.claude/
+  shared-skills/              VENDORED — never hand-edited
+    .manifest.json            { source: "ac3charland/oddobot-skills", sha: "…" }
+    refinement/SKILL.md.tpl
+    scripts/compose.mjs
+  skills/refinement/
+    SKILL.md                  GENERATED · COMMITTED · DO-NOT-EDIT
+    local/vars.json           { "REF_PREFIX": "ALF", "spec-artifact-publishing": null }
+    local/fragments/*.md      project content + queued insights</code></pre>
+
+<p class="small"><b>Vendoring</b> means a literal copy of the upstream source committed into the consuming repo —
+present in any clone, including a fresh Claude Code web container with no network.
+<code>npm run skills:sync</code> is the only writer: shallow-clone upstream, overwrite, record the SHA, recompose.</p>
+
+<h3>3.2 &nbsp;The fragment — one file format for two purposes</h3>
+
+<pre><code>---
+slot: spec-authoring-gotchas
+scope: shared            # or: project
+---
+Don't put acceptance criteria inside &lt;details&gt; — reviewers skim past
+a collapsed block and sign off without reading it.</code></pre>
+
+<p><code>compose</code> treats both scopes identically, so the insight is <b>live in this repo the moment it is
+written</b> — zero cross-repo latency at the point of learning. <code>scope</code> only declares where it
+eventually belongs. Fragments in a slot sort by filename.</p>
+
+<h3>3.3 &nbsp;Upstream flow</h3>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Stage</th><th>Where</th><th>Trigger</th><th>Does</th><th>Nature</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>alfred / motivic CI</td><td>merge to <code>main</code></td><td>Copies <code>scope: shared</code> fragments into <code>oddobot-skills/inbox/</code> via PR</td><td class="yes">Deterministic</td></tr>
+<tr><td>2</td><td>oddobot-skills</td><td>inbox non-empty</td><td>Integrates fragments into the template prose; PR against the templates</td><td class="no">Judgment</td></tr>
+<tr><td>3</td><td>oddobot-skills CI</td><td>merge to <code>main</code></td><td>Opens <code>skills:sync</code> + recompose PRs in each consumer</td><td class="yes">Deterministic</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout">
+<b>Stage 2 cannot be a script, and this is the crux of the design.</b> A GitHub Action can only append the
+fragment verbatim — producing exactly the bolt-on accretion <code>compounding-learning</code> exists to prevent.
+The skill would then state the same thing twice, in two voices, in two places. Such a PR <i>looks</i> finished —
+green checks, sensible diff — which is what makes it dangerous: it invites rubber-stamping while every one of
+them still needs the merge-into-the-prose work done by hand.
+</div>
+
+<p>The <b>inbox aggregates</b>, which a per-repo promotion job structurally cannot. If alfred and motivic both
+learn the same thing, stage 2 sees both fragments side by side and writes one good sentence. The tell that a
+promotion worked: the composed <code>SKILL.md</code> diff downstream is near-empty — the text moved from slot
+to body and what the agent reads barely changed. A large diff means the integration rewrote meaning.</p>
+
+<h3>3.4 &nbsp;Two tiers, only one gets machinery</h3>
+
+<div class="dec">
+<h3>Tier 1 — parameterized divergence</h3>
+<p>Ticket prefixes, repo paths, the Artifact-publishing step. Permanent, expected, per-repo.</p>
+<p class="why"><b>Mechanism:</b> vars and slots. The composer's job.</p>
+</div>
+
+<div class="dec">
+<h3>Tier 2 — a general rewrite of shared prose</h3>
+<p>An improvement to the core body that applies to every consumer. <b>No local mechanism at all</b> — it goes
+straight upstream as a PR to <code>oddobot-skills</code>.</p>
+<p class="why"><b>Why no mechanism:</b> the patch-queue machinery that would justify a local override assumes
+waiting days on someone else's maintainers. <b>We are upstream.</b> With <code>skills:sync</code> as one command,
+the full round trip — PR up, merge, sync down, recompose — is about five minutes. A patch queue to avoid five
+minutes is machinery that outlives its justification.</p>
+</div>
+
+<p>The one case that bites: an agent mid-session on a feature branch hits a general gotcha and cannot merge an
+upstream PR itself. It files a tier-2 note in the inbox describing the change, and that note <b>does not compose
+into the local SKILL.md</b>. The repo's agents don't benefit until it syncs. That is a real, knowing loss. If it
+turns out to hurt, the cheap fix is Debian's pressure mechanism rather than its machinery: let such a note compose
+into a marked “Pending upstream” section, and have <code>compose</code> warn once it has survived N syncs.</p>
+
+<h3>3.5 &nbsp;Two failure modes named “routing around”</h3>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Mode</th><th>Symptom</th><th>Defence</th></tr></thead>
+<tbody>
+<tr><td><b>a.</b> The pass never runs</td><td>Fragments pile up, the library ossifies</td><td>Stage 1 in CI — fires on merge, needs no habit</td></tr>
+<tr><td><b>b.</b> Nothing gets marked <code>scope: shared</code></td><td>Queue stays empty; the system <i>looks</i> healthy</td><td>DO-NOT-EDIT banner + recompose-diff check + <code>compounding-learning</code> teaching the scope decision explicitly</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Mode (b) is the quieter one. Writing a local fragment will always be less work than editing shared prose, and
+marking everything <code>scope: project</code> is the choice with no consequences. CI does not touch this; only the
+three defences above do.</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>4 · Appealing alternatives we're not taking</h2>
+
+<div class="alt">
+<h3>Use <code>copier</code> instead of building a composer</h3>
+<p><code>copier</code> is a project-scaffolding tool with <code>copier update</code>: a native three-way merge that
+syncs a generated project with an evolving template while preserving local edits. A <code>.copier-answers.yml</code>
+is the manifest; a weekly CI job that opens an MR when the template moves is an established idiom. It looks like a
+near-perfect fit.</p>
+<p class="verdict"><span class="k">Ruled out</span> Its model assumes the output <b>is</b> hand-edited — that is what
+the merge is for. We chose <b>add-only</b>, where output is generated and a check fails if anyone touches it. Those
+premises conflict at the root. Secondary friction: one answers-file per destination (per-skill config means N
+invocations); Jinja delimiters collide with skill content that legitimately contains <code>{{ }}</code> and
+<code>{%</code>; no named-slot concept; and it puts Python in a <code>check:fast</code> gate that currently has one
+runtime.</p>
+<p class="verdict"><span class="k">Steal</span> The design, not the tool: answers-file-as-manifest, three-way merge
+as the conflict model, CI-opens-an-MR-when-upstream-moves.</p>
+<p class="verdict"><span class="k">Adjacent</span> <code>copier</code> <i>is</i> right for scaffolding a <b>new</b>
+repo with the whole alfred/motivic setup — CLAUDE.md, husky, check tiers, <code>tools/</code> — where output-you-edit
+-freely is exactly the model. Different problem, worth its own look.</p>
+</div>
+
+<div class="alt">
+<h3>npm git dependency on <code>oddobot-skills</code></h3>
+<p>Elegant versioning, no vendored copy, no sync script.</p>
+<p class="verdict"><span class="k">Ruled out</span> <code>oddobot-skills</code> is private, so every <code>npm ci</code>
+— in CI and in every ephemeral Claude Code web container — would need a GitHub token. Install-time network and auth
+is exactly the dependency vendoring exists to remove.</p>
+</div>
+
+<div class="alt">
+<h3>Git submodule</h3>
+<p>True single source with real SHA pinning.</p>
+<p class="verdict"><span class="k">Ruled out</span> Submodules need explicit init; a fresh web-session clone can land
+with an empty directory and therefore no skills at all. The failure is silent and total.</p>
+</div>
+
+<div class="alt">
+<h3>Claude Code plugin marketplace</h3>
+<p><code>alfred/.claude/settings.json</code> already carries <code>enabledPlugins</code>, so repo-level plugin
+enablement is a mechanism in use here today.</p>
+<p class="verdict"><span class="k">Ruled out for composed skills</span> Plugin skills install per-developer and cannot
+be merged with project-local fragments. Still a reasonable route for <b>fully-shared</b> skills like
+<code>code-walkthrough</code> that need no composition. (Whether a marketplace can be served from a private repo was
+not verified.)</p>
+</div>
+
+<div class="alt">
+<h3>Conditionals in the template (<code>{{#if}}</code>)</h3>
+<p>Would let one template carry both “the check enforces this” and “where installed, the check enforces this”.</p>
+<p class="verdict"><span class="k">Ruled out</span> Requires a real template engine and makes shared prose unreadable
+as prose. Normalising the sentence to the universally-true phrasing kills the entire class for free.</p>
+</div>
+
+<div class="alt">
+<h3>Full override / local patch queue</h3>
+<p>Maximum expressiveness — every divergence we have today becomes representable, and Debian's
+<code>debian/patches</code> model is proven at far larger scale.</p>
+<p class="verdict"><span class="k">Ruled out</span> A project could silently fork the shared prose and it would never
+show in a diff, which is most of the value gone. Reconsider only if tier-2 latency measurably hurts.</p>
+</div>
+
+<div class="alt">
+<h3>Stage 2 as a scheduled Claude job, now</h3>
+<p>A cron Action in <code>oddobot-skills</code> running Claude against the inbox weekly, fully autonomous.</p>
+<p class="verdict"><span class="k">Deferred, not rejected</span> Manual first: the inbox PRs are visible enough that
+a full queue can't be forgotten, and automating later needs no redesign since the artifact is a PR either way. Doing
+it now means debugging the integration prompt at the same time as the composer.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>5 · Is this a project of its own?</h2>
+
+<h3>5.1 &nbsp;What already exists</h3>
+
+<p><b>The plumbing is commodity.</b> <code>copier</code> and <code>cruft</code> have solved template →
+many-downstream-instances, keep-in-sync, preserve-local-edits for years, including three-way merge and
+CI-raises-an-MR automation.</p>
+
+<p><b>The skills-specific case is empty.</b> <a href="https://github.com/anthropics/skills/discussions/380">anthropics/skills
+Discussion #380</a> requests exactly this — an <code>extends:</code> frontmatter field, motivated by DRY violations
+and “teams must fork the entire skill to customize it.” Posted 13 Feb 2026. Commenters proposed mixins,
+<code>skill.lock</code>, routing skills, tiered loading. <b>Five comments, two reactions, and no maintainer response in
+seven months.</b></p>
+
+<p>Read that in both directions. Nobody has built this — an opening. Almost nobody is asking — a thin market.</p>
+
+<h3>5.2 &nbsp;What is genuinely novel</h3>
+
+<div class="card teal">
+<p><b>Prose has no merge semantics.</b> <code>copier</code>, <code>cruft</code>, Kustomize, Helm, Terraform modules,
+Nix overlays — every one assumes structured data or code, where three-way textual merge is meaningful. Hit a conflict
+inside a markdown paragraph and you get <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> markers in prose: the accretion
+problem again, with worse ergonomics.</p>
+<p><b>And every one is one-directional.</b> There is no <code>copier push</code>. <code>git subtree</code> has
+bidirectional flow but no templating. Nothing has both.</p>
+<p>So the durable primitive is not composition — it is <b>LLM-mediated semantic merge of prose documents with a
+bidirectional flow</b>, novel because it only became possible in roughly the last eighteen months. Skills are just the
+first compelling use case; it applies identically to CLAUDE.md files, runbooks, style guides, ADRs, onboarding docs.</p>
+</div>
+
+<p>This reframe has a strategic consequence: <b>if Anthropic ships <code>extends:</code>, it vaporizes the composition
+half overnight and does not touch the merge half.</b> That argues for building the merge primitive and treating
+composition as scaffolding around it.</p>
+
+<h3>5.3 &nbsp;Arguments against</h3>
+
+<ul class="tight">
+<li><b>n = 2 repos and one user.</b> There is no evidence yet about which mechanism carries the load. If vars fire
+forty times and semantic merge fires twice, there is no project — just a script.</li>
+<li><b>The funnel is narrow.</b> A user needs multiple repos, <i>and</i> enough skill volume that divergence hurts,
+<i>and</i> the discipline to run a sync. “The market will arrive” is the most reliable way to lose a year.</li>
+<li><b>Counter-argument:</b> the composer is getting built for alfred and motivic regardless. The marginal cost of a
+clean standalone CLI boundary over a script buried in <code>tools/</code> is perhaps 20% — a cheap option worth
+buying.</li>
+</ul>
+
+<h3>5.4 &nbsp;Recommended posture</h3>
+
+<ol class="tight">
+<li>Build the composer as a standalone package with a real CLI boundary. Use it in both repos.</li>
+<li><b>Instrument it.</b> Over 60 days, count how often each mechanism fires: vars, slots, tier-2 upstream rewrites,
+integration conflicts. That is free product research.</li>
+<li>Post in Discussion #380 — the cheapest way to learn whether anyone else has this problem.</li>
+<li>Revisit with numbers. A working prototype plus a real use case is a far stronger starting position than a
+framework built on a hunch.</li>
+</ol>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>6 · Cost &amp; open questions</h2>
+
+<h3>Cost</h3>
+
+<div class="scroll">
+<table>
+<thead><tr><th>Piece</th><th>Rough effort</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>compose.mjs</code> + <code>skill.json</code> schema</td><td>S</td><td>Zero-dep Node; vars, slots, fail-loud, banner emission.</td></tr>
+<tr><td><code>skills:sync</code> + manifest</td><td>S</td><td>Shallow clone, overwrite, record SHA.</td></tr>
+<tr><td>Recompose-diff check in <code>check:fast</code></td><td>S</td><td>Must run before <code>skill-lint</code>; lint keeps targeting the composed output, so its messages need to point at the template.</td></tr>
+<tr><td>Migrating <code>refinement</code> + <code>implement-spec</code></td><td>M</td><td>The genuine work: normalising shared prose so add-only suffices.</td></tr>
+<tr><td>Stage 1 + 3 CI</td><td>M</td><td>Cross-repo PR creation needs a token with write access to <code>oddobot-skills</code>.</td></tr>
+<tr><td>Updating <code>compounding-learning</code></td><td>S</td><td>Teach the scope routing decision.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Risks</h3>
+
+<ul class="tight">
+<li><b>Secret placement.</b> Stage 1 needs a token with write access to a private repo, sitting in <b>public</b>
+<code>alfred</code>'s secrets. Needs to be got right.</li>
+<li><b>PR noise.</b> Three repos auto-PRing each other is real churn unless stage 3 is batched or auto-merged.</li>
+<li><b>Oscillation.</b> A bad integration syncs back down and lands wrong text in <i>both</i> repos rather than one.</li>
+<li><b>Vendored staleness.</b> A vendored copy goes stale silently; the manifest SHA is the only visible signal until a
+<code>--check</code> mode exists.</li>
+</ul>
+
+<h3>Open questions</h3>
+
+<ul class="tight">
+<li>Is stage 2 manual or a scheduled Claude job for v1? <i>(Leaning manual — see §4.)</i></li>
+<li><code>oddobot-skills</code> is private while <code>alfred</code> is public, so vendoring publishes the shared content
+anyway. Is the privacy buying anything, and should the shared repo just be public?</li>
+<li>Can a Claude Code plugin marketplace be served from a private repo? Unverified, and it decides whether the
+fully-shared skills can take the simpler route.</li>
+<li>Does <code>skill-lint</code> need a rule for composed skills — e.g. failing a <code>SKILL.md</code> that lacks the
+DO-NOT-EDIT banner?</li>
+<li>How should composed output interact with the “generated files are excluded from formatting &amp; linting” rule?
+<code>skill-lint</code> should still lint it (it is what the agent reads), but the fix belongs in the template.</li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>7 · Sources</h2>
+
+<h4>Read in this repo and its siblings</h4>
+<ul class="tight">
+<li><code>alfred/.claude/skills/{refinement,implement-spec,epic-refinement,compounding-learning}/SKILL.md</code> — diffed against the <code>motivic</code> equivalents.</li>
+<li><code>alfred/.claude/skills/refinement/SKILL.md:62</code> — the <code>1.</code> → <code>3.</code> numbering hole.</li>
+<li><code>alfred/.claude/settings.json</code> — <code>enabledPlugins</code> already in use.</li>
+<li><code>alfred/.github/workflows/</code> — <code>alfred-frontmatter.yml</code> is <b>not</b> installed here; it is a template at <code>docs/code-module/repo-setup/</code> for project repos.</li>
+<li><code>alfred/workers/src/frontmatter.ts</code> — the <code>alfred</code> block parser; ticket refs are free strings, not validated against the board.</li>
+<li><code>alfred/tools/skill-lint/src/rules.ts</code> — existing lint thresholds the composed output must still satisfy.</li>
+<li><code>oddobot-skills/</code> — flat <code>&lt;skill&gt;/SKILL.md</code> layout; one skill; commit <code>c05d942</code> “remove symlink for code-walkthrough skill”.</li>
+</ul>
+
+<h4>External</h4>
+<ul class="tight">
+<li><a href="https://github.com/anthropics/skills/discussions/380">anthropics/skills — Discussion #380, Hierarchical Skills Architecture</a> (13 Feb 2026; 5 comments, 2 reactions, no maintainer reply)</li>
+<li><a href="https://github.com/vercel-labs/agent-skills">vercel-labs/agent-skills</a> — the <code>rules/</code> → <code>AGENTS.md</code> build</li>
+<li><a href="https://github.com/vercel-labs/skills">vercel-labs/skills</a> — the <code>npx skills</code> CLI: symlink-by-default install, <code>update</code> overwrites, no lockfile</li>
+<li><a href="https://cruft.github.io/cruft/">cruft</a> · <a href="https://deepwiki.com/copier-org/copier/3.4-updating-projects">copier — Updating Projects</a> · <a href="https://www.blenddata.nl/en/blogs/cruft-vs-copier-automating-template-updates-at-scale">cruft vs copier</a></li>
+<li><a href="https://vercel.com/docs/agent-resources/skills">Vercel — Agent Skills docs</a></li>
+</ul>
+
+</div>
+</body>
+</html>
