@@ -151,7 +151,8 @@ await waitFor(() => {
   | `expect(el.disabled).toBe(true)` | `expect(el).toBeDisabled()` |
   | `expect(el.value).toBe('foo')` | `expect(el).toHaveValue('foo')` |
   | `expect(el.className).toContain('active')` | `expect(el).toHaveClass('active')` |
-  The ESLint plugin `eslint-plugin-jest-dom` (recommended config, all rules as errors) enforces every row above.
+  | `expect(el.dataset.open).toBe('true')` | `expect(el).toHaveAttribute('data-open', 'true')` |
+  The ESLint plugin `eslint-plugin-jest-dom` (recommended config, all rules as errors) enforces every row above. The data-attribute row is the one with no working alternative: `dataset.open` fails type-check (`@tsconfig/strictest`'s `noPropertyAccessFromIndexSignature`) and `getAttribute('data-open')` is autofixed straight back into it by `unicorn/prefer-dom-node-dataset`.
 
 - **Never use `fireEvent` when `userEvent` will do.** `fireEvent` dispatches a single synthetic event; `userEvent` dispatches the full realistic event sequence a browser would fire (pointerdown, mousedown, focus, keydown, input, keyup, click, etc.). The rule `prefer-user-event` errors on `fireEvent` when a `userEvent` equivalent exists.
 

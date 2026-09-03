@@ -1,5 +1,6 @@
 'use client';
 
+import type { RealtimePostgresUpdatePayload } from '@supabase/supabase-js';
 import * as React from 'react';
 
 import * as api from '@/lib/api-client';
@@ -10,6 +11,8 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
+import { createClient } from '@/lib/supabase/client';
+import { classifierVerdictPatch } from '@/lib/tasks/classification';
 import { dispatchReadiness } from '@/lib/tasks/dispatch';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import { DEFAULT_TASK_SORT, type TaskSortMode, sortNodesBy } from '@/lib/tasks/task-sort';
@@ -319,6 +322,38 @@ export function TasksProvider({
   React.useEffect(() => {
     showToastRef.current = showToast;
   }, [showToast]);
+
+  // Live classifier verdicts (ALF-196). The sweep Worker fills an untouched capture's labels a
+  // minute or two after it lands — a second, non-browser writer this store never hears from, so
+  // seed-once left the row you were looking at blank until the next reload. Subscribing to the
+  // base `items` table (0031 publishes it) turns that into a push, the same way the code board
+  // hears its swimlane moves.
+  //
+  // The stream carries every write to the table, so `classifierVerdictPatch` — not this callback —
+  // holds the rule for which of them may touch the store, and reads the store's own copy of the
+  // row to apply it. The reducer's `patch` skips ids it no longer holds, so a verdict for a row
+  // that left the store between the guard and the dispatch is harmlessly dropped.
+  React.useEffect(() => {
+    const supabase = createClient();
+    const handleUpdate = (payload: RealtimePostgresUpdatePayload<Item>) => {
+      const row = payload.new;
+      const patch = classifierVerdictPatch(
+        tasksRef.current.find((task) => task.id === row.id),
+        row,
+      );
+      if (patch === null) return;
+      dispatch({ type: 'patch', ids: [row.id], patch });
+    };
+
+    const channel = supabase
+      .channel('items')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'items' }, handleUpdate)
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   const actions = React.useMemo<TaskActions>(
     () => ({

@@ -8,6 +8,7 @@ import {
   chevronIconClass,
   classificationMarkClass,
   classificationMarkGlyphClass,
+  classifiedFlashClass,
   collapseClass,
   collapseInnerClass,
   confirmTitleClass,
@@ -267,6 +268,14 @@ describe('task-row styles', () => {
     // The ordinary row top-aligns its dissolved metadata children (md:items-start); a bare 6px
     // dot needs its own self-center to land on the badges' visual middle instead of their top.
     expect(dispatchReadyPipClass).toContain('self-center');
+  });
+
+  it('just-classified ring is a hairline grey ring, quieter than the search jump’s', () => {
+    expect(classifiedFlashClass).toContain('ring-1');
+    expect(classifiedFlashClass).toContain('ring-inset');
+    // Grey, the provenance mark's own register — the row's five accents are all spoken for.
+    expect(classifiedFlashClass).toContain('ring-muted-foreground/50');
+    expect(classifiedFlashClass).not.toContain('accent-');
   });
 
   it('title is a compact, tight-leading size on mobile, text-sm at md+', () => {

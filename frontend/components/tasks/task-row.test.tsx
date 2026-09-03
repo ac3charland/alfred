@@ -17,6 +17,23 @@ import { TaskRow } from './task-row';
 
 pinClock('2026-07-28T12:00:00.000Z');
 
+// Capture the realtime UPDATE handler TasksProvider subscribes, so a classifier verdict can be
+// driven all the way from the stream into these rows without a live Realtime channel. (Overrides
+// the no-op stub from jest.setup.ts — a file-level mock wins.)
+let mockRealtimeHandler: ((payload: { new: Item }) => void) | undefined;
+jest.mock('@/lib/supabase/client', () => ({
+  createClient: () => {
+    const channel = {
+      on: (_event: string, _filter: unknown, handler: (payload: never) => void) => {
+        mockRealtimeHandler = handler as (payload: { new: Item }) => void;
+        return channel;
+      },
+      subscribe: () => channel,
+    };
+    return { channel: () => channel, removeChannel: () => Promise.resolve('ok') };
+  },
+}));
+
 // api-client is the seam the store calls; mock it so tests never hit the network.
 jest.mock('@/lib/api-client');
 const mockCompleteTask = jest.mocked(apiClient.completeTask);
@@ -165,6 +182,11 @@ function rowFor(title: string): HTMLElement {
   const li = screen.getByText(title).closest('li');
   if (!li) throw new Error(`no row found for "${title}"`);
   return li;
+}
+
+/** The row body inside `title`'s row — the element the highlight rings land on. */
+function rowBody(title: string): HTMLElement {
+  return within(rowFor(title)).getByTestId('task-row-body');
 }
 
 /**
@@ -4395,5 +4417,104 @@ describe('TaskRow — the Week plan badge (ALF-195)', () => {
     // there would be invalid HTML.
     expect(badge.tagName).toBe('SPAN');
     expect(badge.closest('button')).toHaveAttribute('aria-pressed');
+  });
+});
+
+/**
+ * ALF-196 — a classifier verdict landing on a row that is already on screen. The sweep Worker is
+ * the one writer the owner did not press, so these pin the whole path: the realtime stream, the
+ * store's patch, and the row's brief ring saying the labels just arrived.
+ */
+describe('a verdict landing live', () => {
+  const CAPTURE: Item = { ...BASE_ITEM, id: 'i1', title: 'call the dentist' };
+  /** The same row as the sweep leaves it: a task, filed to a folder, stamped with its judge. */
+  const VERDICT: Item = {
+    ...CAPTURE,
+    item_type: 'task',
+    priority: 'high',
+    folder_id: FOLDER.id,
+    classified_at: '2026-07-28T11:59:00Z',
+    classified_provider: 'anthropic',
+    classified_model: 'claude-haiku-4-5',
+    classified_prompt_version: 1,
+    classified_guess: { item_type: 'task', priority: 'high' },
+  };
+
+  const MODEL_MARK = 'Labelled by the classifier';
+  const UNJUDGED_MARK = 'Not yet classified';
+
+  /** Deliver one `items` UPDATE down the stream the store subscribes. */
+  function emitVerdict(row: Item = VERDICT) {
+    act(() => {
+      mockRealtimeHandler?.({ new: row });
+    });
+  }
+
+  it('flips the provenance mark and shows the labels the model chose', () => {
+    renderTasks([{ ...CAPTURE, item_type: 'unclassified' }], { folders: [FOLDER] });
+    expect(screen.getByRole('img', { name: UNJUDGED_MARK })).toBeInTheDocument();
+
+    emitVerdict({ ...VERDICT, item_type: 'unclassified' });
+
+    expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
+    // The folder it guessed is a LABEL, not a move: the row is still in the Inbox, now wearing
+    // the chip that says where it would land.
+    expect(within(rowFor('call the dentist')).getByText(FOLDER.name)).toBeInTheDocument();
+  });
+
+  it('rings the row as the verdict lands, then lets the ring go', () => {
+    jest.useFakeTimers();
+    try {
+      renderTasks([CAPTURE], { folders: [FOLDER] });
+      expect(rowBody('call the dentist')).not.toHaveClass('ring-muted-foreground/50');
+
+      emitVerdict();
+      expect(rowBody('call the dentist')).toHaveClass('ring-muted-foreground/50');
+
+      act(() => {
+        jest.runAllTimers();
+      });
+      expect(rowBody('call the dentist')).not.toHaveClass('ring-muted-foreground/50');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('leaves a row alone when the update carries no verdict', () => {
+    // Every write to the table echoes down this stream — another tab's edit, a claim, a dispatch.
+    // None of them is news, and none of them may hand this row a title older than the one it has.
+    renderTasks([CAPTURE], { folders: [FOLDER] });
+
+    emitVerdict({
+      ...CAPTURE,
+      title: 'stale title',
+      classified_at: '2026-07-28T11:59:00Z',
+      classified_provider: null,
+    });
+
+    expect(screen.getByText('call the dentist')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: UNJUDGED_MARK })).toBeInTheDocument();
+    expect(rowBody('call the dentist')).not.toHaveClass('ring-muted-foreground/50');
+  });
+
+  it('does not ring a row that was already judged when it mounted', () => {
+    // A reload seeds every judged row at once. Only an ARRIVAL is news.
+    renderTasks([VERDICT], { folders: [FOLDER] });
+
+    expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
+    expect(rowBody('call the dentist')).not.toHaveClass('ring-muted-foreground/50');
+  });
+
+  it('updates a select-mode row too, quietly', async () => {
+    // Mid-triage the row is one toggle button whose ring already means "selected", so the
+    // verdict arrives without one — but arrive it must, since these are the labels you are
+    // about to dispatch on.
+    const user = userEvent.setup();
+    renderSelectableInbox([{ ...CAPTURE, item_type: 'unclassified' }]);
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+
+    emitVerdict({ ...VERDICT, item_type: 'unclassified' });
+
+    expect(screen.getByRole('img', { name: MODEL_MARK })).toBeInTheDocument();
   });
 });

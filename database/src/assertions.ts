@@ -1973,6 +1973,18 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const itemsRealtimeResult = await attempt(
+    'items is in the supabase_realtime publication so a verdict reaches an open Inbox (ALF-196)',
+    async () => {
+      const { rows } = await client.query<{ tablename: string }>(
+        `select tablename from pg_publication_tables
+          where pubname = 'supabase_realtime' and tablename = 'items'`,
+      );
+      if (rows.length === 0) throw new Error('items is not published to supabase_realtime');
+      return 'items published to supabase_realtime';
+    },
+  );
+
   // ── Weekly-plan items (ALF-195) ─────────────────────────────────────────────
   // The two review endpoints stand on a batch RPC, a provenance column that must reach the read
   // path, and a trigger that finally records WHEN a story shipped. Each claim below is one the
@@ -2386,6 +2398,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     classifierClaimResult,
     classifierCorrectionsResult,
     correctionsGrantsResult,
+    itemsRealtimeResult,
     weeklyPlanBatchResult,
     weeklyPlanAtomicResult,
     weeklyPlanColumnResult,

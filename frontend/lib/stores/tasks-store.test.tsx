@@ -22,6 +22,24 @@ const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
 const mockMoveToInbox = jest.mocked(apiClient.moveToInbox);
 
+// Capture the realtime UPDATE handler the TasksProvider subscribes, so the classifier-verdict
+// tests can drive a simulated `items` change through it without a live Realtime channel.
+// (Overrides the no-op stub from jest.setup.ts — a file-level mock wins.)
+let mockRealtimeHandler: ((payload: { new: Item }) => void) | undefined;
+const mockRemoveChannel = jest.fn();
+jest.mock('@/lib/supabase/client', () => ({
+  createClient: () => {
+    const channel = {
+      on: (_event: string, _filter: unknown, handler: (payload: never) => void) => {
+        mockRealtimeHandler = handler as (payload: { new: Item }) => void;
+        return channel;
+      },
+      subscribe: () => channel,
+    };
+    return { channel: () => channel, removeChannel: mockRemoveChannel };
+  },
+}));
+
 // Capture showToast so the error-toast tests can assert the message a failed write surfaces
 // (ALF-33). Mocking useToastActions short-circuits the context, so the provider needs no
 // ToastProvider wrapper — consistent with code-store.test.tsx.
@@ -2614,5 +2632,113 @@ describe('error toasts', () => {
 
     expect(mockShowToast).not.toHaveBeenCalled();
     expect(result.current.tasks).toStrictEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live classifier verdicts (ALF-196)
+// ---------------------------------------------------------------------------
+
+describe('realtime items subscription', () => {
+  /** The row as the sweep leaves it: labels filled in, stamped with the model that judged it. */
+  const VERDICT: Partial<Item> = {
+    item_type: 'task',
+    priority: 'high',
+    due_date: '2025-01-09T00:00:00Z',
+    folder_id: 'f1',
+    classified_at: '2025-01-01T10:05:00Z',
+    classified_provider: 'anthropic',
+    classified_model: 'claude-haiku-4-5',
+    classified_prompt_version: 1,
+    classified_guess: { item_type: 'task', priority: 'high' },
+  };
+
+  /** Drive a simulated `items` UPDATE through the captured realtime handler. */
+  function emitUpdate(row: Item) {
+    act(() => {
+      mockRealtimeHandler?.({ new: row });
+    });
+  }
+
+  /** An untouched Inbox capture — what the sweeper picks up. */
+  function unjudged(overrides: Partial<Item> = {}): Item {
+    return item({
+      id: 'i1',
+      title: 'call the dentist',
+      item_type: 'unclassified',
+      dispatched_at: null,
+      ...overrides,
+    });
+  }
+
+  it('writes a verdict onto the row without a reload', () => {
+    const row = unjudged();
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    emitUpdate({ ...row, ...VERDICT });
+
+    const live = result.current.tasks.find((t) => t.id === 'i1');
+    expect(live).toMatchObject({
+      item_type: 'task',
+      priority: 'high',
+      folder_id: 'f1',
+      classified_provider: 'anthropic',
+    });
+  });
+
+  it('leaves the row where it is — a verdict labels, it never files', () => {
+    // The sweep never writes `dispatched_at`, so a folder guess is a label: the row must still
+    // be in the Inbox after it lands, not filed into the folder the model named.
+    const row = unjudged();
+    const { result } = renderHook(
+      () => ({ ...useTasksTest(), inbox: useScopedTasks({ type: 'inbox' }) }),
+      { wrapper: makeWrapper([row]) },
+    );
+
+    emitUpdate({ ...row, ...VERDICT });
+
+    expect(result.current.inbox.map((n) => n.id)).toStrictEqual(['i1']);
+  });
+
+  it('ignores an update no model produced', () => {
+    // Another tab's ordinary edit echoes down the same stream; the store must not take its
+    // title, which may be older than what this tab is holding.
+    const row = unjudged();
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([row]) });
+
+    emitUpdate({ ...row, title: 'stale title', classified_at: '2025-01-01T10:05:00Z' });
+
+    expect(result.current.tasks.find((t) => t.id === 'i1')?.title).toBe('call the dentist');
+  });
+
+  it('ignores a verdict for a row this tab is not holding', () => {
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([unjudged()]) });
+
+    emitUpdate({ ...unjudged({ id: 'gone' }), ...VERDICT });
+
+    expect(result.current.tasks.map((t) => t.id)).toStrictEqual(['i1']);
+  });
+
+  it('ignores a verdict for a row the owner has already claimed', () => {
+    // The owner edited the row first, so the claim trigger stamped it and the sweeper's write
+    // could only be an out-of-order echo. Their answer stands.
+    const claimed = unjudged({
+      priority: 'low',
+      classified_at: '2025-01-01T10:01:00Z',
+    });
+    const { result } = renderHook(useTasksTest, { wrapper: makeWrapper([claimed]) });
+
+    emitUpdate({ ...claimed, ...VERDICT });
+
+    expect(result.current.tasks.find((t) => t.id === 'i1')?.priority).toBe('low');
+  });
+
+  it('tears the channel down on unmount', () => {
+    mockRemoveChannel.mockClear();
+    const { unmount } = renderHook(useTasksTest, { wrapper: makeWrapper([unjudged()]) });
+
+    unmount();
+
+    expect(mockRemoveChannel).toHaveBeenCalledTimes(1);
   });
 });

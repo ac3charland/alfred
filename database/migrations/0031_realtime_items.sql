@@ -1,0 +1,18 @@
+-- Alfred — stream `items` changes so a classifier verdict reaches an open Inbox (ALF-196).
+--
+-- 0029 gave the sweep Worker a second, non-browser writer's seat at the `items` table: it fills
+-- an untouched capture's labels a minute or two after it lands. The tasks store is seed-once, so
+-- until now those labels only appeared on the next hard reload — the row you were looking at
+-- while the sweep ran stayed blank and stale.
+--
+-- The same fix 0003 applied to `code_items` for the webhook Worker: join the publication, and the
+-- browser gets a push channel. RLS still governs the stream — `items` already carries the
+-- `authenticated full access` policy from 0001, so an authenticated browser (anon key + session)
+-- receives changes and nobody else does. No new policy, no column, and so no `database.types.ts`
+-- regeneration.
+--
+-- The stream carries EVERY items UPDATE, not just the sweep's. Which of them may touch the store
+-- is the client's rule to make, not the publication's: `classifierVerdictPatch` applies a change
+-- only when it carries a model verdict onto a row the tab still holds as unjudged, so an echo of
+-- the owner's own write can never clobber an edit in flight.
+alter publication supabase_realtime add table items;
