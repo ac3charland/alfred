@@ -94,3 +94,40 @@ finished. So the ignore entry this repo actually wants still isn't committed, an
 use worktree isolation will rediscover the same untracked path.
 
 - [ ] Land the `.claude/worktrees/` ignore entry once a branch can carry it without owing a demo.
+
+---
+
+## Third instance — a *stale trunk ref* makes a docs-only branch look like a code branch (2026-09-02 · `claude/task-project-endpoints-spec-bgphpl`)
+
+Same rule, same refinement shape, but a different cause: the branch really was docs-only, and
+`branch-folder` still fired.
+
+A remote (Claude Code for web) session starts from a fresh clone whose `origin/main` can be
+several merges behind the commit the working branch was cut from. Here `origin/main` pointed at
+`9489a0f` while the branch's own base was `4e86e28`, so `git diff origin/main...HEAD` reported
+every file merged in between — `CLAUDE.md`, seven `SKILL.md`s, `docs/code-module/**` — as this
+branch's changes. Not docs-only by that reading, so the push failed demanding a demo for a
+single committed `.html` spec. `git fetch origin main` and an identical re-push went green.
+
+**Why this is worth a rule change and not just "remember to fetch":** the tool already reasons
+about a mismatched trunk in the *other* direction — `trunkRefIfBehind()` detects a branch behind
+trunk and says so, precisely because "a stale base can mask a docs-only branch". The mirror case
+(the local remote-tracking ref itself is stale, so the diff is taken against an old commit) is
+invisible to it, and the error it produces names the wrong problem entirely: it tells you to write
+a demo when what you needed was a fetch.
+
+**Suggested change:** detect the stale ref instead of misreporting it. `git ls-remote --heads
+origin main` is one cheap round trip with no side effects: if the sha it prints isn't the local
+`origin/main`, the diff is being taken against an old commit, so emit *that* — `your origin/main
+ref is stale (run git fetch origin main); trunk comparison skipped` — rather than the demo error.
+`trunkRefIfBehind()` is the natural home; it already owns "the trunk ref and HEAD disagree", and
+this is its mirror case. A plain `git fetch --quiet origin <trunk>` before computing
+`changedPathsSinceTrunk` would also work and needs no new message, at the cost of a lint rule
+mutating refs — probably the wrong trade for a linter, but worth weighing.
+
+Either way the failure should be **loud about the ref, not about the demo**: today a fresh
+session is told to produce evidence for a spec, which is both impossible and the wrong lesson.
+
+**Workaround used meanwhile:** `git fetch origin main` before pushing. Cheap once you know; the
+cost is entirely in the misdirected error message, which points a fresh session at writing demo
+evidence for a spec.

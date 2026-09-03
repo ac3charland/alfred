@@ -1,0 +1,1592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-195 — Weekly-plan item endpoints</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+    /* app palette — lifted from frontend/app/globals.css. Used ONLY inside .app mockups. */
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-secondary: #1e2a3f;
+    --a-teal: #4fd1e0; --a-blue: #60a5fa; --a-amber: #f0b429; --a-red: #f87171;
+    --a-plate: #141d2e;
+    /* task-row.styles.ts — the subtask-count pill and the notes preview */
+    --a-count-bg: #1b2438; --a-count-fg: #8b97a9; --a-notes: #6b7689;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  td code, th code { white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); color: inherit; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--ok); font-weight: 700; }
+  .nope { color: var(--no); font-weight: 700; }
+
+  /* ── Decision blocks (the spec library's shared vocabulary) ───────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* ── Acceptance-criteria checklist ───────────────────────────── */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .93rem; }
+  ul.ac li::before {
+    content: ""; position: absolute; left: 0; top: .35rem; width: 1rem; height: 1rem;
+    border: 1px solid var(--faint); border-radius: 3px;
+  }
+  ul.ac li.h {
+    padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  }
+  ul.ac li.h::before { content: none; }
+
+  /* ── App-palette mockup canvas ────────────────────────────────────
+     Every value below is lifted from frontend/app/globals.css and the component that
+     renders the thing being drawn — atoms/badge.tsx for the pill geometry and its
+     `muted` / `due` / `destructive` tones, task-row.styles.ts for the list panel, the
+     subtask-count pill, the notes preview and the checkbox, lib/hooks/use-indentation.ts
+     for the depth indent — so the drawing reads in alfred's real dark UI whichever mode
+     this document is viewed in. */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1.1rem; margin: 1rem 0; color: var(--a-text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .app code { background: var(--a-plate); color: var(--a-text); font-size: .78em; }
+  .app .eyebrow { color: var(--a-muted); font-size: 11px; letter-spacing: .06em;
+                  text-transform: uppercase; margin: 0 0 .6rem; }
+  /* taskListContainerClass at md+: one rounded surface panel, hairline-divided. */
+  .tasklist { background: var(--a-surface); border: 1px solid var(--a-border);
+              border-radius: 16px; overflow: hidden; }
+  .tasklist .row + .row { border-top: 1px solid rgba(30, 42, 63, .5); }
+  /* rowBaseClass at md+: flex, items-start, gap-x-2, py-2 pr-2; pl from useIndentation. */
+  .row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 12px; }
+  .row.child { padding-left: 32px; }              /* depth 1 → 2rem */
+  .row .chev { width: 14px; height: 20px; flex: none; color: var(--a-muted); }
+  .row .chev svg { display: block; margin-top: 3px; }
+  /* checkboxSizeClass at md+ (h-4 w-4) + checkboxIncompleteClass border. */
+  .cbx { width: 16px; height: 16px; flex: none; margin-top: 2px; border-radius: 4px;
+         border: 1px solid rgba(138, 150, 168, .5); }
+  .cbx.done { border-color: var(--a-teal); background: var(--a-teal);
+              display: flex; align-items: center; justify-content: center; }
+  .cbx.done svg { display: block; color: var(--a-bg); }
+  .titlecol { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .titlecol .t { font-size: 14px; line-height: 20px; color: var(--a-text); }
+  .titlecol .t.dim { color: var(--a-muted); }
+  .titlecol .notes { font-size: 12.5px; line-height: 1.35; color: var(--a-notes); }
+  .titlecol .ctx { display: flex; align-items: center; gap: 4px; font-size: 12px;
+                   color: rgba(138, 150, 168, .5); }
+  .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 1px; }
+  /* badgeVariants: rounded-full px-2 py-0.5 text-xs (+ font-medium at these sites). */
+  .b { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px;
+       padding: 2px 8px; font-size: 12px; line-height: 16px; font-weight: 500; flex: none;
+       border: 1px solid transparent; }
+  .b svg { display: block; }
+  .b-muted { border-color: rgba(30, 42, 63, .7); color: var(--a-muted); }
+  .b-due { border-color: rgba(96, 165, 250, .5); color: var(--a-blue); }
+  .b-high { background: rgba(248, 113, 113, .15); color: var(--a-red); }
+  /* subtaskCountBadgeClass — its own geometry, not the badge default. */
+  .b-count { border-radius: 999px; background: var(--a-count-bg); color: var(--a-count-fg);
+             font-size: 13px; line-height: 16px; padding: 3px 12px; flex: none; }
+  .legend { margin: .6rem 0 0; padding: 0; list-style: none; color: var(--a-muted); font-size: 12px; }
+  .legend li { margin: .25rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-195 — Endpoints for creating weekly-plan items and reading their status</h1>
+<p class="sub">
+  <span class="pill">Refinement</span> Spec only — no implementation. Two keyed endpoints so the
+  weekly-review coach can write a week's plan into alfred as real items, then read back what
+  happened to them at the next review.
+</p>
+
+<h2>1 · Context &amp; problem</h2>
+
+<p>
+  The Friday review (the coach's <code>weekly-review</code> skill) already ends by generating a
+  week-plan HTML document and posting it to <code>POST /api/weekly-plans</code>, where alfred's
+  <strong>Week Plan</strong> view renders it in a sandboxed iframe. That document is a
+  <em>picture</em> of the week: it is never diffed against what actually happened, and none of the
+  work it describes exists in alfred unless the owner retypes it.
+</p>
+<p>
+  So the review loop has a hole at both ends. The plan's work never enters the system that tracks
+  work, and at the next review the coach has to <em>ask</em> what got done — the least reliable
+  possible source, a week later. What it wants instead is one call that answers: of the things we
+  agreed to do last Friday, which are done, when were they done, and when were they scheduled for?
+</p>
+<p>
+  A week's plan is not homogeneous, either. It mixes shipping work that belongs in the Software
+  Factory, ordinary scheduled chores, and half-formed intents that need a human's triage before
+  they mean anything. The endpoint has to be able to say all three, and then get out of the way of
+  the machinery alfred already has for sorting them out.
+</p>
+<p>
+  Everything needed to close that loop already exists except the two endpoints in this spec: the
+  ingress key and its dual-auth helper, the item model (types, subtasks, due dates, priority,
+  completion), the classifier that labels a fresh capture, and the plan archive to hang a cohort off.
+</p>
+
+<h2>2 · Scope, as settled in refinement</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:32%">Question</th><th>Settled</th></tr>
+  <tr>
+    <td>Does the title's “&amp; projects” mean the Software Factory <code>projects</code> table?</td>
+    <td><strong>No.</strong> “Project” was meant in the to-do sense — <em>an item with children</em>.
+      Nothing here creates a project, epic or story record.</td>
+  </tr>
+  <tr>
+    <td>Which item types may the coach create?</td>
+    <td><strong>All three</strong> — <code>unclassified</code> (the default), <code>task</code> and
+      <code>code</code> — each stampable as part of the week's plan. Widened mid-refinement; it is
+      the interesting decision in this spec, see <a href="#d4">D4</a>.</td>
+  </tr>
+  <tr>
+    <td>How is an item stamped as belonging to a weekly plan?</td>
+    <td>By the <strong>id of the plan document the coach posted</strong> —
+      <code>items.weekly_plan_id → weekly_plans.id</code>. See <a href="#d1">D1</a>.</td>
+  </tr>
+  <tr>
+    <td>One item per request, or a batch?</td>
+    <td><strong>Batch</strong>: one POST carries the whole week, roots with nested children,
+      created atomically. See <a href="#d3">D3</a>.</td>
+  </tr>
+  <tr>
+    <td>Where do the created items land?</td>
+    <td><strong>The Inbox, always</strong> — <code>dispatched_at</code> null, no folder. They are
+      triaged by hand like every other capture. See <a href="#d5">D5</a>.</td>
+  </tr>
+  <tr>
+    <td>Do they go through the LLM classifier?</td>
+    <td><strong>Yes, unchanged and deliberately.</strong> The sweeper fills only what the coach
+      left blank. See <a href="#d6">D6</a> — it has one consequence the caller must know about.</td>
+  </tr>
+  <tr>
+    <td>How does the read answer “is it done, when, and if not what is it doing?” for a code item?</td>
+    <td>Three <strong>derived</strong> fields per node — <code>state</code>, <code>done</code>,
+      <code>done_at</code> — because completion is task-only in this schema. “When” needs a new
+      <code>code_items.done_at</code> column and a trigger: the factory records no history at all.
+      See <a href="#d8">D8</a> / <a href="#d8b">D8b</a>.</td>
+  </tr>
+  <tr>
+    <td>How does the app show that an item came from the week plan?</td>
+    <td>A <strong>Week plan badge</strong> in the row's metadata cluster, on the planned top-level
+      row. Drawn in <a href="#surface">§6</a>.</td>
+  </tr>
+</table>
+</div>
+
+<h2>3 · Decisions</h2>
+
+<div class="dec" id="d1">
+  <h3><span class="n">D1</span> The cohort key is the plan's id, not a date</h3>
+  <p>
+    New nullable column <code>items.weekly_plan_id uuid references weekly_plans (id) on delete set
+    null</code>, written on every item the endpoint creates (roots <em>and</em> children).
+  </p>
+  <p class="why">
+    <b>Why the FK is available at all:</b> <code>POST /api/weekly-plans</code> already answers with
+    <code>{ id, uploaded_at }</code>, and the review posts the plan (Step 9) before it would create
+    items — so the id is in the coach's hand at exactly the moment it needs it. No new ordering
+    constraint is introduced; the skill gains one step after the one it already runs.
+  </p>
+  <p class="why">
+    <b>Why not a <code>weekly_plan_week</code> date:</b> a date is a second, parallel notion of
+    “which week” that nothing else in the schema shares, and it is only as good as the caller's
+    arithmetic — two calls a minute apart can disagree and silently split a cohort. The plan row is
+    already the thing the review produced; joining to it also gives the read its
+    <code>uploaded_at</code> for free, so the coach can quote the window it is reporting on.
+  </p>
+  <p class="why">
+    <b><code>on delete set null</code>, not cascade:</b> these are the owner's real items. Deleting an
+    archived plan document must never delete work. (Nothing deletes a <code>weekly_plans</code> row
+    today — the archive is append-only and has no DELETE route — so this is belt-and-braces.)
+  </p>
+</div>
+
+<div class="dec" id="d2">
+  <h3><span class="n">D2</span> Nested under the plan: <code>/api/weekly-plans/[id]/items</code></h3>
+  <p>
+    One route file, both verbs. <code>POST</code> creates the cohort; <code>GET</code> reads it. The
+    plan is in the path rather than the body, so the association can't be forgotten or contradicted.
+    <em>Items</em>, not <em>tasks</em>: after <a href="#d4">D4</a> the endpoint writes all three
+    types, and in this codebase “task” is one of them, not the family.
+  </p>
+  <p>
+    <code>GET</code> additionally accepts the literal segment <code>latest</code> —
+    <code>GET /api/weekly-plans/latest/items</code> — resolving to <strong>the most recent plan that
+    has at least one item attached</strong>. That is the coach's whole read: one URL, no arguments,
+    no date arithmetic, correct whether the review is held on Friday, slipped to Sunday, or skipped
+    a week.
+  </p>
+  <p class="why">
+    <b>Why “most recent <em>with items</em>” rather than “most recent”:</b> re-posting a revised plan
+    appends another archive row. If <code>latest</code> meant the newest row, one revision with no
+    items attached would make the coach report an empty week. <code>POST</code> does <em>not</em>
+    accept <code>latest</code> — a write names the plan it belongs to explicitly.
+  </p>
+</div>
+
+<div class="dec" id="d3">
+  <h3><span class="n">D3</span> The batch is one Postgres RPC, so a week lands whole or not at all</h3>
+  <p>
+    <code>create_weekly_plan_items(p_plan uuid, p_items jsonb) returns setof items</code>,
+    <code>security invoker</code>, called from the route via <code>supabase.rpc(...)</code>.
+  </p>
+  <p class="why">
+    <b>Why not two inserts from the route:</b> roots and children can't go in one PostgREST insert
+    (children need their parents' ids), and two round trips are two transactions — a failure on the
+    second leaves a half-created week of childless roots that nobody can tell apart from a plan that
+    really had no subtasks. A plpgsql function is one statement, so it is one transaction. This is
+    also the repo's existing answer to “the client needs several related rows written together” —
+    <code>convert_to_code_epic</code> and <code>complete_and_spawn</code>.
+  </p>
+</div>
+
+<div class="dec" id="d4">
+  <h3><span class="n">D4</span> Three item types, one discriminated union — the database already
+    defines the three shapes</h3>
+  <p>
+    <code>item_type</code> is an optional field on each root, defaulting to <code>unclassified</code>
+    exactly as <code>POST /api/items</code> and the capture box do. What a root may carry depends on
+    it, because <code>items_task_only_fields</code> and <code>enforce_subtask_shape</code> already
+    say so:
+  </p>
+  <div class="scroll">
+  <table>
+    <tr>
+      <th style="width:26%">Field</th>
+      <th style="width:18%"><code>task</code></th>
+      <th style="width:18%"><code>code</code></th>
+      <th style="width:18%"><code>unclassified</code></th>
+      <th>Enforced by</th>
+    </tr>
+    <tr><td><code>title</code>, <code>notes</code></td>
+        <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td>—</td></tr>
+    <tr><td><code>due_date</code></td>
+        <td class="yes">✓</td><td class="nope">✗</td><td class="nope">✗</td>
+        <td><code>items_task_only_fields</code></td></tr>
+    <tr><td><code>priority</code></td>
+        <td class="yes">✓</td><td class="nope">✗</td><td class="nope">✗</td>
+        <td><code>items_task_only_fields</code> (0010)</td></tr>
+    <tr><td><code>children</code></td>
+        <td class="yes">✓ any number</td>
+        <td class="yes">✓ one level</td>
+        <td class="nope">✗</td>
+        <td><code>items_task_only_fields</code> (0019) + <code>enforce_subtask_shape</code></td></tr>
+    <tr><td>child's own type</td>
+        <td colspan="3" style="text-align:center">inherited from the root — never stated</td>
+        <td><code>enforce_subtask_shape</code> forbids mixing families</td></tr>
+  </table>
+  </div>
+  <p>
+    So the request schema is a <code>z.discriminatedUnion</code> on <code>item_type</code> with three
+    branches, and a child schema per branch. Every illegal combination becomes a <code>400</code>
+    naming the field, instead of a <code>500</code> from a CHECK violation halfway through a batch.
+  </p>
+  <p class="why">
+    <b>Why children never state a type:</b> the database permits exactly one answer (a code root's
+    children are code stories-in-waiting; a task's are subtasks), so letting the caller state it only
+    creates a way to be wrong. Making the illegal state unrepresentable is cheaper than validating it.
+  </p>
+  <p class="why">
+    <b>Why the default stays <code>unclassified</code> rather than becoming <code>task</code>:</b> a
+    plan line the coach hasn't typed is precisely the input the classifier exists to judge — see
+    <a href="#d6">D6</a>. Defaulting to <code>task</code> would decide the question on the coach's
+    behalf and switch that machinery off. And it can't cause a silent loss: a due date or priority
+    sent without <code>"item_type": "task"</code> is a <code>400</code> that says so, not a dropped
+    field.
+  </p>
+  <p class="why">
+    <b>What is deliberately NOT accepted:</b> <code>folder_id</code>, <code>parent_id</code>,
+    <code>status</code>, <code>completed_at</code>, <code>recurrence</code>,
+    <code>source_url</code>, and the pre-factory hints <code>intended_project_id</code> /
+    <code>intended_epic_id</code>. The last pair is the interesting omission: a planned
+    <code>code</code> item does need a project and an epic before it can enter the factory, but the
+    coach has no way to discover project ids today, and both the classifier and Friday triage
+    already fill them. Unknown keys are rejected rather than ignored, so a typo is loud.
+  </p>
+</div>
+
+<div class="dec" id="d5">
+  <h3><span class="n">D5</span> Created items land in the Inbox, untriaged</h3>
+  <p>
+    Every created row: <code>status = 'active'</code>, <code>dispatched_at = null</code>,
+    <code>folder_id = null</code>. The endpoint accepts no folder and does no dispatching.
+  </p>
+  <p class="why">
+    <b>Why:</b> dispatch is a human act — that is the whole point of the <code>dispatched_at</code>
+    column (0026), and the classifier was deliberately built to write labels without moving anything
+    out of the Inbox. An agent filing twenty rows straight into folders would be the first thing in
+    the system to bypass triage. The owner sees the week's work on Friday, in one place, and files it.
+  </p>
+</div>
+
+<div class="dec" id="d6">
+  <h3><span class="n">D6</span> The classifier sweeps these items like any other capture — nothing
+    in the Worker changes</h3>
+  <p>
+    A created root matches the sweep predicate exactly (<code>parent_id is null</code>,
+    <code>dispatched_at is null</code>, <code>classified_at is null</code>,
+    <code>classify_attempts &lt; 5</code>), so the cron picks it up within a couple of minutes —
+    10 items a tick, every 2 minutes, oldest first. A 21-item week is fully judged in about six
+    minutes for ~21 Haiku calls.
+  </p>
+  <p>
+    It cannot contradict the coach, because <code>mergeIntoItem</code> writes only fields the item
+    does not already hold. What that means per type:
+  </p>
+  <div class="scroll">
+  <table>
+    <tr><th style="width:24%">The coach sent</th><th>What the classifier may add</th></tr>
+    <tr><td><code>unclassified</code> + a title</td>
+        <td><strong>Everything.</strong> <code>decidedType</code> treats <code>unclassified</code> as
+          “nobody has decided”, so the model picks the type and then whatever fields that type
+          allows — a folder for a task, a project/epic hint for a code item. This is the intended
+          path for a vague plan line, and the reason the default is what it is.</td></tr>
+    <tr><td><code>task</code> + due date + priority</td>
+        <td>A <strong>folder</strong>, and nothing else. Every other field is already held. This is
+          pure upside: it is the one label Friday triage has to supply by hand.</td></tr>
+    <tr><td><code>task</code> + <em>no</em> due date</td>
+        <td>A folder <strong>and a due date of its own choosing</strong> — see the warning below.</td></tr>
+    <tr><td><code>code</code></td>
+        <td><code>intended_project_id</code> and <code>intended_epic_id</code>: exactly the two hints
+          a code item needs before it can be dispatched to the factory, which is why
+          <a href="#d4">D4</a> doesn't accept them from the caller.</td></tr>
+    <tr><td>any <strong>child</strong></td>
+        <td><strong>Nothing.</strong> The sweep is <code>parent_id is null</code>. A subtask keeps
+          precisely what the coach sent it.</td></tr>
+  </table>
+  </div>
+  <div class="callout">
+    <strong>The one surprise, and it belongs in the primer:</strong> a <code>task</code> sent without
+    a <code>due_date</code> can come back carrying one the model inferred from the title (“file taxes
+    by the 15th”), and the read endpoint will then report it as the day the item was scheduled for —
+    a date the coach never chose but will quote back as if it had. The fix is guidance, not code:
+    <strong>a plan line with a day is a <code>task</code> and carries its <code>due_date</code></strong>,
+    and the review is planning day by day anyway. Suppressing the sweep instead would cost the folder
+    suggestion on every item to prevent a guess on a few.
+  </div>
+  <p class="why">
+    <b>A quiet benefit:</b> dispatching a classified item logs the diff between the model's guess and
+    the labels the owner settled on (<code>classification_corrections</code>, 0029), which the next
+    sweep reads back as worked examples. Twenty agent-authored items a week, each corrected by hand
+    on Friday, is the richest training signal the classifier has ever had.
+  </p>
+  <p class="why">
+    <b>Rejected alternative:</b> stamping <code>classified_at = now()</code> in the RPC to opt the
+    cohort out. It saves ~20 cheap calls a week, loses the folder suggestions and the corrections
+    log, and makes every planned row render the <code>claimed</code> provenance mark — the pencil
+    that means “<em>you</em> labelled this”, which would be a small lie on every row. Honestly
+    marking agent provenance would need a fourth origin and its own glyph: a real option, but a
+    different ticket.
+  </p>
+</div>
+
+<div class="dec" id="d7">
+  <h3><span class="n">D7</span> The array's order is the order the Inbox shows — via explicit timestamps</h3>
+  <p>
+    The RPC writes <code>created_at := v_now - (v_index * interval '1 millisecond')</code> for the
+    root at array position <code>v_index</code>. Children keep their parent's value and rely on
+    <code>sort_order</code> (the sequence default increments per insert, so array order is preserved).
+  </p>
+  <p class="why">
+    <b>Why this is not incidental:</b> <code>buildTree</code> sorts roots by <code>created_at</code>
+    <em>descending</em>, and every row in one transaction gets the same <code>now()</code>. Twenty
+    identical timestamps means the tie-break is whatever order Postgres happens to return — unstable
+    across reloads and after any update. The offset makes array position 0 the newest row, so the
+    week reads top-down in the Inbox in exactly the order the coach sent it, deterministically. The
+    fabricated spread is ≤ 100&nbsp;ms (the batch cap) and never in the future.
+  </p>
+</div>
+
+<div class="dec" id="d8">
+  <h3><span class="n">D8</span> Three derived fields answer the review's question for every type —
+    <code>state</code>, <code>done</code>, <code>done_at</code></h3>
+  <p>
+    The review asks the same three things of every line of its plan: <em>is this done, when was it
+    done, and if not, where is it now?</em> The raw columns answer those differently per family —
+    a task's completion is <code>items.status</code> / <code>items.completed_at</code>, a code
+    item's is <code>code_items.factory_state</code> — so each node carries one derived field per
+    question, and the raw columns stop appearing at the top level:
+  </p>
+  <div class="scroll">
+  <table>
+    <tr><th style="width:16%">Field</th><th style="width:34%">For a task / unclassified item</th>
+        <th>For a code item</th></tr>
+    <tr><td><code>state</code></td>
+        <td><code>active</code> | <code>completed</code> (from <code>items.status</code>)</td>
+        <td>its <code>factory_state</code> verbatim — <code>in_development</code>,
+          <code>ready_for_review</code>, <code>blocked</code>, <code>done</code>, … A code item
+          that never entered the factory has no sidecar, so it reports <code>active</code>.</td></tr>
+    <tr><td><code>done</code></td>
+        <td><code>status === 'completed'</code></td>
+        <td><code>factory_state === 'done'</code></td></tr>
+    <tr><td><code>done_at</code></td>
+        <td><code>items.completed_at</code></td>
+        <td><code>code_items.done_at</code> — the new column in <a href="#db">§5.4</a></td></tr>
+  </table>
+  </div>
+  <p>
+    <code>counts.done</code> is exactly the count of nodes with <code>done: true</code>, and
+    <code>counts.abandoned</code> of those at <code>state: 'abandoned'</code>, so the aggregate and
+    the rows can never disagree. The sidecar stays on the node as
+    <code>code: { ref, lane }</code> — <code>ref</code> is what a review quotes
+    (“RPL-142 is in review”) and <code>lane</code> says who is building it; the factory state itself
+    is not repeated there, because <code>state</code> is already it.
+  </p>
+  <p class="why">
+    <b>Why derive rather than pass the raw columns through:</b> completion is task-only in this
+    schema. A code item's <code>status</code> is <em>always</em> <code>active</code> and its
+    <code>completed_at</code> <em>always</em> null, because the CHECK forbids anything else — so a
+    payload that exposed both raw columns and a done-count spanning both families would offer two
+    readings of one question, and the obvious one (<code>status</code>) reports every shipped story
+    as outstanding. One field per question, one vocabulary, no reconciliation asked of the caller.
+  </p>
+  <p class="why">
+    <b>Why pre-counted:</b> the same reason <code>/api/habits</code> pre-rounds its numbers — a
+    figure the coach recomputes is a figure that can disagree with the app. <b>Why no “overdue”
+    count:</b> overdue needs a timezone and a notion of today, which would put date policy in a
+    payload whose consumer already has both. <b>Why the folder:</b> paired with <code>in_inbox</code>
+    it distinguishes “done and filed” from “never triaged”, which is the more interesting review
+    finding.
+  </p>
+</div>
+
+<div class="dec" id="d8b">
+  <h3><span class="n">D8b</span> “When was it done” needs a new column and a trigger — the factory
+    records no history at all</h3>
+  <p>
+    <code>code_items</code> carries exactly two timestamps, <code>created_at</code> and
+    <code>updated_at</code>, and there is no transition log anywhere in the schema. Worse,
+    <strong>nothing writes <code>updated_at</code></strong>: <code>PATCH /api/code/[ref]</code>
+    builds its update from <code>factory_state</code>, <code>blocked_reason</code>,
+    <code>epic_id</code> and <code>requires_refinement</code> and never touches it, and no trigger
+    does either — so it is frozen at the sidecar's creation default. A story's factory state today
+    is a single mutable enum with no memory of when it got there.
+  </p>
+  <p>
+    So this spec adds <code>code_items.done_at</code>, stamped by a <code>before update of
+    factory_state</code> trigger: set to <code>now()</code> when the state becomes
+    <code>done</code>, cleared when it moves off <code>done</code> again (<a href="#db">§5.4</a>).
+  </p>
+  <p class="why">
+    <b>Why a trigger and not the route:</b> the route is not the ingress that matters. The Worker
+    PATCHes <code>code_items</code> straight through PostgREST on a merged PR
+    (<code>workers/src/supabase.ts</code> → <code>patchByRef(env, 'code_items', …)</code>), which is
+    where <em>most</em> <code>done</code> transitions come from — its transition table calls itself
+    “the whole system's clock”. Route-level stamping would miss exactly those. This is the same
+    argument 0026 makes for <code>inherit_dispatched_at</code> and 0029 for the claim rule: several
+    ingresses write the column and only the database sits under all of them.
+  </p>
+  <p class="why">
+    <b>Why a dedicated column rather than stamping <code>updated_at</code>:</b> “last touched” is
+    not “finished” — an epic move or an unblock after completion would drag the timestamp forward
+    and the review would report the wrong day. Stamping <code>updated_at</code> would also silently
+    change existing behaviour: <code>code-store</code> sorts the board by it, described as “most
+    recent first”, and today that sort is effectively by sidecar creation. That looks like a real
+    bug, but it is not this ticket's to fix.
+  </p>
+  <p class="why">
+    <b>Accepted limit:</b> stories that reached <code>done</code> before this migration have
+    <code>done_at</code> null — there is no data to backfill from. And only the <em>done</em>
+    transition is recorded: “when did it reach review” still has no answer, which would need a
+    proper transition log (<a href="#oos">§10</a>).
+  </p>
+</div>
+
+<div class="dec" id="d9">
+  <h3><span class="n">D9</span> Both verbs authenticate through <code>resolveIngestClient</code></h3>
+  <p>
+    Valid <code>INGEST_API_KEY</code> (<code>x-api-key</code> or <code>Authorization: Bearer</code>)
+    → the admin client; otherwise a browser session; otherwise <code>401</code>. Same key the coach
+    already holds for the plan archive, the PR ratio and habits.
+  </p>
+  <p class="why">
+    <b>Not <code>withSessionOrApiKey</code>:</b> it yields no Supabase client, so a keyed caller —
+    which carries no cookie — would fall through to an anonymous read and get a cheerful
+    <code>200</code> with an empty list. The habits route documents this exact trap; a coach told
+    “you created nothing last week” by an auth bug is worse than an error.
+  </p>
+</div>
+
+<h2>4 · The loop, end to end</h2>
+
+<svg viewBox="0 0 940 250" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">The weekly-review loop with the two new endpoints</title>
+  <desc id="flow-desc">
+    At review N the coach posts the plan document and receives its id, then posts the week's items
+    against that id; the items land in alfred's Inbox, where the classifier labels them and the
+    owner triages and completes them during the week; at review N+1 the coach reads the same cohort
+    back with one call and sees what was done.
+  </desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55">
+    <line x1="215" y1="70" x2="268" y2="70" marker-end="url(#arrow)" />
+    <line x1="455" y1="70" x2="508" y2="70" marker-end="url(#arrow)" />
+    <line x1="620" y1="106" x2="620" y2="150" marker-end="url(#arrow)" />
+    <line x1="560" y1="185" x2="300" y2="185" marker-end="url(#arrow)" />
+  </g>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+    <rect x="10" y="34" width="205" height="72" rx="9" fill="none" stroke="currentColor"
+          stroke-opacity=".35" />
+    <text x="24" y="56" font-size="12" font-weight="700" fill="currentColor">Friday, review N</text>
+    <text x="24" y="76" font-size="11.5" fill="currentColor" opacity=".75">POST /api/weekly-plans</text>
+    <text x="24" y="93" font-size="11.5" fill="currentColor" opacity=".75">→ { id, uploaded_at }</text>
+
+    <rect x="268" y="34" width="187" height="72" rx="9" fill="none" stroke="currentColor" />
+    <text x="282" y="56" font-size="12" font-weight="700" fill="currentColor">NEW · create</text>
+    <text x="282" y="76" font-size="11.5" fill="currentColor" opacity=".75">POST …/{id}/items</text>
+    <text x="282" y="93" font-size="11.5" fill="currentColor" opacity=".75">tasks · code · unclassified</text>
+
+    <rect x="508" y="34" width="225" height="72" rx="9" fill="none" stroke="currentColor"
+          stroke-opacity=".35" />
+    <text x="522" y="56" font-size="12" font-weight="700" fill="currentColor">alfred · the Inbox</text>
+    <text x="522" y="76" font-size="11.5" fill="currentColor" opacity=".75">weekly_plan_id = {id}</text>
+    <text x="522" y="93" font-size="11.5" fill="currentColor" opacity=".75">dispatched_at = null</text>
+
+    <rect x="508" y="150" width="225" height="70" rx="9" fill="none" stroke="currentColor"
+          stroke-opacity=".35" stroke-dasharray="4 3" />
+    <text x="522" y="172" font-size="12" font-weight="700" fill="currentColor">During the week</text>
+    <text x="522" y="192" font-size="11.5" fill="currentColor" opacity=".75">classifier labels, owner</text>
+    <text x="522" y="209" font-size="11.5" fill="currentColor" opacity=".75">triages, work gets done</text>
+
+    <rect x="80" y="150" width="220" height="70" rx="9" fill="none" stroke="currentColor" />
+    <text x="94" y="172" font-size="12" font-weight="700" fill="currentColor">NEW · read, review N+1</text>
+    <text x="94" y="192" font-size="11.5" fill="currentColor" opacity=".75">GET …/latest/items</text>
+    <text x="94" y="209" font-size="11.5" fill="currentColor" opacity=".75">→ counts + the tree</text>
+
+    <text x="760" y="62" font-size="11" fill="currentColor" opacity=".6">One cohort,</text>
+    <text x="760" y="78" font-size="11" fill="currentColor" opacity=".6">identified by the</text>
+    <text x="760" y="94" font-size="11" fill="currentColor" opacity=".6">plan it came from.</text>
+  </g>
+</svg>
+<p class="diagram-cap">The two new calls (solid) around what already exists (faint).</p>
+
+<h3>4.1 · <code>POST /api/weekly-plans/{planId}/items</code> — create the week</h3>
+
+<pre><code>POST /api/weekly-plans/6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8/items
+x-api-key: &lt;INGEST_API_KEY&gt;
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "item_type": "task",
+      "title": "Ship the motivic harness spike",
+      "notes": "Timebox to Tuesday morning",
+      "due_date": "2026-09-08",
+      "priority": "high",
+      "children": [
+        { "title": "Re-read last week's findings doc" },
+        { "title": "Write the harness skeleton", "due_date": "2026-09-08" }
+      ]
+    },
+    {
+      "item_type": "code",
+      "title": "Per-voice mute in the mixer",
+      "children": [
+        { "title": "Mute state in the audio graph" },
+        { "title": "Mixer strip mute button" }
+      ]
+    },
+    { "title": "Decide what Q4's third rock actually is" }
+  ]
+}</code></pre>
+<p class="small">
+  Three roots, three types: a scheduled task with subtasks, a code item shaped like an epic under
+  construction, and a bare capture the classifier will type for us
+  (<code>item_type</code> omitted → <code>unclassified</code>).
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:20%">Field</th><th style="width:24%">Type</th><th>Rules</th></tr>
+  <tr><td><code>items</code></td><td>array</td>
+      <td>Required, non-empty. 1–100 <em>nodes</em> in total (roots + children counted together).</td></tr>
+  <tr><td><code>items[].item_type</code></td>
+      <td><code>'unclassified' \| 'task' \| 'code'</code></td>
+      <td>Optional, defaults to <code>unclassified</code>. The union's discriminant — it decides
+        which of the fields below are legal (<a href="#d4">D4</a>).</td></tr>
+  <tr><td><code>items[].title</code></td><td>string</td><td>Required, non-empty after trim.</td></tr>
+  <tr><td><code>items[].notes</code></td><td>string \| null</td><td>Optional, any type.</td></tr>
+  <tr><td><code>items[].due_date</code></td><td>string</td>
+      <td><code>task</code> only. The shared <code>dueDate</code> field from
+        <code>lib/api/schemas.ts</code> — <code>YYYY-MM-DD</code> or a full ISO datetime with offset.
+        Reused, not redefined, so due times behave exactly as they do everywhere else.</td></tr>
+  <tr><td><code>items[].priority</code></td><td><code>'high' \| 'medium' \| 'low'</code></td>
+      <td><code>task</code> only. The shared <code>taskPriority</code> field.</td></tr>
+  <tr><td><code>items[].children</code></td><td>array</td>
+      <td><code>task</code> (any number) or <code>code</code> (any number, one level).
+        <strong>Never</strong> on an <code>unclassified</code> root. A child carries
+        <code>title</code>, <code>notes</code>, and — under a task root — <code>due_date</code> and
+        <code>priority</code>. A child may not carry <code>item_type</code> (it inherits) or
+        <code>children</code> (one level).</td></tr>
+</table>
+</div>
+
+<h4>Response — <code>201</code></h4>
+<pre><code>{
+  "plan": { "id": "6f1a2b3c-…", "uploaded_at": "2026-09-05T21:03:11.482Z" },
+  "created": 7,
+  "items": [ &lt;node&gt;, &lt;node&gt;, &lt;node&gt; ]
+}</code></pre>
+<p class="small">
+  <code>created</code> counts every node written (roots + children). The <code>items</code> array
+  uses the same node shape as the read below, so a caller that can read the cohort can read the
+  create response with the same code.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:12%">Status</th><th>When</th></tr>
+  <tr><td><code>201</code></td><td>Created.</td></tr>
+  <tr><td><code>400</code></td><td>Body isn't JSON, or fails the schema: an empty batch, over 100
+      nodes, a blank title, an unknown key, a grandchild, a child stating its own type, or a field
+      the root's type forbids — a due date on a <code>code</code> item, children on an
+      <code>unclassified</code> one. <code>{ error, details }</code>, <code>details</code> being the
+      zod issue list as everywhere else.</td></tr>
+  <tr><td><code>401</code></td><td>No valid key and no session.</td></tr>
+  <tr><td><code>404</code></td><td>No <code>weekly_plans</code> row with that id (the route reads the
+      plan first — it needs <code>uploaded_at</code> for the response anyway). <code>latest</code> is
+      rejected here too: a write names its plan.</td></tr>
+  <tr><td><code>500</code></td><td>The RPC failed; the Postgres message is passed through by
+      <code>mapSupabaseError</code>. Nothing was written — the whole batch is one transaction.</td></tr>
+</table>
+</div>
+
+<h3>4.2 · <code>GET /api/weekly-plans/{planId|latest}/items</code> — read the status</h3>
+
+<pre><code>GET /api/weekly-plans/latest/items
+x-api-key: &lt;INGEST_API_KEY&gt;
+
+200 OK
+{
+  "plan": { "id": "6f1a2b3c-…", "uploaded_at": "2026-09-05T21:03:11.482Z" },
+  "counts": { "total": 21, "done": 14, "open": 6, "abandoned": 1, "untriaged": 2 },
+  "items": [
+    {
+      "id": "9c2e…",
+      "item_type": "task",
+      "title": "Ship the motivic harness spike",
+      "notes": "Timebox to Tuesday morning",
+      "due_date": "2026-09-08",
+      "priority": "high",
+      "state": "completed",
+      "done": true,
+      "done_at": "2026-09-08T19:41:08.221Z",
+      "created_at": "2026-09-05T21:04:02.118Z",
+      "folder": { "id": "b41f…", "name": "RealPlay" },
+      "in_inbox": false,
+      "code": null,
+      "children": [
+        {
+          "id": "3d7a…", "item_type": "task", "title": "Re-read last week's findings doc",
+          "due_date": null, "priority": null,
+          "state": "completed", "done": true, "done_at": "2026-09-08T14:02:55.010Z",
+          "created_at": "2026-09-05T21:04:02.118Z",
+          "folder": { "id": "b41f…", "name": "RealPlay" }, "in_inbox": false,
+          "code": null, "children": []
+        }
+      ]
+    },
+    {
+      "id": "77ab…",
+      "item_type": "code",
+      "title": "Mute state in the audio graph",
+      "notes": null, "due_date": null, "priority": null,
+      "state": "ready_for_review",
+      "done": false,
+      "done_at": null,
+      "created_at": "2026-09-05T21:04:02.117Z",
+      "folder": null, "in_inbox": false,
+      "code": { "ref": "RPL-142", "lane": "human" },
+      "children": []
+    },
+    {
+      "id": "5b10…",
+      "item_type": "code",
+      "title": "Mixer strip mute button",
+      "notes": null, "due_date": null, "priority": null,
+      "state": "done",
+      "done": true,
+      "done_at": "2026-09-10T16:22:41.900Z",
+      "created_at": "2026-09-05T21:04:02.117Z",
+      "folder": null, "in_inbox": false,
+      "code": { "ref": "RPL-143", "lane": "human" },
+      "children": []
+    }
+  ]
+}</code></pre>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:22%">Key</th><th>Meaning</th></tr>
+  <tr><td><code>plan</code></td>
+      <td>The resolved cohort's plan row (<code>id</code> + <code>uploaded_at</code>), so the coach
+        can say <em>which</em> week it is reporting on rather than assuming. <code>null</code> only in
+        the empty case below.</td></tr>
+  <tr><td><code>counts.total</code></td><td>Every node still in the database. An item the owner
+      <em>deleted</em> is simply absent — see <a href="#oos">§10</a>.</td></tr>
+  <tr><td><code>counts.done</code></td>
+      <td>Nodes with <code>done: true</code> — a completed task, or a code item at
+        <code>done</code>. Derived once (<a href="#d8">D8</a>) so the count and the rows can't
+        disagree.</td></tr>
+  <tr><td><code>counts.abandoned</code></td>
+      <td>Nodes at <code>state: 'abandoned'</code>. Not done, and not still open — counting them
+        either way would misreport the week.</td></tr>
+  <tr><td><code>counts.open</code></td><td>Everything else. <code>done + open + abandoned = total</code>.</td></tr>
+  <tr><td><code>counts.untriaged</code></td>
+      <td>Nodes still in the Inbox (<code>dispatched_at</code> null). <strong>Cross-cuts the other
+        three</strong>, so it does not sum with them. A high number a week later is a finding: the
+        plan was written and never engaged with.</td></tr>
+  <tr><td><code>items</code></td>
+      <td>Roots in the same order the create call sent them (<a href="#d7">D7</a>); each node's
+        <code>children</code> in <code>sort_order</code>, matching what the app shows.</td></tr>
+  <tr><td><code>…item_type</code></td>
+      <td>What the row is <em>now</em> — the classifier or the owner may have typed an
+        <code>unclassified</code> capture since.</td></tr>
+  <tr><td><code>…state</code></td>
+      <td><strong>Where it is now</strong>, in one vocabulary across types: <code>active</code> /
+        <code>completed</code> for a task, the <code>factory_state</code> for a story in the factory
+        (<a href="#d8">D8</a>). This is the “if not done, what is it doing” answer.</td></tr>
+  <tr><td><code>…done</code> / <code>…done_at</code></td>
+      <td><strong>Is it finished, and when.</strong> Derived per family: a task's
+        <code>completed_at</code>, a story's <code>code_items.done_at</code>. <code>done_at</code> is
+        null on a story that reached <code>done</code> before this feature shipped — there was no
+        column to record it (<a href="#d8b">D8b</a>).</td></tr>
+  <tr><td><code>…code</code></td>
+      <td>The factory sidecar's identity (<code>ref</code>, <code>lane</code>), or <code>null</code>.
+        <strong>Null on a <code>code</code>-typed item is itself the answer</strong>: it was planned
+        as code and never entered the factory. Its state is not repeated here —
+        <code>state</code> is it.</td></tr>
+  <tr><td><code>…folder</code></td><td><code>{ id, name }</code>, or <code>null</code> while the item
+      carries no folder.</td></tr>
+  <tr><td><code>…in_inbox</code></td><td><code>dispatched_at === null</code>.</td></tr>
+</table>
+</div>
+
+<p><strong>The empty answer is a real answer</strong>, mirroring <code>/api/habits</code>'s
+<code>"habits": []</code>: when <code>latest</code> resolves to nothing (no cohort has ever been
+created), the response is <code>200</code> with <code>{ "plan": null, "counts": { …all zero },
+"items": [] }</code> — never a 404, which the coach would have to read as an outage.</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:12%">Status</th><th>When</th></tr>
+  <tr><td><code>200</code></td><td>Resolved — including the empty case above.</td></tr>
+  <tr><td><code>400</code></td><td>The path segment is neither a UUID nor <code>latest</code>.</td></tr>
+  <tr><td><code>401</code></td><td>No valid key and no session.</td></tr>
+  <tr><td><code>404</code></td><td>An explicit UUID naming no <code>weekly_plans</code> row. (A plan
+      that exists but has no items is <code>200</code> with an empty array — it is not an error to
+      have planned nothing.)</td></tr>
+  <tr><td><code>500</code></td><td>The read failed. Never report this as “nothing was done”.</td></tr>
+</table>
+</div>
+
+<h2 id="db">5 · The database change</h2>
+
+<p>
+  One migration, <code>database/migrations/&lt;next&gt;_weekly_plan_items.sql</code> — take whatever
+  number is free when you build it, not one written here.
+</p>
+
+<h4>5.1 The column</h4>
+<pre><code>alter table items
+  add column weekly_plan_id uuid references weekly_plans (id) on delete set null;
+
+comment on column items.weekly_plan_id is
+  'The archived week-plan document this item was created from (ALF-195). NULL = an ordinary '
+  'capture. Written by create_weekly_plan_items on the root AND every child, so the cohort is '
+  'one query. on delete set null: the item is real work and outlives the plan document.';
+
+-- The only query shape: "every item belonging to this plan".
+create index items_weekly_plan_id_idx on items (weekly_plan_id)
+  where weekly_plan_id is not null;</code></pre>
+
+<div class="callout">
+  <strong>Not added to <code>items_task_only_fields</code>.</strong> The column is provenance, and it
+  must survive every type transition the app already performs — <code>enter_code_module</code> flips
+  an item to <code>code</code> in place, and a CHECK naming the column would turn “I planned this and
+  then sent it to the factory” into a write error on a legitimate flow.
+</div>
+
+<h4>5.2 Re-expand <code>task_items</code> — mandatory</h4>
+<pre><code>create or replace view task_items with (security_invoker = true) as
+  select i.* from items i
+  where not exists (select 1 from code_items c where c.item_id = i.id);</code></pre>
+<p class="small">
+  <code>select i.*</code> freezes its column list at CREATE time, so without this the new column is
+  invisible to the whole read path — <code>getAllItems()</code> reads this view and overrides the
+  result to <code>Item[]</code>, so the badge would read <code>undefined</code> where the type
+  promises <code>string | null</code>. The bug 0011, 0013, 0018, 0026 and 0029 each document.
+  <code>create or replace</code> (never <code>drop</code>) keeps the grants and
+  <code>security_invoker</code>. <strong><code>v_code_stories</code> is deliberately left alone</strong> —
+  it enumerates its columns explicitly, and nothing in the code module reads the cohort
+  (<a href="#oos">§10</a>).
+</p>
+
+<h4>5.3 The batch RPC</h4>
+<pre><code>create or replace function create_weekly_plan_items(p_plan uuid, p_items jsonb)
+returns setof items
+language plpgsql
+security invoker
+as $$
+declare
+  v_now   timestamptz := now();
+  v_index int := 0;
+  v_item  jsonb;
+  v_child jsonb;
+  v_type  item_type;
+  v_root  items;
+  v_kid   items;
+begin
+  if not exists (select 1 from weekly_plans where id = p_plan) then
+    raise exception 'weekly plan % not found', p_plan;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    -- The route's schema has already rejected every field this type may not carry, so the
+    -- inserts below need no per-type branching: an absent key is simply NULL.
+    v_type := coalesce(v_item ->> 'item_type', 'unclassified')::item_type;
+
+    -- D7: one transaction shares a single now(), and buildTree sorts roots by created_at DESC.
+    -- Descending offsets make array position 0 the newest row, so the Inbox reads top-down in
+    -- the order the caller sent. Never in the future; ≤ 100ms of spread at the batch cap.
+    insert into items (title, notes, item_type, due_date, priority, weekly_plan_id, created_at)
+    values (
+      v_item ->> 'title',
+      v_item ->> 'notes',
+      v_type,
+      (v_item ->> 'due_date')::timestamptz,
+      (v_item ->> 'priority')::task_priority,
+      p_plan,
+      v_now - (v_index * interval '1 millisecond')
+    )
+    returning * into v_root;
+    return next v_root;
+
+    -- Children inherit the root's type (enforce_subtask_shape forbids mixing families) and its
+    -- created_at: a subtask group sorts by sort_order, whose sequence default increments per
+    -- insert, so array order is preserved with nothing to compute.
+    for v_child in
+      select * from jsonb_array_elements(coalesce(v_item -> 'children', '[]'::jsonb))
+    loop
+      insert into items (title, notes, item_type, due_date, priority, weekly_plan_id,
+                         parent_id, created_at)
+      values (
+        v_child ->> 'title',
+        v_child ->> 'notes',
+        v_type,
+        (v_child ->> 'due_date')::timestamptz,
+        (v_child ->> 'priority')::task_priority,
+        p_plan,
+        v_root.id,
+        v_root.created_at
+      )
+      returning * into v_kid;
+      return next v_kid;
+    end loop;
+
+    v_index := v_index + 1;
+  end loop;
+end; $$;
+
+-- security invoker: the column defaults (sort_order's nextval) and the row inserts run as the
+-- CALLING role, so all three need EXECUTE (the 0008 sequence-grant lesson's sibling).
+grant execute on function create_weekly_plan_items(uuid, jsonb)
+  to anon, authenticated, service_role;
+
+notify pgrst, 'reload schema';</code></pre>
+
+<p class="small">
+  The database is the backstop, not the validator: <code>items_task_only_fields</code> rejects a due
+  date on a non-task row and <code>enforce_subtask_shape</code> rejects a mixed family, so a schema
+  bug fails loudly and atomically instead of writing an incoherent week. <code>dispatched_at</code>
+  is never set, so <code>inherit_dispatched_at</code> (0026) leaves root and children alike in the
+  Inbox and the pair can't be split across two views.
+</p>
+
+<h4>5.4 <code>code_items.done_at</code> — the one timestamp the factory never kept</h4>
+<pre><code>alter table code_items add column done_at timestamptz;
+
+comment on column code_items.done_at is
+  'When factory_state last became ''done'' (ALF-195). NULL = not done, or done before this '
+  'migration (nothing to backfill from — the factory kept no transition history). Cleared when '
+  'the state moves off ''done'', so it never asserts a completion that was undone.';
+
+-- In a trigger, not in PATCH /api/code/[ref]: the Worker patches code_items straight through
+-- PostgREST when an implementation PR merges, which is where most `done` transitions come from,
+-- and never passes through the route. Same argument as 0026's inherit_dispatched_at — several
+-- ingresses write the column and only the database sits under all of them.
+create or replace function stamp_code_item_done_at() returns trigger
+language plpgsql security invoker as $$
+begin
+  -- `is distinct from` rather than the bare column mention the trigger fires on: re-saving the
+  -- same state (a blocked_reason edit alongside it) must not restamp a completion.
+  if new.factory_state is distinct from old.factory_state then
+    new.done_at := case when new.factory_state = 'done' then now() end;
+  end if;
+  return new;
+end; $$;
+
+create trigger code_items_stamp_done_at
+  before update of factory_state on code_items
+  for each row execute function stamp_code_item_done_at();</code></pre>
+<p class="small">
+  <code>v_code_stories</code> is deliberately not extended with it — the column module doesn't read
+  it, and that view enumerates its columns, so adding it later is one line. This endpoint reads
+  <code>code_items</code> directly.
+</p>
+
+<h2 id="surface">6 · The surface — the Week plan badge</h2>
+
+<p>
+  One new chip in the row's metadata cluster: a muted pill reading <strong>Week plan</strong> behind
+  the <code>CalendarRange</code> glyph — the same lucide icon the <strong>Week Plan</strong> nav item
+  and view header already use, so the badge points at the place the plan document itself lives.
+  Muted, not coloured: the row's five colours are spoken for (blue = due, amber = due today, red =
+  overdue / high, teal = interactive, green = dispatch-ready), and this is a <em>label</em> like the
+  Type badge, not a verdict.
+</p>
+
+<h4>6.1 Friday evening — the week has just been created</h4>
+
+<div class="app">
+  <p class="eyebrow">Inbox</p>
+  <div class="tasklist">
+    <!-- 1 · A planned TASK root, expanded. Inbox + undispatched + top-level task → the Task badge
+         shows (TaskRow's showTypeBadge), and the unjudged provenance mark rides the title
+         (classificationOrigin → 'unjudged', CircleDashed 11px at muted/40) until the sweep runs. -->
+    <div class="row">
+      <span class="chev">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="transform: rotate(90deg)"><path d="m9 18 6-6-6-6"/></svg>
+      </span>
+      <span class="cbx"></span>
+      <span class="titlecol">
+        <span class="t">Ship the motivic harness spike&nbsp;<svg width="11" height="11"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" style="display:inline-block;vertical-align:-1px;
+          color:rgba(138,150,168,.4)"><path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/>
+          <path d="M17.6 3.71a9.95 9.95 0 0 1 2.69 2.7"/><path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/>
+          <path d="M20.29 17.6a9.95 9.95 0 0 1-2.7 2.69"/><path d="M13.9 21.82a9.94 9.94 0 0 1-3.8 0"/>
+          <path d="M6.4 20.29a9.95 9.95 0 0 1-2.69-2.7"/><path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/>
+          <path d="M3.71 6.4a9.95 9.95 0 0 1 2.7-2.69"/></svg></span>
+        <span class="notes">Timebox to Tuesday morning</span>
+      </span>
+      <span class="meta">
+        <span class="b b-muted">Task</span>
+        <span class="b b-muted"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/>
+          <path d="M16 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>Week plan</span>
+        <span class="b b-due">Sep 8</span>
+        <span class="b b-high" title="Priority: high"><svg width="12" height="12"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"><path d="m17 11-5-5-5 5"/>
+          <path d="m17 18-5-5-5 5"/></svg></span>
+        <span class="b-count">0/2</span>
+      </span>
+    </div>
+
+    <!-- 2 · Its children: same cohort, no badge. The mark and the Task badge are Inbox-ROW-only
+         (parent_id === null), so a subtask carries neither today — unchanged by this work. -->
+    <div class="row child">
+      <span class="chev"></span>
+      <span class="cbx"></span>
+      <span class="titlecol"><span class="t">Re-read last week's findings doc</span></span>
+      <span class="meta"></span>
+    </div>
+    <div class="row child">
+      <span class="chev"></span>
+      <span class="cbx"></span>
+      <span class="titlecol"><span class="t">Write the harness skeleton</span></span>
+      <span class="meta"><span class="b b-due">Sep 8</span></span>
+    </div>
+
+    <!-- 3 · A planned CODE root, collapsed. "Code" earns its badge in every view; a code item can
+         carry neither a due date nor a priority, so the cluster is shorter by two. -->
+    <div class="row">
+      <span class="chev">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m9 18 6-6-6-6"/></svg>
+      </span>
+      <span class="cbx"></span>
+      <span class="titlecol">
+        <span class="t">Per-voice mute in the mixer&nbsp;<svg width="11" height="11"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" style="display:inline-block;vertical-align:-1px;
+          color:rgba(138,150,168,.4)"><path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/>
+          <path d="M17.6 3.71a9.95 9.95 0 0 1 2.69 2.7"/><path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/>
+          <path d="M20.29 17.6a9.95 9.95 0 0 1-2.7 2.69"/><path d="M13.9 21.82a9.94 9.94 0 0 1-3.8 0"/>
+          <path d="M6.4 20.29a9.95 9.95 0 0 1-2.69-2.7"/><path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/>
+          <path d="M3.71 6.4a9.95 9.95 0 0 1 2.7-2.69"/></svg></span>
+      </span>
+      <span class="meta">
+        <span class="b b-muted">Code</span>
+        <span class="b b-muted"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/>
+          <path d="M16 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>Week plan</span>
+        <span class="b-count">0/2</span>
+      </span>
+    </div>
+
+    <!-- 4 · A planned UNCLASSIFIED root: no type badge outside select mode, no due, no priority,
+         no children. Its ONLY metadata is the new badge — the row that proves hasMeta needs the
+         new term, or the whole footer would fail to render. -->
+    <div class="row">
+      <span class="chev"></span>
+      <span class="cbx"></span>
+      <span class="titlecol">
+        <span class="t">Decide what Q4's third rock actually is&nbsp;<svg width="11" height="11"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" style="display:inline-block;vertical-align:-1px;
+          color:rgba(138,150,168,.4)"><path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/>
+          <path d="M17.6 3.71a9.95 9.95 0 0 1 2.69 2.7"/><path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/>
+          <path d="M20.29 17.6a9.95 9.95 0 0 1-2.7 2.69"/><path d="M13.9 21.82a9.94 9.94 0 0 1-3.8 0"/>
+          <path d="M6.4 20.29a9.95 9.95 0 0 1-2.69-2.7"/><path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/>
+          <path d="M3.71 6.4a9.95 9.95 0 0 1 2.7-2.69"/></svg></span>
+      </span>
+      <span class="meta">
+        <span class="b b-muted"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/>
+          <path d="M16 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>Week plan</span>
+      </span>
+    </div>
+
+    <!-- 5 · An ordinary capture from the same Inbox, for contrast: no cohort, no badge. -->
+    <div class="row">
+      <span class="chev"></span>
+      <span class="cbx"></span>
+      <span class="titlecol">
+        <span class="t">Call the piano tuner&nbsp;<svg width="11" height="11" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          style="display:inline-block;vertical-align:-1px;color:rgba(138,150,168,.4)">
+          <path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/><path d="M17.6 3.71a9.95 9.95 0 0 1 2.69 2.7"/>
+          <path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/><path d="M20.29 17.6a9.95 9.95 0 0 1-2.7 2.69"/>
+          <path d="M13.9 21.82a9.94 9.94 0 0 1-3.8 0"/><path d="M6.4 20.29a9.95 9.95 0 0 1-2.69-2.7"/>
+          <path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/><path d="M3.71 6.4a9.95 9.95 0 0 1 2.7-2.69"/></svg></span>
+      </span>
+      <span class="meta"></span>
+    </div>
+  </div>
+  <ul class="legend">
+    <li><strong>Week plan</strong> — the one new element. Muted pill, <code>CalendarRange</code>
+      glyph, immediately after the Type badge, on all three planned roots and on neither the
+      subtasks nor the unplanned capture.</li>
+    <li>Task · Code · Sep 8 · the red high-priority glyph · 0/2 — today's chips, unchanged. The code
+      root carries no due or priority chip because the schema forbids the columns.</li>
+    <li>The dashed ring after a title is the existing “nothing has judged this yet” provenance mark —
+      here on every fresh row, until the sweep reaches it a minute or two later. The green
+      dispatch-ready dot is absent: none of these rows is ready yet (a task needs a folder, a code
+      item needs a project and an epic).</li>
+  </ul>
+</div>
+
+<h4>6.2 The following Thursday — filed, finished, still legible as plan work</h4>
+
+<div class="app">
+  <p class="eyebrow">Completed</p>
+  <div class="tasklist">
+    <div class="row">
+      <span class="chev">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="transform: rotate(90deg)"><path d="m9 18 6-6-6-6"/></svg>
+      </span>
+      <span class="cbx done">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <span class="titlecol">
+        <span class="t dim">Ship the motivic harness spike</span>
+        <span class="ctx">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 18H3"/><path d="m15 18 2 2 4-4"/><path d="M16 12H3"/><path d="M16 6H3"/></svg>
+          <span>RealPlay</span>
+        </span>
+      </span>
+      <span class="meta">
+        <span class="b b-muted"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/>
+          <path d="M16 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>Week plan</span>
+        <span class="b b-due">Sep 8</span>
+        <span class="b b-high"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg></span>
+        <span class="b-count">2/2</span>
+      </span>
+    </div>
+  </div>
+  <ul class="legend">
+    <li>The badge is unconditional on the planned row: it survives the classifier, triage into a
+      folder, and completion, in every Tasks view the row appears in.</li>
+    <li>No Type badge here — “Task” is Inbox-only — so <strong>Week plan</strong> leads the cluster.
+      The folder is named by the Completed view's existing context label, not by a chip.</li>
+  </ul>
+</div>
+
+<p class="small">
+  Behaviour and layout intent, not a pixel spec — but every element drawn is an element that ships,
+  and nothing ships that isn't drawn.
+</p>
+
+<h4>6.3 The rule, in one line</h4>
+<p>
+  <code>RowMetaCluster</code> renders <code>&lt;WeekPlanBadge /&gt;</code> when
+  <code>node.parent_id === null &amp;&amp; node.weekly_plan_id !== null</code>, positioned directly
+  after the Type badge. Not <code>isTopLevelTask</code> — that term is
+  <code>isTask &amp;&amp; parent_id === null</code>, and after <a href="#d4">D4</a> a planned root may
+  be any of the three types.
+</p>
+<p>
+  It is inert in both mounts (an always-<code>span</code>, like <code>DispatchReadyMark</code>) —
+  there is nothing to click: the badge is provenance, and select mode's row is one
+  <code>&lt;button&gt;</code> that forbids a nested control. <code>hasMeta</code> gains the same term,
+  or the unclassified row drawn above renders no footer at all.
+</p>
+<p class="small">
+  <strong>Where it deliberately does not appear.</strong> (a) On children — the badge marks the
+  planned item, and a subtask sits under one. A completed subtask that <code>buildTree</code> lifts
+  to a root in the Completed view still shows none, and that view already names its parent in the
+  row's context label. (b) On the code board and backlog: once a planned code item is dispatched to
+  the factory it gains a <code>code_items</code> sidecar and leaves the Tasks views entirely, and
+  the code module reads <code>v_code_stories</code>, which enumerates its columns — badging it there
+  is a one-line view change plus card work, deferred to <a href="#oos">§10</a>. The API still reports
+  it either way, which is what the review actually consumes.
+</p>
+<p class="small">
+  <strong>No date on the badge.</strong> Resolving the plan's <code>uploaded_at</code> would make a
+  task row depend on the weekly-plan store to render a chip, for a date that is one click away in
+  the Week Plan view. The accessible name is the badge's own words (<code>Week plan item</code>).
+</p>
+
+<h2>7 · The change, layer by layer</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:9%">Layer</th><th style="width:36%">File</th><th>Change</th></tr>
+  <tr>
+    <td>DB</td><td><code>database/migrations/&lt;next&gt;_weekly_plan_items.sql</code></td>
+    <td>New — <code>items.weekly_plan_id</code> + its partial index, the <code>task_items</code>
+      re-expand, the batch RPC and its grant, <strong><code>code_items.done_at</code> and its
+      stamping trigger</strong>, <code>notify pgrst</code>. All of <a href="#db">§5</a> in one
+      file.</td>
+  </tr>
+  <tr>
+    <td>DB</td><td><code>database/src/assertions.ts</code></td>
+    <td>Integration assertions against the real cluster (<a href="#tests">§8</a>).</td>
+  </tr>
+  <tr>
+    <td>DB</td><td><code>database/README.md</code></td>
+    <td>A schema-summary entry for the migration, in the existing per-migration format.</td>
+  </tr>
+  <tr>
+    <td>Types</td><td><code>frontend/lib/database.types.ts</code></td>
+    <td><strong>Generated</strong> — <code>npm run gen-types -w database</code>, commit the raw
+      output. Never hand-edit; it is excluded from ESLint and Prettier on purpose.</td>
+  </tr>
+  <tr>
+    <td>API</td><td><code>frontend/lib/api/schemas.ts</code></td>
+    <td><code>createWeeklyPlanItemsSchema</code> — the <code>z.discriminatedUnion</code> of
+      <a href="#d4">D4</a> plus its child schemas and inferred types, in a
+      <code>Weekly plan items</code> section. <strong>Reuses</strong> the existing
+      <code>dueDate</code>, <code>taskPriority</code> and <code>itemType</code> field definitions —
+      the whole point of that shared block is that a new surface can't invent a second dialect of
+      “due date”.</td>
+  </tr>
+  <tr>
+    <td>API</td><td><code>frontend/lib/data/weekly-plans.ts</code></td>
+    <td>Reads added beside the existing two, each <em>taking</em> the Supabase client (the habits
+      precedent — a keyed caller has no cookie): the plan by id, the latest plan that has items, and
+      a cohort's rows plus the folders and <code>code_items</code> sidecars they reference.</td>
+  </tr>
+  <tr>
+    <td>API</td><td><code>frontend/lib/weekly-plan-items/payload.ts</code> <span class="small">(+ test)</span></td>
+    <td>New, pure: rows + folders + sidecars → the nested nodes and the <code>counts</code> object,
+      owning the <code>state</code> / <code>done</code> / <code>done_at</code> derivation of
+      <a href="#d8">D8</a> — one function, so the aggregate and the rows are computed from the same
+      rule. Mirrors <code>lib/habits/payload.ts</code> — no I/O, so the shape is table-testable and
+      the route stays a thin auth-parse-read-respond shell.</td>
+  </tr>
+  <tr>
+    <td>API</td><td><code>frontend/app/api/weekly-plans/[id]/items/route.ts</code></td>
+    <td>New — <code>GET</code> + <code>POST</code>, both through <code>resolveIngestClient</code>,
+      <code>parseRequestBody</code> / <code>parseUUID</code>, <code>jsonOk</code> /
+      <code>jsonError</code>, <code>mapSupabaseError</code>. A route-local resolver accepts the
+      <code>latest</code> segment on <code>GET</code> only.</td>
+  </tr>
+  <tr>
+    <td>App</td><td><code>frontend/components/tasks/week-plan-badge.tsx</code> <span class="small">(+ test, + story)</span></td>
+    <td>New — the muted <code>Badge</code> with the <code>CalendarRange</code> glyph. An inert
+      <code>&lt;span&gt;</code> in every mode.</td>
+  </tr>
+  <tr>
+    <td>App</td><td><code>frontend/components/tasks/task-row/row-meta-cluster.tsx</code></td>
+    <td>Mount it after the Type badge under <code>parent_id === null &amp;&amp; weekly_plan_id !==
+      null</code>, and add that term to <code>hasMeta</code>.</td>
+  </tr>
+  <tr>
+    <td>Docs</td><td><code>docs/productivity-coach-primer.md</code></td>
+    <td>Endpoints 5 and 6 in the existing house format (request, response, status table), the
+      per-type field matrix, <strong>the <a href="#d6">D6</a> warning</strong> (“a plan line with a
+      day is a <code>task</code> and carries its <code>due_date</code>”), two bundled scripts
+      (<code>create-plan-items.sh</code>, <code>plan-items.sh</code>), the capability list at the
+      top, and the <strong>Out of scope</strong> bullet that currently reads “Creating tasks … is not
+      part of this integration”, which this work retires. This file is the source the coach's skill
+      is generated from — leaving it stale means the capability exists and nothing knows it.</td>
+  </tr>
+  <tr>
+    <td>Docs</td><td><code>docs/demos/ALF-195-weekly-plan-items/…</code></td>
+    <td>The demo doc (<a href="#demo">§9</a>).</td>
+  </tr>
+</table>
+</div>
+
+<p class="small">
+  Nothing changes in the tasks store, <code>getAllItems</code>, <code>buildTree</code>, the row's own
+  props, or the classifier Worker: the new column rides the existing read path once the view is
+  re-expanded and the types are regenerated, exactly as <code>dispatched_at</code> and the classifier
+  columns did.
+</p>
+
+<h2 id="tests">8 · Back-pressure</h2>
+
+<p>Red/green TDD, and every behaviour below has a test that fails before it exists.</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Suite</th><th>Covers</th></tr>
+  <tr>
+    <td><code>lib/api/schemas.test.ts</code><br /><span class="small">jest, <code>check:fast</code></span></td>
+    <td>Per branch: a bare root defaults to <code>unclassified</code>; a task accepts due date,
+      priority and children; a code root accepts children but rejects a due date or priority; an
+      unclassified root rejects children. Plus: an empty batch, a blank title, an unknown key, a
+      child stating <code>item_type</code>, a grandchild, and a batch over 100 nodes — the cap
+      counted over roots <em>and</em> children, so 1 root with 100 children fails too.</td>
+  </tr>
+  <tr>
+    <td><code>lib/weekly-plan-items/payload.test.ts</code><br /><span class="small">jest</span></td>
+    <td>Flat rows → nested nodes; children ordered by <code>sort_order</code> and roots by
+      <code>created_at</code> descending. The <a href="#d8">D8</a> derivation per family: a completed
+      task reports <code>state: 'completed'</code>, <code>done: true</code> and its
+      <code>completed_at</code> as <code>done_at</code>; a story at <code>done</code> reports its
+      <code>factory_state</code> as <code>state</code> and <code>code_items.done_at</code>; a story
+      mid-flight reports its state with <code>done: false</code>; a story done before the migration
+      reports <code>done: true</code> with a null <code>done_at</code>; a <code>code</code>-typed row
+      with no sidecar reports <code>code: null</code> and <code>state: 'active'</code>. Then the
+      counts over a deliberately mixed cohort — <code>counts.done</code> equals the number of nodes
+      with <code>done: true</code>, an <code>abandoned</code> story counts as neither done nor open,
+      <code>done + open + abandoned === total</code>, and <code>untriaged</code> cross-cuts. Plus
+      folder resolution and <code>folder: null</code>; an orphan child (parent deleted) still
+      reported, as a root.</td>
+  </tr>
+  <tr>
+    <td><code>app/api/weekly-plans/[id]/items/route.test.ts</code><br /><span class="small">jest</span></td>
+    <td>Both verbs: <code>401</code> with no key and no session; the key resolving the
+      <strong>admin</strong> client (assert <code>createAdminClient</code> was used — the habits
+      trap); <code>POST</code> <code>201</code> with the created tree and <code>created</code> count;
+      <code>POST</code> <code>404</code> on an unknown plan and on <code>latest</code>;
+      <code>POST</code> <code>400</code> on a schema failure, with <code>details</code>;
+      <code>GET</code> resolving <code>latest</code> to the newest plan <em>that has items</em> (a
+      newer, item-less plan is not chosen); <code>GET</code> <code>200</code> with the documented
+      empty payload when no cohort exists; <code>GET</code> <code>404</code> on an unknown UUID and
+      <code>400</code> on a non-UUID segment; a Supabase error mapped, not swallowed.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/week-plan-badge.test.tsx</code><br /><span class="small">RTL</span></td>
+    <td>Renders the label and its accessible name; renders a <code>span</code>, never a button.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/task-row.test.tsx</code><br /><span class="small">RTL</span></td>
+    <td>The gate: badge present on a planned root of <em>each</em> type (the unclassified case also
+      proving the footer renders when the badge is its only metadata); absent on a child; absent when
+      the column is null; still present after completion and in select mode.</td>
+  </tr>
+  <tr>
+    <td><code>components/tasks/week-plan-badge.stories.tsx</code><br /><span class="small">Storybook image snapshot, <code>check:slow</code></span></td>
+    <td>A committed PNG baseline for the new chip, as <code>ClassificationMark</code> and
+      <code>FolderCountBadge</code> each have — the only gate that would catch the pill silently
+      losing its glyph or its tone.</td>
+  </tr>
+  <tr>
+    <td><code>database/src/assertions.ts</code><br /><span class="small">real Postgres, <code>check:slow</code></span></td>
+    <td>The RPC writes roots and children of each type in one call, stamps
+      <code>weekly_plan_id</code> on both, leaves <code>dispatched_at</code> null, and returns them;
+      children inherit their root's type; a batch whose <em>second</em> root violates a CHECK writes
+      <strong>nothing</strong> (the atomicity claim in <a href="#d3">D3</a>, asserted rather than
+      assumed); root <code>created_at</code> descends with array position (<a href="#d7">D7</a>);
+      <code>task_items</code> exposes <code>weekly_plan_id</code> (the frozen-view trap);
+      <code>enter_code_module</code> on a planned item keeps the column (the reason it is not in the
+      task-only CHECK); deleting a <code>weekly_plans</code> row nulls the column and keeps the
+      items; each of the three roles can execute the function. And the <a href="#d8b">D8b</a>
+      trigger: moving a story to <code>done</code> stamps <code>done_at</code>, moving it off clears
+      it, an update that re-sets the same state does not restamp, and an update touching only
+      <code>blocked_reason</code> leaves it alone — asserted through a direct table UPDATE, the shape
+      the Worker's PostgREST patch takes, not through the app.</td>
+  </tr>
+</table>
+</div>
+
+<p class="small">
+  <strong>No Playwright spec.</strong> The endpoints have no browser flow, and the badge is a
+  conditional chip on an already-covered row — RTL states the rule and the image snapshot locks the
+  pixels. Adding an E2E here would buy a slower <code>check:slow</code> and nothing else.
+</p>
+
+<h2 id="demo">9 · Demo evidence</h2>
+
+<p>
+  A demo doc in its own folder — <code>docs/demos/ALF-195-weekly-plan-items/</code> — built with the
+  <code>showboat</code> CLI (<code>npm run demo -- init|note|exec|image|verify</code>). Follow that
+  skill's rules for what counts as evidence and for keeping <code>exec</code> blocks deterministic;
+  they are the source of truth, not restated here. What this change has to <em>show</em>:
+</p>
+<ol>
+  <li>A real <code>POST</code> of a small week against a plan id — one task with children, one code
+    root, one bare capture — and the <code>201</code> body it returns.</li>
+  <li>The Inbox rendering those three rows with the <strong>Week plan</strong> badge — a screenshot
+    via <code>npm run screenshot -w frontend</code>, embedded with <code>demo -- image</code>.</li>
+  <li>Completing one of them in the app, then a real <code>GET …/latest/items</code> whose
+    <code>counts</code>, <code>done</code> and <code>done_at</code> reflect it. That round trip <em>is</em> the
+    feature; a create alone doesn't demonstrate it.</li>
+</ol>
+<p class="small">
+  No test invocations in the demo (<code>demo-lint</code>'s <code>no-test-in-demo</code>) — the
+  suites are the gate, the demo is the proof of new behaviour.
+</p>
+
+<h2 id="oos">10 · Out of scope, and known limits</h2>
+
+<ul>
+  <li><strong>Creating projects, epics or stories.</strong> The endpoint creates <code>items</code>,
+    including <code>code</code>-typed ones; entering the factory stays a human act through the
+    existing gate, which is also where the project and epic get chosen.</li>
+  <li><strong><code>intended_project_id</code> / <code>intended_epic_id</code> on create.</strong>
+    The coach can't discover project ids today. The classifier fills both for a code item, and
+    triage confirms them (<a href="#d4">D4</a>). A <code>GET /api/projects</code> for the key list
+    would be the enabler if we ever want the coach to state them.</li>
+  <li><strong>The badge on the code board / backlog.</strong> A dispatched code item leaves the Tasks
+    views, and <code>v_code_stories</code> doesn't carry the column. One line of view plus card work
+    when it's wanted (<a href="#surface">§6.3</a>).</li>
+  <li><strong>Updating, deleting or re-pointing a cohort.</strong> No <code>PATCH</code>, no
+    <code>DELETE</code>. A mis-created week is fixed at the keyboard, like any other item.</li>
+  <li><strong>No de-duplication.</strong> Two identical <code>POST</code>s create two sets of items.
+    Appending is deliberate — it lets a mid-week check-in add to the same cohort — but the endpoint
+    has no memory of what it wrote, so a retried call after a timeout duplicates. The coach creates
+    the week once, after the plan is posted.</li>
+  <li><strong>Deleted items leave no trace.</strong> The cohort is “rows that still exist”, so an item
+    the owner deleted is indistinguishable from one that was never created. Tombstones would be a
+    schema change for a case the review can just ask about.</li>
+  <li><strong>A planned parent converted to an epic disappears from the cohort.</strong>
+    <code>convert_to_code_epic</code> deletes a non-task parent (its children become stories and keep
+    the column, so most of the cohort survives). Not worth special-casing: the stories carry the
+    provenance, which is what the review reads.</li>
+  <li><strong>No cohort surface in the app</strong> beyond the badge — no “week plan” filter, view or
+    section, and no live status panel next to the plan document.</li>
+  <li><strong>No timezone or overdue arithmetic</strong> in the payload (<a href="#d8">D8</a>).</li>
+  <li><strong>A full factory transition log.</strong> <code>done_at</code> records the one
+    transition the review asks about; “when did it reach <code>ready_for_review</code>” still has no
+    answer, and giving it one means a <code>code_item_transitions</code> table (or per-state
+    columns) — worth its own ticket if the review ever wants cycle time.</li>
+  <li><strong>Fixing <code>code_items.updated_at</code>.</strong> Nothing writes it, so the board's
+    “most recent first” sort in <code>code-store</code> is really sorting by sidecar creation. Real,
+    pre-existing, and not this ticket's (<a href="#d8b">D8b</a>).</li>
+  <li><strong>No paging.</strong> A cohort is tens of rows; the read takes a single 1000-row range,
+    which the 100-node create cap keeps well clear of unless a plan is appended to ten times.</li>
+  <li><strong>The coach's own skill</strong> lives outside this repo. In scope here is the primer it
+    is generated from.</li>
+</ul>
+
+<h3>Open questions</h3>
+<ol>
+  <li><strong>Should the Week Plan view show the cohort's live status beside the document?</strong>
+    The plan says what was intended and the items say what happened; putting them on one screen is
+    the obvious next move, but the review loop doesn't need it and it is a view's worth of design.
+    Deferred, not rejected.</li>
+  <li><strong>What should happen when a revised plan is re-posted mid-week?</strong> Today the cohort
+    stays attached to the id it was created against, and <code>latest</code> keeps resolving to it
+    (it is the newest plan <em>with items</em>), so nothing breaks. If revisions become routine we may
+    want a way to re-point a cohort at the new document — a small follow-up, not part of this.</li>
+</ol>
+
+<h2>11 · Acceptance criteria</h2>
+
+<ul class="ac">
+  <li class="h">Database</li>
+  <li><code>items.weekly_plan_id</code> exists, nullable, FK to <code>weekly_plans (id)</code> with
+    <code>on delete set null</code>, commented, and indexed by a partial index on the non-null set.</li>
+  <li>It is <em>not</em> named in <code>items_task_only_fields</code>, and survives
+    <code>enter_code_module</code>.</li>
+  <li><code>task_items</code> is re-created in the same migration and exposes the new column.</li>
+  <li><code>code_items.done_at</code> exists, commented, and is stamped by a <code>before update of
+    factory_state</code> trigger: set on entering <code>done</code>, cleared on leaving it, unchanged
+    when the state is re-set to the same value or when another column is updated alone. It works on a
+    direct table UPDATE (the Worker's path), not only through the app.</li>
+  <li><code>create_weekly_plan_items(uuid, jsonb)</code> exists, is <code>security invoker</code>,
+    is granted to <code>anon, authenticated, service_role</code>, and writes a whole batch or none
+    of it.</li>
+  <li>Created rows carry the caller's type (defaulting to <code>unclassified</code>), children
+    inherit their root's type, and every row is <code>status = 'active'</code>,
+    <code>dispatched_at = null</code>, <code>folder_id = null</code>, with
+    <code>weekly_plan_id</code> set on roots and children alike.</li>
+  <li>Root <code>created_at</code> descends with array position, so the Inbox lists the week in the
+    order it was sent.</li>
+  <li><code>migration-lint</code> passes and <code>frontend/lib/database.types.ts</code> is
+    regenerated by its generator and committed verbatim.</li>
+
+  <li class="h">POST /api/weekly-plans/{planId}/items</li>
+  <li>Accepts the ingest key (<code>x-api-key</code> or bearer) <em>or</em> a browser session, and
+    reads through the admin client on the keyed path; otherwise <code>401</code>.</li>
+  <li>Creates <code>task</code>, <code>code</code> and <code>unclassified</code> roots, with children
+    where the type allows them, and returns <code>201</code> with
+    <code>{ plan, created, items }</code>.</li>
+  <li>Enforces the <a href="#d4">D4</a> matrix at parse time: a due date or priority on a non-task
+    root, children on an unclassified root, a child with its own <code>item_type</code> or its own
+    <code>children</code>, an unknown key, a blank title, an empty batch or a batch over 100 nodes
+    are each a <code>400</code> carrying zod <code>details</code>.</li>
+  <li><code>404</code> for an unknown plan id and for the <code>latest</code> segment; nothing is
+    written in either case.</li>
+
+  <li class="h">GET /api/weekly-plans/{planId|latest}/items</li>
+  <li>Same auth rule as above.</li>
+  <li><code>latest</code> resolves to the most recent plan that has at least one item — a newer
+    item-less plan does not win.</li>
+  <li>Returns <code>{ plan, counts, items }</code> with the tree nested and ordered as the app shows
+    it, each node carrying <code>item_type</code>, <code>state</code>, <code>done</code>,
+    <code>done_at</code>, <code>due_date</code>, <code>priority</code>, <code>created_at</code>,
+    <code>folder</code>, <code>in_inbox</code> and <code>code</code>. The raw
+    <code>status</code> / <code>completed_at</code> columns are NOT surfaced at the top level.</li>
+  <li>The three derived fields resolve per family exactly as <a href="#d8">D8</a>'s table says — a
+    shipped story reports <code>done: true</code> with its <code>done_at</code>, and a story
+    mid-flight reports its <code>factory_state</code> as <code>state</code>.</li>
+  <li>A code item in the factory reports its <code>ref</code> and <code>lane</code>; one that never
+    entered reports <code>code: null</code> and <code>state: 'active'</code>.</li>
+  <li><code>counts.done</code> equals the number of nodes with <code>done: true</code>, and
+    <code>counts.done + counts.open + counts.abandoned === counts.total</code>;
+    <code>untriaged</code> counted independently.</li>
+  <li>No cohort at all → <code>200</code> with <code>plan: null</code>, zeroed counts, empty
+    <code>items</code>. An unknown explicit id → <code>404</code>. A non-UUID,
+    non-<code>latest</code> segment → <code>400</code>.</li>
+
+  <li class="h">The app</li>
+  <li>A top-level item of <em>any</em> type carrying <code>weekly_plan_id</code> shows the
+    <strong>Week plan</strong> badge — muted pill, <code>CalendarRange</code> glyph — directly after
+    the Type badge, in the Inbox, folder views, By-Priority, Completed and select mode.</li>
+  <li>Its children show no badge, and an item with no <code>weekly_plan_id</code> shows none.</li>
+  <li>A row whose only metadata is the badge still renders its metadata footer.</li>
+  <li>The badge is a non-interactive <code>span</code> in every mode and carries an accessible name.</li>
+  <li>No other row chrome moves: the drawings in <a href="#surface">§6</a> are the whole visual diff.</li>
+
+  <li class="h">Docs &amp; evidence</li>
+  <li><code>docs/productivity-coach-primer.md</code> documents both endpoints in its existing format,
+    carries the per-type matrix and the <a href="#d6">D6</a> due-date warning, ships a script for
+    each, and no longer lists task creation as out of scope.</li>
+  <li><code>database/README.md</code> summarises the migration.</li>
+  <li>A demo doc under <code>docs/demos/ALF-195-weekly-plan-items/</code> shows create → badge →
+    complete → read, and <code>npm run demo -- verify</code> is green.</li>
+  <li>Root <code>check</code> (fast + slow) is green, with no ignore directive, config relaxation or
+    <code>--no-verify</code> anywhere in the change.</li>
+</ul>
+
+<h2>12 · Related reading</h2>
+<ul>
+  <li><code>docs/specs/product/SPEC.md</code> §3 (the item model), §7 (single-user auth model);
+    <code>docs/specs/code-module/code-module-spec.md</code> for the factory states this reports.</li>
+  <li><code>docs/productivity-coach-primer.md</code> — the coach-facing contract this extends.</li>
+  <li>Migrations <code>0002</code> (the task-only CHECK, <code>task_items</code>),
+    <code>0019</code> (subtask shape, the epic conversion), <code>0022</code> (the plan archive),
+    <code>0026</code> (dispatch residency), <code>0029</code> (the classifier, the corrections log,
+    and the frozen-view warning).</li>
+  <li><code>workers/src/sweep.ts</code> and <code>workers/src/verdict.ts</code> — the sweep predicate
+    and <code>mergeIntoItem</code>, the two mechanisms <a href="#d6">D6</a> rests on.</li>
+  <li>Skills: <code>supabase</code> (grants, RPCs, the view trap), <code>nextjs</code> (route
+    handlers), <code>data-flow</code> (why nothing in the store changes), <code>showboat</code>
+    (the demo), <code>migration-lint</code>, <code>storybook</code> (the snapshot baseline).</li>
+  <li><code>frontend/app/api/habits/route.ts</code> — the closest sibling: a keyed, agent-facing
+    endpoint whose comments explain the auth and “empty is an answer” choices reused here.</li>
+</ul>
+
+</div>
+</body>
+</html>
