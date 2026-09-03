@@ -4,6 +4,7 @@ import {
   createFolderSchema,
   createItemSchema,
   createProjectSchema,
+  createWeeklyPlanItemsSchema,
   listItemsQuerySchema,
   moveCodeInProjectSchema,
   moveCodeSchema,
@@ -661,5 +662,119 @@ describe('moveCodeInProjectSchema (the Backlog jump to top/bottom of project)', 
 
   it('rejects a non-boolean to_top', () => {
     expect(moveCodeInProjectSchema.safeParse({ ref: 'ALF-1', to_top: 'top' }).success).toBe(false);
+  });
+});
+
+/** Parse a batch of the given roots — the shape every case below varies one field of. */
+function batch(...items: unknown[]) {
+  return createWeeklyPlanItemsSchema.safeParse({ items });
+}
+
+describe('createWeeklyPlanItemsSchema — the per-type matrix', () => {
+  it('defaults a root with no item_type to unclassified', () => {
+    const result = batch({ title: "Decide what Q4's third rock is" });
+    expect(result.success).toBe(true);
+    expect(result.data?.items[0]?.item_type).toBe('unclassified');
+  });
+
+  it('accepts a task root carrying a due date, a priority and children', () => {
+    const result = batch({
+      item_type: 'task',
+      title: 'Ship the motivic harness spike',
+      notes: 'Timebox to Tuesday morning',
+      due_date: '2026-09-08',
+      priority: 'high',
+      children: [
+        { title: "Re-read last week's findings doc" },
+        { title: 'Write the harness skeleton', due_date: '2026-09-08T09:00:00Z' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a code root with children but rejects a due date or a priority on it', () => {
+    expect(
+      batch({ item_type: 'code', title: 'Per-voice mute', children: [{ title: 'Mute state' }] })
+        .success,
+    ).toBe(true);
+    expect(batch({ item_type: 'code', title: 'x', due_date: '2026-09-08' }).success).toBe(false);
+    expect(batch({ item_type: 'code', title: 'x', priority: 'high' }).success).toBe(false);
+  });
+
+  it('rejects a due date or a priority on an unclassified root', () => {
+    expect(batch({ title: 'x', due_date: '2026-09-08' }).success).toBe(false);
+    expect(batch({ title: 'x', priority: 'low' }).success).toBe(false);
+  });
+
+  it('rejects children on an unclassified root — the DB CHECK forbids the shape', () => {
+    expect(batch({ title: 'x', children: [{ title: 'y' }] }).success).toBe(false);
+  });
+
+  it('rejects a child stating its own item_type — a child inherits its root family', () => {
+    const result = batch({
+      item_type: 'task',
+      title: 'x',
+      children: [{ title: 'y', item_type: 'task' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a grandchild — children are one level deep', () => {
+    const result = batch({
+      item_type: 'task',
+      title: 'x',
+      children: [{ title: 'y', children: [{ title: 'z' }] }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a due date on a code root's child, which inherits the code family", () => {
+    const result = batch({
+      item_type: 'code',
+      title: 'x',
+      children: [{ title: 'y', due_date: '2026-09-08' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown key rather than dropping it, so a typo is loud', () => {
+    expect(batch({ title: 'x', folder_id: '6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8' }).success).toBe(
+      false,
+    );
+    expect(batch({ item_type: 'task', title: 'x', status: 'completed' }).success).toBe(false);
+    expect(batch({ item_type: 'code', title: 'x', intended_project_id: null }).success).toBe(false);
+  });
+
+  it('rejects a blank or whitespace-only title', () => {
+    expect(batch({ title: '' }).success).toBe(false);
+    expect(batch({ title: ' '.repeat(3) }).success).toBe(false);
+    expect(batch({ item_type: 'task', title: 'x', children: [{ title: '' }] }).success).toBe(false);
+  });
+
+  it('rejects an empty batch — there is nothing to create', () => {
+    expect(createWeeklyPlanItemsSchema.safeParse({ items: [] }).success).toBe(false);
+  });
+
+  it('requires the items key', () => {
+    expect(createWeeklyPlanItemsSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('counts the 100-node cap over roots AND children together', () => {
+    const hundredRoots = Array.from({ length: 100 }, (_, index) => ({
+      title: `root ${String(index)}`,
+    }));
+    expect(createWeeklyPlanItemsSchema.safeParse({ items: hundredRoots }).success).toBe(true);
+    expect(
+      createWeeklyPlanItemsSchema.safeParse({ items: [...hundredRoots, { title: 'one too many' }] })
+        .success,
+    ).toBe(false);
+
+    // One root carrying 100 children is 101 nodes, and fails for the same reason.
+    const bigFamily = {
+      item_type: 'task',
+      title: 'root',
+      children: Array.from({ length: 100 }, (_, index) => ({ title: `child ${String(index)}` })),
+    };
+    expect(createWeeklyPlanItemsSchema.safeParse({ items: [bigFamily] }).success).toBe(false);
   });
 });
