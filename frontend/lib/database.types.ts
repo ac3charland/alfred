@@ -76,6 +76,7 @@ export type Database = {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
+          done_at: string | null
           epic_id: string
           factory_state: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url: string | null
@@ -98,6 +99,7 @@ export type Database = {
             | null
           blocked_reason?: string | null
           created_at?: string
+          done_at?: string | null
           epic_id: string
           factory_state?: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url?: string | null
@@ -120,6 +122,7 @@ export type Database = {
             | null
           blocked_reason?: string | null
           created_at?: string
+          done_at?: string | null
           epic_id?: string
           factory_state?: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url?: string | null
@@ -352,6 +355,7 @@ export type Database = {
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"]
           title: string
+          weekly_plan_id: string | null
         }
         Insert: {
           classified_at?: string | null
@@ -380,6 +384,7 @@ export type Database = {
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"]
           title: string
+          weekly_plan_id?: string | null
         }
         Update: {
           classified_at?: string | null
@@ -408,6 +413,7 @@ export type Database = {
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"]
           title?: string
+          weekly_plan_id?: string | null
         }
         Relationships: [
           {
@@ -443,6 +449,13 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_weekly_plan_id_fkey"
+            columns: ["weekly_plan_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_plans"
             referencedColumns: ["id"]
           },
         ]
@@ -531,6 +544,7 @@ export type Database = {
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"] | null
           title: string | null
+          weekly_plan_id: string | null
         }
         Insert: {
           classified_at?: string | null
@@ -559,6 +573,7 @@ export type Database = {
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
           title?: string | null
+          weekly_plan_id?: string | null
         }
         Update: {
           classified_at?: string | null
@@ -587,6 +602,7 @@ export type Database = {
           source_url?: string | null
           status?: Database["public"]["Enums"]["item_status"] | null
           title?: string | null
+          weekly_plan_id?: string | null
         }
         Relationships: [
           {
@@ -622,6 +638,13 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "items_weekly_plan_id_fkey"
+            columns: ["weekly_plan_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_plans"
             referencedColumns: ["id"]
           },
         ]
@@ -727,6 +750,7 @@ export type Database = {
           source_url: string | null
           status: Database["public"]["Enums"]["item_status"]
           title: string
+          weekly_plan_id: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -751,6 +775,7 @@ export type Database = {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
+          done_at: string | null
           epic_id: string
           factory_state: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url: string | null
@@ -797,12 +822,51 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_weekly_plan_items: {
+        Args: { p_items: Json; p_plan: string }
+        Returns: {
+          classified_at: string | null
+          classified_guess: Json | null
+          classified_model: string | null
+          classified_prompt_version: number | null
+          classified_provider: string | null
+          classify_attempts: number
+          completed_at: string | null
+          created_at: string
+          dispatched_at: string | null
+          due_date: string | null
+          folder_id: string | null
+          id: string
+          intended_epic_id: string | null
+          intended_project_id: string | null
+          item_type: Database["public"]["Enums"]["item_type"]
+          notes: string | null
+          occurrence_index: number | null
+          parent_id: string | null
+          priority: Database["public"]["Enums"]["task_priority"] | null
+          raw_capture: string | null
+          recurrence: Json | null
+          recurrence_series_id: string | null
+          sort_order: number
+          source_url: string | null
+          status: Database["public"]["Enums"]["item_status"]
+          title: string
+          weekly_plan_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       enter_code_module: {
         Args: { p_epic: string; p_item: string; p_project: string }
         Returns: {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
+          done_at: string | null
           epic_id: string
           factory_state: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url: string | null
@@ -853,6 +917,7 @@ export type Database = {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
+          done_at: string | null
           epic_id: string
           factory_state: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url: string | null
@@ -882,6 +947,7 @@ export type Database = {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
+          done_at: string | null
           epic_id: string
           factory_state: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url: string | null
@@ -912,6 +978,7 @@ export type Database = {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
           created_at: string
+          done_at: string | null
           epic_id: string
           factory_state: Database["public"]["Enums"]["code_factory_state"]
           implementation_pr_url: string | null
