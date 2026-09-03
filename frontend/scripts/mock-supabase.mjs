@@ -26,6 +26,7 @@
  *                         convert_to_code_epic,swap_code_priority,move_code_priority,
  *                         move_code_priority_in_project}
  *                                                             → Software Factory RPCs
+ *     POST /rest/v1/rpc/create_weekly_plan_items              → a week's plan items, in one batch
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
  *
@@ -330,6 +331,9 @@ function newItem(input) {
     // Manual subtask rank (migration 0018): explicit when seeded, else the next sequence value —
     // parked high so a POST-created row (e.g. a new subtask) appends at the bottom of its group.
     sort_order: input.sort_order ?? nextSortOrder++,
+    // The week-plan document this item was created from (migration 0030); null = an ordinary
+    // capture. Only `create_weekly_plan_items` ever sets it.
+    weekly_plan_id: input.weekly_plan_id ?? null,
   };
 }
 
@@ -456,6 +460,8 @@ function newCodeItem(input) {
     requires_refinement: input.requires_refinement ?? true,
     created_at: input.created_at ?? now,
     updated_at: input.updated_at ?? now,
+    // When the story last reached `done` (migration 0030's trigger); null until it does.
+    done_at: input.done_at ?? null,
     // Global Backlog rank (migration 0005): explicit when seeded, else the next sequence value.
     priority: input.priority ?? nextPriority++,
   };
@@ -903,6 +909,50 @@ function handleRpc(req, res, fn, body) {
       target.priority = below.length === 0 ? extreme + 1 : (Math.min(...below) + extreme) / 2;
     }
     sendJson(res, 200, [target]);
+    return;
+  }
+
+  // A week's plan items in one batch (migration 0030): every root, then its children, each
+  // stamped with the plan they came from. The roots' created_at descends with array position, so
+  // the Inbox — which sorts roots newest-first — lists the week in the order it was sent.
+  if (fn === 'create_weekly_plan_items' && req.method === 'POST') {
+    const plan = weeklyPlans.find((row) => String(row.id) === String(body?.p_plan));
+    if (plan === undefined) {
+      sendJson(res, 400, { message: `weekly plan not found (${body?.p_plan})` });
+      return;
+    }
+    const now = Date.now();
+    const created = [];
+    for (const [index, input] of (body?.p_items ?? []).entries()) {
+      const type = input.item_type ?? 'unclassified';
+      const root = newItem({
+        title: input.title,
+        notes: input.notes ?? null,
+        item_type: type,
+        due_date: input.due_date ?? null,
+        priority: input.priority ?? null,
+        weekly_plan_id: plan.id,
+        created_at: new Date(now - index).toISOString(),
+      });
+      items.push(root);
+      created.push(root);
+      for (const child of input.children ?? []) {
+        // Children inherit their root's type and created_at; their order comes from sort_order.
+        const kid = newItem({
+          title: child.title,
+          notes: child.notes ?? null,
+          item_type: type,
+          due_date: child.due_date ?? null,
+          priority: child.priority ?? null,
+          weekly_plan_id: plan.id,
+          parent_id: root.id,
+          created_at: root.created_at,
+        });
+        items.push(kid);
+        created.push(kid);
+      }
+    }
+    sendJson(res, 200, created);
     return;
   }
 

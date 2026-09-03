@@ -132,6 +132,7 @@ export function makeItem(title: string, overrides: Partial<Item> = {}): Item {
     classified_prompt_version: overrides.classified_prompt_version ?? null,
     classified_guess: overrides.classified_guess ?? null,
     classify_attempts: overrides.classify_attempts ?? 0,
+    weekly_plan_id: overrides.weekly_plan_id ?? null,
   };
 }
 
@@ -192,6 +193,7 @@ export function makeCodeStory(overrides: Partial<CodeItem> = {}): CodeItem {
     blocked_reason: overrides.blocked_reason ?? null,
     blocked_from: overrides.blocked_from ?? null,
     requires_refinement: overrides.requires_refinement ?? true,
+    done_at: overrides.done_at ?? null,
     created_at: overrides.created_at ?? nextCreatedAt(),
     updated_at: overrides.updated_at ?? nextCreatedAt(),
     priority: overrides.priority ?? 1,

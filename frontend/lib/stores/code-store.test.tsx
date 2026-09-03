@@ -205,6 +205,7 @@ function makeSavedSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     blocked_reason: null,
     blocked_from: null,
     requires_refinement: true,
+    done_at: null,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-02-02T00:00:00Z',
     priority: 1,
@@ -951,6 +952,7 @@ describe('code-store', () => {
         blocked_reason: null,
         blocked_from: null,
         requires_refinement: true,
+        done_at: null,
         created_at: '2025-01-04T00:00:00Z',
         updated_at: '2025-01-04T00:00:00Z',
         priority: 1,
@@ -1318,6 +1320,7 @@ describe('code-store', () => {
         blocked_from: null,
         requires_refinement: true,
         created_at: '2025-01-05T00:00:00Z',
+        done_at: null,
         updated_at: '2025-01-05T00:00:00Z',
         priority: 1,
       };

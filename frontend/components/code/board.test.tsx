@@ -75,6 +75,7 @@ function makeSidecar(overrides: Partial<CodeItem> = {}): CodeItem {
     blocked_reason: null,
     blocked_from: null,
     requires_refinement: true,
+    done_at: null,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
     priority: 1,
