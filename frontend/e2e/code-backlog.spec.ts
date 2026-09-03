@@ -249,7 +249,7 @@ function seedTwoProjects() {
   };
 }
 
-test('filters the Backlog by project via the Filter by project dropdown (ALF-156)', async ({
+test('filters the Backlog by project via the Filter by project dropdown (ALF-156, ALF-201)', async ({
   page,
   seed,
 }) => {
@@ -257,13 +257,19 @@ test('filters the Backlog by project via the Filter by project dropdown (ALF-156
   await page.goto('/code/backlog');
 
   const rows = page.getByRole('listitem');
+  // Nothing is checked at rest (ALF-201), so the Backlog opens cross-project with no count.
   await expect(rows).toHaveCount(4);
   await expect(rows.nth(1)).toContainText('RLP-2');
+  await expect(page.getByRole('button', { name: /filter by project/i })).not.toContainText('(');
 
-  // Uncheck "Relay". The menu stays open for further toggles, so close it (Escape) before
-  // reading the rows it aria-hides while open.
+  // Check "Alfred" — one tap narrows to that project. The menu stays open for further toggles,
+  // so close it (Escape) before reading the rows it aria-hides while open.
   await page.getByRole('button', { name: /filter by project/i }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Alfred' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
+  await page.getByRole('menuitemcheckbox', { name: 'Alfred' }).click();
   await page.keyboard.press('Escape');
 
   // Only the Alfred stories remain, still in global priority order, and the trigger counts the
@@ -285,9 +291,9 @@ test('filters the Backlog by project via the Filter by project dropdown (ALF-156
   await expect(rows.nth(1)).toContainText('ALF-3');
   await reorderSynced;
 
-  // Re-check Relay: its story comes back, ranked by the same global priority it never lost.
+  // Uncheck Alfred: the Relay story comes back, ranked by the same global priority it never lost.
   await page.getByRole('button', { name: /filter by project/i }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Alfred' }).click();
   await page.keyboard.press('Escape');
   await expect(rows).toHaveCount(4);
   // The swap EXCHANGED the two visible stories' global priorities (1 ↔ 2), so the hidden RLP-2
@@ -307,7 +313,7 @@ test('keeps the Backlog project filter active across SPA navigation (ALF-156)', 
 
   const rows = page.getByRole('listitem');
   await page.getByRole('button', { name: /filter by project/i }).click();
-  await page.getByRole('menuitemcheckbox', { name: 'Relay' }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Alfred' }).click();
   await page.keyboard.press('Escape');
   await expect(rows).toHaveCount(3);
 
