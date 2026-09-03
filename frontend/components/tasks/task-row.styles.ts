@@ -218,6 +218,19 @@ export const classificationMarkGlyphClass: Record<ClassificationOrigin, string> 
 };
 
 /**
+ * The just-classified ring (ALF-196): what a row does when the classifier's verdict lands on it
+ * while you are looking at it. A hairline inset ring for ~1.6s, riding the row's existing
+ * `transition-shadow` so it arrives and leaves as a fade rather than a snap.
+ *
+ * Grey, and `ring-1` against the search jump's `ring-2`, because it is an *arrival* rather than a
+ * selection: the row's five accent colours are each already spoken for (teal = interactive /
+ * selected, blue = due / links, amber = due-today, red = overdue / high, green = dispatch-ready),
+ * and the provenance mark already established grey as the classifier's own register — so this is
+ * the mark's colour, briefly worn by the whole row.
+ */
+export const classifiedFlashClass = 'ring-1 ring-inset ring-muted-foreground/50';
+
+/**
  * The direct-subtask count pill (e.g. `2/5`) — moved out of the row's inline JSX into a named
  * class alongside the other chrome so it's locked by the styles test, not sprinkled inline.
  */

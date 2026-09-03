@@ -25,6 +25,7 @@ import { TaskRowMenu } from '@/components/tasks/task-row/task-row-menu';
 import type { ConvertedEpic } from '@/lib/api-client';
 import { projectBoardHref, storyBoardHref } from '@/lib/code/board-links';
 import { useAnimatedRowExit } from '@/lib/hooks/use-animated-row-exit';
+import { useClassifiedFlash } from '@/lib/hooks/use-classified-flash';
 import { useDismiss } from '@/lib/hooks/use-dismiss';
 import { useFocusItemHighlight } from '@/lib/hooks/use-focus-item-highlight';
 import { useIndentation } from '@/lib/hooks/use-indentation';
@@ -63,6 +64,7 @@ import {
   checkboxSizeClass,
   chevronButtonClass,
   chevronIconClass,
+  classifiedFlashClass,
   collapseClass,
   collapseInnerClass,
   confirmTitleClass,
@@ -236,6 +238,14 @@ export function TaskRow({
   // per render from two columns that already ride along on the row — no store, selector, filter
   // or query reads them.
   const origin = isInboxRow ? classificationOrigin(node) : null;
+
+  // A verdict landing on this row while you are looking at it rings it briefly (ALF-196). The
+  // sweep is the one writer that changes a row you did not touch, so the arrival needs saying —
+  // otherwise labels simply appear and the row reads as though it always had them. Announced
+  // only on the ORDINARY row: select mode already spends the ring on "selected", and a second
+  // one in a different grey there would be a puzzle rather than a signal — those rows still take
+  // the labels live, they just take them quietly.
+  const isJustClassified = useClassifiedFlash(origin);
 
   // The dispatch-ready cue (ALF-178): whether Dispatch will actually send this row, derived per
   // render from the SAME pure predicate the bulk bar and dispatchItems() call — never a second
@@ -831,6 +841,7 @@ export function TaskRow({
             <div
               ref={setRowRef}
               {...(dragListeners ?? {})}
+              data-testid="task-row-body"
               data-drop-over={isDropTarget ? 'true' : undefined}
               className={cn(
                 rowBaseClass,
@@ -838,8 +849,11 @@ export function TaskRow({
                 isDropTarget ? rowDropTargetClass : rowHoverClass,
                 // Dim the in-place row while its DragOverlay clone is being dragged.
                 isDragging && 'opacity-40',
-                // A search-selected row rings briefly, then the ring fades out.
+                // A search-selected row rings briefly, then the ring fades out — as does a row
+                // the classifier has just judged. The search jump is a deliberate act, so it
+                // wins the ring whenever the two land together.
                 'transition-shadow duration-700 motion-reduce:transition-none',
+                isJustClassified && classifiedFlashClass,
                 isSearchHighlighted && 'ring-2 ring-inset ring-accent-teal',
               )}
               style={{ paddingLeft: indentLeft }}
