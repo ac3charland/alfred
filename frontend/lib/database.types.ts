@@ -972,6 +972,7 @@ export type Database = {
         }
       }
       next_code_ref: { Args: { p_project: string }; Returns: number }
+      respace_code_priorities: { Args: never; Returns: undefined }
       swap_code_priority: {
         Args: { p_a: string; p_b: string }
         Returns: {
