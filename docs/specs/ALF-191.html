@@ -146,6 +146,10 @@
   .mi .glyph { width: 12px; height: 12px; }
   .mi .arrow { width: 12px; height: 12px; color: var(--a-muted); }
   .mi .tick { width: 12px; height: 12px; color: var(--a-teal); }
+  /* The disabled Epic sub-trigger's visible hint — the same words as its `title`, which a
+     pointer-events-none trigger can never surface. See D6. */
+  .mi .hint { color: var(--a-muted); font-size: 11.5px; margin-left: auto; padding-left: 8px;
+              white-space: nowrap; }
   .mi.primary { color: var(--a-teal); font-weight: 600; background: rgba(79,209,224,.1); }
   .mi.danger { color: var(--a-red); }
   .mi.hl { background: var(--a-secondary); }                 /* focus:bg-secondary / sub open */
@@ -230,9 +234,20 @@
   <p class="card">
     <strong>The ticket's call:</strong> <em>“If other fields have been set, it's too complicated to
     handle converting once type is set, so just remove the option. Users can delete and start over
-    if need be.”</em> A mis-typed row is rare, caught immediately, and cheap to re-capture — the
-    menu's own <strong>Delete</strong> is the escape hatch.
+    if need be.”</em> The menu's own <strong>Delete</strong> is the escape hatch.
   </p>
+  <div class="callout">
+    <strong>Be honest about whose type it is.</strong> A type does not only arrive from a human
+    press: the classifier sweep writes <code>item_type</code> as part of its verdict
+    (<code>0029_llm_classifier.sql</code>, <code>ClassifiedRow</code> in
+    <code>lib/tasks/classification.ts</code>), <code>classificationOrigin</code> distinguishes
+    <code>'model'</code> from <code>'claimed'</code>, and <code>ClassificationMark</code> draws a
+    <code>Sparkle</code> on a model-labelled row precisely so a human can see a machine chose it.
+    So “a mis-typed row is rare and cheap to re-capture” is only true of hand-typed rows. After this
+    change a wrong <em>machine</em> guess is corrected the same way as a wrong human one — Delete and
+    re-capture — and the provenance mark stays the only signal that a type wasn't chosen by hand.
+    That is the accepted trade (see §8), not an oversight.
+  </div>
 
   <h3>1.3 · The two halves are the same change</h3>
   <p>
@@ -241,6 +256,21 @@
     first; the fields appear once there is a type to hang them on”</em>), and a <strong>typed</strong>
     row has no type left to change. So one group replaces the other, and the menu carries exactly
     one of them at any time.
+  </p>
+
+  <h3>1.4 · This deliberately reverses part of ALF-67</h3>
+  <p>
+    ALF-67 <em>removed</em> flat <code>Set due date</code> / <code>Set priority</code> / <code>Add
+    notes</code> entries from this menu, and left a test standing to keep them out —
+    <code>task-row.test.tsx</code> › <em>“no longer offers Set due date / Set priority / Add
+    notes”</em>. This ticket reinstates due date and priority as <strong>submenus</strong>, so that
+    test is superseded and must be narrowed, not deleted wholesale: <code>Add notes</code> stays out
+    (a textarea is not a menu — see §8), and that half of the assertion still holds.
+  </p>
+  <p class="small">
+    The distinction that makes the reversal coherent: ALF-67 removed entries that each opened
+    <em>somewhere else</em>; these set a value in place, in one press, from a list. Say it here so
+    the next reader doesn't think the reinstatement was an accident.
   </p>
 
   <figure style="margin:1.4rem 0">
@@ -353,8 +383,8 @@
         </tr>
         <tr>
           <td><b>Folder ▸</b></td>
-          <td><code>isTask &amp;&amp; parent_id === null &amp;&amp; !isDispatched(node)</code></td>
-          <td>This is the <em>folder-as-label</em> case — exactly <code>dispatchReadiness</code>'s <code>needs a folder</code>. Once dispatched, <b>Move to…</b> in this same menu owns the folder (it is a <em>move</em>, not a label) and two folder entries would be a puzzle. A subtask's residency travels with its root, so it has no folder of its own to label.</td>
+          <td><code>isTask &amp;&amp; parent_id === null &amp;&amp; !isDispatched(node) &amp;&amp; !isCompletedView</code></td>
+          <td>This is the <em>folder-as-label</em> case — exactly <code>dispatchReadiness</code>'s <code>needs a folder</code>. Once dispatched, <b>Move to…</b> in this same menu owns the folder (it is a <em>move</em>, not a label) and two folder entries would be a puzzle. A subtask's residency travels with its root, so it has no folder of its own to label. <b><code>!isCompletedView</code> is load-bearing:</b> <code>useScopedTasks({ type: 'completed' })</code> returns completed items regardless of residency, so a completed never-dispatched root would otherwise match — and <code>RowMetaCluster</code> refuses to draw the folder chip there on purpose (<em>“the context label owns ‘where this lives’”</em>), so the write would succeed and render nowhere.</td>
         </tr>
         <tr>
           <td><b>Project ▸</b></td>
@@ -380,6 +410,18 @@
       <b>Move to…</b>, and because tying each gate to <code>dispatch.ts</code>'s blockers keeps the
       cue, the disabled hint and the fix in one vocabulary.
     </p>
+    <div class="callout">
+      <strong>Every row above also carries a leading <code>!isTempId(node.id)</code> conjunct</strong>
+      — including <code>Classify as…</code>. <code>dispatch.ts</code> already names this state
+      (<code>'still saving'</code>), and every other write path guards it:
+      <code>isValidDropTarget</code>, <code>canDrag</code>, <code>groupHasTempIds</code>. Without it
+      the feature misfires on precisely the row it targets — a just-captured item, in the window
+      before reconcile. <code>setFolder('temp-…')</code> hits a route that validates the id as a
+      UUID, 400s, rolls back, and leaves a bare <em>“Couldn't save changes”</em> toast after a pick
+      that looked fine. (The affordance cannot misfire today, because a chip renders only for a
+      field that is already set.) The window is milliseconds; hiding the entries through it is
+      correct, and the entries are absent rather than disabled, like every other gate here.
+    </div>
   </div>
 
   <div class="dec">
@@ -391,14 +433,15 @@
       <em>render</em> conjunct rather than a disabled gate.
     </p>
     <p class="why">
-      <b>Why keep <code>canChangeType</code> at all,</b> when an unclassified row is provably a
-      childless root today (capture only creates unclassified rows at the root; a subtask inherits
-      <code>task</code>/<code>code</code> from its parent; <code>canAddSubtask</code> is
-      <code>isTask || isCodeRoot</code>, so nothing can give an unclassified row children)? Because
-      that proof lives in the capture logic, not here — and the flag's own doc explains the hole it
-      plugs: <code>enforce_subtask_shape</code> returns early on a parentless row and never
-      re-validates the untouched children, so <em>“the database cannot catch that one, so the UI
-      must.”</em> A one-token conjunct is cheaper than re-deriving that argument later.
+      <b>Why keep <code>canChangeType</code> at all?</b> Not for the <em>subtask</em> half — that one
+      the database does enforce: <code>items_task_only_fields</code> permits a non-task type only on
+      a row with <code>parent_id is null</code> (or on a <code>code</code> row), so a child inserted
+      with the <code>unclassified</code> column default is rejected outright by the CHECK. The flag
+      earns its place on the <em>parent</em> half, which nothing below the UI catches:
+      <code>enforce_subtask_shape</code> returns early on a parentless row and never re-validates the
+      untouched children, so a code root could silently acquire task children —
+      <em>“the database cannot catch that one, so the UI must.”</em> A one-token conjunct is cheaper
+      than re-deriving that argument later.
     </p>
   </div>
 
@@ -406,10 +449,30 @@
     <h3><span class="n">D4</span>Due date is presets + <b>Custom…</b>, not a calendar grid inside the menu</h3>
     <p>The submenu lists, in order:</p>
     <ul>
-      <li><b>Today</b> · <b>Tomorrow</b> · <b>Next week</b> — <code>todayISODate()</code>, <code>+1</code>, <code>+7</code>, ticked when they equal the row's current date</li>
-      <li>a separator, then <b>No due date</b> (only when a date is set)</li>
+      <li><b>Today</b> · <b>Tomorrow</b> · <b>Next week</b> — <code>todayISODate()</code>, <code>+1</code>, <code>+7</code>, ticked when they equal the row's current <em>calendar date</em> (see the callout)</li>
+      <li>a separator (always after the third preset), then <b>No due date</b> (only when a date is set)</li>
       <li><b>Custom…</b>, which closes the menu and opens the existing <code>Calendar</code> in a popover anchored to the ⋯ button</li>
     </ul>
+    <div class="callout">
+      <strong><code>due_date</code> is a <code>timestamptz</code>, not a <code>YYYY-MM-DD</code>
+      string — normalise before you compare or add.</strong> The column is
+      <code>timestamptz</code> (<code>0001_initial_schema.sql</code>) and the write schema says so
+      outright: <em>“Accept a date-only string … Postgres coerces the date to a timestamptz at
+      midnight”</em> (<code>lib/api/schemas.ts</code>). A reconciled row therefore carries
+      <code>2026-09-04T00:00:00+00:00</code>, so <code>preset.value === node.due_date</code> is
+      <strong>always false</strong> and no preset would ever tick. Derive the calendar date once and
+      use it for both the tick and any arithmetic:
+      <pre><code>const currentDue = node.due_date === null ? null : node.due_date.slice(0, 10);</code></pre>
+      <code>currentDue</code> is what the submenu passes as its <code>value</code>. <b>Never hand
+      <code>node.due_date</code> raw to <code>addDays</code></b>: it splits on <code>-</code>, so
+      <code>Number('04T00:00:00+00:00')</code> is <code>NaN</code> and
+      <code>new Date(NaN).toISOString()</code> <em>throws</em>.
+      <br><br>
+      <b>This defect is invisible to the obvious test.</b> Every due-date fixture in the repo uses a
+      date-only string (<code>due_date: '2099-12-31'</code>), so a test written from those fixtures
+      passes while the shipped feature never ticks. §6.2 therefore requires a fixture with a
+      <em>full timestamptz</em> due date.
+    </div>
     <p class="why">
       <b>Why:</b> a 7-column button grid inside <code>DropdownMenuSubContent</code> breaks Radix's
       roving-focus model (arrow keys move between menu <em>items</em>, not grid cells) and is a
@@ -444,14 +507,27 @@
     <h3><span class="n">D6</span>Epic disables — with the chip's exact words — until a project is set</h3>
     <p>
       With <code>intended_project_id === null</code> the <b>Epic ▸</b> sub-trigger renders
-      <code>disabled</code> with <code>title="Pick a project first"</code> — the verbatim hint
-      <code>IntendedEpicChip</code> already shows, so the two surfaces never drift.
+      <code>disabled</code>, carrying <code>title="Pick a project first"</code> —
+      <code>IntendedEpicChip</code>'s verbatim hint, so the two surfaces never drift — <strong>and
+      the same words as a trailing muted span in its visible label</strong>:
+      <code>Epic…&nbsp;&nbsp;<span style="opacity:.7">Pick a project first</span></code>.
     </p>
+    <div class="callout">
+      <strong>The <code>title</code> alone would never be readable.</strong>
+      <code>DropdownMenuSubTrigger</code> carries <code>data-[disabled]:pointer-events-none</code>,
+      so a disabled sub-trigger is not a hover target and the browser never renders its tooltip —
+      and on touch, where §4.3 argues this menu matters most, <code>title</code> shows nothing at
+      all. (<code>IntendedEpicChip</code>'s comfortable trigger is a plain <code>&lt;button
+      disabled title&gt;</code> with pointer events intact, which is why the chip's hint <em>does</em>
+      appear and the menu's would not.) Hence the visible span: <code>title</code> stays for
+      assistive tech and for the test assertion, but the sighted, mouse-free reader is who the hint
+      is actually for. Drawn in §4.1.
+    </div>
     <p class="why">
       <b>Why disabled rather than absent</b> (the opposite of D3)? Here the entry's absence would be
       unexplained — the field exists and the row needs it — whereas <code>Classify as…</code> is
-      gone because the action itself no longer exists. Disabled-with-a-hint also teaches the
-      dependency: pick the project directly above, and Epic lights up.
+      gone because the action itself no longer exists. The visible hint teaches the dependency: pick
+      the project directly above, and Epic lights up.
     </p>
     <p class="why">
       <b>Consequence to expect:</b> picking a project always clears the epic hint in the same PATCH
@@ -474,9 +550,17 @@
     <p>
       <code>TaskRowMenu</code> already takes 17 props; five more fields plus five more handlers would
       double it. Instead it takes <code>node: ItemNode</code> and the
-      <code>editing: RowMetaEditing</code> bundle and derives its own render gates — <em>exactly</em>
-      what <code>RowMetaCluster</code> does, with the same handler bundle
-      <code>TaskRow.metaEditing</code> already builds.
+      <code>editing: RowMetaEditing</code> bundle — <em>exactly</em> what <code>RowMetaCluster</code>
+      does, with the same handler bundle <code>TaskRow.metaEditing</code> already builds.
+    </p>
+    <p>
+      <b>Where the flags come from:</b> the type flags stay <code>useTaskRowFlags</code>'s and are
+      <em>passed in</em> (<code>isTask</code>, <code>isUnclassified</code>, alongside today's
+      <code>isCode</code> / <code>canChangeType</code>), together with <code>isCompletedView</code>,
+      which the row already holds. The menu derives from <code>node</code> only what is pure shape —
+      <code>parent_id === null</code>, <code>children.length === 0</code>,
+      <code>isDispatched(node)</code>, <code>isTempId(node.id)</code>. One derivation of “what type is
+      this row”, in the hook, exactly as the row and the cluster already share it.
     </p>
     <p class="why">
       <b>Why not read the stores inside the menu</b> for folders/projects/epics? Folders already
@@ -513,10 +597,10 @@
     tick, hint and separator below is a requirement.
   </p>
 
-  <h3>4.1 · The three base menus</h3>
+  <h3>4.1 · The base menu, per row shape</h3>
 
   <div class="mock">
-    <div class="mock-bar"><span>Inbox · ⋯ “More actions”, by row type</span><span class="hmeta">desktop, md+</span></div>
+    <div class="mock-bar"><span>Inbox · ⋯ “More actions”, by row type</span><span class="hmeta">drawn below <code>md</code>, where the <code>md:hidden</code> Add-subtask item is visible</span></div>
     <div class="mock-body">
       <div class="stack">
 
@@ -529,14 +613,15 @@
           <div class="anchor"><div class="menu">
             <div class="mi primary"><span class="lead">Open details</span></div>
             <div class="msep"></div>
-            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add subtask</span></div>
             <div class="mi hl"><span class="lead">Classify as…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             <div class="mi dis"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
             <div class="msep"></div>
             <div class="mi danger"><span class="lead">Delete</span></div>
           </div></div>
-          <p class="cap">Unchanged from today, minus the disabled state: <code>Classify as…</code>
-          is the only label entry, and Dispatch sits disabled on <em>needs a type</em>.</p>
+          <p class="cap"><b>No Add subtask.</b> <code>canAddSubtask</code> is
+          <code>isTask || isCodeRoot</code>, so an unclassified row never offers one — there is a
+          test on exactly this. <code>Classify as…</code> is its only label entry; Dispatch sits
+          disabled on <em>needs a type</em>.</p>
         </div>
 
         <div class="col">
@@ -563,24 +648,90 @@
         </div>
 
         <div class="col">
-          <p class="seclabel">code story · childless root</p>
+          <p class="seclabel">code story · childless root, no project</p>
           <div class="prow">
             <div class="ptitle">Add the retry backoff</div>
             <span class="pill code">Code</span>
             <div class="dots">⋯</div>
           </div>
-          <div class="anchor"><div class="menu">
+          <div class="anchor"><div class="menu" style="min-width:238px">
             <div class="mi primary"><span class="lead">Open details</span></div>
             <div class="msep"></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add story</span></div>
             <div class="mi"><span class="lead">Project…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
-            <div class="mi dis" title="Pick a project first"><span class="lead">Epic…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi dis" title="Pick a project first"><span class="lead">Epic…</span><span class="hint">Pick a project first</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             <div class="mi dis"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
             <div class="msep"></div>
             <div class="mi danger"><span class="lead">Delete</span></div>
           </div></div>
-          <p class="cap">With no project yet: <code>Epic…</code> is dimmed
-          (<code>data-[disabled]:opacity-50</code>) and hovering it reads
-          <em>“Pick a project first”</em>. No “Add story” — a code <em>story</em> hosts none.</p>
+          <p class="cap"><b>Add story renders here</b> — a code root <em>is</em>
+          <code>isCodeRoot</code>, and adding stories is how an epic-shaped row is built (ALF-129).
+          <code>Epic…</code> is dimmed with the hint as <b>visible text</b>, not only a
+          <code>title</code>: a disabled sub-trigger is <code>pointer-events-none</code>, so no
+          tooltip ever appears (D6).</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">task subtask · active, mid-group</p>
+          <div class="prow" style="margin-left:20px">
+            <div class="cbx"></div>
+            <div class="ptitle">Draft the agenda</div>
+            <div class="dots">⋯</div>
+          </div>
+          <div class="anchor"><div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add subtask</span></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>Move up</span></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>Move down</span></div>
+            <div class="mi"><span class="lead">Due date…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi"><span class="lead">Priority…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div></div>
+          <p class="cap"><b>Due and Priority, but no Folder</b> — a subtask's residency travels with
+          its root, so it has no folder of its own to label. No Dispatch either (a subtask has no
+          destination). This is the only menu that carries Move up / Move down.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">task root · already dispatched</p>
+          <div class="prow">
+            <div class="cbx"></div>
+            <div class="ptitle">Renew the domain</div>
+            <div class="dots">⋯</div>
+          </div>
+          <div class="anchor"><div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add subtask</span></div>
+            <div class="mi"><span class="lead">Due date…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi"><span class="lead">Priority…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi"><span class="lead">Move to…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div></div>
+          <p class="cap"><b>Folder… yields to Move to…</b> — the row has left the Inbox, so a folder
+          is a <em>move</em>, not a label. The two never appear together; this is the drawing that
+          settles it.</p>
+        </div>
+
+        <div class="col">
+          <p class="seclabel">any row · still saving (temp id)</p>
+          <div class="prow">
+            <div class="ptitle">Just captured…</div>
+            <div class="dots">⋯</div>
+          </div>
+          <div class="anchor"><div class="menu">
+            <div class="mi primary"><span class="lead">Open details</span></div>
+            <div class="msep"></div>
+            <div class="mi dis"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
+            <div class="msep"></div>
+            <div class="mi danger"><span class="lead">Delete</span></div>
+          </div></div>
+          <p class="cap"><b>No label group and no Classify as…</b> while the id is a temp id — a
+          PATCH by that id would 400 and roll back. Dispatch is already disabled on
+          <em>still saving</em>. Milliseconds long, but it is the row this feature targets most.</p>
         </div>
 
       </div>
@@ -772,15 +923,16 @@
 ─────────────────────────────────  DropdownMenuSeparator (unchanged)
 Add subtask / Add story            md:hidden, canAddSubtask     (unchanged)
 Move up / Move down                active subtask               (unchanged)
-┌─ the one slot ──────────────────────────────────────────────────────┐
-│ Classify as…  ▸                  isUnclassified &amp;&amp; canChangeType     │
-│      — or —                                                          │
-│ Due date…     ▸                  isTask                              │
-│ Priority…     ▸                  isTask                              │
-│ Folder…       ▸                  isTask &amp;&amp; root &amp;&amp; !isDispatched     │
-│ Project…      ▸                  isCode &amp;&amp; root                      │
-│ Epic…         ▸                  isCode &amp;&amp; root &amp;&amp; childless         │
-└──────────────────────────────────────────────────────────────────────┘
+┌─ the one slot ── every entry also requires !isTempId(node.id) ──────────┐
+│ Classify as…  ▸                  isUnclassified &amp;&amp; canChangeType         │
+│      — or —                                                              │
+│ Due date…     ▸                  isTask                                  │
+│ Priority…     ▸                  isTask                                  │
+│ Folder…       ▸                  isTask &amp;&amp; root &amp;&amp; !isDispatched          │
+│                                         &amp;&amp; !isCompletedView             │
+│ Project…      ▸                  isCode &amp;&amp; root                          │
+│ Epic…         ▸                  isCode &amp;&amp; root &amp;&amp; childless             │
+└──────────────────────────────────────────────────────────────────────────┘
 Dispatch                           dispatch !== null            (unchanged)
 Move to…       ▸                   canMoveToFolder              (unchanged)
 ─────────────────────────────────  DropdownMenuSeparator (unchanged)
@@ -808,7 +960,11 @@ interface DropdownMenuSelectSubProperties {
   /** Disable the trigger; `hint` becomes its `title` (e.g. "Pick a project first"). */
   disabled?: boolean;
   hint?: string;
-  /** Index after which a `DropdownMenuSeparator` is drawn (the Priority / Due lists). */
+  /**
+   * Draw a `DropdownMenuSeparator` after this option index. Priority: 0 (after "No priority").
+   * Due date: 2 — after the third preset, in BOTH shapes, so the divider doesn't move when
+   * "No due date" appears. Omit for Folder / Project / Epic.
+   */
   separatorAfter?: number;
 }</code></pre>
   <p>
@@ -820,6 +976,15 @@ interface DropdownMenuSelectSubProperties {
     <code>PriorityMenu</code> and <code>PickerListItem</code> already share. Give it its own
     <code>*.test.tsx</code>: renders options, ticks the active one, calls back with the picked
     value, respects <code>disabled</code>.
+  </p>
+  <p>
+    <b><code>Custom…</code> is a sentinel, not a value.</b> The atom's <code>onSelect</code> is
+    <code>(value: string | null)</code>, and “open a calendar” is neither. Use the repo's existing
+    idiom rather than inventing a second prop: <code>RepeatChip</code> already ships a
+    <code>{ value: 'custom', label: 'Custom…' }</code> option and branches on it in
+    <code>onSelect</code> (<code>detail-chips.tsx</code>). Do the same here — the Due-date submenu's
+    handler checks <code>value === 'custom'</code> first and opens the popover, and only then treats
+    the value as a date.
   </p>
   <div class="callout">
     <strong>Adopt it everywhere in the same change.</strong> The five submenus are its call sites.
@@ -836,31 +1001,56 @@ interface DropdownMenuSelectSubProperties {
     <code>detail-chips.tsx</code> in the same change</strong> (per the frontend-architecture rule:
     a half-adopted primitive is worse than none):
   </p>
-  <pre><code>export function folderOptions(folders: readonly Folder[], allowClear: boolean): PickerChipOption[]
-export function projectOptions(projects: readonly Project[]): PickerChipOption[]   // name · KEY
-export function epicOptions(epics: readonly Epic[]): PickerChipOption[]            // name · REF</code></pre>
+  <p>
+    <b>One shape for all three</b> — today they disagree (<code>epicOptions</code> excludes the clear
+    entry and callers prepend it; <code>FolderChip</code> prepends conditionally;
+    <code>IntendedProjectChip</code> hard-codes <code>No project</code> inline). Unify on an optional
+    clear label: pass one and the builder prepends <code>{ value: null, label: clearLabel }</code>;
+    omit it and there is no clear entry.
+  </p>
+  <pre><code>export function folderOptions(folders: readonly Folder[], clearLabel?: string): PickerChipOption[]
+export function projectOptions(projects: readonly Project[], clearLabel?: string): PickerChipOption[]  // name · KEY
+export function epicOptions(epics: readonly Epic[], clearLabel?: string): PickerChipOption[]           // name · REF</code></pre>
   <p class="small">
-    A <code>.tsx</code> because the labels are two-column <code>ReactNode</code>s. Pure functions of
-    their inputs, so they unit-test without rendering. Behaviour must be identical — the existing
-    chip tests stay green with no assertion changes.
+    Call sites: Folder passes <code>'No folder'</code> only while the row is undispatched (today's
+    <code>allowClear</code>); Project always passes <code>'No project'</code>; Epic always passes
+    <code>'No epic'</code>. A <code>.tsx</code> because the labels are two-column
+    <code>ReactNode</code>s. Pure functions of their inputs, so they unit-test without rendering.
+    Behaviour must be identical — the existing chip tests stay green with no assertion changes.
   </p>
 
   <h3>5.4 · Due-date presets</h3>
   <p>
     <code>lib/habits/dates.ts</code> already exports a correct
     <code>addDays(iso: string, days: number): string</code> over <code>YYYY-MM-DD</code> strings.
-    Don't write a second one: <strong>move it into <code>lib/date-utils.ts</code></strong> (the
-    module that already owns the app's calendar-date helpers) and have
-    <code>lib/habits/dates.ts</code> re-export it, so every habits call site — including
-    <code>lib/habits/index.ts</code>'s barrel — is untouched and its tests stay green.
+    Don't write a second one — but it is <strong>not self-contained</strong>: it is built on the
+    module-private <code>MS_PER_DAY</code>, <code>toUtcMillis</code> and <code>fromUtcMillis</code>,
+    which <code>isoWeekday</code>, <code>daysBetween</code> and <code>eachDay</code> also use and
+    which cannot all move with it. So move the trio <em>with</em> it:
   </p>
-  <pre><code>// The presets, derived once per open.
-const today = todayISODate();
-const DUE_PRESETS = [
-  { value: today,             label: 'Today'     },
-  { value: addDays(today, 1), label: 'Tomorrow'  },
-  { value: addDays(today, 7), label: 'Next week' },
-];</code></pre>
+  <ul>
+    <li>Move <code>MS_PER_DAY</code>, <code>toUtcMillis</code>, <code>fromUtcMillis</code> and
+      <code>addDays</code> into <code>lib/date-utils.ts</code>, <b>exporting the two converters</b>.</li>
+    <li><code>lib/habits/dates.ts</code> imports the converters back for its remaining helpers and
+      <b>re-exports <code>addDays</code></b>, so <code>lib/habits/index.ts</code>'s barrel and every
+      habits call site are untouched and their tests stay green.</li>
+  </ul>
+  <p class="small">
+    <b>Not a duplicate:</b> <code>lib/recurrence/engine.ts</code> has a module-private
+    <code>addDays(date: Date, days: number): Date</code>. Different type, different module, unrelated
+    — it stays exactly where it is. §7's criterion is about the <em>string</em> helper only.
+  </p>
+  <pre><code>// Inside the component — NOT module scope. At module scope `today` freezes at first
+// import, so the presets go stale after midnight in a long-lived tab and any test that
+// pins a clock after import gets the wrong dates.
+const duePresets = React.useMemo(() =&gt; {
+  const today = todayISODate();
+  return [
+    { value: today,             label: 'Today'     },
+    { value: addDays(today, 1), label: 'Tomorrow'  },
+    { value: addDays(today, 7), label: 'Next week' },
+  ];
+}, []);</code></pre>
 
   <h3>5.5 · The <code>Custom…</code> popover</h3>
   <p>
@@ -899,7 +1089,8 @@ const DUE_PRESETS = [
         <td><code>task-row/task-row-menu.tsx</code></td>
         <td>
           <b>+</b> <code>node: ItemNode</code>, <code>isTask: boolean</code>,
-          <code>isUnclassified: boolean</code>, <code>editing: RowMetaEditing</code>.<br>
+          <code>isUnclassified: boolean</code>, <code>isCompletedView: boolean</code>,
+          <code>editing: RowMetaEditing</code>.<br>
           <b>−</b> <code>CLASSIFY_DISABLED_HINT</code> and the sub-trigger's
           <code>disabled</code>/<code>title</code>.<br>
           <code>onClassify</code> and <code>canChangeType</code> stay. Update the component's doc
@@ -910,8 +1101,11 @@ const DUE_PRESETS = [
       <tr>
         <td><code>task-row.tsx</code></td>
         <td>Pass <code>node</code>, <code>isTask</code>, <code>isUnclassified</code> (already
-        returned by <code>useTaskRowFlags</code> but not currently destructured) and the existing
-        <code>metaEditing</code> bundle. No new handlers — all six already exist.</td>
+        returned by <code>useTaskRowFlags</code> but not currently destructured),
+        <code>isCompletedView</code> (already a row prop) and the existing <code>metaEditing</code>
+        bundle. No new handlers — all six already exist. Watch the file's
+        <code>max-lines</code> ESLint warning: it is already over at 905/800, so the new wiring must
+        not add bulk here — the conditionals live in the menu (D7).</td>
       </tr>
       <tr>
         <td><code>lib/hooks/use-task-row-flags.ts</code></td>
@@ -980,10 +1174,26 @@ const DUE_PRESETS = [
           row) → assert the entry is <b>absent</b>, and that no hint text renders anywhere</li>
       </ul>
       and add a new block for the label group: each entry's presence/absence per row type against
-      D2's table; the tick on the current value; picking calls the right store action with the right
-      argument; <b>No due date</b> routes through the clear path (so a recurrence is dropped too);
-      Epic disabled with <em>“Pick a project first”</em> when no project; picking a project resets
-      Epic to “No epic”.</li>
+      D2's table (including a <b>temp-id</b> row, which shows none of them); the tick on the current
+      value; picking calls the right store action with the right argument; <b>No due date</b> routes
+      through the clear path (so a recurrence is dropped too); Epic disabled when no project, with
+      <em>“Pick a project first”</em> both as the <code>title</code> and as visible text; picking a
+      project resets Epic to “No epic”.
+      <ul>
+        <li><b>One due-date case must use a real <code>timestamptz</code> fixture</b>
+          (<code>due_date: '2099-12-31T00:00:00+00:00'</code>) and assert <b>Today</b>/the matching
+          preset is ticked. Every existing fixture is date-only, so without this the §5.4 defect
+          ships green.</li>
+        <li>Assert the label group is <b>not</b> <code>md:hidden</code> — jsdom ignores media
+          queries, so an accidental breakpoint gate renders identically in RTL. The repo's idiom is
+          an explicit class assertion (<code>expect(…).toHaveClass('md:hidden')</code> at
+          <code>task-row.test.tsx:1592</code>); take its negative twin.</li>
+      </ul></li>
+    <li><b><code>task-row.test.tsx</code> › <em>“no longer offers Set due date / Set priority / Add
+      notes”</em></b> (~line 3289) is <b>superseded</b> — see §1.4. Its <code>/due date/i</code> and
+      <code>/priority/i</code> queries both match the new sub-triggers, so it fails as written.
+      Narrow it to the half that still holds (<code>Add notes</code> is absent) and move the due /
+      priority expectations into the new label-group block as <em>positive</em> assertions.</li>
     <li><code>components/tasks/inbox-bulk-bar.test.tsx</code> — update
       <em>“gates Classify by shape (childless roots) and Move by type”</em> to the new rule: Classify
       is live for an all-unclassified selection and disabled with the new hint the moment a typed
@@ -994,8 +1204,19 @@ const DUE_PRESETS = [
   <ul>
     <li>Add stories to <code>task-row.stories.tsx</code> that open the menu in a <code>play</code>
       function for each row type (unclassified / task / code story with and without a project), so
-      the menu's shape per type is snapshot-covered. Read the <code>storybook</code> skill first —
-      an open Radix menu renders in a portal, which the image-snapshot setup must be able to see.</li>
+      the menu's shape per type is snapshot-covered. Read the <code>storybook</code> skill first.
+      <div class="callout" style="margin:.6rem 0 0">
+        <strong>Each menu story must set <code>parameters.visualTest = { target: 'body' }</code>.</strong>
+        <code>DropdownMenuContent</code> and <code>DropdownMenuSubContent</code> both wrap in
+        <code>DropdownMenuPrimitive.Portal</code>, so the open menu renders <em>outside</em>
+        <code>#storybook-root</code> — and the test-runner's default target is
+        <code>#storybook-root</code> (<code>const target = visual.target ?? '#storybook-root'</code>),
+        with every existing story using that or <code>VISUAL_TARGET</code>. There is no precedent in
+        the repo for snapshotting an open portal. The failure is <b>silent</b>: the baseline captures
+        the row, the menu never appears, and the story passes forever. <b>Eyeball the first baseline
+        before committing it</b> — a snapshot showing the row without its menu is exactly the bug
+        this guards against.
+      </div></li>
   </ul>
 
   <h3>6.4 · E2E (Playwright)</h3>
@@ -1031,23 +1252,25 @@ const DUE_PRESETS = [
     <li>A <b>task</b> row's ⋯ menu shows <b>Due date…</b> and <b>Priority…</b> submenus.</li>
     <li>An <b>undispatched top-level task</b> also shows <b>Folder…</b>; a dispatched task and a subtask do not (a dispatched task still shows <b>Move to…</b>).</li>
     <li>A <b>code root</b> shows <b>Project…</b>; a <b>childless</b> code root also shows <b>Epic…</b>. A code root with children shows Project but not Epic; a code child shows neither.</li>
-    <li>An <b>unclassified</b> row shows none of the five.</li>
+    <li>An <b>unclassified</b> row shows none of the five. A row still carrying a <b>temp id</b> shows none of them either — nor <b>Classify as…</b> — until it reconciles.</li>
+    <li>A row in the <b>Completed view</b> shows no <b>Folder…</b> (the context label owns "where this lives" there), whatever its residency.</li>
     <li>Each submenu marks the row's current value with the teal check, including the clear entry (“No folder” / “No project” / “No epic” / “No priority”).</li>
-    <li>The submenus render at every breakpoint — no <code>md:hidden</code> on the label group.</li>
+    <li>The submenus render at every breakpoint — no <code>md:hidden</code> on the label group, asserted as an explicit class check (jsdom ignores media queries).</li>
 
     <li class="h">Writes</li>
-    <li><b>Due date</b> offers Today / Tomorrow / Next week / Custom…, plus <b>No due date</b> only when a date is set; each preset persists that exact ISO date.</li>
+    <li><b>Due date</b> offers Today / Tomorrow / Next week / Custom…, plus <b>No due date</b> only when a date is set; each preset persists that exact calendar date.</li>
+    <li>The tick lands on the matching preset for a row whose <code>due_date</code> is a full <b>timestamptz</b> (not just a date-only fixture), and no code path passes a raw <code>due_date</code> to <code>addDays</code>.</li>
     <li><b>No due date</b> goes through the clear path, so a task with a recurrence rule loses the rule too.</li>
     <li><b>Custom…</b> closes the menu and opens the <code>Calendar</code> popover anchored to the ⋯ button; picking a day persists it, “Clear” clears it, Escape dismisses without a write.</li>
     <li><b>Priority</b> offers “No priority” + High / Medium / Low with their glyphs, matching <code>PriorityMenu</code>.</li>
     <li><b>Folder</b> lists the folders plus “No folder”, and writes through <code>setFolder</code> — a label, not a move: the row stays in the Inbox.</li>
-    <li><b>Epic</b> is disabled with <code>title="Pick a project first"</code> while <code>intended_project_id</code> is null, and lists only the selected project's epics otherwise.</li>
+    <li><b>Epic</b> is disabled while <code>intended_project_id</code> is null, showing <em>"Pick a project first"</em> as <b>visible text</b> in the sub-trigger as well as in <code>title</code> — a disabled sub-trigger is <code>pointer-events-none</code>, so the tooltip alone can never be read. It lists only the selected project's epics otherwise.</li>
     <li>Changing the <b>project</b> from the menu clears the epic hint in the same write (Epic falls back to “No epic”).</li>
     <li>Every pick auto-saves optimistically and rolls back with the store's existing failure toast — no new error handling.</li>
 
     <li class="h">Dispatch readiness</li>
-    <li>Setting the missing label from the menu flips the row's ready pip on and enables <b>Dispatch</b> in the same menu-open session, with no page reload and no detail panel.</li>
-    <li>The bulk bar's readiness line updates from the same store change.</li>
+    <li>Setting the missing label from the menu flips the row's ready pip on immediately, and <b>re-opening</b> the ⋯ menu shows <b>Dispatch</b> enabled — with no page reload and no detail panel. (Picking closes the menu: Radix closes on <code>onSelect</code>, and §5.5 depends on that, so "in the same menu-open session" is not a state that exists.)</li>
+    <li>A label set from the row menu is reflected in the bulk bar's readiness line the next time <b>select mode</b> is entered — both read the same <code>dispatchReadiness</code> off the same store. (They are never on screen together: <code>TaskRow</code> renders no ⋯ menu in select mode, and <code>InboxBulkBar</code> renders <code>null</code> outside it.)</li>
 
     <li class="h">Classify</li>
     <li><b>Classify as…</b> is <b>absent</b> — not disabled — on any row whose <code>item_type</code> is <code>task</code> or <code>code</code>.</li>
@@ -1058,7 +1281,7 @@ const DUE_PRESETS = [
     <li class="h">Structure &amp; guardrails</li>
     <li>The five submenus are built from one shared atom, not five copies of the sub-trigger + item markup.</li>
     <li><code>detail-chips.tsx</code> uses the extracted option builders, and its existing tests pass with no assertion changes.</li>
-    <li>Exactly one <code>addDays</code> exists in the frontend; habits call sites are unchanged.</li>
+    <li>Exactly one <b>string-based</b> <code>addDays</code> exists in the frontend, in <code>lib/date-utils.ts</code>, with <code>lib/habits/dates.ts</code> re-exporting it; habits call sites and the barrel are unchanged. (<code>lib/recurrence/engine.ts</code>'s private <code>Date</code>-based helper is unrelated and stays.)</li>
     <li><code>npm run check</code> is green, with no new <code>eslint-disable</code>, <code>@ts-expect-error</code>, <code>.skip</code>, or tooling-config edit.</li>
     <li>A demo doc reproduces via <code>npm run demo -- verify</code>, and the PR description links it as a live blob URL (<code>npm run demo -- pr-link</code>).</li>
   </ul>
@@ -1070,7 +1293,8 @@ const DUE_PRESETS = [
     <li><b>Notes</b> stay panel-only (a textarea is not a menu).</li>
     <li><b>Creating</b> a project, epic or folder from the menu. The pickers select from what exists — creation stays the gate's and the sidebar's affordance, exactly as the detail chips have it.</li>
     <li><b>The Code module's own surfaces</b> (board, backlog, story detail, <code>epic-block</code>'s ⋯). This ticket is the Tasks row menu; a code story's epic <em>after</em> it reaches the factory is a different field on a different table.</li>
-    <li><b>The By-Priority view's ⋯ menu</b> (ALF-162). Not implemented yet; when it is, it reuses <code>TaskRowMenu</code> and inherits this change for free.</li>
+    <li><b>The By-Priority view's rows.</b> The view itself <em>is</em> built and routed (<code>PriorityView</code>, wired in <code>task-views.tsx</code>) — what it lacks is a ⋯ menu on its rows, and its <code>PriorityRow</code> is a bespoke component that shares nothing with <code>TaskRow</code> (its own checkbox, chevron, priority chip and cascade modal). Giving it a menu is ALF-162's job, and would need its own decision about which submenus make sense outside the Inbox. It will <em>not</em> inherit this change for free.</li>
+    <li><b>The <code>Calendar</code> atom's selected-day highlight.</b> Pre-existing and out of scope: <code>isSelected = cell.iso === selected</code> compares a <code>YYYY-MM-DD</code> cell to a raw <code>due_date</code>, so against real (timestamptz) data no day ever reads as selected. §5.4's normalisation fixes the <em>menu</em>; the calendar keeps its own bug until someone fixes it deliberately. <b>Do not</b> let §7's "picking a day persists it" be read as a claim that the calendar shows the current value.</li>
     <li><b>A confirmation or undo for the removed re-classify path.</b> Delete + re-capture is the accepted recovery, per the ticket.</li>
   </ul>
 
