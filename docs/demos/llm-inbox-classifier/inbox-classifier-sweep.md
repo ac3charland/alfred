@@ -112,7 +112,7 @@ node docs/demos/llm-inbox-classifier/sweep-harness.mjs sweep 2>/dev/null
   classified_at             2026-08-06T02:30:00Z                  ← the instant the sweep was handed
   classified_provider       anthropic                             ← a model produced this verdict
   classified_model          claude-haiku-4-5
-  classified_prompt_version 1
+  classified_prompt_version 2
   classified_guess
       { "item_type": "task",
         "priority": "medium",
@@ -151,7 +151,11 @@ node docs/demos/llm-inbox-classifier/sweep-harness.mjs prompt 2>/dev/null
 
 ```output
 ── the system prompt the sweeper assembled for the dentist item ──────────────
-  You are alfred's Inbox classifier. For the one captured item below, decide the six fields the response schema defines: item_type, priority, due_date, folder_id, intended_project_id, and intended_epic_id. Every field may be null — null is always a legal answer, and often the correct one.
+  alfred is one person's personal task system, and you are a step inside it. Its owner captures thoughts as fast as they arrive — usually a single unlabelled line of text — into a holding list called the Inbox, then triages them later by hand: setting the fields on each one, then filing it somewhere. You go first, pre-filling those fields so that triage becomes a review instead of data entry. The owner also builds alfred itself, so a capture is sometimes an ordinary to-do (`task`) and sometimes a piece of work on alfred's own codebase (`code`).
+
+  You will be shown exactly one captured item. Decide the six fields the response schema defines: item_type, priority, due_date, folder_id, intended_project_id, and intended_epic_id. Every field may be null — null is always a legal answer, and often the correct one.
+
+  What you write is a suggestion recorded on the item while it stays in the Inbox: it files nothing, completes nothing, and the owner reviews every item and can overwrite anything you set. That is also why a wrong answer costs more than a blank one — a row that already looks decided gets skimmed past rather than read.
 
   Today is Wednesday, 2026-08-05, in the owner's local time zone. Resolve any relative day or date the text names against this date — never against anything else.
 
@@ -296,29 +300,32 @@ answer. A blank field is one the owner was going to fill in anyway — zero regr
 confident wrong label is worse than nothing, because a row that looks finished gets skimmed past.
 So the prompt optimises for precision and accepts low recall.
 
-## 4. A human touch claims the item away from the sweeper
+## 4. A human LABEL claims the item away from the sweeper
 
-The rule: editing any field the classifier writes means the item is yours, and the sweeper never
-revisits it. It is enforced by a `before update` trigger in the database rather than in the PATCH
-route, because three different ingresses already edit an item and only the database sits under all
-of them.
+The rule: setting a LABEL the classifier writes — a priority, a due date, or one of the three id
+hints — means the item is yours, and the sweeper never revisits it. It is enforced by a
+`before update` trigger in the database rather than in the PATCH route, because three different
+ingresses already edit an item and only the database sits under all of them. Editing the captured
+text, or giving the row a type, deliberately does **not** claim it (ALF-202) — see
+`docs/demos/classifier-claim-rule/`.
 
-Here, the only thing done to this item was a human adding notes to it — and then the same sweep
-from section 2 ran over the whole Inbox.
+Here, the only thing done to this item was a human filing it under Reading — and then the same
+sweep from section 2 ran over the whole Inbox.
 
 ```bash
 node docs/demos/llm-inbox-classifier/sweep-harness.mjs claim 2>/dev/null
 ```
 
 ```output
-── items.id = a0000000-0000-4000-8000-000000000003 — edited by hand, then swept
-  The only change a human made was adding notes; the sweep then ran over the Inbox.
+── items.id = a0000000-0000-4000-8000-000000000003 — filed by hand, then swept
+  The only change a human made was filing it under Reading — a label the classifier
+  writes. The sweep then ran over the Inbox.
 
   title                     Look into that Rust book everyone keeps mentioning
   item_type                 unclassified                          ← untouched: no model ever saw this row
   priority                  (null)
   due_date                  (null)
-  folder_id                 (null)
+  folder_id                 f0000000-0000-4000-8000-000000000003  (Reading)  ← the owner's answer, and the edit that claimed the row
   intended_project_id       (null)
   intended_epic_id          (null)
   dispatched_at             (null)
@@ -381,7 +388,7 @@ node docs/demos/llm-inbox-classifier/sweep-harness.mjs corrections 2>/dev/null
   classified_at             2026-08-06T02:30:00Z
   classified_provider       anthropic
   classified_model          claude-haiku-4-5
-  classified_prompt_version 1
+  classified_prompt_version 2
   classified_guess          ← the guess is kept, so the diff has something to compare
       { "item_type": "task",
         "priority": "medium",
@@ -394,19 +401,19 @@ node docs/demos/llm-inbox-classifier/sweep-harness.mjs corrections 2>/dev/null
     captured  "Call the dentist about the crown — they said to ring back Friday"
     guessed   f0000000-0000-4000-8000-000000000001
     chosen    f0000000-0000-4000-8000-000000000002
-    stamped   anthropic / claude-haiku-4-5 / prompt v1
+    stamped   anthropic / claude-haiku-4-5 / prompt v2
 
   blanked    priority
     captured  "Call the dentist about the crown — they said to ring back Friday"
     guessed   medium
     chosen    (none)
-    stamped   anthropic / claude-haiku-4-5 / prompt v1
+    stamped   anthropic / claude-haiku-4-5 / prompt v2
 
   filled_in  priority
     captured  "Renew the car registration"
     guessed   (none)
     chosen    high
-    stamped   anthropic / claude-haiku-4-5 / prompt v1
+    stamped   anthropic / claude-haiku-4-5 / prompt v2
 
   3 rows, 3 distinct directions
 ```
@@ -493,8 +500,8 @@ capture made after the dispatch.
 3. The prompt as sent: a described folder rendering its description, an undescribed one rendering
    its name alone, the reference date resolved in `America/Chicago`, and the output schema's enums
    carrying the live ids (section 3).
-4. The claim rule: a human edit stamps `classified_at` and leaves `classified_provider` null, and
-   the sweep skips the row (section 4).
+4. The claim rule: a human LABEL edit stamps `classified_at` and leaves `classified_provider`
+   null, and the sweep skips the row (section 4).
 5. A dispatch with overridden labels, and one `classification_corrections` row per disagreement
    across all three directions (section 5).
 6. The next sweep's prompt carrying those corrections as worked examples, with ids resolved to
