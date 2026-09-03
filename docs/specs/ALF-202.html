@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-202 — Classified items still run through the classifier</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --ok: #2ea36b; --no: #d1544a;
+    /* app palette — lifted from frontend/app/globals.css. Used ONLY inside .app mockups. */
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8; --a-green: #34d399;
+    /* task-row.styles.ts — the subtask-count pill */
+    --a-count-bg: #1b2438; --a-count-fg: #8b97a9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --ok: #3fbf82; --no: #e8776a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .8rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  td code, th code { white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  .callout code { background: color-mix(in srgb, var(--warn-fg) 12%, transparent); color: inherit; }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  .yes { color: var(--ok); font-weight: 700; }
+  .nope { color: var(--no); font-weight: 700; }
+
+  /* ── Decision blocks (the spec library's shared vocabulary) ───────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec pre { margin: .6rem 0; }
+
+  /* ── Acceptance-criteria checklist ───────────────────────────── */
+  ul.ac { list-style: none; padding-left: 0; }
+  ul.ac li { position: relative; padding-left: 1.7rem; margin: .4rem 0; font-size: .93rem; }
+  ul.ac li::before {
+    content: ""; position: absolute; left: 0; top: .35rem; width: 1rem; height: 1rem;
+    border: 1px solid var(--faint); border-radius: 3px;
+  }
+  ul.ac li.h {
+    padding-left: 0; margin: 1.3rem 0 .4rem; font-weight: 700; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  }
+  ul.ac li.h::before { content: none; }
+
+  /* ── App-palette mockup canvas ────────────────────────────────────
+     Every value below is lifted from frontend/app/globals.css and from the component that
+     renders the thing being drawn — atoms/badge.tsx for the pill geometry and its `muted`
+     tone, task-row.styles.ts for the list panel, the subtask-count pill, the provenance
+     mark and the dispatch-ready pip, lib/hooks/use-indentation.ts for the depth indent — so
+     the drawing reads in alfred's real dark UI whichever mode this document is viewed in. */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1.1rem; margin: 1rem 0; color: var(--a-text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .app code { background: #141d2e; color: var(--a-text); font-size: .78em; }
+  .app .eyebrow { color: var(--a-muted); font-size: 11px; letter-spacing: .06em;
+                  text-transform: uppercase; margin: 0 0 .6rem; }
+  /* taskListContainerClass at md+: one rounded surface panel, hairline-divided. */
+  .tasklist { background: var(--a-surface); border: 1px solid var(--a-border);
+              border-radius: 16px; overflow: hidden; }
+  .tasklist .row + .row { border-top: 1px solid rgba(30, 42, 63, .5); }
+  /* rowBaseClass at md+: flex, items-start, gap-x-2, py-2 pr-2; pl from useIndentation. */
+  .row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 12px; }
+  .row.child { padding-left: 32px; }              /* depth 1 → 2rem */
+  .row .chev { width: 14px; height: 20px; flex: none; color: var(--a-muted); }
+  .row .chev svg { display: block; margin-top: 3px; }
+  /* checkboxSizeClass at md+ (h-4 w-4) + checkboxIncompleteClass border. */
+  .cbx { width: 16px; height: 16px; flex: none; margin-top: 2px; border-radius: 4px;
+         border: 1px solid rgba(138, 150, 168, .5); }
+  .titlecol { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .titlecol .t { font-size: 14px; line-height: 20px; color: var(--a-text); }
+  .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 1px; }
+  /* badgeVariants: rounded-full px-2 py-0.5 text-xs (+ font-medium at these sites). */
+  .b { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px;
+       padding: 2px 8px; font-size: 12px; line-height: 16px; font-weight: 500; flex: none;
+       border: 1px solid transparent; }
+  .b svg { display: block; }
+  .b-muted { border-color: rgba(30, 42, 63, .7); color: var(--a-muted); }
+  /* subtaskCountBadgeClass — its own geometry, not the badge default. */
+  .b-count { border-radius: 999px; background: var(--a-count-bg); color: var(--a-count-fg);
+             font-size: 13px; line-height: 16px; padding: 3px 12px; flex: none; }
+  /* dispatchReadyPipClass — h-1.5 w-1.5 rounded-full bg-accent-green/80, self-centred. */
+  .pip { width: 6px; height: 6px; border-radius: 999px; background: rgba(52, 211, 153, .8);
+         flex: none; align-self: center; }
+  /* classificationMarkGlyphClass — 11px, three weights of the same muted grey. */
+  .mark { display: inline-flex; vertical-align: -1px; margin-left: 4px; }
+  .mark svg { display: block; }
+  .mark-model { color: rgba(138, 150, 168, .95); }
+  .mark-claimed { color: rgba(138, 150, 168, .65); }
+  .mark-unjudged { color: rgba(138, 150, 168, .4); }
+  .legend { margin: .7rem 0 0; padding: 0; list-style: none; color: var(--a-muted); font-size: 12px; }
+  .legend li { margin: .3rem 0; display: flex; align-items: flex-start; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ALF-202 — Still run items classified as “Task” or “Code” through the LLM classifier</h1>
+<p class="sub">
+  <span class="pill">Refinement</span> Spec only — no implementation. Giving a capture its type, or
+  typing a description into it, stops counting as “this one’s mine”: the row stays eligible for the
+  classifier sweep, and the answer you gave it is locked against the model exactly as a code item’s
+  project already is.
+</p>
+
+<h2>1 · Context &amp; problem</h2>
+
+<p>
+  Since <a href="epics/ALF-158.html">ALF-158</a> shipped its first stories, a cron sweep in
+  <code>workers/</code> reads the Inbox items nobody has touched yet, asks Haiku for a verdict, and
+  writes the guesses straight onto the item’s real fields — type, priority, due date, folder for a
+  task, project and epic for a code item. Eligibility is one column:
+  <code>items.classified_at is null</code>.
+</p>
+<p>
+  Two things stamp that column. The sweep stamps it when it writes a verdict. And
+  <code>0029_llm_classifier.sql</code>’s <strong>claim rule</strong> stamps it — with the provenance
+  columns left null — the moment a human edits a watched field on a row the sweeper hasn’t reached
+  yet:
+</p>
+
+<pre><code>-- database/migrations/0029_llm_classifier.sql, the claim trigger as it stands
+if new.classified_at is null and (
+     new.title     is distinct from old.title
+  or new.notes     is distinct from old.notes
+  or new.item_type is distinct from old.item_type
+  or new.priority  is distinct from old.priority
+  or new.due_date  is distinct from old.due_date
+  or (new.folder_id           is distinct from old.folder_id           and new.folder_id           is not null)
+  or (new.intended_project_id is distinct from old.intended_project_id and new.intended_project_id is not null)
+  or (new.intended_epic_id    is distinct from old.intended_epic_id    and new.intended_epic_id    is not null)
+) then
+  new.classified_at := now();   -- provenance stays null: no model ran
+end if;</code></pre>
+
+<p>
+  The intent is right — “the machine must never change your answer back” (epic D10) — but the watch
+  list is drawn around <em>any</em> edit rather than around the fields the machine actually writes,
+  and that catches the two things you most often do to a fresh capture <strong>before</strong> it has
+  been judged.
+</p>
+
+<h3>The type is the price of admission to everything else</h3>
+<p>
+  An unclassified row is deliberately inert in the Inbox. It shows no chip row in the detail panel
+  (“classify from the ⋯ menu first; the fields appear once there is a type to hang them on”), and it
+  cannot take children at all —
+  <code>canAddSubtask = isTask || isCodeRoot</code> in
+  <code>frontend/lib/hooks/use-task-row-flags.ts</code>. So the natural shape of capturing a piece of
+  work with parts —
+</p>
+<ol>
+  <li>capture “Plan Mom’s birthday”,</li>
+  <li>classify it <strong>Task</strong> so it can hold subtasks,</li>
+  <li>type the two or three parts in under it,</li>
+</ol>
+<p>
+  — spends its second step opting the item out of the classifier permanently. And step 2 is exactly
+  what makes the row need help: a task is dispatch-ready only once it carries a folder
+  (<code>dispatchReadiness</code> in <code>frontend/lib/tasks/dispatch.ts</code>), and a folder guess
+  is the one label the classifier is best at. The row that most wants a folder is the row guaranteed
+  not to get one.
+</p>
+
+<h3>A description is the classifier’s input, and it disqualifies the row</h3>
+<p>
+  <code>buildUserMessage</code> sends <code>Title</code>, <code>Notes</code>,
+  <code>Captured text</code> and <code>Source</code>. Notes are read by the model on every single
+  call. Under today’s rule, adding the sentence that would have made an ambiguous capture
+  classifiable is the act that guarantees it is never classified.
+</p>
+
+<h3>The asymmetry that names the bug</h3>
+<div class="card">
+  <p style="margin-top:0">
+    The claim trigger is <code>before update</code>. An <strong>insert</strong> never claims. So the
+    weekly-review endpoint from <a href="archive/ALF-195.html">ALF-195</a> can already POST an item
+    that arrives <code>item_type = 'task'</code> with a due date and a description, and the sweeper
+    will happily add the folder it is missing — that is <a href="archive/ALF-195.html">ALF-195</a>’s
+    D6, working as designed and documented.
+  </p>
+  <p style="margin-bottom:0">
+    Do the identical thing by hand, ten seconds after capture, and the item is dead to the
+    classifier. Same row, same fields, same intent — different ingress. The API can hand the model a
+    typed item; the UI cannot.
+  </p>
+</div>
+
+<p>
+  The epic left this open on purpose. <a href="epics/ALF-158.html">ALF-158</a> §7, open question 2:
+  <em>“Does editing an item without dispatching it make it permanently yours? Proposed: yes — any
+  human touch marks it and the sweeper never revisits.”</em> This story is the owner’s answer, and it
+  is <strong>no</strong> — not for content, and not for the type.
+</p>
+
+<h2>2 · Scope, as settled in refinement</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:34%">Question</th><th>Settled</th></tr>
+  <tr>
+    <td>Does setting <code>item_type</code> by hand claim the row?</td>
+    <td><strong>No.</strong> The row stays eligible and the type is <em>locked</em> against the
+      model instead — the treatment <code>intended_project_id</code> already gets. See
+      <a href="#d2">D2</a>.</td>
+  </tr>
+  <tr>
+    <td>Does adding notes / a description claim the row?</td>
+    <td><strong>No</strong>, and neither does editing the title. Content is what the classifier
+      <em>reads</em>; only labels are what it <em>writes</em>. See <a href="#d1">D1</a>.</td>
+  </tr>
+  <tr>
+    <td>Do the remaining label edits still claim?</td>
+    <td><strong>Yes, unchanged</strong> — <code>priority</code>, <code>due_date</code> and the three
+      FK hints in their existing non-null-only direction. That is the half of the rule that is
+      doing real work. See <a href="#d8">D8</a>.</td>
+  </tr>
+  <tr>
+    <td>Is the model told the type the owner already chose?</td>
+    <td><strong>Yes.</strong> Without it a disagreement is a guaranteed no-op that still marks the
+      row forever. The prompt states the held type and the per-request schema pins it;
+      <code>PROMPT_VERSION</code> goes 1 → 2. See <a href="#d3">D3</a>.</td>
+  </tr>
+  <tr>
+    <td>What stops the sweep from overwriting a type set while it is mid-flight?</td>
+    <td>The verdict write becomes a <strong>compare-and-set on the type it judged</strong>, alongside
+      the marker check it already carries. See <a href="#d4">D4</a>.</td>
+  </tr>
+  <tr>
+    <td>Does anything else break once a classified item can hold children?</td>
+    <td><strong>Yes, one thing</strong>, and it is fixed here: a dispatched subtask with no folder
+      violates <code>items_dispatched_needs_folder</code>. A new trigger has it inherit its root’s
+      folder. See <a href="#d5">D5</a>.</td>
+  </tr>
+  <tr>
+    <td>Are rows already claimed by an edit re-opened?</td>
+    <td><strong>No backfill.</strong> The new rule applies from the migration forward. See
+      <a href="#d7">D7</a>.</td>
+  </tr>
+</table>
+</div>
+
+<h2 id="rule">3 · The rule, before and after</h2>
+
+<p>
+  The claim trigger only ever fires while <code>classified_at</code> is still null — its own first
+  condition. So this is not a rule about ownership in general; it is a rule about
+  <strong>who wins the couple of minutes between capture and the sweep</strong>. Everything below
+  concerns that window and nothing else. Once a row is judged (or claimed), no later edit re-stamps
+  anything.
+</p>
+
+<div class="scroll">
+<table>
+  <tr>
+    <th style="width:26%">Edit, on an unjudged row</th>
+    <th style="width:18%">Today</th>
+    <th style="width:18%">After</th>
+    <th>Why</th>
+  </tr>
+  <tr>
+    <td><code>title</code></td>
+    <td class="nope">claims</td>
+    <td class="yes">no claim</td>
+    <td>The classifier reads the title; it never writes it. A rewritten capture is a
+      <em>better</em> input, not a settled row.</td>
+  </tr>
+  <tr>
+    <td><code>notes</code></td>
+    <td class="nope">claims</td>
+    <td class="yes">no claim</td>
+    <td>Same: it rides in the user message on every call.</td>
+  </tr>
+  <tr>
+    <td><code>item_type</code></td>
+    <td class="nope">claims</td>
+    <td class="yes">no claim — locked instead</td>
+    <td>The one field the row needs before it can hold children or show a chip row. The model may
+      not change it, which <code>mergeIntoItem</code> already guarantees.</td>
+  </tr>
+  <tr>
+    <td><code>priority</code></td>
+    <td>claims</td>
+    <td>claims (unchanged)</td>
+    <td rowspan="2">Both are fields the classifier writes, and both claim in either direction. On
+      an unjudged row a value can only have come from you or from the capture that created it, so
+      emptying one says as much about the label as setting one does.</td>
+  </tr>
+  <tr>
+    <td><code>due_date</code></td>
+    <td>claims</td>
+    <td>claims (unchanged)</td>
+  </tr>
+  <tr>
+    <td><code>folder_id</code>, <code>intended_project_id</code>, <code>intended_epic_id</code></td>
+    <td>claims when set to a non-null value</td>
+    <td>unchanged</td>
+    <td>The non-null-only carve-out is load-bearing and stays exactly as 0029 wrote it: all three are
+      <code>on delete set null</code>, and a folder delete must not claim the rows it returns to the
+      Inbox.</td>
+  </tr>
+  <tr>
+    <td>Any other column<br /><span class="small">(<code>classify_attempts</code>,
+      <code>dispatched_at</code>, <code>sort_order</code>, <code>status</code>, …)</span></td>
+    <td>no claim</td>
+    <td>unchanged</td>
+    <td>Never watched. The sweeper writes the attempt counter itself.</td>
+  </tr>
+</table>
+</div>
+
+<svg viewBox="0 0 920 300" role="img" aria-labelledby="lifecycle-title" style="margin-top:1.4rem">
+  <title id="lifecycle-title">The eligibility lifecycle: what keeps a row eligible and what
+    takes it out of the sweep</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--faint)" />
+    </marker>
+    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+            orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)" />
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" color="var(--faint)">
+    <!-- ELIGIBLE -->
+    <rect x="24" y="112" width="212" height="76" rx="10" stroke="var(--accent)" stroke-width="2"
+          fill="var(--accent-bg)" />
+    <!-- CLAIMED -->
+    <rect x="640" y="24" width="252" height="78" rx="10" stroke="var(--line)" stroke-width="1.5"
+          fill="var(--card)" />
+    <!-- JUDGED -->
+    <rect x="640" y="196" width="252" height="78" rx="10" stroke="var(--line)" stroke-width="1.5"
+          fill="var(--card)" />
+    <!-- eligible → claimed -->
+    <path d="M 240 140 C 400 140 460 74 632 66" stroke="var(--faint)" stroke-width="1.5"
+          marker-end="url(#arrow)" />
+    <!-- eligible → judged -->
+    <path d="M 240 162 C 400 168 460 228 632 234" stroke="var(--faint)" stroke-width="1.5"
+          marker-end="url(#arrow)" />
+    <!-- the self-loop: the change this story makes -->
+    <path d="M 96 108 C 88 56 172 56 164 108" stroke="var(--accent)" stroke-width="2"
+          marker-end="url(#arrow-accent)" />
+    <!-- capture -->
+    <path d="M 130 262 L 130 194" stroke="var(--faint)" stroke-width="1.5"
+          marker-end="url(#arrow)" />
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+    <text x="130" y="142" text-anchor="middle" font-size="14" font-weight="700"
+          fill="var(--accent)">ELIGIBLE</text>
+    <text x="130" y="162" text-anchor="middle" font-size="11.5" fill="var(--muted)"
+          font-family="ui-monospace, monospace">classified_at is null</text>
+    <text x="130" y="178" text-anchor="middle" font-size="11" fill="var(--muted)">the sweep may
+      judge it</text>
+    <text x="130" y="282" text-anchor="middle" font-size="11.5" fill="var(--muted)">capture
+      (an INSERT never claims)</text>
+
+    <text x="130" y="38" text-anchor="middle" font-size="11.5" font-weight="700"
+          fill="var(--accent)">stays eligible — the change</text>
+    <text x="130" y="54" text-anchor="middle" font-size="11" fill="var(--accent)">set the type ·
+      edit the title · add notes</text>
+
+    <text x="766" y="52" text-anchor="middle" font-size="14" font-weight="700"
+          fill="var(--fg)">CLAIMED</text>
+    <text x="766" y="70" text-anchor="middle" font-size="11.5" fill="var(--muted)"
+          font-family="ui-monospace, monospace">classified_at set · provider null</text>
+    <text x="766" y="88" text-anchor="middle" font-size="11" fill="var(--muted)">the mark reads
+      “Labelled by you”</text>
+
+    <text x="766" y="224" text-anchor="middle" font-size="14" font-weight="700"
+          fill="var(--fg)">JUDGED</text>
+    <text x="766" y="242" text-anchor="middle" font-size="11.5" fill="var(--muted)"
+          font-family="ui-monospace, monospace">classified_at set · provider set</text>
+    <text x="766" y="260" text-anchor="middle" font-size="11" fill="var(--muted)">the mark reads
+      “Labelled by the classifier”</text>
+
+    <text x="436" y="92" text-anchor="middle" font-size="11.5" fill="var(--muted)">edit a
+      LABEL — priority · due · folder · project · epic</text>
+    <text x="436" y="224" text-anchor="middle" font-size="11.5" fill="var(--muted)">the sweep writes
+      a verdict (a tick every 2 min)</text>
+  </g>
+</svg>
+<p class="diagram-cap">
+  Both right-hand states are terminal for the sweeper: it never revisits either. The only thing this
+  story moves is which edits keep a row on the left.
+</p>
+
+<h2>4 · Decisions</h2>
+
+<div class="dec" id="d1">
+  <h3><span class="n">D1</span>The claim rule covers what the classifier <em>writes</em>, not
+    everything a human can touch. Title and notes come off the list.</h3>
+  <p>
+    The rule exists to stop the machine changing your answer back. That is only possible on a field
+    the machine writes. <code>title</code> and <code>notes</code> are the classifier’s
+    <em>input</em>: they ride in the user message, and nothing in the epic lets the Worker write
+    either (<a href="epics/ALF-158.html">ALF-158</a> §<em>out of scope</em>: “Titles and notes stay
+    byte-for-byte as captured”).
+  </p>
+  <p class="why">
+    <b>Why it reads as a bug today:</b> improving the text a classifier reads should improve its
+    answer, not cancel it. The current rule turns “let me add a line so this makes sense next week”
+    into “this item is now permanently unlabelled”, which is the opposite of what the owner
+    intended by typing.
+  </p>
+  <p class="why">
+    <b>What it gives up:</b> a capture you deliberately rewrote no longer counts as claimed on the
+    strength of the rewrite alone. If you want a rewritten row to be yours, set a label on it — which
+    is the same gesture that makes it dispatch-ready anyway.
+  </p>
+</div>
+
+<div class="dec" id="d2">
+  <h3><span class="n">D2</span><code>item_type</code> comes off the watch list and is
+    <em>locked</em> instead — exactly like <code>intended_project_id</code></h3>
+  <p>
+    The ticket’s own phrasing: “leave the classification field locked, like we do with code
+    projects”. That lock already exists and needs no new code —
+    <code>mergeIntoItem</code> in <code>workers/src/verdict.ts</code> reduces every verdict to the
+    fields the item does not already hold:
+  </p>
+<pre><code>// workers/src/verdict.ts — the lock, already written
+const existingType = decidedType(item);          // 'task' | 'code' | undefined ('unclassified')
+const finalType    = existingType ?? verdict.item_type;
+return {
+  item_type: existingType === undefined ? verdict.item_type : undefined,   // never overwritten
+  priority:  finalType === 'task' ? gap(item.priority, verdict.priority) : undefined,
+  ...
+};</code></pre>
+  <p>
+    Note <code>finalType</code>: the type the row will <strong>end up with</strong> decides which
+    fields are legal, so a held <code>task</code> keeps a folder guess and discards a project guess,
+    and vice versa. An <code>ALF:</code>-prefixed capture has relied on this since the sweep shipped
+    — it arrives <code>code</code> with a project set and usefully gains an epic. All this story
+    does is let a <em>hand-set</em> type reach the same code path an insert-set one already does.
+  </p>
+  <p class="why">
+    <b>Consequence worth naming:</b> the sweep now judges rows the owner has already typed, so the
+    dispatch-time diff has a new and honest lesson to record — <code>item_type · changed ·
+    guessed code · chose task</code>. That correction is fed back as a worked example on the next
+    tick (<code>selectExamples</code>), so hand-classifying trains the classifier instead of hiding
+    from it.
+  </p>
+</div>
+
+<div class="dec" id="d3">
+  <h3><span class="n">D3</span>The model is told the type the owner already chose, and the schema
+    pins it</h3>
+  <p>
+    Without this, D2 quietly fails half the time it matters. Consider a row the owner set to
+    <code>task</code> where the model reads it as <code>code</code>:
+  </p>
+  <ul>
+    <li><code>validateVerdict</code> drops <code>priority</code> / <code>due_date</code> /
+      <code>folder_id</code> — they are task-only and the verdict says code;</li>
+    <li><code>mergeIntoItem</code> drops <code>intended_project_id</code> /
+      <code>intended_epic_id</code> — they are code-only and the row is a task.</li>
+  </ul>
+  <p>
+    Every field is dropped, the row is stamped <code>classified_at</code>, and it is never swept
+    again. One wasted call, zero fields, no second chance — on precisely the workflow this story
+    exists to serve.
+  </p>
+  <p>So when the item already holds <code>task</code> or <code>code</code>:</p>
+  <ul>
+    <li><strong>The user message states it</strong>, e.g. <code>Already classified by the owner:
+      task. This is settled — judge only the fields that apply to a task.</code></li>
+    <li><strong>The schema pins it</strong>. <code>buildSchema</code> is already rebuilt per request
+      from live ids, so <code>item_type</code> becomes a single-value enum
+      (<code>{ enum: ['task'] }</code>, no <code>null</code> branch) instead of
+      <code>nullableEnum(ITEM_TYPES)</code>. Structured output then makes echoing it the only legal
+      response, and the parse path is unchanged.</li>
+    <li><code>PROMPT_VERSION</code> goes <strong>1 → 2</strong> (0029’s column comment: bumped by
+      hand when the prompt text or the output schema changes meaningfully).</li>
+  </ul>
+  <p class="why">
+    <b>Why pin the schema rather than only ask nicely:</b> the echo keeps
+    <code>classified_guess.item_type</code> equal to the row’s type, so the dispatch diff’s
+    <code>continue when v_guessed is not distinct from v_chosen</code> skips it. Dropping the key
+    instead would log a phantom <code>filled_in</code> correction on every hand-classified item and
+    teach the example block a lesson the model was never asked to give.
+  </p>
+  <p class="why">
+    <b>Unpinned when there is no type.</b> An <code>unclassified</code> row is unchanged in every
+    respect: same prompt, same nullable enum, same abstention rule (“it may stay null”).
+  </p>
+</div>
+
+<div class="dec" id="d4">
+  <h3><span class="n">D4</span>The verdict write becomes a compare-and-set on the type it judged</h3>
+  <p>
+    Today the claim rule doubles as the sweep’s concurrency guard: change anything mid-flight and the
+    row gets <code>classified_at</code>, so the verdict’s <code>onlyIfUnclassified</code> filter
+    matches nothing and the owner wins. Take <code>item_type</code> off the watch list and that guard
+    disappears for exactly the field the owner is most likely to be setting while a tick runs — the
+    window is real (a sweep is up to ten items at up to two attempts × 10 s each).
+  </p>
+  <p>Two ways it goes wrong without a guard:</p>
+  <ul>
+    <li>The sweep read <code>unclassified</code>, the owner set <code>task</code>, the verdict says
+      <code>code</code> → <strong>the machine changes your answer back</strong>, the one outcome
+      epic D10 exists to prevent.</li>
+    <li>The sweep read <code>unclassified</code> and is writing a task-shaped due date; the owner set
+      <code>code</code> → <code>items_task_only_fields</code> rejects the whole PATCH, the coherent
+      fields die with the incoherent one, and an attempt is burned.</li>
+  </ul>
+  <p>So the write carries the type it judged as a precondition:</p>
+<pre><code>PATCH /rest/v1/items?id=eq.&lt;id&gt;&amp;classified_at=is.null&amp;item_type=eq.&lt;the type as READ&gt;</code></pre>
+  <p>
+    Zero rows back means the row was re-typed (or deleted, or judged by an overlapping tick) — the
+    existing “gone or already classified” branch, which logs and counts <em>no attempt</em>. The row
+    is simply still eligible on the next tick, and that tick re-reads the owner’s type and judges
+    under it. The retry mechanism is the loop, exactly as everywhere else in the sweep.
+  </p>
+  <p class="why">
+    <b>Why always, not only when the verdict writes a type:</b> the payload is derived from the
+    read-time type either way — which fields are legal, which are gaps — so the precondition is
+    “nothing about the type moved under me”, and that is true for both failure shapes above.
+  </p>
+</div>
+
+<div class="dec" id="d5">
+  <h3><span class="n">D5</span>A subtask being dispatched with no folder inherits its root’s</h3>
+  <p>
+    This is the one consequence of the change that is not in the trigger, and it is not hypothetical
+    — it lands on the exact workflow the ticket names.
+  </p>
+  <ul>
+    <li><code>items_dispatched_needs_folder</code> (0026): a dispatched <code>task</code> must hold a
+      folder.</li>
+    <li>Dispatch PATCHes <strong>every row of the subtree</strong> with
+      <code>{ dispatched: true }</code> — <code>collectSubtree</code> in
+      <code>dispatchItems</code>.</li>
+    <li>Every existing folder writer cascades: <code>setFolder</code>, <code>moveTask</code> and
+      <code>bulkMove</code> all write the folder across the subtree. <strong>The classifier does
+      not</strong> — it PATCHes one row by id.</li>
+  </ul>
+  <p>
+    So a decomposed task whose folder came from the model has children with
+    <code>folder_id = null</code>, and dispatching it fails their PATCHes on the CHECK. It is
+    unreachable today only because classifying to add children claims the row; this story makes it
+    reachable. Order matters and the likely order is the bad one — children are usually added within
+    seconds of the classify, before the next tick.
+  </p>
+<pre><code>-- new in this migration: 0026's inherit_dispatched_at, one beat later in the life of a row
+create or replace function inherit_folder_on_dispatch() returns trigger
+language plpgsql security invoker as $$
+declare v_root_folder uuid;
+begin
+  if new.parent_id is null                     then return new; end if;  -- roots carry their own
+  if new.folder_id is not null                 then return new; end if;  -- already labelled
+  if new.item_type = 'code'                    then return new; end if;  -- exempt from the CHECK
+  if old.dispatched_at is not null
+     or new.dispatched_at is null              then return new; end if;  -- only the transition
+  with recursive ancestry as (
+    select id, parent_id, folder_id from items where id = new.parent_id
+    union all
+    select i.id, i.parent_id, i.folder_id from items i join ancestry a on i.id = a.parent_id
+  )
+  select folder_id into v_root_folder from ancestry where parent_id is null;
+  new.folder_id := v_root_folder;
+  return new;
+end; $$;
+
+create trigger items_inherit_folder_on_dispatch
+  before update on items
+  for each row execute function inherit_folder_on_dispatch();</code></pre>
+  <p class="why">
+    <b>The ROOT’s folder, not the parent’s.</b> The subtree’s PATCHes are issued together
+    (<code>Promise.all</code>), so at depth ≥ 2 a middle row may not have been filled in yet when its
+    child’s trigger runs. Walking to the root is the only reading that is order-independent, and it
+    matches the app’s own invariant that a subtree shares one folder bucket.
+  </p>
+  <p class="why">
+    <b>The trigger name is load-bearing.</b> Postgres fires <code>before update</code> row triggers
+    in alphabetical order, and <code>items_claim_from_classifier</code> sorts before
+    <code>items_inherit_folder_on_dispatch</code>. The claim trigger therefore sees
+    <code>folder_id</code> still null and does not claim the child on the way through. A rename that
+    reversed the order would silently start stamping children, so the ordering gets its own
+    assertion.
+  </p>
+  <p class="why">
+    <b>In the database, not in <code>dispatchItems</code>,</b> for 0026’s stated reason: three
+    ingresses already dispatch (the bulk PATCH, <code>enter_code_module</code>,
+    <code>convert_to_code_epic</code>) and only the database sits under all of them. The two RPCs are
+    no-ops here — a code row is exempt by the guard above.
+  </p>
+</div>
+
+<div class="dec" id="d6">
+  <h3><span class="n">D6</span>A row you typed and the model then judged reads “Labelled by the
+    classifier”. No fourth provenance state.</h3>
+  <p>
+    <code>classificationOrigin</code> derives three states from two columns, and this story changes
+    which rows land where: hand-classifying no longer flips a row to <code>claimed</code>
+    immediately. It stays <code>unjudged</code> until the sweep reaches it, then becomes
+    <code>model</code> — even though the <em>type</em> on it is yours.
+  </p>
+  <p>
+    That wording stays as it is. The mark answers “did a model touch this row?”, which is a fact
+    about the past and is exactly true here; a per-field provenance display would be a different
+    feature, and a mixed state would need a fourth glyph for a distinction the owner can already see
+    (they set the type; they remember). <code>claimed</code> keeps its meaning and stays reachable —
+    it is now what a <em>label</em> edit produces.
+  </p>
+  <p class="why">
+    <b>No code change:</b> <code>frontend/lib/tasks/classification.ts</code>,
+    <code>ClassificationMark</code> and their tests are untouched. This decision is recorded because
+    the meaning of a rendered glyph shifts underneath them, not because anything is edited.
+  </p>
+</div>
+
+<div class="dec" id="d7">
+  <h3><span class="n">D7</span>No backfill — the new rule applies from the migration forward</h3>
+  <p>
+    The sweeper has been live for weeks, so the Inbox holds rows claimed under the old rule. They
+    are identifiable as a set (<code>classified_at is not null and classified_provider is null</code>)
+    but <em>not</em> by which field claimed them — the trigger records no reason. Re-opening the set
+    would also re-open rows claimed by a deliberate priority or folder edit.
+  </p>
+  <p class="why">
+    <b>Why that is the right trade here:</b> the epic already put “retro-classifying the existing
+    backlog” out of scope as a separate decision with a separate cost, and the honest fix for a row
+    you want re-judged is the manual re-classify action the epic sketches (story K), reading from
+    <code>raw_capture</code>. A migration that quietly spends model calls on the whole Inbox is not
+    the same size of change as a trigger edit.
+  </p>
+</div>
+
+<div class="dec" id="d8">
+  <h3><span class="n">D8</span>Clearing a label still claims — including the one awkward case</h3>
+  <p>
+    <code>priority</code> and <code>due_date</code> keep claiming in both directions. On an unjudged
+    row the value being cleared can only have come from you or from the capture that created it, so
+    emptying one is as much a statement about a label as setting one — and a rule where clearing
+    did not claim would let the next tick put a value straight back into a field you had just
+    emptied.
+  </p>
+  <p>
+    The awkward case: <code>classifyPatch</code> sends <code>{ item_type: 'code', due_date: null,
+    recurrence: null }</code> when a <em>task</em> becomes a <em>code</em> item. On an unjudged row
+    that already carries a due date, that clear claims — so the type flip the owner made is
+    accompanied by a claim after all.
+  </p>
+  <p class="why">
+    <b>Accepted, not fixed.</b> Reaching it needs an unjudged row that already has a due date, which
+    only an insert can produce (the weekly-plan endpoint, or a capture created with one). The
+    ordinary paths are all clean: <code>unclassified → task/code</code> is a bare
+    <code>{ item_type }</code> patch, and <code>code → task</code> clears only the two FK hints,
+    which claim in the non-null direction only. Widening the carve-out to cover it would weaken the
+    half of the rule that works, for a case that is rare and whose outcome (the row is yours) is not
+    harmful.
+  </p>
+</div>
+
+<h2 id="db">5 · The database change</h2>
+
+<p>
+  One migration, <code>database/migrations/&lt;next&gt;_classifier_claim_rule.sql</code> — take the
+  next free number at implementation time, don’t reserve one now.
+  <strong>No columns, tables, views or grants change</strong>, which means:
+</p>
+<ul>
+  <li>No <code>task_items</code> recreation. The 0011 / 0013 / 0026 / 0029 view-freeze trap does not
+    apply — nothing is added to <code>items</code>.</li>
+  <li>Nothing for <code>migration-lint</code>’s sequence-grant or view-grant rules to find, but the
+    file still has to pass it (it runs in the global <code>check:fast</code>).</li>
+  <li><code>npm run gen-types -w database</code> must still be run and its output committed: the
+    integration suite’s freshness gate fires on any branch that touches
+    <code>database/migrations/</code>, and expects the committed
+    <code>frontend/lib/database.types.ts</code> to match. It should come back byte-identical here —
+    commit it either way rather than discovering the gate at push time.</li>
+</ul>
+
+<h4>1 · The claim rule, narrowed</h4>
+<pre><code>create or replace function claim_item_from_classifier() returns trigger
+language plpgsql security invoker as $$
+begin
+  -- Only the fields the classifier WRITES claim the row (ALF-202). Title and notes are its
+  -- INPUT — improving the text it reads must not cancel the reading — and item_type is locked
+  -- against the model by mergeIntoItem rather than defended by opting the row out, so that
+  -- classifying a capture (the only way to give it children) still leaves it eligible.
+  if new.classified_at is null and (
+       new.priority  is distinct from old.priority
+    or new.due_date  is distinct from old.due_date
+    or (new.folder_id           is distinct from old.folder_id           and new.folder_id           is not null)
+    or (new.intended_project_id is distinct from old.intended_project_id and new.intended_project_id is not null)
+    or (new.intended_epic_id    is distinct from old.intended_epic_id    and new.intended_epic_id    is not null)
+  ) then
+    new.classified_at := now();   -- provenance columns stay null: no model ran
+  end if;
+  return new;
+end; $$;</code></pre>
+<p class="small">
+  The trigger itself (<code>items_claim_from_classifier</code>) is not re-created — the function body
+  is replaced in place, so nothing about its firing order moves.
+</p>
+
+<h4>2 · Folder inheritance at dispatch</h4>
+<p>The function and trigger from <a href="#d5">D5</a>, verbatim.</p>
+
+<h4>3 · The column comments that now say something false</h4>
+<p>
+  <code>items.classified_at</code> and <code>items.classified_provider</code> both describe the claim
+  rule in prose (“when a human edits a classifier-written field”, “a human edit claimed the row”).
+  The first is now precisely true and the second still is, but 0029’s header comment enumerates the
+  watched fields; re-state the rule on <code>classified_at</code> so the schema documents the current
+  rule rather than the one it shipped with:
+</p>
+<pre><code>comment on column items.classified_at is
+  'When this item stopped being eligible for the classifier sweep. NULL = eligible. Set either '
+  'by the classifier writing a verdict or by the claim trigger when a human edits a LABEL the '
+  'classifier writes (priority, due_date, or one of the three id hints, set to a non-null value). '
+  'Editing the captured TEXT (title, notes) or setting item_type deliberately does NOT claim: the '
+  'first is the classifier''s input, the second is locked against it in the Worker (ALF-202).';</code></pre>
+
+<h2 id="worker">6 · The Worker change</h2>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:30%">File</th><th>Change</th></tr>
+  <tr>
+    <td><code>workers/src/prompt.ts</code></td>
+    <td>
+      <code>PROMPT_VERSION</code> 1 → 2. <code>buildSchema(world)</code> gains the held type
+      (<code>buildSchema(world, heldType)</code>): when present, <code>item_type</code> is
+      <code>{ enum: [heldType] }</code> — a single value, no <code>null</code> branch — otherwise
+      <code>nullableEnum(ITEM_TYPES)</code> as today. <code>buildUserMessage</code> appends the
+      “already classified by the owner” line for a held type. <code>buildRequest</code> reads
+      <code>item.item_type</code> and passes it to both. <strong>Deliberately no change to the
+      abstention rules</strong> — the <code>item_type</code> bullet still applies verbatim to the
+      unclassified rows that still need it.
+    </td>
+  </tr>
+  <tr>
+    <td><code>workers/src/supabase.ts</code></td>
+    <td>
+      <code>patchItem</code>’s options widen from <code>{ onlyIfUnclassified?: boolean }</code> to
+      also carry the expected type (e.g. <code>{ onlyIfItemType?: string }</code>), adding
+      <code>item_type=eq.&lt;value&gt;</code> to the filter. Keep it a flat option object like the
+      existing one; keep the doc comment’s explanation of <em>why</em> a compare-and-set (it is the
+      only reason the function has options at all).
+    </td>
+  </tr>
+  <tr>
+    <td><code>workers/src/sweep.ts</code></td>
+    <td>
+      <code>writeVerdict</code> passes <code>item.item_type</code> (the value as read) alongside
+      <code>onlyIfUnclassified</code>. The zero-rows log line is reworded to name the third cause:
+      the row was deleted, already judged, <em>or re-typed</em> before the write.
+    </td>
+  </tr>
+  <tr>
+    <td><code>workers/src/verdict.ts</code></td>
+    <td><strong>No change.</strong> <code>decidedType</code> / <code>mergeIntoItem</code> already
+      implement the lock (<a href="#d2">D2</a>) and already resolve the fields against the type the
+      row will end up with.</td>
+  </tr>
+  <tr>
+    <td><code>workers/src/classifier.ts</code></td>
+    <td><strong>No change.</strong> The schema is passed through as data.</td>
+  </tr>
+  <tr>
+    <td><code>frontend/</code></td>
+    <td><strong>No change.</strong> No new component, no new state, no store or route edit — see
+      <a href="#surface">§7</a>.</td>
+  </tr>
+  <tr>
+    <td><code>workers/wrangler.toml</code></td>
+    <td><strong>No change.</strong> Same cadence, same vars, same secret.</td>
+  </tr>
+</table>
+</div>
+
+<h3>The sweep, walked through the case this story is for</h3>
+<div class="card">
+  <ol style="margin:0">
+    <li>The owner captures “Plan Mom’s birthday”. Row: <code>unclassified</code>,
+      <code>classified_at</code> null.</li>
+    <li>They classify it <strong>Task</strong> from the ⋯ menu — a bare <code>{ item_type: 'task' }</code>
+      PATCH. <span class="yes">No claim.</span> They add two subtasks (children:
+      <code>parent_id</code> set, so never eligible themselves).</li>
+    <li>Within two minutes the sweep selects the root: <code>parent_id is null</code>,
+      <code>dispatched_at is null</code>, <code>classified_at is null</code>,
+      <code>classify_attempts &lt; 5</code>.</li>
+    <li>The request says the type is settled and pins the schema to <code>task</code>. The model
+      answers a folder (<code>Family</code>), and abstains on priority and due date — the title
+      signals neither.</li>
+    <li>The verdict write lands on
+      <code>…&amp;classified_at=is.null&amp;item_type=eq.task</code>. The row gains
+      <code>folder_id</code> and the five provenance columns in one UPDATE.</li>
+    <li>The Inbox row now shows a <strong>Family</strong> chip and the dispatch-ready pip. Dispatch
+      sends the root and its two children; the children inherit <code>Family</code> from the root as
+      the trigger writes their residency (<a href="#d5">D5</a>).</li>
+    <li>If the owner had overridden the folder before dispatching, the diff logs
+      <code>folder_id · changed · Family → &lt;theirs&gt;</code>, and the next sweep carries it as a
+      worked example.</li>
+  </ol>
+</div>
+
+<h2 id="surface">7 · What the owner sees</h2>
+
+<p>
+  Nothing new is drawn. Every element below already renders today — the Task badge, the folder chip,
+  the subtask count, the dispatch-ready pip, and the provenance mark with its three existing glyphs.
+  What changes is <em>which</em> of them a hand-classified row gets to show, and which glyph it wears
+  while it waits.
+</p>
+
+<div class="app">
+  <p class="eyebrow">Today · Inbox — the row you classified is out of the loop</p>
+  <div class="tasklist">
+    <div class="row">
+      <span class="chev">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="transform: rotate(90deg)"><path d="m9 18 6-6-6-6"/></svg>
+      </span>
+      <span class="cbx"></span>
+      <span class="titlecol">
+        <span class="t">Plan Mom's birthday<span class="mark mark-claimed"
+          title="Labelled by you"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>
+          <path d="m15 5 4 4"/></svg></span></span>
+      </span>
+      <span class="meta">
+        <span class="b b-muted">Task</span>
+        <span class="b-count">0/2</span>
+      </span>
+    </div>
+    <div class="row child">
+      <span class="chev"></span><span class="cbx"></span>
+      <span class="titlecol"><span class="t">Book the restaurant</span></span>
+      <span class="meta"></span>
+    </div>
+    <div class="row child">
+      <span class="chev"></span><span class="cbx"></span>
+      <span class="titlecol"><span class="t">Order the cake</span></span>
+      <span class="meta"></span>
+    </div>
+  </div>
+  <ul class="legend">
+    <li><span class="mark mark-claimed"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>
+      <path d="m15 5 4 4"/></svg></span>
+      <span><b>Labelled by you</b> — the classify claimed the row. No folder guess is coming, so it
+      is not dispatch-ready and never will be without hand-filing.</span></li>
+  </ul>
+</div>
+
+<div class="app">
+  <p class="eyebrow">After this story · the same row, one tick later</p>
+  <div class="tasklist">
+    <div class="row">
+      <span class="chev">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             style="transform: rotate(90deg)"><path d="m9 18 6-6-6-6"/></svg>
+      </span>
+      <span class="cbx"></span>
+      <span class="titlecol">
+        <span class="t">Plan Mom's birthday<span class="mark mark-model"
+          title="Labelled by the classifier"><svg width="11" height="11" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg></span></span>
+      </span>
+      <span class="meta">
+        <span class="b b-muted">Task</span>
+        <span class="b b-muted"><svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>Family</span>
+        <span class="b-count">0/2</span>
+        <span class="pip" title="Ready to dispatch"></span>
+      </span>
+    </div>
+    <div class="row child">
+      <span class="chev"></span><span class="cbx"></span>
+      <span class="titlecol"><span class="t">Book the restaurant</span></span>
+      <span class="meta"></span>
+    </div>
+    <div class="row child">
+      <span class="chev"></span><span class="cbx"></span>
+      <span class="titlecol"><span class="t">Order the cake</span></span>
+      <span class="meta"></span>
+    </div>
+  </div>
+  <ul class="legend">
+    <li><span class="mark mark-model"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg></span>
+      <span><b>Labelled by the classifier</b> — the mark is unchanged in meaning (<a href="#d6"
+      style="color:inherit;text-decoration:underline">D6</a>): a model judged this row. The
+      <b>Task</b> badge is still your answer; <b>Family</b> is the model’s.</span></li>
+    <li><span class="pip" style="margin-top:5px"></span>
+      <span><b>Ready to dispatch</b> — the existing pip, now reachable on a row you typed yourself.
+      The folder is what earns it.</span></li>
+    <li><span class="mark mark-unjudged"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/>
+      <path d="M17.6 3.71a9.95 9.95 0 0 1 2.69 2.7"/><path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/>
+      <path d="M20.29 17.6a9.95 9.95 0 0 1-2.7 2.69"/><path d="M13.9 21.82a9.94 9.94 0 0 1-3.8 0"/>
+      <path d="M6.4 20.29a9.95 9.95 0 0 1-2.69-2.7"/><path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/>
+      <path d="M3.71 6.4a9.95 9.95 0 0 1 2.7-2.69"/></svg></span>
+      <span><b>Not yet classified</b> — what the row wears in between, for the couple of minutes
+      between your classify and the next tick. Today it would already read “Labelled by you”.</span></li>
+  </ul>
+</div>
+
+<p class="small">
+  Behaviour and layout intent, not a pixel spec. Two things the drawing deliberately does
+  <em>not</em> show, because neither is visible: the children gaining <code>Family</code> — that
+  happens as they are dispatched, at which point the folder chip is hidden anyway
+  (<code>showFolderChip</code> is undispatched-rows-only) — and any priority or due-date chip, since
+  the abstention rules forbid inventing either from a title that signals neither.
+</p>
+
+<h2 id="tests">8 · Back-pressure</h2>
+
+<p>
+  Every behavioural claim in this spec is enforced by the deterministic suites. The database half is
+  integration-only by nature (a trigger has no unit test), and
+  <code>database/src/run.ts</code> stands up a throwaway Postgres and applies the real migrations, so
+  it runs anywhere with no live database.
+</p>
+
+<div class="scroll">
+<table>
+  <tr><th style="width:26%">Suite</th><th>Assertion</th></tr>
+  <tr>
+    <td rowspan="4"><code>database/src/assertions.ts</code><br />
+      <span class="small">extends the existing “a human edit claims an unclassified item…”
+      assertion</span></td>
+    <td><strong>Content and type no longer claim.</strong> Three separate UPDATEs on an unjudged row
+      — <code>title</code>, <code>notes</code>, <code>item_type</code> — each leaves
+      <code>classified_at</code> null. (<a href="#d1">D1</a>, <a href="#d2">D2</a>)</td>
+  </tr>
+  <tr>
+    <td><strong>Labels still claim.</strong> <code>priority</code> and <code>due_date</code> claim in
+      both directions; a non-null <code>folder_id</code> claims; a folder <em>delete</em> still does
+      not (0026’s cascade case, kept verbatim). (<a href="#d8">D8</a>)</td>
+  </tr>
+  <tr>
+    <td><strong>The verdict is still not double-stamped</strong> and an already-claimed row is not
+      re-stamped by a later edit — both existing cases, unchanged.</td>
+  </tr>
+  <tr>
+    <td><strong>Folder inheritance at dispatch.</strong> A depth-2 <em>and</em> a depth-3 subtree
+      dispatched by setting <code>dispatched_at</code> on each row in child-first order (the order the
+      app&rsquo;s parallel PATCHes cannot guarantee) leave every descendant holding the <em>root’s</em> folder and
+      no CHECK violation; a <code>code</code> child is untouched; and no descendant is claimed —
+      which is the trigger-ordering assertion. (<a href="#d5">D5</a>)</td>
+  </tr>
+  <tr>
+    <td rowspan="3"><code>workers/src/prompt.test.ts</code></td>
+    <td>A held <code>task</code> / <code>code</code> pins <code>item_type</code> to a single-value
+      enum with no <code>null</code> branch; an <code>unclassified</code> item still gets
+      <code>anyOf: [{ enum: ['task','code'] }, { type: 'null' }]</code>.</td>
+  </tr>
+  <tr>
+    <td>The user message names the held type and says it is settled; it says nothing of the sort for
+      an unclassified item.</td>
+  </tr>
+  <tr>
+    <td><code>PROMPT_VERSION</code> is 2 — pinned, so the bump can’t be forgotten alongside the
+      prompt edit.</td>
+  </tr>
+  <tr>
+    <td><code>workers/src/supabase.test.ts</code></td>
+    <td>The PATCH URL carries <code>item_type=eq.&lt;type&gt;</code> alongside
+      <code>classified_at=is.null</code>, and carries neither filter when the options are absent.</td>
+  </tr>
+  <tr>
+    <td rowspan="3"><code>workers/src/sweep.test.ts</code></td>
+    <td>A verdict written for an item already holding a type sends the CAS filter for
+      <em>that</em> type.</td>
+  </tr>
+  <tr>
+    <td>A zero-row PATCH response (the re-typed race) counts the item as failed, writes
+      <strong>no attempt</strong>, and leaves the tick running.</td>
+  </tr>
+  <tr>
+    <td>The merge still never sends <code>item_type</code> for an item that holds one, and resolves
+      the other fields against the held type — the existing lock, re-pinned now that reaching it is
+      the common case.</td>
+  </tr>
+  <tr>
+    <td><code>frontend/</code></td>
+    <td><strong>No new tests.</strong> No frontend code changes; the existing
+      <code>classification.test.ts</code> covers the pure origin function and its behaviour is
+      unchanged.</td>
+  </tr>
+</table>
+</div>
+
+<h2 id="demo">9 · Demo evidence</h2>
+<p>
+  A demo doc in its own folder — <code>docs/demos/&lt;feature-name&gt;/&lt;name&gt;.md</code>, the
+  branch stamped into front matter by <code>npm run demo -- init</code> — authored with the
+  <code>showboat</code> skill and reproducing under <code>npm run demo -- verify</code>. Follow that
+  skill's evidence-matching rules rather than anything restated here, and note
+  <code>demo-lint</code>'s <code>no-test-in-demo</code>: a demo shows the new behaviour, it never
+  runs the suites.
+</p>
+<p>
+  <strong>Start from the harness that already exists.</strong>
+  <code>docs/demos/llm-inbox-classifier/sweep-harness.mjs</code> runs the <em>real</em>
+  <code>runSweep</code> against a real Postgres carrying the real migrations, with a local
+  PostgREST shim and a canned Anthropic response so the output is byte-identical every run — and it
+  already has a <code>claim</code> section demonstrating the very behaviour this story changes.
+  Extending it beats writing a second harness:
+</p>
+<ul>
+  <li><strong><code>claim</code>, rewritten.</strong> On one unjudged capture: edit the title, add
+    notes, set <code>item_type = 'task'</code> — printing <code>classified_at</code> after each, all
+    null — then set a priority and print it stamped with a null provider. The whole story in one
+    section.</li>
+  <li><strong><code>sweep</code>, on a hand-classified row.</strong> The same row, typed
+    <code>task</code> by hand, swept: show it selected as eligible, show the assembled request with
+    <code>item_type</code> pinned to <code>{ enum: ['task'] }</code> and the "already classified by
+    the owner" line, and show the row after — the type still yours, the folder new.</li>
+  <li><strong>The subtree dispatch.</strong> A parent with the model's folder and two folderless
+    children: PATCH all three dispatched (children first, the order the app cannot guarantee) and
+    print each row's folder — every one filed, no
+    <code>items_dispatched_needs_folder</code> violation. Run the same block against the
+    pre-migration schema to show the failure it fixes, if it reproduces cleanly.</li>
+</ul>
+<p class="small">
+  No screenshot is required. Nothing new renders (<a href="#surface">§7</a>), and the one visible
+  effect — a folder chip appearing on a hand-classified row — needs a real sweep against a real
+  model to produce, which is not reproducible in a demo.
+</p>
+
+<h2 id="oos">10 · Out of scope, and known limits</h2>
+<ul>
+  <li><strong>No backfill.</strong> Rows already claimed stay claimed (<a href="#d7">D7</a>).</li>
+  <li><strong>No manual re-classify.</strong> The epic’s “re-classify from <code>raw_capture</code>”
+    story is still the answer for a row you want judged again, and is still unbuilt.</li>
+  <li><strong>The classifier still never writes <code>title</code> or <code>notes</code>.</strong>
+    D1 changes what an edit to them <em>means</em>, not who may write them.</li>
+  <li><strong>No change to which fields a verdict carries</strong>, to the abstention rules, to the
+    sweep cadence, the item cap, or the attempt ceiling.</li>
+  <li><strong>The type is pinned; the other held fields are not.</strong> A row that already holds a
+    folder still gets a folder guess, which the merge then drops. Cheap, and it keeps the correction
+    log’s reading of “what would the model have said?” honest for those fields. Only
+    <code>item_type</code> earns the pin, because only it can invalidate the whole verdict
+    (<a href="#d3">D3</a>).</li>
+  <li><strong>The children of an eligible root are still never swept</strong>
+    (<code>parent_id is null</code>). A subtask keeps exactly what it was created with.</li>
+  <li><strong>Known limit:</strong> a notes edit landing while a tick is in flight is not re-judged —
+    the verdict was formed from the older text and marks the row. Harmless (the guess is merely made
+    with less information), and the honest fix is the manual re-classify action above, not a second
+    CAS on the captured text.</li>
+</ul>
+<p>
+  <strong>No open questions.</strong> The four that were open at the start of refinement — title
+  edits, the backfill, whether the subtree-folder consequence belongs here, and whether to pin the
+  type in the prompt — are settled above.
+</p>
+
+<h2>11 · Acceptance criteria</h2>
+<ul class="ac">
+  <li class="h">The claim rule</li>
+  <li>On an unjudged item, an UPDATE that changes only <code>title</code> leaves
+    <code>classified_at</code> null.</li>
+  <li>Same for an UPDATE that changes only <code>notes</code>.</li>
+  <li>Same for an UPDATE that sets <code>item_type</code> to <code>task</code> or <code>code</code>
+    (including the bulk bar’s Classify and the row menu’s Classify as…).</li>
+  <li>Setting <code>priority</code> or <code>due_date</code>, or clearing either, still stamps
+    <code>classified_at</code> with the provenance columns left null.</li>
+  <li>Setting <code>folder_id</code> / <code>intended_project_id</code> /
+    <code>intended_epic_id</code> to a non-null value still claims; a folder delete that nulls
+    <code>folder_id</code> and returns items to the Inbox still does not.</li>
+  <li>An item whose <code>classified_at</code> is already set is never re-stamped by any later edit.</li>
+
+  <li class="h">The sweep</li>
+  <li>An item holding <code>task</code> or <code>code</code>, undispatched and unmarked, is selected
+    by <code>fetchEligibleItems</code> and classified.</li>
+  <li>The verdict never changes a held <code>item_type</code>, <code>priority</code>,
+    <code>due_date</code>, <code>folder_id</code>, <code>intended_project_id</code> or
+    <code>intended_epic_id</code> — only gaps are filled.</li>
+  <li>The request for a held-type item pins <code>item_type</code> to that single value in the output
+    schema and states it in the user message; the request for an unclassified item is unchanged.</li>
+  <li><code>PROMPT_VERSION</code> is 2, and is stamped onto the verdicts the new prompt produces.</li>
+  <li>The verdict write filters on both <code>classified_at is null</code> and the
+    <code>item_type</code> that was read; a row re-typed in between matches nothing, is logged, is
+    not counted as classified, burns no attempt, and is picked up again by the next tick.</li>
+
+  <li class="h">Dispatch</li>
+  <li>Dispatching a task whose folder came from the classifier files the whole subtree into that
+    folder — no <code>items_dispatched_needs_folder</code> violation, at any depth, in any PATCH
+    order.</li>
+  <li>A dispatched child that already carries its own folder keeps it; a <code>code</code> child is
+    unaffected; the inheriting child is not claimed by the claim trigger.</li>
+
+  <li class="h">Everything else holds</li>
+  <li>Capture is unaffected: <code>POST /api/items</code> gains no LLM call and no new dependency.</li>
+  <li>No column, table, view or grant changes; <code>frontend/lib/database.types.ts</code> is
+    regenerated and committed (expected: no diff).</li>
+  <li>The Inbox renders exactly as before — no new component, chip, glyph or state.</li>
+  <li>Root <code>npm run check</code> is green, with no config weakened and no ignore directive
+    added.</li>
+  <li>A demo doc exists, is linked from the PR as a live blob URL
+    (<code>npm run demo -- pr-link</code>), and reproduces under <code>npm run demo -- verify</code>.</li>
+</ul>
+
+<h2>12 · Related reading</h2>
+<ul>
+  <li><a href="epics/ALF-158.html">ALF-158 — LLM processing</a> (the epic): D4 (guesses on real
+    fields), D10 (the marker), D13 (failure paths), D15/D16 (the correction log and the example
+    block), §7 open question 2 — the question this story answers.</li>
+  <li><code>database/migrations/0029_llm_classifier.sql</code> — the claim rule, the provenance
+    columns, the dispatch-time diff.</li>
+  <li><code>database/migrations/0026_inbox_dispatch.sql</code> — residency,
+    <code>items_dispatched_needs_folder</code>, and <code>inherit_dispatched_at</code>, the trigger
+    <a href="#d5">D5</a> is modelled on.</li>
+  <li><code>workers/src/verdict.ts</code> (<code>mergeIntoItem</code>),
+    <code>workers/src/sweep.ts</code>, <code>workers/src/prompt.ts</code>,
+    <code>workers/src/supabase.ts</code>.</li>
+  <li><code>frontend/lib/tasks/dispatch.ts</code> (readiness),
+    <code>frontend/lib/tasks/classification.ts</code> (the provenance mark),
+    <code>frontend/lib/hooks/use-task-row-flags.ts</code> (<code>canAddSubtask</code>).</li>
+  <li><a href="archive/ALF-195.html">ALF-195</a> D6 — the same interaction from the API side, and the
+    precedent this story brings the UI into line with.</li>
+</ul>
+
+</div>
+</body>
+</html>
