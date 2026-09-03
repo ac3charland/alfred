@@ -495,7 +495,9 @@ async function main() {
     await applyMigrations(
       client,
       undefined,
-      (file) => section !== 'subtree-before' || !file.includes('0031_'),
+      // Matched on the FULL filename, not a number prefix: migrations that merge in parallel can
+      // share one, so `0032_` alone would have excluded somebody else's migration too.
+      (file) => section !== 'subtree-before' || !file.endsWith('0032_classifier_claim_rule.sql'),
     );
     await seedWorld(client);
 
