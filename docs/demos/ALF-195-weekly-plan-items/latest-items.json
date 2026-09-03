@@ -1,0 +1,129 @@
+{
+  "plan": {
+    "id": "4006f717-59e9-4b09-8989-f28ff101215f",
+    "uploaded_at": "2026-09-03T04:11:16.860Z"
+  },
+  "counts": {
+    "total": 7,
+    "done": 3,
+    "open": 4,
+    "abandoned": 0,
+    "untriaged": 7
+  },
+  "items": [
+    {
+      "id": "ac8421f5-f5f5-4316-8ef9-2692950f41b6",
+      "item_type": "task",
+      "title": "Ship the motivic harness spike",
+      "notes": "Timebox to Tuesday morning",
+      "due_date": "2026-09-08",
+      "priority": "high",
+      "state": "completed",
+      "done": true,
+      "done_at": "2026-09-03T04:11:18.809Z",
+      "created_at": "2026-09-03T04:11:16.883Z",
+      "folder": null,
+      "in_inbox": true,
+      "code": null,
+      "children": [
+        {
+          "id": "21685641-d81b-40c0-8740-b0bda1b87338",
+          "item_type": "task",
+          "title": "Re-read last week's findings doc",
+          "notes": null,
+          "due_date": null,
+          "priority": null,
+          "state": "completed",
+          "done": true,
+          "done_at": "2026-09-03T04:11:18.809Z",
+          "created_at": "2026-09-03T04:11:16.883Z",
+          "folder": null,
+          "in_inbox": true,
+          "code": null,
+          "children": []
+        },
+        {
+          "id": "422c6b19-411b-419c-a8f4-d5bb1672da67",
+          "item_type": "task",
+          "title": "Write the harness skeleton",
+          "notes": null,
+          "due_date": "2026-09-08",
+          "priority": null,
+          "state": "completed",
+          "done": true,
+          "done_at": "2026-09-03T04:11:18.809Z",
+          "created_at": "2026-09-03T04:11:16.883Z",
+          "folder": null,
+          "in_inbox": true,
+          "code": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "08975c2e-6a7f-4c44-88e8-59579d776bf5",
+      "item_type": "code",
+      "title": "Per-voice mute in the mixer",
+      "notes": null,
+      "due_date": null,
+      "priority": null,
+      "state": "active",
+      "done": false,
+      "done_at": null,
+      "created_at": "2026-09-03T04:11:16.882Z",
+      "folder": null,
+      "in_inbox": true,
+      "code": null,
+      "children": [
+        {
+          "id": "958b695a-b083-4cd2-ba0f-d54fba54cd8f",
+          "item_type": "code",
+          "title": "Mute state in the audio graph",
+          "notes": null,
+          "due_date": null,
+          "priority": null,
+          "state": "active",
+          "done": false,
+          "done_at": null,
+          "created_at": "2026-09-03T04:11:16.882Z",
+          "folder": null,
+          "in_inbox": true,
+          "code": null,
+          "children": []
+        },
+        {
+          "id": "b013d851-6b26-4124-ac21-fde846892a39",
+          "item_type": "code",
+          "title": "Mixer strip mute button",
+          "notes": null,
+          "due_date": null,
+          "priority": null,
+          "state": "active",
+          "done": false,
+          "done_at": null,
+          "created_at": "2026-09-03T04:11:16.882Z",
+          "folder": null,
+          "in_inbox": true,
+          "code": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "c69b9b0b-217c-4d5f-bd78-6aa9263bbb61",
+      "item_type": "unclassified",
+      "title": "Decide what Q4's third rock actually is",
+      "notes": null,
+      "due_date": null,
+      "priority": null,
+      "state": "active",
+      "done": false,
+      "done_at": null,
+      "created_at": "2026-09-03T04:11:16.881Z",
+      "folder": null,
+      "in_inbox": true,
+      "code": null,
+      "children": []
+    }
+  ]
+}

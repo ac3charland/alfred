@@ -33,6 +33,7 @@ const BASE_NODE: ItemNode = {
   classified_prompt_version: null,
   classified_guess: null,
   classify_attempts: 0,
+  weekly_plan_id: null,
   children: [],
 };
 
@@ -117,5 +118,79 @@ describe('RowMetaCluster — dispatch-ready pip', () => {
     expect(screen.queryByRole('img', { name: 'Ready to dispatch' })).not.toBeInTheDocument();
     // The rest of the cluster is unaffected by the flag.
     expect(screen.getByText('Health')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The Week plan badge is `RowMetaCluster`'s own gate — a planned TOP-LEVEL item of any type
+ * carries it, a subtask never does — plus the `hasMeta` term that keeps a row whose ONLY
+ * metadata is the badge from collapsing its footer. Where such rows appear (the Inbox, folder
+ * views, Completed, select mode) is covered in task-row.test.tsx.
+ */
+describe('RowMetaCluster — the Week plan badge', () => {
+  const PLANNED: ItemNode = { ...BASE_NODE, weekly_plan_id: 'plan-1' };
+
+  function renderCluster(node: ItemNode, showTypeBadge = false) {
+    return render(
+      <RowMetaCluster
+        node={node}
+        isTask={node.item_type === 'task'}
+        isTopLevelTask={node.item_type === 'task' && node.parent_id === null}
+        recurrenceRule={null}
+        showTypeBadge={showTypeBadge}
+        showReadyPip={false}
+      />,
+    );
+  }
+
+  it('renders on a planned top-level item', () => {
+    renderCluster(PLANNED);
+
+    expect(screen.getByLabelText('Week plan item')).toBeInTheDocument();
+  });
+
+  it('renders on a planned item of any type, not only a task', () => {
+    for (const itemType of ['task', 'code', 'unclassified'] as const) {
+      const view = renderCluster({ ...PLANNED, item_type: itemType });
+      expect(screen.getByLabelText('Week plan item')).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it('does not render on a child — the badge marks the planned item, not what sits under it', () => {
+    renderCluster({ ...PLANNED, parent_id: 'root-1' });
+
+    expect(screen.queryByLabelText('Week plan item')).not.toBeInTheDocument();
+  });
+
+  it('does not render on an item that came from no plan', () => {
+    renderCluster(BASE_NODE);
+
+    expect(screen.queryByLabelText('Week plan item')).not.toBeInTheDocument();
+  });
+
+  it('renders the footer when the badge is its only metadata', () => {
+    // The unclassified planned row: no type badge outside select mode, no due date, no
+    // priority, no children. Without its own `hasMeta` term the whole footer would collapse.
+    const { container } = renderCluster({ ...PLANNED, item_type: 'unclassified' });
+
+    expect(container).not.toBeEmptyDOMElement();
+    expect(screen.getByLabelText('Week plan item')).toBeInTheDocument();
+  });
+
+  it('sits directly after the Type badge', () => {
+    renderCluster(PLANNED, true);
+
+    const cluster = screen.getByLabelText('Week plan item').parentElement;
+    const [first, second] = [...(cluster?.children ?? [])];
+    expect(first).toHaveTextContent('Task');
+    expect(second).toHaveTextContent('Week plan');
+  });
+
+  it('is a non-interactive span, so the select-mode row stays one button', () => {
+    renderCluster(PLANNED);
+
+    expect(screen.getByLabelText('Week plan item').tagName).toBe('SPAN');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

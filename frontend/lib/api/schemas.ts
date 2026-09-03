@@ -226,6 +226,107 @@ export const updateFolderSchema = z
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>;
 
 // ---------------------------------------------------------------------------
+// Weekly plan items
+// ---------------------------------------------------------------------------
+
+/**
+ * Every node in one batch, roots and children together. A cohort is a week's work, not a
+ * backlog import, and the cap is what keeps one call from writing an unreviewable pile of rows
+ * — it also keeps the read's single 1000-row range comfortable.
+ */
+export const WEEKLY_PLAN_ITEMS_MAX = 100;
+
+/** Shared by every branch: the two fields a node of any type may carry. */
+const weeklyPlanItemBase = {
+  title: z.string().trim().min(1),
+  notes: z.string().nullable().optional(),
+};
+
+/**
+ * A child never states its own `item_type` and never carries `children` of its own: the
+ * database permits exactly one answer for each (a code root's children are code, a task's are
+ * tasks; `enforce_subtask_shape` keeps code nesting one level deep and forbids mixing
+ * families). Letting a caller state either only creates a way to be wrong, so the illegal state
+ * is unrepresentable rather than validated.
+ */
+const weeklyPlanTaskChild = z.strictObject({
+  ...weeklyPlanItemBase,
+  due_date: dueDate.optional(),
+  priority: taskPriority.optional(),
+});
+
+/** A code root's child. No due date and no priority — `items_task_only_fields` forbids both. */
+const weeklyPlanCodeChild = z.strictObject(weeklyPlanItemBase);
+
+/**
+ * Body for POST /api/weekly-plans/[id]/items — the week the review coach agreed to do.
+ *
+ * A discriminated union on `item_type`, because what a root may carry depends entirely on it and
+ * the database already says so: `items_task_only_fields` makes a due date, a priority and
+ * completion task-only, and `enforce_subtask_shape` makes children task-or-code and one level
+ * deep for code. Expressing that here turns every illegal combination into a 400 naming the
+ * field instead of a 500 from a CHECK violation halfway through a batch.
+ *
+ * The default stays `unclassified` rather than becoming `task`: a plan line the coach hasn't
+ * typed is precisely the input the classifier sweep exists to judge, and defaulting to `task`
+ * would decide that on the coach's behalf. It can't cause a silent loss either — a due date sent
+ * without `"item_type": "task"` is a 400 that says so, not a dropped field.
+ *
+ * Strict objects throughout, so an unrecognised key is loud. The fields deliberately NOT
+ * accepted are `folder_id`, `parent_id`, `status`, `completed_at`, `recurrence`, `source_url`
+ * and the pre-factory hints `intended_project_id` / `intended_epic_id`: created items land in
+ * the Inbox untriaged, and the classifier and Friday triage fill the hints (the coach has no way
+ * to discover project ids anyway).
+ */
+export const createWeeklyPlanItemsSchema = z.object({
+  items: z
+    .array(
+      z.discriminatedUnion('item_type', [
+        z.strictObject({
+          item_type: z.literal('task'),
+          ...weeklyPlanItemBase,
+          due_date: dueDate.optional(),
+          priority: taskPriority.optional(),
+          children: z.array(weeklyPlanTaskChild).optional(),
+        }),
+        z.strictObject({
+          item_type: z.literal('code'),
+          ...weeklyPlanItemBase,
+          children: z.array(weeklyPlanCodeChild).optional(),
+        }),
+        z.strictObject({
+          // `.optional().default(...)` is what lets an ABSENT discriminant select this branch and
+          // still emerge as a stated type: zod matches the union arm on `undefined`, then the
+          // default fills it. A bare `.default()` would not match a body with no `item_type`.
+          item_type: z.literal('unclassified').optional().default('unclassified'),
+          ...weeklyPlanItemBase,
+          // No `children`: an unclassified row may not be a parent (`items_task_only_fields`
+          // allows a parent_id only on a task or a code item), so accepting them here would
+          // write a batch the database rejects halfway through.
+        }),
+      ]),
+    )
+    .min(1)
+    .refine(
+      (items) =>
+        items.reduce(
+          (total, item) => total + 1 + ('children' in item ? (item.children?.length ?? 0) : 0),
+          0,
+        ) <= WEEKLY_PLAN_ITEMS_MAX,
+      {
+        // Counted over the whole tree, not the root array: one root with 200 children is the
+        // same amount of work to review as 200 roots.
+        message: `A batch may carry at most ${String(WEEKLY_PLAN_ITEMS_MAX)} items, counting children`,
+      },
+    ),
+});
+
+export type CreateWeeklyPlanItemsInput = z.infer<typeof createWeeklyPlanItemsSchema>;
+
+/** One root as the route hands it to the RPC — the union arm, whatever its type. */
+export type WeeklyPlanItemInput = CreateWeeklyPlanItemsInput['items'][number];
+
+// ---------------------------------------------------------------------------
 // Habits
 // ---------------------------------------------------------------------------
 

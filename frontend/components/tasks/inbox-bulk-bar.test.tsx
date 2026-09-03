@@ -41,6 +41,7 @@ const BASE: Item = {
   classified_prompt_version: null,
   classified_guess: null,
   classify_attempts: 0,
+  weekly_plan_id: null,
 };
 
 function makeItem(id: string, overrides: Partial<Item> = {}): Item {
@@ -89,6 +90,7 @@ function makeSidecar(itemId: string, refNumber: number): CodeItem {
     factory_state: 'needs_refinement',
     lane: 'human',
     requires_refinement: true,
+    done_at: null,
     spec_path: null,
     spec_sha: null,
     spec_markdown: null,

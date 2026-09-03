@@ -53,6 +53,26 @@ The Software Factory: Project / Epic / Story model + the refine→implement life
 - **RLS/grants**: same single-user pattern as `0001` (`authenticated` full access; explicit
   table/view/function GRANTs to `anon, authenticated, service_role`).
 
+### `0030_weekly_plan_items.sql` — the weekly-review loop (ALF-195)
+
+Two keyed endpoints let the weekly review write a week's plan into alfred as real items, then
+read back what became of them. Everything they stand on lives here:
+
+- **`items.weekly_plan_id`** — nullable FK to `weekly_plans (id)`, `on delete set null` (the
+  items are real work and outlive the archived document), with a partial index over the non-null
+  set. Deliberately **not** in `items_task_only_fields`: it is provenance, and it must survive
+  `enter_code_module` flipping a planned item to `code`.
+- **`task_items` re-created** so the new column reaches the read path (the `select i.*` freeze
+  `0011`/`0013`/`0018`/`0026`/`0029` each document).
+- **`create_weekly_plan_items(plan, items)`** — `security invoker`, granted to all three API
+  roles. Writes a whole batch of roots plus their children in **one transaction**, stamping the
+  cohort key on every row and leaving them all in the Inbox. Root `created_at` descends with
+  array position, so the Inbox lists the week in the order it was sent.
+- **`code_items.done_at`** plus a `before update of factory_state` trigger that stamps it on
+  entering `done` and clears it on leaving — in the database, not the route, because the Worker
+  patches `code_items` straight through PostgREST when a PR merges. Stories that reached `done`
+  before this migration have `null`; the factory kept no transition history to backfill from.
+
 ## Applying on merge (the default path)
 
 **Merging a migration to `main` applies it — to both instances.** `.github/workflows/migrate.yml`

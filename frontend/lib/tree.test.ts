@@ -60,6 +60,7 @@ const BASE: Item = {
   classified_prompt_version: null,
   classified_guess: null,
   classify_attempts: 0,
+  weekly_plan_id: null,
 };
 
 function item(overrides: Partial<Item>): Item {

@@ -121,6 +121,7 @@ function makeSidecar(itemId: string, priority: number): CodeItem {
     blocked_from: null,
     requires_refinement: true,
     created_at: '2025-01-01T00:00:00Z',
+    done_at: null,
     updated_at: '2025-01-02T00:00:00Z',
     priority,
   };

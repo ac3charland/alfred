@@ -49,6 +49,7 @@ const makeItem = (id: string, status: Item['status']): Item => ({
   classified_prompt_version: null,
   classified_guess: null,
   classify_attempts: 0,
+  weekly_plan_id: null,
 });
 
 describe('CompletedView', () => {

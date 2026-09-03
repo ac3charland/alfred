@@ -11,6 +11,7 @@ import { ProjectKeyChip } from '@/components/tasks/project-key-chip';
 import { metaFooterClass, subtaskCountBadgeClass } from '@/components/tasks/task-row.styles';
 import { FolderChip, IntendedEpicChip } from '@/components/tasks/task-row/detail-chips';
 import { TypeBadge } from '@/components/tasks/type-badge';
+import { WeekPlanBadge } from '@/components/tasks/week-plan-badge';
 import type { TaskPriority } from '@/lib/priority';
 import { isPriorityLevel } from '@/lib/priority';
 import type { RecurrenceRule } from '@/lib/recurrence';
@@ -84,6 +85,12 @@ export function RowMetaCluster({
   // check. Once dispatched, the row lives in that folder's view, where a chip would restate it;
   // in the Completed view the context label owns "where this lives", so the chip stays off too.
   const showFolderChip = !isCompletedView && !isDispatched(node) && node.folder_id !== null;
+  // Provenance, so it is unconditional on the planned row: it survives the classifier, triage
+  // into a folder, and completion, in every Tasks view the row appears in. Deliberately NOT
+  // `isTopLevelTask` — that term means "a task at the root", and a planned root may be any of
+  // the three types. And deliberately not on children: the badge marks the item the review
+  // planned, and a subtask sits under one.
+  const showWeekPlanBadge = node.parent_id === null && node.weekly_plan_id !== null;
   const showProjectChip = node.intended_project_id !== null;
   const showEpicChip = node.intended_epic_id !== null;
   const showDueChip = isTask && node.due_date !== null;
@@ -97,6 +104,9 @@ export function RowMetaCluster({
 
   const hasMeta =
     showTypeBadge ||
+    // Load-bearing: a planned unclassified capture carries no other chip outside select mode, so
+    // without this term its footer — and its only badge — would not render at all.
+    showWeekPlanBadge ||
     showFolderChip ||
     showProjectChip ||
     showEpicChip ||
@@ -115,6 +125,11 @@ export function RowMetaCluster({
   return (
     <div className={metaFooterClass}>
       {showTypeBadge && <TypeBadge itemType={node.item_type} />}
+
+      {/* Week plan — this row came from a weekly review's plan document. Directly after the
+          Type badge: both are labels naming what the row IS, before the chips that say when it
+          is due and where it lives. */}
+      {showWeekPlanBadge && <WeekPlanBadge />}
 
       {/* Folder — where the row would land (or already lives). Undispatched rows only. */}
       {showFolderChip && (

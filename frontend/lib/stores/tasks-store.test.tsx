@@ -64,6 +64,7 @@ const BASE: Item = {
   classified_prompt_version: null,
   classified_guess: null,
   classify_attempts: 0,
+  weekly_plan_id: null,
 };
 
 /** Fixed residency stamp for a seeded FILED item — fixtures pin the clock, never read it. */
