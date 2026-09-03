@@ -60,6 +60,7 @@ const BASE_ITEM: Item = {
   classified_prompt_version: null,
   classified_guess: null,
   classify_attempts: 0,
+  weekly_plan_id: null,
 };
 
 const CHILD_ITEM: Item = {
@@ -2663,6 +2664,7 @@ describe('TaskRow — classification & type-gating', () => {
       blocked_from: null,
       requires_refinement: true,
       created_at: '2025-01-02T00:00:00Z',
+      done_at: null,
       updated_at: '2025-01-02T00:00:00Z',
       priority: 1,
     };
@@ -2911,6 +2913,7 @@ describe('TaskRow — epic construction (ALF-129)', () => {
     blocked_from: null,
     requires_refinement: true,
     created_at: '2025-01-02T00:00:00Z',
+    done_at: null,
     updated_at: '2025-01-02T00:00:00Z',
     priority: -2,
   };
@@ -4323,5 +4326,74 @@ describe('dispatch-ready pip', () => {
     await user.click(await screen.findByRole('button', { name: 'Work' }));
 
     expect(await screen.findByRole('img', { name: PIP_NAME })).toBeInTheDocument();
+  });
+});
+
+const PLANNED_ITEM: Item = { ...BASE_ITEM, weekly_plan_id: 'plan-1' };
+
+/**
+ * ALF-195: the Week plan badge is provenance — an item a weekly review planned — so it is
+ * unconditional on the planned row and survives every state the row passes through: the
+ * classifier's labels, triage into a folder, completion, and select mode. Its `hasMeta` term and
+ * its position in the cluster live in row-meta-cluster.test.tsx; the question here is which ROWS
+ * carry it.
+ */
+describe('TaskRow — the Week plan badge (ALF-195)', () => {
+  const BADGE = 'Week plan item';
+
+  it('shows on a planned Inbox root of every type', () => {
+    for (const itemType of ['task', 'code', 'unclassified'] as const) {
+      const view = renderTasks([{ ...PLANNED_ITEM, item_type: itemType }]);
+      expect(screen.getByLabelText(BADGE)).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it('shows nothing on a row that came from no plan', () => {
+    renderTasks([BASE_ITEM]);
+
+    expect(screen.queryByLabelText(BADGE)).not.toBeInTheDocument();
+  });
+
+  it('shows nothing on a planned root’s children', async () => {
+    const user = userEvent.setup();
+    renderTasks([PLANNED_ITEM, { ...CHILD_ITEM, weekly_plan_id: 'plan-1' }]);
+
+    await expandRow(user, 'Write tests');
+
+    expect(within(rowFor('Write unit tests')).queryByLabelText(BADGE)).not.toBeInTheDocument();
+    expect(within(rowFor('Write tests')).getByLabelText(BADGE)).toBeInTheDocument();
+  });
+
+  it('survives triage into a folder', () => {
+    renderTasks([{ ...PLANNED_ITEM, folder_id: ARCHIVE.id, dispatched_at: DISPATCHED_AT }], {
+      folders: [FOLDER, ARCHIVE],
+      scope: { type: 'folder', folderId: ARCHIVE.id },
+    });
+
+    expect(screen.getByLabelText(BADGE)).toBeInTheDocument();
+  });
+
+  it('survives completion, in the Completed view', () => {
+    renderTasks(
+      [{ ...PLANNED_ITEM, status: 'completed', completed_at: '2025-01-02T10:00:00Z' }],
+      COMPLETED,
+    );
+
+    expect(screen.getByLabelText(BADGE)).toBeInTheDocument();
+  });
+
+  it('shows in select mode, where the row is one button', async () => {
+    const user = userEvent.setup();
+    renderSelectableInbox([PLANNED_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+
+    const badge = screen.getByLabelText(BADGE);
+    expect(badge).toBeInTheDocument();
+    // Inert by construction: the select-mode row is a single <button> and a nested control
+    // there would be invalid HTML.
+    expect(badge.tagName).toBe('SPAN');
+    expect(badge.closest('button')).toHaveAttribute('aria-pressed');
   });
 });
