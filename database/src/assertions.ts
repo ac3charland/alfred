@@ -1788,7 +1788,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   );
 
   const classifierClaimResult = await attempt(
-    'a human edit claims an unclassified item, and a referential cascade does not (ALF-171)',
+    'a LABEL edit claims an unclassified item; content, type and a cascade do not (ALF-202)',
     async () => {
       const insert = async (columns: string, values: readonly unknown[]): Promise<string> => {
         const placeholders = values.map((_, index) => `$${String(index + 1)}`).join(', ');
@@ -1815,18 +1815,61 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         if (row === undefined) throw new Error('the item disappeared');
         return row;
       };
+      const stillEligible = async (id: string, what: string): Promise<void> => {
+        const { classified_at } = await provenanceOf(id);
+        if (classified_at !== null) throw new Error(`editing ${what} claimed the item`);
+      };
 
-      // 1. A watched edit on a never-classified row stamps the marker — and leaves the
-      //    provenance null, which is how a human claim stays distinguishable from a verdict.
-      const edited = await insert('title, item_type', ['rewrite me', 'task']);
-      await client.query(`update items set title = 'rewritten' where id = $1`, [edited]);
-      const afterEdit = await provenanceOf(edited);
-      if (afterEdit.classified_at === null)
-        throw new Error('editing a watched field did not claim the item');
-      if (afterEdit.classified_provider !== null)
+      // 1. Neither the captured TEXT nor the TYPE claims. Title and notes are what the classifier
+      //    READS, so improving them must not cancel the reading; the type is locked against the
+      //    model in the Worker instead, which is what lets a capture be classified (the only way
+      //    to give it children) and still be swept.
+      const capture = await insert('title', ['plan mom’s birthday']);
+      await client.query(`update items set title = 'plan Mom’s birthday' where id = $1`, [capture]);
+      await stillEligible(capture, 'the title');
+      await client.query(`update items set notes = 'cake, restaurant, card' where id = $1`, [
+        capture,
+      ]);
+      await stillEligible(capture, 'the notes');
+      await client.query(`update items set item_type = 'task' where id = $1`, [capture]);
+      await stillEligible(capture, 'item_type');
+
+      // 2. A label does claim — and leaves the provenance null, which is how a human claim stays
+      //    distinguishable from a verdict. The same row, one edit later.
+      const { rows: familyRows } = await client.query<{ id: string }>(
+        `insert into folders (name) values ('Family') returning id`,
+      );
+      const family = familyRows[0]?.id;
+      if (family === undefined) throw new Error('could not seed a folder');
+      await client.query(`update items set folder_id = $2 where id = $1`, [capture, family]);
+      const afterLabel = await provenanceOf(capture);
+      if (afterLabel.classified_at === null)
+        throw new Error('setting a folder did not claim the item');
+      if (afterLabel.classified_provider !== null)
         throw new Error('a human claim wrongly stamped a provider');
 
-      // 2. The classifier stamping its own verdict is not double-stamped: the value it wrote
+      // 3. Both directions, for both scalar labels. On an unjudged row the value being cleared can
+      //    only have come from the owner or from the capture that created it, so emptying one says
+      //    as much about the label as setting one does — and a rule where it did not claim would
+      //    let the next tick put a value straight back into a field just emptied.
+      const prioritised = await insert('title, item_type', ['set a priority', 'task']);
+      await client.query(`update items set priority = 'high' where id = $1`, [prioritised]);
+      const afterPriority = await provenanceOf(prioritised);
+      if (afterPriority.classified_at === null)
+        throw new Error('setting a priority did not claim the item');
+
+      const dated = await insert('title, item_type, due_date', [
+        'clear a due date',
+        'task',
+        '2026-08-07',
+      ]);
+      await stillEligible(dated, 'nothing yet — the insert itself');
+      await client.query(`update items set due_date = null where id = $1`, [dated]);
+      const afterClear = await provenanceOf(dated);
+      if (afterClear.classified_at === null)
+        throw new Error('clearing a due date did not claim the item');
+
+      // 4. The classifier stamping its own verdict is not double-stamped: the value it wrote
       //    survives, even though the same statement changes watched fields.
       const stamped = '2020-01-02 03:04:05+00';
       const judged = await insert('title, item_type', ['judge me', 'task']);
@@ -1842,21 +1885,19 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
           `the classifier's own stamp was overwritten: ${String(afterVerdict.classified_at)}`,
         );
 
-      // 3. A later human edit of an already-claimed row leaves the original marker alone, so
+      // 5. A later human edit of an already-claimed row leaves the original marker alone, so
       //    the guess it was judged with stays paired with the timestamp that produced it.
-      await client.query(`update items set title = 'edited after judging' where id = $1`, [judged]);
+      await client.query(`update items set priority = 'low' where id = $1`, [judged]);
       const afterSecondEdit = await provenanceOf(judged);
       if (afterSecondEdit.classified_at !== afterVerdict.classified_at)
         throw new Error('editing an already-claimed row re-stamped classified_at');
 
-      // 4. An unwatched column is not a claim — the classifier writes this one itself.
+      // 6. An unwatched column is not a claim — the classifier writes this one itself.
       const untouched = await insert('title, item_type', ['leave me eligible', 'task']);
       await client.query(`update items set classify_attempts = 1 where id = $1`, [untouched]);
-      const unwatched = await provenanceOf(untouched);
-      if (unwatched.classified_at !== null)
-        throw new Error('an unwatched column change claimed the item');
+      await stillEligible(untouched, 'an unwatched column');
 
-      // 5. The cascade case. Deleting a folder returns its undispatched items to the Inbox
+      // 7. The cascade case. Deleting a folder returns its undispatched items to the Inbox
       //    (0026's trigger) AND nulls their folder_id (the FK). Neither may claim, or the rows
       //    that most need re-triaging would be permanently hidden from the sweeper.
       const { rows: folderRows } = await client.query<{ id: string }>(
@@ -1867,11 +1908,127 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
       const filed = await insert('title, item_type, folder_id', ['guessed home', 'task', folder]);
       await client.query(`update items set dispatched_at = null where id = $1`, [filed]);
       await client.query(`delete from folders where id = $1`, [folder]);
-      const afterCascade = await provenanceOf(filed);
-      if (afterCascade.classified_at !== null)
-        throw new Error('a folder delete claimed the items it returned to the Inbox');
+      await stillEligible(filed, 'a folder delete');
 
-      return 'watched edit claims (provider null); the verdict is not double-stamped; an unwatched column and a folder-delete cascade both leave the row eligible';
+      return 'title, notes and item_type all leave the row eligible; every label claims in both directions (provider null); the verdict is not double-stamped; an unwatched column and a folder-delete cascade both leave the row eligible';
+    },
+  );
+
+  const classifierSubtreeFolderResult = await attempt(
+    'a dispatched subtask inherits its ROOT folder and is not claimed by it (ALF-202)',
+    async () => {
+      const folderNamed = async (name: string): Promise<string> => {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into folders (name) values ($1) returning id`,
+          [name],
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error(`could not seed the ${name} folder`);
+        return id;
+      };
+      /** One item, inserted exactly as the app creates it: never with a folder AND a parent. */
+      const item = async (
+        title: string,
+        options: { parent?: string; folder?: string; itemType?: string } = {},
+      ): Promise<string> => {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into items (title, item_type, parent_id, folder_id)
+             values ($1, $2, $3, $4) returning id`,
+          // `undefined` rather than a null literal: node-postgres sends it as SQL NULL, and the
+          // package bans the literal.
+          [title, options.itemType ?? 'task', options.parent, options.folder],
+        );
+        const id = rows[0]?.id;
+        if (id === undefined) throw new Error(`could not seed ${title}`);
+        return id;
+      };
+      /** The classifier's own write: a folder guess onto an undispatched row, provenance and all.
+       *  It states classified_at itself, so the claim trigger has nothing to claim. */
+      const guessFolder = async (id: string, folder: string): Promise<void> => {
+        await client.query(
+          `update items set folder_id = $2, classified_at = now(),
+                            classified_provider = 'anthropic'
+             where id = $1`,
+          [id, folder],
+        );
+      };
+      const dispatch = (id: string): Promise<unknown> =>
+        client.query(`update items set dispatched_at = now() where id = $1`, [id]);
+      const stateOf = async (
+        id: string,
+      ): Promise<{ folder_id: string | null; classified_at: string | null }> => {
+        const { rows } = await client.query<{
+          folder_id: string | null;
+          classified_at: string | null;
+        }>(
+          `select folder_id::text as folder_id, classified_at::text as classified_at
+              from items where id = $1`,
+          [id],
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('the item disappeared');
+        return row;
+      };
+
+      const family = await folderNamed('Family (inherit)');
+      const health = await folderNamed('Health (inherit)');
+
+      // A depth-3 subtree, decomposed BEFORE the sweep reached the root — which is the likely
+      // order, since children are added seconds after the classify. Only the root ends up filed.
+      const root = await item('plan the birthday');
+      const child = await item('book the restaurant', { parent: root });
+      const grandchild = await item('call about the private room', { parent: child });
+      await guessFolder(root, family);
+
+      // Child-first, the order the app's parallel PATCHes cannot guarantee: at depth >= 2 the
+      // middle row is still folderless when its own child's trigger runs, so only walking to the
+      // ROOT is order-independent.
+      await dispatch(grandchild);
+      await dispatch(child);
+      await dispatch(root);
+
+      for (const [id, label] of [
+        [child, 'the child'],
+        [grandchild, 'the grandchild'],
+      ] as const) {
+        const state = await stateOf(id);
+        if (state.folder_id !== family)
+          throw new Error(
+            `${label} was filed into ${String(state.folder_id)}, not the root folder`,
+          );
+        // The trigger NAME is what keeps this true: `before update` row triggers fire in
+        // alphabetical order, so items_claim_from_classifier runs before
+        // items_inherit_folder_on_dispatch and sees folder_id still null.
+        if (state.classified_at !== null)
+          throw new Error(`${label} was claimed by the folder it inherited`);
+      }
+
+      // A depth-2 subtree where one child was filed by hand: its own folder wins.
+      const secondRoot = await item('tidy the garage');
+      const ownFolder = await item('sort the paint tins', { parent: secondRoot });
+      const noFolder = await item('hire a skip', { parent: secondRoot });
+      await client.query(`update items set folder_id = $2 where id = $1`, [ownFolder, health]);
+      await guessFolder(secondRoot, family);
+      await dispatch(ownFolder);
+      await dispatch(noFolder);
+      await dispatch(secondRoot);
+      const kept = await stateOf(ownFolder);
+      if (kept.folder_id !== health)
+        throw new Error("a child's own folder was overwritten by its root's");
+      const inherited = await stateOf(noFolder);
+      if (inherited.folder_id !== family)
+        throw new Error('a folderless sibling did not inherit the root folder');
+
+      // A code child is exempt: it left for the factory, which has no folders, and
+      // items_dispatched_needs_folder lets it through with none.
+      const codeRoot = await item('ALF: the epic', { itemType: 'code' });
+      const codeChild = await item('ALF: the story', { parent: codeRoot, itemType: 'code' });
+      await dispatch(codeChild);
+      const exempt = await stateOf(codeChild);
+      if (exempt.folder_id !== null)
+        throw new Error('a dispatched code subtask was given a folder it does not want');
+
+      return 'depth-3 subtree files into the root folder in child-first order, unclaimed; a hand-filed child keeps its own folder; a code child stays folderless';
     },
   );
 
@@ -2543,6 +2700,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     dispatchOnGateResult,
     classifierColumnsResult,
     classifierClaimResult,
+    classifierSubtreeFolderResult,
     classifierCorrectionsResult,
     correctionsGrantsResult,
     itemsRealtimeResult,
