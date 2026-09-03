@@ -22,14 +22,15 @@ function makeProject(id: string, name: string, key: string): Project {
 
 const PROJECTS: Project[] = [makeProject('p1', 'Alfred', 'ALF'), makeProject('p2', 'Relay', 'RLP')];
 
-const ALL = ['p1', 'p2'];
+/** The resting selection (ALF-201): nothing picked out, so the Backlog lists every project. */
+const NONE: string[] = [];
 
 describe('ProjectFilterMenu', () => {
-  it('labels the trigger and shows no count at the resting (all-selected) state', () => {
+  it('labels the trigger and shows no count at the resting (nothing-selected) state', () => {
     render(
       <ProjectFilterMenu
         projects={PROJECTS}
-        selected={ALL}
+        selected={NONE}
         onToggle={jest.fn()}
         isFiltering={false}
       />,
@@ -70,7 +71,7 @@ describe('ProjectFilterMenu', () => {
     render(
       <ProjectFilterMenu
         projects={PROJECTS}
-        selected={ALL}
+        selected={NONE}
         onToggle={onToggle}
         isFiltering={false}
       />,
@@ -89,7 +90,7 @@ describe('ProjectFilterMenu', () => {
     render(
       <ProjectFilterMenu
         projects={PROJECTS}
-        selected={ALL}
+        selected={NONE}
         onToggle={jest.fn()}
         isFiltering={false}
       />,

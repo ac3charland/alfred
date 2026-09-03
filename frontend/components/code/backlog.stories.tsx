@@ -241,9 +241,10 @@ type Story = StoryObj<typeof meta>;
 export const Seeded: Story = {};
 
 /**
- * The Backlog narrowed with **Filter by project** (ALF-156): the play function unchecks *Relay*,
- * leaving only the Alfred stories listed and the trigger highlighted teal with its count. The
- * remaining rows keep their global priority ranking — the filter hides work, it never re-ranks it.
+ * The Backlog narrowed with **Filter by project** (ALF-156): the menu rests with nothing checked,
+ * and the play function checks *Alfred* — one tap to see just that project (ALF-201), leaving the
+ * Relay stories out and the trigger highlighted teal with its count. The remaining rows keep their
+ * global priority ranking — the filter hides work, it never re-ranks it.
  */
 export const ProjectFiltered: Story = {
   play: async ({ canvasElement }) => {
@@ -252,9 +253,11 @@ export const ProjectFiltered: Story = {
     // The menu is portal-rendered outside the canvas, and Radix sets pointer-events:none on the
     // body while it's open — so find it on the body and drive it by keyboard.
     const menu = await within(document.body).findByRole('menu');
-    await expect(within(menu).getByRole('menuitemcheckbox', { name: 'Relay' })).toBeInTheDocument();
-    // 2nd option = Relay (projects list in creation order), then close the menu again.
-    await userEvent.keyboard('[ArrowDown][ArrowDown][Enter][Escape]');
+    await expect(
+      within(menu).getByRole('menuitemcheckbox', { name: 'Alfred' }),
+    ).toBeInTheDocument();
+    // 1st option = Alfred (projects list in creation order), then close the menu again.
+    await userEvent.keyboard('[ArrowDown][Enter][Escape]');
     await waitFor(async () => {
       await expect(canvas.queryByText('RLP-2')).not.toBeInTheDocument();
     });
