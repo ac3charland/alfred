@@ -229,6 +229,13 @@
       left blank. See <a href="#d6">D6</a> — it has one consequence the caller must know about.</td>
   </tr>
   <tr>
+    <td>How does the read answer “is it done, when, and if not what is it doing?” for a code item?</td>
+    <td>Three <strong>derived</strong> fields per node — <code>state</code>, <code>done</code>,
+      <code>done_at</code> — because completion is task-only in this schema. “When” needs a new
+      <code>code_items.done_at</code> column and a trigger: the factory records no history at all.
+      See <a href="#d8">D8</a> / <a href="#d8b">D8b</a>.</td>
+  </tr>
+  <tr>
     <td>How does the app show that an item came from the week plan?</td>
     <td>A <strong>Week plan badge</strong> in the row's metadata cluster, on the planned top-level
       row. Drawn in <a href="#surface">§6</a>.</td>
@@ -461,23 +468,47 @@
 </div>
 
 <div class="dec" id="d8">
-  <h3><span class="n">D8</span> The read answers with the tree, pre-counted, and follows a code item
-    into the factory</h3>
+  <h3><span class="n">D8</span> Three derived fields answer the review's question for every type —
+    <code>state</code>, <code>done</code>, <code>done_at</code></h3>
   <p>
-    <code>GET</code> returns the plan it resolved, a <code>counts</code> object and the items as a
-    nested tree. Each node carries its <code>item_type</code>, <code>status</code>,
-    <code>completed_at</code>, <code>due_date</code>, <code>priority</code>,
-    <code>created_at</code>, its folder, whether it is still in the Inbox, and — when the item has
-    entered the Software Factory — its <code>code</code> sidecar (<code>ref</code>,
-    <code>factory_state</code>).
+    The review asks the same three things of every line of its plan: <em>is this done, when was it
+    done, and if not, where is it now?</em> The raw columns answer those differently per family —
+    a task's completion is <code>items.status</code> / <code>items.completed_at</code>, a code
+    item's is <code>code_items.factory_state</code> — so each node carries one derived field per
+    question, and the raw columns stop appearing at the top level:
+  </p>
+  <div class="scroll">
+  <table>
+    <tr><th style="width:16%">Field</th><th style="width:34%">For a task / unclassified item</th>
+        <th>For a code item</th></tr>
+    <tr><td><code>state</code></td>
+        <td><code>active</code> | <code>completed</code> (from <code>items.status</code>)</td>
+        <td>its <code>factory_state</code> verbatim — <code>in_development</code>,
+          <code>ready_for_review</code>, <code>blocked</code>, <code>done</code>, … A code item
+          that never entered the factory has no sidecar, so it reports <code>active</code>.</td></tr>
+    <tr><td><code>done</code></td>
+        <td><code>status === 'completed'</code></td>
+        <td><code>factory_state === 'done'</code></td></tr>
+    <tr><td><code>done_at</code></td>
+        <td><code>items.completed_at</code></td>
+        <td><code>code_items.done_at</code> — the new column in <a href="#db">§5.4</a></td></tr>
+  </table>
+  </div>
+  <p>
+    <code>counts.done</code> is exactly the count of nodes with <code>done: true</code>, and
+    <code>counts.abandoned</code> of those at <code>state: 'abandoned'</code>, so the aggregate and
+    the rows can never disagree. The sidecar stays on the node as
+    <code>code: { ref, lane }</code> — <code>ref</code> is what a review quotes
+    (“RPL-142 is in review”) and <code>lane</code> says who is building it; the factory state itself
+    is not repeated there, because <code>state</code> is already it.
   </p>
   <p class="why">
-    <b>Why the sidecar is not optional:</b> completion is task-only in this schema. A code item's
-    <code>status</code> is <em>always</em> <code>active</code> and its <code>completed_at</code> is
-    <em>always</em> null, because the CHECK forbids anything else — so reporting a shipped story as
-    “active” would be the exact false answer this ticket exists to prevent. For a code item, “done”
-    lives in <code>code_items.factory_state</code>, and <code>ALF-201 · ready_for_review</code> is a
-    far better review line than a boolean anyway.
+    <b>Why derive rather than pass the raw columns through:</b> completion is task-only in this
+    schema. A code item's <code>status</code> is <em>always</em> <code>active</code> and its
+    <code>completed_at</code> <em>always</em> null, because the CHECK forbids anything else — so a
+    payload that exposed both raw columns and a done-count spanning both families would offer two
+    readings of one question, and the obvious one (<code>status</code>) reports every shipped story
+    as outstanding. One field per question, one vocabulary, no reconciliation asked of the caller.
   </p>
   <p class="why">
     <b>Why pre-counted:</b> the same reason <code>/api/habits</code> pre-rounds its numbers — a
@@ -486,6 +517,48 @@
     payload whose consumer already has both. <b>Why the folder:</b> paired with <code>in_inbox</code>
     it distinguishes “done and filed” from “never triaged”, which is the more interesting review
     finding.
+  </p>
+</div>
+
+<div class="dec" id="d8b">
+  <h3><span class="n">D8b</span> “When was it done” needs a new column and a trigger — the factory
+    records no history at all</h3>
+  <p>
+    <code>code_items</code> carries exactly two timestamps, <code>created_at</code> and
+    <code>updated_at</code>, and there is no transition log anywhere in the schema. Worse,
+    <strong>nothing writes <code>updated_at</code></strong>: <code>PATCH /api/code/[ref]</code>
+    builds its update from <code>factory_state</code>, <code>blocked_reason</code>,
+    <code>epic_id</code> and <code>requires_refinement</code> and never touches it, and no trigger
+    does either — so it is frozen at the sidecar's creation default. A story's factory state today
+    is a single mutable enum with no memory of when it got there.
+  </p>
+  <p>
+    So this spec adds <code>code_items.done_at</code>, stamped by a <code>before update of
+    factory_state</code> trigger: set to <code>now()</code> when the state becomes
+    <code>done</code>, cleared when it moves off <code>done</code> again (<a href="#db">§5.4</a>).
+  </p>
+  <p class="why">
+    <b>Why a trigger and not the route:</b> the route is not the ingress that matters. The Worker
+    PATCHes <code>code_items</code> straight through PostgREST on a merged PR
+    (<code>workers/src/supabase.ts</code> → <code>patchByRef(env, 'code_items', …)</code>), which is
+    where <em>most</em> <code>done</code> transitions come from — its transition table calls itself
+    “the whole system's clock”. Route-level stamping would miss exactly those. This is the same
+    argument 0026 makes for <code>inherit_dispatched_at</code> and 0029 for the claim rule: several
+    ingresses write the column and only the database sits under all of them.
+  </p>
+  <p class="why">
+    <b>Why a dedicated column rather than stamping <code>updated_at</code>:</b> “last touched” is
+    not “finished” — an epic move or an unblock after completion would drag the timestamp forward
+    and the review would report the wrong day. Stamping <code>updated_at</code> would also silently
+    change existing behaviour: <code>code-store</code> sorts the board by it, described as “most
+    recent first”, and today that sort is effectively by sidecar creation. That looks like a real
+    bug, but it is not this ticket's to fix.
+  </p>
+  <p class="why">
+    <b>Accepted limit:</b> stories that reached <code>done</code> before this migration have
+    <code>done_at</code> null — there is no data to backfill from. And only the <em>done</em>
+    transition is recorded: “when did it reach review” still has no answer, which would need a
+    proper transition log (<a href="#oos">§10</a>).
   </p>
 </div>
 
@@ -672,8 +745,9 @@ x-api-key: &lt;INGEST_API_KEY&gt;
       "notes": "Timebox to Tuesday morning",
       "due_date": "2026-09-08",
       "priority": "high",
-      "status": "completed",
-      "completed_at": "2026-09-08T19:41:08.221Z",
+      "state": "completed",
+      "done": true,
+      "done_at": "2026-09-08T19:41:08.221Z",
       "created_at": "2026-09-05T21:04:02.118Z",
       "folder": { "id": "b41f…", "name": "RealPlay" },
       "in_inbox": false,
@@ -682,7 +756,7 @@ x-api-key: &lt;INGEST_API_KEY&gt;
         {
           "id": "3d7a…", "item_type": "task", "title": "Re-read last week's findings doc",
           "due_date": null, "priority": null,
-          "status": "completed", "completed_at": "2026-09-08T14:02:55.010Z",
+          "state": "completed", "done": true, "done_at": "2026-09-08T14:02:55.010Z",
           "created_at": "2026-09-05T21:04:02.118Z",
           "folder": { "id": "b41f…", "name": "RealPlay" }, "in_inbox": false,
           "code": null, "children": []
@@ -694,10 +768,25 @@ x-api-key: &lt;INGEST_API_KEY&gt;
       "item_type": "code",
       "title": "Mute state in the audio graph",
       "notes": null, "due_date": null, "priority": null,
-      "status": "active", "completed_at": null,
+      "state": "ready_for_review",
+      "done": false,
+      "done_at": null,
       "created_at": "2026-09-05T21:04:02.117Z",
       "folder": null, "in_inbox": false,
-      "code": { "ref": "RPL-142", "factory_state": "ready_for_review", "lane": "human" },
+      "code": { "ref": "RPL-142", "lane": "human" },
+      "children": []
+    },
+    {
+      "id": "5b10…",
+      "item_type": "code",
+      "title": "Mixer strip mute button",
+      "notes": null, "due_date": null, "priority": null,
+      "state": "done",
+      "done": true,
+      "done_at": "2026-09-10T16:22:41.900Z",
+      "created_at": "2026-09-05T21:04:02.117Z",
+      "folder": null, "in_inbox": false,
+      "code": { "ref": "RPL-143", "lane": "human" },
       "children": []
     }
   ]
@@ -713,13 +802,12 @@ x-api-key: &lt;INGEST_API_KEY&gt;
   <tr><td><code>counts.total</code></td><td>Every node still in the database. An item the owner
       <em>deleted</em> is simply absent — see <a href="#oos">§10</a>.</td></tr>
   <tr><td><code>counts.done</code></td>
-      <td>A completed task, <em>or</em> a code item whose <code>factory_state</code> is
-        <code>done</code>. The one place the payload takes a view: “finished” means different columns
-        for the two families, and making the coach reconcile that itself is how a review ends up
-        reporting a shipped story as outstanding.</td></tr>
+      <td>Nodes with <code>done: true</code> — a completed task, or a code item at
+        <code>done</code>. Derived once (<a href="#d8">D8</a>) so the count and the rows can't
+        disagree.</td></tr>
   <tr><td><code>counts.abandoned</code></td>
-      <td>Code items at <code>factory_state = 'abandoned'</code>. Not done, and not still open —
-        counting them either way would misreport the week.</td></tr>
+      <td>Nodes at <code>state: 'abandoned'</code>. Not done, and not still open — counting them
+        either way would misreport the week.</td></tr>
   <tr><td><code>counts.open</code></td><td>Everything else. <code>done + open + abandoned = total</code>.</td></tr>
   <tr><td><code>counts.untriaged</code></td>
       <td>Nodes still in the Inbox (<code>dispatched_at</code> null). <strong>Cross-cuts the other
@@ -731,14 +819,20 @@ x-api-key: &lt;INGEST_API_KEY&gt;
   <tr><td><code>…item_type</code></td>
       <td>What the row is <em>now</em> — the classifier or the owner may have typed an
         <code>unclassified</code> capture since.</td></tr>
-  <tr><td><code>…status</code> / <code>…completed_at</code></td>
-      <td>Meaningful for tasks. A non-task row is always <code>active</code> with a null
-        <code>completed_at</code> — the schema forbids anything else, so read
-        <code>code.factory_state</code> for those (<a href="#d8">D8</a>).</td></tr>
+  <tr><td><code>…state</code></td>
+      <td><strong>Where it is now</strong>, in one vocabulary across types: <code>active</code> /
+        <code>completed</code> for a task, the <code>factory_state</code> for a story in the factory
+        (<a href="#d8">D8</a>). This is the “if not done, what is it doing” answer.</td></tr>
+  <tr><td><code>…done</code> / <code>…done_at</code></td>
+      <td><strong>Is it finished, and when.</strong> Derived per family: a task's
+        <code>completed_at</code>, a story's <code>code_items.done_at</code>. <code>done_at</code> is
+        null on a story that reached <code>done</code> before this feature shipped — there was no
+        column to record it (<a href="#d8b">D8b</a>).</td></tr>
   <tr><td><code>…code</code></td>
-      <td>The factory sidecar (<code>ref</code>, <code>factory_state</code>, <code>lane</code>), or
-        <code>null</code>. <strong>Null on a <code>code</code>-typed item is itself the answer</strong>:
-        it was planned as code and never entered the factory.</td></tr>
+      <td>The factory sidecar's identity (<code>ref</code>, <code>lane</code>), or <code>null</code>.
+        <strong>Null on a <code>code</code>-typed item is itself the answer</strong>: it was planned
+        as code and never entered the factory. Its state is not repeated here —
+        <code>state</code> is it.</td></tr>
   <tr><td><code>…folder</code></td><td><code>{ id, name }</code>, or <code>null</code> while the item
       carries no folder.</td></tr>
   <tr><td><code>…in_inbox</code></td><td><code>dispatched_at === null</code>.</td></tr>
@@ -884,6 +978,38 @@ notify pgrst, 'reload schema';</code></pre>
   bug fails loudly and atomically instead of writing an incoherent week. <code>dispatched_at</code>
   is never set, so <code>inherit_dispatched_at</code> (0026) leaves root and children alike in the
   Inbox and the pair can't be split across two views.
+</p>
+
+<h4>5.4 <code>code_items.done_at</code> — the one timestamp the factory never kept</h4>
+<pre><code>alter table code_items add column done_at timestamptz;
+
+comment on column code_items.done_at is
+  'When factory_state last became ''done'' (ALF-195). NULL = not done, or done before this '
+  'migration (nothing to backfill from — the factory kept no transition history). Cleared when '
+  'the state moves off ''done'', so it never asserts a completion that was undone.';
+
+-- In a trigger, not in PATCH /api/code/[ref]: the Worker patches code_items straight through
+-- PostgREST when an implementation PR merges, which is where most `done` transitions come from,
+-- and never passes through the route. Same argument as 0026's inherit_dispatched_at — several
+-- ingresses write the column and only the database sits under all of them.
+create or replace function stamp_code_item_done_at() returns trigger
+language plpgsql security invoker as $$
+begin
+  -- `is distinct from` rather than the bare column mention the trigger fires on: re-saving the
+  -- same state (a blocked_reason edit alongside it) must not restamp a completion.
+  if new.factory_state is distinct from old.factory_state then
+    new.done_at := case when new.factory_state = 'done' then now() end;
+  end if;
+  return new;
+end; $$;
+
+create trigger code_items_stamp_done_at
+  before update of factory_state on code_items
+  for each row execute function stamp_code_item_done_at();</code></pre>
+<p class="small">
+  <code>v_code_stories</code> is deliberately not extended with it — the column module doesn't read
+  it, and that view enumerates its columns, so adding it later is one line. This endpoint reads
+  <code>code_items</code> directly.
 </p>
 
 <h2 id="surface">6 · The surface — the Week plan badge</h2>
@@ -1122,8 +1248,10 @@ notify pgrst, 'reload schema';</code></pre>
   <tr><th style="width:9%">Layer</th><th style="width:36%">File</th><th>Change</th></tr>
   <tr>
     <td>DB</td><td><code>database/migrations/&lt;next&gt;_weekly_plan_items.sql</code></td>
-    <td>New — the column, its partial index, the <code>task_items</code> re-expand, the RPC, its
-      grant, <code>notify pgrst</code>. All of <a href="#db">§5</a> in one file.</td>
+    <td>New — <code>items.weekly_plan_id</code> + its partial index, the <code>task_items</code>
+      re-expand, the batch RPC and its grant, <strong><code>code_items.done_at</code> and its
+      stamping trigger</strong>, <code>notify pgrst</code>. All of <a href="#db">§5</a> in one
+      file.</td>
   </tr>
   <tr>
     <td>DB</td><td><code>database/src/assertions.ts</code></td>
@@ -1156,9 +1284,10 @@ notify pgrst, 'reload schema';</code></pre>
   <tr>
     <td>API</td><td><code>frontend/lib/weekly-plan-items/payload.ts</code> <span class="small">(+ test)</span></td>
     <td>New, pure: rows + folders + sidecars → the nested nodes and the <code>counts</code> object,
-      including the done/abandoned rule of <a href="#d8">D8</a>. Mirrors
-      <code>lib/habits/payload.ts</code> — no I/O, so the shape is table-testable and the route stays
-      a thin auth-parse-read-respond shell.</td>
+      owning the <code>state</code> / <code>done</code> / <code>done_at</code> derivation of
+      <a href="#d8">D8</a> — one function, so the aggregate and the rows are computed from the same
+      rule. Mirrors <code>lib/habits/payload.ts</code> — no I/O, so the shape is table-testable and
+      the route stays a thin auth-parse-read-respond shell.</td>
   </tr>
   <tr>
     <td>API</td><td><code>frontend/app/api/weekly-plans/[id]/items/route.ts</code></td>
@@ -1219,12 +1348,18 @@ notify pgrst, 'reload schema';</code></pre>
   <tr>
     <td><code>lib/weekly-plan-items/payload.test.ts</code><br /><span class="small">jest</span></td>
     <td>Flat rows → nested nodes; children ordered by <code>sort_order</code> and roots by
-      <code>created_at</code> descending; the <code>counts</code> rule over a deliberately mixed
-      cohort — a completed task and a <code>done</code> code item both count as done, an
-      <code>abandoned</code> story counts as neither, <code>done + open + abandoned === total</code>,
-      and <code>untriaged</code> cross-cuts; a <code>code</code>-typed row with no sidecar reports
-      <code>code: null</code> and counts as open; folder resolution and <code>folder: null</code>; an
-      orphan child (parent deleted) still reported, as a root.</td>
+      <code>created_at</code> descending. The <a href="#d8">D8</a> derivation per family: a completed
+      task reports <code>state: 'completed'</code>, <code>done: true</code> and its
+      <code>completed_at</code> as <code>done_at</code>; a story at <code>done</code> reports its
+      <code>factory_state</code> as <code>state</code> and <code>code_items.done_at</code>; a story
+      mid-flight reports its state with <code>done: false</code>; a story done before the migration
+      reports <code>done: true</code> with a null <code>done_at</code>; a <code>code</code>-typed row
+      with no sidecar reports <code>code: null</code> and <code>state: 'active'</code>. Then the
+      counts over a deliberately mixed cohort — <code>counts.done</code> equals the number of nodes
+      with <code>done: true</code>, an <code>abandoned</code> story counts as neither done nor open,
+      <code>done + open + abandoned === total</code>, and <code>untriaged</code> cross-cuts. Plus
+      folder resolution and <code>folder: null</code>; an orphan child (parent deleted) still
+      reported, as a root.</td>
   </tr>
   <tr>
     <td><code>app/api/weekly-plans/[id]/items/route.test.ts</code><br /><span class="small">jest</span></td>
@@ -1264,7 +1399,11 @@ notify pgrst, 'reload schema';</code></pre>
       <code>task_items</code> exposes <code>weekly_plan_id</code> (the frozen-view trap);
       <code>enter_code_module</code> on a planned item keeps the column (the reason it is not in the
       task-only CHECK); deleting a <code>weekly_plans</code> row nulls the column and keeps the
-      items; each of the three roles can execute the function.</td>
+      items; each of the three roles can execute the function. And the <a href="#d8b">D8b</a>
+      trigger: moving a story to <code>done</code> stamps <code>done_at</code>, moving it off clears
+      it, an update that re-sets the same state does not restamp, and an update touching only
+      <code>blocked_reason</code> leaves it alone — asserted through a direct table UPDATE, the shape
+      the Worker's PostgREST patch takes, not through the app.</td>
   </tr>
 </table>
 </div>
@@ -1289,7 +1428,7 @@ notify pgrst, 'reload schema';</code></pre>
   <li>The Inbox rendering those three rows with the <strong>Week plan</strong> badge — a screenshot
     via <code>npm run screenshot -w frontend</code>, embedded with <code>demo -- image</code>.</li>
   <li>Completing one of them in the app, then a real <code>GET …/latest/items</code> whose
-    <code>counts</code> and <code>completed_at</code> reflect it. That round trip <em>is</em> the
+    <code>counts</code>, <code>done</code> and <code>done_at</code> reflect it. That round trip <em>is</em> the
     feature; a create alone doesn't demonstrate it.</li>
 </ol>
 <p class="small">
@@ -1326,6 +1465,13 @@ notify pgrst, 'reload schema';</code></pre>
   <li><strong>No cohort surface in the app</strong> beyond the badge — no “week plan” filter, view or
     section, and no live status panel next to the plan document.</li>
   <li><strong>No timezone or overdue arithmetic</strong> in the payload (<a href="#d8">D8</a>).</li>
+  <li><strong>A full factory transition log.</strong> <code>done_at</code> records the one
+    transition the review asks about; “when did it reach <code>ready_for_review</code>” still has no
+    answer, and giving it one means a <code>code_item_transitions</code> table (or per-state
+    columns) — worth its own ticket if the review ever wants cycle time.</li>
+  <li><strong>Fixing <code>code_items.updated_at</code>.</strong> Nothing writes it, so the board's
+    “most recent first” sort in <code>code-store</code> is really sorting by sidecar creation. Real,
+    pre-existing, and not this ticket's (<a href="#d8b">D8b</a>).</li>
   <li><strong>No paging.</strong> A cohort is tens of rows; the read takes a single 1000-row range,
     which the 100-node create cap keeps well clear of unless a plan is appended to ten times.</li>
   <li><strong>The coach's own skill</strong> lives outside this repo. In scope here is the primer it
@@ -1353,6 +1499,10 @@ notify pgrst, 'reload schema';</code></pre>
   <li>It is <em>not</em> named in <code>items_task_only_fields</code>, and survives
     <code>enter_code_module</code>.</li>
   <li><code>task_items</code> is re-created in the same migration and exposes the new column.</li>
+  <li><code>code_items.done_at</code> exists, commented, and is stamped by a <code>before update of
+    factory_state</code> trigger: set on entering <code>done</code>, cleared on leaving it, unchanged
+    when the state is re-set to the same value or when another column is updated alone. It works on a
+    direct table UPDATE (the Worker's path), not only through the app.</li>
   <li><code>create_weekly_plan_items(uuid, jsonb)</code> exists, is <code>security invoker</code>,
     is granted to <code>anon, authenticated, service_role</code>, and writes a whole batch or none
     of it.</li>
@@ -1383,13 +1533,17 @@ notify pgrst, 'reload schema';</code></pre>
   <li><code>latest</code> resolves to the most recent plan that has at least one item — a newer
     item-less plan does not win.</li>
   <li>Returns <code>{ plan, counts, items }</code> with the tree nested and ordered as the app shows
-    it, each node carrying <code>item_type</code>, <code>status</code>, <code>completed_at</code>,
-    <code>due_date</code>, <code>priority</code>, <code>created_at</code>, <code>folder</code>,
-    <code>in_inbox</code> and <code>code</code>.</li>
-  <li>A code item in the factory reports its <code>ref</code> and <code>factory_state</code>; one
-    that never entered reports <code>code: null</code>.</li>
-  <li><code>counts.done + counts.open + counts.abandoned === counts.total</code>, with
-    <code>done</code> covering completed tasks and <code>done</code> code items;
+    it, each node carrying <code>item_type</code>, <code>state</code>, <code>done</code>,
+    <code>done_at</code>, <code>due_date</code>, <code>priority</code>, <code>created_at</code>,
+    <code>folder</code>, <code>in_inbox</code> and <code>code</code>. The raw
+    <code>status</code> / <code>completed_at</code> columns are NOT surfaced at the top level.</li>
+  <li>The three derived fields resolve per family exactly as <a href="#d8">D8</a>'s table says — a
+    shipped story reports <code>done: true</code> with its <code>done_at</code>, and a story
+    mid-flight reports its <code>factory_state</code> as <code>state</code>.</li>
+  <li>A code item in the factory reports its <code>ref</code> and <code>lane</code>; one that never
+    entered reports <code>code: null</code> and <code>state: 'active'</code>.</li>
+  <li><code>counts.done</code> equals the number of nodes with <code>done: true</code>, and
+    <code>counts.done + counts.open + counts.abandoned === counts.total</code>;
     <code>untriaged</code> counted independently.</li>
   <li>No cohort at all → <code>200</code> with <code>plan: null</code>, zeroed counts, empty
     <code>items</code>. An unknown explicit id → <code>404</code>. A non-UUID,
