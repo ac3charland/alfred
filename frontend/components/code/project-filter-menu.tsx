@@ -15,18 +15,19 @@ export interface ProjectFilterMenuProperties {
    * creation slot is also what assigns each project its palette colour (ALF-50).
    */
   projects: Project[];
-  /** The ids of the projects currently shown. */
+  /** The ids of the projects picked out; empty means the Backlog lists every project (ALF-201). */
   selected: readonly string[];
   /** Toggle one project in or out of the selection. */
   onToggle: (projectId: string) => void;
-  /** Whether the selection differs from "every project" — surfaces the teal highlight + a count. */
+  /** Whether any project is picked out — surfaces the teal highlight + a count. */
   isFiltering: boolean;
 }
 
 /**
  * The Backlog's "Filter by project" dropdown (ALF-156): one checkbox per project, each carrying
  * the project's own palette colour on a `GitBranch` glyph so the menu reads with the same tinted
- * treatment as the row badges and the sidebar. The caller owns the selection (see
+ * treatment as the row badges and the sidebar. It rests with nothing checked, and checking a
+ * project narrows the list to it (ALF-201). The caller owns the selection (see
  * `useProjectFilter`).
  */
 export function ProjectFilterMenu({

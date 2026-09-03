@@ -26,9 +26,9 @@ import {
  *   the `font-serif` "The Software Factory" title — re-copied to describe the Backlog, with two
  *   multi-select dropdowns narrowing what's listed: **Filter by status** (one checkbox per factory
  *   state, defaulting to the outstanding ones so `done`/`abandoned` are hidden until checked) and
- *   **Filter by project** (ALF-156 — one checkbox per project, all checked, so the list stays
- *   cross-project until the owner narrows it). The project control is absent on a deployment with
- *   no projects yet, where it would offer an empty menu.
+ *   **Filter by project** (ALF-156 — one checkbox per project, none checked, so the list stays
+ *   cross-project until the owner picks the projects they want; ALF-201). The project control is
+ *   absent on a deployment with no projects yet, where it would offer an empty menu.
  * - **Ratio card:** `PrRatio` — this week's merged-PR split across the configured repos. An
  *   ornament, never a gate: it renders nothing at all on a deployment that hasn't configured
  *   it, so the rest of the view is unaffected.
@@ -41,7 +41,7 @@ import {
  */
 export function Backlog() {
   // Both filters are keyed `'backlog'` so the selections persist across SPA navigation to a board
-  // and back. Statuses default to the outstanding states; projects to all of them.
+  // and back. Statuses default to the outstanding states; projects to none of them (ALF-201).
   const { statuses, toggle, isFiltering } = useStatusFilter('backlog', DEFAULT_BACKLOG_STATUSES);
   // Creation order, not the live ranking: a checklist that reshuffles as work is re-ranked is
   // unusable, and the creation slot is what assigns each project its palette colour (ALF-50).
@@ -50,14 +50,13 @@ export function Backlog() {
     projectIds,
     toggle: toggleProject,
     isFiltering: isProjectFiltering,
-  } = useProjectFilter('backlog', projects);
-  // The filter applies exactly when it is OFFERED. With no projects to filter by there is no
-  // control (below) and the selection is necessarily empty — which `useBacklog` would otherwise
-  // read as the owner's "show nothing", silently blanking the list.
-  const hasProjectFilter = projects.length > 0;
+  } = useProjectFilter('backlog');
+  // The resting selection is empty, which `useBacklog` would read as the owner's "show nothing"
+  // and blank the list. An empty selection is instead "no project filter": every project shows,
+  // and each checked project narrows the list to it (ALF-201).
   const stories = useBacklog({
     statuses,
-    ...(hasProjectFilter ? { projectIds } : {}),
+    ...(projectIds.length > 0 ? { projectIds } : {}),
   });
 
   return (

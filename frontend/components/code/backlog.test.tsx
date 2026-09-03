@@ -439,10 +439,18 @@ describe('Backlog', () => {
         'Alfred',
         'Relay',
       ]);
-      // Every project is checked at rest — the Backlog is cross-project by default.
+      // Nothing is checked at rest (ALF-201) — the Backlog is cross-project by default, and a
+      // tap picks a project OUT of the crowd rather than dropping it from it.
       for (const item of screen.getAllByRole('menuitemcheckbox')) {
-        expect(item).toHaveAttribute('aria-checked', 'true');
+        expect(item).toHaveAttribute('aria-checked', 'false');
       }
+    });
+
+    it('lists every project while nothing is checked (ALF-201)', () => {
+      seedTwoProjects();
+      expect(rowOrder()).toEqual(['ALF-a', 'RLP-1', 'ALF-c']);
+      // An empty selection is the resting state, not "show nothing" → no count on the trigger.
+      expect(screen.getByRole('button', { name: 'Filter by project' })).toBeInTheDocument();
     });
 
     it('omits the control entirely when there are no projects to filter', () => {
@@ -453,19 +461,18 @@ describe('Backlog', () => {
     });
 
     it('does not filter at all when the control is absent', () => {
-      // With no projects the selection is necessarily empty — which would otherwise read as the
-      // owner's "show nothing" and silently blank the list. The filter applies only when offered.
+      // With no projects there is no control, and the empty selection lists everything anyway.
       renderBacklog([makeStory('a', { priority: 1 })], { projects: [], epics: [] });
       expect(rowOrder()).toEqual(['ALF-a']);
     });
 
-    it('narrows the list to the checked projects and shows a count on the trigger', async () => {
+    it('narrows to just the checked project and shows a count on the trigger', async () => {
       const user = userEvent.setup();
       seedTwoProjects();
       expect(rowOrder()).toEqual(['ALF-a', 'RLP-1', 'ALF-c']);
 
-      // Uncheck "Alfred" (the 1st project) — only the Relay story stays.
-      await toggleProject(user, 1);
+      // Check "Relay" (the 2nd project) — one tap, and only its story is left.
+      await toggleProject(user, 2);
 
       await waitFor(() => {
         expect(rowOrder()).toEqual(['RLP-1']);
@@ -473,20 +480,37 @@ describe('Backlog', () => {
       expect(screen.getByRole('button', { name: 'Filter by project (1)' })).toBeInTheDocument();
     });
 
-    it('restores the hidden project when its checkbox is re-checked', async () => {
+    it('widens to both projects when a second one is checked', async () => {
       const user = userEvent.setup();
       seedTwoProjects();
 
       await toggleProject(user, 2);
       await waitFor(() => {
-        expect(rowOrder()).toEqual(['ALF-a', 'ALF-c']);
+        expect(rowOrder()).toEqual(['RLP-1']);
+      });
+
+      // Adding Alfred widens the selection — the rows keep their global ranking.
+      await toggleProject(user, 1);
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['ALF-a', 'RLP-1', 'ALF-c']);
+      });
+      expect(screen.getByRole('button', { name: 'Filter by project (2)' })).toBeInTheDocument();
+    });
+
+    it('returns to the whole Backlog when the only checked project is unchecked', async () => {
+      const user = userEvent.setup();
+      seedTwoProjects();
+
+      await toggleProject(user, 2);
+      await waitFor(() => {
+        expect(rowOrder()).toEqual(['RLP-1']);
       });
 
       await toggleProject(user, 2);
       await waitFor(() => {
         expect(rowOrder()).toEqual(['ALF-a', 'RLP-1', 'ALF-c']);
       });
-      // Back at the resting selection → the trigger drops its count.
+      // Back at the empty resting selection → the trigger drops its count.
       expect(screen.getByRole('button', { name: 'Filter by project' })).toBeInTheDocument();
     });
 
@@ -495,9 +519,9 @@ describe('Backlog', () => {
       mockReorderCode.mockResolvedValue([makeSidecar('a', 30), makeSidecar('c', 10)]);
       seedTwoProjects();
 
-      // Hide Relay: ALF-a and ALF-c are now adjacent on screen, though RLP-1 still ranks
+      // Narrow to Alfred: ALF-a and ALF-c are now adjacent on screen, though RLP-1 still ranks
       // between them globally.
-      await toggleProject(user, 2);
+      await toggleProject(user, 1);
       await waitFor(() => {
         expect(rowOrder()).toEqual(['ALF-a', 'ALF-c']);
       });
@@ -518,8 +542,8 @@ describe('Backlog', () => {
       expect(screen.getByRole('button', { name: 'Move RLP-1 up' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Move RLP-1 down' })).toBeEnabled();
 
-      // Hide Alfred: RLP-1 is now the only visible row, so it's both ends of the list.
-      await toggleProject(user, 1);
+      // Narrow to Relay: RLP-1 is now the only visible row, so it's both ends of the list.
+      await toggleProject(user, 2);
       await waitFor(() => {
         expect(rowOrder()).toEqual(['RLP-1']);
       });
@@ -544,8 +568,8 @@ describe('Backlog', () => {
         { projects: [PROJECT, PROJECT_2], epics: [EPIC, EPIC_2] },
       );
 
-      // Drop the Relay project…
-      await toggleProject(user, 2);
+      // Narrow to the Alfred project…
+      await toggleProject(user, 1);
       await waitFor(() => {
         expect(rowOrder()).toEqual(['ALF-a', 'ALF-b']);
       });
