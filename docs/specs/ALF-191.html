@@ -136,9 +136,16 @@
   .mi { display: flex; align-items: center; justify-content: space-between; gap: 8px;
         border-radius: 2px; padding: 6px 8px; font-size: 14px; color: var(--a-fg); }
   .mi .lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .mi .ico { width: 16px; flex: none; color: var(--a-muted); text-align: center; font-size: 13px; }
-  .mi .arrow { color: var(--a-muted); font-size: 11px; flex: none; }
-  .mi .tick { color: var(--a-teal); font-size: 12px; flex: none; }
+  /* Lucide glyphs, drawn from the real 24×24 path data at the size each call site passes
+     (16px for the menu-item leading icons, 12/13px for the chevron + check). Text stand-ins
+     were lying about shape: ChevronsUp/Down stack two chevrons VERTICALLY, which a pair of
+     side-by-side carets does not show. See lucide-react's chevrons-up / chevrons-down /
+     equal / send-horizontal / plus / chevron-right / check icon nodes. */
+  .mi svg { flex: none; display: block; }
+  .mi .ico { width: 16px; height: 16px; color: var(--a-muted); }
+  .mi .glyph { width: 12px; height: 12px; }
+  .mi .arrow { width: 12px; height: 12px; color: var(--a-muted); }
+  .mi .tick { width: 12px; height: 12px; color: var(--a-teal); }
   .mi.primary { color: var(--a-teal); font-weight: 600; background: rgba(79,209,224,.1); }
   .mi.danger { color: var(--a-red); }
   .mi.hl { background: var(--a-secondary); }                 /* focus:bg-secondary / sub open */
@@ -170,8 +177,9 @@
   .calfoot { display: flex; align-items: center; justify-content: space-between; padding: 8px 4px 0;
              font-size: 12px; font-weight: 500; color: var(--a-blue); }
 
-  .legend { font-size: .78rem; color: var(--a-muted); margin: .8rem 0 0; }
+  .legend { font-size: .78rem; color: var(--a-muted); margin: .8rem 0 0; line-height: 2; }
   .legend b { color: var(--a-fg); font-weight: 600; }
+  .legend .lg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 2px; }
 </style>
 </head>
 <body>
@@ -521,9 +529,9 @@
           <div class="anchor"><div class="menu">
             <div class="mi primary"><span class="lead">Open details</span></div>
             <div class="msep"></div>
-            <div class="mi"><span class="lead"><span class="ico">＋</span>Add subtask</span></div>
-            <div class="mi hl"><span class="lead">Classify as…</span><span class="arrow">▸</span></div>
-            <div class="mi dis"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add subtask</span></div>
+            <div class="mi hl"><span class="lead">Classify as…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi dis"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
             <div class="msep"></div>
             <div class="mi danger"><span class="lead">Delete</span></div>
           </div></div>
@@ -541,11 +549,11 @@
           <div class="anchor"><div class="menu">
             <div class="mi primary"><span class="lead">Open details</span></div>
             <div class="msep"></div>
-            <div class="mi"><span class="lead"><span class="ico">＋</span>Add subtask</span></div>
-            <div class="mi"><span class="lead">Due date…</span><span class="arrow">▸</span></div>
-            <div class="mi"><span class="lead">Priority…</span><span class="arrow">▸</span></div>
-            <div class="mi"><span class="lead">Folder…</span><span class="arrow">▸</span></div>
-            <div class="mi dis"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+            <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add subtask</span></div>
+            <div class="mi"><span class="lead">Due date…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi"><span class="lead">Priority…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi"><span class="lead">Folder…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi dis"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
             <div class="msep"></div>
             <div class="mi danger"><span class="lead">Delete</span></div>
           </div></div>
@@ -564,9 +572,9 @@
           <div class="anchor"><div class="menu">
             <div class="mi primary"><span class="lead">Open details</span></div>
             <div class="msep"></div>
-            <div class="mi"><span class="lead">Project…</span><span class="arrow">▸</span></div>
-            <div class="mi dis" title="Pick a project first"><span class="lead">Epic…</span><span class="arrow">▸</span></div>
-            <div class="mi dis"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+            <div class="mi"><span class="lead">Project…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi dis" title="Pick a project first"><span class="lead">Epic…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="mi dis"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
             <div class="msep"></div>
             <div class="mi danger"><span class="lead">Delete</span></div>
           </div></div>
@@ -577,9 +585,20 @@
 
       </div>
       <p class="legend">
-        <b>▸</b> a submenu · <b>✓</b> the current value · <b>dimmed</b> disabled with a
-        <code>title</code> hint · <b>➤</b> the Dispatch glyph (<code>SendHorizontal</code>) ·
-        <b>＋</b> the mobile-only Add subtask / Add story glyph (<code>Plus</code>, <code>md:hidden</code>).
+        Every glyph above is the real lucide path at the size its call site passes:
+        <svg class="lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        <code>ChevronRight</code> — a submenu ·
+        <svg class="lg" style="color:var(--a-teal)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <code>Check</code> — the current value ·
+        <svg class="lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>
+        <code>SendHorizontal</code> — Dispatch ·
+        <svg class="lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        <code>Plus</code> — the mobile-only Add subtask / Add story (<code>md:hidden</code>) ·
+        <svg class="lg" style="color:var(--a-red)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>
+        <svg class="lg" style="color:var(--a-amber)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" x2="19" y1="9" y2="9"/><line x1="5" x2="19" y1="15" y2="15"/></svg>
+        <svg class="lg" style="color:var(--a-blue)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>
+        <code>ChevronsUp</code> / <code>Equal</code> / <code>ChevronsDown</code> — the priority levels,
+        each pair of chevrons stacked vertically. <b>Dimmed</b> is disabled with a <code>title</code> hint.
       </p>
     </div>
   </div>
@@ -595,7 +614,7 @@
           <p class="seclabel">Due date ▸ <span style="text-transform:none">(no date set)</span></p>
           <div class="menus">
             <div class="menu" style="min-width:150px">
-              <div class="mi hl"><span class="lead">Due date…</span><span class="arrow">▸</span></div>
+              <div class="mi hl"><span class="lead">Due date…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             </div>
             <div class="menu" style="min-width:158px">
               <div class="mi"><span class="lead">Today</span></div>
@@ -609,7 +628,7 @@
           <b>No due date</b> entry appears above <b>Custom…</b>:</p>
           <div class="menus" style="margin-top:.5rem">
             <div class="menu" style="min-width:158px">
-              <div class="mi"><span class="lead">Today</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead">Today</span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
               <div class="mi"><span class="lead">Tomorrow</span></div>
               <div class="mi"><span class="lead">Next week</span></div>
               <div class="msep"></div>
@@ -623,14 +642,14 @@
           <p class="seclabel">Priority ▸</p>
           <div class="menus">
             <div class="menu" style="min-width:150px">
-              <div class="mi hl"><span class="lead">Priority…</span><span class="arrow">▸</span></div>
+              <div class="mi hl"><span class="lead">Priority…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             </div>
             <div class="menu" style="min-width:150px">
               <div class="mi"><span class="lead sec">No priority</span></div>
               <div class="msep"></div>
-              <div class="mi"><span class="lead"><span class="ico" style="color:var(--a-red)">⌃⌃</span>High</span><span class="tick">✓</span></div>
-              <div class="mi"><span class="lead"><span class="ico" style="color:var(--a-amber)">＝</span>Medium</span></div>
-              <div class="mi"><span class="lead"><span class="ico" style="color:var(--a-blue)">⌄⌄</span>Low</span></div>
+              <div class="mi"><span class="lead"><svg class="glyph" style="color:var(--a-red)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></svg>High</span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
+              <div class="mi"><span class="lead"><svg class="glyph" style="color:var(--a-amber)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" x2="19" y1="9" y2="9"/><line x1="5" x2="19" y1="15" y2="15"/></svg>Medium</span></div>
+              <div class="mi"><span class="lead"><svg class="glyph" style="color:var(--a-blue)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>Low</span></div>
             </div>
           </div>
           <p class="cap">Byte-for-byte <code>PriorityMenu</code>'s own list — “No priority”, a
@@ -643,11 +662,11 @@
           <p class="seclabel">Folder ▸</p>
           <div class="menus">
             <div class="menu" style="min-width:150px">
-              <div class="mi hl"><span class="lead">Folder…</span><span class="arrow">▸</span></div>
+              <div class="mi hl"><span class="lead">Folder…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             </div>
             <div class="menu" style="min-width:150px">
               <div class="mi"><span class="lead sec">No folder</span></div>
-              <div class="mi"><span class="lead">Work</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead">Work</span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
               <div class="mi"><span class="lead">Home</span></div>
               <div class="mi"><span class="lead">Someday</span></div>
             </div>
@@ -660,10 +679,10 @@
           <p class="seclabel">Project ▸</p>
           <div class="menus">
             <div class="menu" style="min-width:150px">
-              <div class="mi hl"><span class="lead">Project…</span><span class="arrow">▸</span></div>
+              <div class="mi hl"><span class="lead">Project…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             </div>
             <div class="menu" style="min-width:178px">
-              <div class="mi"><span class="lead sec">No project</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead sec">No project</span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
               <div class="mi"><span class="lead">Alfred</span><span class="mono">ALF</span></div>
               <div class="mi"><span class="lead">Forscore</span><span class="mono">FSC</span></div>
             </div>
@@ -676,10 +695,10 @@
           <p class="seclabel">Epic ▸ <span style="text-transform:none">(project set)</span></p>
           <div class="menus">
             <div class="menu" style="min-width:150px">
-              <div class="mi hl"><span class="lead">Epic…</span><span class="arrow">▸</span></div>
+              <div class="mi hl"><span class="lead">Epic…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
             </div>
             <div class="menu" style="min-width:196px">
-              <div class="mi"><span class="lead sec">No epic</span><span class="tick">✓</span></div>
+              <div class="mi"><span class="lead sec">No epic</span><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
               <div class="mi"><span class="lead">Inbox triage</span><span class="mono">ALF-140</span></div>
               <div class="mi"><span class="lead">Code module</span><span class="mono">ALF-146</span></div>
             </div>
@@ -729,11 +748,11 @@
         <div class="anchor"><div class="menu">
           <div class="mi primary"><span class="lead">Open details</span></div>
           <div class="msep"></div>
-          <div class="mi"><span class="lead"><span class="ico">＋</span>Add subtask</span></div>
-          <div class="mi"><span class="lead">Due date…</span><span class="arrow">▸</span></div>
-          <div class="mi"><span class="lead">Priority…</span><span class="arrow">▸</span></div>
-          <div class="mi"><span class="lead">Folder…</span><span class="arrow">▸</span></div>
-          <div class="mi"><span class="lead"><span class="ico">➤</span>Dispatch</span></div>
+          <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add subtask</span></div>
+          <div class="mi"><span class="lead">Due date…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+          <div class="mi"><span class="lead">Priority…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+          <div class="mi"><span class="lead">Folder…</span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+          <div class="mi"><span class="lead"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z"/><path d="M6 12h16"/></svg>Dispatch</span></div>
           <div class="msep"></div>
           <div class="mi danger"><span class="lead">Delete</span></div>
         </div></div>
