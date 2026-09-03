@@ -454,8 +454,11 @@ reproducible:
   fires when running `node tools/showboat/src/cli.ts …`) prints `(node:<pid>) …` with a
   PID that changes every run, so `verify` diffs forever. When you only care about a
   command's stdout/result, redirect its stderr (`… 2>/dev/null`) in the `exec` block.
-- If a command legitimately changes, re-run `verify --output` and commit the
-  refreshed doc.
+- **Nothing re-runs `verify` for you, so a committed doc rots silently.** Change behaviour an
+  existing demo captured — or a *shared* harness several demos drive
+  (`docs/demos/llm-inbox-classifier/sweep-harness.mjs`) — and its recorded output goes on
+  claiming something that no longer happens, ungated. `verify --output <new>` every doc that
+  exercises the code you touched, and commit the refreshed output with the change.
 - **A green `verify` means "reproducible", not "worked".** A block whose command *failed*
   reproduces its failure exactly, so `verify` passes on it and a broken capture ships as
   evidence — `docs/demos/pr-ratio/pr-ratio.md` still carries a `sed: can't read …` in place of
