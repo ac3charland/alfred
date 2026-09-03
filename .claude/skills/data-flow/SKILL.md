@@ -90,17 +90,32 @@ hidden and the menu's **Move to…** (`moveTask`) is the only mover: the two sur
 complementary, so collapsing them strands one half of the model. Residency travels with the whole
 subtree, exactly like `folder_id` — every write that files rows stamps both on each of them.
 
-## Realtime: the code module's one push path
+## Realtime: a push channel wherever a Worker is the second writer
 
-Seed-once works because the **only** writer is the user in their own browser — except in the
-**code module**. A story's `factory_state` (its swimlane) is also written *out of band* by the
-webhook Worker when a PR transitions, so `CodeProvider` subscribes to Supabase Realtime on the
-base `code_items` table and applies each UPDATE through `codeItemToStoryPatch` → the reducer's
-`patchStory`, moving the card to its new lane with no reload. **Subscribe to the base table, not
-the `v_code_stories` view** — you can't subscribe to a view. `patchStory` is keyed by `item_id`
-and a no-op when absent, so a change for an unknown/removed row is ignored; and an echo of the
-user's own optimistic write re-applies identical values, so it's **idempotent** — no self-write
-filtering. Tasks/Folders have a single browser writer and stay pure seed-once.
+Seed-once works because the **only** writer is the user in their own browser — so a table gets a
+Realtime subscription exactly when that stops being true. Three do:
+
+- **`code_items`** — the webhook Worker writes a story's `factory_state` when a PR transitions.
+  `CodeProvider` applies each UPDATE through `codeItemToStoryPatch` → the reducer's `patchStory`,
+  moving the card to its new lane with no reload. **Subscribe to the base table, not the
+  `v_code_stories` view** — you can't subscribe to a view.
+- **`epics`** — the same Worker snapshots a merged epic-refinement spec onto the row. Silent: only
+  the Worker-written spec columns are patched, so a local rename in flight is never clobbered.
+- **`items`** — the classifier sweep Worker fills an untouched Inbox capture's labels a minute or
+  two after it lands. `TasksProvider` runs each UPDATE through the pure
+  `classifierVerdictPatch` (`lib/tasks/classification.ts`), which applies a change only when it
+  carries a **model verdict** (`classified_provider` non-null) onto a row the tab still holds as
+  **unjudged**, and then only the classifier's own columns. Every other write to the table —
+  the owner's edits, a claim, a dispatch — echoes down the same stream and is ignored, because
+  the tab that made it already applied it optimistically.
+
+`patchStory` / the `patch` reducer are keyed by id and a no-op when absent, so a change for an
+unknown/removed row is ignored; and an echo of the user's own optimistic write re-applies
+identical values, so it's **idempotent** — no self-write filtering. Folders have a single browser
+writer and stay pure seed-once.
+
+The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
+suite gates, not in branches inside the subscription callback.
 
 ## Priority: the code module's one global ordering column (ALF-35)
 
@@ -266,9 +281,9 @@ action closures can fire it without it becoming a memo dep.
   (`react-hooks/refs` forbids `ref.current = x` during render).
 - **Seed once at the layout; no key, no prop-sync effect.** The provider is the session
   source of truth (single-user; a hard reload re-seeds). A prop-sync effect or a remount `key`
-  would wipe optimistic state on navigation. (The code store additionally patches itself from
-  `code_items` Realtime for out-of-band Worker writes, but it still seeds once — see "Realtime:
-  the code module's one push path".)
+  would wipe optimistic state on navigation. (A store may additionally patch itself from Realtime for
+  out-of-band Worker writes and still seed once — see "Realtime: a push channel wherever a Worker
+  is the second writer".)
 - **A debounced write inside a closable surface must be flushed on unmount.**
   `useDebouncedCallback` cancels its pending timer when the component unmounts, so a change made
   in a popover or dialog and closed on top of (tap a checkbox, press Escape) is silently dropped.
@@ -333,9 +348,9 @@ action closures can fire it without it becoming a memo dep.
 
 ## What's Deliberately Left Out
 
-- **Realtime beyond the code module.** Only `code_items` is subscribed (the Worker is its second,
-  non-browser writer — see "Realtime: the code module's one push path"). Tasks/Folders stay
-  seed-once, and live cross-device INSERT/DELETE or `epics`/`projects` sync are not built.
+- **Realtime beyond a Worker's own writes.** Only `code_items`, `epics` and `items` are
+  subscribed, and the `items` stream applies classifier verdicts alone. Folders and `projects`
+  stay seed-once, and live cross-device INSERT/DELETE sync is not built.
 - **A third-party state library (Zustand/Jotai/Redux/react-query) and a normalized cache.**
   Context + `useReducer` + flat arrays + `buildTree` cover the need with zero deps at this
   scale. `useSyncExternalStore` is the integration seam if an external store is ever adopted.
