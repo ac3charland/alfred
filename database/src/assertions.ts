@@ -1973,6 +1973,279 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ── Weekly-plan items (ALF-195) ─────────────────────────────────────────────
+  // The two review endpoints stand on a batch RPC, a provenance column that must reach the read
+  // path, and a trigger that finally records WHEN a story shipped. Each claim below is one the
+  // route layer cannot make on its own.
+
+  /** Archive a week-plan document and return its id — the cohort key the RPC stamps. */
+  const seedPlan = async (html: string): Promise<string> => {
+    const { rows } = await client.query<{ id: string }>(
+      `insert into weekly_plans (html) values ($1) returning id`,
+      [html],
+    );
+    const id = rows[0]?.id;
+    if (id === undefined) throw new Error('could not archive a weekly plan');
+    return id;
+  };
+
+  const weeklyPlanBatchResult = await attempt(
+    'create_weekly_plan_items writes a whole week of every type, in the Inbox, in order (ALF-195)',
+    async () => {
+      const plan = await seedPlan('<!doctype html><html><body>week</body></html>');
+      const batch = [
+        {
+          item_type: 'task',
+          title: 'Ship the spike',
+          notes: 'Timebox to Tuesday',
+          due_date: '2026-09-08',
+          priority: 'high',
+          children: [{ title: 'Re-read the findings' }, { title: 'Write the skeleton' }],
+        },
+        {
+          item_type: 'code',
+          title: 'Per-voice mute',
+          children: [{ title: 'Mute state' }, { title: 'Mixer strip button' }],
+        },
+        { title: "Decide Q4's third rock" },
+      ];
+      const { rows } = await asRole(client, 'authenticated', () =>
+        client.query<{
+          id: string;
+          title: string;
+          item_type: string;
+          parent_id: string | null;
+          weekly_plan_id: string | null;
+          dispatched_at: string | null;
+          folder_id: string | null;
+          status: string;
+          created_at: string;
+        }>(`select * from create_weekly_plan_items($1, $2::jsonb)`, [plan, JSON.stringify(batch)]),
+      );
+
+      // Seven nodes: three roots and four children, all returned by the one call.
+      if (rows.length !== 7) throw new Error(`expected 7 rows, got ${String(rows.length)}`);
+      for (const row of rows) {
+        if (row.weekly_plan_id !== plan)
+          throw new Error(`${row.title} carries weekly_plan_id ${String(row.weekly_plan_id)}`);
+        // Untriaged, always: dispatch is a human act, and 0026's inherit trigger must not
+        // separate a root from its children across two views.
+        if (row.dispatched_at !== null || row.folder_id !== null || row.status !== 'active')
+          throw new Error(`${row.title} did not land in the Inbox as an active item`);
+      }
+
+      const byTitle = new Map(rows.map((row) => [row.title, row]));
+      const codeRoot = byTitle.get('Per-voice mute');
+      const codeChild = byTitle.get('Mute state');
+      if (codeChild?.item_type !== 'code' || codeChild.parent_id !== codeRoot?.id)
+        throw new Error('a code root’s child did not inherit its family');
+      if (byTitle.get('Re-read the findings')?.item_type !== 'task')
+        throw new Error('a task root’s child did not inherit its family');
+      if (byTitle.get("Decide Q4's third rock")?.item_type !== 'unclassified')
+        throw new Error('an item_type-less root did not default to unclassified');
+
+      // The client sorts roots by created_at DESCENDING, and one transaction shares a single
+      // now() — so without the per-index offset the week's order would be whatever order
+      // Postgres happened to return.
+      const rootTimes = ['Ship the spike', 'Per-voice mute', "Decide Q4's third rock"].map(
+        (title) => new Date(byTitle.get(title)?.created_at ?? 0).getTime(),
+      );
+      const descends = rootTimes.every(
+        (time, index) => index === 0 || time < (rootTimes[index - 1] ?? 0),
+      );
+      if (!descends)
+        throw new Error(
+          `root created_at did not descend with array position: ${rootTimes.join(',')}`,
+        );
+
+      return '7 rows, all stamped and undispatched; children inherit their root’s type; roots descend in order';
+    },
+  );
+
+  const weeklyPlanAtomicResult = await attempt(
+    'a batch whose second root is illegal writes nothing at all (ALF-195)',
+    async () => {
+      const plan = await seedPlan('<!doctype html><html><body>doomed</body></html>');
+      // The route's schema rejects this shape long before the database sees it; the point is
+      // that the database is a real backstop, and that the whole batch is ONE transaction.
+      const batch = [
+        { item_type: 'task', title: 'the good one' },
+        { item_type: 'code', title: 'the bad one', due_date: '2026-09-08' },
+      ];
+      let raised = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`select * from create_weekly_plan_items($1, $2::jsonb)`, [
+            plan,
+            JSON.stringify(batch),
+          ]),
+        );
+      } catch {
+        raised = true;
+      }
+      if (!raised) throw new Error('a due date on a code root was accepted');
+
+      const { rows } = await client.query<{ count: string }>(
+        `select count(*)::text as count from items where weekly_plan_id = $1`,
+        [plan],
+      );
+      if (rows[0]?.count !== '0')
+        throw new Error(`${String(rows[0]?.count)} row(s) survived a failed batch`);
+
+      // An unknown plan is refused before anything is written, too.
+      let unknownRaised = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`select * from create_weekly_plan_items($1, $2::jsonb)`, [
+            '00000000-0000-0000-0000-000000000000',
+            JSON.stringify([{ title: 'orphan' }]),
+          ]),
+        );
+      } catch {
+        unknownRaised = true;
+      }
+      if (!unknownRaised) throw new Error('a batch against an unknown plan was accepted');
+
+      return 'the CHECK violation rolled the whole batch back; an unknown plan is refused';
+    },
+  );
+
+  const weeklyPlanColumnResult = await attempt(
+    'weekly_plan_id reaches the read path and survives the factory gate (ALF-195)',
+    async () => {
+      const plan = await seedPlan('<!doctype html><html><body>provenance</body></html>');
+      const { rows } = await asRole(client, 'authenticated', () =>
+        client.query<{ id: string; title: string }>(
+          `select id, title from create_weekly_plan_items($1, $2::jsonb)`,
+          [
+            plan,
+            JSON.stringify([
+              { item_type: 'task', title: 'planned and filed' },
+              { item_type: 'code', title: 'planned and gated' },
+            ]),
+          ],
+        ),
+      );
+      const filed = rows.find((row) => row.title === 'planned and filed')?.id;
+      const gated = rows.find((row) => row.title === 'planned and gated')?.id;
+      if (filed === undefined || gated === undefined) throw new Error('the seed batch failed');
+
+      // `select i.*` freezes a view's column list at CREATE time, so a migration that adds a
+      // column without recreating task_items leaves it invisible to getAllItems() — and the
+      // badge would read `undefined` where the type promises `string | null`.
+      const viewed = await asRole(client, 'authenticated', () =>
+        client.query<{ weekly_plan_id: string | null }>(
+          `select weekly_plan_id from task_items where id = $1`,
+          [filed],
+        ),
+      );
+      if (viewed.rows[0]?.weekly_plan_id !== plan)
+        throw new Error('task_items does not expose weekly_plan_id');
+
+      // Provenance must outlive a type transition: the column is deliberately absent from
+      // items_task_only_fields, so "I planned this and then sent it to the factory" is legal.
+      await asRole(client, 'authenticated', () =>
+        client.query(`select enter_code_module($1, $2, $3)`, [gated, PROJECT, EPIC]),
+      );
+      const afterGate = await client.query<{ weekly_plan_id: string | null; item_type: string }>(
+        `select weekly_plan_id, item_type from items where id = $1`,
+        [gated],
+      );
+      if (afterGate.rows[0]?.weekly_plan_id !== plan)
+        throw new Error('enter_code_module dropped the cohort key');
+
+      // Deleting the archived document must never delete the work it described.
+      await client.query(`delete from weekly_plans where id = $1`, [plan]);
+      const orphaned = await client.query<{ weekly_plan_id: string | null }>(
+        `select weekly_plan_id from items where id = $1`,
+        [filed],
+      );
+      if (orphaned.rowCount !== 1 || orphaned.rows[0]?.weekly_plan_id !== null)
+        throw new Error('deleting the plan did not leave the item behind with a null key');
+
+      return 'task_items exposes it, the factory gate keeps it, and deleting the plan nulls it without touching the work';
+    },
+  );
+
+  const weeklyPlanGrantsResult = await attempt(
+    'create_weekly_plan_items is security invoker and executable by all three API roles (ALF-195)',
+    async () => {
+      const { rows } = await client.query<{
+        secdef: boolean;
+        anon_exec: boolean;
+        auth_exec: boolean;
+        sr_exec: boolean;
+      }>(
+        `select p.prosecdef as secdef,
+                has_function_privilege('anon', p.oid, 'EXECUTE') as anon_exec,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth_exec,
+                has_function_privilege('service_role', p.oid, 'EXECUTE') as sr_exec
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'create_weekly_plan_items'`,
+      );
+      const fn = rows[0];
+      if (rows.length !== 1 || !fn)
+        throw new Error(`expected one create_weekly_plan_items, found ${String(rows.length)}`);
+      if (fn.secdef) throw new Error('the function is security definer, not invoker');
+      // Security invoker means the inserts AND sort_order's nextval run as the calling role, so
+      // a missing grant is a 500 the moment the coach calls it (the 0008 sequence lesson).
+      if (!fn.anon_exec || !fn.auth_exec || !fn.sr_exec)
+        throw new Error(
+          `EXECUTE missing: anon=${String(fn.anon_exec)} authenticated=${String(fn.auth_exec)} service_role=${String(fn.sr_exec)}`,
+        );
+      return 'security invoker, EXECUTE granted to anon, authenticated and service_role';
+    },
+  );
+
+  const codeDoneAtResult = await attempt(
+    'code_items.done_at is stamped on the done transition and cleared when it leaves (ALF-195)',
+    async () => {
+      const { ref } = await createStory(client, 'the done-at probe');
+      // `undefined` for "not done", so the assertions below read as plain equality checks
+      // (`unicorn/no-null` forbids minting a null here; the column's null arrives as one).
+      const doneAtOf = async (): Promise<string | undefined> => {
+        const { rows } = await client.query<{ done_at: string | null }>(
+          `select done_at from code_items where ref = $1`,
+          [ref],
+        );
+        if (rows.length !== 1) throw new Error(`no such story: ${ref}`);
+        return rows[0]?.done_at ?? undefined;
+      };
+
+      if ((await doneAtOf()) !== undefined)
+        throw new Error('a fresh story already claims a done_at');
+
+      // A DIRECT table UPDATE, not the app's route: the Worker patches code_items straight
+      // through PostgREST when an implementation PR merges, and that is where most `done`
+      // transitions come from.
+      await client.query(`update code_items set factory_state = 'done' where ref = $1`, [ref]);
+      const stamped = await doneAtOf();
+      if (stamped === undefined) throw new Error('reaching done did not stamp done_at');
+
+      // Re-saving the same state (a blocked_reason edit alongside it) must not restamp a
+      // completion — the trigger fires on the column being MENTIONED, so the guard is the
+      // `is distinct from` inside it.
+      await client.query(
+        `update code_items set factory_state = 'done', blocked_reason = null where ref = $1`,
+        [ref],
+      );
+      if ((await doneAtOf()) !== stamped) throw new Error('re-setting the same state restamped');
+
+      // An update that never mentions factory_state leaves it alone too.
+      await client.query(`update code_items set blocked_reason = 'waiting' where ref = $1`, [ref]);
+      if ((await doneAtOf()) !== stamped) throw new Error('an unrelated update restamped');
+
+      await client.query(`update code_items set factory_state = 'in_development' where ref = $1`, [
+        ref,
+      ]);
+      if ((await doneAtOf()) !== undefined)
+        throw new Error('leaving done did not clear the completion it no longer asserts');
+
+      return 'stamped on entering done, unchanged on a re-set or an unrelated edit, cleared on leaving';
+    },
+  );
+
   const backupDriftResult = await attempt(
     'the nightly backup survives a production database migrated ahead of the repo, and stays quiet ' +
       'when the repo is ahead instead',
@@ -2113,6 +2386,11 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     classifierClaimResult,
     classifierCorrectionsResult,
     correctionsGrantsResult,
+    weeklyPlanBatchResult,
+    weeklyPlanAtomicResult,
+    weeklyPlanColumnResult,
+    weeklyPlanGrantsResult,
+    codeDoneAtResult,
     backupDriftResult,
     backupVerifierShapeResult,
   ];
