@@ -11,11 +11,19 @@
  * WHICH ids are legal, but only the prompt text says how to choose between them, and when to say
  * nothing at all.
  */
-import type { ClosedWorld, SweepItem, WorldEpic, WorldFolder, WorldProject } from './verdict';
+import {
+  type ClosedWorld,
+  type ItemType,
+  type SweepItem,
+  type WorldEpic,
+  type WorldFolder,
+  type WorldProject,
+  decidedType,
+} from './verdict';
 
 /** The prompt version stamped onto every verdict. Bump BY HAND when the prompt text or the
  *  output schema changes meaningfully — it is what makes a prompt change safely replayable. */
-export const PROMPT_VERSION = 1;
+export const PROMPT_VERSION = 2;
 
 /** How many worked examples the few-shot block carries. */
 export const EXAMPLE_LIMIT = 12;
@@ -58,8 +66,18 @@ function nullableEnum(values: readonly string[]): Record<string, unknown> {
  * An empty id list collapses its field to a bare `{ type: 'null' }` rather than
  * `{ anyOf: [{ enum: [] }, ...] }` — an empty `enum` is not a valid JSON Schema, so a fresh
  * database with no folders yet must not produce one.
+ *
+ * `heldType` PINS `item_type` to a single-value enum with no null branch, so echoing the type the
+ * owner already chose is the only legal response. It has to be pinned rather than merely stated,
+ * because a disagreement here is not one wrong field but a wasted call: every task-only field is
+ * dropped by validation against a `code` verdict, every code-only field is dropped by the merge
+ * against a `task` row, and the row is stamped regardless. Echoing also keeps
+ * `classified_guess.item_type` equal to the row's type, so the dispatch-time diff logs no phantom
+ * correction. It is OPTIONAL rather than a required `ItemType | undefined` because
+ * `unicorn/no-useless-undefined` autofixes a trailing `undefined` argument away — a required
+ * parameter would be silently un-passed by `eslint --fix`.
  */
-export function buildSchema(world: ClosedWorld): Record<string, unknown> {
+export function buildSchema(world: ClosedWorld, heldType?: ItemType): Record<string, unknown> {
   return {
     type: 'object',
     additionalProperties: false,
@@ -72,7 +90,7 @@ export function buildSchema(world: ClosedWorld): Record<string, unknown> {
       'intended_epic_id',
     ],
     properties: {
-      item_type: nullableEnum(ITEM_TYPES),
+      item_type: heldType === undefined ? nullableEnum(ITEM_TYPES) : { enum: [heldType] },
       priority: nullableEnum(PRIORITIES),
       due_date: { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }] },
       folder_id: nullableEnum(world.folders.map((folder) => folder.id)),
@@ -240,11 +258,22 @@ function buildSystemPrompt(
     .join('\n\n');
 }
 
-function buildUserMessage(item: SweepItem): string {
+/**
+ * The per-item message: the captured text, plus — when the owner has already given the row a type
+ * — the sentence that says so. Stated as well as pinned in the schema, because the pin only makes
+ * the echo legal; this is what tells the model which half of the fields are worth thinking about.
+ */
+function buildUserMessage(item: SweepItem, heldType: ItemType | undefined): string {
   const lines = [`Title: ${item.title}`];
   if (item.notes !== undefined) lines.push(`Notes: ${item.notes}`);
   if (item.raw_capture !== undefined) lines.push(`Captured text: ${item.raw_capture}`);
   if (item.source_url !== undefined) lines.push(`Source: ${item.source_url}`);
+  if (heldType !== undefined) {
+    lines.push(
+      `Already classified by the owner: ${heldType}. This is settled — judge only the fields ` +
+        `that apply to a ${heldType}.`,
+    );
+  }
   return lines.join('\n');
 }
 
@@ -325,9 +354,12 @@ export function buildRequest(input: {
   now: Date;
 }): ClassifyRequest {
   const { item, world, examples, timeZone, now } = input;
+  // The row's own answer, if it has one. An unclassified item is unchanged in every respect:
+  // same prompt, same nullable enum, same abstention rule ("it may stay null").
+  const heldType = decidedType(item);
   return {
     system: buildSystemPrompt(world, examples, referenceDate(timeZone, now)),
-    user: buildUserMessage(item),
-    schema: buildSchema(world),
+    user: buildUserMessage(item, heldType),
+    schema: buildSchema(world, heldType),
   };
 }

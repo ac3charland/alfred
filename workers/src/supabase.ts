@@ -289,24 +289,36 @@ export async function fetchRecentCorrections(
 
 /**
  * PATCH one item by id. Returns the number of rows updated (0 = nothing matched — the row vanished
- * between being read as eligible and the verdict coming back, or `onlyIfUnclassified` lost the
- * race), and throws on a non-2xx response so a rejected write (a CHECK-constraint violation, say)
- * is a readable log line.
+ * between being read as eligible and the verdict coming back, or one of the compare-and-set
+ * filters lost the race), and throws on a non-2xx response so a rejected write (a CHECK-constraint
+ * violation, say) is a readable log line.
  *
- * `onlyIfUnclassified` adds `classified_at=is.null` to the filter, making the verdict write a
- * compare-and-set. Cloudflare does not serialize scheduled invocations, so a tick that runs long
- * can overlap the next one and both read the same eligible rows — the marker is still null until
- * the first write lands. With the filter, the loser matches zero rows and takes the existing
- * "nothing to mark" branch instead of overwriting a verdict that is already recorded.
+ * Both options narrow the filter, and both exist for the same reason: the verdict is derived from
+ * the row as it was READ, so anything that moved underneath must make the write miss rather than
+ * land on a row it no longer describes.
+ *
+ * `onlyIfUnclassified` adds `classified_at=is.null`. Cloudflare does not serialize scheduled
+ * invocations, so a tick that runs long can overlap the next one and both read the same eligible
+ * rows — the marker is still null until the first write lands. With the filter, the loser matches
+ * zero rows and takes the existing "nothing to mark" branch instead of overwriting a verdict that
+ * is already recorded.
+ *
+ * `onlyIfItemType` adds `item_type=eq.<value>`, and guards the field the owner is most likely to
+ * be setting while a tick runs — hand-classifying no longer claims the row, so the marker above
+ * is no longer stamped by it. Without this filter, a row re-typed mid-flight would either have the
+ * machine change the owner's answer back, or take the whole PATCH down on `items_task_only_fields`
+ * when the type-shaped fields no longer suit it. Missing costs nothing: the row is simply still
+ * eligible next tick, which re-reads the owner's type and judges under it.
  */
 export async function patchItem(
   env: SupabaseEnv,
   id: string,
   updates: Record<string, unknown>,
-  options: { onlyIfUnclassified?: boolean } = {},
+  options: { onlyIfUnclassified?: boolean; onlyIfItemType?: string } = {},
 ): Promise<number> {
   const filters: Record<string, string> = { id: `eq.${id}` };
   if (options.onlyIfUnclassified === true) filters['classified_at'] = 'is.null';
+  if (options.onlyIfItemType !== undefined) filters['item_type'] = `eq.${options.onlyIfItemType}`;
   const url = restQueryUrl(env, 'items', filters);
   const rows = await fetchJson<unknown[]>(
     env,

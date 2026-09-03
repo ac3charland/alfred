@@ -68,7 +68,7 @@ function requestFor(overrides: {
 
 describe('constants', () => {
   it('pins the prompt version and the example limit', () => {
-    expect(PROMPT_VERSION).toBe(1);
+    expect(PROMPT_VERSION).toBe(2);
     expect(EXAMPLE_LIMIT).toBe(12);
   });
 });
@@ -106,6 +106,29 @@ describe('buildSchema', () => {
     // item_type / priority always have a fixed, non-empty set — an empty world must not touch them.
     expect(properties['item_type']).toEqual({
       anyOf: [{ enum: ['task', 'code'] }, { type: 'null' }],
+    });
+  });
+
+  // Structured output then makes echoing the held type the only legal answer, which is the whole
+  // point: a model that read a hand-typed `task` as `code` would have every field of its verdict
+  // dropped — the task-only ones by validation, the code-only ones by the merge — and the row
+  // stamped anyway. One wasted call, zero fields, no second chance.
+  it.each(['task', 'code'] as const)(
+    'pins item_type to a single-value enum with no null branch for a held %s',
+    (heldType) => {
+      const properties = buildSchema(WORLD, heldType)['properties'] as Record<string, unknown>;
+      expect(properties['item_type']).toEqual({ enum: [heldType] });
+    },
+  );
+
+  it('changes nothing but item_type when the type is pinned', () => {
+    const unpinned = buildSchema(WORLD);
+    expect(buildSchema(WORLD, 'task')).toEqual({
+      ...unpinned,
+      properties: {
+        ...(unpinned['properties'] as Record<string, unknown>),
+        item_type: { enum: ['task'] },
+      },
     });
   });
 });
@@ -248,6 +271,33 @@ describe('the per-item user message', () => {
         'Source: https://example.com/passport',
       ].join('\n'),
     );
+  });
+
+  it.each(['task', 'code'] as const)('names a held %s and says it is settled', (heldType) => {
+    const { user } = requestFor({ item: makeItem({ item_type: heldType }) });
+    expect(user).toContain(`Already classified by the owner: ${heldType}.`);
+    expect(user).toContain(`judge only the fields that apply to a ${heldType}`);
+  });
+
+  it('says nothing of the sort for an item nobody has typed yet', () => {
+    const { user } = requestFor({ item: makeItem() });
+    expect(user).not.toContain('Already classified by the owner');
+  });
+});
+
+describe('buildRequest', () => {
+  it('pins the schema from the type the item itself holds, not from the world', () => {
+    const { schema } = requestFor({ item: makeItem({ item_type: 'code' }) });
+    const properties = schema['properties'] as Record<string, unknown>;
+    expect(properties['item_type']).toEqual({ enum: ['code'] });
+  });
+
+  it('leaves the nullable enum in place for an unclassified item', () => {
+    const { schema } = requestFor({ item: makeItem() });
+    const properties = schema['properties'] as Record<string, unknown>;
+    expect(properties['item_type']).toEqual({
+      anyOf: [{ enum: ['task', 'code'] }, { type: 'null' }],
+    });
   });
 });
 

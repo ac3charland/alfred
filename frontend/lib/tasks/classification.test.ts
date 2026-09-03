@@ -133,6 +133,28 @@ describe('classifierVerdictPatch', () => {
     ).toBeNull();
   });
 
+  // ALF-202 made this reachable: classifying a capture by hand no longer claims it, so a row
+  // whose type is the OWNER'S is swept and gets a verdict a minute later — with the tab still
+  // open on it. The Worker never writes a type the row already holds, so the streamed row hands
+  // that type straight back and the patch is a no-op on the one field the owner decided.
+  it('hands a hand-classified row its own type back, and the gaps the model filled', () => {
+    const patch = classifierVerdictPatch(
+      { classified_at: null },
+      row({
+        // The owner typed it; the model was told so and echoed it. Only the folder is new.
+        item_type: 'task',
+        priority: null,
+        due_date: null,
+        folder_id: 'folder-family',
+        classified_guess: { item_type: 'task', folder_id: 'folder-family' },
+      }),
+    );
+
+    expect(patch).toMatchObject({ item_type: 'task', folder_id: 'folder-family' });
+    // The abstained labels arrive as the nulls they are, never as stale values from the guess.
+    expect(patch).toMatchObject({ priority: null, due_date: null });
+  });
+
   it('ignores a verdict for a row this tab is not holding — the race rule', () => {
     expect(classifierVerdictPatch(undefined, row())).toBeNull();
   });
@@ -140,7 +162,9 @@ describe('classifierVerdictPatch', () => {
   it('ignores a verdict for a row this tab already knows is judged', () => {
     // Once the tab holds a judged row, its labels are either the model's (already applied) or
     // the owner's (claimed since). A re-delivered or out-of-order echo must not re-apply the
-    // model's values over an answer that came later.
+    // model's values over an answer that came later. This is also what protects an owner who
+    // sets a label mid-sweep: their PATCH response carries the claim trigger's stamp back into
+    // the store, so a verdict formed before that edit is refused here.
     expect(classifierVerdictPatch({ classified_at: '2026-09-03T09:00:00Z' }, row())).toBeNull();
   });
 

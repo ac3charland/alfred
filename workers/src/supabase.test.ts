@@ -341,4 +341,42 @@ describe('patchItem', () => {
       /PATCH items \(item-1\) failed: 400 check constraint violated/,
     );
   });
+
+  it('carries neither compare-and-set filter when no options are given', async () => {
+    const spy = mockFetch(Response.json([{ id: 'item-1' }], { status: 200 }));
+
+    await patchItem(env, 'item-1', { classify_attempts: 1 });
+
+    const [url] = spy.mock.calls[0] as [string, RequestInit];
+    // The attempt counter is written unconditionally: a row that moved under the sweep should
+    // still have its failure recorded.
+    expect(url).toBe('https://proj.supabase.co/rest/v1/items?id=eq.item-1');
+  });
+
+  it('adds both compare-and-set filters when the verdict write asks for them', async () => {
+    const spy = mockFetch(Response.json([{ id: 'item-1' }], { status: 200 }));
+
+    await patchItem(
+      env,
+      'item-1',
+      { folder_id: 'folder-1' },
+      { onlyIfUnclassified: true, onlyIfItemType: 'task' },
+    );
+
+    const [url] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'https://proj.supabase.co/rest/v1/items?id=eq.item-1&classified_at=is.null&item_type=eq.task',
+    );
+  });
+
+  it('adds each compare-and-set filter independently of the other', async () => {
+    const spy = mockFetch(Response.json([{ id: 'item-1' }], { status: 200 }));
+
+    await patchItem(env, 'item-1', { folder_id: 'folder-1' }, { onlyIfItemType: 'unclassified' });
+
+    const [url] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'https://proj.supabase.co/rest/v1/items?id=eq.item-1&item_type=eq.unclassified',
+    );
+  });
 });
