@@ -406,6 +406,13 @@ explains hover/focus. Two hard-won rules:
   won't render. Press Tab instead: `await page.keyboard.press('Tab')`. Each focus story
   must render a **single** focusable control so the first Tab lands on it.
 
+- **An open Radix menu, dialog or popover is invisible to a snapshot unless the story targets
+  `body`.** `DropdownMenuContent` and `DropdownMenuSubContent` both render through
+  `DropdownMenuPrimitive.Portal` — outside `#storybook-root`, which is `visualTest.target`'s
+  default. The baseline then captures the trigger with **no menu**, and the story passes forever:
+  the failure is silent, not red. Set `parameters.visualTest = { target: 'body' }` on any story
+  whose `play` opens portalled content, and eyeball the first baseline before committing it.
+
 **Determinism — freeze motion before every capture.** Anything animated makes the diff
 non-deterministic: an `animate-spin` spinner sits at a random rotation, a
 `transition-colors` hover captures a half-faded colour, a focused input's caret blinks.

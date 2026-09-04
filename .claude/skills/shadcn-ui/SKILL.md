@@ -145,6 +145,13 @@ Use this when:
   (unified), not `import * as DialogPrimitive from "@radix-ui/react-dialog"`. Mixing both causes
   duplicate instances and broken state.
 
+- **A `disabled` menu item's `title` tooltip is unreachable — put the hint in visible text.** Every
+  `DropdownMenu` item variant carries `data-[disabled]:pointer-events-none`, so a disabled item or
+  sub-trigger is not a hover target and the browser never renders its `title` — and touch never
+  renders one anyway. A plain `<button disabled title>` (the `Chip` atom) *does* show it, so a hint
+  that works on a chip silently doesn't in the menu. Keep `title` for assistive tech and the test
+  assertion, and render the same words as a muted span inside the label.
+
 - **One popover over many targets: anchor it with `Popover.Anchor`'s `virtualRef`, not by moving
   an `asChild` anchor onto the open element.** Wrapping only the open item in `<PopoverAnchor asChild>`
   changes that item's element type when it opens or closes, so React unmounts and recreates its DOM
