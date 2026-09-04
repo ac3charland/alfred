@@ -168,9 +168,17 @@ export function currentBranch(): string | undefined {
   return branch;
 }
 
-/** A path counts as docs iff it is `docs` itself or sits under `docs/`. */
+/**
+ * A path counts as docs iff it is `docs` itself, sits under `docs/`, or is a **markdown file
+ * under `.claude/skills/`**. The skills are prose the swarm reads, not code that runs, so a
+ * branch that only edits them has no behaviour to capture and owes no demo — the same reason
+ * `docs/` is exempt. Deliberately markdown-only: a skill may bundle a **script**
+ * (`batch-commits/scripts/batch-commit.mjs`), and a script does have behaviour, so its branch
+ * owes a demo like any other code change.
+ */
 function isDocsPath(p: string): boolean {
-  return p === 'docs' || p.startsWith('docs/');
+  if (p === 'docs' || p.startsWith('docs/')) return true;
+  return p.startsWith('.claude/skills/') && p.endsWith('.md');
 }
 
 /** Remote-tracking trunk refs, in priority order — what a fresh CI checkout diffs against. */

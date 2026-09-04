@@ -106,6 +106,22 @@ describe('gatherDemos', () => {
     expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(true);
   });
 
+  it('counts skill markdown as docs — a skill edit has no behaviour to demo', () => {
+    const changed = ['.claude/skills/supabase/SKILL.md', '.claude/skills/git/references/rebase.md'];
+    expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(false);
+  });
+
+  it('still reports changes outside docs for a NON-markdown file under a skill', () => {
+    // A bundled script is code: it has behaviour, so its branch owes a demo like any other.
+    const changed = ['.claude/skills/batch-commits/scripts/batch-commit.mjs'];
+    expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(true);
+  });
+
+  it('does not exempt markdown elsewhere under .claude/', () => {
+    const changed = ['.claude/settings.json', '.claude/agents/reviewer.md'];
+    expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(true);
+  });
+
   it('reports changes outside docs for a mixed change set', () => {
     const changed = ['docs/code-module-spec.md', 'tools/demo-lint/src/rules.ts'];
     expect(gatherDemos(root, root, 'feat/x', changed).hasChangesOutsideDocs).toBe(true);
