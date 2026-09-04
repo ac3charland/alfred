@@ -52,12 +52,15 @@ Both rules are **errors** (exit 1 fails the push).
 | Rule | Fires when | Fix |
 | --- | --- | --- |
 | `no-root-files` | any file other than `README.md` sits **directly** in `docs/demos/` | move it into its own folder: `docs/demos/<feature-name>/` |
-| `branch-folder` | you're on a feature branch that touches code (changes outside `docs/`) and no demo doc claims it — no doc has `branch: <current-branch>` in front matter (and no legacy folder named after the branch has content) | capture this branch's demo in its own (semantically-named) folder: `npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>"` stamps the branch into front matter for you |
+| `branch-folder` | you're on a feature branch that touches code (changes outside `docs/` and outside skill markdown) and no demo doc claims it — no doc has `branch: <current-branch>` in front matter (and no legacy folder named after the branch has content) | capture this branch's demo in its own (semantically-named) folder: `npm run demo -- init docs/demos/<feature-name>/<name>.md "<title>"` stamps the branch into front matter for you |
 | `no-test-in-demo` | a demo doc contains a test invocation (e.g. an `npm run test` exec block) | a demo must show the **new behavior** (screenshot the UI, or capture a real request/response), not prove non-regression — drop the test block; the `check` suites already gate the tests |
 
 `branch-folder` **skips** trunk (`main`/`master`), any state where the branch can't be
 determined (detached HEAD, no git), and a **docs-only** branch — one whose every change
-vs trunk lives under `docs/` — so it only fires on a real feature branch that touches code.
+vs trunk is either under `docs/` or a **markdown file under `.claude/skills/`** — so it only
+fires on a real feature branch that touches code. Skill markdown counts as docs for the same
+reason `docs/` does: it is prose, with no behaviour to capture. The exemption is markdown-only,
+so a branch touching a skill's bundled **script** still owes a demo.
 The diff is computed against the first existing trunk ref (`origin/main`, `main`,
 `origin/master`, `master`); when it can't be computed the branch is treated **conservatively**
 as touching code, so the exception is never granted on a guess.
