@@ -2,8 +2,14 @@
  * Calendar-date arithmetic for habits. Everything is a `YYYY-MM-DD` string and every
  * computation goes through UTC field math, so no result depends on the machine's zone —
  * the one place a zone is consulted is {@link todayIn}, which is handed one explicitly.
+ *
+ * The day-stepping primitives themselves live in `lib/date-utils` (the task rows' due-date
+ * presets need `addDays` too, and one app must have one of it); this module re-exports
+ * {@link addDays} so the habits barrel and every habits call site keep their import.
  */
+import { addDays, toUtcMillis } from '@/lib/date-utils';
 
+/** Milliseconds in a day — the divisor {@link daysBetween} turns an instant delta back with. */
 const MS_PER_DAY = 86_400_000;
 
 /** The trailing span a read covers when the caller names no `from`/`to` — a quarter. */
@@ -63,26 +69,10 @@ export function todayIn(timezone: string, now: Date = new Date()): string {
   return `${parts.get('year') ?? '1970'}-${parts.get('month') ?? '01'}-${parts.get('day') ?? '01'}`;
 }
 
-/** The UTC instant standing for a calendar date's midnight — the anchor all day math uses. */
-function toUtcMillis(date: string): number {
-  const [year = '1970', month = '01', day = '01'] = date.split('-');
-  return Date.UTC(Number(year), Number(month) - 1, Number(day));
-}
-
-/** Render a UTC instant back to `YYYY-MM-DD`. */
-function fromUtcMillis(millis: number): string {
-  return new Date(millis).toISOString().slice(0, 10);
-}
-
 /** ISO weekday, 1 = Monday … 7 = Sunday (the numbering `habits.active_days` stores). */
 export function isoWeekday(date: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
   const day = new Date(toUtcMillis(date)).getUTCDay();
   return (day === 0 ? 7 : day) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
-}
-
-/** The calendar date `delta` days after `date` (negative goes back). */
-export function addDays(date: string, delta: number): string {
-  return fromUtcMillis(toUtcMillis(date) + delta * MS_PER_DAY);
 }
 
 /** Every calendar date in `[from, to]`, inclusive. Empty when `to` precedes `from`. */
@@ -137,3 +127,5 @@ export function resolveWindow(
   }
   return { from, to };
 }
+
+export { addDays } from '@/lib/date-utils';

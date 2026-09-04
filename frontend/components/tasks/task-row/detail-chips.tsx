@@ -19,6 +19,7 @@ import {
 } from '@/lib/recurrence';
 import { useEpics, useProjects } from '@/lib/stores/code-store';
 import { useFolders } from '@/lib/stores/folders-store';
+import { epicOptions, folderOptions, projectOptions } from '@/lib/tasks/label-options';
 import { cn } from '@/lib/utils';
 
 /** The neutral (unset) chip tone — slate text on a faint slate border. */
@@ -150,10 +151,7 @@ export function FolderChip({
           </Badge>
         }
         value={folderId}
-        options={[
-          ...(allowClear ? [{ value: null, label: 'No folder' }] : []),
-          ...folders.map((f) => ({ value: f.id, label: f.name })),
-        ]}
+        options={folderOptions(folders, allowClear ? 'No folder' : undefined)}
         onSelect={onSelect}
       />
     );
@@ -168,10 +166,7 @@ export function FolderChip({
         </Chip>
       }
       value={folder?.id ?? null}
-      options={[
-        ...(allowClear ? [{ value: null, label: 'No folder' }] : []),
-        ...folders.map((f) => ({ value: f.id, label: f.name })),
-      ]}
+      options={folderOptions(folders, allowClear ? 'No folder' : undefined)}
       onSelect={onSelect}
     />
   );
@@ -209,18 +204,7 @@ export function IntendedProjectChip({ projectId, onSelect }: IntendedProjectChip
         </Chip>
       }
       value={project?.id ?? null}
-      options={[
-        { value: null, label: 'No project' },
-        ...projects.map((p) => ({
-          value: p.id,
-          label: (
-            <>
-              <span className="truncate">{p.name}</span>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground/70">{p.key}</span>
-            </>
-          ),
-        })),
-      ]}
+      options={projectOptions(projects, 'No project')}
       onSelect={onSelect}
     />
   );
@@ -318,23 +302,8 @@ export function IntendedEpicChip({
     <PickerChip
       trigger={trigger}
       value={epic?.id ?? null}
-      options={[{ value: null, label: 'No epic' }, ...epicOptions(epicsForProject)]}
+      options={epicOptions(epicsForProject, 'No epic')}
       onSelect={onSelect}
     />
   );
-}
-
-/** The epic list rows: name left, ref right in mono — the gate's own listbox convention. */
-function epicOptions(epics: { id: string; name: string; ref: string }[]) {
-  return epics.map((e) => ({
-    value: e.id,
-    label: (
-      <>
-        <span className="truncate">{e.name}</span>
-        {e.ref !== '' && (
-          <span className="shrink-0 font-mono text-xs text-muted-foreground/70">{e.ref}</span>
-        )}
-      </>
-    ),
-  }));
 }
