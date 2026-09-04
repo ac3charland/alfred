@@ -192,12 +192,8 @@ export function TaskRow({
   const { draggedSubtreeIds, activeDragItemType } = useTaskDrag();
   // Item-type flags + drop-target validity (completion/due-date/subtask gating, the drop
   // highlight) all derive from the node — see useTaskRowFlags.
-  const { isTask, isCode, canAddSubtask, isValidDropTarget, canChangeType } = useTaskRowFlags(
-    node,
-    isCompleted,
-    draggedSubtreeIds,
-    activeDragItemType,
-  );
+  const { isTask, isUnclassified, isCode, canAddSubtask, isValidDropTarget, canChangeType } =
+    useTaskRowFlags(node, isCompleted, draggedSubtreeIds, activeDragItemType);
 
   // Recurrence is top-level-task-only: the parsed rule drives the row chip and the meta-panel
   // Repeat control. A subtask or non-task row never recurs (the control is hidden there).
@@ -1073,11 +1069,16 @@ export function TaskRow({
 
                 {/* More actions dropdown — all visibility conditionals live inside it. */}
                 <TaskRowMenu
+                  node={node}
                   canChangeType={canChangeType}
+                  isTask={isTask}
+                  isUnclassified={isUnclassified}
                   isCode={isCode}
                   canAddSubtask={canAddSubtask}
+                  isCompletedView={isCompletedView}
                   dispatch={dispatchAction}
                   folders={folders}
+                  editing={metaEditing}
                   canMoveToFolder={isDispatched(node)}
                   canMoveUp={isActiveSubtask && canMoveUp}
                   canMoveDown={isActiveSubtask && canMoveDown}
