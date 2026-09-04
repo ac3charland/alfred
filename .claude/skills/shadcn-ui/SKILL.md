@@ -201,6 +201,17 @@ Use this when:
   something picked?" ref so dismissing the menu with Escape still restores focus normally
   (`components/habits/habit-menu.tsx`).
 
+- **A menu item that opens a sibling `Popover` must open it *from* `onCloseAutoFocus`, not from
+  `onSelect`.** Same focus return as above, one step worse: the popover is a sibling of the menu,
+  so the trigger it hands focus back to is genuinely outside the popover and Radix dismisses it the
+  frame it appears. Setting the open state in `onSelect` — even deferred a frame with
+  `requestAnimationFrame` — still loses the race. Set a `pending` ref in `onSelect` instead, and in
+  the content's `onCloseAutoFocus` `preventDefault()` (suppressing the focus return is the
+  load-bearing half) and open the popover there; `PopoverAnchor asChild` around the same trigger
+  keeps it anchored (`components/tasks/task-row/task-row-menu.tsx`). **jsdom does not reproduce
+  this** — the rAF version passes in RTL and flickers shut in a real browser — so prove the handoff
+  with a Playwright screenshot, not an RTL assertion.
+
 - **An open Dropdown/Dialog is modal: it `aria-hidden`s the rest of the page.** Every role-based
   query behind it comes back empty — in RTL *and* Playwright — so a test that toggles a menu item
   and then asserts on the page still sees the old state, or worse passes a `queryBy…not.toBeInTheDocument`
@@ -211,7 +222,9 @@ Use this when:
 - **Driving a `DropdownMenuSub` in a test is keyboard-only.** A click opens the submenu but its
   items don't respond to `user.click` (the portal's `pointer-events: none`). From the open parent
   menu, `[ArrowDown]` lands on the submenu trigger and `[ArrowRight]` opens it **onto its first
-  option** — no extra `[ArrowDown]` — then `[Enter]` selects.
+  option** — no extra `[ArrowDown]` — then `[Enter]` selects. In Playwright, assert
+  `toBeFocused()` on the expected item between arrow presses: a burst of `keyboard.press('ArrowDown')`
+  outruns Radix's roving focus in a real browser, so the selection silently lands short.
 
 - **Never** use `space-x-*` or `space-y-*` Tailwind utilities. Use `flex gap-*` instead. The
   `space-*` utilities use a lobotomized-owl selector (`* + *`) that breaks with conditional rendering
