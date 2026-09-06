@@ -1,0 +1,21 @@
+ALF-7: Bug: the capture box keeps its draft after submit
+
+You are fixing the BUG ALF-7. This is a BUG-FIX session: there is no plan to read and no spec to write — reproduce the defect, prove it with a failing test, then fix it, all in this one session.
+
+1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and work from the code that already exists.
+2. REPRODUCE the bug before you change anything, and tell me what you found: the behaviour you actually see, the behaviour you expected, and the code responsible. If you cannot reproduce it, or the report below doesn't pin down what's broken, ASK ME HERE rather than guessing at a fix — you don't need to guess, I'm in this tab.
+3. Follow the bug skill at `.claude/skills/bug/SKILL.md` (it auto-loads in a bug-fix session) — it owns this repo's conventions for reproducing, pinning and fixing a defect. If the skill is absent, follow the repo's own testing conventions.
+4. Pin the bug with a FAILING test first: one that fails for the reason the bug exists, and passes once it's fixed. A test written after the fix proves only that the code does what it now does.
+5. Fix the ROOT CAUSE, not the symptom, and keep the fix minimal — this defect and whatever else is broken for the same reason, nothing more. If you find adjacent bugs, tell me rather than folding them in.
+6. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:
+
+```alfred
+alfred-ticket: ALF-7
+phase: implementation
+```
+
+7. Before opening the PR, confirm the test you wrote now passes, the rest of the suite is green, and the block above is reproduced exactly.
+
+
+Context (from the ticket):
+Only after a submit that errors — the draft survives into the next capture.
