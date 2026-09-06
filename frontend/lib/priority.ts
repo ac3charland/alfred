@@ -112,6 +112,22 @@ export function compareKey(a: PriorityKey, b: PriorityKey): number {
 }
 
 /**
+ * The urgency-first counterpart of {@link compareKey}: due ascending (earliest first, an undated
+ * task last via its key's `Infinity`), with the level as the tiebreak among tasks sharing a date.
+ * Compares the dates rather than subtracting them, so two undated tasks tie at 0 instead of
+ * yielding `Infinity - Infinity`.
+ */
+export function compareKeyByDue(a: PriorityKey, b: PriorityKey): number {
+  if (a.due !== b.due) return a.due < b.due ? -1 : 1;
+  return a.rank - b.rank;
+}
+
+/** The more URGENT of two keys: the earlier due date wins, then the higher level. */
+export function bestKeyByDue(a: PriorityKey, b: PriorityKey): PriorityKey {
+  return compareKeyByDue(a, b) <= 0 ? a : b;
+}
+
+/**
  * Rank the top-level (parentless) tasks of a flat item list for the By-Priority view (ALF-37):
  * High → Medium → Low → unprioritised, earlier due date first within a level, `created_at` as
  * the final stable tiebreak. Completed tasks are dropped unless `showCompleted`.

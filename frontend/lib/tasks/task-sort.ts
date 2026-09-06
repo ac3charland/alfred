@@ -1,6 +1,6 @@
 import { CalendarClock, ListOrdered, type LucideIcon } from 'lucide-react';
 
-import { type PriorityKey, compareKey, ownKey } from '@/lib/priority';
+import { type PriorityKey, compareKey, compareKeyByDue, ownKey } from '@/lib/priority';
 import { stableSorted } from '@/lib/sort';
 import type { Item } from '@/lib/types';
 
@@ -35,16 +35,6 @@ export const DEFAULT_TASK_SORT: TaskSortMode = 'priority';
 /** The option metadata for a mode. Total over the union, so it never misses. */
 export function taskSortOption(mode: TaskSortMode): TaskSortOption {
   return OPTIONS[mode];
-}
-
-/**
- * Due-date ordering: earliest first, a task with no due date last (its key's `Infinity`), with the
- * priority level as the tiebreak among tasks sharing a date. Compares the dates rather than
- * subtracting them, so two undated tasks tie at 0 instead of yielding `Infinity - Infinity`.
- */
-function compareKeyByDue(a: PriorityKey, b: PriorityKey): number {
-  if (a.due !== b.due) return a.due < b.due ? -1 : 1;
-  return a.rank - b.rank;
 }
 
 const COMPARATORS: Record<TaskSortMode, (a: PriorityKey, b: PriorityKey) => number> = {
