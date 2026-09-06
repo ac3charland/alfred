@@ -8,6 +8,7 @@ import { CompletedView } from '@/components/tasks/completed-view';
 import { FolderView } from '@/components/tasks/folder-view';
 import { InboxScreen } from '@/components/tasks/inbox-screen';
 import { PriorityView } from '@/components/tasks/priority-view';
+import { TodayView } from '@/components/tasks/today-view';
 import { WeeklyPlanView } from '@/components/tasks/weekly-plan-view';
 
 const FOLDER_PREFIX = '/folders/';
@@ -15,7 +16,7 @@ const FOLDER_PREFIX = '/folders/';
 /**
  * Client-side view router for the tasks module.
  *
- * Every page in the module (the inbox `/`, `/folders/[id]`, `/completed`) renders this
+ * Every page in the module (the inbox `/`, `/folders/[id]`, `/today`, `/completed`) renders this
  * one component, which derives the active view purely from the URL and renders it from
  * the already-seeded stores. The nav links switch the URL via the History API (see
  * ViewLink) rather than an RSC navigation, so this re-renders the new view with no
@@ -27,6 +28,10 @@ export function TaskViews() {
 
   if (pathname === '/priority') {
     return <PriorityView />;
+  }
+
+  if (pathname === '/today') {
+    return <TodayView />;
   }
 
   if (pathname === '/plan') {
