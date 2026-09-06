@@ -314,10 +314,12 @@ Plus two escape states reachable manually (and, where noted, automatically): `bl
 | `in_development` | spike PR **opened** | `ready_for_review` | webhook → Worker records `implementation_pr_url` |
 | `ready_for_review` | spike PR **merged** | `done` | webhook → Worker; snapshot the findings (`spec_path`,`spec_sha`,`spec_markdown`) |
 | `in_development`/`ready_for_review` | spike PR **closed, unmerged** | `ready_for_dev` | webhook → Worker (revert; the spike link is offered again) |
+| `needs_refinement`/`ready_for_dev` | user clicks **bug** link (a `Bug: …` story) | `in_development` | client handler: await write (also records `requires_refinement: false`) → open tab (§11.3) |
+| `in_development`/`ready_for_review` | bug (fix) PR opened / merged / closed-unmerged | *(as implementation)* | webhook → Worker; a bug PR **is** an implementation PR — `phase: implementation`, no new rows |
 | any | manual action in detail modal | any (notably `blocked`, `abandoned`, or a corrective hop) | app: PATCH `/api/code/:ref` (§10, §13 fallback) |
 
 **Manual fallback (required).** Research one-offs and abandoned items have no PR signal (a
-**spike** does — see the `spike` phase). The detail
+**spike** does — see the `spike` phase; a **bug** rides the `implementation` phase). The detail
 modal (§10) must offer manual state controls — at minimum *Block*, *Abandon*, and *Advance/Revert
 one step* — so a human can move any story without a PR.
 
@@ -543,6 +545,13 @@ from stored data, so links are always fresh and we store no URLs.
   **implement the merged spec** at `code_items.spec_path`, and open a PR whose description carries the
   frontmatter with `phase: implementation`. Carries the same shared guardrails (ground in the repo,
   ask when the merged spec is ambiguous or has drifted from the code, verbatim-block self-check).
+- **Bug** (the single launch a `Bug: …` story offers, from either pre-work state): structurally the
+  **skip-refinement** prompt — no spec to read, none to write, none to archive, and a
+  `phase: implementation` block with no `spec-path` — plus the loop a defect needs and a feature
+  doesn't: **reproduce before changing anything**, then a **failing test before the fix**, then the
+  root cause rather than the symptom. The clarification gate is keyed to *reproduction* (ask when
+  the bug won't reproduce) rather than to scope, since that is where guessing is most tempting.
+  Conventions live in the bug skill at `.claude/skills/bug/SKILL.md`.
 
 ### 11.3 Link-click handler (the state transition)
 

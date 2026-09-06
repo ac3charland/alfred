@@ -322,6 +322,12 @@ Run it through the harness (`npm run test:e2e -w frontend -- capture-flow.spec.t
 then embed each shot with `npm run demo -- image`. **Look at every PNG** (Read it)
 before embedding.
 
+**Shoot to a temp dir, not into the demo folder.** `image` *copies* its source into the doc's
+folder under a name it derives (`<doc-stem>-image-<n>.<ext>`), so a source path already inside
+that folder is a self-copy and the command dies on `copyFileSync`. Screenshot to `/tmp` and let
+`image` place the file. (Relative `page.screenshot({ path })` in a capture spec resolves against
+`frontend/`, not the repo root — another reason to use an absolute temp path.)
+
 **Re-shooting an existing doc: `path:` the committed PNGs directly, don't re-`image`.**
 `image` always *appends* — a fresh `<doc>-image-11.png` and a new embed at the bottom —
 leaving the doc's existing embeds pointing at the stale shots. So when a change makes a

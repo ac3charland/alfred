@@ -49,6 +49,10 @@ npm run audit:skills                               # every skill (the full sweep
 npm run lint:skills -w tools/skill-lint -- <path>  # lint a specific file, dir, or glob
 ```
 
+**Pass that `<path>` absolute.** `-w` runs the CLI *in* `tools/skill-lint`, so a repo-root-relative
+path resolves under that workspace and the run exits 2 with `no SKILL.md files matched` — which
+reads like a broken tool rather than a wrong cwd.
+
 **Two modes.** With no argument, `lint:skills` is the **check:fast gate**: it lints only the
 skills **changed on this branch vs trunk**, so editing one skill never surfaces findings on
 the rest of the library (this is what keeps the advisory `description-tightness` warning from

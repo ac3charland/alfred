@@ -207,6 +207,11 @@ function makeSpike(overrides: Partial<CodeStory> = {}): CodeStory {
   return makeStory({ title: 'Spike: outbound notifications via Telegram', ...overrides });
 }
 
+/** A bug story — same trick, different prefix. */
+function makeBug(overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory({ title: 'Bug: the capture box keeps its draft after submit', ...overrides });
+}
+
 describe('StoryDetailModal', () => {
   it('renders nothing visible when closed', () => {
     render(
@@ -623,6 +628,73 @@ describe('StoryDetailModal', () => {
       );
 
       expect(dialog.getByRole('link', { name: /spike pr/i })).toHaveAttribute(
+        'href',
+        'https://github.com/ac3charland/alfred/pull/9',
+      );
+      expect(dialog.queryByRole('link', { name: /implementation pr/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('a bug story', () => {
+    it('marks the header with the Bug badge, immediately after the state chip', () => {
+      const { dialog } = renderModal(makeBug());
+      const badge = dialog.getByText('Bug');
+      expect(badge.previousElementSibling).toHaveTextContent('Needs Refinement');
+      expect(badge.previousElementSibling?.previousElementSibling).toHaveTextContent('ALF-42');
+      // The outline red, matching the Spike badge's shape and differing only in hue.
+      expect(badge).toHaveClass('border-destructive/50', 'text-destructive');
+    });
+
+    it('renders no badge on an ordinary story', () => {
+      const { dialog } = renderModal(makeStory());
+      expect(dialog.queryByText('Bug')).not.toBeInTheDocument();
+    });
+
+    it('offers exactly one launch button — Fix bug in Claude Code', async () => {
+      const onOpenSession = jest.fn(() => Promise.resolve());
+      const story = makeBug({ factory_state: 'needs_refinement' });
+      const { dialog } = renderModal(story, { onOpenSession });
+
+      const launches = dialog.getAllByRole('button', { name: /claude code|skip to development/i });
+      expect(launches.map((button) => button.textContent)).toEqual(['Fix bug in Claude Code']);
+
+      await userEvent
+        .setup()
+        .click(dialog.getByRole('button', { name: /fix bug in claude code/i }));
+      await waitFor(() => {
+        expect(onOpenSession).toHaveBeenCalledWith(
+          expect.objectContaining({ ref: story.ref }),
+          'bug',
+        );
+      });
+    });
+
+    it('renders no "Needs refinement" checkbox — a bug is never refined', () => {
+      const { dialog } = renderModal(makeBug());
+      expect(dialog.queryByRole('checkbox', { name: /needs refinement/i })).not.toBeInTheDocument();
+    });
+
+    it('says no spec is coming, rather than promising a refinement PR that never opens', () => {
+      const { dialog } = renderModal(makeBug({ spec_markdown: null, spec_path: null }));
+
+      expect(dialog.getByText('Spec')).toBeInTheDocument();
+      expect(
+        dialog.getByText('No spec — a bug goes straight to a fix. The fix PR is the whole record.'),
+      ).toBeInTheDocument();
+      expect(
+        dialog.queryByText('No spec yet. The refinement PR writes it when it merges.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('labels the recorded PR "Fix PR" rather than "Implementation PR"', () => {
+      const { dialog } = renderModal(
+        makeBug({
+          factory_state: 'ready_for_review',
+          implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/9',
+        }),
+      );
+
+      expect(dialog.getByRole('link', { name: /fix pr/i })).toHaveAttribute(
         'href',
         'https://github.com/ac3charland/alfred/pull/9',
       );
