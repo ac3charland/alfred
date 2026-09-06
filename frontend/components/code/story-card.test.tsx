@@ -48,6 +48,11 @@ function makeSpike(overrides: Partial<CodeStory> = {}): CodeStory {
   return makeStory({ title: 'Spike: outbound notifications via Telegram', ...overrides });
 }
 
+/** A bug story — same trick, different prefix. */
+function makeBug(overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory({ title: 'Bug: the capture box keeps its draft after submit', ...overrides });
+}
+
 describe('StoryCard', () => {
   it('shows the ref and title', () => {
     render(<StoryCard story={makeStory()} />);
@@ -319,6 +324,77 @@ describe('StoryCard', () => {
     it('offers nothing to launch once the spike is running or finished', () => {
       for (const factory_state of ['in_development', 'ready_for_review', 'done'] as const) {
         const { unmount } = render(<StoryCard story={makeSpike({ factory_state })} />);
+        expect(screen.queryByRole('button', { name: /claude code/i })).not.toBeInTheDocument();
+        unmount();
+      }
+    });
+  });
+
+  describe('a bug story', () => {
+    it('carries a muted-red Bug badge immediately after the ref, in every state', () => {
+      const { rerender } = render(<StoryCard story={makeBug()} />);
+      const badge = screen.getByText('Bug');
+      // Same position and shape as the Spike badge — the two kinds are one family — and the
+      // OUTLINE red, not the filled `destructive` the Abandoned tag wears.
+      expect(badge.previousElementSibling).toHaveTextContent('ALF-42');
+      expect(badge).toHaveClass('border-destructive/50', 'text-destructive');
+      expect(badge).not.toHaveClass('bg-destructive/15');
+
+      rerender(<StoryCard story={makeBug({ factory_state: 'ready_for_review' })} />);
+      expect(screen.getByText('Bug')).toBeInTheDocument();
+
+      rerender(<StoryCard story={makeBug({ factory_state: 'done' })} />);
+      expect(screen.getByText('Bug')).toBeInTheDocument();
+    });
+
+    it('renders no badge on an ordinary story or a spike', () => {
+      const { rerender } = render(<StoryCard story={makeStory()} />);
+      expect(screen.queryByText('Bug')).not.toBeInTheDocument();
+
+      rerender(<StoryCard story={makeSpike()} />);
+      expect(screen.queryByText('Bug')).not.toBeInTheDocument();
+    });
+
+    it.each(['needs_refinement', 'ready_for_dev'] as const)(
+      'offers exactly one launch control in %s — Fix bug in Claude Code',
+      (factory_state) => {
+        render(<StoryCard story={makeBug({ factory_state })} onOpenSession={jest.fn()} />);
+
+        const launches = screen.getAllByRole('button', {
+          name: /claude code|skip to development/i,
+        });
+        expect(launches.map((button) => button.textContent)).toEqual(['Fix bug in Claude Code']);
+      },
+    );
+
+    it('never offers Refine, Skip to Development or Implement', () => {
+      render(<StoryCard story={makeBug()} onOpenSession={jest.fn()} />);
+
+      expect(
+        screen.queryByRole('button', { name: /refine in claude code/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /skip to development/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /implement/i })).not.toBeInTheDocument();
+    });
+
+    it('calls onOpenSession with the bug phase', async () => {
+      const onOpenSession = jest.fn();
+      const story = makeBug();
+      const user = userEvent.setup();
+      render(<StoryCard story={story} onOpenSession={onOpenSession} />);
+
+      await user.click(screen.getByRole('button', { name: /fix bug in claude code/i }));
+
+      await waitFor(() => {
+        expect(onOpenSession).toHaveBeenCalledWith(story, 'bug');
+      });
+    });
+
+    it('offers nothing to launch once the fix is running or finished', () => {
+      for (const factory_state of ['in_development', 'ready_for_review', 'done'] as const) {
+        const { unmount } = render(<StoryCard story={makeBug({ factory_state })} />);
         expect(screen.queryByRole('button', { name: /claude code/i })).not.toBeInTheDocument();
         unmount();
       }

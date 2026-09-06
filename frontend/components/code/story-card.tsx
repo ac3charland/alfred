@@ -3,7 +3,7 @@
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { LaunchButton } from '@/components/atoms/launch-button';
 import { ReviewPrChip } from '@/components/atoms/review-pr-chip';
-import { SpikeBadge } from '@/components/code/spike-badge';
+import { StoryKindBadge } from '@/components/code/story-kind-badge';
 import { type LaunchPhase, launchPhasesFor } from '@/lib/code/launch';
 import { reviewPrUrlFor } from '@/lib/code/review-pr';
 import { dragSurfaceProperty } from '@/lib/dnd/pointer-sensor';
@@ -74,7 +74,7 @@ export function StoryCard({ story, onOpen, onOpenSession }: StoryCardProperties)
       >
         <span className="flex items-center gap-2">
           <span className="font-mono text-xs font-medium text-accent-teal">{story.ref}</span>
-          <SpikeBadge story={story} />
+          <StoryKindBadge story={story} />
           {escape ? (
             <span
               className={cn(

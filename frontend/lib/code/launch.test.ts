@@ -7,9 +7,9 @@ function storyIn(state: CodeFactoryState | null) {
   return { factory_state: state, title: 'Verify the GitHub webhook HMAC signature' };
 }
 
-/** A spike story in `state` — same shape, with the title prefix that classifies it. */
-function spikeIn(state: CodeFactoryState | null) {
-  return { factory_state: state, title: 'Spike: outbound notifications via Telegram' };
+/** A story of a single-session kind in `state` — same shape, with the classifying title prefix. */
+function kindIn(prefix: string, state: CodeFactoryState | null) {
+  return { factory_state: state, title: `${prefix}: outbound notifications via Telegram` };
 }
 
 describe('launchPhasesFor', () => {
@@ -34,19 +34,26 @@ describe('launchPhasesFor', () => {
     expect(launchPhasesFor(storyIn(null))).toEqual([]);
   });
 
-  it('offers a spike its own session — and only that — from both pre-work states', () => {
-    expect(launchPhasesFor(spikeIn('needs_refinement'))).toEqual(['spike']);
-    expect(launchPhasesFor(spikeIn('ready_for_dev'))).toEqual(['spike']);
-  });
+  // A spike and a bug are both ONE session that skips refinement, so they offer the same
+  // single-phase shape — only the phase's name differs.
+  describe.each([
+    { kind: 'spike', prefix: 'Spike' },
+    { kind: 'bug', prefix: 'Bug' },
+  ])('a $kind story', ({ kind, prefix }) => {
+    it('offers its own session — and only that — from both pre-work states', () => {
+      expect(launchPhasesFor(kindIn(prefix, 'needs_refinement'))).toEqual([kind]);
+      expect(launchPhasesFor(kindIn(prefix, 'ready_for_dev'))).toEqual([kind]);
+    });
 
-  it('offers a spike nothing in any other state', () => {
-    expect(launchPhasesFor(spikeIn('in_refinement'))).toEqual([]);
-    expect(launchPhasesFor(spikeIn('in_development'))).toEqual([]);
-    expect(launchPhasesFor(spikeIn('ready_for_review'))).toEqual([]);
-    expect(launchPhasesFor(spikeIn('done'))).toEqual([]);
-    expect(launchPhasesFor(spikeIn('blocked'))).toEqual([]);
-    expect(launchPhasesFor(spikeIn('abandoned'))).toEqual([]);
-    expect(launchPhasesFor(spikeIn(null))).toEqual([]);
+    it('offers nothing in any other state', () => {
+      expect(launchPhasesFor(kindIn(prefix, 'in_refinement'))).toEqual([]);
+      expect(launchPhasesFor(kindIn(prefix, 'in_development'))).toEqual([]);
+      expect(launchPhasesFor(kindIn(prefix, 'ready_for_review'))).toEqual([]);
+      expect(launchPhasesFor(kindIn(prefix, 'done'))).toEqual([]);
+      expect(launchPhasesFor(kindIn(prefix, 'blocked'))).toEqual([]);
+      expect(launchPhasesFor(kindIn(prefix, 'abandoned'))).toEqual([]);
+      expect(launchPhasesFor(kindIn(prefix, null))).toEqual([]);
+    });
   });
 });
 
@@ -68,6 +75,10 @@ describe('LAUNCH_LABELS', () => {
       idle: 'Run spike in Claude Code',
       busy: 'Opening spike',
     });
+    expect(LAUNCH_LABELS.bug).toEqual({
+      idle: 'Fix bug in Claude Code',
+      busy: 'Opening bug fix',
+    });
   });
 });
 
@@ -79,5 +90,7 @@ describe('LAUNCH_TARGET_STATE', () => {
     expect(LAUNCH_TARGET_STATE.bypass).toBe('in_development');
     // A spike is one session: it produces the findings, so there is no separate build phase.
     expect(LAUNCH_TARGET_STATE.spike).toBe('in_development');
+    // A bug is likewise one session — it reproduces and fixes, with no spec phase before it.
+    expect(LAUNCH_TARGET_STATE.bug).toBe('in_development');
   });
 });

@@ -1,26 +1,33 @@
-import { isSpike } from '@/lib/code/spike';
+import { storyKindOf } from '@/lib/code/story-kind';
 import type { CodeFactoryState, CodeStory } from '@/lib/types';
 
 /**
- * Which launch phase the launch action offers: refine, implement, skip-refinement (bypass), or
- * run a spike (a research session whose deliverable is a findings document).
+ * Which launch phase the launch action offers: refine, implement, skip-refinement (bypass), run a
+ * spike (a research session whose deliverable is a findings document), or fix a bug (one session
+ * that reproduces the defect and fixes it).
+ *
+ * `spike` and `bug` are deliberately named for the two single-session story kinds, so a kind IS
+ * its phase — `launchPhasesFor` offers `[kind]` without a lookup table sitting between them.
  */
-export type LaunchPhase = 'refinement' | 'implementation' | 'bypass' | 'spike';
+export type LaunchPhase = 'refinement' | 'implementation' | 'bypass' | 'spike' | 'bug';
 
 /**
  * The ordered list of launch phases a story offers (primary first, so the card/modal render them
  * in a stable order): `needs_refinement` offers `refinement` then `bypass` (skip straight to
  * dev), `ready_for_dev` offers `implementation`, and every other (or unknown) state offers none.
  *
- * A SPIKE offers exactly ONE — its own session — from either pre-work state. Both
- * `needs_refinement` and `ready_for_dev` are reachable before the spike runs (the refinement
- * mark, a reverted PR), and neither `refinement` nor `implementation` is the session a spike
- * wants: one would spec work nobody has decided to do, the other would build it.
+ * A SPIKE or a BUG offers exactly ONE — its own session — from either pre-work state. Both
+ * `needs_refinement` and `ready_for_dev` are reachable before that session runs (the refinement
+ * mark, a reverted PR), and neither `refinement` nor `implementation` is the session either kind
+ * wants. For a spike, one would spec work nobody has decided to do and the other would build it;
+ * for a bug, refining a defect specs a change whose shape only reproducing it reveals, and the
+ * plain implementation prompt would point the session at a spec file that was never written.
  */
 export function launchPhasesFor(story: Pick<CodeStory, 'factory_state' | 'title'>): LaunchPhase[] {
   const state = story.factory_state;
-  if (isSpike(story)) {
-    return state === 'needs_refinement' || state === 'ready_for_dev' ? ['spike'] : [];
+  const kind = storyKindOf(story);
+  if (kind !== 'story') {
+    return state === 'needs_refinement' || state === 'ready_for_dev' ? [kind] : [];
   }
   if (state === 'needs_refinement') return ['refinement', 'bypass'];
   if (state === 'ready_for_dev') return ['implementation'];
@@ -33,6 +40,7 @@ export const LAUNCH_LABELS: Record<LaunchPhase, { idle: string; busy: string }> 
   implementation: { idle: 'Implement in Claude Code', busy: 'Opening implementation' },
   bypass: { idle: 'Skip to Development', busy: 'Opening development' },
   spike: { idle: 'Run spike in Claude Code', busy: 'Opening spike' },
+  bug: { idle: 'Fix bug in Claude Code', busy: 'Opening bug fix' },
 };
 
 /** The factory state a successful launch transitions the story into. */
@@ -41,4 +49,5 @@ export const LAUNCH_TARGET_STATE: Record<LaunchPhase, CodeFactoryState> = {
   implementation: 'in_development',
   bypass: 'in_development', // skip in_refinement AND ready_for_dev — go straight to dev
   spike: 'in_development', // one session produces the findings; there is no separate build phase
+  bug: 'in_development', // likewise one session: reproduce and fix, with no spec phase before it
 };

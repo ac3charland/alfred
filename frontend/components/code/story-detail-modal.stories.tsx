@@ -253,6 +253,28 @@ export const SpikeNeedsRefinement: Story = {
 };
 
 /**
+ * A **bug** story in `needs_refinement`, classified by its `Bug: ` title prefix: the header
+ * carries the muted-red **Bug** badge beside the state chip and a single solid **Fix bug in
+ * Claude Code** button, the "Needs refinement" checkbox is absent (a bug is never refined), and
+ * the document section says no spec is coming rather than promising a refinement PR.
+ */
+export const BugNeedsRefinement: Story = {
+  args: {
+    story: {
+      ...STORY,
+      factory_state: 'needs_refinement',
+      ref: 'ALF-53',
+      title: 'Bug: the capture box keeps its draft after submit',
+      notes: 'Only after a submit that errors — the draft survives into the next capture.',
+      spec_path: null,
+      spec_sha: null,
+      spec_markdown: null,
+      refinement_pr_url: null,
+    },
+  },
+};
+
+/**
  * The same spike once its PR merged: the findings render in the sandboxed frame the specs use,
  * the sha-pinned **View in repo** link points into `docs/spikes/`, and the recorded PR reads
  * **Spike PR**. Nothing is offered to launch — a spike ends at Done, and follow-up is a new story.

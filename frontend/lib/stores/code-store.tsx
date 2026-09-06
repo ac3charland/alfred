@@ -9,6 +9,7 @@ import { nextBlockedFrom } from '@/lib/code/blocked';
 import { storyBoardHref } from '@/lib/code/board-links';
 import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import {
+  buildBugUrl,
   buildBypassUrl,
   buildDevelopmentUrl,
   buildEpicRefinementUrl,
@@ -69,9 +70,9 @@ export const STATE_LABELS: Record<HappyPathState, string> = {
 /**
  * The launch phases whose session will never produce a story spec, so launching one records
  * `requires_refinement: false` alongside the state move: "Skip to Development" declares the
- * story is clear enough to build without one, and a spike is never refined at all.
+ * story is clear enough to build without one, and neither a spike nor a bug is refined at all.
  */
-const NO_SPEC_PHASES = new Set<LaunchPhase>(['bypass', 'spike']);
+const NO_SPEC_PHASES = new Set<LaunchPhase>(['bypass', 'spike', 'bug']);
 
 /** The off-board escape states — rendered via a card treatment, never a column of their own. */
 export function isEscapeState(state: CodeFactoryState | null): boolean {
@@ -1129,6 +1130,7 @@ export function CodeProvider({
           implementation: () => buildDevelopmentUrl(project, story),
           bypass: () => buildBypassUrl(project, story),
           spike: () => buildSpikeUrl(project, story),
+          bug: () => buildBugUrl(project, story),
         };
         const url = buildUrlForPhase[phase]();
         const prompt = promptFromLaunchUrl(url);

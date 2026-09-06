@@ -137,6 +137,38 @@ export const SpikeReadyForReview: Story = {
   },
 };
 
+/**
+ * A **bug** story in `needs_refinement` — classified by its `Bug: ` title prefix. Same shape as
+ * the spike: one badge after the ref, one launch chip, **Fix bug in Claude Code**. The badge is
+ * the muted-RED outline, so the two kinds read as one family differing only in hue.
+ */
+export const Bug: Story = {
+  args: {
+    story: {
+      ...BASE_STORY,
+      ref: 'ALF-49',
+      title: 'Bug: the capture box keeps its draft after submit',
+    },
+  },
+};
+
+/**
+ * The same bug once its fix PR is open: the badge persists into `ready_for_review`, the **Review
+ * PR** chip links the fix PR (recorded in `implementation_pr_url` — a bug PR *is* an
+ * implementation PR), and nothing is offered to launch.
+ */
+export const BugReadyForReview: Story = {
+  args: {
+    story: {
+      ...BASE_STORY,
+      factory_state: 'ready_for_review',
+      ref: 'ALF-49',
+      title: 'Bug: the capture box keeps its draft after submit',
+      implementation_pr_url: 'https://github.com/ac3charland/alfred/pull/64',
+    },
+  },
+};
+
 /** A blocked story: amber edge + a Blocked tag, surfaced via the board's filter toggle. */
 export const Blocked: Story = {
   args: { story: { ...BASE_STORY, factory_state: 'blocked', ref: 'ALF-43' } },

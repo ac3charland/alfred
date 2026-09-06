@@ -13,7 +13,6 @@ import {
 import { EditableTextField } from '@/components/atoms/editable-text-field';
 import { InlineEditTrigger } from '@/components/atoms/inline-edit-trigger';
 import { TextareaField } from '@/components/atoms/textarea-field';
-import { SpikeBadge } from '@/components/code/spike-badge';
 import { StateChip } from '@/components/code/state-chip';
 import { ManualControls } from '@/components/code/story-detail/manual-controls';
 import { PrLink } from '@/components/code/story-detail/pr-link';
@@ -21,8 +20,9 @@ import { PrimaryAction } from '@/components/code/story-detail/primary-action';
 import { PriorityControls } from '@/components/code/story-detail/priority-controls';
 import { RefinementMark } from '@/components/code/story-detail/refinement-mark';
 import { SpecBody } from '@/components/code/story-detail/spec-body';
+import { StoryKindBadge } from '@/components/code/story-kind-badge';
 import type { LaunchPhase } from '@/lib/code/launch';
-import { isSpike } from '@/lib/code/spike';
+import { type StoryKind, storyKindOf } from '@/lib/code/story-kind';
 import { useCodeActions, useEpics, useProjects } from '@/lib/stores/code-store';
 import type { CodeStory, Project } from '@/lib/types';
 
@@ -187,6 +187,17 @@ function EditableNotes({ story }: { story: CodeStory }) {
 }
 
 /** The modal body — split out so it MOUNTS FRESH each open (Radix only renders while open). */
+/**
+ * What the `implementation_pr_url` column holds for each kind — the same column, three different
+ * things: the PR that builds the spec, the one that writes the findings, the one that fixes the
+ * defect. Labelling it by kind keeps the link honest about which it is.
+ */
+const IMPLEMENTATION_PR_LABELS: Record<StoryKind, string> = {
+  story: 'Implementation PR',
+  spike: 'Spike PR',
+  bug: 'Fix PR',
+};
+
 function DetailBody({
   story,
   project,
@@ -197,9 +208,9 @@ function DetailBody({
   onOpenSession: (story: CodeStory, phase: LaunchPhase) => void | Promise<void>;
 }) {
   const projectName = project?.name ?? story.project_name ?? 'Project';
-  // A spike is never refined: its PR is the spike PR, and a "Needs refinement" toggle would
-  // promise a phase that never runs, so the control is absent rather than disabled.
-  const spike = isSpike(story);
+  // Neither a spike nor a bug is ever refined: each runs as one session, so a "Needs refinement"
+  // toggle would promise a phase that never runs — the control is absent rather than disabled.
+  const kind = storyKindOf(story);
 
   return (
     <>
@@ -208,7 +219,7 @@ function DetailBody({
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm font-medium text-accent-teal">{story.ref}</span>
             <StateChip state={story.factory_state} />
-            <SpikeBadge story={story} />
+            <StoryKindBadge story={story} />
           </div>
           <EditableTitle story={story} />
           <p className="text-xs text-muted-foreground">
@@ -226,12 +237,9 @@ function DetailBody({
           <PrLink label="Refinement PR" url={story.refinement_pr_url} />
         )}
         {story.implementation_pr_url === null ? null : (
-          <PrLink
-            label={spike ? 'Spike PR' : 'Implementation PR'}
-            url={story.implementation_pr_url}
-          />
+          <PrLink label={IMPLEMENTATION_PR_LABELS[kind]} url={story.implementation_pr_url} />
         )}
-        {spike ? null : <RefinementMark story={story} />}
+        {kind === 'story' ? <RefinementMark story={story} /> : null}
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">

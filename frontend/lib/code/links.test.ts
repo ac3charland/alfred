@@ -1,6 +1,7 @@
 import type { CodeStory, Epic, Project } from '@/lib/types';
 
 import {
+  buildBugUrl,
   buildBypassUrl,
   buildDevelopmentUrl,
   buildEpicRefinementUrl,
@@ -618,6 +619,108 @@ describe('buildSpikeUrl', () => {
     expect(prompt).toContain('TRUNCATED');
     expect(prompt).toContain(`${'x'.repeat(1000)}…`);
     expect(prompt).not.toContain('x'.repeat(1001));
+  });
+});
+
+/** A bug story — the `Bug:` title prefix is the whole classification. */
+function makeBug(overrides: Partial<CodeStory> = {}): CodeStory {
+  return makeStory({ title: 'Bug: the capture box keeps its draft after submit', ...overrides });
+}
+
+describe('buildBugUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const { base, repo } = parse(buildBugUrl(makeProject(), makeBug()));
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('leads the prompt with the ref and title so the browser tab is scannable', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt.split('\n', 1)[0]).toBe(
+      'ALF-42: Bug: the capture box keeps its draft after submit',
+    );
+  });
+
+  it('frames the session as one that reproduces, proves and fixes — no spec in between', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toMatch(/BUG-FIX session/);
+    expect(prompt).toMatch(/reproduce/i);
+    expect(prompt).toMatch(/then fix it/i);
+  });
+
+  it('tells Claude to ground itself in the repo and its own conventions first', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+  });
+
+  it('gates on reproduction: ask the human rather than guess at a fix', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toMatch(/if you cannot reproduce it/i);
+    expect(prompt).toMatch(/ask me here/i);
+    expect(prompt).toMatch(/rather than guessing/i);
+  });
+
+  it('demands a failing test BEFORE the fix — the red step, not just any test', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toMatch(/FAILING test first/i);
+    expect(prompt).toMatch(/passes once it.s fixed/i);
+  });
+
+  it('asks for the root cause and a minimal fix, not the symptom', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toMatch(/ROOT CAUSE/);
+    expect(prompt).toMatch(/not the symptom/i);
+    expect(prompt).toMatch(/keep the fix minimal/i);
+  });
+
+  it('defers the fix conventions to the bug skill, with a no-skill fallback', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toContain('.claude/skills/bug/SKILL.md');
+    expect(prompt).toMatch(/if the skill is absent/i);
+  });
+
+  it('embeds the alfred block with the IMPLEMENTATION phase (so the Worker advances it)', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    // A bug PR needs no new phase: its transitions are an implementation PR's, exactly.
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-42');
+    expect(prompt).toContain('phase: implementation');
+  });
+
+  it('does NOT name a spec to read, a spec-path, or an archive step (a bug writes no document)', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).not.toContain('spec-path:');
+    expect(prompt).not.toContain('docs/specs');
+    expect(prompt).not.toMatch(/merged spec/i);
+    expect(prompt).not.toMatch(/archive/i);
+    expect(prompt).not.toContain('.claude/skills/implement-spec/SKILL.md');
+  });
+
+  it('does NOT carry the html-preview step (there is no document to render)', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).not.toMatch(/htmlpreview/i);
+  });
+
+  it('ends with a self-check that the once-failing test now passes and the block is verbatim', () => {
+    const prompt = parse(buildBugUrl(makeProject(), makeBug())).prompt ?? '';
+    expect(prompt).toMatch(/now passes/i);
+    expect(prompt).toMatch(/reproduced exactly/i);
+  });
+
+  it('inlines the ticket notes as context — the bug report itself', () => {
+    const prompt =
+      parse(buildBugUrl(makeProject(), makeBug({ notes: 'Only on mobile Safari.' }))).prompt ?? '';
+    expect(prompt).toContain('Context (from the ticket):');
+    expect(prompt).toContain('Only on mobile Safari.');
+  });
+
+  it('carries the epic-context paragraph when the epic has a spec', () => {
+    const prompt =
+      parse(buildBugUrl(makeProject(), makeBug({ epic_spec_path: 'docs/epics/ALF-12.html' })))
+        .prompt ?? '';
+    expect(prompt).toContain('docs/epics/ALF-12.html');
+    expect(prompt).toMatch(/background/i);
   });
 });
 

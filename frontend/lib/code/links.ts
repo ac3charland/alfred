@@ -36,6 +36,9 @@ const IMPLEMENT_SKILL_PATH = '.claude/skills/implement-spec/SKILL.md';
 /** The spike-guide skill dropped into each project repo; a spike session auto-loads it. */
 const SPIKE_SKILL_PATH = '.claude/skills/spike/SKILL.md';
 
+/** The bug-guide skill dropped into each project repo; a bug-fix session auto-loads it. */
+const BUG_SKILL_PATH = '.claude/skills/bug/SKILL.md';
+
 /**
  * Document-writing PRs (both refinement phases, and a spike) record where their document ended
  * up rather than alfred guessing it up front. The session's skill — not this prompt — decides the
@@ -280,6 +283,49 @@ export function buildSpikeUrl(project: Project, story: CodeStory): string {
     '',
     `6. ${htmlPreviewStep(project)}`,
     `7. Before opening the PR, confirm the findings document is saved, \`spec-path\` above names that document (not the placeholder), the preview link is there, and the block is reproduced exactly.`,
+    notesContext(story.notes, 'the ticket'),
+  ].join('\n');
+  return buildUrl(project, prompt);
+}
+
+/**
+ * Build the BUG-FIX link prompt (the single launch a `Bug: …` story offers, from either pre-work
+ * state): reproduce the defect, pin it with a failing test, fix the root cause, and open ONE PR —
+ * the whole ticket in one session, with no refinement phase in between.
+ *
+ * Structurally it is the BYPASS prompt, not the spike one: a bug produces CODE, so it writes no
+ * document, names no `spec-path`, has nothing to archive and nothing to render — hence no
+ * html-preview step — and its block carries `phase: implementation`, which is what makes this
+ * cost the Worker nothing. A bug PR's transitions ARE an implementation PR's (open → review,
+ * merge → done, closed-unmerged → back to `ready_for_dev`, where the fix launch is offered
+ * again), so a `bug` phase would have been a second name for the same three rows.
+ *
+ * What it adds over bypass is the loop a defect needs and a feature doesn't: REPRODUCE before
+ * changing anything, then a FAILING test before the fix. Both are stated as ordered steps because
+ * the failure mode here isn't a wrong plan but a plausible one — a model handed a bug report will
+ * happily patch the first suspicious line it reads, leaving a green suite that never went red and
+ * a symptom fixed in place of a cause. The clarification gate is therefore keyed to reproduction
+ * ("if you cannot reproduce it, ask") rather than to scope, since an unreproducible bug is the
+ * case where guessing is most tempting and least useful.
+ */
+export function buildBugUrl(project: Project, story: CodeStory): string {
+  const ref = refOf(story);
+  const prompt = [
+    `${ref}: ${titleOf(story)}`,
+    '',
+    `You are fixing the BUG ${ref}. This is a BUG-FIX session: there is no plan to read and no spec to write — reproduce the defect, prove it with a failing test, then fix it, all in this one session.`,
+    '',
+    ...epicContextLines(story),
+    `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and work from the code that already exists.`,
+    `2. REPRODUCE the bug before you change anything, and tell me what you found: the behaviour you actually see, the behaviour you expected, and the code responsible. If you cannot reproduce it, or the report below doesn't pin down what's broken, ASK ME HERE rather than guessing at a fix — you don't need to guess, I'm in this tab.`,
+    `3. Follow the bug skill at \`${BUG_SKILL_PATH}\` (it auto-loads in a bug-fix session) — it owns this repo's conventions for reproducing, pinning and fixing a defect. If the skill is absent, follow the repo's own testing conventions.`,
+    `4. Pin the bug with a FAILING test first: one that fails for the reason the bug exists, and passes once it's fixed. A test written after the fix proves only that the code does what it now does.`,
+    `5. Fix the ROOT CAUSE, not the symptom, and keep the fix minimal — this defect and whatever else is broken for the same reason, nothing more. If you find adjacent bugs, tell me rather than folding them in.`,
+    `6. When done, open a pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
+    '',
+    frontmatterBlock(ref, 'implementation'),
+    '',
+    `7. Before opening the PR, confirm the test you wrote now passes, the rest of the suite is green, and the block above is reproduced exactly.`,
     notesContext(story.notes, 'the ticket'),
   ].join('\n');
   return buildUrl(project, prompt);
