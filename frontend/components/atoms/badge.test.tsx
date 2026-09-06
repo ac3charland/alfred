@@ -26,6 +26,15 @@ describe('Badge', () => {
     expect(badgeVariants({ variant: 'dueToday' })).toContain('text-accent-amber');
     expect(badgeVariants({ variant: 'overdue' })).toContain('border-accent-red/50');
     expect(badgeVariants({ variant: 'overdue' })).toContain('text-accent-red');
+    expect(badgeVariants({ variant: 'destructiveOutline' })).toContain('border-destructive/50');
+    expect(badgeVariants({ variant: 'destructiveOutline' })).toContain('text-destructive');
+  });
+
+  it('gives destructiveOutline the bordered treatment, not the filled one', () => {
+    // The outline form is the muted red: it shares the `muted` chip's shape (so the two
+    // story-kind badges read as one family) and differs only in hue, where the filled
+    // `destructive` is the tone the board already spends on the Abandoned tag.
+    expect(badgeVariants({ variant: 'destructiveOutline' })).not.toContain('bg-destructive');
   });
 
   it('gives the plain variant only the pill base, leaving tone to the caller className', () => {

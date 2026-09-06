@@ -26,6 +26,10 @@ const badgeVariants = cva('shrink-0 rounded-full px-2 py-0.5 text-xs', {
       accent: 'bg-accent-teal/15 text-accent-teal',
       alert: 'bg-amber-500/15 text-amber-400',
       destructive: 'bg-destructive/15 text-destructive',
+      // The outline form of the same tone — a red LABEL rather than a red alarm. Kept distinct
+      // from the filled `destructive` so a category chip (the Bug badge) doesn't wear the
+      // treatment the board already spends on the Abandoned tag.
+      destructiveOutline: 'border border-destructive/50 text-destructive',
       due: 'border border-accent-blue/50 text-accent-blue',
       dueToday: 'border border-accent-amber/50 text-accent-amber',
       overdue: 'border border-accent-red/50 text-accent-red',
