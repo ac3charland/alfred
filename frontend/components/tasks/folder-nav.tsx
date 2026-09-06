@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarRange, Check, ListOrdered, Plus, Repeat } from 'lucide-react';
+import { CalendarRange, Check, ListOrdered, Plus, Repeat, Sun } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
 
@@ -20,8 +20,9 @@ interface FolderNavProperties {
 }
 
 /**
- * Sidebar navigation: the Priority view (the tasks module's default view) pinned at the top,
- * then the folder list with CRUD, then a Completed link.
+ * Sidebar navigation: the cross-cutting views (Priority — the tasks module's default view —
+ * then Today, Week Plan, Habits) pinned at the top, then the folder list with CRUD, then a
+ * Completed link.
  *
  * No Inbox link (removed): the `alfred` wordmark is the way into the inbox/capture
  * screen (it navigates to `/`), and the inbox list still opens via `?view=inbox`. Folders
@@ -104,8 +105,8 @@ export function FolderNav({ onClose }: FolderNavProperties) {
 
   return (
     <nav aria-label="Navigation" className="flex flex-col gap-1 py-2">
-      {/* Priority — the tasks module's default view — and the Week Plan document beneath it,
-          both pinned above the folders. */}
+      {/* Priority — the tasks module's default view — then Today, the Week Plan document, and
+          Habits, all pinned above the folders. */}
       <div className="flex flex-col gap-0.5">
         <ViewLink
           href="/priority"
@@ -114,6 +115,10 @@ export function FolderNav({ onClose }: FolderNavProperties) {
         >
           <ListOrdered size={15} className="shrink-0" />
           <span>Priority</span>
+        </ViewLink>
+        <ViewLink href="/today" className={navLinkClass(isActive('/today'))} {...closeProperty}>
+          <Sun size={15} className="shrink-0" />
+          <span>Today</span>
         </ViewLink>
         <ViewLink href="/plan" className={navLinkClass(isActive('/plan'))} {...closeProperty}>
           <CalendarRange size={15} className="shrink-0" />
