@@ -2,6 +2,7 @@ import { pinClock } from '@/lib/pin-clock';
 
 import {
   MONTHS,
+  addDays,
   formatDueDate,
   isDueDateOverdue,
   isDueToday,
@@ -287,5 +288,41 @@ describe('monthGridDays', () => {
     // December 2025 trails into January 2026.
     const dec = monthGridDays(2025, 11);
     expect(dec.at(-1)?.iso.startsWith('2026-01')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addDays — calendar-day arithmetic over `YYYY-MM-DD` strings. It lives here (not in
+// lib/habits) because the row menu's due-date presets step off today too; `lib/habits/dates`
+// re-exports it, so the habit call sites are unchanged.
+// ---------------------------------------------------------------------------
+
+describe('addDays', () => {
+  it('crosses a month end', () => {
+    expect(addDays('2026-07-31', 1)).toBe('2026-08-01');
+    expect(addDays('2026-08-01', -1)).toBe('2026-07-31');
+  });
+
+  it('crosses a year end', () => {
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDays('2027-01-01', -1)).toBe('2026-12-31');
+  });
+
+  it('crosses a leap day', () => {
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
+    expect(addDays('2028-02-29', 1)).toBe('2028-03-01');
+  });
+
+  it('is unaffected by a DST transition — these are calendar days, not instants', () => {
+    // A naive instant + 24h across the US spring-forward lands back on the same local date.
+    expect(addDays('2026-03-07', 1)).toBe('2026-03-08');
+    expect(addDays('2026-03-08', 1)).toBe('2026-03-09');
+  });
+
+  it('needs a date-only input — a raw timestamptz is nonsense to it', () => {
+    // Pinned here so a caller reading a `timestamptz` column knows to `.slice(0, 10)` first:
+    // the split on "-" hands `Number('04T00:00:00+00:00')` → NaN, and `new Date(NaN)` throws
+    // on `toISOString()`. The row menu's due-date presets normalise for exactly this reason.
+    expect(() => addDays('2026-09-04T00:00:00+00:00', 1)).toThrow();
   });
 });

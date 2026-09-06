@@ -4,7 +4,7 @@ import { userEvent, within } from 'storybook/test';
 import { todayISODate } from '@/lib/date-utils';
 import { CodeProvider } from '@/lib/stores/code-store';
 import type { ItemNode } from '@/lib/tree';
-import type { Project } from '@/lib/types';
+import type { Epic, Project } from '@/lib/types';
 
 import { TaskRow } from './task-row';
 import { taskListContainerClass } from './task-row.styles';
@@ -613,6 +613,98 @@ export const MobileNotesTruncate: Story = {
       viewport: { width: 390, height: 844 },
     },
   },
+};
+
+// ── ALF-191 — the ⋯ menu's per-type label group ──
+//
+// Each story opens the menu in its play function so the shape the menu takes for that row type
+// is snapshot-covered. `visualTest.target` is `body`, not the default `#storybook-root`: Radix
+// portals `DropdownMenuContent` outside the root, so the default target would capture the row
+// with no menu at all — green forever, and blind to exactly what these stories are for.
+
+const STORY_EPIC: Epic = {
+  id: 'epic-triage',
+  project_id: 'project-alf',
+  name: 'Inbox triage',
+  notes: null,
+  ref_number: 140,
+  ref: 'ALF-140',
+  archived_at: null,
+  spec_path: null,
+  spec_sha: null,
+  spec_markdown: null,
+  refinement_pr_url: null,
+  created_at: '2025-01-01T00:00:00Z',
+};
+
+const MENU_FOLDERS = [
+  { id: 'f1', name: 'Work', created_at: '2025-01-01T00:00:00Z' },
+  { id: 'f2', name: 'Home', created_at: '2025-01-02T00:00:00Z' },
+];
+
+/** Open the row's ⋯ menu and wait for it to render into its portal. */
+async function openRowMenu(canvasElement: HTMLElement): Promise<void> {
+  const canvas = within(canvasElement);
+  await userEvent.click(canvas.getByRole('button', { name: 'More actions' }));
+  await within(document.body).findByRole('menu');
+}
+
+const menuStory = {
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    await openRowMenu(canvasElement);
+  },
+  parameters: { visualTest: { target: 'body' }, store: { folders: MENU_FOLDERS } },
+};
+
+/** An unclassified row: Classify as… is the whole label group — there is no type yet. */
+export const MenuUnclassified: Story = {
+  ...menuStory,
+  args: { node: { ...BASE_NODE, item_type: 'unclassified', title: 'Ship the inbound webhook' } },
+};
+
+/**
+ * An undispatched task root: Due date · Priority · Folder in the slot Classify as… vacated, and
+ * Dispatch still reading "needs a folder" below them.
+ */
+export const MenuTask: Story = {
+  ...menuStory,
+  args: { node: { ...BASE_NODE, title: 'Plan the sprint' } },
+};
+
+/**
+ * A childless code root with no project: Project… above an Epic… that is dimmed and carries its
+ * blocker as VISIBLE text — a disabled sub-trigger is `pointer-events-none`, so its tooltip can
+ * never be hovered into view.
+ */
+export const MenuCodeStoryNoProject: Story = {
+  ...menuStory,
+  args: {
+    node: { ...BASE_NODE, item_type: 'code', title: 'Add the retry backoff' },
+  },
+};
+
+/** The same code story once a project is set: Epic… lights up, listing that project's epics. */
+export const MenuCodeStoryWithProject: Story = {
+  ...menuStory,
+  args: {
+    node: {
+      ...BASE_NODE,
+      item_type: 'code',
+      title: 'Add the retry backoff',
+      intended_project_id: 'project-alf',
+    },
+  },
+  decorators: [
+    (Story) => (
+      <CodeProvider
+        initialProjects={[STORY_PROJECT]}
+        initialEpics={[STORY_EPIC]}
+        initialStories={[]}
+      >
+        <Story />
+      </CodeProvider>
+    ),
+  ],
 };
 
 // A deeply nested completed item shows every ancestor, oldest → youngest, joined by " > ".

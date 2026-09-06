@@ -3,10 +3,11 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
-import { todayISODate } from '@/lib/date-utils';
+import { addDays, todayISODate } from '@/lib/date-utils';
 import { pinClock } from '@/lib/pin-clock';
 import { DEPARTURE_MS } from '@/lib/stores/departing-items-store';
 import type { TaskScope } from '@/lib/stores/tasks-store';
+import { DISPATCH_READY_LABEL } from '@/lib/tasks/dispatch';
 import { renderWithProviders } from '@/lib/test-utils';
 import { buildTree, tempId } from '@/lib/tree';
 import type { Epic, Folder, Item, Project } from '@/lib/types';
@@ -290,6 +291,40 @@ async function openSubmenu(user: ReturnType<typeof userEvent.setup>, name: RegEx
   }
   expect(trigger).toHaveFocus();
   await user.keyboard('[ArrowRight]');
+}
+
+/**
+ * Open a row's ⋯ menu, then the label submenu behind `label`, and wait for `firstOption`.
+ * Hovering the sub-trigger rather than walking to it keeps this independent of the menu's
+ * per-type shape, which is exactly what the label-group tests vary.
+ */
+async function openLabelSubmenu(
+  user: ReturnType<typeof userEvent.setup>,
+  label: RegExp,
+  firstOption: string,
+): Promise<void> {
+  await user.click(screen.getByRole('button', { name: /more actions/i }));
+  await screen.findByRole('menu');
+  await user.hover(screen.getByRole('menuitem', { name: label }));
+  await user.keyboard('[ArrowRight]');
+  await screen.findByRole('menuitem', { name: firstOption });
+}
+
+/** Step down `steps` entries from an open submenu's focused first item, then select. */
+async function pickSubmenuOption(
+  user: ReturnType<typeof userEvent.setup>,
+  steps: number,
+): Promise<void> {
+  for (let index = 0; index < steps; index += 1) await user.keyboard('[ArrowDown]');
+  await user.keyboard('[Enter]');
+}
+
+/** The visible entry names of whatever menu items are currently rendered. */
+function menuEntryNames(): string[] {
+  return screen
+    .getAllByRole('menuitem')
+    .map((item) => item.textContent)
+    .filter((text) => text !== '');
 }
 
 // ---------------------------------------------------------------------------
@@ -2420,38 +2455,37 @@ describe('TaskRow — classification & type-gating', () => {
       expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
     });
 
-    // ALF-170: correcting a type is an ordinary act now, so the submenu stays for classified
-    // childless roots too — the same shape gate the database can't enforce on a parent.
-    it('keeps Classify as… enabled on a classified childless root (task and code)', async () => {
+    // The type is one-way now: a flip after the fields are filled would silently drop the ones
+    // the new type forbids, so a typed row simply has no Classify entry — its per-type label
+    // submenus take that slot, and Delete + re-capture is the way back.
+    it.each([
+      ['task', BASE_ITEM],
+      ['code', CODE_ITEM],
+    ])('hides Classify as… once the row is typed (%s)', async (_type, item) => {
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM]);
+      renderTasks([item]);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
 
-      const trigger = screen.getByRole('menuitem', { name: 'Classify as…' });
-      expect(trigger).toBeInTheDocument();
-      expect(trigger).not.toHaveAttribute('data-disabled');
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
-    it('disables Classify as… (with the shape hint) on a row with subtasks', async () => {
+    it('offers no Classify as… — and no shape hint — on a row with subtasks', async () => {
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
+      renderTasks([{ ...BASE_ITEM, item_type: 'unclassified' }, CHILD_ITEM]);
 
       await user.click(screen.getByRole('button', { name: /more actions/i }));
       await screen.findByRole('menu');
 
-      const trigger = screen.getByRole('menuitem', { name: 'Classify as…' });
-      expect(trigger).toHaveAttribute('data-disabled');
-      expect(trigger).toHaveAttribute(
-        'title',
-        'Only a top-level item with no subtasks can change type',
-      );
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+      // The entry is absent, not disabled — so the old "why is this greyed out?" hint is gone.
+      expect(screen.queryByText(/can change type/i)).not.toBeInTheDocument();
     });
 
-    it('disables Classify as… on a subtask row', async () => {
+    it('offers no Classify as… on a subtask row', async () => {
       const user = userEvent.setup();
-      renderTasks([BASE_ITEM, CHILD_ITEM]);
+      renderTasks([BASE_ITEM, { ...CHILD_ITEM, item_type: 'unclassified' }]);
 
       await user.click(screen.getByRole('button', { name: /expand subtasks/i }));
       const subtaskRow = screen.getByText('Write unit tests').closest('li');
@@ -2461,9 +2495,19 @@ describe('TaskRow — classification & type-gating', () => {
       );
       await screen.findByRole('menu');
 
-      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toHaveAttribute(
-        'data-disabled',
-      );
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/can change type/i)).not.toBeInTheDocument();
+    });
+
+    it('offers no Classify as… while the row is still saving (a temp id)', async () => {
+      // A PATCH keyed by a temp id 400s and rolls back; the entries wait out the reconcile.
+      const user = userEvent.setup();
+      renderTasks([{ ...UNCLASSIFIED_ITEM, id: tempId() }]);
+
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByRole('menuitem', { name: 'Classify as…' })).not.toBeInTheDocument();
     });
 
     it('classifies as Task (item_type → task) and reveals the task affordances', async () => {
@@ -3286,13 +3330,15 @@ describe('TaskRow — ⋯ menu (ALF-67)', () => {
     expect(screen.getAllByRole('menuitem')[0]).toHaveAccessibleName(/open details/i);
   });
 
-  it('no longer offers Set due date / Set priority / Add notes', async () => {
+  // ALF-67 pulled flat "Set due date / Set priority / Add notes" entries out of this menu
+  // because each one only opened somewhere else. Due date and priority came back as SUBMENUS,
+  // which set a value in place from a list — see the label-group block for those. Notes did
+  // not, and won't: a textarea is not a menu.
+  it('still offers no Add notes entry', async () => {
     const user = userEvent.setup();
     renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', notes: 'hi', priority: 'high' }]);
     await user.click(screen.getByRole('button', { name: /more actions/i }));
     await screen.findByRole('menu');
-    expect(screen.queryByRole('menuitem', { name: /due date/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: /priority/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: /notes/i })).not.toBeInTheDocument();
   });
 
@@ -3778,6 +3824,444 @@ describe('TaskRow — detail panel vs add-subtask entry (ALF-128)', () => {
     expect(screen.queryByTestId('task-detail-panel')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { notes: 'Buy milk' });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ALF-191 — the ⋯ menu's per-type label submenus: an Inbox row can be made
+// dispatch-ready without opening the detail panel.
+// ---------------------------------------------------------------------------
+
+describe('TaskRow — the ⋯ menu label group (ALF-191)', () => {
+  const PROJECT: Project = {
+    description: null,
+    id: 'p1',
+    name: 'Alfred',
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+    github_url: null,
+    ref_seq: 0,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+  const EPIC: Epic = {
+    id: 'e1',
+    project_id: 'p1',
+    name: 'Inbox triage',
+    notes: null,
+    ref_number: 140,
+    ref: 'ALF-140',
+    archived_at: null,
+    spec_path: null,
+    spec_sha: null,
+    spec_markdown: null,
+    refinement_pr_url: null,
+    created_at: '2025-01-01T00:00:00Z',
+  };
+  /** An epic in a project the row is NOT pointed at — it must never reach the submenu. */
+  const OTHER_EPIC: Epic = { ...EPIC, id: 'e2', project_id: 'p2', name: 'Other work' };
+  const seeds = { folders: [FOLDER, ARCHIVE], projects: [PROJECT], epics: [EPIC, OTHER_EPIC] };
+
+  const CODE_ROOT: Item = { ...BASE_ITEM, item_type: 'code' };
+
+  describe('which submenus a row carries', () => {
+    it('a task root in the Inbox: Due date, Priority and Folder — no Project or Epic', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Due date…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Priority…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Folder…' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Project…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+    });
+
+    it('a task SUBTASK: Due date and Priority, but no Folder', async () => {
+      // A subtask's residency travels with its root, so it has no folder of its own to label.
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM, CHILD_ITEM], seeds);
+      await expandRow(user, 'Write tests');
+      await openMenuFor(user, 'Write unit tests');
+
+      expect(screen.getByRole('menuitem', { name: 'Due date…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Priority…' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+    });
+
+    it('a DISPATCHED task: Move to… owns the folder, so no Folder submenu', async () => {
+      const user = userEvent.setup();
+      renderTasks([FILED_ITEM], ARCHIVE_VIEW);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Due date…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Move to…' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+    });
+
+    it('a task in the Completed view: no Folder submenu whatever its residency', async () => {
+      // There the row's context label owns "where this lives" and the folder chip stays off, so
+      // a folder written from here would land nowhere visible.
+      const user = userEvent.setup();
+      renderTasks([COMPLETED_ITEM], { ...COMPLETED, folders: [FOLDER] });
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+    });
+
+    it('a childless code root: Project and Epic — no task fields', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ROOT], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Project…' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /^epic/i })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Due date…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Priority…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'Folder…' })).not.toBeInTheDocument();
+    });
+
+    it('a code root WITH children: Project but no Epic (the conversion creates its epic)', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ROOT, { ...CHILD_ITEM, item_type: 'code' }], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Project…' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+    });
+
+    it('a code CHILD: neither Project nor Epic (it inherits its parent-turned-epic)', async () => {
+      const user = userEvent.setup();
+      renderTasks([CODE_ROOT, { ...CHILD_ITEM, item_type: 'code' }], seeds);
+      await expandRow(user, 'Write tests');
+      await openMenuFor(user, 'Write unit tests');
+
+      expect(screen.queryByRole('menuitem', { name: 'Project…' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+    });
+
+    it('an unclassified row: none of the five — it carries Classify as… instead', async () => {
+      const user = userEvent.setup();
+      renderTasks([UNCLASSIFIED_ITEM], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Classify as…' })).toBeInTheDocument();
+      for (const name of ['Due date…', 'Priority…', 'Folder…', 'Project…']) {
+        expect(screen.queryByRole('menuitem', { name })).not.toBeInTheDocument();
+      }
+      expect(screen.queryByRole('menuitem', { name: /^epic/i })).not.toBeInTheDocument();
+    });
+
+    it('a row still saving (a temp id): none of the five, and no Classify as… either', async () => {
+      // A PATCH keyed by a temp id 400s and rolls back, leaving a bare failure toast after a
+      // pick that looked fine — so the entries wait out the reconcile.
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, id: tempId() }], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(menuEntryNames()).toEqual(['Open details', 'Add subtask', 'Dispatch', 'Delete']);
+    });
+
+    it('renders the label group at every breakpoint (not md:hidden)', async () => {
+      // jsdom ignores media queries, so an accidental breakpoint gate would render identically
+      // here — the class itself is the assertion (the twin of the Add-subtask item's).
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Due date…' })).not.toHaveClass('md:hidden');
+      expect(screen.getByRole('menuitem', { name: 'Priority…' })).not.toHaveClass('md:hidden');
+      expect(screen.getByRole('menuitem', { name: 'Folder…' })).not.toHaveClass('md:hidden');
+    });
+  });
+
+  describe('Due date', () => {
+    it('offers the three presets and Custom…, but no clear entry until a date is set', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+
+      expect(screen.getByRole('menuitem', { name: 'Tomorrow' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Next week' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Custom…' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'No due date' })).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['Today', 0, 0],
+      ['Tomorrow', 1, 1],
+      ['Next week', 2, 7],
+    ])('persists the %s preset as that exact calendar date', async (_label, steps, offset) => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: addDays(todayISODate(), offset) });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      await pickSubmenuOption(user, steps);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          due_date: addDays(todayISODate(), offset),
+        });
+      });
+    });
+
+    it('ticks the matching preset for a row whose due_date is a full timestamptz', async () => {
+      // `due_date` is a `timestamptz`, so a reconciled row carries `…T00:00:00+00:00`. Compared
+      // raw, no preset would ever tick — every date-only fixture in this file hides that.
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: `${todayISODate()}T00:00:00+00:00` }], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+
+      expect(screen.getByRole('menuitem', { name: 'Today' }).querySelector('svg')).not.toBeNull();
+      expect(screen.getByRole('menuitem', { name: 'Tomorrow' }).querySelector('svg')).toBeNull();
+    });
+
+    it('offers No due date once a date is set, and clears the recurrence with it', async () => {
+      // Clearing routes through the clear path, not `onSelectDueDate(null)`: a recurrence rule
+      // has nowhere to anchor without a due date.
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: null, recurrence: null });
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31', recurrence: 'FREQ=DAILY' }], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      // Today · Tomorrow · Next week · No due date · Custom…
+      await pickSubmenuOption(user, 3);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: null, recurrence: null });
+      });
+    });
+
+    it('Custom… closes the menu and opens the calendar, which persists a picked day', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: '2026-07-15' });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      await pickSubmenuOption(user, 3);
+
+      // The menu is gone; the calendar took its place, anchored to the same ⋯ button.
+      await waitFor(() => {
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      });
+      const calendar = await screen.findByRole('button', { name: /july 15, 2026/i });
+      await user.click(calendar);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: '2026-07-15' });
+      });
+    });
+
+    it('the calendar’s Clear clears the date', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, due_date: null });
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, due_date: '2099-12-31' }], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      // Today · Tomorrow · Next week · No due date · Custom…
+      await pickSubmenuOption(user, 4);
+      // "Today" is in the calendar footer too, so scope the query to the popover.
+      const clear = await screen.findByRole('button', { name: 'Clear' });
+      await user.click(clear);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { due_date: null });
+      });
+    });
+
+    it('Escape dismisses the calendar without a write', async () => {
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await openLabelSubmenu(user, /^due date/i, 'Today');
+      await pickSubmenuOption(user, 3);
+      await screen.findByRole('button', { name: /previous month/i });
+
+      await user.keyboard('[Escape]');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: /previous month/i })).not.toBeInTheDocument();
+      });
+      expect(mockUpdateItem).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Priority', () => {
+    it('offers No priority plus the three levels, ticking the current one', async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, priority: 'medium' }], seeds);
+      await openLabelSubmenu(user, /^priority/i, 'No priority');
+
+      expect(screen.getByRole('menuitem', { name: 'High' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Low' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('menuitem', { name: 'Medium' }).querySelector('svg.text-accent-teal'),
+      ).not.toBeNull();
+    });
+
+    it('writes the picked level', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, priority: 'high' });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await openLabelSubmenu(user, /^priority/i, 'No priority');
+      await pickSubmenuOption(user, 1);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { priority: 'high' });
+      });
+    });
+
+    it('clears the level through No priority', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, priority: null });
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, priority: 'high' }], seeds);
+      await openLabelSubmenu(user, /^priority/i, 'No priority');
+      await pickSubmenuOption(user, 0);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { priority: null });
+      });
+    });
+  });
+
+  describe('Folder', () => {
+    it('lists the folders plus No folder, and labels without moving the row', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, folder_id: FOLDER.id });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+      await openLabelSubmenu(user, /^folder/i, 'No folder');
+      expect(screen.getByRole('menuitem', { name: 'Work' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument();
+      await pickSubmenuOption(user, 1);
+
+      // `folder_id` alone — no `dispatched_at`, so the row stays in the Inbox with a label on it.
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { folder_id: FOLDER.id });
+      });
+      expect(screen.getByLabelText('Folder: Work')).toBeInTheDocument();
+    });
+
+    it('flips the dispatch-ready pip on, and Dispatch with it', async () => {
+      mockUpdateItem.mockResolvedValue({ ...BASE_ITEM, folder_id: FOLDER.id });
+      const user = userEvent.setup();
+      renderTasks([BASE_ITEM], seeds);
+
+      // Before: not ready, and Dispatch says why.
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      expect(screen.getByRole('menuitem', { name: /^dispatch$/i })).toHaveAttribute(
+        'title',
+        'Not ready — needs a folder',
+      );
+      await user.keyboard('[Escape]');
+
+      await openLabelSubmenu(user, /^folder/i, 'No folder');
+      await pickSubmenuOption(user, 1);
+
+      await screen.findByLabelText(DISPATCH_READY_LABEL);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+      expect(screen.getByRole('menuitem', { name: /^dispatch$/i })).not.toHaveAttribute(
+        'data-disabled',
+      );
+    });
+
+    it('ticks the current folder', async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...BASE_ITEM, folder_id: FOLDER.id }], seeds);
+      await openLabelSubmenu(user, /^folder/i, 'No folder');
+
+      expect(
+        screen.getByRole('menuitem', { name: 'Work' }).querySelector('svg.text-accent-teal'),
+      ).not.toBeNull();
+    });
+  });
+
+  describe('Project and Epic', () => {
+    it('lists the projects by name and key, writing the pick', async () => {
+      mockUpdateItem.mockResolvedValue({ ...CODE_ROOT, intended_project_id: PROJECT.id });
+      const user = userEvent.setup();
+      renderTasks([CODE_ROOT], seeds);
+      await openLabelSubmenu(user, /^project/i, 'No project');
+      expect(screen.getByRole('menuitem', { name: 'Alfred ALF' })).toBeInTheDocument();
+      await pickSubmenuOption(user, 1);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', {
+          intended_project_id: PROJECT.id,
+          intended_epic_id: null,
+        });
+      });
+    });
+
+    it('disables Epic until a project is set, with the hint visible as well as in title', async () => {
+      // A disabled sub-trigger is `pointer-events-none`, so its tooltip can never be hovered
+      // into view — and on touch there is none at all. The hint has to be readable as text.
+      const user = userEvent.setup();
+      renderTasks([CODE_ROOT], seeds);
+      await user.click(screen.getByRole('button', { name: /more actions/i }));
+      await screen.findByRole('menu');
+
+      const epic = screen.getByRole('menuitem', { name: /^epic/i });
+      expect(epic).toHaveAttribute('data-disabled');
+      expect(epic).toHaveAttribute('title', 'Pick a project first');
+      expect(epic).toHaveTextContent('Pick a project first');
+    });
+
+    it('lists only the selected project’s epics once one is set', async () => {
+      const user = userEvent.setup();
+      renderTasks([{ ...CODE_ROOT, intended_project_id: PROJECT.id }], seeds);
+      await openLabelSubmenu(user, /^epic/i, 'No epic');
+
+      expect(screen.getByRole('menuitem', { name: 'Inbox triage ALF-140' })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /other work/i })).not.toBeInTheDocument();
+    });
+
+    it('writes the picked epic, ticking the current one', async () => {
+      mockUpdateItem.mockResolvedValue({
+        ...CODE_ROOT,
+        intended_project_id: PROJECT.id,
+        intended_epic_id: EPIC.id,
+      });
+      const user = userEvent.setup();
+      renderTasks([{ ...CODE_ROOT, intended_project_id: PROJECT.id }], seeds);
+      await openLabelSubmenu(user, /^epic/i, 'No epic');
+      expect(
+        screen.getByRole('menuitem', { name: 'No epic' }).querySelector('svg.text-accent-teal'),
+      ).not.toBeNull();
+      await pickSubmenuOption(user, 1);
+
+      await waitFor(() => {
+        expect(mockUpdateItem).toHaveBeenCalledWith('item-1', { intended_epic_id: EPIC.id });
+      });
+    });
+
+    it('resets Epic to “No epic” when the project changes', async () => {
+      // `setIntendedProject` sends both fields in one PATCH (the DB trigger does the same), so a
+      // row can never hold an epic from the wrong project.
+      mockUpdateItem.mockResolvedValue({
+        ...CODE_ROOT,
+        intended_project_id: PROJECT.id,
+        intended_epic_id: null,
+      });
+      const user = userEvent.setup();
+      renderTasks([{ ...CODE_ROOT, intended_project_id: 'p2', intended_epic_id: OTHER_EPIC.id }], {
+        ...seeds,
+        projects: [PROJECT, { ...PROJECT, id: 'p2', name: 'Realplay', key: 'RPL' }],
+      });
+      await openLabelSubmenu(user, /^project/i, 'No project');
+      await pickSubmenuOption(user, 1);
+
+      await screen.findByRole('button', { name: /more actions/i });
+      await openLabelSubmenu(user, /^epic/i, 'No epic');
+      expect(
+        screen.getByRole('menuitem', { name: 'No epic' }).querySelector('svg.text-accent-teal'),
+      ).not.toBeNull();
     });
   });
 });

@@ -90,6 +90,35 @@ export function monthGridDays(year: number, month0: number): MonthGridDay[] {
   return cells;
 }
 
+/** Milliseconds in a calendar day — the step every UTC-field date computation below takes. */
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * The UTC instant standing for a calendar date's midnight — the anchor all calendar-date
+ * arithmetic uses. Exported for the habit helpers that share this convention (`isoWeekday`,
+ * `daysBetween`), so there is one definition of "what instant is this date".
+ */
+export function toUtcMillis(date: string): number {
+  const [year = '1970', month = '01', day = '01'] = date.split('-');
+  return Date.UTC(Number(year), Number(month) - 1, Number(day));
+}
+
+/** Render a UTC instant back to `YYYY-MM-DD`. */
+export function fromUtcMillis(millis: number): string {
+  return new Date(millis).toISOString().slice(0, 10);
+}
+
+/**
+ * The calendar date `delta` days after `date` (negative goes back). Both ends are
+ * `YYYY-MM-DD`, and the arithmetic runs in UTC fields, so no result depends on the machine's
+ * zone. **The input must be date-only**: a full timestamp splits on its `-` separators into
+ * nonsense (`Number('04T00:00:00+00:00')` is `NaN`), so normalise a `timestamptz` column with
+ * `.slice(0, 10)` before calling.
+ */
+export function addDays(date: string, delta: number): string {
+  return fromUtcMillis(toUtcMillis(date) + delta * MS_PER_DAY);
+}
+
 /** Today's local calendar date as a `YYYY-MM-DD` string (the default recurrence anchor). */
 export function todayISODate(): string {
   const now = new Date();

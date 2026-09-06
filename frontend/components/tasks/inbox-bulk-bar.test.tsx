@@ -178,39 +178,39 @@ describe('Inbox select mode', () => {
     expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('1 selected');
   });
 
-  it('gates Classify by shape (childless roots) and Move by type (task/unclassified)', async () => {
-    // ALF-170 re-derived the gates: correcting a type is the common case now, so Classify is
-    // enabled on any selection of childless roots whatever their current types; Move widens to
-    // unclassified rows (filing classifies them) but still refuses a code row.
+  it('gates Classify to an all-unclassified selection, and Move by type (task/unclassified)', async () => {
+    // Classifying is one-way: a flip after the fields are filled drops the ones the new type
+    // forbids, so Classify is live only while every selected row still has no type. Move widens
+    // to unclassified rows (filing classifies them) but still refuses a code row.
     const user = userEvent.setup();
     renderInbox([
       makeItem('u1', { item_type: 'unclassified' }),
+      makeItem('u2', { item_type: 'unclassified' }),
       makeItem('t1', { item_type: 'task' }),
-      makeItem('c1', { item_type: 'code' }),
-      makeItem('parent', { item_type: 'task' }),
+      makeItem('parent', { item_type: 'unclassified' }),
       makeItem('child', { item_type: 'task', parent_id: 'parent' }),
     ]);
 
     await user.click(screen.getByRole('button', { name: 'Select' }));
 
-    // A mixed unclassified + task selection: both actions live (all childless roots, all fileable).
+    // An all-unclassified selection: both actions live.
     await user.click(screen.getByRole('button', { name: /select "u1"/i }));
-    await user.click(screen.getByRole('button', { name: /select "t1"/i }));
+    await user.click(screen.getByRole('button', { name: /select "u2"/i }));
     expect(screen.getByRole('button', { name: /classify as/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /move to folder/i })).toBeEnabled();
 
-    // Adding a code row: Classify stays live (a childless root carries a type to correct);
-    // Move disables — folders hold tasks.
-    await user.click(screen.getByRole('button', { name: /select "c1"/i }));
-    expect(screen.getByRole('button', { name: /classify as/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /move to folder/i })).toBeDisabled();
+    // The moment a typed row joins, Classify disables with the new hint; Move still takes it.
+    await user.click(screen.getByRole('button', { name: /select "t1"/i }));
+    const classify = screen.getByRole('button', { name: /classify as/i });
+    expect(classify).toBeDisabled();
+    expect(classify).toHaveAttribute('title', 'Only unclassified items can be classified');
+    expect(screen.getByRole('button', { name: /move to folder/i })).toBeEnabled();
 
-    // Swapping in a decomposed task: Classify disables (the shape gate — a parent's flip is
-    // the one the database can't catch); Move re-enables.
-    await user.click(screen.getByRole('button', { name: /deselect "c1"/i }));
+    // The structural guard survives too: an unclassified row WITH subtasks can't be classified
+    // either — a parent's flip is the one the database can't catch.
+    await user.click(screen.getByRole('button', { name: /deselect "t1"/i }));
     await user.click(screen.getByRole('button', { name: /select "parent"/i }));
     expect(screen.getByRole('button', { name: /classify as/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /move to folder/i })).toBeEnabled();
   });
 
   it('disables Send to Code with a hint when any selected row has children (ALF-129)', async () => {
@@ -399,6 +399,39 @@ describe('Dispatch (ALF-170)', () => {
     expect(first).toHaveAccessibleName('Dispatch');
     expect(first).toBeDisabled();
     expect(first).toHaveAttribute('title', 'Nothing in the selection is ready to dispatch');
+  });
+
+  it('reflects a folder set from the row ⋯ menu the next time select mode is entered', async () => {
+    // The two surfaces are never on screen together (the row renders no ⋯ menu in select mode,
+    // and the bar renders null outside it), so the label has to travel through the store.
+    mockUpdateItem.mockResolvedValue(makeItem('u1', { item_type: 'task', folder_id: 'f1' }));
+    const user = userEvent.setup();
+    renderInbox([makeItem('u1', { item_type: 'task' })]);
+
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('button', { name: /select "u1"/i }));
+    expect(screen.getByRole('status')).toHaveTextContent('1 not ready — 1 needs a folder');
+
+    // Leave select mode, label the row from its ⋯ menu, come back. (Both the header toggle and
+    // the bar say "Done"; the header's is the one that carries `aria-pressed`.)
+    await user.click(screen.getByRole('button', { name: 'Done', pressed: true }));
+    await user.click(screen.getByRole('button', { name: /more actions/i }));
+    await screen.findByRole('menu');
+    await user.hover(screen.getByRole('menuitem', { name: 'Folder…' }));
+    await user.keyboard('[ArrowRight]');
+    await screen.findByRole('menuitem', { name: 'No folder' });
+    await user.keyboard('[ArrowDown][Enter]');
+    await screen.findByLabelText('Folder: Work');
+    // The menu's teardown releases the `pointer-events: none` Radix puts on the body; clicking
+    // the header toggle before that lands on nothing.
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+    await user.click(screen.getByRole('button', { name: /select "u1"/i }));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeEnabled();
   });
 
   it('names what the selection is missing, grouped by reason, updating live', async () => {

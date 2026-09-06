@@ -29,7 +29,7 @@ import {
   readinessLineClass,
 } from './inbox-bulk-bar.styles';
 
-const CLASSIFY_DISABLED_HINT = 'Only a top-level item with no subtasks can change type';
+const CLASSIFY_DISABLED_HINT = 'Only unclassified items can be classified';
 const MOVE_DISABLED_HINT = 'Only tasks and unclassified items can be filed into a folder';
 const SEND_DISABLED_HINT = 'An item with subtasks is dispatched from its own row menu';
 // Lower-cased mid-sentence — DISPATCH_READY_LABEL itself is the row's title-cased cue (ALF-178).
@@ -64,8 +64,7 @@ export function InboxSelectToggle() {
  * selected item to its own destination in one press (a task to its labelled folder, a code item
  * through the factory gate), leaving unready items selected with the readiness line naming what
  * each is missing. The other actions are gated on the selection's composition: Classify needs
- * every row to be a childless root (the type-change shape gate), Move needs tasks/unclassified
- * rows, Send-to-Code stays the "choose the project and epic now" path. A full success clears
+ * every selected row to still be unclassified, Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and epic now" path. A full success clears
  * the selection and exits mode; a partial outcome keeps the unfinished items selected. Esc exits.
  *
  * The effective selection is the stored ids intersected with the items still in the Inbox, so
@@ -109,12 +108,16 @@ export function InboxBulkBar() {
 
   const ids = selectedItems.map((item) => item.id);
   const count = selectedItems.length;
-  // Classify's gate is the type-change SHAPE gate (a childless top-level row), whatever the
-  // current type — correcting a type is the common case now, and the old all-unclassified gate
-  // disabled the control on precisely the rows that carry a type to correct. Selection only
-  // holds roots, so childlessness is the live half of the check.
-  const allChildlessRoots =
-    count > 0 && selectedItems.every((i) => i.parent_id === null && i.children.length === 0);
+  // Classify is for rows that have no type yet. A flip after a type is set would silently drop
+  // the fields the new type forbids (a task→code flip drops the due date and recurrence), and
+  // `bulkClassify` runs the same `classifyPatch` the row menu does — so leaving the bulk bar
+  // able to re-type a filled row would leave that hole open behind a second door. The
+  // childless-root terms stay as the structural guard the database can't enforce on a parent.
+  const allUnclassified =
+    count > 0 &&
+    selectedItems.every(
+      (i) => i.item_type === 'unclassified' && i.parent_id === null && i.children.length === 0,
+    );
   // Move's gate widens to unclassified rows — the smallest honest widening: moveTask already
   // classifies an unclassified row to task as it files it. A code row still can't be filed.
   const allFileable =
@@ -222,15 +225,16 @@ export function InboxBulkBar() {
               Dispatch
             </Button>
 
-            {/* Classify as — every selected row must be a childless root (the shape gate the
+            {/* Classify as — every selected row must still be unclassified (a typed row's
+              fields are not worth converting), and a childless root (the shape gate the
               database can't enforce on a parent). */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!allChildlessRoots}
-                  title={allChildlessRoots ? undefined : CLASSIFY_DISABLED_HINT}
+                  disabled={!allUnclassified}
+                  title={allUnclassified ? undefined : CLASSIFY_DISABLED_HINT}
                 >
                   Classify as
                   <ChevronDown size={14} />
