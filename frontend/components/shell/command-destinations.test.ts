@@ -41,6 +41,7 @@ describe('buildDestinations', () => {
       'Tasks',
       'Inbox',
       'Priority',
+      'Today',
       'Week Plan',
       'Habits',
       'Completed',
@@ -59,6 +60,7 @@ describe('buildDestinations', () => {
       Tasks: '/',
       Inbox: '/?view=inbox',
       Priority: '/priority',
+      Today: '/today',
       'Week Plan': '/plan',
       Habits: '/habits',
       Completed: '/completed',
@@ -116,6 +118,13 @@ describe('buildDestinations', () => {
     expect(grouped.go[0]?.icon).toBe('plan');
   });
 
+  it('surfaces the Today destination, with its own icon token', () => {
+    const grouped = buildDestinations('today', [], []);
+    expect(grouped.go.map((d) => d.id)).toEqual(['go-today']);
+    expect(grouped.go[0]?.href).toBe('/today');
+    expect(grouped.go[0]?.icon).toBe('today');
+  });
+
   it('keeps a group header only for groups with at least one match', () => {
     const grouped = buildDestinations('priority', [makeFolder()], [makeProject()]);
     expect(grouped.go.map((d) => d.label)).toEqual(['Priority']);
@@ -133,7 +142,7 @@ describe('flattenDestinations', () => {
     );
     const flat = flattenDestinations(grouped);
     expect(flat.map((d) => d.group)).toEqual([
-      ...Array.from({ length: 9 }, () => 'go'),
+      ...Array.from({ length: 10 }, () => 'go'),
       'folders',
       'projects',
     ]);

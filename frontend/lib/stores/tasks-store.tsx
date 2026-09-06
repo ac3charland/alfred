@@ -14,6 +14,7 @@ import { useToastActions } from '@/lib/stores/toast-store';
 import { createClient } from '@/lib/supabase/client';
 import { classifierVerdictPatch } from '@/lib/tasks/classification';
 import { dispatchReadiness } from '@/lib/tasks/dispatch';
+import { rankDueToday } from '@/lib/tasks/due-today';
 import { isDispatched, residentFolderId } from '@/lib/tasks/residency';
 import { DEFAULT_TASK_SORT, type TaskSortMode, sortNodesBy } from '@/lib/tasks/task-sort';
 import type { ItemNode } from '@/lib/tree';
@@ -1146,6 +1147,21 @@ export function useTasksByPriority({ showCompleted }: { showCompleted: boolean }
       .map((task) => byId.get(task.id))
       .filter((node): node is ItemNode => node !== undefined);
   }, [items, showCompleted]);
+}
+
+/**
+ * The cross-cutting **Today** forest (ALF-106): every top-level task that is due today or already
+ * overdue — by its own due date, or through a still-active subtask that is — ordered most overdue
+ * first. The urgency-led counterpart of `useTasksByPriority`, derived from the same seeded store
+ * with no extra fetch, so a due-date edit or a completion re-ranks the list instantly.
+ *
+ * Completed top-level tasks are hidden unless `showCompleted`; each kept task travels with its
+ * whole subtree, so its subtasks still render when the row is expanded. See `rankDueToday` for
+ * the rule itself.
+ */
+export function useTasksDueToday({ showCompleted }: { showCompleted: boolean }): ItemNode[] {
+  const items = useTasks();
+  return React.useMemo(() => rankDueToday(buildTree(items), showCompleted), [items, showCompleted]);
 }
 
 /** Read the task mutation actions. Throws if used outside a TasksProvider. */

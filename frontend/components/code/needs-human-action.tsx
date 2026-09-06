@@ -3,6 +3,7 @@
 import { UserCheck } from 'lucide-react';
 import * as React from 'react';
 
+import { ViewHeading } from '@/components/atoms/view-heading';
 import { BacklogList } from '@/components/code/backlog/backlog-list';
 import { HUMAN_REVIEW_STATUSES, useBacklog } from '@/lib/stores/code-store';
 
@@ -28,17 +29,11 @@ export function NeedsHumanAction() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-accent-teal">
-          <UserCheck size={20} />
-        </div>
-        <div className="flex flex-col">
-          <h2 className="font-serif text-2xl text-foreground">Needs human action</h2>
-          <p className="text-sm text-muted-foreground">
-            Stories waiting on your review — a spec to approve or a gate to clear.
-          </p>
-        </div>
-      </div>
+      <ViewHeading
+        icon={UserCheck}
+        title="Needs human action"
+        description="Stories waiting on your review — a spec to approve or a gate to clear."
+      />
 
       <BacklogList
         stories={stories}

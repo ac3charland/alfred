@@ -488,13 +488,23 @@ describe('FolderNav', () => {
     expect(screen.getByRole('link', { name: /priority/i })).toHaveAttribute('href', '/priority');
   });
 
-  it('renders a Week Plan link pointing to /plan, directly under Priority', () => {
+  it('renders a Today link pointing to /today, directly under Priority', () => {
+    renderWithProviders(<FolderNav />, { folders: FOLDERS });
+
+    expect(screen.getByRole('link', { name: /today/i })).toHaveAttribute('href', '/today');
+
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    expect(hrefs.indexOf('/today')).toBe(hrefs.indexOf('/priority') + 1);
+    expect(hrefs.indexOf('/today')).toBeLessThan(hrefs.indexOf('/folders/f1'));
+  });
+
+  it('renders a Week Plan link pointing to /plan, directly under Today', () => {
     renderWithProviders(<FolderNav />, { folders: FOLDERS });
 
     expect(screen.getByRole('link', { name: /week plan/i })).toHaveAttribute('href', '/plan');
 
     const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
-    expect(hrefs.indexOf('/plan')).toBe(hrefs.indexOf('/priority') + 1);
+    expect(hrefs.indexOf('/plan')).toBe(hrefs.indexOf('/today') + 1);
     expect(hrefs.indexOf('/plan')).toBeLessThan(hrefs.indexOf('/folders/f1'));
   });
 

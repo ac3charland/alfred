@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Repeat,
   Search,
+  Sun,
   UserCheck,
 } from 'lucide-react';
 import * as React from 'react';
@@ -38,6 +39,7 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   tasks: ListTodo,
   inbox: Inbox,
   priority: ListOrdered,
+  today: Sun,
   plan: CalendarRange,
   habits: Repeat,
   completed: Check,

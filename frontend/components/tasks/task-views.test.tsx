@@ -20,6 +20,11 @@ jest.mock('./folder-view', () => ({
     return <div data-testid="folder-view" data-folder-id={folderId} />;
   },
 }));
+jest.mock('./today-view', () => ({
+  TodayView: function MockTodayView() {
+    return <div data-testid="today-view" />;
+  },
+}));
 jest.mock('./completed-view', () => ({
   CompletedView: function MockCompletedView() {
     return <div data-testid="completed-view" />;
@@ -75,6 +80,14 @@ describe('TaskViews', () => {
     render(<TaskViews />);
 
     expect(screen.getByTestId('habits-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
+  });
+
+  it('renders the today view on /today', () => {
+    setLocation('/today');
+    render(<TaskViews />);
+
+    expect(screen.getByTestId('today-view')).toBeInTheDocument();
     expect(screen.queryByTestId('inbox-screen')).not.toBeInTheDocument();
   });
 

@@ -140,6 +140,12 @@ check** — and, if wired *ahead*, proves the slow suites never ran. A throwaway
 over-long skill description, a stray file in `docs/demos/`) trips a repo-wide linter
 deterministically; revert it after.
 
+**Read the gate's own exit code, never a pipeline's.** `npm run check:fast | tail -40` reports
+**`tail`'s** status, so a red gate reads as green — and the tail window shows the *last* workspace
+in the fan-out printing its own green summary, while the package that actually failed has already
+scrolled past. Redirect instead and check the status directly:
+`npm run check:fast > /tmp/gate.log 2>&1; echo $?`, then grep the log.
+
 ## Related skills
 
 - **`npm-workspaces`** — the `--workspaces --if-present` fan-out and `-w` targeting these compose with.

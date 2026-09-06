@@ -240,6 +240,8 @@ test.beforeEach(async ({ page }) => {
 
 **Never rely on test execution order.** Each test must be fully independent. Playwright randomizes file order by default. Use `storageState` for auth reuse, not a global auth cookie you set in test #1 and depend on in test #2.
 
+**`getByRole(role, { name })` matches the name as a case-insensitive _substring_ by default** — so `getByRole('list', { name: 'Tasks' })` also matches a `Subtasks` list, throwing a strict-mode "resolved to 2 elements" once a subtask list is on screen. The collision is often invisible on screen because the other name comes from an **`aria-label`**, not rendered text: a folder row's badge is labelled "… high-priority or due today", so `getByRole('link', { name: 'Today' })` matches that folder as well as the Today nav link. Pass `{ name: '…', exact: true }` whenever one accessible name could be a substring of another.
+
 **Never use `first()`, `last()`, or `nth()` unless the element genuinely has no better discriminator.** These are position-dependent and break when the list order changes. Prefer filtering: `page.getByRole('listitem').filter({ hasText: 'Buy milk' })`.
 
 **`page.touchscreen.tap(x, y)` hits a small control from well outside its box — Chromium adds ~14px of touch-target slop.** A 32px button stayed tappable ~14px past its edge with no enlarged hit area. So a synthetic near-miss **cannot robustly demonstrate a modest touch-target enlargement**: growing a control's box by ~12px (≈6px per side) keeps the whole gain *inside* the browser's existing slop, so before-and-after both "hit" and the only differentiating band (between the two slop edges) is ~6px wide — narrower than the few-px run-to-run jitter in element position, so the "before dismisses / after creates" flips unreliably. Don't stage that demo; **assert the rendered size instead** (`toHaveClass('min-h-11')`, or read `boundingBox().height`) and show the feature working on a touch viewport. A near-miss only reads cleanly for a *large* hit-area change well past the slop.
@@ -271,8 +273,6 @@ The Supabase client constructor *throws at startup* when `NEXT_PUBLIC_SUPABASE_U
 **`context.videosPath` / `videoSize` were removed in v1.60** — use `recordVideo: { dir: '...', size: {...} }` in context/use options instead.
 
 **`reducedMotion` is not a top-level `test.use()` / `use` option here** — it's a *context* option. `test.use({ reducedMotion: 'reduce' })` fails typecheck (`'reducedMotion' does not exist in type 'Fixtures<…>'`); set `test.use({ contextOptions: { reducedMotion: 'reduce' } })` instead. It still "works" at runtime if passed at the top level (silently ignored), so the only signal is the type error — easy to miss until the type-check gate catches it.
-
-**`getByRole(role, { name })` matches the name as a case-insensitive _substring_ by default** — so `getByRole('list', { name: 'Tasks' })` also matches a `Subtasks` list, throwing a strict-mode "resolved to 2 elements" once a subtask list is on screen. Pass `{ name: 'Tasks', exact: true }` when one accessible name is a substring of another.
 
 ---
 
