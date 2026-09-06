@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { ClickableCard } from '@/components/atoms/clickable-card';
 import { FullScreenDialog } from '@/components/atoms/dialog';
+import { ViewHeading } from '@/components/atoms/view-heading';
 import { formatMonthDay } from '@/lib/date-utils';
 import {
   useSelectedWeeklyPlan,
@@ -74,17 +75,11 @@ export function WeeklyPlanView() {
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-accent-teal">
-            <CalendarRange size={20} />
-          </div>
-          <div className="flex flex-col">
-            <h2 className="font-serif text-2xl text-foreground">Week Plan</h2>
-            <p className="text-sm text-muted-foreground">
-              This week&apos;s plan, exactly as it was generated.
-            </p>
-          </div>
-        </div>
+        <ViewHeading
+          icon={CalendarRange}
+          title="Week Plan"
+          description="This week's plan, exactly as it was generated."
+        />
 
         {/* One plan is nothing to pick between, so the picker only appears from two up. The
             label is the upload date alone — the archive stores no other metadata. */}

@@ -3,6 +3,7 @@
 import { GitBranch } from 'lucide-react';
 import * as React from 'react';
 
+import { ViewHeading } from '@/components/atoms/view-heading';
 import { BacklogList } from '@/components/code/backlog/backlog-list';
 import { PrRatio } from '@/components/code/pr-ratio';
 import { ProjectFilterMenu } from '@/components/code/project-filter-menu';
@@ -62,17 +63,11 @@ export function Backlog() {
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-accent-teal">
-            <GitBranch size={20} />
-          </div>
-          <div className="flex flex-col">
-            <h2 className="font-serif text-2xl text-foreground">The Software Factory</h2>
-            <p className="text-sm text-muted-foreground">
-              Every story across your projects, ranked by priority.
-            </p>
-          </div>
-        </div>
+        <ViewHeading
+          icon={GitBranch}
+          title="The Software Factory"
+          description="Every story across your projects, ranked by priority."
+        />
         <div className="flex flex-wrap items-center gap-2">
           <StatusFilterMenu
             options={ALL_FACTORY_STATES}
