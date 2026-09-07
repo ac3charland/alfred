@@ -248,7 +248,7 @@ describe('POST /api/code (new story)', () => {
     });
   });
 
-  it('never forwards the flag on a GATE body — that shape has no such control', async () => {
+  it('forwards the flag on a GATE body too — a Bug:/Spike: task skips refinement (ALF-215)', async () => {
     const mockSupabase = makeMockSupabase(TEST_USER, { data: TEST_SIDECAR, error: undefined });
     mockCreateClient.mockResolvedValue(mockSupabase as never);
 
@@ -266,6 +266,7 @@ describe('POST /api/code (new story)', () => {
       p_item: ITEM_ID,
       p_project: PROJECT_ID,
       p_epic: EPIC_ID,
+      p_requires_refinement: false,
     });
   });
 

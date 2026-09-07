@@ -1553,6 +1553,89 @@ describe('code-store', () => {
       });
     });
 
+    describe('a Bug: / Spike: title starts in Ready for Dev (ALF-215)', () => {
+      const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
+
+      it.each(['Bug: the toast never clears', 'Spike: which queue?'])(
+        'createStory overrides a checked box for %s',
+        async (title) => {
+          mockCreateCodeStory.mockImplementation(() => new Promise(() => {}));
+          const { result } = renderHook(() => useStore('p1'), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+          });
+
+          act(() => {
+            void result.current.actions.createStory('e1', title, null, true);
+          });
+
+          await waitFor(() => {
+            const lanes = result.current.board.activeEpics[0]?.lanes;
+            expect(
+              lanes?.find((l) => l.state === 'ready_for_dev')?.stories.map((s) => s.title),
+            ).toEqual([title]);
+          });
+          expect(
+            result.current.board.activeEpics[0]?.lanes.find((l) => l.state === 'needs_refinement')
+              ?.stories,
+          ).toEqual([]);
+          expect(mockCreateCodeStory).toHaveBeenCalledWith('p1', 'e1', title, null, false);
+        },
+      );
+
+      it.each(['Bug: the toast never clears', 'Spike: which queue?'])(
+        'the gate admits %s straight into Ready for Dev',
+        async (title) => {
+          mockEnterCodeModule.mockImplementation(() => new Promise(() => {}));
+          const { result } = renderHook(() => useStore('p1'), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+          });
+
+          act(() => {
+            void result.current.actions.convertTaskToCode(
+              { id: 'task-1', title, notes: null, source_url: null },
+              'p1',
+              'e1',
+            );
+          });
+
+          await waitFor(() => {
+            const lanes = result.current.board.activeEpics[0]?.lanes;
+            expect(
+              lanes?.find((l) => l.state === 'ready_for_dev')?.stories.map((s) => s.title),
+            ).toEqual([title]);
+          });
+          expect(
+            result.current.board.activeEpics[0]?.lanes.find((l) => l.state === 'needs_refinement')
+              ?.stories,
+          ).toEqual([]);
+          expect(mockEnterCodeModule).toHaveBeenCalledWith('task-1', 'p1', 'e1', false);
+        },
+      );
+
+      it('the gate still lands an ordinary task at Needs Refinement', async () => {
+        mockEnterCodeModule.mockImplementation(() => new Promise(() => {}));
+        const { result } = renderHook(() => useStore('p1'), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic] }),
+        });
+
+        act(() => {
+          void result.current.actions.convertTaskToCode(
+            { id: 'task-1', title: 'Convert me', notes: null, source_url: null },
+            'p1',
+            'e1',
+          );
+        });
+
+        await waitFor(() => {
+          const lanes = result.current.board.activeEpics[0]?.lanes;
+          expect(
+            lanes?.find((l) => l.state === 'needs_refinement')?.stories.map((s) => s.title),
+          ).toEqual(['Convert me']);
+        });
+        expect(mockEnterCodeModule).toHaveBeenCalledWith('task-1', 'p1', 'e1', true);
+      });
+    });
+
     describe('setRefinementRequired (the mark — moves the card, opens nothing)', () => {
       const epic = makeEpic('e1', 'p1', { ref: 'ALF-1', ref_number: 1 });
 
@@ -2588,6 +2671,97 @@ describe('code-store', () => {
           await expect(result.current.updateStoryTitle('nope', 'x')).rejects.toThrow(/not found/i);
         });
         expect(mockUpdateItem).not.toHaveBeenCalled();
+      });
+
+      describe('a rename that crosses the kind boundary moves the lane too (ALF-215)', () => {
+        it.each(['Bug: the toast never clears', 'Spike: which queue?'])(
+          'sends a Needs Refinement story renamed to "%s" into Ready for Dev',
+          async (title) => {
+            mockUpdateItem.mockResolvedValue({ title } as never);
+            mockUpdateCodeState.mockResolvedValue(
+              makeSavedSidecar({ factory_state: 'ready_for_dev', requires_refinement: false }),
+            );
+            const story = makeStory('i1', 'e1', 'p1', {
+              ref: 'ALF-7',
+              title: 'The toast never clears',
+              factory_state: 'needs_refinement',
+            });
+            const { result } = renderHook(() => useStore('p1'), {
+              wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+            });
+
+            await act(async () => {
+              await result.current.actions.updateStoryTitle('i1', title);
+            });
+
+            expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-7', 'ready_for_dev', {
+              requires_refinement: false,
+            });
+            const lanes = result.current.board.activeEpics[0]?.lanes;
+            expect(lanes?.find((l) => l.state === 'ready_for_dev')?.stories[0]?.title).toBe(title);
+          },
+        );
+
+        it('sends a Ready for Dev bug renamed back into a story to Needs Refinement', async () => {
+          mockUpdateItem.mockResolvedValue({ title: 'The toast never clears' } as never);
+          mockUpdateCodeState.mockResolvedValue(
+            makeSavedSidecar({ factory_state: 'needs_refinement', requires_refinement: true }),
+          );
+          const story = makeStory('i1', 'e1', 'p1', {
+            ref: 'ALF-7',
+            title: 'Bug: the toast never clears',
+            factory_state: 'ready_for_dev',
+            requires_refinement: false,
+          });
+          const { result } = renderHook(() => useStore('p1'), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+          });
+
+          await act(async () => {
+            await result.current.actions.updateStoryTitle('i1', 'The toast never clears');
+          });
+
+          expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-7', 'needs_refinement', {
+            requires_refinement: true,
+          });
+          const lanes = result.current.board.activeEpics[0]?.lanes;
+          expect(lanes?.find((l) => l.state === 'needs_refinement')?.stories[0]?.title).toBe(
+            'The toast never clears',
+          );
+        });
+
+        it('leaves an in-flight bug renamed back into a story where it is', async () => {
+          mockUpdateItem.mockResolvedValue({ title: 'The toast never clears' } as never);
+          const story = makeStory('i1', 'e1', 'p1', {
+            ref: 'ALF-7',
+            title: 'Bug: the toast never clears',
+            factory_state: 'in_development',
+            requires_refinement: false,
+          });
+          const { result } = renderHook(() => useStore('p1'), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+          });
+
+          await act(async () => {
+            await result.current.actions.updateStoryTitle('i1', 'The toast never clears');
+          });
+
+          expect(mockUpdateCodeState).not.toHaveBeenCalled();
+        });
+
+        it('writes no state change for a rename inside the same kind', async () => {
+          mockUpdateItem.mockResolvedValue({ title: 'Renamed story' } as never);
+          const story = makeStory('i1', 'e1', 'p1', { title: 'Old title' });
+          const { result } = renderHook(() => useStore('p1'), {
+            wrapper: makeWrapper({ projects: [PROJECT_A], epics: [epic], stories: [story] }),
+          });
+
+          await act(async () => {
+            await result.current.actions.updateStoryTitle('i1', 'Renamed story');
+          });
+
+          expect(mockUpdateCodeState).not.toHaveBeenCalled();
+        });
       });
     });
 

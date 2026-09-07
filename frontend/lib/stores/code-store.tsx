@@ -17,6 +17,7 @@ import {
   buildSpikeUrl,
   promptFromLaunchUrl,
 } from '@/lib/code/links';
+import { renameStateChange, requiresRefinementFor } from '@/lib/code/refinement';
 import { refinementMarkTarget } from '@/lib/code/refinement-mark';
 import { codeStoryStatusPatch } from '@/lib/code/status';
 import { stableSorted } from '@/lib/sort';
@@ -679,17 +680,25 @@ export function CodeProvider({
         // from the Code view, where both are seeded. Surface as an error.
         throw new Error('Project or epic missing from the code store');
       }
+      // A gated item's TITLE decides whether it is refined at all (ALF-215): a `Bug:` / `Spike:`
+      // task is admitted straight into Ready for Dev, so the card lands in the lane the server
+      // will confirm rather than hopping across the board on reconcile.
+      const requiresRefinement = requiresRefinementFor(item.title, true);
       // Land the optimistic card at the top of its PROJECT (ALF-110), matching the server.
       const optimistic = {
         ...makeOptimisticStory(item, project, epic),
         priority: topOfProjectPriority(stateRef.current.stories, projectId),
+        requires_refinement: requiresRefinement,
+        factory_state: requiresRefinement
+          ? ('needs_refinement' as const)
+          : ('ready_for_dev' as const),
       };
       let reconciled: CodeStory = optimistic;
       await runOptimisticMutation({
         optimistic: () => {
           dispatch({ type: 'insertStory', story: optimistic });
         },
-        apiCall: () => api.enterCodeModule(item.id, projectId, epicId),
+        apiCall: () => api.enterCodeModule(item.id, projectId, epicId, requiresRefinement),
         reconcile: (saved) => {
           reconciled = reconcileStory(optimistic, saved);
           dispatch({ type: 'replaceStory', itemId: item.id, story: reconciled });
@@ -906,7 +915,10 @@ export function CodeProvider({
         });
         return result;
       },
-      async createStory(epicId, title, notes, requiresRefinement) {
+      async createStory(epicId, title, notes, requested) {
+        // A `Bug:` / `Spike:` title clears the mark whatever the dialog passed (ALF-215) — the
+        // dialog locks its checkbox off for one, and this is the guarantee behind that.
+        const requiresRefinement = requiresRefinementFor(title, requested);
         const { projects, epics } = stateRef.current;
         const epic = epics.find((e) => e.id === epicId);
         if (epic === undefined) {
@@ -1088,6 +1100,19 @@ export function CodeProvider({
             showToastRef.current("Couldn't save title");
           },
         });
+        // The kind is derived from the title, so a rename can strand a story in a lane its new
+        // kind can't occupy (ALF-215). Settle that as a SECOND write, once the title is saved:
+        // it reuses the one transition path, and a lane move that failed would otherwise roll
+        // back a title the user did successfully change.
+        const move = renameStateChange(previous, title);
+        const ref = previous.ref;
+        if (move === null || ref === null) return;
+        await transitionState(
+          ref,
+          move.factory_state,
+          { requires_refinement: move.requires_refinement },
+          "Couldn't update refinement",
+        );
       },
       async updateStoryNotes(itemId, notes) {
         const previous = stateRef.current.stories.find((s) => s.item_id === itemId);

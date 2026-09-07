@@ -8,6 +8,7 @@ import { DialogDescription, DialogTitle, FormDialog } from '@/components/atoms/d
 import { FieldLabel } from '@/components/atoms/field-label';
 import { TextField } from '@/components/atoms/text-field';
 import { Textarea } from '@/components/atoms/textarea';
+import { canBeRefined, requiresRefinementFor } from '@/lib/code/refinement';
 import { useFormSubmit } from '@/lib/hooks/use-form-submit';
 import type { CodeStory } from '@/lib/types';
 
@@ -47,6 +48,13 @@ function NewStoryForm({
   const [needsRefinement, setNeedsRefinement] = React.useState(true);
   const titleRef = React.useRef<HTMLInputElement>(null);
 
+  // A `Bug:` / `Spike:` title decides the answer on its own (ALF-215) — neither kind is ever
+  // refined — so the checkbox reads false and locks while the title says so, and hands control
+  // back the moment the prefix comes off. Derived from the draft rather than stored, so it can't
+  // drift out of sync with what the author is typing.
+  const refinable = canBeRefined({ title });
+  const requiresRefinement = requiresRefinementFor(title, needsRefinement);
+
   React.useEffect(() => {
     titleRef.current?.focus();
   }, []);
@@ -54,7 +62,7 @@ function NewStoryForm({
   const { error, isPending, submit } = useFormSubmit({
     // Trim the title; map an empty notes field to null (the lib/ layer's null-aware boundary).
     onSubmit: () =>
-      onCreateStory(title.trim(), notes.trim() === '' ? null : notes.trim(), needsRefinement),
+      onCreateStory(title.trim(), notes.trim() === '' ? null : notes.trim(), requiresRefinement),
     onSuccess: () => {
       onOpenChange(false);
     },
@@ -77,7 +85,7 @@ function NewStoryForm({
       <DialogDescription className="mt-1 text-sm text-muted-foreground">
         It will be created in {epicRef === '' ? 'this epic' : epicRef} at{' '}
         <span className="text-foreground">
-          {needsRefinement ? 'Needs Refinement' : 'Ready for Dev'}
+          {requiresRefinement ? 'Needs Refinement' : 'Ready for Dev'}
         </span>
         .
       </DialogDescription>
@@ -117,13 +125,15 @@ function NewStoryForm({
       <CheckboxField
         className="mt-4"
         label="Needs refinement"
-        checked={needsRefinement}
+        checked={requiresRefinement}
         onCheckedChange={setNeedsRefinement}
-        disabled={isPending}
+        disabled={isPending || !refinable}
         hint={
-          needsRefinement
-            ? 'Checked — the story waits for a spec before development starts.'
-            : 'Unchecked — creates the story straight in Ready for Dev, with no spec.'
+          refinable
+            ? requiresRefinement
+              ? 'Checked — the story waits for a spec before development starts.'
+              : 'Unchecked — creates the story straight in Ready for Dev, with no spec.'
+            : 'A bug or a spike is never refined — it is created straight in Ready for Dev.'
         }
       />
 

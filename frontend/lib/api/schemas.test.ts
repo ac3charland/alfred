@@ -568,9 +568,7 @@ describe('createCodeSchema (the gate / new-story union) and the refinement mark'
     );
   });
 
-  it('strips the flag off a GATE body — that shape has no such control', () => {
-    // The gate lands items at needs_refinement as it always has; the parsed value must carry
-    // no flag, so the route cannot forward one to `enter_code_module`.
+  it('keeps the flag on a GATE body — a Bug:/Spike: task skips refinement too (ALF-215)', () => {
     const result = createCodeSchema.safeParse({
       item_id: itemId,
       project_id: projectId,
@@ -579,8 +577,31 @@ describe('createCodeSchema (the gate / new-story union) and the refinement mark'
     });
     expect(result.success).toBe(true);
     if (result.success) {
+      expect(result.data).toHaveProperty('requires_refinement', false);
+    }
+  });
+
+  it('accepts a GATE body without the flag (the RPC default applies)', () => {
+    const result = createCodeSchema.safeParse({
+      item_id: itemId,
+      project_id: projectId,
+      epic_id: epicId,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
       expect(result.data).not.toHaveProperty('requires_refinement');
     }
+  });
+
+  it('rejects a non-boolean flag on a GATE body', () => {
+    expect(
+      createCodeSchema.safeParse({
+        item_id: itemId,
+        project_id: projectId,
+        epic_id: epicId,
+        requires_refinement: 'nope',
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -22,16 +22,18 @@ export const GET = withSession(async () => {
 // ---------------------------------------------------------------------------
 // POST /api/code — create a code story. Two shapes, one route (see createCodeSchema):
 //
-// - The **gate** (`{ item_id, project_id, epic_id }`) admits a pre-existing item via
-//   `enter_code_module`: it flips the item to `code`, clears its task-only fields (so
-//   converting a task with a due date / subtasks is safe), and creates the sidecar.
+// - The **gate** (`{ item_id, project_id, epic_id, requires_refinement? }`) admits a
+//   pre-existing item via `enter_code_module`: it flips the item to `code`, clears its
+//   task-only fields (so converting a task with a due date / subtasks is safe), and creates
+//   the sidecar.
 // - **New story** (`{ title, notes?, project_id, epic_id, requires_refinement? }`, no
 //   `item_id`) mints a fresh item AND its sidecar in one step via `create_code_story` — no
 //   inbox row to admit.
 //
 // Both land the `code_items` sidecar with a server-allocated ref and return that row. It
-// starts at `needs_refinement`, unless the new-story shape sends `requires_refinement: false`
-// — the "Needs refinement" checkbox, which lands the story straight in `ready_for_dev`.
+// starts at `needs_refinement`, unless the body sends `requires_refinement: false` — the New
+// Story dialog's "Needs refinement" checkbox, or a `Bug:` / `Spike:` title on either shape
+// (ALF-215) — which lands the story straight in `ready_for_dev`.
 // ---------------------------------------------------------------------------
 
 export const POST = withSession(async (session, request) => {
@@ -47,6 +49,10 @@ export const POST = withSession(async (session, request) => {
           p_item: input.item_id,
           p_project: input.project_id,
           p_epic: input.epic_id,
+          // Omit the arg when the body didn't carry it so the RPC's own `default true` applies.
+          ...(input.requires_refinement === undefined
+            ? {}
+            : { p_requires_refinement: input.requires_refinement }),
         })
       : supabase.rpc('create_code_story', {
           p_project: input.project_id,

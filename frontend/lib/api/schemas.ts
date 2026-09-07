@@ -538,13 +538,19 @@ export type UpdateEpicInput = z.infer<typeof updateEpicSchema>;
 
 /**
  * The **gate** shape for POST /api/code: admit a pre-existing item to the factory via
- * `enter_code_module(item, project, epic)`, which flips the item to `code`, clears its
- * task-only fields, and creates the sidecar at `needs_refinement` with a server-allocated ref.
+ * `enter_code_module(item, project, epic, requires_refinement)`, which flips the item to `code`,
+ * clears its task-only fields, and creates the sidecar with a server-allocated ref.
+ *
+ * `requires_refinement` lands it: omitted (or `true`) at `needs_refinement` as the gate always
+ * has; `false` straight in `ready_for_dev` — what the caller sends for a `Bug:` / `Spike:` title
+ * (ALF-215). The kind is derived from the title client-side, so the rule lives in ONE place and
+ * the RPC just does as it is told, exactly like `create_code_story`.
  */
 export const gateCodeSchema = z.object({
   item_id: uuid,
   project_id: uuid,
   epic_id: uuid,
+  requires_refinement: z.boolean().optional(),
 });
 
 /**
@@ -556,8 +562,7 @@ export const gateCodeSchema = z.object({
  *
  * `requires_refinement` is the New Story dialog's "Needs refinement" checkbox: omitted (or
  * `true`) the story lands at `needs_refinement` as it always has; `false` lands it straight in
- * `ready_for_dev`. Only this shape carries it — the gate has no such control, and an object
- * schema strips the unknown key, so a gate body naming it can never reach the RPC.
+ * `ready_for_dev`.
  */
 export const newCodeStorySchema = z.object({
   title: z.string().trim().min(1),
@@ -575,7 +580,7 @@ export const newCodeStorySchema = z.object({
  */
 export const createCodeSchema = z.union([gateCodeSchema, newCodeStorySchema]);
 
-export type GateCodeInput = z.infer<typeof gateCodeSchema>;
+export type GateCodeInput = ExactOptional<z.infer<typeof gateCodeSchema>>;
 export type NewCodeStoryInput = ExactOptional<z.infer<typeof newCodeStorySchema>>;
 export type CreateCodeInput = z.infer<typeof createCodeSchema>;
 
