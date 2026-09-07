@@ -1065,6 +1065,56 @@ describe('StoryDetailModal', () => {
       expect(mockUpdateCodeState).toHaveBeenCalledWith('ALF-42', 'ready_for_review', {});
     });
 
+    it.each([
+      ['a spike', makeSpike],
+      ['a bug', makeBug],
+    ])('disables the two refinement lanes for %s (ALF-215)', async (_name, make) => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(make({ factory_state: 'ready_for_dev' }));
+
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Needs Refinement' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: 'In Refinement' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      // Every other lane stays one pick away.
+      expect(screen.getByRole('menuitem', { name: 'In Development' })).not.toHaveAttribute(
+        'aria-disabled',
+      );
+    });
+
+    it('leaves both refinement lanes pickable on an ordinary story', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeStory({ factory_state: 'ready_for_dev' }));
+
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
+
+      expect(screen.getByRole('menuitem', { name: 'Needs Refinement' })).not.toHaveAttribute(
+        'aria-disabled',
+      );
+      expect(screen.getByRole('menuitem', { name: 'In Refinement' })).not.toHaveAttribute(
+        'aria-disabled',
+      );
+    });
+
+    it('writes nothing when a disabled refinement lane is picked on a bug', async () => {
+      const user = userEvent.setup();
+      const { dialog } = renderModal(makeBug({ factory_state: 'ready_for_dev' }));
+
+      await user.click(dialog.getByRole('button', { name: statusTrigger }));
+      await screen.findByRole('menu');
+      await user.click(screen.getByRole('menuitem', { name: 'Needs Refinement' }));
+
+      expect(mockUpdateCodeState).not.toHaveBeenCalled();
+    });
+
     it('writes nothing when the story is already in the picked status', async () => {
       const user = userEvent.setup();
       const { dialog } = renderModal(makeStory({ factory_state: 'needs_refinement' }));

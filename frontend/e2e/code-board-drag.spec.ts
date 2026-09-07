@@ -47,6 +47,14 @@ async function dragOnto(page: Page, source: Locator, target: Locator): Promise<v
   await page.mouse.up();
 }
 
+/**
+ * The bug card inside whichever lane holds it — scoped by lane, since the board renders the
+ * same title in more than one place (the desktop lane row and the mobile column).
+ */
+function bugCardIn(lane: Locator): Locator {
+  return lane.getByText('Bug: the capture box keeps its draft after submit').first();
+}
+
 /** Drag `source` over `target` and release, asserting the lane refused to arm itself. */
 async function dragOntoRefused(page: Page, source: Locator, target: Locator): Promise<void> {
   await pickUp(page, source);
@@ -192,4 +200,52 @@ test('unblocks a blocked story into the lane it is dragged to', async ({ page, s
   const modal = page.getByRole('dialog');
   await expect(modal.getByRole('button', { name: 'Block', exact: true })).toBeVisible();
   await expect(modal.getByRole('button', { name: /unblock/i })).toBeHidden();
+});
+
+test('refuses to drag a bug into a refinement lane, and lets it move anywhere else', async ({
+  page,
+  seed,
+}) => {
+  // A bug is never refined (ALF-215), so the two refinement lanes are closed to its card —
+  // the lane doesn't even arm itself as a drop target. Every other lane still accepts it.
+  const epic = makeEpic('Communication Firewall', {
+    id: 'e1',
+    project_id: 'p1',
+    ref_number: 1,
+    ref: 'ALF-1',
+  });
+  const item = makeItem('Bug: the capture box keeps its draft after submit', {
+    id: 'i1',
+    item_type: 'code',
+  });
+  const story = makeCodeStory({
+    item_id: 'i1',
+    project_id: 'p1',
+    epic_id: 'e1',
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'ready_for_dev',
+    requires_refinement: false,
+  });
+
+  await seed({ projects: [PROJECT], epics: [epic], items: [item], codeItems: [story] });
+  await page.goto('/code/p1');
+
+  const readyForDev = page.getByRole('region', { name: 'Ready for Dev' });
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  const inRefinement = page.getByRole('region', { name: 'In Refinement' });
+  const inDevelopment = page.getByRole('region', { name: 'In Development' });
+  await expect(readyForDev.getByText('ALF-3')).toBeVisible();
+
+  await dragOntoRefused(page, bugCardIn(readyForDev), needsRefinement);
+  await expect(readyForDev.getByText('ALF-3')).toBeVisible();
+  await expect(needsRefinement.getByText('ALF-3')).toBeHidden();
+
+  await dragOntoRefused(page, bugCardIn(readyForDev), inRefinement);
+  await expect(readyForDev.getByText('ALF-3')).toBeVisible();
+  await expect(inRefinement.getByText('ALF-3')).toBeHidden();
+
+  // A lane the kind CAN occupy still takes it, so this is a targeted refusal, not a dead card.
+  await dragOnto(page, bugCardIn(readyForDev), inDevelopment);
+  await expect(inDevelopment.getByText('ALF-3')).toBeVisible();
 });

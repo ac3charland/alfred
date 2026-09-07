@@ -6,9 +6,15 @@ import {
   resolveLaneDrop,
 } from './move-story-lane';
 
-/** The three fields a lane drop reads off the dragged card. */
+/** The fields a lane drop reads off the dragged card. */
 function dragged(overrides: Partial<DraggedStory> = {}): DraggedStory {
-  return { ref: 'ALF-7', factory_state: 'needs_refinement', epic_id: 'e1', ...overrides };
+  return {
+    ref: 'ALF-7',
+    factory_state: 'needs_refinement',
+    epic_id: 'e1',
+    title: 'Wire up the webhook handler',
+    ...overrides,
+  };
 }
 
 describe('laneDropId / parseLaneDropId', () => {
@@ -105,6 +111,38 @@ describe('resolveLaneDrop', () => {
     expect(resolveLaneDrop(dragged({ factory_state: null }), laneDropId('e1', 'done'))).toEqual({
       ref: 'ALF-7',
       state: 'done',
+      clearsBlockedReason: false,
+    });
+  });
+});
+
+describe('resolveLaneDrop — the refinement lanes are closed to a bug or a spike (ALF-215)', () => {
+  it.each(['Bug: the toast never clears', 'Spike: which queue?'])(
+    'refuses a drop of %s onto Needs Refinement or In Refinement',
+    (title) => {
+      const story = dragged({ title, factory_state: 'ready_for_dev' });
+      expect(resolveLaneDrop(story, laneDropId('e1', 'needs_refinement'))).toBeNull();
+      expect(resolveLaneDrop(story, laneDropId('e1', 'in_refinement'))).toBeNull();
+    },
+  );
+
+  it.each(['Bug: the toast never clears', 'Spike: which queue?'])(
+    'still resolves a drop of %s onto any other lane',
+    (title) => {
+      const story = dragged({ title, factory_state: 'ready_for_dev' });
+      expect(resolveLaneDrop(story, laneDropId('e1', 'in_development'))).toEqual({
+        ref: 'ALF-7',
+        state: 'in_development',
+        clearsBlockedReason: false,
+      });
+    },
+  );
+
+  it('still resolves an ordinary story dropped onto a refinement lane', () => {
+    const story = dragged({ factory_state: 'ready_for_dev' });
+    expect(resolveLaneDrop(story, laneDropId('e1', 'needs_refinement'))).toEqual({
+      ref: 'ALF-7',
+      state: 'needs_refinement',
       clearsBlockedReason: false,
     });
   });

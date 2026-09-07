@@ -8,6 +8,7 @@
  * should trigger, or a no-op. Keeping it pure makes it unit-testable, since jsdom can't measure
  * layout to drive a real drag.
  */
+import { canMoveToState } from '@/lib/code/refinement';
 import { HAPPY_PATH_STATES, type HappyPathState } from '@/lib/stores/code-store';
 import type { CodeStory } from '@/lib/types';
 
@@ -35,7 +36,7 @@ export function parseLaneDropId(
 }
 
 /** The fields a lane drop reads off the dragged card. */
-export type DraggedStory = Pick<CodeStory, 'ref' | 'factory_state' | 'epic_id'>;
+export type DraggedStory = Pick<CodeStory, 'ref' | 'factory_state' | 'epic_id' | 'title'>;
 
 export interface LaneMove {
   /** The dragged story, keyed the way `updateCodeState` wants it. */
@@ -59,6 +60,10 @@ export interface LaneMove {
  * A `blocked` story sits in the lane it was blocked FROM, so its card can be dropped on that
  * same lane — `blocked` is not that lane's state, so the drop unblocks it back onto the board
  * rather than resolving to nothing.
+ *
+ * A bug or a spike additionally refuses the two refinement lanes (ALF-215) — neither kind is
+ * ever refined, so the lane is not a place it can be. The swimlane's own drop-target highlight
+ * runs through this same resolver, so a closed lane never lights up in the first place.
  */
 export function resolveLaneDrop(story: DraggedStory, overId: string | null): LaneMove | null {
   const lane = parseLaneDropId(overId);
@@ -66,6 +71,7 @@ export function resolveLaneDrop(story: DraggedStory, overId: string | null): Lan
   if (story.ref === null) return null;
   if (story.epic_id === null || story.epic_id !== lane.epicId) return null;
   if (story.factory_state === lane.state) return null;
+  if (!canMoveToState(story, lane.state)) return null;
   return {
     ref: story.ref,
     state: lane.state,
