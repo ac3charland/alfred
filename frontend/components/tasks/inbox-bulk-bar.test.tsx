@@ -512,7 +512,7 @@ describe('Dispatch (ALF-170)', () => {
     });
     expect(mockUpdateItem).toHaveBeenCalledWith('subtask', { dispatched: true });
     // …the ready code item went through the gate RPC with its own hints, no dialog…
-    expect(mockEnterCodeModule).toHaveBeenCalledWith('ready code', 'p1', 'e1');
+    expect(mockEnterCodeModule).toHaveBeenCalledWith('ready code', 'p1', 'e1', true);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     // …the toast counts what went, with no deep link (a mixed dispatch has no one destination)…
     const toast = await screen.findByText('Dispatched 2 items');
