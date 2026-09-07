@@ -65,7 +65,8 @@ export function InboxSelectToggle() {
  * through the factory gate), leaving unready items selected with the readiness line naming what
  * each is missing. The other actions are gated on the selection's composition: Classify needs
  * every selected row to still be unclassified, Move needs tasks/unclassified rows, Send-to-Code stays the "choose the project and epic now" path. A full success clears
- * the selection and exits mode; a partial outcome keeps the unfinished items selected. Esc exits.
+ * the selection and exits mode — except after Dispatch, which stays in select mode for the next
+ * batch; a partial outcome keeps the unfinished items selected. Done or Esc exits.
  *
  * The effective selection is the stored ids intersected with the items still in the Inbox, so
  * an item that has left (gated/moved away) simply stops counting — and a prune keeps the store
@@ -142,7 +143,8 @@ export function InboxBulkBar() {
   const readinessLine = summarizeBlockers(blockers);
 
   // After a bulk action: full success exits; a partial outcome narrows the selection to the
-  // unfinished items so the same action can be retried on just those.
+  // unfinished items so the same action can be retried on just those. Dispatch is the
+  // exception — it settles itself, see `handleDispatch`.
   const settle = (staying: string[]) => {
     if (staying.length === 0) exit();
     else prune(staying);
@@ -170,7 +172,12 @@ export function InboxBulkBar() {
     clearDeparting();
     const sent = count - staying.length;
     if (sent > 0) showToast(`Dispatched ${String(sent)} item${sent === 1 ? '' : 's'}`);
-    settle(staying);
+    // Dispatch alone never leaves select mode. It is the sweep you press again and again —
+    // clear a batch, pick the next — so exiting on a clean sweep would charge a re-entry for
+    // the work that just went well, and hardest when the Inbox is fullest. A full success
+    // therefore only empties the selection (the bar folds away at zero), and a partial one
+    // narrows to what stayed, exactly as `settle` would. Only Done or Esc ends the mode.
+    prune(staying);
   };
 
   const gateItems: GateItem[] = selectedItems.map((item) => ({

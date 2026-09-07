@@ -185,6 +185,58 @@ test('Dispatch sends a mixed selection each to its own destination, leaving the 
   await expect(page.getByText('Snooze an item until next week')).toBeVisible();
 });
 
+// ---------------------------------------------------------------------------
+// ALF-200 — a clean sweep leaves select mode ON: the next batch is one click
+// away, with no trip back through the header toggle.
+// ---------------------------------------------------------------------------
+
+test('a Dispatch that empties the selection leaves select mode on for the next batch', async ({
+  page,
+  seed,
+}) => {
+  await seed({
+    folders: [HEALTH],
+    items: [
+      makeItem('Call the dentist', {
+        id: '88888888-8888-4888-8888-888888888888',
+        item_type: 'task',
+        folder_id: HEALTH.id,
+        dispatched_at: null,
+      }),
+      makeItem('Book the check-up', {
+        id: '99999999-9999-4999-8999-999999999999',
+        item_type: 'task',
+        folder_id: HEALTH.id,
+        dispatched_at: null,
+      }),
+      makeItem('Refill the prescription', {
+        id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        item_type: 'task',
+        folder_id: HEALTH.id,
+        dispatched_at: null,
+      }),
+    ],
+  });
+
+  await page.goto('/?view=inbox');
+
+  await page.getByRole('button', { name: 'Select' }).click();
+  await page.getByRole('button', { name: 'Select "Call the dentist"' }).click();
+  await page.getByRole('button', { name: 'Select "Book the check-up"' }).click();
+  await page.getByRole('button', { name: 'Dispatch' }).click();
+
+  // Both rows went, so nothing is selected and the bar folds away…
+  await expect(page.getByText('Dispatched 2 items')).toBeVisible();
+  await expect(page.getByText('Call the dentist')).toBeHidden();
+  await expect(page.getByRole('region', { name: 'Bulk actions' })).toBeHidden();
+
+  // …but the mode itself survives the whole round trip — the header still offers Done, and the
+  // row left behind is still a selection control, so triage carries straight on.
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Select "Refill the prescription"' }).click();
+  await expect(page.getByRole('region', { name: 'Bulk actions' })).toContainText('1 selected');
+});
+
 test('setting a folder from the detail panel labels the row without moving it', async ({
   page,
   seed,

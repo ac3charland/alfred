@@ -680,6 +680,66 @@ describe('Dispatch sends every ready row off at once (ALF-182)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// ALF-200 — Dispatch is the action you press again and again: a clean sweep
+// empties the selection but LEAVES select mode on, ready for the next batch.
+// ---------------------------------------------------------------------------
+
+describe('Dispatch keeps select mode open (ALF-200)', () => {
+  it('a full success clears the selection and stays in select mode', async () => {
+    // Reduced motion so the send-off resolves at once — the exit is ALF-182's business, not
+    // this test's.
+    mockReducedMotion(true);
+    mockUpdateItem.mockImplementation((id) =>
+      Promise.resolve(
+        makeItem(id, { item_type: 'task', folder_id: 'f1', dispatched_at: '2025-01-02T00:00:00Z' }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderInbox([
+      makeItem('sent one', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+      makeItem('sent two', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+      makeItem('left behind', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+    ]);
+
+    await selectRows(user, ['sent one', 'sent two']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    // Both rows went, and the bar folds away with nothing left selected…
+    await waitFor(() => {
+      expect(screen.queryByText('sent one')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('sent two')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).toBeNull();
+
+    // …but select mode is still ON: the header still offers Done, and the row left behind is
+    // still a selection control — so the next batch starts with a click, not a re-entry.
+    expect(screen.getByRole('button', { name: 'Done' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: /select "left behind"/i }));
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('1 selected');
+  });
+
+  it('a dispatch that sends nothing at all leaves the selection untouched', async () => {
+    // Every ready row failing is not a reason to drop the batch: the same rows stay selected
+    // and the same press retries them.
+    mockReducedMotion(true);
+    mockUpdateItem.mockRejectedValue(new Error('network'));
+    const user = userEvent.setup();
+    renderInbox([
+      makeItem('doomed', { item_type: 'task', folder_id: 'f1', dispatched_at: null }),
+      makeItem('unready', { item_type: 'task' }),
+    ]);
+
+    await selectRows(user, ['doomed', 'unready']);
+    await user.click(screen.getByRole('button', { name: 'Dispatch' }));
+
+    await waitFor(() => {
+      expect(mockUpdateItem).toHaveBeenCalledWith('doomed', { dispatched: true });
+    });
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toHaveTextContent('2 selected');
+  });
+});
+
 describe('select mode keeps the label chips, inert (S13)', () => {
   it('renders the metadata cluster inside the row button with no nested interactive element', async () => {
     const user = userEvent.setup();
