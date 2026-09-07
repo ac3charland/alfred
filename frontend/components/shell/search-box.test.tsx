@@ -5,6 +5,7 @@ import * as React from 'react';
 import { SearchBox } from '@/components/shell/search-box';
 import { ALFRED_FOCUS_ITEM_EVENT } from '@/components/tasks/alfred-link';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FoldersProvider } from '@/lib/stores/folders-store';
 import { SearchProvider } from '@/lib/stores/search-store';
 import { TasksProvider } from '@/lib/stores/tasks-store';
@@ -91,13 +92,19 @@ function renderSearchBox(seed: { tasks?: Item[]; stories?: CodeStory[] } = {}) {
   return render(
     <ToastProvider>
       <FoldersProvider initialFolders={[]}>
-        <TasksProvider initialTasks={seed.tasks ?? []}>
-          <CodeProvider initialProjects={[]} initialEpics={[]} initialStories={seed.stories ?? []}>
-            <SearchProvider>
-              <SearchBox placement="desktop" />
-            </SearchProvider>
-          </CodeProvider>
-        </TasksProvider>
+        <ExpansionProvider>
+          <TasksProvider initialTasks={seed.tasks ?? []}>
+            <CodeProvider
+              initialProjects={[]}
+              initialEpics={[]}
+              initialStories={seed.stories ?? []}
+            >
+              <SearchProvider>
+                <SearchBox placement="desktop" />
+              </SearchProvider>
+            </CodeProvider>
+          </TasksProvider>
+        </ExpansionProvider>
       </FoldersProvider>
     </ToastProvider>,
   );

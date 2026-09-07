@@ -3,6 +3,7 @@ import * as React from 'react';
 
 import * as apiClient from '@/lib/api-client';
 import { pinClock } from '@/lib/pin-clock';
+import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import type { Item } from '@/lib/types';
 
 import {
@@ -106,7 +107,13 @@ function pendingCreate() {
 
 function makeWrapper(initialTasks: Item[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return <TasksProvider initialTasks={initialTasks}>{children}</TasksProvider>;
+    // ExpansionProvider wraps the store here as it does in the shell layout — the store hands
+    // it a create's id swap (ALF-199).
+    return (
+      <ExpansionProvider>
+        <TasksProvider initialTasks={initialTasks}>{children}</TasksProvider>
+      </ExpansionProvider>
+    );
   };
 }
 

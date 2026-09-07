@@ -16,7 +16,9 @@ import { createContextPair } from '@/lib/stores/create-context-pair';
  *
  * Like ActiveEditorProvider, it is mounted in the layout and seeded with NO server data
  * (expansion is ephemeral session UI, not DB-backed). State and actions are split into
- * two contexts so the actions-only collapse button doesn't re-render on every expand.
+ * two contexts so the actions-only collapse button doesn't re-render on every expand. It sits
+ * ABOVE TasksProvider — the same lift ToastProvider takes — so that store can call `remapId`
+ * when a create reconciles a temp id into the saved one.
  */
 
 export interface ExpansionState {
@@ -44,6 +46,13 @@ interface ExpansionActions {
   /** Close a row's inline detail panel (idempotent) — the Escape / click-outside dismiss. */
   closeDetails: (id: string) => void;
   /**
+   * Carry a row's open disclosures from one id to another. A create reconciles by swapping the
+   * optimistic temp id for the server's, which would otherwise orphan every flag held on the
+   * old id — a detail panel opened on the still-saving row simply vanished when the write
+   * landed (ALF-199). A no-op for a row with nothing open.
+   */
+  remapId: (from: string, to: string) => void;
+  /**
    * Collapse the given ids' subtask trees, completed panels AND detail panels in one move.
    * The collapse button passes the current view's ids, so collapsing in one view leaves
    * others alone.
@@ -60,6 +69,15 @@ const { StateContext, ActionsContext, useStateValue, useActions } = createContex
 function withToggled(set: ReadonlySet<string>, id: string): ReadonlySet<string> {
   const next = new Set(set);
   if (!next.delete(id)) next.add(id);
+  return next;
+}
+
+/** A new set with `from` swapped for `to` — or the SAME set when `from` isn't in it. */
+function withRemapped(set: ReadonlySet<string>, from: string, to: string): ReadonlySet<string> {
+  if (!set.has(from)) return set;
+  const next = new Set(set);
+  next.delete(from);
+  next.add(to);
   return next;
 }
 
@@ -109,6 +127,11 @@ export function ExpansionProvider({ children }: { children: React.ReactNode }) {
           next.delete(id);
           return next;
         });
+      },
+      remapId(from, to) {
+        setSubtasks((current) => withRemapped(current, from, to));
+        setCompleted((current) => withRemapped(current, from, to));
+        setDetails((current) => withRemapped(current, from, to));
       },
       collapseAll(ids) {
         const remove = new Set(ids);
