@@ -1284,6 +1284,54 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const gateRequiresRefinementResult = await attempt(
+    'enter_code_module keeps ONE signature after 0033 and honours p_requires_refinement (ALF-215)',
+    async () => {
+      // Same trap 0025 documented for create_code_story: 0033 had to DROP the 3-arg signature
+      // before creating the 4-arg one, or PostgREST's existing 3-named-arg call would match both
+      // candidates and every gate would 500 with `function ... is not unique`.
+      const { rows: signatures } = await client.query<{ count: string }>(
+        `select count(*)::text as count from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'public' and p.proname = 'enter_code_module'`,
+      );
+      const count = signatures[0]?.count ?? '0';
+      if (count !== '1') throw new Error(`expected exactly 1 enter_code_module, found ${count}`);
+
+      const gate = async (title: string, named: string) => {
+        const inserted = await asRole(client, 'authenticated', () =>
+          client.query<{ id: string }>(
+            `insert into items (title, item_type) values ($1, 'unclassified') returning id`,
+            [title],
+          ),
+        );
+        const itemId = inserted.rows[0]?.id;
+        if (!itemId) throw new Error('item insert returned no id');
+        const { rows } = await asRole(client, 'authenticated', () =>
+          client.query<{ factory_state: string; requires_refinement: boolean }>(
+            `select factory_state::text, requires_refinement
+               from enter_code_module(p_item := $1, p_project := $2, p_epic := $3${named})`,
+            [itemId, PROJECT, EPIC],
+          ),
+        );
+        const row = rows[0];
+        if (!row) throw new Error('enter_code_module returned no row');
+        return row;
+      };
+
+      // The 3-named-arg call PostgREST already makes still resolves, at the old landing…
+      const legacy = await gate('three-named-args still resolves', '');
+      if (legacy.factory_state !== 'needs_refinement' || !legacy.requires_refinement)
+        throw new Error(`3-arg gate landed at ${legacy.factory_state}`);
+
+      // …and clearing the flag admits the item straight into ready_for_dev.
+      const marked = await gate('Bug: skips refinement', ', p_requires_refinement := false');
+      if (marked.factory_state !== 'ready_for_dev' || marked.requires_refinement)
+        throw new Error(`p_requires_refinement := false gated to ${marked.factory_state}`);
+      return '1 signature; 3-arg → needs_refinement, flag cleared → ready_for_dev';
+    },
+  );
+
   const epicRealtimeResult = await attempt(
     'epics is in the supabase_realtime publication so a snapshot reaches an open board',
     async () => {
@@ -2683,6 +2731,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     epicSpecColumnsResult,
     epicSpecViewResult,
     requiresRefinementResult,
+    gateRequiresRefinementResult,
     epicRealtimeResult,
     habitSchemaResult,
     habitEntryUniqueResult,

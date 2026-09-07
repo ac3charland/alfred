@@ -726,12 +726,17 @@ function handleRpc(req, res, fn, body) {
       // The gate consumes the item, so it leaves the Inbox (migration 0026).
       item.dispatched_at = new Date().toISOString();
     }
+    // Migration 0033: the gate takes the same refinement mark create_code_story does, so a
+    // `Bug:` / `Spike:` task is admitted straight into Ready for Dev (ALF-215).
+    const requiresRefinement = body?.p_requires_refinement ?? true;
     const code = newCodeItem({
       item_id: body?.p_item,
       project_id: body?.p_project,
       epic_id: body?.p_epic,
       ref_number: n,
       ref: `${key}-${String(n)}`,
+      requires_refinement: requiresRefinement,
+      factory_state: requiresRefinement ? 'needs_refinement' : 'ready_for_dev',
     });
     codeItems.push(code);
     sendJson(res, 200, code);

@@ -861,7 +861,12 @@ export type Database = {
         }
       }
       enter_code_module: {
-        Args: { p_epic: string; p_item: string; p_project: string }
+        Args: {
+          p_epic: string
+          p_item: string
+          p_project: string
+          p_requires_refinement?: boolean
+        }
         Returns: {
           blocked_from: Database["public"]["Enums"]["code_factory_state"] | null
           blocked_reason: string | null
