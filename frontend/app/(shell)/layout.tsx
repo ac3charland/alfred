@@ -67,10 +67,13 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     // rollback path via useToastActions (ALF-33). AppShell renders the ToastViewport.
     <ToastProvider>
       <FoldersProvider initialFolders={folders}>
-        <TasksProvider initialTasks={items}>
-          <TaskDndProvider>
-            <ActiveEditorProvider>
-              <ExpansionProvider>
+        {/* ExpansionProvider wraps TasksProvider (rather than nesting inside it, where the other
+        coordination stores sit) so the tasks store can hand it a create's temp id → saved id
+        swap and keep the row's open disclosures across it — ALF-199. */}
+        <ExpansionProvider>
+          <TasksProvider initialTasks={items}>
+            <TaskDndProvider>
+              <ActiveEditorProvider>
                 <InboxSelectionProvider>
                   <DepartingItemsProvider>
                     <CodeProvider
@@ -106,10 +109,10 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                     </CodeProvider>
                   </DepartingItemsProvider>
                 </InboxSelectionProvider>
-              </ExpansionProvider>
-            </ActiveEditorProvider>
-          </TaskDndProvider>
-        </TasksProvider>
+              </ActiveEditorProvider>
+            </TaskDndProvider>
+          </TasksProvider>
+        </ExpansionProvider>
       </FoldersProvider>
     </ToastProvider>
   );

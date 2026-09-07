@@ -37,14 +37,16 @@ const preview: Preview = {
         React.createElement(
           FoldersProvider,
           { initialFolders: seed.folders ?? [] },
+          // ExpansionProvider wraps TasksProvider, as in the shell layout: the store calls its
+          // remapId when a create reconciles (ALF-199).
           React.createElement(
-            TasksProvider,
-            { initialTasks: seed.tasks ?? [] },
+            ExpansionProvider,
+            null,
             React.createElement(
-              ActiveEditorProvider,
-              null,
+              TasksProvider,
+              { initialTasks: seed.tasks ?? [] },
               React.createElement(
-                ExpansionProvider,
+                ActiveEditorProvider,
                 null,
                 React.createElement(
                   InboxSelectionProvider,

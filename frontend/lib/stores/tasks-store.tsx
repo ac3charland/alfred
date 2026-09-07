@@ -8,6 +8,7 @@ import { isDueDateOverdue, isDueTodayOrOverdue } from '@/lib/date-utils';
 import { rankByPriority } from '@/lib/priority';
 import { nextOccurrence, parseRecurrenceRule } from '@/lib/recurrence';
 import { createContextPair } from '@/lib/stores/create-context-pair';
+import { useExpansionActions } from '@/lib/stores/expansion-store';
 import { runOptimisticMutation } from '@/lib/stores/optimistic-mutation';
 import { type SimpleAction, simpleReducer } from '@/lib/stores/reducer-actions';
 import { useToastActions } from '@/lib/stores/toast-store';
@@ -324,6 +325,17 @@ export function TasksProvider({
     showToastRef.current = showToast;
   }, [showToast]);
 
+  // A create reconciles by swapping the optimistic temp id for the server's, which orphans any
+  // UI state still keyed by the old id — a detail panel opened on the row while it saved simply
+  // closed when the write landed (ALF-199). So the row's open disclosures are carried across the
+  // swap. ExpansionProvider is mounted ABOVE this store (the same lift ToastProvider takes), and
+  // its action is captured through an effect-synced ref for the same reason `showToast` is.
+  const { remapId } = useExpansionActions();
+  const remapExpansionRef = React.useRef(remapId);
+  React.useEffect(() => {
+    remapExpansionRef.current = remapId;
+  }, [remapId]);
+
   // Live classifier verdicts (ALF-196). The sweep Worker fills an untouched capture's labels a
   // minute or two after it lands — a second, non-browser writer this store never hears from, so
   // seed-once left the row you were looking at blank until the next reload. Subscribing to the
@@ -413,6 +425,8 @@ export function TasksProvider({
           apiCall: () => api.createItem(createInput),
           reconcile: (saved) => {
             dispatch({ type: 'replace', id: optimistic.id, item: saved });
+            // The row keeps whatever it had open across its change of id (ALF-199).
+            remapExpansionRef.current(optimistic.id, saved.id);
           },
           rollback: () => {
             dispatch({ type: 'remove', ids: [optimistic.id] });

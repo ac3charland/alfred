@@ -156,6 +156,55 @@ describe('ExpansionProvider', () => {
     expect(result.current.state.subtasks.has('b')).toBe(true);
   });
 
+  it('remapId carries every open flag from the old id to the new one', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.toggleDetails('temp-1');
+      result.current.actions.expandSubtasks('temp-1');
+      result.current.actions.toggleCompleted('temp-1');
+    });
+
+    act(() => {
+      result.current.actions.remapId('temp-1', 'saved-1');
+    });
+
+    expect(result.current.state.details.has('saved-1')).toBe(true);
+    expect(result.current.state.subtasks.has('saved-1')).toBe(true);
+    expect(result.current.state.completed.has('saved-1')).toBe(true);
+    expect(result.current.state.details.has('temp-1')).toBe(false);
+    expect(result.current.state.subtasks.has('temp-1')).toBe(false);
+    expect(result.current.state.completed.has('temp-1')).toBe(false);
+  });
+
+  it('remapId leaves another row’s flags alone', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+
+    act(() => {
+      result.current.actions.toggleDetails('b');
+    });
+
+    act(() => {
+      result.current.actions.remapId('temp-1', 'saved-1');
+    });
+
+    expect(result.current.state.details.has('b')).toBe(true);
+    expect(result.current.state.details.has('saved-1')).toBe(false);
+  });
+
+  it('remapId on a row with nothing open is a no-op (same set references)', () => {
+    const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
+    const before = result.current.state;
+
+    act(() => {
+      result.current.actions.remapId('temp-1', 'saved-1');
+    });
+
+    expect(result.current.state.details).toBe(before.details);
+    expect(result.current.state.subtasks).toBe(before.subtasks);
+    expect(result.current.state.completed).toBe(before.completed);
+  });
+
   it('collapseAll with no matching ids leaves the sets unchanged (same reference)', () => {
     const { result } = renderHook(useExpansionTest, { wrapper: Wrapper });
 

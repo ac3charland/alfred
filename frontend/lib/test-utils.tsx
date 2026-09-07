@@ -74,9 +74,11 @@ export function renderWithProviders(
     return (
       <ToastProvider>
         <FoldersProvider initialFolders={folders}>
-          <TasksProvider initialTasks={tasks}>
-            <ActiveEditorProvider>
-              <ExpansionProvider>
+          {/* Above TasksProvider, as in the shell layout — the store calls its remapId when a
+          create reconciles (ALF-199). */}
+          <ExpansionProvider>
+            <TasksProvider initialTasks={tasks}>
+              <ActiveEditorProvider>
                 <InboxSelectionProvider>
                   <DepartingItemsProvider>
                     <CodeProvider
@@ -104,9 +106,9 @@ export function renderWithProviders(
                     </CodeProvider>
                   </DepartingItemsProvider>
                 </InboxSelectionProvider>
-              </ExpansionProvider>
-            </ActiveEditorProvider>
-          </TasksProvider>
+              </ActiveEditorProvider>
+            </TasksProvider>
+          </ExpansionProvider>
         </FoldersProvider>
         {/* The toast viewport (normally mounted in AppShell) so components that fire a
             toast — e.g. the gate in TaskRow — render their message under test. */}

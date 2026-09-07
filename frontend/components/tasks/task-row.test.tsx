@@ -37,6 +37,7 @@ jest.mock('@/lib/supabase/client', () => ({
 
 // api-client is the seam the store calls; mock it so tests never hit the network.
 jest.mock('@/lib/api-client');
+const mockCreateItem = jest.mocked(apiClient.createItem);
 const mockCompleteTask = jest.mocked(apiClient.completeTask);
 const mockUpdateItem = jest.mocked(apiClient.updateItem);
 const mockDeleteItem = jest.mocked(apiClient.deleteItem);
@@ -3591,6 +3592,38 @@ describe('TaskRow — detail panel (ALF-67)', () => {
     await openDetails(user);
     expect(screen.getByTestId('task-detail-panel')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Subtasks' })).toBeInTheDocument();
+  });
+});
+
+describe('TaskRow — a detail panel open on an unsaved row (ALF-199)', () => {
+  it('keeps the panel open when the create that made the row reconciles', async () => {
+    const user = userEvent.setup();
+    // Hold the create open, so the new subtask is still an unreconciled temp id when its
+    // detail panel opens. Resolving it swaps that id for the server's — the moment the panel
+    // used to vanish, because the expansion store still held the temp id.
+    let settleCreate: ((item: Item) => void) | undefined;
+    mockCreateItem.mockReturnValue(
+      new Promise<Item>((resolve) => {
+        settleCreate = resolve;
+      }),
+    );
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /add subtask/i }));
+    await user.type(screen.getByPlaceholderText(/add subtask/i), 'Fresh subtask{Enter}');
+    await screen.findByText('Fresh subtask');
+
+    await openMenuFor(user, 'Fresh subtask');
+    await activateMenuItem(user, /open details/i);
+    expect(within(rowFor('Fresh subtask')).getByTestId('task-detail-panel')).toBeInTheDocument();
+
+    settleCreate?.({ ...CHILD_ITEM, id: 'saved-child', title: 'Fresh subtask' });
+    // The entrance wrapper is the temp id's own tell, so its absence is the reconcile landing.
+    await waitFor(() => {
+      expect(entranceWrapperFor('Fresh subtask')).toBeNull();
+    });
+
+    expect(within(rowFor('Fresh subtask')).getByTestId('task-detail-panel')).toBeInTheDocument();
   });
 });
 
