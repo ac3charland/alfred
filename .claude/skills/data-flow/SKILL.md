@@ -153,7 +153,8 @@ second ordering source — the board *reflects* priority, it doesn't set it:
 Per-row UI state stays in the row's own `useState` — an input draft, the meta panel, the
 title-edit text. It graduates to a tiny Context store **only** when an invariant or command
 spans rows and so can't live in any single one. Each such coordination store is mounted in the
-layout beside the data stores, **seeded with no server data**, and split into state + actions
+layout beside the data stores (`ExpansionProvider` above `TasksProvider` — see the id-remap
+invariant), **seeded with no server data**, and split into state + actions
 contexts (so actions-only callers don't re-render on every change):
 
 - **`ActiveEditorProvider`** (`lib/stores/active-editor-store.tsx`) — only one inline input
@@ -275,6 +276,12 @@ action closures can fire it without it becoming a memo dep.
 - **Reconcile/patch is a no-op for ids not in the store** — the race rule: an out-of-order
   reconcile can't resurrect a row a later action removed. Roll back **per-id** (capture the
   affected rows), never with a whole-store snapshot.
+- **A create's reconcile changes the row's id, so carry any id-keyed UI state with it.**
+  `replace` swaps the temp id for the server's, orphaning every coordination-store flag held on
+  the old one — the surface it drove then closes on its own, mid-interaction (ALF-199: a detail
+  panel opened while the write was still in flight). `addTask` calls the expansion store's
+  `remapId(temp, saved)` in its reconcile, which is why `ExpansionProvider` is lifted above
+  `TasksProvider` and read through an effect-synced ref, exactly as `ToastProvider` is.
 - **Split state and actions into two contexts.** Actions are memoized (`useMemo([])`) and
   stable, so mutate-only components don't re-render when the data changes.
 - **Read latest state for rollback via a `useEffect`-synced ref**, never a render-body write
