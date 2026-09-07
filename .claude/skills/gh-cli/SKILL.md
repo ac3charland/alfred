@@ -73,18 +73,19 @@ fine, so it looks like it worked. It is **not** applied on every call — a `cre
 body with absolute links has come through untouched — so treat it as a risk to design around,
 never as a state you can infer from one green result.
 
-**Fix — link with a root-relative path (no `https://` token to wrap):**
+**Fix — link the demo's FOLDER with a root-relative `/tree/` path:**
 
 ```text
-📝 **Demo:** [path/to/file.md](/<owner>/<repo>/blob/<branch>/path/to/file.md)
+📝 **Demo:** [<demo-folder>](/<owner>/<repo>/tree/<branch>/docs/demos/<demo-folder>)
 ```
 
-GitHub resolves a leading-`/` href against `github.com`, so `/ac3charland/alfred/blob/<branch>/…`
-is a real clickable link to the blob on the head branch — and contains no `https://`, so the
-wrapper leaves it alone. **`npm run demo -- pr-link` already emits exactly this root-relative
-form**, so its output pastes verbatim into an MCP-posted body — no conversion. Only a hand-written
-`https://` link needs converting. Verify with a WebFetch of the PR page (cache-bust with `?cb=N` —
-WebFetch caches a URL for 15 min) and confirm the demo text is an anchor, not inline code.
+GitHub resolves a leading-`/` href against `github.com`, so this is a real clickable link to the
+folder on the head branch, one click from the doc. Dropping the `https://` is not enough: a
+`/blob/…md` href to the doc itself gets wrapped in every form — absolute, bare, and
+root-relative — so **`npm run demo -- pr-link`'s `/blob/…` output needs converting** to its
+folder. Verify with a WebFetch of the PR page (cache-bust with `?cb=N` — WebFetch caches a URL
+for 15 min), confirm the demo text is an anchor rather than inline code, and re-post in another
+form if it came back wrapped.
 
 **The same writer HTML-escapes `'` and `"` into `&#39;` / `&#34;`.** In prose that's invisible
 (the renderer decodes them), but **inside a code span it is not** — CommonMark doesn't resolve
