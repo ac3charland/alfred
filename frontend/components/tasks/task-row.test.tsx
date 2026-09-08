@@ -2864,7 +2864,7 @@ describe('TaskRow — classification & type-gating', () => {
       // No gate opens — the labels already answered everything it would have asked.
       expect(screen.queryByRole('dialog')).toBeNull();
       await waitFor(() => {
-        expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1');
+        expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1', true);
       });
       // The toast keeps the gate's own confirmation: the allocated ref, deep-linked.
       expect(await screen.findByRole('link', { name: 'Created ALF-42' })).toHaveAttribute(

@@ -303,16 +303,25 @@ export function listCode(): Promise<CodeStory[]> {
 /**
  * The gate: admit an item to the factory. Calls `enter_code_module`, which flips
  * `item_type` to `code`, clears the task-only fields, and creates the `code_items`
- * sidecar at `needs_refinement` with a server-allocated ref. Returns the sidecar row.
+ * sidecar with a server-allocated ref. Returns the sidecar row.
+ *
+ * `requiresRefinement` lands the sidecar: `true` at `needs_refinement` as the gate always has,
+ * `false` straight in `ready_for_dev` — what a `Bug:` / `Spike:` title gets (ALF-215).
  */
 export function enterCodeModule(
   itemId: string,
   projectId: string,
   epicId: string,
+  requiresRefinement: boolean,
 ): Promise<CodeItem> {
   return apiRequest<CodeItem>('/api/code', {
     method: 'POST',
-    body: JSON.stringify({ item_id: itemId, project_id: projectId, epic_id: epicId }),
+    body: JSON.stringify({
+      item_id: itemId,
+      project_id: projectId,
+      epic_id: epicId,
+      requires_refinement: requiresRefinement,
+    }),
   });
 }
 

@@ -48,6 +48,60 @@ describe('NewStoryDialog', () => {
     expect(screen.queryByText('Needs Refinement')).not.toBeInTheDocument();
   });
 
+  describe('a Bug: or Spike: title (ALF-215)', () => {
+    it.each(['Bug: the capture box keeps its draft', 'Spike: outbound notifications'])(
+      'forces "%s" straight into Ready for Dev, with the checkbox locked off',
+      async (title) => {
+        const user = userEvent.setup();
+        renderDialog();
+
+        await user.type(screen.getByLabelText(/title/i), title);
+
+        const checkbox = screen.getByRole('checkbox', { name: /needs refinement/i });
+        expect(checkbox).not.toBeChecked();
+        expect(checkbox).toBeDisabled();
+        expect(screen.getByText('Ready for Dev')).toBeInTheDocument();
+        expect(screen.queryByText('Needs Refinement')).not.toBeInTheDocument();
+      },
+    );
+
+    it('says why the checkbox is locked', async () => {
+      const user = userEvent.setup();
+      renderDialog();
+
+      await user.type(screen.getByLabelText(/title/i), 'Bug: the toast never clears');
+
+      expect(screen.getByText(/a bug or a spike is never refined/i)).toBeInTheDocument();
+    });
+
+    it('creates the story with the mark cleared', async () => {
+      const user = userEvent.setup();
+      const { onCreateStory } = renderDialog();
+
+      await user.type(screen.getByLabelText(/title/i), 'Bug: the toast never clears');
+      await user.click(screen.getByRole('button', { name: /^create$/i }));
+
+      await waitFor(() => {
+        expect(onCreateStory).toHaveBeenCalledWith('Bug: the toast never clears', null, false);
+      });
+    });
+
+    it('hands the checkbox back when the title stops being a bug', async () => {
+      const user = userEvent.setup();
+      renderDialog();
+      const title = screen.getByLabelText(/title/i);
+
+      await user.type(title, 'Bug: the toast never clears');
+      await user.clear(title);
+      await user.type(title, 'The toast never clears');
+
+      const checkbox = screen.getByRole('checkbox', { name: /needs refinement/i });
+      expect(checkbox).toBeEnabled();
+      expect(checkbox).toBeChecked();
+      expect(screen.getByText('Needs Refinement')).toBeInTheDocument();
+    });
+  });
+
   it('autofocuses the title field on open', () => {
     renderDialog();
     expect(screen.getByLabelText(/title/i)).toHaveFocus();

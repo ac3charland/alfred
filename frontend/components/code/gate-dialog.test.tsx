@@ -158,7 +158,7 @@ describe('GateDialog', () => {
     await user.click(screen.getByRole('button', { name: /send to code module/i }));
 
     await waitFor(() => {
-      expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1');
+      expect(mockEnterCodeModule).toHaveBeenCalledWith('item-1', 'p1', 'e1', true);
     });
     // onComplete gets the batch of flattened, reconciled CodeStories (carrying the allocated
     // ref), not the raw sidecar. A single-item send yields a one-element array.
@@ -201,9 +201,9 @@ describe('GateDialog', () => {
     await user.click(screen.getByRole('button', { name: /send to code module/i }));
 
     await waitFor(() => {
-      expect(mockEnterCodeModule).toHaveBeenCalledWith('i1', 'p1', 'e1');
+      expect(mockEnterCodeModule).toHaveBeenCalledWith('i1', 'p1', 'e1', true);
     });
-    expect(mockEnterCodeModule).toHaveBeenCalledWith('i2', 'p1', 'e1');
+    expect(mockEnterCodeModule).toHaveBeenCalledWith('i2', 'p1', 'e1', true);
     expect(onComplete).toHaveBeenCalledWith([
       expect.objectContaining({ item_id: 'i1' }),
       expect.objectContaining({ item_id: 'i2' }),

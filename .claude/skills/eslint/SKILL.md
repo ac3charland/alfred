@@ -202,6 +202,18 @@ This creates a new array (satisfies `.sort()` mutation concern) using a loop (no
 
 Despite the "repeated comparisons" name, this rule flags `a === undefined || b === undefined || c === undefined` (three *distinct* vars each compared to the same value), not just one var compared many ways. Collapse to `[a, b, c].includes(undefined)`. (Hit in `scripts/mock-supabase.mjs` guarding three `Map.get` lookups.)
 
+**`unicorn/prefer-includes` autofixes `.some()` on an `as const` tuple into a type error**
+
+`--fix` rewrites `LANES.some((lane) => lane === state)` to `LANES.includes(state)`. On a
+tuple typed `as const satisfies readonly T[]`, `includes` only accepts the two literals in the
+tuple, so a wider `state: T | null` argument no longer type-checks — and typecheck runs *before*
+lint, so the error lands on the next run. Widen at the call site instead of fighting the rule:
+
+```ts
+const lanes: readonly (CodeFactoryState | null)[] = REFINEMENT_STATES;
+return lanes.includes(state);
+```
+
 **`unicorn/no-array-callback-reference` forbids passing a named function to `.map()`**
 
 A helper that happens to match the callback shape still can't go in bare — `.map()` passes the

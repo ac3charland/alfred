@@ -12,6 +12,7 @@ import {
 } from '@/components/atoms/dropdown-menu';
 import { TextareaField } from '@/components/atoms/textarea-field';
 import { stateLabel } from '@/components/code/story-detail/state-helpers';
+import { canMoveToState } from '@/lib/code/refinement';
 import { HAPPY_PATH_STATES, STATE_LABELS, useCodeActions } from '@/lib/stores/code-store';
 import type { CodeFactoryState, CodeStory } from '@/lib/types';
 
@@ -20,12 +21,18 @@ import type { CodeFactoryState, CodeStory } from '@/lib/types';
  * happy-path lane in board order, check-marking the one it's in. Any lane is one pick away — so a
  * story can jump several lanes at once, and a blocked/abandoned one (which has no lane, hence no
  * check mark) can be dropped straight back onto the board.
+ *
+ * Any lane the story's KIND cannot occupy is rendered disabled rather than hidden (ALF-215): a
+ * bug and a spike are never refined, and a greyed-out "Needs Refinement" says that, where a menu
+ * silently four items long would just look broken.
  */
 function StatusMenu({
+  story,
   state,
   disabled,
   onPick,
 }: {
+  story: Pick<CodeStory, 'title'>;
   state: CodeFactoryState | null;
   disabled: boolean;
   onPick: (next: CodeFactoryState) => void;
@@ -50,6 +57,7 @@ function StatusMenu({
         {HAPPY_PATH_STATES.map((option) => (
           <DropdownMenuItem
             key={option}
+            disabled={!canMoveToState(story, option)}
             aria-current={option === state ? 'true' : undefined}
             className="justify-between gap-6"
             onSelect={() => {
@@ -97,6 +105,7 @@ export function ManualControls({ story }: { story: CodeStory }) {
       </h3>
       <div className="flex flex-wrap items-center gap-2">
         <StatusMenu
+          story={story}
           state={state}
           disabled={pending}
           onPick={(next) => {
