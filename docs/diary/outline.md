@@ -21,3 +21,9 @@
 - Batch-commit skill?
 
 ## 4. 6/12: Cooking with gas
+
+## 5. 6/29: Agents suck at theory of mind
+    - RealPlay: doesn't explain what Alfred is
+
+## 6. Any time retrospective: 
+There were good reasons not to do Alfred. Not all coherent. On one hand, software already exists, don't build your own tools. Grand gestures and reinventions are often a coping mechanism; make gradual changes and fix what you have. On the other, coding tools are so easy now, don't build it, there's no business there. But so glad I took the plunge and built my own tools tailored.
