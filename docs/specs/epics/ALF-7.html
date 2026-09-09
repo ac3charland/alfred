@@ -192,8 +192,9 @@
       none may ship a source or a surface that honours fewer.</li>
     <li><b>A message alfred cannot decode is stored and flagged, never skipped</b> (<b>D24</b>). A
       skipped message is a false negative that leaves no trace anywhere in alfred.</li>
-    <li><b>Nothing pushes to the phone unless alfred judged it <code>ASAP</code></b> (<b>D16</b>,
-      <b>D25</b>). Backfilled rows, unjudged rows and rows the owner promoted by hand do not push.</li>
+    <li><b>Nothing reaches <code>ASAP</code> that alfred did not judge <code>ASAP</code> on its
+      merits</b> (<b>D21</b>, <b>D25</b>). Backfilled and unjudged rows land no higher than
+      <code>Today</code>.</li>
     <li><b>No verdict is ever silently re-judged</b> (<b>D19</b>). Editing the rubric, the example set
       or the roster sweeps nothing; a re-run is an explicit action on an explicit row.</li>
     <li><b>alfred is never the store of record</b> (<b>D2</b>). No story introduces state that exists
@@ -227,7 +228,7 @@
   <b>R3</b> had roughly <b>doubled</b> the document. Nothing removed was a decision; what went was
   build detail belonging to a story (deep-link mechanics, keychain commands, migration boilerplate)
   and invented numbers nobody could check.</p>
-  <p style="margin-bottom:0"><b>R5</b> reversed nothing the owner had settled and found six things
+  <p><b>R5</b> reversed nothing the owner had settled and found six things
   wrong with the document rather than with the design:</p>
   <ul style="margin-bottom:0">
     <li><b>D21's re-seed formula did the opposite of its own paragraph.</b>
@@ -252,6 +253,17 @@
       with no default, <b>B</b> carried the daemon's endpoint before the daemon, three items were
       double-homed, and WorkMail had no drain path at all.</li>
   </ul>
+  <p style="margin-bottom:0"><b>R6 removed a decision the owner never made.</b> <b>D16</b> specified an
+  outbound notification on <code>ASAP</code>, and story <b>M</b> built it, on the strength of a
+  committed <i>spike</i> proposing a channel. A spike is a findings document — that one says so in its
+  own first paragraph — and no such channel is implemented anywhere in this repo. Neither the decision
+  nor the story was ever discussed with the owner. Both are removed, and <b>D16</b> and story <b>M</b>
+  are <b>retired identifiers</b>: nothing is renumbered, so every cross-reference elsewhere in this
+  document and in the review record still resolves. What the removal leaves behind is stated rather
+  than patched over — <b>the epic now decides no way for alfred to reach the owner at all</b>, which
+  sharpens <a href="#q0">Q0</a> rather than answering it. The three failures in §1 are re-ranked
+  accordingly: failure&nbsp;2 is a spurious <code>ASAP</code> spending the tier's credibility, not a
+  spurious buzz.</p>
 </div>
 
 <h2>1 · Problem space &amp; why now</h2>
@@ -310,9 +322,10 @@ once, and every decision that trades between them cites this order:</p>
   <li><b>A missed obligation</b> — a real ask that never reaches the queue. Terminal: it costs trust
     rather than a message, and there is no recovery inside alfred once the owner has stopped
     believing the count. Every other failure is worth paying to avoid this one.</li>
-  <li><b>A spurious <code>ASAP</code> push.</b> <b>D16</b> makes <code>ASAP</code> the module's only
-    claim on the owner's attention, and that budget is spent once. A handful of unwarranted buzzes and
-    the owner mutes the bot — at which point failure&nbsp;2 has quietly become failure&nbsp;1.</li>
+  <li><b>A spurious <code>ASAP</code>.</b> <code>ASAP</code> is the only tier that claims
+    <i>break focus for this</i>, and that claim is spent once. A handful of unwarranted ones and the
+    owner stops treating it differently from <code>Today</code> — at which point the module has no way
+    left to say "now", and failure&nbsp;2 has quietly become failure&nbsp;1.</li>
   <li><b>A count that is routinely large, or that only ever grows.</b> The glance stops working and
     "check comms" stops collapsing to one bit. Serious, but <i>visible</i> and tunable — it is what
     <a href="#upkeep">§6</a>'s stop condition watches, and it is the currency the other two are bought
@@ -333,9 +346,6 @@ the queue, and never into a push).</p>
   <li><b><a href="../../spikes/imessage-ingestion.md">The iMessage ingestion spike</a></b> — settles that
     iMessage has no cloud API, that <code>chat.db</code> polling on a Mac is the only viable read path,
     and how to do it without the reliability gremlins.</li>
-  <li><b><a href="../../spikes/notifications-spike.md">The outbound-notifications spike</a></b> — already
-    chose a private Telegram bot, sent from the existing Worker, and explicitly anticipated this module
-    as the consumer.</li>
 </ul>
 
 <h2>2 · Decisions</h2>
@@ -428,11 +438,12 @@ the queue, and never into a push).</p>
     exist. A message wrongly queued as <code>Today</code> costs a glance — a rounding error at ~45
     messages a day.</p>
   <p class="why"><b>Why the direction:</b> a spurious <code>ASAP</code> doesn't cost a glance.
-    <b>D16</b> makes <code>ASAP</code> the one tier that pushes to the phone, so it costs an
-    unwarranted interruption — the exact thing this module exists to remove. Recall is therefore bought
+    <code>ASAP</code> is the only tier that claims <i>break focus for this</i>, so a spurious one
+    spends the tier's credibility — and a tier the owner no longer trusts is the exact thing this
+    module exists to prevent. Recall is therefore bought
     at the two boundaries where it is cheap (is this an obligation at all; <code>Today</code> or
     <code>Whenever</code>) and <b>not</b> at the one where it isn't. Story <b>K</b> scores them
-    separately: recall on "did it reach the queue", precision on "did it push".</p>
+    separately: recall on "did it reach the queue", precision on "did it reach <code>ASAP</code>".</p>
   <p><b>What over-surfacing actually costs</b> — stated correctly, because the obvious answer is
     wrong. A wrongly-queued message <i>asks nothing</i>, so no reply is ever sent, so reply detection
     (<b>D18</b>) never fires and the row never drains on its own. A false positive is not "one more
@@ -647,9 +658,9 @@ the queue, and never into a push).</p>
     with the cursor as the key it is a corruption that looks like normal operation.</p>
 
   <p><b>Two smaller rules that ride along.</b> Backfilled messages are <b>classified but never
-    pushed</b> (<b>D16</b>), and that suppression keys on the <b>message's age</b> and the <b>first
-    sweep after a source is enabled</b> rather than a "backfilled" flag, since any lag between a source
-    starting and the classifier catching up makes the same backlog (story <b>M</b>). And
+    placed in <code>ASAP</code></b>, and that suppression keys on the <b>message's age</b> and the
+    <b>first sweep after a source is enabled</b> rather than a "backfilled" flag, since any lag between
+    a source starting and the classifier catching up makes the same backlog. And
     <b>historical backfill beyond the window is out of scope</b> — a deliberate, separate act if ever
     wanted.</p>
 </div>
@@ -747,24 +758,13 @@ the queue, and never into a push).</p>
     that reports the urgent thing tomorrow is not a firewall.</p>
 </div>
 
-<div class="dec">
-  <h3><span class="n">D16</span>Notification via the existing Telegram bot, <code>ASAP</code> only.</h3>
-  <p>Reuse the channel the <a href="../../spikes/notifications-spike.md">notifications spike</a> already
-    settled: a private Telegram bot, one <code>fetch</code> from the Worker. Fires on
-    <code>ASAP</code> and nothing else.</p>
-  <p class="why"><b>Why:</b> the channel decision is inherited, not relitigated — that spike explicitly
-    named this module as its consumer. <code>ASAP</code>-only because a push for a
-    <code>Today</code> item <i>is</i> the interruption the module exists to remove. A tier that
-    notifies is a tier that costs attention; only one should.</p>
-</div>
-
 <div class="dec rev">
   <h3><span class="n">D25</span>A message alfred could not judge enters the queue at <code>Today</code>, marked. Nothing is ever <i>silently</i> shelved.<span class="revtag">revised</span></h3>
   <p><b>Two</b> things put a message in the queue with no judgment behind it, and they get one rule
     rather than two: <b>a body that wouldn't decode</b> (<b>D24</b>) and <b>no verdict that will ever
     come</b> (content-shaped failures exhausted the ceiling, below). Both land on <code>Today</code>,
-    <b>flagged</b>, with an <code>ask</code> that says which. Counted. <b>Never pushed</b>
-    (<b>D16</b>) — a tier alfred didn't choose may not buzz the phone. A re-run (<b>D19</b>) helps only
+    <b>flagged</b>, with an <code>ask</code> that says which. Counted, and <b>never <code>ASAP</code></b> — a tier alfred
+    didn't choose doesn't get the one that claims "now". A re-run (<b>D19</b>) helps only
     once <i>something has changed</i>: a different model, an edited rubric, a later vision path — never
     as a retry of the identical call.</p>
 
@@ -1043,7 +1043,6 @@ the queue, and never into a push).</p>
     <rect x="450" y="220" width="150" height="80" rx="6"/>
     <!-- ui -->
     <rect x="670" y="86" width="150" height="80" rx="6"/>
-    <rect x="670" y="238" width="150" height="46" rx="6"/>
   </g>
   <g font-family="system-ui, sans-serif" font-size="11" fill="currentColor">
     <text x="85" y="38" text-anchor="middle" font-weight="600">Gmail — personal</text>
@@ -1079,8 +1078,6 @@ the queue, and never into a push).</p>
     <text x="745" y="142" text-anchor="middle" font-size="10" opacity=".7">FYI (unbadged)</text>
     <text x="745" y="156" text-anchor="middle" font-size="10" opacity=".7">(D4)</text>
 
-    <text x="745" y="258" text-anchor="middle" font-weight="600">Telegram bot</text>
-    <text x="745" y="273" text-anchor="middle" font-size="10" opacity=".7">ASAP only (D16)</text>
   </g>
   <g stroke="currentColor" stroke-width="1.4" fill="none" color="#8a94a0" marker-end="url(#ar)">
     <path d="M160 41 H 228"/>
@@ -1092,7 +1089,6 @@ the queue, and never into a push).</p>
     <path d="M600 126 H 668"/>
     <path d="M545 220 V 172"/>
     <path d="M560 172 V 218"/>
-    <path d="M600 260 H 668"/>
   </g>
 </svg>
 </div>
@@ -1359,9 +1355,6 @@ judging (<b>D17</b>).</p>
   <li><b>No sending</b> — no quick reply, no forward (<b>D20</b>); both need SMTP or AppleScript into
     Messages.app, which nothing else here requires. <b>And no write-back to any source</b>
     (<b>D18</b>): alfred reads, and never labels, archives or modifies a mailbox.</li>
-  <li><b>alfred's own Telegram notifications are not a source in this epic.</b> The
-    <a href="../../spikes/notifications-spike.md">notifications spike</a> anticipated surfacing them as
-    their own labeled stream, and that remains the intent — as a later story.</li>
   <li><b>No newsletter reading, summarizing or digesting.</b> Bulk mail is detected and shelved
     (<b>D13</b>); making it <i>useful</i> is the Reader module's job (SPEC §13.1).</li>
   <li><b>No WhatsApp, Slack, Signal or Twitter.</b> Steve ingests all of them; this epic covers the
@@ -1503,12 +1496,10 @@ only grow.</p>
     <td>How the owner owns the policy. Saving an edit <b>sweeps nothing</b> (<b>D19</b>); the re-run affordance is wired to <b>J</b>'s mechanism and lands with it.</td></tr>
   <tr><td><b>J</b></td><td>The classifier — prompt assembly, enum'd verdict, the floor rule (<b>D5</b>), the ask-not-the-topic summary (<b>D14</b>), <b>D25</b>'s degradation split, the on-demand re-run (<b>D19</b>)</td>
     <td>The model integration, landing behind everything above so its blast radius is one function. Needs <b>H</b> and <b>I</b> for its prompt inputs. The part needing care is <i>which</i> failures count toward the ceiling: the reused sweep counts all of them, and here that empties an outage into a counted tier.</td></tr>
-  <tr><td><b>K</b></td><td>Evaluation fixtures + an accuracy run scored at <b>both</b> of <b>D7</b>'s boundaries — recall on "did it reach the queue", precision on "did it push"</td>
-    <td>What makes "should this be Opus" a measurement rather than a vibe, and the only place the false-negative rate becomes visible. One number would hide the trade <b>D7</b> and <b>D16</b> are balanced on.</td></tr>
+  <tr><td><b>K</b></td><td>Evaluation fixtures + an accuracy run scored at <b>both</b> of <b>D7</b>'s boundaries — recall on "did it reach the queue", precision on "did it reach <code>ASAP</code>"</td>
+    <td>What makes "should this be Opus" a measurement rather than a vibe, and the only place the false-negative rate becomes visible. One number would hide the trade <b>D7</b>'s two boundaries are balanced on.</td></tr>
   <tr><td><b>L</b></td><td>The five row verbs (<b>D20</b>) — desktop deep links, make-an-Inbox-item, <i>nothing to answer</i>, <i>not replying</i>, the tier dropdown, and a keyboard convention for all five</td>
     <td>Where the module stops being a report, and the <i>first</i> exit from the queue of any kind — which is why it lands <b>before</b> the first real source. Carries <i>Make an Inbox item</i> clearing the row (the third drain path, <b>D18</b>), the split clearing verbs (only one of which records a correction), and verifies the deep-link schemes rather than trusting this document (<a href="#q3">§8 Q3</a>). Sets the app's first row-level hotkey convention.</td></tr>
-  <tr><td><b>M</b></td><td>Telegram push on <code>ASAP</code> (<b>D16</b>)</td>
-    <td>One <code>fetch</code> against a channel the notifications spike designed. The care is all in the suppression: it keys on <b>message age</b> and the <b>first sweep after a source is enabled</b> (<b>D21</b>), never on a "backfilled" flag — any lag between a source starting and the classifier catching up makes the same backlog. Unjudged rows never push either (<b>D25</b>).</td></tr>
   <tr><td><b>N</b></td><td>The corrections log as example set (<b>D11</b>) — automatic promotion, the windowed / capped / balanced draw, <b>the per-example length budget</b>, set versioning, pruning</td>
     <td>Turns a static rubric into one that improves — and, because <b>D7</b> skews corrections toward demotions, the story where an unbalanced draw would quietly erode the recall bias. Owes §6 two numbers: how many examples, and how much of each body survives into one. The draw must exclude examples whose text <b>B</b>'s purge nulled (<b>D27</b>) — the cascade itself is <b>B</b>'s. Needs <b>J</b> and <b>L</b>. Its interesting decision is <a href="#q4">§8 Q4</a>.</td></tr>
   <tr><td><b>O</b></td><td>Reply detection (<b>D18</b>) — <b>Gmail thread state only</b>, plus the drain mechanism every source's detector plugs into</td>
@@ -1571,11 +1562,14 @@ above all of them, and is the owner's to answer.</b></p>
   <p><b>If notifications stay on</b>, nothing is fire-walled. An iMessage buzzes the phone, the owner
   reads and triages it there, and alfred — bounded by a sleeping Mac (<b>D17</b>) — records it
   afterwards. The module becomes a <b>retrospective ledger of unanswered texts</b>, which is a real
-  but much smaller product than §1 describes, and <b>D16</b>'s Telegram push becomes a
-  <i>second</i> buzz for a message already seen.</p>
-  <p><b>If notifications go off</b>, the Mac-asleep window stops being a footnote and becomes a hole
-  the owner is relying on not to exist, and <b>D17</b>'s health surface carries far more weight than
-  its current placement in the build order suggests.</p>
+  but much smaller product than §1 describes.</p>
+  <p><b>If notifications go off</b>, two things get sharper at once. The Mac-asleep window stops being
+  a footnote and becomes a hole the owner is relying on not to exist, so <b>D17</b>'s health surface
+  carries far more weight than its placement in the build order suggests. And because this epic
+  decides <b>no mechanism by which alfred reaches the owner at all</b>, the only way to learn an
+  <code>ASAP</code> row exists is to open the module and look — which is the voluntary habit the
+  adjacent gap below is about. Whether alfred should be able to reach out, and how, is undecided and
+  deliberately not settled here.</p>
   <p><b>Two adjacent gaps, recorded with it because they have the same shape:</b></p>
   <ul>
     <li><b>The count is never surfaced outside the module.</b> No tab badge is decided anywhere in this
@@ -1587,9 +1581,9 @@ above all of them, and is the owner's to answer.</b></p>
       owner into Gmail or Messages to reply, every time, by design. That is the right call for
       write-back; it does mean the owner now has three places to look rather than one.</li>
   </ul>
-  <p style="margin-bottom:0"><b>This re-ranks D16, D17, D25 and <a href="#q7">Q7</a></b>,
+  <p style="margin-bottom:0"><b>This re-ranks D17, D25 and <a href="#q7">Q7</a></b>,
   and it is deliberately not answered here — a guess would propagate into every story that renders a
-  count or fires a push. It is <b>not</b> an argument for splitting the epic; that question is already
+  count. It is <b>not</b> an argument for splitting the epic; that question is already
   recorded at the end of this section.</p>
 </div>
 
@@ -1691,7 +1685,6 @@ above all of them, and is the owner's to answer.</b></p>
   <li><a href="ALF-158.html">ALF-158 — LLM processing</a> — the classifier pattern this epic reuses, and
     the correction loop it deliberately doesn't</li>
   <li><a href="../../spikes/imessage-ingestion.md">Spike: building a local iMessage triage firewall on macOS</a></li>
-  <li><a href="../../spikes/notifications-spike.md">Spike: outbound notifications via Telegram</a></li>
   <li><a href="../../communication-firewall/cognitive-revolution-transcript.md">The Cognitive Revolution transcript</a>
     — Steve Newman's Radar, the prior art this epic adapts</li>
 </ul>
