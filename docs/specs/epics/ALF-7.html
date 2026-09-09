@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- ALF-7 — Communication Firewall Module. Epic spec: durable context for the epic. -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALF-7 — Communication Firewall Module</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #0d7d7d; --accent-bg: #e2f4f4;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a; --partial: #d99b2b;
+    /* app palette — taken from frontend/app/globals.css; used only inside .app mockups */
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8;
+    --a-teal: #4fd1e0; --a-green: #34d399; --a-blue: #60a5fa;
+    --a-amber: #f0b429; --a-red: #f87171;
+    --a-radius: 0.5rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #46c9c9; --accent-bg: #123030;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a; --partial: #e0ab48;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  .dec.rev { border-left-color: var(--partial); }
+  .revtag { display: inline-block; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+            text-transform: uppercase; color: var(--partial); border: 1px solid var(--partial);
+            border-radius: 999px; padding: 0 .45rem; margin-left: .4rem; vertical-align: middle; }
+  /* ── App-palette mockup ──────────────────────────────────────── */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1rem; margin: 1rem 0; color: var(--a-text); font-size: .84rem;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app code { background: rgba(255,255,255,.06); color: var(--a-text); }
+  .app-head { display: flex; align-items: center; justify-content: space-between;
+              margin-bottom: .75rem; gap: .5rem; flex-wrap: wrap; }
+  .eyebrow { font-size: .64rem; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--a-blue); font-weight: 700; }
+  .ghostbtn { border: 1px solid var(--a-border); border-radius: 6px; color: var(--a-muted);
+              padding: .15rem .55rem; font-size: .72rem; }
+  .tierhead { display: flex; align-items: center; gap: .5rem; margin: .9rem 0 .45rem; }
+  .tiername { font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+  .t-asap { color: var(--a-red); }
+  .t-today { color: var(--a-amber); }
+  .t-when { color: var(--a-blue); }
+  .t-fyi { color: var(--a-muted); }
+  .count { font-size: .68rem; font-weight: 700; border-radius: 999px; padding: .02rem .42rem;
+           border: 1px solid; }
+  .count.asap { color: var(--a-red); border-color: color-mix(in srgb, var(--a-red) 55%, transparent); }
+  .count.today { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 55%, transparent); }
+  .count.when { color: var(--a-blue); border-color: color-mix(in srgb, var(--a-blue) 55%, transparent); }
+  .rule { flex: 1; height: 1px; background: var(--a-border); }
+  .row {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: var(--a-radius);
+    padding: .6rem .75rem; margin-bottom: .45rem;
+  }
+  .row.asap { border-color: color-mix(in srgb, var(--a-red) 50%, transparent);
+              box-shadow: 0 0 14px -6px var(--a-red); }
+  .row-top { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+  .who { font-weight: 600; }
+  .src { font-size: .68rem; color: var(--a-muted); }
+  .ask { color: var(--a-text); margin: .3rem 0 .35rem; }
+  .meta { color: var(--a-muted); font-size: .72rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .35rem; }
+  .chip { border-radius: 999px; padding: .05rem .5rem; font-size: .68rem; font-weight: 600;
+          border: 1px solid; white-space: nowrap; }
+  .c-vip { color: var(--a-green); border-color: color-mix(in srgb, var(--a-green) 50%, transparent); }
+  .c-warn { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 50%, transparent); }
+  .c-expire { color: var(--a-red); border-color: color-mix(in srgb, var(--a-red) 50%, transparent);
+              border-style: dashed; }
+  .empty { color: var(--a-muted); font-size: .78rem; padding: .35rem .1rem .1rem; font-style: italic; }
+  .collapsed { color: var(--a-muted); font-size: .75rem; padding: .5rem .75rem;
+               border: 1px dashed var(--a-border); border-radius: var(--a-radius); }
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.4rem; }
+  .live { display: flex; align-items: center; gap: .35rem; font-size: .68rem; color: var(--a-muted); }
+  .dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+  .dot.on { background: var(--a-green); }
+  .dot.stale { background: var(--a-amber); }
+  .dot.err { background: var(--a-red); }
+  .stalebar { border: 1px solid color-mix(in srgb, var(--a-amber) 45%, transparent);
+              background: color-mix(in srgb, var(--a-amber) 8%, transparent);
+              border-radius: var(--a-radius); padding: .4rem .7rem; margin-bottom: .7rem;
+              font-size: .74rem; color: var(--a-amber); }
+  .errbar { border: 1px solid color-mix(in srgb, var(--a-red) 45%, transparent);
+            background: color-mix(in srgb, var(--a-red) 8%, transparent);
+            border-radius: var(--a-radius); padding: .4rem .7rem; margin-bottom: .7rem;
+            font-size: .74rem; color: var(--a-red); }
+  .modbar { border: 1px dashed color-mix(in srgb, var(--a-blue) 55%, transparent);
+            background: color-mix(in srgb, var(--a-blue) 8%, transparent);
+            border-radius: var(--a-radius); padding: .4rem .7rem; margin-bottom: .7rem;
+            font-size: .74rem; color: var(--a-blue); }
+  .verbs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .55rem;
+           padding-top: .55rem; border-top: 1px solid var(--a-border); }
+  .verb { border: 1px solid var(--a-border); border-radius: 6px; padding: .12rem .5rem;
+          font-size: .7rem; color: var(--a-muted); }
+  .verb.sel { border-color: color-mix(in srgb, var(--a-blue) 55%, transparent); color: var(--a-blue); }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 1.25rem .9rem 3rem; }
+    h1 { font-size: 1.45rem; }
+    .scroll table { min-width: 34rem; }
+    .app { padding: .75rem; }
+    .app-head { align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<h1>ALF-7 — Communication Firewall Module</h1>
+<p class="sub"><span class="pill">Epic spec</span> Durable context for the epic. Read this before refining any story inside it.</p>
+
+<div class="card">
+  <p style="margin-top:0"><b>The one-line shape.</b> A new <b>Comms</b> module aggregates four accounts —
+  two Gmail, one Amazon WorkMail, and iMessage — and shows the owner one question:
+  <b>what do I owe someone a reply to?</b> A small model reads each arriving message against a
+  hand-written rubric and a list of important people, and assigns it to one of four tiers.
+  Only messages that <i>ask something of the owner</i> are queued; everything else falls to an
+  unbadged <code>FYI</code> shelf. alfred never becomes the store of record — every message stays
+  where it already lives, and the module is a view over it.</p>
+</div>
+
+<div class="card" style="border-left:3px solid var(--accent)">
+  <p style="margin-top:0"><b>Invariants every story honours.</b> The decisions below are all binding,
+  but these five are the ones a story cannot quietly break without breaking the module. If a story
+  spec contradicts one of these, the story spec is wrong.</p>
+  <ol style="margin:.4rem 0 0">
+    <li><b>Three exits from the queue, and only three</b> (<b>D18</b>): the owner replies in their own
+      client and detection clears the row; <i>Nothing to answer</i> / <i>Not replying</i>; or
+      <i>Make an Inbox item</i>, which clears the row at that moment. No story may add a fourth, and
+      none may ship a source or a surface that honours fewer.</li>
+    <li><b>A message alfred cannot decode is stored and flagged, never skipped</b> (<b>D24</b>). A
+      skipped message is a false negative that leaves no trace anywhere in alfred.</li>
+    <li><b>Nothing reaches <code>ASAP</code> that alfred did not judge <code>ASAP</code> on its
+      merits</b> (<b>D21</b>, <b>D25</b>). Backfilled and unjudged rows land no higher than
+      <code>Today</code>.</li>
+    <li><b>No verdict is ever silently re-judged</b> (<b>D19</b>). Editing the rubric, the example set
+      or the roster sweeps nothing; a re-run is an explicit action on an explicit row.</li>
+    <li><b>alfred is never the store of record</b> (<b>D2</b>). No story introduces state that exists
+      only in alfred and would be a real loss, and nothing writes back to any source (<b>D18</b>).</li>
+  </ol>
+</div>
+
+<div class="card" style="border-left:3px solid var(--partial)">
+  <p style="margin-top:0"><b>Revision history.</b> Everything below is the <i>current</i> answer — no
+  decision block is history. <b>R2</b> reversed <b>D11</b>, revised <b>D17</b> and added <b>D18</b>–<b>D20</b>; <b>R3</b>
+  turned eight silences into decisions (<b>D21</b>–<b>D28</b>) and widened eight more (the
+  <span class="revtag">revised</span> pill). <b>R4</b> reversed nothing, but found five claims that
+  were wrong against the code this document cites:</p>
+  <ul>
+    <li><b>D25 would have flooded the queue during an Anthropic outage.</b> The reused sweep counts
+      <i>every</i> failure toward its ceiling, transport included; in ALF-158 that ceiling is inert,
+      here it deposited rows into a counted tier. Only <b>content-shaped</b> failures now count — and
+      <b>D24</b>'s and <b>D26</b>'s queue rules are folded into <b>D25</b>, since <b>D3</b> was carrying
+      its exceptions written as one.</li>
+    <li><b>D22's rationale ran backwards</b> — the repo's pattern for a trusted external
+      <code>POST</code> is a bearer key, not HMAC. The choice stands; the argument is now true.</li>
+    <li><b>D21 re-seeded from the window</b>, losing everything between an outage and its discovery; it
+      now anchors on <code>last_seen_at</code>. Its dedupe key was also unsafe for two of three sources
+      — schema, so it is settled here.</li>
+    <li><b>D11 dropped ALF-158's example-set safeguards</b> — window, cap, direction balance — which
+      matter <i>more</i> here, and on which two of §6's cost claims silently depended.</li>
+    <li><b>The story order guaranteed a growing queue:</b> ingestion landed before the classifier, and
+      both landed well before any way out of the queue.</li>
+  </ul>
+  <p class="small">R4 also cut, though less than it sounded: a net <b>~7% shorter</b>, after
+  <b>R3</b> had roughly <b>doubled</b> the document. Nothing removed was a decision; what went was
+  build detail belonging to a story (deep-link mechanics, keychain commands, migration boilerplate)
+  and invented numbers nobody could check.</p>
+  <p><b>R5</b> reversed nothing the owner had settled and found six things
+  wrong with the document rather than with the design:</p>
+  <ul style="margin-bottom:0">
+    <li><b>D21's re-seed formula did the opposite of its own paragraph.</b>
+      <code>max(last_seen_at, now − 7d)</code> picks the <i>later</i> timestamp, so on any outage longer
+      than the window it selects exactly the anchor the paragraph exists to reject. It is
+      <code>last_seen_at</code> when there is one, and the window only on first run.</li>
+    <li><b>Binding rules had migrated into muted rationale text.</b> Six rules a story must follow —
+      <b>D13</b>'s filter conditions, <b>D21</b>'s dedupe key and re-seed anchor, <b>D17</b>'s
+      heartbeat cadence, <b>D25</b>'s refusal disposition, <b>D27</b>'s purge cascade — sat in
+      <span class="small">grey <i>why</i> paragraphs</span> that a story session is right to skim.
+      They are in the decision bodies now, and the five load-bearing ones are listed above.</li>
+    <li><b>D25 bypassed the classifier for photo-only messages</b> — not a rarity on a personal
+      phone, and each one landed on a counted tier that no reply can drain. They go to the classifier
+      with the attachment named, and priority decides the tier.</li>
+    <li><b>Two exits cost different amounts and taught different things.</b> Clearing a false positive
+      was the cheap gesture that recorded nothing, so <b>D11</b>'s example set starved exactly where
+      <b>D7</b> predicts corrections will be richest. <b>D20</b> now splits the verb.</li>
+    <li><b>The accuracy metric could not see the failure §1 calls existential.</b> §6 borrowed two
+      <a href="ALF-158.html">ALF-158</a> sentences that don't survive the transplant, and anchored its
+      stop condition on a story that precedes the traffic it measures.</li>
+    <li><b>The build order was not buildable from this document.</b> <b>Q1</b> gated story <b>B</b>
+      with no default, <b>B</b> carried the daemon's endpoint before the daemon, three items were
+      double-homed, and WorkMail had no drain path at all.</li>
+  </ul>
+  <p style="margin-bottom:0"><b>R6 removed a decision the owner never made.</b> <b>D16</b> specified an
+  outbound notification on <code>ASAP</code>, and story <b>M</b> built it, on the strength of a
+  committed <i>spike</i> proposing a channel. A spike is a findings document — that one says so in its
+  own first paragraph — and no such channel is implemented anywhere in this repo. Neither the decision
+  nor the story was ever discussed with the owner. Both are removed, and <b>D16</b> and story <b>M</b>
+  are <b>retired identifiers</b>: nothing is renumbered, so every cross-reference elsewhere in this
+  document and in the review record still resolves. What the removal leaves behind is stated rather
+  than patched over — <b>the epic now decides no way for alfred to reach the owner at all</b>, which
+  sharpens <a href="#q0">Q0</a> rather than answering it. The three failures in §1 are re-ranked
+  accordingly: failure&nbsp;2 is a spurious <code>ASAP</code> spending the tier's credibility, not a
+  spurious buzz.</p>
+  <p style="margin-bottom:0"><b>R7 replaced indefinite retention with a 60-day sweep</b>
+  (<b>D27</b>), on the owner's decision and for one reason: <b>security</b>, not cost or volume. Every
+  <code>comm_messages</code> row is deleted at 60 days, whole; the example set is exempt and keeps its
+  text. The manual purge still cascades, because the deliberate "I want this gone" action has to work.
+  Two claims went with it: the <b>non-goal</b> that said there <i>was</i> no retention policy, and an
+  R3-era argument that examples had to be cascaded because "the most-corrected messages are the most
+  engaged-with" — <b>which is false</b>. A correction is a tier fix and says nothing about how much of
+  a message was read. The sweep is deliberately blanket, and <b>D27</b> records what that costs at
+  <code>Whenever</code>.</p>
+  <p style="margin-bottom:0"><b>R8 turned R7's sharpest cost into a mechanism.</b> An un-drained
+  queue row inside its last 7 days is now <b>marked in the UI</b> (<b>D27</b>) — derived, not stored,
+  and applied to <code>ASAP</code> and <code>Today</code> as well as <code>Whenever</code>, since a
+  row surviving 53 days in a loud tier is the worse anomaly. Two consequences are recorded rather
+  than left implicit: <b>D4</b>'s <code>Whenever</code> now means <i>undated, not unbounded</i>, and
+  <a href="#q7">Q7</a> is partly answered — the tier gained exactly one escalation, at day 53, from a
+  retention policy rather than from design. The marker <b>mitigates and does not prevent</b>: a week
+  of not looking still loses the row, which <b>D27</b> says in those words.</p>
+</div>
+
+<h2>1 · Problem space &amp; why now</h2>
+
+<p><a href="../product/SPEC.md">SPEC.md</a> has named this module since the beginning: §13.2 sketches
+<i>"an LLM with access to email / messaging … triages incoming messages by priority and urgency"</i>,
+§5.1 reserves a top-level tab, §5.2 the <code>(firewall)</code> route group, and the accent is already
+assigned — <b>Firewall = blue</b> (<code>--color-accent-blue</code>).</p>
+
+<h3>What the owner is actually buying</h3>
+
+<p>This shapes every decision below, and it is <b>not</b> what that one-line sketch implies. The prior
+art is Steve Newman's "Radar" (transcript at
+<a href="../../communication-firewall/cognitive-revolution-transcript.md">docs/communication-firewall/</a>),
+whose return was <b>volume-driven</b>: a few hundred messages a day across five apps, checked thirty
+times a day, buying back hours. The owner's volume is roughly <b>15 texts and 30 emails on a heavy
+day</b> — an order of magnitude less, so the time saved is maybe fifteen minutes, against which a
+rubric hand-tuned exception by exception is a real recurring cost (<a href="#upkeep">§6</a> carries
+the stop condition).
+<b>Time is not the win.</b> In the owner's words:</p>
+
+<blockquote style="margin:1rem 0; padding:.1rem 0 .1rem 1rem; border-left:3px solid var(--line); color:var(--muted)">
+What it does buy is clarity and fewer items in my working memory — it lets me abstract
+"what do I need to respond to" to the single bit of "check comms". I'm afraid of (continuing to)
+put off or miss important communications because I get overwhelmed by triaging all of it.
+<b>I'm fixing an avoidance pattern.</b>
+</blockquote>
+
+<p>Three things follow, and they are why this epic looks different from the SPEC's sketch:</p>
+
+<ul>
+  <li><b>The product is a response queue, not a unified inbox.</b> A message that asks nothing of the
+    owner has no business in a queue whose whole purpose is answering "do I owe anyone anything."</li>
+  <li><b>A small, honest count is the mechanism</b> — and zero is its resting state, not its normal
+    one. "Check comms" collapses to one glance only if the number is <i>small and moving</i>. Two
+    things keep it there, and neither is the classifier being stingy: only obligations enter at all
+    (<b>D3</b>), and replying clears the row without a second act of bookkeeping (<b>D18</b>). A count
+    that is routinely large, or that only ever grows, is the module failing. <b>And
+    <code>Today</code> is where the pressure lands:</b> <b>D5</b>'s floor pushes owed-but-undated work
+    up into it, <b>D7</b> resolves uncertainty down into it, and <b>D25</b>'s two can't-judge paths
+    deposit into it. The small-count claim has never been re-derived against that combined load — so
+    if one tier turns out too large to read, it will be this one, and §6's stop condition is where
+    that becomes visible.</li>
+  <li><b>A false negative is the failure that ends the module.</b> One genuinely missed message doesn't
+    cost that message — it costs trust, and the owner resumes checking Gmail "just in case", leaving
+    two inboxes and a worse problem than before.</li>
+</ul>
+
+<h4>The three failures, ranked — because they collide</h4>
+
+<p>Those bullets name three different ways this module fails, and several decisions below buy one
+down by paying in another. <b>D25</b> is the collision in its clearest form. So they are ranked here,
+once, and every decision that trades between them cites this order:</p>
+
+<ol>
+  <li><b>A missed obligation</b> — a real ask that never reaches the queue. Terminal: it costs trust
+    rather than a message, and there is no recovery inside alfred once the owner has stopped
+    believing the count. Every other failure is worth paying to avoid this one.</li>
+  <li><b>A spurious <code>ASAP</code>.</b> <code>ASAP</code> is the only tier that claims
+    <i>break focus for this</i>, and that claim is spent once. A handful of unwarranted ones and the
+    owner stops treating it differently from <code>Today</code> — at which point the module has no way
+    left to say "now", and failure&nbsp;2 has quietly become failure&nbsp;1.</li>
+  <li><b>A count that is routinely large, or that only ever grows.</b> The glance stops working and
+    "check comms" stops collapsing to one bit. Serious, but <i>visible</i> and tunable — it is what
+    <a href="#upkeep">§6</a>'s stop condition watches, and it is the currency the other two are bought
+    with.</li>
+</ol>
+
+<p>Read <b>D7</b> and <b>D25</b> against that order and they stop looking like separate judgment
+calls: both spend&nbsp;3 to avoid&nbsp;1, and both refuse to spend&nbsp;2 (uncertainty resolves into
+the queue, and never into a push).</p>
+
+<h3>What this epic builds on</h3>
+
+<ul>
+  <li><b><a href="ALF-158.html">ALF-158 (LLM processing)</a></b> — the Inbox classifier established the
+    pattern this epic reuses: a cron'd Worker sweep, a small model, an enum'd structured verdict, a
+    service-role write, a per-failure degradation table, and a corrections-as-few-shot loop whose
+    <i>selection mechanics</i> carry over even though its prompt and its content do not (<b>D11</b>).</li>
+  <li><b><a href="../../spikes/imessage-ingestion.md">The iMessage ingestion spike</a></b> — settles that
+    iMessage has no cloud API, that <code>chat.db</code> polling on a Mac is the only viable read path,
+    and how to do it without the reliability gremlins.</li>
+</ul>
+
+<h2>2 · Decisions</h2>
+
+<h3>What the module is</h3>
+
+<div class="dec">
+  <h3><span class="n">D1</span>Comms is its own module with its own tables. A message is never an <code>item</code>.</h3>
+  <p>New route group, new tab, new Supabase tables. Messages do not enter the generic-item core, and
+    nothing auto-converts a message into a task or a code item.</p>
+  <p class="why"><b>Why:</b> the lifecycles don't match. An item is captured, classified, filed and
+    completed; a message arrives, is answered <i>elsewhere</i>, and is never "done" in alfred's sense.
+    SPEC sizes the item core for hundreds of <i>active</i> items — email volume would drown the Inbox
+    and break every existing count and view. The owner also wants spin-off to be a deliberate act:
+    <i>"If tasks/code spring off from communications, I'll do that manually."</i></p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>alfred mirrors. It is never the store of record.</h3>
+  <p>Every message stays in Gmail or Messages.app. alfred holds a copy, a verdict, and triage state.
+    Losing alfred's database loses the interface and nothing else.</p>
+  <p class="why"><b>Why:</b> this is the load-bearing property of Steve's system and the reason he can
+    ship to production with no staging — <i>"all my messages really live where they've always been…
+    if this totally falls down, everything is still where it's always been. I just lose the nice
+    interface to it."</i> It also means retention and deletion in alfred are safe by construction.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D3</span>Only messages that ask something of the owner enter the queue<span class="revtag">revised</span></h3>
+  <p>Obligation is the <b>entry ticket</b>, not a sort key. A message alfred <i>judges</i> to need no
+    reply is never queued — it lands on the <code>FYI</code> shelf (<b>D6</b>).</p>
+  <p><b>The entry rule is about judgments, not about messages</b>, and the difference is the whole of
+    <b>D25</b>: what alfred could not judge at all is queued rather than shelved, because unknown is
+    not nothing. So <b>D3</b> reads "no obligation <i>found</i> means no queue", and <b>D25</b> names
+    the two ways a message can reach the queue with no finding behind it. A story that implements
+    <b>D3</b> as "no obligation means no queue" ships the false negative both decisions exist to
+    prevent.</p>
+  <p class="why"><b>Why:</b> the premise is avoidance, not time. The bit the owner wants is "do I owe
+    anyone anything", and a queue containing no-action mail cannot answer it. Non-actionable mail is
+    already handled fine in Gmail and Messages directly.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Four tiers: <code>ASAP</code> / <code>Today</code> / <code>Whenever</code> / <code>FYI</code>.</h3>
+  <table>
+    <tr><th>Tier</th><th>Meaning</th><th>Badge</th></tr>
+    <tr><td><b>ASAP</b></td><td>Break focus for it. Someone is blocked on the owner, it is time-critical, or the sender is important enough that delay costs something real.</td><td>Counted</td></tr>
+    <tr><td><b>Today</b></td><td>Needs a reply before the owner logs off; not worth interrupting for. Most real correspondence.</td><td>Counted</td></tr>
+    <tr><td><b>Whenever</b></td><td>A reply is genuinely owed, but nothing turns on the date — <i>until day 53</i>, when <b>D27</b>'s expiry marker gives it one. The tier means undated, not unbounded.</td><td>Counted</td></tr>
+    <tr><td><b>FYI</b></td><td>Everything else. No reply owed.</td><td><b>None</b> — collapsed by default</td></tr>
+  </table>
+  <p class="why"><b>Why the shape diverges from Steve's:</b> for Steve, the bottom tier is largely the
+    junk pile. Here junk never enters the queue at all, so <code>Whenever</code> means
+    <b>owed but undated</b> — which is precisely the three-week-avoidance bucket. It has to stay
+    visible rather than being where things go to die.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>One blended priority, with obligation as a <i>floor</i>.</h3>
+  <p>The model returns a single tier, not a grid. Whether the owner owes a reply is an input to that
+    one number — but an obligation <b>never falls below <code>Whenever</code></b>.</p>
+  <p class="why"><b>Why:</b> the owner asked for one number to glance at, and a 2×2 urgency × obligation
+    grid gives four. But a pure urgency sort buries the non-urgent-but-owed message at the bottom —
+    reintroducing the exact failure the epic exists to fix. The floor rule keeps one number while
+    making that class of message structurally un-buriable.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D6</span>Everything is stored, and <code>FYI</code> is the shelf it lands on<span class="revtag">revised</span></h3>
+  <p>Every ingested message is persisted and searchable regardless of tier, <b>for 60 days</b>
+    (<b>D27</b>). <code>FYI</code> is an unbadged, collapsed shelf the owner can open to spot-check
+    the rubric.</p>
+  <p class="why"><b>Why:</b> once only obligations are queued (<b>D3</b>), a misjudged message is
+    <i>invisible</i> rather than merely buried — a strictly worse failure mode. Storing everything
+    keeps the evidence of a false negative in the building — for a bounded window, since <b>D27</b>
+    sweeps at 60 days — and <code>FYI</code> is the only surface on which the rubric's recall can be
+    audited. Unbadged so it reads as an archive, not a to-do.</p>
+  <p class="why"><b>What it does <i>not</i> buy:</b> a false negative becomes <b>recoverable</b>, not
+    <b>recovered</b>. The shelf is unbadged, uncounted and always large by design, and offered to an
+    owner selected by an <i>avoidance</i> pattern — so "open <code>FYI</code> and check" asks for the
+    exact voluntary triage the module exists to remove, and nothing here forces it
+    (<a href="#q8">§8 Q8</a>).</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D7</span>Recall over precision — at the queue boundary, not at the <code>ASAP</code> boundary<span class="revtag">revised</span></h3>
+  <p>The rubric is tuned to over-surface, and <b>false negatives are the metric that decides</b> in the
+    evaluation fixtures. The bias has a direction as well as a size: <b>uncertainty resolves <i>into</i>
+    the queue and <i>down</i> to <code>Today</code></b> — queued rather than shelved, and never
+    <code>ASAP</code>.</p>
+  <p class="why"><b>Why the asymmetry:</b> one missed obligation costs the module its entire reason to
+    exist. A message wrongly queued as <code>Today</code> costs a glance — a rounding error at ~45
+    messages a day.</p>
+  <p class="why"><b>Why the direction:</b> a spurious <code>ASAP</code> doesn't cost a glance.
+    <code>ASAP</code> is the only tier that claims <i>break focus for this</i>, so a spurious one
+    spends the tier's credibility — and a tier the owner no longer trusts is the exact thing this
+    module exists to prevent. Recall is therefore bought
+    at the two boundaries where it is cheap (is this an obligation at all; <code>Today</code> or
+    <code>Whenever</code>) and <b>not</b> at the one where it isn't. Story <b>K</b> scores them
+    separately: recall on "did it reach the queue", precision on "did it reach <code>ASAP</code>".</p>
+  <p><b>What over-surfacing actually costs</b> — stated correctly, because the obvious answer is
+    wrong. A wrongly-queued message <i>asks nothing</i>, so no reply is ever sent, so reply detection
+    (<b>D18</b>) never fires and the row never drains on its own. A false positive is not "one more
+    row that clears itself"; it is a row that sits on <code>Today</code> until the owner opens it,
+    confirms it asks nothing, and clears it by hand — the in-alfred bookkeeping step <b>D18</b>
+    identifies as the one an avoidance pattern skips, re-imported through the recall bias. That is
+    §1's failure&nbsp;3 being spent to buy down failure&nbsp;1, which is the right way round, but it is
+    a real price and not a rounding error.</p>
+  <p><b>Which is why the clearing gesture has to teach.</b> The cheapest exit for a false positive is
+    also the most common one, so if it records nothing, the example set (<b>D11</b>) starves exactly
+    where <b>D7</b> guarantees the corrections are richest. <b>D20</b> settles that: clearing a row
+    because it asked nothing is a <b>demotion correction</b>, one click, distinct from choosing not to
+    answer something that did ask.</p>
+  <p class="why"><b>Why the bound still holds:</b> the recall bias is bought at the two boundaries
+    where the price is failure&nbsp;3 and never at the one where it is failure&nbsp;2 — so the count
+    grows and the phone stays quiet, which is the only version of this trade §1's ranking permits.</p>
+</div>
+
+<h3>Ingestion</h3>
+
+<div class="dec">
+  <h3><span class="n">D8</span>The Mac daemon is a dumb pipe. All triage runs in the Worker.</h3>
+  <p>The daemon polls, normalizes, and <code>POST</code>s the <b>full message</b> to an authenticated
+    alfred ingest endpoint (<b>D22</b> settles what "authenticated" means). It contains no model call,
+    holds no Anthropic key, and holds no Supabase credential.</p>
+  <p class="why"><b>Why:</b> one classifier and one rubric across all four accounts. The alternative —
+    triaging locally and shipping only a verdict — means two rubrics that drift apart, a second
+    Anthropic key on a laptop when <code>workers/src/index.ts</code> (lines 32–33) says the Worker's is
+    <i>"the only place in the whole system that holds one"</i>, and a Comms view that can't show the
+    message it's asking about. <b>Accepted cost:</b> personal iMessage bodies, including other
+    people's words, are copied into Supabase and cross the internet to get there. Single-user project,
+    TLS in transit, RLS on, the owner's own instance — weighed and accepted. <b>D22</b> is what makes
+    "authenticated" more than a word, and <b>D27</b> says how long the copy lives.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D9</span>Two ingestion homes: the Worker for Gmail, the Mac for iMessage and WorkMail<span class="revtag">revised</span></h3>
+  <table>
+    <tr><th>Source</th><th>Home</th><th>Mechanism</th></tr>
+    <tr><td>Gmail ×2 (personal + one RealPlay)</td><td>Cloudflare Worker</td><td>Gmail API, one OAuth refresh token each, polled on the existing cron</td></tr>
+    <tr><td>Amazon WorkMail</td><td>Mac daemon</td><td>IMAP</td></tr>
+    <tr><td>iMessage / SMS</td><td>Mac daemon</td><td><code>~/Library/Messages/chat.db</code>, read-only</td></tr>
+  </table>
+  <p class="why"><b>Why:</b> iMessage has no cloud API of any kind, so the daemon must exist regardless
+    — <b>that is the load-bearing half of this decision</b>. WorkMail is Amazon's Exchange-compatible
+    service and its practical read path is IMAP; since the daemon exists anyway, it rides along at
+    near-zero marginal cost. <b>Accepted cost:</b> the Mac is a single point of failure for two of four
+    sources.</p>
+  <p class="why"><b>Not because IMAP can't run in a Worker.</b> An earlier revision claimed that and
+    overstated it: Workers can open raw TCP via <code>cloudflare:sockets</code> and clients written for
+    that runtime exist. What is true is only that <b>nothing in this repo has tried one</b>. WorkMail
+    sits on the Mac because the daemon is already being built; moving it into the Worker later is a
+    live option, not a rewrite.</p>
+  <p class="why"><b>A dated constraint, because it changes what story G is worth.</b> AWS has published
+    an end of support for Amazon WorkMail: <b>no new customers after 2026-04-30</b>, <b>service ends
+    2027-03-31</b> — stated as <i>dates</i> rather than months-remaining because this document is never
+    archived. So the owner's "keep WorkMail on the Mac <b>for now</b>" is load-bearing: the channel is
+    temporary, though whatever replaces it will almost certainly speak IMAP too, so the daemon's client
+    outlives the account. Whether the channel warrants story <b>G</b> at all is
+    <a href="#q6">§8 Q6</a>.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>The daemon polls. It does not watch the filesystem.</h3>
+  <p>Poll on last-seen <code>ROWID</code>, every few seconds, with a <b>read-only</b> SQLite
+    connection. Wrapped in a <code>launchd</code> agent with a health check that fails <i>loudly</i>.</p>
+  <p class="why"><b>Why:</b> straight from the spike. macOS coalesces FSEvents for background
+    processes it considers idle, so a pure watcher silently stalls for minutes on a quiet machine —
+    exactly the condition under which a firewall must keep working. Read-only avoids contention with
+    Messages.app, which holds the write lock. The loud health check exists because Full Disk Access
+    grants have been observed to reset silently across macOS updates, and a firewall that fails
+    quietly is worse than one that fails.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D11</span>The prompt carries a hand-edited rubric <i>and</i> a curated example set. Both are versioned<span class="revtag">revised</span></h3>
+  <p>Two artifacts, both editable in alfred, both stamped on every verdict:</p>
+  <ul>
+    <li>A <b>rubric</b> — prose policy the owner can state outright. <i>"Anything from my wife is ASAP."</i></li>
+    <li>An <b>example set</b> — corrected messages with their right answer, fed as few-shot examples.
+      Every correction made through <b>D20</b>'s tier dropdown becomes an example <b>automatically</b>;
+      the owner can prune one that steers badly.</li>
+  </ul>
+  <p class="why"><b>Why both:</b> prose states the policy you can articulate; examples teach the
+    judgment you can't. <i>"This colleague writes in a way that sounds urgent but never is"</i> does not
+    survive being written down as a rule. Versioning both and stamping the verdict with both is what
+    keeps "why did it say that" answerable — un-auditability comes from not knowing which examples were
+    in a given prompt, not from having examples. Corrections do <i>not</i> replace policy: the rubric
+    stays primary and examples refine its edges.</p>
+  <p><b>The example set is windowed, capped and direction-balanced</b> — all three carried over from
+    <a href="ALF-158.html">ALF-158</a>'s <code>selectExamples</code>
+    (<code>workers/src/prompt.ts</code>). <b>Which</b> window, cap and balance exactly is story
+    <b>N</b>'s; <b>that</b> the draw is bounded and balanced is settled here, and so is <b>a per-example
+    length budget</b>, because an example carries a denormalised email body (<b>D27</b>) and not
+    <a href="ALF-158.html">ALF-158</a>'s short capture — see §6, where the cap and the truncation are
+    the difference between the bill being real and being decorative.</p>
+  <p class="why"><b>Why bounded and balanced:</b> ALF-158's <b>D16</b> warns that a log dominated by
+    one direction teaches the model to move that way. The case is <i>stronger</i> here, not weaker. <b>D7</b>
+    deliberately over-surfaces, so the corrections the owner actually makes will skew toward
+    <i>demotions</i> — <i>"you queued this, I'd have shelved it"</i>. An unbounded, unbalanced set
+    therefore teaches the classifier to shelve more, eroding <b>D7</b>'s recall bias and <b>D3</b>'s
+    entry rule through the very mechanism built to improve them, and doing it silently, since a
+    wrongly-shelved message is the failure nobody sees (<b>D6</b>). The cap is load-bearing once more:
+    §6's bill is only true of a prompt that stops growing. It is <b>not</b> load-bearing for caching —
+    an earlier revision said an unbounded set "crosses Haiku's cache floor, where the cost arithmetic
+    changes sign", which garbles the point. Crossing the 4,096-token floor only makes caching
+    <i>possible</i>; nothing is cached without an explicit <code>cache_control</code> breakpoint, so a
+    prompt over the floor and a prompt under it cost the same until someone asks for caching. §6 says
+    why nobody should.</p>
+  <p class="why"><b>Revised from revision 1</b>, which rejected few-shot examples outright — conflating
+    replacing the rubric with augmenting it.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D12</span>The people list is structured data, keyed on a <i>person</i><span class="revtag">revised</span></h3>
+  <p>A contacts table — a person, their priority, and their <b>many handles</b> (a phone number, three
+    email addresses). Rendered into the prompt; edited in the UI, not in prose.</p>
+  <p class="why"><b>Why:</b> "these people are important" is a lookup, not a judgment. Keeping it out of
+    the prose rubric makes it editable in one place and auditable ("flagged because it's from Dana").
+    Keying on the person rather than the address is forced by the multi-channel design: the same human
+    is a phone number in iMessage and an email address in two mailboxes.</p>
+  <p class="why"><b>What structure does <i>not</i> buy.</b> A roster is not immune to drift; it drifts
+    <b>silently</b>, which is worse than prose, which is at least visible when next read. A new
+    colleague, a changed number or a second address gets no floor-rule protection and nothing announces
+    the gap — a false negative arriving through the one input the owner believed was exact. <b>The
+    mitigation:</b> the roster must be editable from the message that was mistiered, not only from a
+    settings page. Where that affordance sits is story <b>H</b>'s (the §4 mockup deliberately doesn't
+    draw it), and even then the trigger is the owner noticing.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D13</span>Newsletters never reach the classifier<span class="revtag">revised</span></h3>
+  <p>Detected deterministically from headers — <code>List-Unsubscribe</code>, <code>List-ID</code>,
+    <code>Precedence: bulk</code> — <b>before</b> any model call, and filed straight to
+    <code>FYI</code>. They are reserved for the future Reader module (SPEC §13.1).</p>
+  <p class="why"><b>Why:</b> bulk mail is <i>always</i> non-urgent and never an obligation, so a model
+    call to decide that is pure waste. Steve runs Radar and his RSS reader as separate tools for the
+    same reason. Headers answer it for free, and keeping the whale out of the prompt keeps both the
+    counts and the bill honest.</p>
+  <p><b>Three conditions on the filter, all binding on story D:</b></p>
+  <ol>
+    <li><b>Strong signals only.</b> A genuine list header — <code>List-Unsubscribe</code> or
+      <code>List-ID</code> — not a lone <code>Precedence: bulk</code>, which plenty of ordinary
+      automated mail sets.</li>
+    <li><b>Record that the filter, not the model, shelved it</b> (§3.1 carries the flag). A filtered
+      message has no verdict and no reason, and must be distinguishable on the shelf from mail the
+      model actually judged.</li>
+    <li><b>Never filter a sender in <code>comm_people</code></b> (<b>D12</b>). A priority person on a
+      mailing list is still a priority person.</li>
+  </ol>
+  <p class="why"><b>Why those three, because these headers are conventions and not guarantees.</b> Big
+    ESPs set them; smaller senders and plenty of transactional mail do not, so the filter leaks both
+    ways — unequally. A newsletter slipping through costs one Haiku call and lands on <code>FYI</code>
+    with a verdict, self-correcting as the example set learns the shape. <b>A real message wrongly
+    filtered is the expensive one:</b> it never reaches the classifier, so it sits on the shelf
+    indistinguishable from mail the model judged — §1's failure&nbsp;1 arriving through a
+    deterministic path, where no amount of tuning the rubric can reach it.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D21</span>Every source starts from a bounded lookback window, never from zero and never from "now"<span class="revtag">revised</span></h3>
+  <p>Each account carries its own <b>cursor</b> on <code>comm_accounts</code> — a <code>chat.db</code>
+    ROWID, an IMAP <code>UIDVALIDITY</code>+<code>UID</code>, a Gmail <code>historyId</code>. On first
+    run it is seeded from a <b>7-day lookback</b>; anything older is never ingested.</p>
+  <p class="why"><b>Why the window is decided here:</b> both defaults a story would reach for are
+    wrong, in opposite directions. Starting at <b>zero</b> classifies years of <code>chat.db</code>
+    history — a bill in the tens or hundreds against §6's $3.30, and a queue full of obligations that
+    died in 2023. Starting at <b>max</b> silently drops everything that arrived before the first tick: a
+    false negative on day one, delivered by the system built to prevent them. A week is long enough that
+    nothing live is missed at handover and short enough that the backfill is a rounding error.</p>
+  <h4 style="margin-top:1.1rem">The re-seed anchor</h4>
+  <p><b>A re-seed anchors on <code>last_seen_at</code> when the cursor has one, and on
+    <code>now − 7d</code> only when it doesn't</b> — <code>last_seen_at ?? (now − 7d)</code>, a
+    fallback and <b>not</b> a <code>max</code>. The window is the <i>first-run</i> seed and nothing
+    else. Cursors do get lost — a <code>UIDVALIDITY</code> change, an expired Gmail
+    <code>historyId</code> (good for about a week), an account re-authorized after a lapse — and the
+    account's own last successful poll is the only honest place to resume from.</p>
+  <p><b>The worked example, because the formula is easy to get backwards.</b> Take <b>D23</b>'s
+    Testing-status refresh token dying on <b>day 7</b>, noticed and fixed on <b>day 17</b>.
+    <code>last_seen_at</code> is day 7, so the re-seed anchors on <b>day 7</b> and the ten missing days
+    are ingested. Anchoring on <code>max(last_seen_at, now − 7d)</code> would pick the <i>later</i> of
+    the two — <code>max(day 7, day 10) = day 10</code> — and days 7–10 would never be ingested at all,
+    which is precisely the gap this rule exists to close. <code>max</code> selects the window on every
+    outage longer than the window, i.e. in exactly the case that matters.</p>
+  <p><b>The trade, named because it makes this a different decision from the one it replaces:</b>
+    <b>after a long outage the window is no longer a cost bound</b> — the catch-up is as large as the
+    outage, and a month-long lapse means a month of backfill and a month's worth of Haiku calls. That
+    is the right way round under §1's ranking: an unexpected bill is failure&nbsp;3 and recoverable, a
+    silently missing week is failure&nbsp;1 and is not. <b>D6</b>'s shelf cannot recover what never
+    entered the building.</p>
+  <p class="why"><b>Why the worked example stays in the document:</b> this rule has already been
+    written down backwards once. The prose and the formula can disagree while both look right, and the
+    version that reads most natural — "take the more recent anchor" — is the broken one.</p>
+
+  <h4 style="margin-top:1.1rem">The dedupe key is not the cursor</h4>
+  <p>Settled here because it is schema (story <b>B</b>), and because the obvious cursor is a
+    <i>dangerous</i> key for two of three sources:</p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:26%">Source</th><th style="width:34%">Identity key</th><th>Never</th></tr>
+    <tr><td>Gmail ×2</td><td>Gmail's message id</td><td><code>historyId</code></td></tr>
+    <tr><td>WorkMail / IMAP</td><td>RFC822 <code>Message-ID</code> (§3.1 captures it anyway), or <code>(UIDVALIDITY, UID)</code></td><td>bare <code>UID</code></td></tr>
+    <tr><td>iMessage</td><td><code>chat.db</code>'s <code>guid</code></td><td><b><code>ROWID</code></b></td></tr>
+  </table>
+  </div>
+  <p class="why"><b>Why:</b> a cursor says where to resume; a key says whether two rows are the same
+    message. A <code>UIDVALIDITY</code> change reassigns every IMAP UID, so keying on it either
+    duplicates the mailbox or swallows a new message as a duplicate of an unrelated old one.
+    <code>chat.db</code> ROWIDs are unstable across a rebuild, a restore, or a Messages-in-iCloud
+    re-sync — a live condition per the
+    <a href="../../spikes/imessage-ingestion.md">spike</a>. With the keys above a re-seed is a no-op;
+    with the cursor as the key it is a corruption that looks like normal operation.</p>
+
+  <p><b>Two smaller rules that ride along.</b> Backfilled messages are <b>classified but never
+    placed in <code>ASAP</code></b>, and that suppression keys on the <b>message's age</b> and the
+    <b>first sweep after a source is enabled</b> rather than a "backfilled" flag, since any lag between
+    a source starting and the classifier catching up makes the same backlog. And
+    <b>historical backfill beyond the window is out of scope</b> — a deliberate, separate act if ever
+    wanted.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D22</span>The daemon signs the raw body with HMAC — a deliberate departure from the repo's bearer-key pattern, not an application of it<span class="revtag">revised</span></h3>
+  <p>The ingest endpoint verifies a <code>sha256=…</code> signature over the <b>raw</b> body, with a
+    <b>timestamp inside the signed payload</b> so a captured request can't be replayed later to
+    resurrect old messages. Comms gets its <b>own</b> secret, shared with nothing else. (Where the
+    secret lives on the Mac is story <b>E</b>'s: the keychain, never a <code>launchd</code> plist,
+    never a dotfile, never this repo.)</p>
+  <p><b>What this does not buy, said plainly because an earlier revision claimed it:</b> a stolen
+    laptop. The daemon holds the HMAC secret exactly as it would hold a scoped bearer key, so a
+    machine in someone else's hands can sign requests either way. That the credential can only
+    <i>write</i> messages — no Supabase key, no Anthropic key — is <b>D8</b>'s scoping, and a bearer
+    key scoped the same way would give the same property. HMAC is not a laptop-theft control and this
+    document should not be read as claiming one.</p>
+  <p><b>What it does buy</b> is narrow and real: <b>a captured signature is single-use and bound to
+    this exact body.</b> A bearer token replays forever and authenticates nothing about what it
+    arrived with; a timestamped signature over the raw body does both. That matters only against
+    someone <i>on the path</i> — TLS interception, or the header turning up in a proxy log — which is
+    the threat model, and it is a smaller one than "stolen laptop". It is bought because <b>D8</b>
+    accepts that other people's private words cross the internet to reach this endpoint, and that is
+    the traffic worth over-protecting.</p>
+  <p class="why"><b>The honest "why", because an earlier revision had it backwards.</b> The repo's
+    established pattern for a trusted external <code>POST</code> is a <b>static bearer key</b>, not
+    HMAC: <code>validateApiKey</code> in <code>frontend/lib/api/auth.ts</code> takes
+    <code>x-api-key</code> or <code>Authorization: Bearer</code>, <code>resolveIngestClient</code> turns
+    a valid key into an admin client that bypasses RLS, and SPEC §7 prescribes exactly that for external
+    ingress. The repo's HMAC code exists because <b>GitHub</b> dictates the signature format for its
+    webhooks — a vendor requirement, not a house convention. So this decision <i>departs</i> from
+    precedent and has to earn it on the narrow ground above and nothing wider. The cost is real and
+    named: a second auth scheme in a repo that has one, implemented on both ends, for a threat that
+    requires an adversary on the network path. A reviewer who thinks that trade is not worth it should
+    reopen this decision rather than assume it was reasoned harder than it was.</p>
+  <p class="why"><b>What this does <i>not</i> fix:</b> where the endpoint runs. §3.1 leaves "Worker
+    route" versus "Next.js route handler" to story <b>Q</b>, and the check has to work either way — the
+    Worker already has a constant-time verifier; a Next.js handler needs the same twenty lines against
+    Web Crypto. Verify before parsing, whichever it is.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D23</span>The Gmail OAuth client ships in "In production", not "Testing".</h3>
+  <p>Before story <b>D</b> ships, the Google Cloud OAuth client's <b>publishing status</b> must be
+    <i>In production</i>. Its refresh tokens are then stored as Worker secrets, one per account.</p>
+  <p class="why"><b>Why this is a named constraint and not a footnote:</b> a client left in
+    <i>Testing</i> issues refresh tokens that <b>expire after 7 days</b>, with no warning — killing
+    <b>both</b> Gmail accounts a week after story <b>D</b> ships. Those are the two sources that carry
+    the entire <code>ASAP</code> latency promise (<b>D17</b>), since the other two ride a Mac that
+    sleeps. The one reliability guarantee this module makes would fail quietly, seven days in, for a
+    reason that has nothing to do with the code.</p>
+  <p class="why"><b>The rest of the lifecycle, so it isn't rediscovered:</b> <code>gmail.readonly</code>
+    is a restricted scope, so an unverified production client shows an "unverified app" screen on first
+    consent — a warning to click through, not a blocker, for a personal client. And even a production
+    token can die (a password change, a revoke, six months of non-use), so the failure is <b>rarer, not
+    impossible</b> — which is why <b>D17</b>'s health surface covers Gmail and not just the Mac.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D24</span>A message alfred can't decode is stored and flagged. It is never skipped.</h3>
+  <p>A failed <code>attributedBody</code> decode, an odd MIME part, an unknown encoding: the row is
+    still written, with whatever body was extracted (possibly empty) and a flag saying extraction
+    failed. The poll loop logs it and moves on — one bad row never stalls ingestion.</p>
+  <p class="why"><b>Why "skip it" is not available:</b> a skipped message is a false negative <i>by
+    construction</i>, and the worst kind — it leaves no trace anywhere in alfred, so not even the
+    <code>FYI</code> shelf (<b>D6</b>) can be audited into finding it. Storing a row with an empty body
+    costs nothing and keeps the failure <b>visible</b>. What happens to it then is <b>D25</b>'s: it is
+    never judged <code>FYI</code> on the strength of text that failed to extract, so it takes the
+    can't-judge path into the queue, marked, where <i>Open in source</i> (<b>D20</b>) is the recovery —
+    the message still lives in its own client, which is what <b>D2</b> guarantees.</p>
+</div>
+
+<h3>The verdict</h3>
+
+<div class="dec">
+  <h3><span class="n">D14</span>The verdict states the <i>ask</i>, not the topic.</h3>
+  <p>The per-message summary answers "what does this want from me, and by when" — not "what is this
+    about". <i>"Dana needs the invoice approved before Friday"</i>, never <i>"regarding the Q3 invoice"</i>.</p>
+  <p class="why"><b>Why:</b> what makes triage aversive is ambiguity about whether a message contains
+    an obligation. A topic summary preserves that ambiguity and forces the owner to open the message
+    to resolve it — which is the exact work the module is supposed to remove.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D15</span>Haiku 4.5 to start, chosen by evaluation rather than by price. One call per message.</h3>
+  <p>About <b>$3.30/month</b> on Haiku 4.5 at the owner's volume, against <b>$16.50</b> on Opus 5 —
+    a flat 5×, since Opus is 5× on both sides (§6, which names its caching assumption rather than
+    assuming a warm cache, and which says what the example set adds on top of both). A real ratio on a
+    small absolute number: the eval fixtures still decide the model (story <b>K</b>), but if Opus wins
+    there the cost is worth re-reading rather than waving through as noise.</p>
+  <p class="why"><b>Why one call per message:</b> batching ten messages per call would save roughly
+    $1.50/month and cost <a href="ALF-158.html">ALF-158</a>'s per-item isolation, where one malformed
+    verdict damages exactly one row. At this volume that is a bad trade. <b>The Batches API's 50%
+    discount is a trap here</b> — it is asynchronous with up to 24-hour turnaround, and a firewall
+    that reports the urgent thing tomorrow is not a firewall.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D25</span>A message alfred could not judge enters the queue at <code>Today</code>, marked. Nothing is ever <i>silently</i> shelved.<span class="revtag">revised</span></h3>
+  <p><b>Two</b> things put a message in the queue with no judgment behind it, and they get one rule
+    rather than two: <b>a body that wouldn't decode</b> (<b>D24</b>) and <b>no verdict that will ever
+    come</b> (content-shaped failures exhausted the ceiling, below). Both land on <code>Today</code>,
+    <b>flagged</b>, with an <code>ask</code> that says which. Counted, and <b>never <code>ASAP</code></b> — a tier alfred
+    didn't choose doesn't get the one that claims "now". A re-run (<b>D19</b>) helps only
+    once <i>something has changed</i>: a different model, an edited rubric, a later vision path — never
+    as a retry of the identical call.</p>
+
+  <h4 style="margin-top:1.1rem">A message with no readable text is classified, not bypassed</h4>
+  <p>A photo-only iMessage, an attachment with an empty body: <b>the classifier still runs</b>. It is
+    handed <code>[image attachment, not read]</code> in place of the body, plus the sender and the
+    <b>D12</b> roster, and priority does its job:</p>
+  <ul>
+    <li><b>Priority person + attachment → <code>Today</code>, flagged.</b> "Sign this" with a photo of
+      a form comes from someone who matters, and that is the case worth protecting.</li>
+    <li><b>Anyone else → <code>FYI</code>, flagged</b> — visibly, so the shelf shows that alfred knew
+      there was something it could not read.</li>
+  </ul>
+  <p class="why"><b>Why this stopped being a bypass:</b> an earlier revision sent every text-less
+    message straight to <code>Today</code> and defended it with "if any is more than a rarity that is a
+    bug upstream". Photo-only messages are not a rarity on a personal phone and are not a bug — they
+    are most of what a phone carries. Each one landed on a <i>counted</i> tier, could not drain by
+    reply (nobody owes a reply to a photo of a dog), and needed the owner to open it and clear it by
+    hand: the voluntary triage this module exists to remove, re-imported through the safety path. The
+    sharp case — <i>"sign this"</i> with a photo of a form — is a case about <b>who sent it</b>, and
+    <b>D12</b> already answers that, so the priority roster carries the rule instead of a blanket
+    exception. <b>D6</b>'s false-negative-<i>recoverable</i> property is preserved by the flag; what is
+    no longer paid is §1's failure&nbsp;3 on every ordinary day.</p>
+
+  <p class="why"><b>Why the remaining two get one rule:</b> the alternative in both cases is
+    <b>invisibility</b> — §1's failure&nbsp;1 arriving through the machinery meant to prevent it, and
+    worse than a mistiered message because there is no verdict to audit. Both are also genuinely
+    <i>rare</i>, which is what the discarded attachment case was not: a decode failure is a bug in the
+    daemon and five content-shaped failures in a row is a bug in the prompt. If either becomes routine,
+    that is a defect to fix upstream and not a tier to get used to.</p>
+  <p class="why"><b>The tension with D3, stated rather than buried:</b> neither has been <i>shown</i>
+    to be an obligation. They are admitted because <b>unknown is not nothing</b> — <b>D7</b>'s
+    direction is that uncertainty resolves into the queue and down to <code>Today</code>, and total
+    uncertainty is still uncertainty.</p>
+
+  <h4 style="margin-top:1.1rem">Which failures count toward the ceiling</h4>
+  <p>One stateless request per message, no repair loop, ceiling of <b>five attempts</b> (the reused
+    sweep's). What counts against it is where this epic <b>diverges</b> from
+    <a href="ALF-158.html">ALF-158</a>, deliberately:</p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:38%">What went wrong</th><th>What the sweep does</th></tr>
+    <tr><td><b>Transport</b> — 429, 5xx, timeout, network</td>
+      <td><b>Nothing written, nothing counted.</b> The message stays an ordinary unclassified row; the next sweep is the retry. No queue, no backoff state.</td></tr>
+    <tr><td><b>Systemic</b> — binding absent, a <b>rejected</b> credential (401/403), or a 400 on a request shape identical for every message</td>
+      <td><b>The tick aborts; nothing written, counted or marked</b>, so fixing the deploy later loses nothing. <b>Ingestion keeps running</b> (<b>D6</b>): this is a <i>classifier</i> outage, and <b>D17</b>'s health surface says so in those words.</td></tr>
+    <tr><td><b>Content-shaped</b> — unparseable, a <code>tier</code> outside the enum, <code>max_tokens</code></td>
+      <td><b>Attempt counted</b>, no re-ask — the same prompt mostly produces the same shape. At five, the message takes the path above.</td></tr>
+    <tr><td><code>stop_reason: "refusal"</code></td>
+      <td><b>Terminal, its own state</b> — below. Not the can't-judge path.</td></tr>
+  </table>
+  </div>
+  <p class="why"><b>Why transport must not count, spelled out because the reused code counts it.</b>
+    <code>workers/src/sweep.ts</code> calls <code>countAttempt</code> on <i>every</i> failure including
+    transport — <i>"Counting uniformly is what gives the ceiling teeth"</i> — with a ceiling of five and
+    a two-minute cron. That is safe in ALF-158 because its ceiling is <b>inert</b>: the item goes on
+    being an ordinary unclassified Inbox row and the worst case equals today. Here the ceiling is
+    <b>active</b>, and uniform counting plus an active ceiling is a flood — a sustained 429/5xx window
+    burns all five attempts for every eligible message in about <b>ten minutes</b>, so a twenty-minute
+    Anthropic incident deposits the <i>entire inbound stream</i> into <code>Today</code>, newsletters
+    that leaked <b>D13</b> included, none of it drainable by replying (<b>D18</b>) because nobody owes
+    a reply. That is exactly the "count that only ever grows" §1 names as the module failing.</p>
+  <h4 style="margin-top:1.1rem">Refusals go to the shelf, flagged — not into the queue</h4>
+  <p>A <code>stop_reason: "refusal"</code> is <b>terminal</b> and gets its own state. The message is
+    filed <code>FYI</code> with a visible <code>refused</code> flag, distinguishable from "asked and
+    answered no" exactly as <b>D13</b>'s filtered mail is. It is <b>not</b> the can't-judge path, it
+    does not enter the queue, and it does not count toward the ceiling.</p>
+  <p class="why"><b>Why the shelf and not the queue:</b> re-sending an identical prompt cannot change a
+    refusal, so <b>D19</b>'s re-run is no recovery; and refusals skew toward the spam and phishing that
+    already leaked <b>D13</b>'s filter, so queueing them would spend the module's premise on its least
+    valuable mail. <b>The cost:</b> a refusal over a genuine obligation is §1's failure&nbsp;1, whose
+    only defence is a flag on a shelf nobody is forced to open — the partial answer <b>D6</b> gives and
+    <a href="#q8">§8 Q8</a> is open about. Refusals being <i>rare</i> is what makes this right; if they
+    aren't, the volume will say so.</p>
+  <p class="why"><b>Scope note:</b> the MVP does <b>not</b> send images to the model (<b>D15</b>). The
+    flag is the honest minimum and it makes the upgrade targetable — a later story can route exactly
+    those rows to a vision call without re-classifying anything else (<b>D19</b>).</p>
+</div>
+
+<h3>Living with the constraints</h3>
+
+<div class="dec rev">
+  <h3><span class="n">D17</span>No source is assumed to be working. The module says so on its face, per account<span class="revtag">revised</span></h3>
+  <p>Every account carries its own health: <code>last_seen_at</code>, stamped on <b>every successful
+    poll</b> — not on every message — plus the last error and when it happened. The header shows
+    <b>one indicator per account</b>, in three states:</p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:20%">State</th><th>Means</th><th>Typical cause</th></tr>
+    <tr><td><b>Live</b></td><td>Polled successfully within this source's expected interval</td><td>Normal</td></tr>
+    <tr><td><b>Stale</b></td><td>No successful poll for longer than that — nothing is arriving and alfred doesn't know what it's missing</td><td>The Mac is asleep (<b>D9</b>); the cron didn't fire</td></tr>
+    <tr><td><b>Erroring</b></td><td>Polls are running and <i>failing</i> — the account is dead, not quiet</td><td>A rejected Gmail token (<b>D23</b>), a rate limit, IMAP auth refused, Full Disk Access revoked (<b>D10</b>)</td></tr>
+  </table>
+  </div>
+  <p>Thresholds are per source: Gmail rides the Worker's cron and should be minutes fresh; the Mac's two
+    are expected to go dark overnight. A <b>classifier</b> outage (<b>D25</b>) is a fourth,
+    <b>module-level</b> state — ingestion healthy, judgment stalled — and gets <b>its own banner</b>
+    above the dots rather than a dot among them, because the fix is different. The §4 mockup draws it.</p>
+  <p class="why"><b>Why per-account, and why "erroring" is its own state:</b> a revoked token or a
+    rate-limited account would otherwise leave a dot <b>green</b> while nothing at all was arriving — a
+    surface that looks empty, current and trustworthy over two dead sources. "Quiet" and "broken" are
+    indistinguishable from message volume alone; only a successful <i>poll</i> separates them, which is
+    why the heartbeat is stamped on the poll and not the mail. A firewall's value is that its zero means
+    something (§1), and a zero that can silently mean "we stopped looking" is worth less than none.</p>
+  <p><b>The heartbeat's cadence is decided here, not in the story that draws the indicators.</b>
+    Liveness <b>coalesces</b>: the daemon reports it <b>at most once a minute</b>, including when there
+    is nothing to send. That makes a <b>zero-message heartbeat a first-class payload of the ingest
+    endpoint</b> — part of story <b>Q</b>'s contract, not a shape story <b>P</b> bolts on later. The
+    Worker's Gmail poll stamps <code>last_seen_at</code> directly on its own cron and needs no
+    heartbeat.</p>
+  <p class="why"><b>Why coalesced:</b> the daemon polls every few seconds (<b>D10</b>), so one
+    heartbeat per poll would be tens of thousands of requests a day to move an indicator whose
+    thresholds are in minutes.</p>
+  <p class="why"><b>The consequence, easy to discover late:</b> an <code>ASAP</code> iMessage arriving
+    at 11pm reaches the owner when the Mac next wakes. <b>The <code>ASAP</code> latency promise holds
+    for the two Gmail accounts only.</b> WorkMail inherits the limit — kept there <b>for now</b>
+    (<b>D9</b>) rather than forwarded into Gmail, which remains the escape hatch.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D18</span>The queue drains by replying, not by marking things done. alfred never writes to Gmail<span class="revtag">revised</span></h3>
+  <p><b>Read-only in both directions:</b> no labels, no archive, no state pushed back to any source.
+    Instead alfred <i>watches</i>. When the owner replies in their own client, the item clears itself.
+    <b>Every source needs its own detector, and each one is part of that source's story</b> — a source
+    without one honours two of the three exits below, which is not enough:</p>
+  <div class="scroll">
+  <table style="margin:.6rem 0 .3rem">
+    <tr><th style="width:26%">Source</th><th style="width:40%">What "replied" is read from</th><th>Ships with</th></tr>
+    <tr><td>Gmail ×2</td><td>Thread state — with <a href="#q5">§8 Q5</a>'s caveat that a thread moving is not the owner answering</td><td><b>O</b></td></tr>
+    <tr><td>iMessage</td><td><code>is_from_me</code> on a later message in the conversation</td><td><b>O</b>'s second half, after <b>F</b></td></tr>
+    <tr><td>WorkMail / IMAP</td><td><b>The Sent folder</b> — a sent message whose <code>In-Reply-To</code> / <code>References</code> names the queued <code>Message-ID</code></td><td><b>G</b></td></tr>
+  </table>
+  </div>
+  <p class="why"><b>Why this beats write-back, which was the obvious design:</b> Steve writes a Gmail
+    label so his two inboxes don't diverge. Detection achieves the same convergence without alfred
+    touching the mailbox, and removes the second bookkeeping step entirely — the step an avoidance
+    pattern skips. A design where the owner must mark things handled inside alfred would fail in the
+    specific way this epic exists to prevent.</p>
+  <p><b>There are exactly three ways a row leaves the queue, and every story must honour all
+    three:</b></p>
+  <ol>
+    <li><b>The owner replies in their own client</b> → detection clears it. The main path, and the only
+      one that requires nothing of the owner inside alfred.</li>
+    <li><b><i>Nothing to answer</i> / <i>Not replying</i></b> (<b>D20</b>) — the two halves of the
+      manual clear, one for a row that shouldn't have been queued and one for a conscious decision to
+      leave a real ask unanswered. The fallback, since detection cannot clear a reply that never
+      comes.</li>
+    <li><b><i>Make an Inbox item</i></b> (<b>D20</b>) — the obligation moves into the Inbox, which
+      becomes its durable tracker, and <b>the comms row clears at that moment</b>.</li>
+  </ol>
+  <p class="why"><b>Why the third is not optional:</b> without it, spinning a message into a task is a
+    way <i>out of the message</i> and not out of the queue — two trackers for one obligation, which is
+    the duplicated-inbox failure §1 and <b>D1</b> are organised against, showing up as the one symptom
+    this module cannot afford: a count that never reaches zero for reasons the owner can't act on.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D19</span>Re-classification is on demand only. Nothing is silently re-judged.</h3>
+  <p>Editing the rubric or the example set does <b>not</b> sweep the existing queue. A re-run is an
+    explicit action.</p>
+  <p class="why"><b>Why:</b> this is <a href="ALF-158.html">ALF-158</a>'s "the machine changed my answer
+    back" failure. A verdict the owner has already seen — and possibly already acted on — moving
+    underneath them costs more trust than a stale tier costs attention.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D20</span>Five verbs on a row. The two clearing verbs are separate because one of them is a correction<span class="revtag">revised</span></h3>
+  <div class="scroll">
+  <table>
+    <tr><th>Verb</th><th>Does</th><th>Records</th></tr>
+    <tr><td><b>Open in source</b></td><td>Deep-links to the message in its own client, built from the RFC822 <code>Message-ID</code> §3.1 captures. <b>Desktop only for the MVP</b> — a scoping choice that scopes the <i>surface</i>, not the <i>data</i>. The schemes and their quirks are story <b>L</b>'s (<a href="#q3">§8 Q3</a>).</td><td>Nothing</td></tr>
+    <tr><td><b>Make an Inbox item</b></td><td>Creates an alfred item from the message in one action, without leaving Comms — <b>and clears the comms row</b>.</td><td>Nothing</td></tr>
+    <tr><td><b>Nothing to answer</b></td><td>Clears a row that <i>shouldn't have been queued</i> — it asks nothing. One click.</td><td><b>A demotion correction</b> to <code>FYI</code>, feeding the example set (<b>D11</b>)</td></tr>
+    <tr><td><b>Not replying</b></td><td>Clears a real ask the owner has decided to leave unanswered (<b>D18</b>). One click.</td><td>Nothing — the verdict was right</td></tr>
+    <tr><td><b>Change tier</b></td><td>A dropdown. Moves the message between the four tiers and records the correction (<b>D11</b>).</td><td>The correction, as an example</td></tr>
+  </table>
+  </div>
+  <p><b>Why the clearing verb is split, and why this is a decision rather than UI detail.</b> One
+    click cannot mean both "you were wrong, this asked nothing" and "you were right, I'm choosing not
+    to answer" — they are opposite signals, and one of them must never reach the example set.
+    Collapsing them was the previous design, and it produced the asymmetry <b>D7</b> now names:
+    clearing a false positive was <i>one</i> click that taught nothing, while recording the same
+    correction properly was <i>two</i> (open the dropdown, pick <code>FYI</code>). So the cheap gesture
+    was the uninformative one, and <b>D11</b>'s example set starved exactly where <b>D7</b> guarantees
+    corrections are richest. Two one-click verbs cost a wider row and one moment of the owner reading
+    two labels; they buy the demotion signal at the price the owner will actually pay.</p>
+  <p class="why"><b>The residual risk, named:</b> a mis-click on <i>Nothing to answer</i> teaches the
+    classifier to shelve a real obligation — the <b>D11</b> erosion the direction balance exists to
+    bound. That is what pruning is for, and why <b>D11</b> keeps the rubric primary; it is not a reason
+    to go back to one verb, because a signal the owner never gives cannot be pruned either.</p>
+  <p class="why"><b>On "Make an Inbox item", and why clearing the row is a decision rather than a
+    detail:</b> spin-off stays a human act, but the <i>bridge</i> is where avoidance reasserts itself —
+    a context switch performed at the moment of being reminded of an unwanted obligation — so it is one
+    action from the row. And it is the <b>third exit from the queue</b> (<b>D18</b>): the Inbox item
+    becomes the durable tracker, so the comms row has nothing left to track. Without that the owner
+    spins a message into a task, handles it, never replies, and detection never fires. The message
+    itself is untouched (<b>D2</b>); it is the <i>row</i> that clears, and the new item carries the link
+    back.</p>
+  <p class="why"><b>On the tier dropdown:</b> because tier membership is also the entry ticket
+    (<b>D3</b>), promoting something <i>out of</i> <code>FYI</code> corrects the obligation judgment
+    rather than the urgency — the false-negative recovery path <b>D7</b> cares about, and the most
+    valuable example the set can hold.</p>
+  <p class="why"><b>Not settled here — keybindings.</b> The verbs are fixed; their shortcuts are not,
+    and the §4 mockup draws none. No row-level hotkey convention exists in the app today, so inventing
+    five letters in an epic spec would hand every later module a convention nobody designed. Story
+    <b>L</b> proposes them against the app as a whole. <b>Deliberately absent — quick reply and
+    forward:</b> each needs <i>send</i> capability, SMTP or AppleScript, which nothing else here
+    requires — a real scope expansion for a convenience the owner's clients already cover.</p>
+</div>
+
+<div class="dec rev">
+  <h3><span class="n">D27</span>Messages expire after 60 days. Examples don't. A deletion at the source does not propagate<span class="revtag">revised</span></h3>
+  <p><b>A scheduled sweep deletes every <code>comm_messages</code> row older than 60 days</b> — the
+    whole row, body included, across every tier. The <b>example set is exempt</b>: a correction keeps
+    its denormalised text indefinitely, and examples are not swept. A <b>manual purge</b> — one
+    message, one account, or everything older than a chosen date — still ships with the schema in
+    story <b>B</b>, and unlike the sweep it <b>does</b> cascade into the example set: the deliberate
+    "I want this gone" action has to actually work, or it is theatre.</p>
+  <p><b>An un-drained queue row within 7 days of its expiry is marked in the UI.</b> The marker is
+    <b>derived, not stored</b> — <code>received_at + 60d − now &lt;= 7d</code> — so it costs no schema
+    and no sweep of its own. It applies to any row still in <code>ASAP</code>, <code>Today</code> or
+    <code>Whenever</code>, not just the last: a row that has survived 53 days in one of the loud tiers
+    is a worse anomaly than one in the quiet one, and silently losing it would be worse still. In
+    practice it fires almost entirely on <code>Whenever</code>.</p>
+  <p>A message deleted in Gmail, unsent in Messages, or removed from a mailbox <b>stays in alfred</b>
+    until the sweep reaches it; deleting something in alfred never touches the source (<b>D18</b>).</p>
+  <p class="why"><b>Why 60 days, and why the owner chose it:</b> the driver is <b>security, not
+    cost</b>. Volume never forces the question — ~16,000 rows a year is nothing — so retention here
+    buys exactly one thing: a bounded blast radius if this database is ever exposed. <b>D2</b> only
+    goes one way, alfred's copy is safe to <b>lose</b> and not safe to <b>keep</b>, and a 60-day
+    window is the owner minimising what there is to lose. The number is a comfort judgment, not a
+    derived one, and nothing in the design depends on its exact value.</p>
+  <p class="why"><b>Why examples are exempt:</b> a bounded, versioned handful of corrections is a
+    risk the owner has weighed and accepted, and it is the artifact that makes <b>D11</b>'s set
+    improve rather than reset every two months. An earlier revision argued the opposite on the
+    grounds that "the most-corrected messages are the most engaged-with" — that is false and has been
+    removed. A correction is a <i>tier fix</i>; it says nothing about how much of a message the owner
+    read, and does not mark it as more personal than any other.</p>
+  <p class="why"><b>What 60 days costs, stated so no story session is surprised:</b></p>
+  <ul>
+    <li><b>A still-owed obligation can still be deleted — the warning mitigates, it does not
+      prevent.</b> The sweep is blanket by decision: nothing is exempt, so a row the owner does not
+      act on in that final week is deleted while still owed, which is <b>failure&nbsp;1</b> (§1)
+      caused by housekeeping rather than by the classifier. The 7-day marker makes that outcome
+      require a week of not looking rather than happening silently — a real reduction, and not a
+      guarantee, in a module whose premise (§1) is an owner who avoids looking. Stated plainly
+      because the mitigation is easy to mistake for a fix.</li>
+    <li><b>alfred's search becomes a 60-day search.</b> Anything older is a Gmail search — a real
+      narrowing of a benefit <b>D8</b>'s dumb pipe partly rested on.</li>
+    <li><b>D6</b>'s shelf audit gets a horizon. A false negative is recoverable for 60 days, not
+      forever — defensible, since a miss is noticed well inside that or not at all.</li>
+    <li><b>Story K's fixtures must be snapshotted out</b> before they expire, or the eval corpus is a
+      rolling two months rather than a growing one.</li>
+  </ul>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D28</span>iMessage edits and unsends are invisible to alfred. Accepted, and stated.</h3>
+  <p>The daemon polls forward on <code>ROWID</code> (<b>D10</b>, <b>D21</b>), which sees <b>inserts</b>.
+    An edit rewrites an existing row in place and an unsend blanks or removes one — neither allocates a
+    new <code>ROWID</code>, so a cursor-based poll never revisits either. So: <b>an edited message is
+    triaged on its original wording, forever</b>, and <b>an unsent message persists in alfred's
+    mirror until the 60-day sweep reaches it</b> (<b>D27</b>), possibly still asking for a reply to
+    something the sender retracted.</p>
+  <p class="why"><b>Why accept rather than fix:</b> catching either needs a full-table diff on every
+    poll — throwing away the cursor that makes polling cheap and safe — or dylib injection into
+    Messages.app, an explicit non-goal (§5) that costs SIP. Neither is worth it for a triage tool, and
+    <b>D19</b> means the fix wouldn't be automatic anyway.</p>
+  <p class="why"><b>Why it is survivable:</b> <b>D2</b>. <i>Open in source</i> (<b>D20</b>) is the
+    arbiter — if a row's ask reads oddly, the source is one click away and is always the truth. The
+    failure here is a stale row, which is visible and correctable; it is not a missing one.</p>
+</div>
+
+<h2>3 · Architecture</h2>
+
+<div class="scroll">
+<svg viewBox="0 0 900 316" role="img" aria-label="Data flow from four accounts through two ingestion homes into Supabase, the Worker classifier, and the Comms UI">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5" color="#8a94a0">
+    <!-- sources -->
+    <rect x="10" y="20" width="150" height="42" rx="6"/>
+    <rect x="10" y="72" width="150" height="42" rx="6"/>
+    <rect x="10" y="150" width="150" height="42" rx="6"/>
+    <rect x="10" y="202" width="150" height="42" rx="6"/>
+    <!-- homes -->
+    <rect x="230" y="34" width="160" height="66" rx="6"/>
+    <rect x="230" y="158" width="160" height="80" rx="6"/>
+    <!-- store -->
+    <rect x="450" y="86" width="150" height="80" rx="6"/>
+    <!-- classifier -->
+    <rect x="450" y="220" width="150" height="80" rx="6"/>
+    <!-- ui -->
+    <rect x="670" y="86" width="150" height="80" rx="6"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="11" fill="currentColor">
+    <text x="85" y="38" text-anchor="middle" font-weight="600">Gmail — personal</text>
+    <text x="85" y="53" text-anchor="middle" font-size="10" opacity=".7">Gmail API</text>
+    <text x="85" y="90" text-anchor="middle" font-weight="600">Gmail — RealPlay</text>
+    <text x="85" y="105" text-anchor="middle" font-size="10" opacity=".7">Gmail API</text>
+    <text x="85" y="168" text-anchor="middle" font-weight="600">WorkMail</text>
+    <text x="85" y="183" text-anchor="middle" font-size="10" opacity=".7">IMAP</text>
+    <text x="85" y="220" text-anchor="middle" font-weight="600">iMessage / SMS</text>
+    <text x="85" y="235" text-anchor="middle" font-size="10" opacity=".7">chat.db (read-only)</text>
+
+    <text x="310" y="58" text-anchor="middle" font-weight="600">Cloudflare Worker</text>
+    <text x="310" y="74" text-anchor="middle" font-size="10" opacity=".7">cron poll · header filter</text>
+    <text x="310" y="88" text-anchor="middle" font-size="10" opacity=".7">(D9, D13)</text>
+
+    <text x="310" y="182" text-anchor="middle" font-weight="600">Mac daemon</text>
+    <text x="310" y="198" text-anchor="middle" font-size="10" opacity=".7">launchd · poll · normalize</text>
+    <text x="310" y="212" text-anchor="middle" font-size="10" opacity=".7">dumb pipe — no LLM</text>
+    <text x="310" y="228" text-anchor="middle" font-size="10" opacity=".7">(D8, D10)</text>
+
+    <text x="525" y="112" text-anchor="middle" font-weight="600">Supabase</text>
+    <text x="525" y="128" text-anchor="middle" font-size="10" opacity=".7">messages · contacts</text>
+    <text x="525" y="142" text-anchor="middle" font-size="10" opacity=".7">rubric versions</text>
+    <text x="525" y="156" text-anchor="middle" font-size="10" opacity=".7">every message kept (D6)</text>
+
+    <text x="525" y="246" text-anchor="middle" font-weight="600">Classifier sweep</text>
+    <text x="525" y="262" text-anchor="middle" font-size="10" opacity=".7">Haiku 4.5 · one call each</text>
+    <text x="525" y="276" text-anchor="middle" font-size="10" opacity=".7">rubric + people list</text>
+    <text x="525" y="290" text-anchor="middle" font-size="10" opacity=".7">(D11, D12, D15)</text>
+
+    <text x="745" y="112" text-anchor="middle" font-weight="600">Comms module</text>
+    <text x="745" y="128" text-anchor="middle" font-size="10" opacity=".7">ASAP · Today · Whenever</text>
+    <text x="745" y="142" text-anchor="middle" font-size="10" opacity=".7">FYI (unbadged)</text>
+    <text x="745" y="156" text-anchor="middle" font-size="10" opacity=".7">(D4)</text>
+
+  </g>
+  <g stroke="currentColor" stroke-width="1.4" fill="none" color="#8a94a0" marker-end="url(#ar)">
+    <path d="M160 41 H 228"/>
+    <path d="M160 93 H 228"/>
+    <path d="M160 171 H 228"/>
+    <path d="M160 223 H 228"/>
+    <path d="M390 67 H 420 V 118 H 448"/>
+    <path d="M390 198 Q 420 198 420 150 V 132 H 448"/>
+    <path d="M600 126 H 668"/>
+    <path d="M545 220 V 172"/>
+    <path d="M560 172 V 218"/>
+  </g>
+</svg>
+</div>
+<p class="diagram-cap">Two ingestion homes, one classifier. The daemon carries no model call and no key.</p>
+
+<h3>3.1 Data model</h3>
+
+<p>New tables, in <code>database/migrations/&lt;next&gt;_comms.sql</code> (the implementation session
+takes whatever migration number is free — never pin one in a spec).</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Table</th><th>Holds</th><th>Notes</th></tr>
+  <tr>
+    <td><code>comm_accounts</code></td>
+    <td>One row per mailbox / channel</td>
+    <td>Kind, display label, ingestion home, and the per-account health <b>D17</b> needs: <code>last_seen_at</code> (stamped on every successful <i>poll</i>, not every message) plus the last error and when it occurred, so <i>quiet</i> and <i>broken</i> are distinguishable. Also the <b>ingestion cursor</b> (<b>D21</b>) — ROWID, <code>UIDVALIDITY</code>+<code>UID</code>, or <code>historyId</code>. Lets one account be paused without touching the others.</td>
+  </tr>
+  <tr>
+    <td><code>comm_messages</code></td>
+    <td>The mirrored message</td>
+    <td>Account, sender handle, thread key, body, received-at. <b>Uniqueness on (account, source identity)</b>, where the identity is per source and is <i>not</i> the cursor (<b>D21</b>): Gmail's message id, the RFC822 <code>Message-ID</code> or <code>(UIDVALIDITY, UID)</code> for IMAP, <code>chat.db</code>'s <code>guid</code> for iMessage. <b>Captures the RFC822 <code>Message-ID</code> for every email</b> regardless — deep links (story <b>L</b>) are built from it, and it is cheap now and annoying to backfill. Also carries the flags that keep a message from failing silently: whether the body extracted cleanly (<b>D24</b>), whether it has attachments or images with little readable text, whether the header filter rather than the model put it on the shelf (<b>D13</b>), and the classification attempt count (<b>D25</b>).</td>
+  </tr>
+  <tr>
+    <td><code>comm_verdicts</code></td>
+    <td>The model's judgment</td>
+    <td>Tier, whether a reply is owed, the one-line ask, the reason, and the full provenance: <b>provider</b>, model, <b>rubric version</b> <i>and</i> <b>example-set version</b> — a verdict stamped with only one of the last two is not reconstructable, which defeats the point of versioning either. The provider column is carried over from <a href="ALF-158.html">ALF-158</a> for its reason rather than its shape: leave it out and a future provider comparison needs a migration before it can even be asked. Separate from the message so a re-classification (<b>D19</b>) is a new row, not a destroyed one.</td>
+  </tr>
+  <tr>
+    <td><code>comm_people</code> + <code>comm_handles</code></td>
+    <td>The people list (<b>D12</b>)</td>
+    <td>A person with a priority; many handles per person. The join is what resolves one human across a phone number and three addresses.</td>
+  </tr>
+  <tr>
+    <td><code>comm_rubrics</code></td>
+    <td>Versioned rubric text (<b>D11</b>)</td>
+    <td>Append-only. Every verdict names the version that produced it, so "why did it say that" is answerable after an edit.</td>
+  </tr>
+  <tr>
+    <td><code>comm_corrections</code></td>
+    <td>Every correction the owner makes (<b>D20</b>) — a tier change, or <i>Nothing to answer</i> on a queued row, which is a demotion to <code>FYI</code></td>
+    <td>The message, the tier the model chose, the tier the owner chose, when. Doubles as the <b>example set</b> (<b>D11</b>): rows feed the prompt as few-shot examples automatically, and carry a flag so one that steers badly can be pruned without losing the record that it happened. Versioned as a set, and stamped on every verdict alongside the rubric version. The denormalised message text <b>outlives its message</b>: the 60-day sweep does not touch it, though a <b>manual</b> purge still nulls it (<b>D27</b>). Subject to a length budget (§6) — an email body is not a one-line capture.</td>
+  </tr>
+</table>
+</div>
+
+<p><b>Triage state lives on the message, not the verdict</b> — the owner marking something handled is
+a human act, and it must survive a re-classification that changes the tier.</p>
+
+<h4>Access control — the same rules as every other table here</h4>
+
+<p>All <b>seven</b> tables follow the house pattern — RLS on, the <code>authenticated full
+access</code> policy, explicit grants (the <code>supabase</code> and <code>migration-lint</code>
+skills own the details, and <code>check:fast</code> enforces them). Single-user project, so
+role-based RLS and <b>no <code>user_id</code> column</b> (SPEC §7), exactly as in
+<a href="ALF-146.html">ALF-146</a> and <a href="ALF-158.html">ALF-158</a>.</p>
+
+<p><b>Which role writes what</b> — this epic adds a <i>third</i> write path, the first thing outside
+Cloudflare and the browser to put rows in this database:</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Writer</th><th>Runs as</th><th>Writes</th></tr>
+  <tr><td>The browser (the Comms UI)</td><td>The owner's <code>authenticated</code> session, under RLS</td><td>Triage state, corrections, the rubric, the people list</td></tr>
+  <tr><td>The Worker (Gmail poll, classifier sweep, reply detection)</td><td><code>service_role</code>, bypassing RLS by design (SPEC §7)</td><td>Messages, verdicts, account health</td></tr>
+  <tr><td><b>The Mac daemon</b></td><td><b>Neither.</b> It holds no Supabase credential at all — it <code>POST</code>s HMAC-signed to the ingest endpoint (<b>D8</b>, <b>D22</b>), and <i>that endpoint</i> does the write with the service-role key</td><td>Nothing directly</td></tr>
+</table>
+</div>
+
+<p>That third row is the point of <b>D8</b>: a laptop that can be lost holds one write-only ingest
+credential, not a key that can read the database. <b>D22</b> is a separate and narrower claim about
+what that credential looks like on the wire (a single-use signature rather than a replayable bearer
+token), and it does not change the scoping. Where the endpoint lives — Worker route or Next.js route
+handler — is story <b>Q</b>'s call; what it runs as is not.</p>
+
+<div class="callout">
+  <b>Write-back asymmetry — settled context, not an open question.</b> <b>D18</b> declines Steve's
+  Gmail label, so what replaces it differs per source: Gmail thread state gives reply detection
+  something solid to read, while <b>iMessage has no labels and no archive</b>, so its triage state is
+  alfred-local and will drift from the unread badges in Messages.app. That drift is a property of the
+  platform and the accepted cost, not a gap waiting to be filled.
+</div>
+
+<h3>3.2 What the model is asked for</h3>
+
+<p>One call per message, structured output, every field enum'd or short. Following
+<a href="ALF-158.html">ALF-158</a>'s verdict shape:</p>
+
+<pre><code>{
+  "tier":       "asap" | "today" | "whenever" | "fyi",
+  "owes_reply": true | false,
+  "ask":        string,   // the obligation in one line — D14
+  "reason":     string    // why this tier, for auditing the rubric
+}</code></pre>
+
+<p>A message with no readable text is still sent, with <code>[image attachment, not read]</code>
+standing in for the body (<b>D25</b>) — the model is told what it is missing rather than being skipped
+over.</p>
+
+<p>Assembled stable-first — task instructions and tier definitions, the rubric, the example set from
+<code>comm_corrections</code> (<b>D11</b>), the rendered people list (<b>D12</b>), then the message.
+That ordering is conventional rather than a caching plan (§6 says why none is assumed). Each verdict
+is stamped with provider, model, rubric version <i>and</i> example-set version, so any judgment can be
+reconstructed.</p>
+
+<h2>4 · What the Comms module looks like</h2>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Comms</span>
+    <span style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
+      <span class="live"><span class="dot on"></span>personal</span>
+      <span class="live"><span class="dot err"></span>RealPlay</span>
+      <span class="live"><span class="dot stale"></span>WorkMail · 3h</span>
+      <span class="live"><span class="dot stale"></span>iMessage · 3h</span>
+      <span class="ghostbtn">Rubric</span>
+    </span>
+  </div>
+
+  <div class="modbar">Classifier stalled since 09:40 — <b>judgment only</b>. Everything still arriving
+    is still being stored; nothing new is being judged. This is not one of the source states below, and
+    the fix is different.</div>
+  <div class="errbar">RealPlay Gmail stopped ingesting at 11:20 — the refresh token was rejected.
+    This is not quiet, it is broken. Re-authorize.</div>
+  <div class="stalebar">iMessage and WorkMail last synced 3h ago — the Mac is asleep. Anything sent
+    there since won't appear until it wakes.</div>
+
+  <div class="tierhead">
+    <span class="tiername t-asap">ASAP</span>
+    <span class="count asap">1</span>
+    <span class="rule"></span>
+  </div>
+  <div class="row asap">
+    <div class="row-top"><span class="who">Dana Whitfield</span><span class="src">· RealPlay · 09:14</span></div>
+    <div class="ask">Needs the Q3 invoice approved before the 5pm billing run.</div>
+    <div class="chips">
+      <span class="chip c-vip">Priority person</span>
+    </div>
+    <div class="verbs">
+      <span class="verb">Open in Mail</span>
+      <span class="verb">Make an Inbox item</span>
+      <span class="verb">Nothing to answer</span>
+      <span class="verb">Not replying</span>
+      <span class="verb sel">Change tier ▾</span>
+    </div>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-today">Today</span>
+    <span class="count today">4</span>
+    <span class="rule"></span>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Mom</span><span class="src">· iMessage · 08:02</span></div>
+    <div class="ask">Asking whether you're coming Sunday — wants a yes or no.</div>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Priya Raghavan</span><span class="src">· personal · Yesterday</span></div>
+    <div class="ask">Waiting on your availability for the Thursday walkthrough.</div>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Tomas Berg</span><span class="src">· iMessage · 08:41</span></div>
+    <div class="ask">A photo and no text, from a priority person — queued on that basis. alfred can't
+      read what it's asking. Open it.</div>
+    <div class="chips">
+      <span class="chip c-vip">Priority person</span>
+      <span class="chip c-warn">Attachment · not read</span>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">billing@northwind.co</span><span class="src">· RealPlay · 07:55</span></div>
+    <div class="ask">Not judged — five attempts, none of them usable. Treated as owed until it can be read.</div>
+    <div class="chips">
+      <span class="chip c-warn">Unjudged</span>
+    </div>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-when">Whenever</span>
+    <span class="count when">2</span>
+    <span class="rule"></span>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Marcus Okonkwo</span><span class="src">· personal · Aug 19</span></div>
+    <div class="ask">Asked for an intro to someone on the platform team. No deadline given.</div>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Jae-won Sohn</span><span class="src">· personal · Jul 16</span></div>
+    <div class="ask">Wants your notes on the draft before he circulates it. No date named.</div>
+    <div class="chips">
+      <span class="chip c-expire">Deleted in 5 days</span>
+    </div>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-fyi">FYI</span>
+    <span class="rule"></span>
+  </div>
+  <div class="collapsed">2,417 messages · no reply owed — open to review</div>
+</div>
+<p class="mockcap"><b>The Comms view on a deliberately bad day</b> — every failure surface this epic
+asserts, drawn at once, because a surface no mockup shows is a surface no story session inherits.
+Three counted tiers and an unbadged, collapsed <code>FYI</code> shelf (<b>D4</b>, <b>D6</b>). The
+header carries <b>one indicator per account</b>, not one per ingestion home, separating <i>stale</i>
+(the Mac is asleep) from <i>erroring</i> (RealPlay's token was rejected — polls are running and
+failing): a green dot over a dead account is the failure <b>D17</b> exists to prevent. Above the dots,
+and deliberately unlike them, sits the <b>module-level</b> banner for a <i>classifier</i> outage —
+ingestion healthy, judgment stalled — which <b>D17</b> insists must not read as a source failure.
+One row on <code>Today</code> — <code>billing@northwind.co</code> — is <b>marked rather than
+judged</b> (<b>D25</b>), because the alternative to a marked row is an invisible message. The
+photo-only iMessage above it is the other half of <b>D25</b> and is <i>not</i> that: it was classified
+with the attachment named, and it is on <code>Today</code> <b>because of who sent it</b> (<b>D12</b>),
+which the <i>Priority person</i> chip says out loud. <b>The same message from anyone else is flagged
+and shelved</b>, which this picture cannot show, because it is inside the collapsed <code>FYI</code>
+shelf — exactly the <b>D6</b> cost <a href="#q8">§8 Q8</a> is open about. The selected row shows the
+<b>five</b> verbs (<b>D20</b>), with the two clearing verbs separate because only one of them is a
+correction: no <i>reply</i>, no <i>archive</i> (<b>D18</b>) and <b>no keyboard hints</b>, since story
+<b>L</b> owns those. Every row leads with <i>the ask</i>, not the subject line (<b>D14</b>). The
+<code>Whenever</code> holds two rows the tier exists for: one three weeks old and still owed — the
+picture <a href="#q7">§8 Q7</a> argues about — and one <b>five days from deletion</b>, carrying the
+expiry marker <b>D27</b> puts on any un-drained row inside its last week. The shelf count is in the <b>low thousands</b> — roughly what 60 days of
+<code>FYI</code> accumulates before the sweep (<b>D27</b>) bounds it, which is why it stays
+unbadged rather than counted. Drawn in the app's
+tokens from <code>frontend/app/globals.css</code>.</p>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Comms</span>
+    <span style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
+      <span class="live"><span class="dot on"></span>personal</span>
+      <span class="live"><span class="dot on"></span>RealPlay</span>
+      <span class="live"><span class="dot on"></span>WorkMail</span>
+      <span class="live"><span class="dot on"></span>iMessage</span>
+      <span class="ghostbtn">Rubric</span>
+    </span>
+  </div>
+  <div class="tierhead"><span class="tiername t-asap">ASAP</span><span class="count asap">0</span><span class="rule"></span></div>
+  <div class="tierhead"><span class="tiername t-today">Today</span><span class="count today">0</span><span class="rule"></span></div>
+  <div class="empty">Nothing to answer today.</div>
+  <div class="tierhead"><span class="tiername t-when">Whenever</span><span class="count when">1</span><span class="rule"></span></div>
+  <div class="row">
+    <div class="row-top"><span class="who">Marcus Okonkwo</span><span class="src">· personal · Aug 19</span></div>
+    <div class="ask">Asked for an intro to someone on the platform team. No deadline given.</div>
+  </div>
+  <div class="tierhead"><span class="tiername t-fyi">FYI</span><span class="rule"></span></div>
+  <div class="collapsed">2,441 messages · no reply owed — open to review</div>
+</div>
+<p class="mockcap">The state the module exists to produce: <b>the resting state, reached by draining —
+not the average one</b>. The everyday picture sits between this and the mockup above: a handful of
+correctly-triaged rows that clear as they are answered (<b>D18</b>), landing here most evenings. That
+is what <i>"check comms"</i> collapses to — and an <code>FYI</code> shelf that only ever grows doesn't
+disturb it. <b>The resting state is not zero everywhere, and cannot be:</b> <code>Whenever</code>
+still holds Marcus's three-week-old row, because that tier means <i>owed but undated</i> (<b>D4</b>)
+and nothing in this design ever clears it except the owner. Resting means <code>ASAP</code> and
+<code>Today</code> at zero — "nothing is owed <i>today</i>", not "nothing is owed". Whether a tier
+that never empties is a feature or the avoidance bucket wearing a badge is <a href="#q7">§8 Q7</a>,
+and this picture is the thing it argues about. <b>All four dots green and no module banner</b>,
+because a zero is only worth reading when nothing is quietly unwatched and nothing has quietly stopped
+judging (<b>D17</b>).</p>
+
+<h2>5 · Constraints &amp; non-goals</h2>
+
+<ul>
+  <li><b>No calendar half.</b> Steve's Radar is half filtered-calendar with per-event shortcuts — a
+    different data source and a different UI.</li>
+  <li><b>No automatic task or code creation.</b> Spin-off is a deliberate human act, but a
+    one-keystroke one (<b>D20</b>).</li>
+  <li><b>No snooze.</b> Every tool of this shape has one, and it is rejected on purpose: a snooze
+    button is a machine for deferring things while feeling productive, in a module built to fix an
+    avoidance pattern. If <code>Today</code> becomes a tier the owner ignores wholesale, revisit — that
+    would be evidence the pressure valve was load-bearing. (<a href="#q7">§8 Q7</a> records the
+    asymmetry this creates with <code>Whenever</code>, which is kept and is also inert.)</li>
+  <li><b>No sending</b> — no quick reply, no forward (<b>D20</b>); both need SMTP or AppleScript into
+    Messages.app, which nothing else here requires. <b>And no write-back to any source</b>
+    (<b>D18</b>): alfred reads, and never labels, archives or modifies a mailbox.</li>
+  <li><b>No newsletter reading, summarizing or digesting.</b> Bulk mail is detected and shelved
+    (<b>D13</b>); making it <i>useful</i> is the Reader module's job (SPEC §13.1).</li>
+  <li><b>No WhatsApp, Slack, Signal or Twitter.</b> Steve ingests all of them; this epic covers the
+    owner's four actual channels.</li>
+  <li><b>No voicemail integration.</b> iOS Visual Voicemail is programmatically inaccessible; the path,
+    if wanted, is a carrier setting that emails the transcript — at which point it is simply another
+    email.</li>
+  <li><b>No dylib injection into Messages.app.</b> Read receipts and reactions are reachable that way,
+    at the cost of disabling SIP. Read-only plus AppleScript is the ceiling.</li>
+  <li><b>No reading of images or attachments.</b> One text call per message (<b>D15</b>); a message
+    whose ask is inside a photo is <i>flagged</i> and classified on its sender, not interpreted
+    (<b>D25</b>). Routing those rows to a vision call is a later story the flag exists to make
+    possible.</li>
+  <li><b>No deletion sync</b> (<b>D27</b>) — a source-side delete is not mirrored; the 60-day sweep
+    is the only thing that removes a message, and alfred never writes a deletion back. <b>And no
+    historical backfill</b>: each source starts from a 7-day window (<b>D21</b>).</li>
+  <li><b>alfred is never the store of record</b> (<b>D2</b>) — no story may introduce state that exists
+    only in alfred and would be a real loss.</li>
+  <li><b>Ingestion freshness is bounded by the Mac.</b> While it sleeps, iMessage and WorkMail stop
+    arriving; the module says so visibly rather than looking empty and current (<b>D17</b>).</li>
+</ul>
+
+<h2>6 · What it costs to run</h2>
+
+<p>Haiku 4.5 at $1.00/MTok input, $5.00/MTok output. Each call carries roughly <b>1,500 tokens</b> of
+instructions, rubric and rendered people list, plus the message body, plus ~130 tokens of verdict.</p>
+
+<table>
+  <tr><th>Per message</th><th>Heavy day (15 texts + 30 emails)</th><th>Per month</th></tr>
+  <tr><td>~$0.0022 (iMessage) / ~$0.0026 (email)</td><td>~$0.11</td><td><b>~$3.30</b></td></tr>
+</table>
+
+<div class="callout">
+  <b>Those figures exclude the example set, and the example set is not small.</b> $0.0022 is 1,500
+  input tokens and ~130 output — the prefix and a short text, with no room in it for anything else. An
+  example denormalises the <i>message text</i> (<b>D27</b>), and here that text is an email body, not
+  <a href="ALF-158.html">ALF-158</a>'s one-line capture: budget <b>~200–400 tokens per example</b>
+  untruncated. A dozen of those is <b>2,400–4,800 tokens</b> — more than the entire prefix above, and
+  enough on its own to <b>double or triple the bill</b> and to carry a "capped" prompt across Haiku's
+  4,096-token cache floor. So story <b>N</b> owes two numbers, not one: <b>how many</b> examples and
+  <b>how much of each message</b> survives into one. A cap of <i>n</i> examples truncated to ~150
+  tokens keeps the table above roughly honest (~+$1.50/month); a cap of <i>n</i> full bodies does not.
+</div>
+
+<p><b>Even so, the table is only true of a prompt that stops growing</b> — which is why <b>D11</b>
+caps the set at all. An uncapped set grows the prefix monotonically, and "worst case" quietly becomes
+"day one".</p>
+
+<p><b>Cross-check against <a href="ALF-158.html">ALF-158</a>.</b> Its table puts the Inbox classifier
+at <b>~$1.20</b> per month at 20/day; this epic's per-call rate over the same 20 gives <b>~$1.44</b>.
+The two reconcile — but <i>not</i> because this prompt carries an example set that ALF-158's doesn't
+(its <b>D16</b> is titled for exactly that, and <code>workers/src/prompt.ts</code> ships the selection
+code). The gap is a units mismatch: ALF-158's ~1.5k is its <b>whole input</b>, the 1,500 above is only
+the <b>prefix</b>, and the difference is the message body — which the Inbox's short captures largely
+sit inside and email does not.</p>
+
+<p><b>Opus 5 and caching, the short version.</b> Opus is 5× Haiku on both sides, so at this volume it
+is <b>$16.50/month</b> against Haiku's $3.30 — a real ratio on a small absolute number, so <b>D15</b>
+stands and story <b>K</b>'s fixtures decide the model on <i>eval</i>, not on price. Caching does not
+rescue the comparison and must not be planned around: Haiku 4.5's minimum cacheable prefix is
+<b>4,096 tokens</b> (Opus 5's is 512), and <b>crossing that floor only makes caching
+<i>possible</i></b> — nothing is cached without an explicit <code>cache_control</code> breakpoint, so
+a prompt that crosses it by accident costs exactly what it did before. Chasing it deliberately is the
+mistake ALF-158's <b>D16</b> documents: a write costs <b>1.25×</b> against a read's <b>0.1×</b>, and
+on bursty traffic where the write expires before anything reads it, caching is a <b>~25% loss</b>.
+Every figure above assumes no caching, and that is a decision, not an omission.</p>
+
+<h3 id="upkeep">The other cost: upkeep, and when to stop paying it</h3>
+
+<p>§1 names the real risk of this epic — at fifteen minutes of triage saved a day, <b>a rubric
+hand-tuned exception by exception can cost more than it returns</b>. And the module ships
+<b>three</b> separately-tunable artifacts: the rubric (<b>D11</b>), the example set (<b>D11</b>), and
+the people roster (<b>D12</b>). No target rate is set here, because any number would be invented and
+unfalsifiable. What is set is the condition for stopping.</p>
+
+<p><b>The stop condition, stated so it can actually fire:</b> if, after <b>six weeks of real traffic
+with the correction gesture available</b>, the correction rate is <i>not falling</i>, or the owner is
+editing the rubric more than weekly to chase the same class of mistake, then the tuning loop is not
+converging and more rubric is not the answer. The moves at that point are a better model (story
+<b>K</b> makes that a measurement, not a vibe), fewer sources, or a coarser split — and if none of
+them work, the honest reading is that this module costs more than the fifteen minutes it saves, which
+§1 already admits is the thing to watch.</p>
+
+<p><b>The anchor is traffic, not a story number</b> — an earlier revision said "six weeks after story
+<b>J</b>", and under the build order <b>J</b> precedes both <b>D</b> (the first real message) and
+<b>L</b> (the verbs that record a correction). At J+6 weeks there is nothing to measure and the
+condition cannot fire. So the clock starts at the <b>first full week in which real messages are being
+classified <i>and</i> the owner can record a correction</b> — in practice the week after <b>L</b>, and
+never before <b>D</b>.</p>
+
+<div class="callout">
+  <b>What the correction rate cannot see, and it is the failure §1 ranks first.</b> Two
+  <a href="ALF-158.html">ALF-158</a> sentences were carried over here and neither survives the
+  transplant:
+  <ul style="margin:.5rem 0 0">
+    <li><b>"Every wrong guess becomes a correction."</b> True in ALF-158, where every guess sits on a
+      row the owner reviews. Here a false negative is a verdict on the <code>FYI</code> shelf that
+      nothing forces open (<b>D6</b>, <a href="#q8">§8 Q8</a>), so it never becomes a correction at
+      all. <b>The correction rate therefore measures the demotion rate</b> — §1's failure&nbsp;3, the
+      cheap one — and is <b>structurally blind</b> to failure&nbsp;1.</li>
+    <li><b>"Recorded automatically by work the owner was doing anyway."</b> Also not true here. A
+      correction is a deliberate gesture on a row — <i>Nothing to answer</i>, or the tier dropdown
+      (<b>D20</b>) — not a diff of edits the owner was making regardless. A falling correction rate is
+      as consistent with the owner correcting less as with the classifier improving.</li>
+  </ul>
+  <b>So the stop condition is a convergence check, not an accuracy metric</b>, and it needs a
+  companion that can see recall: story <b>K</b>'s fixtures, re-run rather than run once, are the only
+  instrument in this epic that ever measures a false negative. If <a href="#q8">Q8</a> is answered
+  with a periodic <code>FYI</code> sample, that becomes the second one.
+</div>
+
+<h2>7 · How the work splits into stories</h2>
+
+<p>A sketch of the slices and why they cut where they do — not specs. Each is refined in its own
+session. <b>The letters are labels, not the build order</b>: the order is at the end of this section
+and it is load-bearing, because the two orderings that look most natural both leave a queue that can
+only grow.</p>
+
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Slice</th><th>Why it's its own story</th></tr>
+  <tr><td><b>A</b></td><td>The Comms module shell — route group, third module in the router, blue accent, empty state</td>
+    <td><code>isCodePath()</code> is binary today; a third module turns module resolution into a real router. Deterministic, no data, and what every other slice renders into.</td></tr>
+  <tr><td><b>B</b></td><td>The schema — seven tables, per-source identity keys and cursors (<b>D21</b>), the message unit (<a href="#q1">§8 Q1</a>), the 60-day retention sweep and the manual purge <b>with its cascade into the corrections table</b> (<b>D27</b>)</td>
+    <td>The tables both ingestion homes write to, and the only place the identity keys can be fixed once — a wrong key duplicates a mailbox or swallows a message. <b>Not</b> the ingest endpoint: that is story <b>Q</b>, whose only client is the daemon. <a href="#q1">Q1</a> has a proposed default so this story is not blocked on it; confirm it in this story's refinement session before the migration is written.</td></tr>
+  <tr><td><b>C</b></td><td>The triage UI against seeded data — tiers, counts, the collapsed <code>FYI</code> shelf, message detail, the marked rows (<b>D25</b>), the expiry marker on rows inside their last week (<b>D27</b>), the module-level classifier banner (<b>D17</b>)</td>
+    <td>The surface the owner will judge the epic by, buildable before a real message exists — and the only place Storybook and E2E can cover the marked and stalled states deterministically, since real data won't produce them on demand.</td></tr>
+  <tr><td><b>D</b></td><td>Gmail ingestion in the Worker — OAuth for two accounts (<b>D23</b>), polling, the newsletter header filter (<b>D13</b>)</td>
+    <td>First real source, no new deployment target. Carries the publishing-status trap, which fires a week after ship rather than at ship. The header filter belongs here because it is what keeps day-one volume sane.</td></tr>
+  <tr><td><b>E</b></td><td>The Mac daemon skeleton — <code>launchd</code>, health check, keychain-held ingest credential, ingest client, <b>no</b> sources yet</td>
+    <td>A genuinely new deployment target: something alfred ships that runs on the owner's machine, with its own install and update story. Worth proving empty before it carries data.</td></tr>
+  <tr><td><b>F</b></td><td>iMessage in the daemon — <code>chat.db</code> polling, <code>attributedBody</code> decode (<b>D24</b>), <code>guid</code>-keyed identity, contact resolution</td>
+    <td>The spike's whole surface area, with failure modes unlike anything else in the repo: FDA revocation, schema drift, WAL churn, the edit/unsend blind spot (<b>D28</b>).</td></tr>
+  <tr><td><b>G</b></td><td>WorkMail over IMAP in the daemon — <b>and its drain path</b>: watching the Sent folder for a reply that names the queued <code>Message-ID</code> (<b>D18</b>)</td>
+    <td>Shares nothing with <b>F</b> but the ingest client — different protocol, auth and failure modes. It carries its own reply detection because <b>O</b> has none for IMAP, and a source with no drain honours two of <b>D18</b>'s three exits. <b>Read D9's dates and <a href="#q6">§8 Q6</a> first</b>: whether to build it at all is open, and "skip it, forward into Gmail" removes this whole row.</td></tr>
+  <tr><td><b>H</b></td><td>The people list — <code>comm_people</code> / <code>comm_handles</code>, editor, handle resolution across channels (<b>D12</b>)</td>
+    <td>A migration, a join and a UI. Blocks <b>J</b>: the classifier can't weigh who a sender is until one human resolves to a phone number and three addresses.</td></tr>
+  <tr><td><b>I</b></td><td>The rubric — versioned document, editor, injection into the prompt (<b>D11</b>)</td>
+    <td>How the owner owns the policy. Saving an edit <b>sweeps nothing</b> (<b>D19</b>); the re-run affordance is wired to <b>J</b>'s mechanism and lands with it.</td></tr>
+  <tr><td><b>J</b></td><td>The classifier — prompt assembly, enum'd verdict, the floor rule (<b>D5</b>), the ask-not-the-topic summary (<b>D14</b>), <b>D25</b>'s degradation split, the on-demand re-run (<b>D19</b>)</td>
+    <td>The model integration, landing behind everything above so its blast radius is one function. Needs <b>H</b> and <b>I</b> for its prompt inputs. The part needing care is <i>which</i> failures count toward the ceiling: the reused sweep counts all of them, and here that empties an outage into a counted tier.</td></tr>
+  <tr><td><b>K</b></td><td>Evaluation fixtures + an accuracy run scored at <b>both</b> of <b>D7</b>'s boundaries — recall on "did it reach the queue", precision on "did it reach <code>ASAP</code>"</td>
+    <td>What makes "should this be Opus" a measurement rather than a vibe, and the only place the false-negative rate becomes visible. One number would hide the trade <b>D7</b>'s two boundaries are balanced on.</td></tr>
+  <tr><td><b>L</b></td><td>The five row verbs (<b>D20</b>) — desktop deep links, make-an-Inbox-item, <i>nothing to answer</i>, <i>not replying</i>, the tier dropdown, and a keyboard convention for all five</td>
+    <td>Where the module stops being a report, and the <i>first</i> exit from the queue of any kind — which is why it lands <b>before</b> the first real source. Carries <i>Make an Inbox item</i> clearing the row (the third drain path, <b>D18</b>), the split clearing verbs (only one of which records a correction), and verifies the deep-link schemes rather than trusting this document (<a href="#q3">§8 Q3</a>). Sets the app's first row-level hotkey convention.</td></tr>
+  <tr><td><b>N</b></td><td>The corrections log as example set (<b>D11</b>) — automatic promotion, the windowed / capped / balanced draw, <b>the per-example length budget</b>, set versioning, pruning</td>
+    <td>Turns a static rubric into one that improves — and, because <b>D7</b> skews corrections toward demotions, the story where an unbalanced draw would quietly erode the recall bias. Owes §6 two numbers: how many examples, and how much of each body survives into one. The draw must exclude examples whose text <b>B</b>'s purge nulled (<b>D27</b>) — the cascade itself is <b>B</b>'s. Needs <b>J</b> and <b>L</b>. Its interesting decision is <a href="#q4">§8 Q4</a>.</td></tr>
+  <tr><td><b>O</b></td><td>Reply detection (<b>D18</b>) — <b>Gmail thread state only</b>, plus the drain mechanism every source's detector plugs into</td>
+    <td>The main drain path, and the one most likely to be subtly wrong: "replied" is not "the thread moved" (<a href="#q5">§8 Q5</a>). Until it exists the count only grows, which is why it is not appetite-ordered. <b>Gmail-only by construction:</b> <code>is_from_me</code> has nothing to read until <b>F</b> ships iMessage, so that half is a follow-on to <b>F</b>, and IMAP's is <b>G</b>'s.</td></tr>
+  <tr><td><b>P</b></td><td>The health <i>surface</i> (<b>D17</b>) — per-source freshness thresholds, the <i>erroring</i> state, the header indicators</td>
+    <td>What makes a zero trustworthy. Not only about the Mac: a green dot over an account whose token was revoked (<b>D23</b>) is the same failure wearing a friendlier face. <b>It consumes rather than builds</b> the two things earlier revisions double-homed here: the heartbeat payload is <b>Q</b>'s and <code>last_seen_at</code> is written by whoever polls, while the module-level classifier banner is <b>C</b>'s — so this story is genuinely small only because those landed elsewhere.</td></tr>
+  <tr><td><b>Q</b></td><td>The authenticated ingest endpoint — signature verification (<b>D22</b>), the zero-message heartbeat as a first-class payload (<b>D17</b>), Worker route vs Next.js route handler</td>
+    <td>Split out of <b>B</b> because <b>its only client is the daemon</b>, and the daemon is <b>E</b>. The Gmail poll writes with the service role and never touches this endpoint (§3.1), so folding it into the schema story builds an unused surface months early and dates the security review. It is still not "later hardening": <b>D8</b>'s accepted cost is only acceptable with it, so it lands <b>immediately before E</b> and never after.</td></tr>
+</table>
+</div>
+
+<h3>The build order</h3>
+
+<p style="font-size:1.02rem"><b>A → B → C → H → I → J → L → D → O → Q → E → F → G</b>, with
+<b>K</b>, <b>M</b>, <b>N</b> and <b>P</b> placed by appetite.</p>
+
+<ul>
+  <li><b>A → B → C</b> ships a real, inspectable module with no LLM and no Mac component in the repo
+    at all. <b>B</b> needs <a href="#q1">Q1</a>'s default confirmed and nothing else.</li>
+  <li><b>H → I → J</b> comes next, <b>before any real source</b> — and the reason is not the one an
+    earlier revision gave. It said <b>C</b> "builds four tiers and a set of flags, and none of them
+    means <i>not classified yet</i>", which is false twice over: <b>D25</b>'s transport row leaves an
+    unclassified message as an ordinary stored row by design, and <b>C</b> builds the classifier-stalled
+    banner precisely to say "nothing is being judged". The real reason is about the <i>product</i>, not
+    the schema: ingestion without a classifier is a unified inbox — the thing §1 says this module is
+    not — and the owner's first impression of Comms would be a list of untriaged mail. Nothing is lost
+    by waiting, because <b>J</b> needs <b>H</b> and <b>I</b> anyway.</li>
+  <li><b>L before D</b>, which is the correction that matters most. <b>D</b>'s first tick backfills
+    seven days (<b>D21</b>) into a queue with <i>no exit of any kind</i> until <b>L</b> and no main
+    exit until <b>O</b>. Built the other way round, the owner's first impression of the module is a
+    week of accumulated obligations that cannot be cleared — §1's failure&nbsp;3 delivered as a
+    welcome screen. <b>L</b> is buildable against <b>C</b>'s seeded data, so this costs nothing.</li>
+  <li><b>D → O</b> closely: <b>D18</b> says every story must honour all three exits, and until <b>O</b>
+    the main one doesn't exist, so between <b>D</b> and <b>O</b> the count still only grows. That gap
+    should be days, not weeks.</li>
+  <li><b>Q → E → F → G</b> is the Mac chapter and can be paused without stranding anything. <b>Q</b>
+    lands immediately before <b>E</b> because the daemon is its only client. <b>O</b>'s
+    <code>is_from_me</code> half follows <b>F</b>, and WorkMail's drain is inside <b>G</b> — until
+    those ship, <b>D18</b>'s first exit exists for Gmail alone, which is a stated limitation and not an
+    oversight. <b>G</b> is the one slice whose value has an expiry date (<b>D9</b>,
+    <a href="#q6">§8 Q6</a>).</li>
+  <li><b>K</b>, <b>M</b>, <b>N</b>, <b>P</b> are independent. <b>N</b> wants <b>L</b> first; <b>M</b>
+    and <b>P</b> want at least one live source; <b>K</b> wants <b>J</b> and is worth doing early,
+    since §6 now leans on it as the only instrument that can see a false negative.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<p class="small">Revision 1's seven questions are settled and folded into §2. Q1–Q5 are what the second
+round left open; Q6–Q8 are places where this document's own logic points somewhere the owner has not
+decided to go, and inventing an answer would be worse than naming the tension. <b>Q0 is new, sits
+above all of them, and is the owner's to answer.</b></p>
+
+<div class="callout" style="margin-bottom:1.6rem">
+  <h3 id="q0" style="margin-top:0">Q0 — Are the owner's notifications staying on?</h3>
+  <p><b>The top open question, and the one this document has never asked.</b> Steve Newman silenced
+  five apps and checked Radar instead; <i>that</i> is what made his a firewall rather than a report.
+  Nothing in this epic asks whether the owner will silence Gmail and Messages.app — and the answer
+  changes what several settled decisions are worth.</p>
+  <p><b>If notifications stay on</b>, nothing is fire-walled. An iMessage buzzes the phone, the owner
+  reads and triages it there, and alfred — bounded by a sleeping Mac (<b>D17</b>) — records it
+  afterwards. The module becomes a <b>retrospective ledger of unanswered texts</b>, which is a real
+  but much smaller product than §1 describes.</p>
+  <p><b>If notifications go off</b>, two things get sharper at once. The Mac-asleep window stops being
+  a footnote and becomes a hole the owner is relying on not to exist, so <b>D17</b>'s health surface
+  carries far more weight than its placement in the build order suggests. And because this epic
+  decides <b>no mechanism by which alfred reaches the owner at all</b>, the only way to learn an
+  <code>ASAP</code> row exists is to open the module and look — which is the voluntary habit the
+  adjacent gap below is about. Whether alfred should be able to reach out, and how, is undecided and
+  deliberately not settled here.</p>
+  <p><b>Two adjacent gaps, recorded with it because they have the same shape:</b></p>
+  <ul>
+    <li><b>The count is never surfaced outside the module.</b> No tab badge is decided anywhere in this
+      document and none is drawn in §4 — the word "badge" appears only as <i>unbadged</i>. So
+      <i>"check comms"</i> is a <b>new voluntary habit</b>, asked of someone §1 describes as selected
+      by an avoidance pattern. Whether the module gets a badge on its tab is a real decision this epic
+      has never taken.</li>
+    <li><b>alfred is a third read-only surface, not a replacement for two.</b> <b>D18</b> sends the
+      owner into Gmail or Messages to reply, every time, by design. That is the right call for
+      write-back; it does mean the owner now has three places to look rather than one.</li>
+  </ul>
+  <p style="margin-bottom:0"><b>This re-ranks D17, D25 and <a href="#q7">Q7</a></b>,
+  and it is deliberately not answered here — a guess would propagate into every story that renders a
+  count. It is <b>not</b> an argument for splitting the epic; that question is already
+  recorded at the end of this section.</p>
+</div>
+
+<ol>
+  <li id="q1"><b>What is the unit of the queue — a message, or a thread?</b> A five-message email
+    thread could produce five queued items or one. For a <i>response</i> queue the thread is arguably
+    right: the owner owes a reply to a conversation, not to each message. But then which message's
+    <i>ask</i> is shown, and what happens when a later message changes the tier — does the thread get
+    promoted, and does that re-open something already cleared? <b>The largest unanswered design
+    question in the epic</b>, and it touches <code>comm_messages</code>' shape.
+    <p><b>Proposed default, so story B is not blocked on an absent answer:</b> <b>the unit is
+    the message</b>, and <code>comm_messages</code> carries a <b>thread key</b> from the first
+    migration (§3.1 already lists one). Rolling up to one row per thread then becomes a query and a
+    view — a change to <b>C</b> and <b>O</b>, not a migration — while starting at the thread and
+    discovering the ask needs per-message granularity is the expensive direction. It also matches
+    <b>D18</b>: reply detection reads thread state either way, so the drain works under both.</p>
+    <p><b>Who confirms:</b> the owner, in <b>story B's own refinement session</b>, before the migration
+    is written — not in a separate conversation that may never happen. If they say nothing, the default
+    above is what ships, and this is the paragraph a later reader should point at.</p></li>
+  <li><b>How are group chats handled?</b> A busy iMessage group produces many messages, almost none of
+    which ask anything of the owner specifically — but some do, and being named in one is exactly the
+    obligation that gets missed. Triaging every message floods the classifier; triaging none loses the
+    case that matters. Related to threading but not the same: a group's obligation is about
+    <i>addressing</i>, not conversation shape. <b>Settle before story F.</b></li>
+  <li id="q3"><b>How does a row actually open its message?</b> Apple Mail's <code>message:</code>
+    scheme is undocumented and widely reported to work; Gmail's <code>rfc822msgid:</code> operator is
+    the fallback and treats the header's angle brackets differently; iMessage can only open the
+    <i>conversation</i>. This epic asserts none of it — earlier revisions did, in build detail they
+    simultaneously disclaimed. What is settled is that the RFC822 <code>Message-ID</code> is captured
+    for every email from story <b>B</b> onward (§3.1), so the schemes are a UI question and never a
+    backfill. <b>Story L verifies before it builds</b>, on the owner's actual macOS version.</li>
+  <li id="q4"><b>How is "example-set version N" reconstructed after a prune?</b> The bookkeeping half is
+    settled: <code>comm_corrections</code> is append-only and a pruned example is <i>flagged</i>, not
+    deleted. What is open is that the flag is a <b>mutable column on an append-only table</b> — a
+    verdict stamped "set v7" must still be answerable months later, which needs v7's membership
+    recoverable as a snapshot, an explicit membership table, or a derivation from timestamps. Story
+    <b>N</b> picks one; picking wrong means "why did it say that" stops being answerable, which is the
+    whole reason <b>D11</b> versions anything. <b>D27</b>'s purge cascade lands on the same table and
+    should be designed with it.</li>
+  <li id="q5"><b>What exactly counts as "replied" for the drain?</b> A thread advancing is not the same
+    as the owner answering — a third party replying to all moves the thread without discharging
+    anything, and Gmail's thread state won't distinguish them. Getting this wrong strands items or,
+    worse, clears them silently. Story <b>O</b> owns it, and it is the reason that story is
+    separate.</li>
+  <li id="q6"><b>Does a channel with months left, not years, warrant story G at all?</b> <b>D9</b>
+    carries the dates — no new WorkMail customers after <b>2026-04-30</b>, service ends
+    <b>2027-03-31</b> — and whoever reads this should work out the remaining life against those rather
+    than trust a figure baked in on the day it was written. Story <b>G</b> is a whole IMAP client, its
+    own auth and its own failure modes, for a mailbox that may be gone before the epic finishes. Three
+    live options: build it anyway (the daemon exists, the mailbox is real mail today);
+    <b>skip it and forward WorkMail into Gmail</b>, which <b>D17</b> already names as the escape hatch
+    and which would lift that account out of the Mac's sleep window; or wait and write the IMAP client
+    once, against whatever replaces WorkMail — more attractive than it looks, since the replacement
+    will almost certainly speak IMAP too, so the work is deferred rather than wasted. The owner's "for
+    now" is compatible with all three; what's undecided is when <i>now</i> ends. <b>Settle before story
+    G, not during it.</b></li>
+  <li id="q7"><b>Does <code>Whenever</code> need an escalation rule — and if not, why doesn't the
+    argument against snooze apply to it?</b> §5 rejects snooze as "a machine for deferring things while
+    feeling productive". <code>Whenever</code> is <i>almost</i> inert: it doesn't age, escalate or
+    resurface — with one exception added after this question was written. <b>D27</b>'s expiry marker
+    gives it a single escalation at day 53, driven by retention rather than by design. That is a
+    partial answer: the tier now asks once, very late, and only if the owner is looking. It does not
+    settle whether <code>Whenever</code> should escalate on its own terms and earlier.
+    <b>Both §4 mockups draw the same three-week-old row</b> — sitting exactly
+    as it arrived on the bad day, and still sitting there in the <i>resting</i> state, which is what
+    makes the resting state non-zero; the bad-day mockup now draws the day-55 case beside it. That is the span <b>D4</b> identifies as the avoidance bucket the
+    tier exists to capture. So the spec applies a stricter standard to the feature it rejects than to the one it
+    keeps. <b>This is not an argument for snooze</b>, which stays settled. It is a question about the
+    other half: whether an item that has been <code>Whenever</code> for N weeks should age into
+    <code>Today</code>, appear in a periodic sweep, or be left exactly as it is on the grounds that
+    visible-and-inert still beats invisible. Aging would collide with <b>D19</b>, which is a reason to
+    think carefully rather than to dismiss the question.</li>
+  <li id="q8"><b>Does the <code>FYI</code> shelf need a forcing function?</b> <b>D6</b> admits what it
+    can and can't claim: storing everything makes a false negative <i>recoverable</i>, but nothing makes
+    the recovery <i>happen</i>. The shelf is unbadged (settled — badge it and it becomes a second queue
+    and the module has two inboxes again), uncounted, always large, and offered to an owner selected by
+    an avoidance pattern. Story <b>K</b>'s fixtures measure recall on a sample, which is the honest
+    partial answer; the open part is whether anything should routinely put a <i>few</i> shelved
+    messages in front of the owner — a small periodic sample in the existing weekly review, say.
+    <b>D25</b> adds two more tenants: a refused message is filed here with a visible flag, and so is a
+    text-less message from anyone not on the priority roster — and a flag only helps someone who
+    looks. Answering "nothing" is legitimate; leaving it unasked is what
+    <b>D6</b> was doing before.</li>
+</ol>
+
+<div class="callout" style="margin-top:1.6rem">
+  <b>Raised, not decided — is this one epic?</b> Recorded here so it isn't lost, and flagged as
+  <b>the owner's call, not this document's</b>. Seventeen stories spanning a Cloudflare Worker, a
+  Next.js module, a Supabase schema and a shipped macOS daemon is arguably a <i>program</i> rather
+  than an epic. The <b>E → F → G</b> Mac chapter in particular has its own deployment target, its own
+  credential scheme, its own permission model, its own failure modes, and — in <b>G</b> — one slice
+  with an expiry date; almost nothing about it is shared with the rest beyond the ingest contract in
+  story <b>B</b>. Against that: every slice serves the one question in §1, and splitting would give
+  two documents that each re-derive the same premise, which is the outcome an epic spec exists to
+  prevent. <b>Nothing in this document has been split in anticipation of an answer.</b>
+</div>
+
+<h2>9 · Related reading</h2>
+
+<ul>
+  <li><a href="../product/SPEC.md">SPEC.md</a> §5.1–5.2 (module shell and route groups), §5.4 (the accent
+    system), §13.2 (the original Communication Firewall sketch)</li>
+  <li><a href="ALF-158.html">ALF-158 — LLM processing</a> — the classifier pattern this epic reuses, and
+    the correction loop it deliberately doesn't</li>
+  <li><a href="../../spikes/imessage-ingestion.md">Spike: building a local iMessage triage firewall on macOS</a></li>
+  <li><a href="../../communication-firewall/cognitive-revolution-transcript.md">The Cognitive Revolution transcript</a>
+    — Steve Newman's Radar, the prior art this epic adapts</li>
+</ul>
+
+</div>
+</body>
+</html>
