@@ -3098,7 +3098,7 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await result.current.openEpicSession('e1');
+          await result.current.openEpicSession('e1', 'epic-refinement');
         });
 
         expect(openSpy).toHaveBeenCalledTimes(1);
@@ -3117,7 +3117,7 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await result.current.openEpicSession('e1');
+          await result.current.openEpicSession('e1', 'epic-refinement');
         });
 
         expect(mockUpdateCodeState).not.toHaveBeenCalled();
@@ -3130,7 +3130,7 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await result.current.openEpicSession('e1');
+          await result.current.openEpicSession('e1', 'epic-refinement');
         });
 
         const copied = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
@@ -3146,7 +3146,7 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await result.current.openEpicSession('e1');
+          await result.current.openEpicSession('e1', 'epic-refinement');
         });
 
         expect(openSpy).toHaveBeenCalledTimes(1);
@@ -3159,7 +3159,9 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await expect(result.current.openEpicSession('gone')).rejects.toThrow(/not found/i);
+          await expect(result.current.openEpicSession('gone', 'epic-refinement')).rejects.toThrow(
+            /not found/i,
+          );
         });
         expect(openSpy).not.toHaveBeenCalled();
       });
@@ -3170,9 +3172,64 @@ describe('code-store', () => {
         });
 
         await act(async () => {
-          await expect(result.current.openEpicSession('e1')).rejects.toThrow(/not found|missing/i);
+          await expect(result.current.openEpicSession('e1', 'epic-refinement')).rejects.toThrow(
+            /not found|missing/i,
+          );
         });
         expect(openSpy).not.toHaveBeenCalled();
+      });
+
+      // The epic one-shot: same launch mechanics, a different prompt — the epic spec goes
+      // straight to code without the epic being split into stories first.
+      const specced = makeEpic('e1', 'p1', {
+        ref: 'ALF-12',
+        ref_number: 12,
+        name: 'Communication Firewall',
+        spec_path: 'docs/specs/epics/ALF-12.html',
+      });
+
+      it('opens the epic-IMPLEMENTATION url when that phase is asked for', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [specced], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1', 'epic-implementation');
+        });
+
+        const [url] = openSpy.mock.calls[0] ?? [];
+        const opened = typeof url === 'string' ? url : (url?.toString() ?? '');
+        const prompt = new URL(opened).searchParams.get('q') ?? '';
+        expect(prompt).toContain('ALF-12: Communication Firewall');
+        expect(prompt).toContain('phase: epic-implementation');
+        expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+      });
+
+      it('writes no state for the one-shot either — the PR is the only signal', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [specced], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1', 'epic-implementation');
+        });
+
+        expect(mockUpdateCodeState).not.toHaveBeenCalled();
+        expect(mockUpdateEpic).not.toHaveBeenCalled();
+      });
+
+      it('copies the one-shot prompt too, for the mobile paste-fallback', async () => {
+        const { result } = renderHook(() => useCodeActions(), {
+          wrapper: makeWrapper({ projects: [PROJECT_A], epics: [specced], stories: [] }),
+        });
+
+        await act(async () => {
+          await result.current.openEpicSession('e1', 'epic-implementation');
+        });
+
+        const copied = mockCopyToClipboard.mock.calls[0]?.[0] ?? '';
+        expect(copied).toContain('phase: epic-implementation');
+        expect(mockShowToast).toHaveBeenCalledWith('Prompt copied to clipboard');
       });
     });
 

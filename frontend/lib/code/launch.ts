@@ -12,6 +12,13 @@ import type { CodeFactoryState, CodeStory } from '@/lib/types';
 export type LaunchPhase = 'refinement' | 'implementation' | 'bypass' | 'spike' | 'bug';
 
 /**
+ * Which session an EPIC's launch opens: write the epic spec, or one-shot it into code. An epic
+ * has no lifecycle state, so unlike {@link LaunchPhase} neither entry maps to a transition — the
+ * phase only picks the prompt.
+ */
+export type EpicLaunchPhase = 'epic-refinement' | 'epic-implementation';
+
+/**
  * The ordered list of launch phases a story offers (primary first, so the card/modal render them
  * in a stable order): `needs_refinement` offers `refinement` then `bypass` (skip straight to
  * dev), `ready_for_dev` offers `implementation`, and every other (or unknown) state offers none.

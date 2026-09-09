@@ -421,6 +421,62 @@ test('an epic launches an epic-refinement session from its 3-dot menu, changing 
   await expect(needsRefinement.getByText('ALF-3')).toBeVisible();
 });
 
+test('a specced epic launches the one-shot implementation session from its 3-dot menu', async ({
+  page,
+  seed,
+}) => {
+  const project = makeProject('Alfred', {
+    id: PROJECT_ID,
+    key: 'ALF',
+    repo_owner: 'ac3charland',
+    repo_name: 'alfred',
+  });
+  const epic = makeEpic('Communication Firewall', {
+    id: EPIC_ID,
+    project_id: PROJECT_ID,
+    ref_number: 12,
+    ref: 'ALF-12',
+    notes: 'Everything about how alfred talks to me.',
+    spec_path: 'docs/specs/epics/ALF-12.html',
+  });
+  const item = makeItem('Draft the inbound filter spec', { id: ITEM_ID, item_type: 'code' });
+  const story = makeCodeStory({
+    item_id: ITEM_ID,
+    project_id: PROJECT_ID,
+    epic_id: EPIC_ID,
+    ref_number: 3,
+    ref: 'ALF-3',
+    factory_state: 'needs_refinement',
+  });
+
+  await seed({ projects: [project], epics: [epic], items: [item], codeItems: [story] });
+
+  await stubWindowOpen(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  await page.goto(`/code/${PROJECT_ID}`);
+
+  await page.getByRole('button', { name: 'Epic actions' }).click();
+  await page.getByRole('menuitem', { name: /implement epic in claude code/i }).click();
+
+  await expect.poll(() => getOpenedUrls(page)).toHaveLength(1);
+  const opened = await getOpenedUrls(page);
+  const url = opened[0] ?? '';
+  expect(url).toContain('https://claude.ai/code?repo=ac3charland%2Falfred');
+  const prompt = new URL(url).searchParams.get('q') ?? '';
+  expect(prompt).toContain('ALF-12: Communication Firewall');
+  expect(prompt).toContain('phase: epic-implementation');
+  expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+  expect(prompt).toContain('.claude/skills/implement-epic/SKILL.md');
+  expect(prompt).toContain('Everything about how alfred talks to me.');
+
+  await expect(page.getByText('Prompt copied to clipboard')).toBeVisible();
+
+  // The epic's own stories are untouched: the one-shot builds the epic spec, not the board.
+  const needsRefinement = page.getByRole('region', { name: 'Needs Refinement' });
+  await expect(needsRefinement.getByText('ALF-3')).toBeVisible();
+});
+
 test('an epic with a snapshotted spec offers View spec, and its stories’ prompts point at it', async ({
   page,
   seed,

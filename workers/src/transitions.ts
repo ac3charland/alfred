@@ -64,6 +64,7 @@ export interface TransitionPlan {
  *   epic-refinement+ opened          → (epics) record refinement_pr_url
  *   epic-refinement+ closed & merged → (epics) record spec_path; snapshot spec
  *   epic-refinement+ closed & !merged→ no-op (an epic has no state to revert)
+ *   epic-implementation, any action → no-op (an epic has no state, and no PR column)
  *   refinement     + opened          → no state change; record refinement_pr_url
  *   refinement     + closed & merged → ready_for_dev; record spec_path; snapshot spec
  *   refinement     + closed & !merged→ needs_refinement (revert; abandon is manual)
@@ -88,6 +89,15 @@ export function planTransition(event: PrEvent): TransitionPlan | undefined {
       if (specPath !== undefined) updates.spec_path = specPath;
       return { target: 'epic', updates, snapshotSpec: true };
     }
+    return undefined;
+  }
+
+  if (phase === 'epic-implementation') {
+    // The epic one-shot: ONE session implements the whole epic spec and opens ONE PR. Nothing is
+    // recorded at either end — an epic has no lifecycle state, and no implementation-PR column to
+    // hold the url. The phase still earns its place by making that explicit: without it the block
+    // would have to name the epic's ref under `phase: implementation`, which PATCHes `code_items`
+    // for a ref only ever issued to an epic — matching nothing while answering ok.
     return undefined;
   }
 

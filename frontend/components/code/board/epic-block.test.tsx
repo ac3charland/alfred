@@ -239,6 +239,52 @@ describe('EpicBlock — the 3-dot menu', () => {
     expect(mockUpdateEpic).not.toHaveBeenCalled();
   });
 
+  it('hides "Implement epic in Claude Code" until the epic has a spec to one-shot', async () => {
+    const user = userEvent.setup();
+    renderEpicBlock(makeEpic());
+
+    await user.click(screen.getByRole('button', { name: /epic actions/i }));
+
+    expect(
+      screen.queryByRole('menuitem', { name: /implement epic in claude code/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens the prefilled epic one-shot tab once the epic carries a spec', async () => {
+    const user = userEvent.setup();
+    renderEpicBlock(makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html' }));
+
+    await user.click(screen.getByRole('button', { name: /epic actions/i }));
+    await user.click(screen.getByRole('menuitem', { name: /implement epic in claude code/i }));
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledTimes(1);
+    });
+    const opened = String(openSpy.mock.calls[0]?.[0] ?? '');
+    const prompt = new URL(opened).searchParams.get('q') ?? '';
+    expect(prompt).toContain('ALF-12: Communication Firewall');
+    expect(prompt).toContain('phase: epic-implementation');
+    expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+    expect(mockCopyToClipboard).toHaveBeenCalledWith(prompt);
+    // The one-shot advances nothing in the orchestrator — its PR is the only signal.
+    expect(mockUpdateEpic).not.toHaveBeenCalled();
+  });
+
+  it('keeps the two epic launches distinct — refining never opens the one-shot prompt', async () => {
+    const user = userEvent.setup();
+    renderEpicBlock(makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html' }));
+
+    await user.click(screen.getByRole('button', { name: /epic actions/i }));
+    await user.click(screen.getByRole('menuitem', { name: /refine epic in claude code/i }));
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledTimes(1);
+    });
+    const prompt = new URL(String(openSpy.mock.calls[0]?.[0] ?? '')).searchParams.get('q') ?? '';
+    expect(prompt).toContain('phase: epic-refinement');
+    expect(prompt).not.toContain('phase: epic-implementation');
+  });
+
   it('hides "View spec" until the epic has a recorded spec path', async () => {
     const user = userEvent.setup();
     renderEpicBlock(makeEpic());
@@ -275,7 +321,10 @@ describe('EpicBlock — the 3-dot menu', () => {
     const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
     expect(labels).toEqual([
       'Edit title',
+      // The two launches sit together, refine before implement — the order the epic moves through
+      // them — with the read-only "View spec" after both.
       'Refine epic in Claude Code',
+      'Implement epic in Claude Code',
       'View spec',
       expect.stringMatching(/archive/i),
     ]);

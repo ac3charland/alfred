@@ -7,11 +7,12 @@ import * as api from '@/lib/api-client';
 import { copyToClipboard } from '@/lib/clipboard';
 import { nextBlockedFrom } from '@/lib/code/blocked';
 import { storyBoardHref } from '@/lib/code/board-links';
-import { LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
+import { type EpicLaunchPhase, LAUNCH_TARGET_STATE, type LaunchPhase } from '@/lib/code/launch';
 import {
   buildBugUrl,
   buildBypassUrl,
   buildDevelopmentUrl,
+  buildEpicImplementationUrl,
   buildEpicRefinementUrl,
   buildRefinementUrl,
   buildSpikeUrl,
@@ -311,13 +312,13 @@ export interface CodeActions {
    */
   openClaudeSession: (ref: string, phase: LaunchPhase) => Promise<void>;
   /**
-   * The epic launch (the epic 3-dot menu's "Refine epic in Claude Code"): build the
-   * epic-refinement URL from the epic + its project, copy the prompt to the clipboard (the same
-   * mobile paste-fallback, toasted on success), then open the prefilled tab. Mirrors
-   * `openClaudeSession` MINUS the state write — epics have no lifecycle, so there is nothing to
-   * await before opening.
+   * The epic launch (the epic 3-dot menu): build the phase's URL from the epic + its project,
+   * copy the prompt to the clipboard (the same mobile paste-fallback, toasted on success), then
+   * open the prefilled tab. `epic-refinement` writes the epic spec; `epic-implementation`
+   * one-shots that spec into code. Mirrors `openClaudeSession` MINUS the state write — epics have
+   * no lifecycle, so neither phase has anything to await before opening.
    */
-  openEpicSession: (epicId: string) => Promise<void>;
+  openEpicSession: (epicId: string, phase: EpicLaunchPhase) => Promise<void>;
   /**
    * Apply ONE chevron swap's optimistic half only (patch `ref` and `neighbourRef` with each
    * other's `priority`) — no network call. The Backlog resolves which visible neighbour to
@@ -1178,7 +1179,7 @@ export function CodeProvider({
         window.open(url, '_blank');
         if (await copied) showToastRef.current('Prompt copied to clipboard');
       },
-      async openEpicSession(epicId) {
+      async openEpicSession(epicId, phase) {
         const epic = stateRef.current.epics.find((e) => e.id === epicId);
         if (epic === undefined) {
           throw new Error(`Epic ${epicId} not found in the code store`);
@@ -1187,7 +1188,11 @@ export function CodeProvider({
         if (project === undefined) {
           throw new Error(`Project for epic ${epic.ref} missing from the code store`);
         }
-        const url = buildEpicRefinementUrl(project, epic);
+        const buildUrlForPhase: Record<EpicLaunchPhase, () => string> = {
+          'epic-refinement': () => buildEpicRefinementUrl(project, epic),
+          'epic-implementation': () => buildEpicImplementationUrl(project, epic),
+        };
+        const url = buildUrlForPhase[phase]();
         // Same clipboard paste-fallback as the story launch (the mobile app drops `q`), started
         // before `window.open` so the write runs under the same user gesture.
         const copied = copyToClipboard(promptFromLaunchUrl(url));
