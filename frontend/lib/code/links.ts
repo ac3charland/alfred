@@ -33,6 +33,9 @@ const EPIC_REFINEMENT_SKILL_PATH = '.claude/skills/epic-refinement/SKILL.md';
 /** The implementation-guide skill; an implementation/bypass session loads it where present. */
 const IMPLEMENT_SKILL_PATH = '.claude/skills/implement-spec/SKILL.md';
 
+/** The epic-orchestration skill; an epic one-shot session loads it where present. */
+const IMPLEMENT_EPIC_SKILL_PATH = '.claude/skills/implement-epic/SKILL.md';
+
 /** The spike-guide skill dropped into each project repo; a spike session auto-loads it. */
 const SPIKE_SKILL_PATH = '.claude/skills/spike/SKILL.md';
 
@@ -115,7 +118,7 @@ export function specBlobUrl({
  */
 function frontmatterBlock(
   ref: string,
-  phase: 'epic-refinement' | 'refinement' | 'implementation' | 'spike',
+  phase: 'epic-refinement' | 'epic-implementation' | 'refinement' | 'implementation' | 'spike',
   specPath?: string,
 ): string {
   const lines = ['```alfred', `alfred-ticket: ${ref}`, `phase: ${phase}`];
@@ -365,6 +368,52 @@ export function buildEpicRefinementUrl(project: Project, epic: Epic): string {
     '',
     `5. ${htmlPreviewStep(project)}`,
     `6. Before opening the PR, confirm the spec is saved, \`spec-path\` above names that spec (not the placeholder), the preview link is there if the spec is HTML, and the block is reproduced exactly.`,
+    notesContext(epic.notes, 'the epic notes'),
+  ].join('\n');
+  return buildUrl(project, prompt);
+}
+
+/**
+ * Build the EPIC-IMPLEMENTATION link prompt (the epic 3-dot menu's "Implement epic in Claude
+ * Code"): one session that builds everything the epic spec describes by ORCHESTRATING implementer
+ * subagents, and opens ONE PR for the whole epic. The lane exists so an epic can ship without
+ * first being split into stories by hand — the epic spec IS the plan.
+ *
+ * Two things separate it from every story prompt. The session cannot create tickets in alfred, so
+ * the prompt says so outright: work the spec implies but the session decides to leave out is
+ * something to raise with the human, never a ref to invent — a made-up number in the block names
+ * nothing. And the epic spec is NOT scaffolding: it is the long-lived context later sessions keep
+ * reading, so unlike `buildImplementationUrl` this prompt carries no archive step and says to
+ * leave the file where it sits.
+ *
+ * The block carries the EPIC's ref under `phase: epic-implementation`. That phase records nothing
+ * (an epic has no lifecycle state), but it keeps the Worker's routing explicit: under
+ * `phase: implementation` an epic ref would be PATCHed against `code_items`, where refs from the
+ * shared per-project counter are only ever issued to stories — matching nothing while reporting
+ * success.
+ */
+export function buildEpicImplementationUrl(project: Project, epic: Epic): string {
+  const specPath = epic.spec_path;
+  const prompt = [
+    `${epic.ref}: ${epic.name}`,
+    '',
+    `You are implementing the EPIC ${epic.ref} in ONE session: build everything its epic spec describes, then open ONE pull request for the whole epic. You are the ORCHESTRATOR — cut the epic into slices and dispatch an implementer SUBAGENT per slice, then integrate what they return yourself.`,
+    '',
+    `1. Ground yourself first: skim the repo and honor its own conventions — read any CONTRIBUTING or CLAUDE.md — and build on the code that already exists.`,
+    specPath === null
+      ? // The menu only offers this launch on a specced epic. A direct caller without one must not
+        // be pointed at a file that was never written (the bypass prompt's lesson), so say what is
+        // actually true and route the session back to the human for the plan.
+        `2. There is NO committed epic spec to read — the plan for this epic has not been written down. Settle it with me here before building anything.`
+      : `2. Read the epic spec committed at \`${specPath}\` — it is this session's plan, and the whole of it is in scope. It is long-lived context, not scaffolding: do NOT edit, archive, or move it.`,
+    `3. Follow the implement-epic skill at \`${IMPLEMENT_EPIC_SKILL_PATH}\` (it auto-loads in this session) — it owns how to slice the epic, brief and dispatch the subagents, and integrate their work. If the skill is absent, build the slices yourself, one at a time, in dependency order.`,
+    `4. If the spec is ambiguous, has drifted from the code, or implies work you end up leaving out, ASK ME HERE — I'm in this tab. You cannot create tickets in the orchestrator, so uncovered work is something to tell me about; never invent a ref for it.`,
+    `5. Build each slice following the repo's own conventions (tests/TDD included) — pin each requirement with a test.`,
+    `6. When done, open ONE pull request whose description carries this machine-readable block verbatim — a CI check enforces it, so reproduce the fence exactly:`,
+    '',
+    frontmatterBlock(epic.ref, 'epic-implementation'),
+    '',
+    `7. Before opening the PR, confirm the epic spec's requirements are built and pinned by tests, the repo's own checks are green, the epic spec is untouched where it sits, and the block above is reproduced exactly.`,
     notesContext(epic.notes, 'the epic notes'),
   ].join('\n');
   return buildUrl(project, prompt);
