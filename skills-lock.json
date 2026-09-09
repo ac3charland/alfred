@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "code-walkthrough": {
+      "source": "git@github.com:ac3charland/oddobot-skills.git",
+      "sourceUrl": "git@github.com:ac3charland/oddobot-skills.git",
+      "sourceType": "git",
+      "skillPath": "code-walkthrough/SKILL.md",
+      "computedHash": "382ddee0621c0f6004c887f33db41173e1d70b1a88968aba455116e24215ec41"
+    }
+  }
+}
