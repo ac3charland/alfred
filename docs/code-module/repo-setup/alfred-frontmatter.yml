@@ -8,12 +8,16 @@
 # Contract:
 #   ```alfred
 #   alfred-ticket: ALF-42              # one ref, or a comma-separated list
-#   phase: refinement                  # epic-refinement | refinement | implementation | spike
+#   phase: refinement                  # epic-refinement | epic-implementation | refinement | implementation | spike
 #   spec-path: docs/specs/ALF-42.html  # required on both refinement phases and on a spike
 #   ```
 #
 # An `epic-refinement` PR carries the EPIC's ref and writes the epic's own long-lived
 # context/decisions spec (conventionally `docs/specs/epics/<EPIC-REF>.html`).
+#
+# An `epic-implementation` PR is the epic ONE-SHOT: one session builds everything the epic
+# spec describes and opens a single PR carrying the EPIC's ref. It names no `spec-path` —
+# the epic spec is recorded against the epic already, and is never archived.
 #
 # A `spike` PR carries a research story's ref and writes a long-lived findings document
 # (conventionally `docs/spikes/<REF>-<short-slug>.html`) instead of code or a spec. Its
@@ -53,9 +57,10 @@ jobs:
             if (!m) { console.error("missing ```alfred block"); process.exit(1); }
             const blk = m[1];
             const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
-            // Alternation order matters: "epic-refinement" ends with "refinement", and the
-            // engine takes the first alternative that matches, so the longer phase leads.
-            const phase  = /phase:\s*(epic-refinement|refinement|implementation|spike)/.exec(blk);
+            // Alternation order matters: each "epic-" phase ends with the story phase of the
+            // same name, and the engine takes the first alternative that matches, so the longer
+            // phases lead.
+            const phase  = /phase:\s*(epic-refinement|epic-implementation|refinement|implementation|spike)/.exec(blk);
             if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
             const specPath = (/spec-path:\s*(\S+)/.exec(blk) || [])[1];
             // A spike PR with no findings path would merge into a story with nothing to snapshot.

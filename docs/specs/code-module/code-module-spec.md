@@ -588,7 +588,7 @@ spec-path: docs/specs/ALF-42.md
 
 - `alfred-ticket` — one ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR that closes
   several stories. Parsed as a list, always.
-- `phase` — `epic-refinement | refinement | implementation | spike`.
+- `phase` — `epic-refinement | epic-implementation | refinement | implementation | spike`.
 - `spec-path` — **required on the refinement phases and on a spike**; declares where the document lives so Alfred renders from
   the *recorded* path, never an inferred one (§10). **Implementation PRs carry it too** so the
   archive rule below knows which spec to retire.
@@ -856,9 +856,9 @@ jobs:
             if (!m) { console.error("missing ```alfred block"); process.exit(1); }
             const blk = m[1];
             const ticket = /alfred-ticket:\s*(.+)/.exec(blk);
-            // Alternation order matters: "epic-refinement" ends with "refinement", so the
+            // Alternation order matters: each "epic-" phase ends with the story phase of the same name, so the
             // longer phase leads. "spike" shares no suffix, so its position is free.
-            const phase  = /phase:\s*(epic-refinement|refinement|implementation|spike)/.exec(blk);
+            const phase  = /phase:\s*(epic-refinement|epic-implementation|refinement|implementation|spike)/.exec(blk);
             if (!ticket || !phase) { console.error("need alfred-ticket + phase"); process.exit(1); }
             const specPath = (/spec-path:\s*(\S+)/.exec(blk) || [])[1];
             const SPEC_PATH_PHASES = ["refinement", "epic-refinement", "spike"];

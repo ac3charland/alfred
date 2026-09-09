@@ -28,7 +28,7 @@ spec-path: docs/specs/ALF-42.html
 | Field | Meaning | Rules |
 |---|---|---|
 | `alfred-ticket` | The ref(s) this PR advances — story refs, or the **epic's** ref on `epic-refinement`. | One ref, or a **comma-separated list** (`ALF-42, ALF-43`) for a PR closing several stories. Always parsed as a list. |
-| `phase` | Which phase the PR belongs to. | `epic-refinement` \| `refinement` \| `implementation` \| `spike`. The phase alone decides what the Worker patches — `epic-refinement` targets the **epic**, the other three target the **story**; refs come from one shared per-project counter, so there is no fallback. |
+| `phase` | Which phase the PR belongs to. | `epic-refinement` \| `epic-implementation` \| `refinement` \| `implementation` \| `spike`. The phase alone decides what the Worker patches — the two `epic-` phases carry the **epic's** ref, the other three target the **story**; refs come from one shared per-project counter, so there is no fallback. |
 | `spec-path` | Where the long-form document the PR produced (a self-contained HTML plan, or a spike's findings) lives in the repo. | **Required on both refinement phases and on a spike** — declares the path so alfred renders from the *recorded* path, never an inferred one. **Implementation PRs carry it too** so the archive rule (below) knows which spec to retire. |
 
 - An **epic-refinement** PR writes the *epic's* long-lived context/decisions spec (conventionally
@@ -36,6 +36,14 @@ spec-path: docs/specs/ALF-42.html
   Opening it records `refinement_pr_url` on the epic; merging it records `spec_path` and snapshots
   the spec. Epics have **no lifecycle state**, so a closed-unmerged epic-refinement PR is a **no-op**
   — there is nothing to revert.
+- An **epic-implementation** PR is the epic **one-shot**: one session implements everything the
+  epic spec describes — dispatching implementer subagents per slice — and opens a single PR with
+  `phase: epic-implementation` + the epic's ref and **no `spec-path`** (the epic spec is recorded
+  against the epic already, and is never archived). It **records nothing**: an epic has no
+  lifecycle state and no implementation-PR column, so merging it moves no card and the human
+  archives the epic by hand. The phase still earns its keep by keeping the Worker's routing
+  explicit — under `phase: implementation` an epic's ref would be PATCHed against `code_items`,
+  where the shared counter only ever issues refs to stories, matching nothing while answering `ok`.
 - A **refinement** PR writes the spec artifact and opens with `phase: refinement` +
   `spec-path: docs/specs/<REF>.html`. Merging it moves the story `in_refinement → ready_for_dev` and the
   Worker snapshots the spec.
