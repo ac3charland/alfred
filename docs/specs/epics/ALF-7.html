@@ -125,6 +125,21 @@
   .collapsed { color: var(--a-muted); font-size: .75rem; padding: .5rem .75rem;
                border: 1px dashed var(--a-border); border-radius: var(--a-radius); }
   .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.4rem; }
+  .live { display: flex; align-items: center; gap: .35rem; font-size: .68rem; color: var(--a-muted); }
+  .dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+  .dot.on { background: var(--a-green); }
+  .dot.stale { background: var(--a-amber); }
+  .stalebar { border: 1px solid color-mix(in srgb, var(--a-amber) 45%, transparent);
+              background: color-mix(in srgb, var(--a-amber) 8%, transparent);
+              border-radius: var(--a-radius); padding: .4rem .7rem; margin-bottom: .7rem;
+              font-size: .74rem; color: var(--a-amber); }
+  .verbs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .55rem;
+           padding-top: .55rem; border-top: 1px solid var(--a-border); }
+  .verb { border: 1px solid var(--a-border); border-radius: 6px; padding: .12rem .5rem;
+          font-size: .7rem; color: var(--a-muted); }
+  .verb kbd { font-family: ui-monospace, monospace; font-size: .64rem; color: var(--a-text);
+              opacity: .75; margin-left: .3rem; }
+  .verb.sel { border-color: color-mix(in srgb, var(--a-blue) 55%, transparent); color: var(--a-blue); }
 </style>
 
 <div class="wrap">
@@ -140,6 +155,22 @@
   Only messages that <i>ask something of the owner</i> are queued; everything else falls to an
   unbadged <code>FYI</code> shelf. alfred never becomes the store of record — every message stays
   where it already lives, and the module is a view over it.</p>
+</div>
+
+<div class="card" style="border-left:3px solid var(--accent)">
+  <p style="margin-top:0"><b>Revision 2 — what changed.</b> A second round with the owner settled the
+  questions this document opened with, and reversed one decision:</p>
+  <ul style="margin-bottom:0">
+    <li><b>D11 was wrong and is rewritten.</b> It ruled out few-shot examples on the strength of an
+      argument that only ruled out <i>replacing</i> the rubric with a learned loop. Prose and examples
+      are complementary; the classifier now carries both.</li>
+    <li><b>The Mac is not assumed to be always on</b> (<b>D17</b>) — which bounds the module's promise
+      and puts a liveness indicator on the surface.</li>
+    <li>New: reply detection and no Gmail write-back (<b>D18</b>), on-demand re-classification only
+      (<b>D19</b>), and the row's action verbs (<b>D20</b>).</li>
+    <li>Answered and folded in: WorkMail stays on the Mac for now; creating an Inbox item from a
+      message is in scope; alfred's own Telegram channel is a later epic's problem.</li>
+  </ul>
 </div>
 
 <h2>1 · Problem space &amp; why now</h2>
@@ -322,16 +353,27 @@ put off or miss important communications because I get overwhelmed by triaging a
 </div>
 
 <div class="dec">
-  <h3><span class="n">D11</span>The rubric is a hand-edited document, not a learned correction loop.</h3>
-  <p>A versioned prose document, editable in alfred, injected into every prompt. When the model gets
-    something wrong, the owner adds an exception — the same way Steve accumulated
-    <i>"about a one-page rubric, gradually, exception by exception."</i></p>
-  <p class="why"><b>Why — and this is a deliberate divergence from <a href="ALF-158.html">ALF-158</a>:</b>
-    the Inbox classifier records every override and feeds corrections back as few-shot examples.
-    Urgency is <b>policy, not pattern</b>. "Anything from my wife is ASAP" should be true immediately
-    and inspectably, not something the owner hopes thirty examples eventually teach. A learned loop
-    also can't be audited when it gets something wrong, and auditability is what buys the trust this
-    module runs on.</p>
+  <h3><span class="n">D11</span>The prompt carries a hand-edited rubric <i>and</i> a curated example set. Both are versioned.</h3>
+  <p>Two artifacts, both editable in alfred, both stamped on every verdict:</p>
+  <ul>
+    <li>A <b>rubric</b> — prose policy the owner can state outright. <i>"Anything from my wife is ASAP."</i></li>
+    <li>An <b>example set</b> — corrected messages with their right answer, fed as few-shot examples.
+      Every correction made through <b>D20</b>'s tier dropdown becomes an example <b>automatically</b>;
+      the owner can prune one that turns out to steer badly.</li>
+  </ul>
+  <p class="why"><b>Why both:</b> prose states the policy you can articulate; examples teach the
+    judgment you can't. <i>"This colleague writes in a way that sounds urgent but never is"</i> is not
+    a rule that survives being written down — it is exactly what an example conveys. Versioning both
+    and stamping the verdict with both is what keeps "why did it say that" answerable, which is the
+    property that actually matters. (Un-auditability comes from not knowing which examples were in a
+    given prompt — not from having examples.)</p>
+  <p class="why"><b>What this does <i>not</i> adopt from <a href="ALF-158.html">ALF-158</a>:</b>
+    corrections do not <i>replace</i> policy. The rubric stays the primary, human-authored statement
+    of what matters; examples refine its edges. ALF-158's hardest open question — which corrections
+    earn their tokens — barely applies here: at ~45 messages a day and a $3 bill, every correction can
+    be carried for a long time before prompt budget is worth a thought.</p>
+  <p class="why"><b>Revised from revision 1</b>, which rejected few-shot examples outright. That
+    decision conflated replacing the rubric with augmenting it, and was wrong.</p>
 </div>
 
 <div class="dec">
@@ -388,6 +430,70 @@ put off or miss important communications because I get overwhelmed by triaging a
     named this module as its consumer. <code>ASAP</code>-only because a push for a
     <code>Today</code> item <i>is</i> the interruption the module exists to remove. A tier that
     notifies is a tier that costs attention; only one should.</p>
+</div>
+
+<h3>Living with the constraints</h3>
+
+<div class="dec">
+  <h3><span class="n">D17</span>The Mac is <i>not</i> assumed to be always on. The module says so on its face.</h3>
+  <p>The daemon heartbeats to alfred; each account carries a <code>last_seen_at</code>. When a source
+    has gone quiet the Comms header says which, and how long ago.</p>
+  <p class="why"><b>Why:</b> the owner's Mac sleeps. Rather than pretend otherwise, the module makes
+    its own blind spots visible — a surface that looks empty and current while two of four sources are
+    dark is exactly how a firewall loses the trust it runs on.</p>
+  <p class="why"><b>The consequence, stated plainly because it is easy to discover late:</b> an
+    <code>ASAP</code> iMessage that arrives at 11pm reaches the owner when the Mac next wakes. <b>The
+    <code>ASAP</code> latency promise holds for the two Gmail accounts only.</b> WorkMail rides the
+    daemon and inherits the same limit — kept there <b>for now</b> (<b>D9</b>) rather than forwarded
+    into Gmail, which remains the escape hatch if the intermittency bites.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D18</span>The queue drains by replying, not by marking things done. alfred never writes to Gmail.</h3>
+  <p><b>Read-only, both directions of the decision:</b> no labels, no archive, no state pushed back to
+    any source. Instead alfred <i>watches</i> — Gmail thread state, and <code>is_from_me</code> on a
+    later message in an iMessage conversation. When the owner replies in their own client, the item
+    clears itself.</p>
+  <p class="why"><b>Why this beats write-back, which was the obvious design:</b> Steve writes a Gmail
+    label so his two inboxes don't diverge. Detection achieves the same convergence without alfred
+    ever touching the mailbox — and it removes the second bookkeeping step entirely. That step is the
+    one an avoidance pattern skips, so a design where the owner must mark things handled in alfred
+    would fail in the specific way this epic exists to prevent.</p>
+  <p class="why"><b>What stays manual:</b> a message the owner consciously decides <i>not</i> to answer
+    is cleared with <b>Not replying</b> (<b>D20</b>) — reply detection cannot clear a reply that never
+    comes. That is the fallback path, not the main one.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D19</span>Re-classification is on demand only. Nothing is silently re-judged.</h3>
+  <p>Editing the rubric or the example set does <b>not</b> sweep the existing queue. A re-run is an
+    explicit action.</p>
+  <p class="why"><b>Why:</b> this is <a href="ALF-158.html">ALF-158</a>'s "the machine changed my answer
+    back" failure. A verdict the owner has already seen — and possibly already acted on — moving
+    underneath them costs more trust than a stale tier costs attention.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D20</span>Four verbs on a row, and a tier dropdown that feeds the example set.</h3>
+  <table>
+    <tr><th>Verb</th><th>Does</th></tr>
+    <tr><td><b>Open in source</b></td><td>Deep-links to the message in its own client. <b>Desktop only for the MVP</b> — see §3.3.</td></tr>
+    <tr><td><b>Make an Inbox item</b></td><td>Creates an alfred item from the message, one keystroke, without leaving Comms.</td></tr>
+    <tr><td><b>Not replying</b></td><td>Clears something the owner has decided to leave unanswered (<b>D18</b>).</td></tr>
+    <tr><td><b>Change tier</b></td><td>A dropdown. Moves the message, and records the correction — which becomes a few-shot example (<b>D11</b>).</td></tr>
+  </table>
+  <p class="why"><b>On "Make an Inbox item":</b> the owner's decision is that task spin-off stays a
+    human act, and it does — but the <i>bridge</i> is where an avoidance pattern reasserts itself,
+    since it is a context switch performed at the exact moment of being reminded of an unwanted
+    obligation. One keystroke from the row keeps the decision human and removes the friction.</p>
+  <p class="why"><b>On the tier dropdown:</b> because tier membership is also the entry ticket
+    (<b>D3</b>), promoting something <i>out of</i> <code>FYI</code> corrects the obligation judgment
+    rather than the urgency — which makes it the false-negative recovery path <b>D7</b> cares about,
+    and the most valuable example the set can hold.</p>
+  <p class="why"><b>Deliberately absent — quick reply and forward.</b> Steve has both
+    (forward-to-wife-and-archive is one of his keys). Each needs <i>send</i> capability — SMTP, or
+    AppleScript into Messages.app — which nothing else in this epic requires. A meaningful scope
+    expansion for a convenience the owner's existing clients already cover.</p>
 </div>
 
 <h2>3 · Architecture</h2>
@@ -480,12 +586,12 @@ takes whatever migration number is free — never pin one in a spec).</p>
   <tr>
     <td><code>comm_accounts</code></td>
     <td>One row per mailbox / channel</td>
-    <td>Kind (<code>gmail</code> / <code>imap</code> / <code>imessage</code>), display label, ingestion home. Lets the UI say which account a message arrived at, and lets one account be paused without touching the others.</td>
+    <td>Kind (<code>gmail</code> / <code>imap</code> / <code>imessage</code>), display label, ingestion home, and <code>last_seen_at</code> — the heartbeat backing the liveness indicator (<b>D17</b>). Lets the UI say which account a message arrived at, and lets one account be paused without touching the others.</td>
   </tr>
   <tr>
     <td><code>comm_messages</code></td>
     <td>The mirrored message</td>
-    <td>Account, source id (Gmail message id / IMAP UID / <code>chat.db</code> ROWID), sender handle, thread key, body, received-at, plus a <b>deep link back to the source</b>. Uniqueness on (account, source id) so a re-poll is idempotent.</td>
+    <td>Account, source id (Gmail message id / IMAP UID / <code>chat.db</code> ROWID), sender handle, thread key, body, received-at. Uniqueness on (account, source id) so a re-poll is idempotent. <b>Captures the RFC822 <code>Message-ID</code> for every email</b> — the key both deep-link forms are built from (§3.3), cheap now and annoying to backfill.</td>
   </tr>
   <tr>
     <td><code>comm_verdicts</code></td>
@@ -501,6 +607,11 @@ takes whatever migration number is free — never pin one in a spec).</p>
     <td><code>comm_rubrics</code></td>
     <td>Versioned rubric text (<b>D11</b>)</td>
     <td>Append-only. Every verdict names the version that produced it, so "why did it say that" is answerable after an edit.</td>
+  </tr>
+  <tr>
+    <td><code>comm_corrections</code></td>
+    <td>Every tier change the owner makes (<b>D20</b>)</td>
+    <td>The message, the tier the model chose, the tier the owner chose, when. Doubles as the <b>example set</b> (<b>D11</b>): rows feed the prompt as few-shot examples automatically, and carry a flag so one that steers badly can be pruned without losing the record that it happened. Versioned as a set, and stamped on every verdict alongside the rubric version.</td>
   </tr>
 </table>
 </div>
@@ -528,9 +639,29 @@ a human act, and it must survive a re-classification that changes the tier.</p>
   "reason":     string    // why this tier, for auditing the rubric
 }</code></pre>
 
-<p>The prompt is assembled from three parts, in cache-friendly order (stable first): the task
-instructions and tier definitions; the rubric document (<b>D11</b>); the rendered people list
-(<b>D12</b>); then the message itself.</p>
+<p>The prompt is assembled in cache-friendly order (stable first): the task instructions and tier
+definitions; the rubric document; the example set drawn from <code>comm_corrections</code>
+(<b>D11</b>); the rendered people list (<b>D12</b>); then the message itself. Each verdict is stamped
+with the rubric version <i>and</i> the example-set version, so any judgment can be reconstructed.</p>
+
+<h3>3.3 Deep links back to the source</h3>
+
+<p>Everything is built from the RFC822 <code>Message-ID</code>, captured at ingestion — one field
+serving both mail clients:</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Target</th><th>Link</th><th>Works</th></tr>
+  <tr><td>Apple Mail (macOS)</td><td><code>message:%3C&lt;Message-ID&gt;%3E</code></td><td>Desktop. <b>Undocumented scheme — the story must verify it, not trust this spec.</b></td></tr>
+  <tr><td>Gmail web</td><td><code>…/#search/rfc822msgid:&lt;Message-ID&gt;</code></td><td>Desktop and mobile</td></tr>
+  <tr><td>Apple Mail (iOS)</td><td>—</td><td><b>No per-message scheme exists.</b> <code>mailto:</code> composes only.</td></tr>
+  <tr><td>iMessage</td><td><code>imessage://</code> to the handle</td><td>Opens the <i>conversation</i>, not the message — the ceiling on that platform</td></tr>
+</table>
+</div>
+
+<p><b>The MVP ships desktop links only.</b> That scopes the <i>surface</i>, not the <i>data</i>: the
+<code>Message-ID</code> is still captured for every email from story <b>B</b> onward, so adding a
+mobile fallback later is a UI change rather than a backfill.</p>
 
 <div class="callout">
   <b>Do not plan around prompt caching on Haiku.</b> Haiku 4.5's minimum cacheable prefix is
@@ -545,8 +676,15 @@ instructions and tier definitions; the rubric document (<b>D11</b>); the rendere
 <div class="app">
   <div class="app-head">
     <span class="eyebrow">Comms</span>
-    <span class="ghostbtn">Rubric</span>
+    <span style="display:flex;gap:.7rem;align-items:center">
+      <span class="live"><span class="dot on"></span>Gmail ×2</span>
+      <span class="live"><span class="dot stale"></span>Mac · 3h ago</span>
+      <span class="ghostbtn">Rubric</span>
+    </span>
   </div>
+
+  <div class="stalebar">iMessage and WorkMail last synced 3h ago — the Mac is asleep. Anything sent
+    there since won't appear until it wakes.</div>
 
   <div class="tierhead">
     <span class="tiername t-asap">ASAP</span>
@@ -559,6 +697,12 @@ instructions and tier definitions; the rubric document (<b>D11</b>); the rendere
     <div class="chips">
       <span class="chip c-vip">Priority person</span>
       <span class="chip c-plain">Blocked on you</span>
+    </div>
+    <div class="verbs">
+      <span class="verb">Open in Mail<kbd>O</kbd></span>
+      <span class="verb">Make an Inbox item<kbd>I</kbd></span>
+      <span class="verb">Not replying<kbd>X</kbd></span>
+      <span class="verb sel">Change tier ▾<kbd>T</kbd></span>
     </div>
   </div>
 
@@ -593,7 +737,11 @@ instructions and tier definitions; the rubric document (<b>D11</b>); the rendere
   <div class="collapsed">37 messages · no reply owed — open to review</div>
 </div>
 <p class="mockcap">The Comms view. Three counted tiers and an unbadged, collapsed <code>FYI</code>
-shelf (<b>D4</b>, <b>D6</b>). Every row leads with <i>the ask</i>, not the subject line (<b>D14</b>).
+shelf (<b>D4</b>, <b>D6</b>). The header carries per-source liveness and, when a source has gone
+quiet, says so in the body rather than looking empty and current (<b>D17</b>). The selected row shows
+the four verbs (<b>D20</b>) — note there is no <i>reply</i> and no <i>archive</i>: the queue drains
+when the owner answers in their own client (<b>D18</b>). Every row leads with <i>the ask</i>, not the
+subject line (<b>D14</b>).
 The <code>Whenever</code> row is a message with no deadline that is still owed — visible rather than
 buried, which is the point of the floor rule (<b>D5</b>). Drawn in the app's tokens from
 <code>frontend/app/globals.css</code>; Firewall's accent is blue
@@ -602,7 +750,11 @@ buried, which is the point of the floor rule (<b>D5</b>). Drawn in the app's tok
 <div class="app">
   <div class="app-head">
     <span class="eyebrow">Comms</span>
-    <span class="ghostbtn">Rubric</span>
+    <span style="display:flex;gap:.7rem;align-items:center">
+      <span class="live"><span class="dot on"></span>Gmail ×2</span>
+      <span class="live"><span class="dot on"></span>Mac · just now</span>
+      <span class="ghostbtn">Rubric</span>
+    </span>
   </div>
   <div class="tierhead"><span class="tiername t-asap">ASAP</span><span class="count asap">0</span><span class="rule"></span></div>
   <div class="tierhead"><span class="tiername t-today">Today</span><span class="count today">0</span><span class="rule"></span></div>
@@ -613,14 +765,28 @@ buried, which is the point of the floor rule (<b>D5</b>). Drawn in the app's tok
 </div>
 <p class="mockcap">The state the module exists to produce, and the one it should be in most of the
 time. This is what <i>"check comms"</i> collapses to — and note that a full <code>FYI</code> shelf
-does not disturb it.</p>
+does not disturb it. Both dots green: the zero is trustworthy, which is the only condition under
+which zero means anything.</p>
 
 <h2>5 · Constraints &amp; non-goals</h2>
 
 <ul>
   <li><b>No calendar half.</b> Steve's Radar is half filtered-calendar with per-event shortcut buttons.
     That is a different data source and a different UI, and it is out of this epic.</li>
-  <li><b>No automatic task or code creation.</b> Spin-off is a deliberate human act (<b>D1</b>).</li>
+  <li><b>No automatic task or code creation.</b> Spin-off is a deliberate human act — but a
+    one-keystroke one (<b>D20</b>).</li>
+  <li><b>No snooze.</b> Every tool of this shape has one, and it is rejected here on purpose: a snooze
+    button is a machine for deferring things while feeling productive, in a module built to fix an
+    avoidance pattern. If <code>Today</code> becomes a tier the owner ignores wholesale, revisit —
+    that would be evidence the pressure valve was load-bearing after all.</li>
+  <li><b>No sending.</b> No quick reply, no forward (<b>D20</b>) — both need SMTP or AppleScript into
+    Messages.app, which nothing else here requires.</li>
+  <li><b>No write-back to any source</b> (<b>D18</b>). alfred reads; it never labels, archives or
+    modifies a mailbox.</li>
+  <li><b>alfred's own Telegram notifications are not a source in this epic.</b> The
+    <a href="../../spikes/notifications-spike.md">notifications spike</a> anticipated surfacing them in
+    the firewall as their own labeled stream, and that remains the intent — as a later story, once the
+    four real channels work.</li>
   <li><b>No newsletter reading, summarizing or digesting.</b> Bulk mail is detected and shelved
     (<b>D13</b>); making it <i>useful</i> is the Reader module's job (SPEC §13.1).</li>
   <li><b>No WhatsApp, Slack, Signal, or Twitter.</b> Steve ingests all of them; this epic covers the
@@ -683,8 +849,14 @@ so the risky, unfamiliar parts land against something already proven.</p>
     <td>The actual model integration, landing behind everything above so its blast radius is one function. Needs <b>H</b> and <b>I</b> for its two prompt inputs.</td></tr>
   <tr><td><b>K</b></td><td>Evaluation fixtures + a recall-focused accuracy run (<b>D7</b>)</td>
     <td>What makes "should this be Opus" a measurement rather than a vibe (<b>D15</b>), and the only place the false-negative rate becomes visible. Needs real messages with expected tiers.</td></tr>
-  <tr><td><b>L</b></td><td>Actions on a row — mark handled, deep-link to the source, and the one-key bridge to an Inbox item</td>
-    <td>Where the module stops being a report. The bridge is the interesting part (see §9) and the readiness rules per source are not uniform.</td></tr>
+  <tr><td><b>L</b></td><td>The four row verbs (<b>D20</b>) — desktop deep links, make-an-Inbox-item, not-replying, and the tier dropdown</td>
+    <td>Where the module stops being a report. Carries the <code>message:</code> scheme verification (§3.3), and the tier dropdown is the write half of story <b>N</b>.</td></tr>
+  <tr><td><b>N</b></td><td>The corrections log as example set (<b>D11</b>) — <code>comm_corrections</code>, automatic promotion to few-shot examples, set versioning, pruning</td>
+    <td>What turns a static rubric into one that improves. Depends on <b>J</b> for a prompt to inject into and <b>L</b> for the dropdown that produces a correction. Its interesting decision is what a pruned example does to the versions that already cited it.</td></tr>
+  <tr><td><b>O</b></td><td>Reply detection (<b>D18</b>) — Gmail thread state, <code>is_from_me</code> on iMessage, the drain</td>
+    <td>The slice that makes the queue self-clearing, and the one most likely to be subtly wrong: "replied" is not the same as "the thread moved", and a wrong answer either strands items or clears them silently. Deserves its own story precisely because it is small and dangerous.</td></tr>
+  <tr><td><b>P</b></td><td>Daemon liveness (<b>D17</b>) — heartbeat, <code>last_seen_at</code>, the header indicator and the stale banner</td>
+    <td>Small and independent, but it is what makes a zero trustworthy. Without it the module's central claim is unverifiable from the surface.</td></tr>
   <tr><td><b>M</b></td><td>Telegram push on <code>ASAP</code> (<b>D16</b>)</td>
     <td>Small — one <code>fetch</code> from the Worker against a channel the notifications spike already designed. Independent of everything except <b>J</b> producing a tier.</td></tr>
 </table>
@@ -692,43 +864,40 @@ so the risky, unfamiliar parts land against something already proven.</p>
 
 <p><b>A → B → C</b> ships a real, inspectable module with no LLM and no Mac component in the repo at
 all. <b>D</b> makes it real for two accounts. <b>E → F → G</b> is the Mac chapter and can be paused
-without stranding anything. <b>H → I → J</b> is the feature. <b>K</b>, <b>L</b> and <b>M</b> are
-independent of each other and can be ordered by appetite.</p>
+without stranding anything. <b>H → I → J</b> is the feature. <b>K</b>, <b>M</b>, <b>O</b> and
+<b>P</b> are independent of each other and can be ordered by appetite; <b>N</b> wants <b>L</b> first.</p>
 
 <h2>8 · Open questions</h2>
 
+<p class="small">Revision 1's seven questions are settled and folded into §2. These are what the
+second round left open — and two of them are gaps the first round didn't notice.</p>
+
 <ol>
-  <li><b>Is there a Mac that is realistically awake most of the time?</b> It bounds freshness for two
-    of four sources (<b>D9</b>), and the answer decides whether the module needs a visible staleness
-    indicator or merely a nice-to-have one. Asked, not yet answered — <b>settle before story E</b>.</li>
-  <li><b>Does alfred write triage state back to Gmail as a label?</b> Steve's archive is a label
-    change, which is what stops his two inboxes diverging. Read-only is simpler and safer, but leaves
-    Gmail showing everything unread and the owner processing twice. Note the asymmetry either way:
-    iMessage has no equivalent, so its state is alfred-local regardless. <b>Decide in story L</b>.</li>
-  <li><b>Does alfred notice when the owner replies in Gmail?</b> If not, a handled message stays in the
-    queue until it is marked handled a second time, by hand — which is exactly the kind of
-    double-bookkeeping that makes a surface get abandoned. Gmail's thread state could answer it
-    cheaply; iMessage's <code>is_from_me</code> could too. Genuinely unresolved, and it may matter
-    more than write-back. <b>Decide in story L</b>.</li>
-  <li><b>Is the one-key bridge to an Inbox item built?</b> The owner's decision is that task spin-off
-    stays manual — <i>"I'll do that manually by popping over to the inbox."</i> The concern, which is
-    the owner's own diagnosis turned on the design: the bridge from "this needs a response" to "there
-    is now a task" is a context switch performed at the exact moment of being reminded of an unwanted
-    obligation. That is the step an avoidance pattern skips. <b>Proposed:</b> keep the decision, but
-    make it one keystroke from the Comms row so nothing is actually "popped over" to. Not confirmed.</li>
-  <li><b>Do alfred's own Telegram notifications become a fourth source?</b> The
-    <a href="../../spikes/notifications-spike.md">notifications spike</a> anticipated exactly this —
-    alfred's messages surfaced in the firewall as their own labeled stream. It is the one inbound
-    integration that is already half-built. Not confirmed, and it is additive rather than blocking.</li>
-  <li><b>What are the owner's idiosyncratic action verbs?</b> Steve's are forward-to-wife-and-archive,
-    lightweight reply, and punt-to-Gmail — and he is emphatic that these bespoke shortcuts are what
-    make the tool usable daily rather than a demo. The owner's will be different and are unknown.
-    <b>Story L</b> cannot be specced without them.</li>
-  <li><b>How is a stale rubric version handled?</b> Every verdict names the rubric that produced it
-    (<b>D11</b>), which makes a bulk re-classification after a rubric edit <i>possible</i>. Whether it
-    happens automatically, on demand, or never is open. The risk of automatic is the one
-    <a href="ALF-158.html">ALF-158</a> guards against — the machine changing an answer the human
-    already saw.</li>
+  <li><b>What is the unit of the queue — a message, or a thread?</b> A five-message email thread
+    could produce five queued items or one. For a <i>response</i> queue the thread is arguably right:
+    the owner owes a reply to a conversation, not to each message in it. But then which message's
+    <i>ask</i> is shown, and what happens when a later message changes the tier — does the thread get
+    promoted, and does that re-open something already cleared? Steve's is message-shaped because his
+    is an inbox view. <b>This is the largest unanswered design question in the epic</b>, it touches
+    <code>comm_messages</code>' shape, and it should be settled before story <b>B</b> fixes the schema.</li>
+  <li><b>How are group chats handled?</b> A busy iMessage group produces many messages, almost none of
+    which ask anything of the owner specifically — but some do, and being named in one is exactly the
+    obligation that gets missed. Triaging every message floods the classifier; triaging none loses the
+    case that matters. Related to the threading question but not the same: a group's obligation is
+    about <i>addressing</i>, not conversation shape. <b>Settle before story F.</b></li>
+  <li><b>Does the <code>message:</code> URL scheme actually work?</b> Undocumented, widely used, and
+    asserted in §3.3 on this document's authority alone. Story <b>L</b> should verify it on the
+    owner's macOS version before building the affordance around it — and have the
+    <code>rfc822msgid:</code> Gmail form as the fallback if it doesn't.</li>
+  <li><b>What does pruning an example do to verdicts that already cited its version?</b> Every verdict
+    is stamped with an example-set version (<b>D11</b>). If a bad example is removed, the historical
+    stamp now names a set that no longer exists in that form. Append-only versioning solves it and
+    costs almost nothing at this volume, but it should be decided in story <b>N</b> rather than
+    discovered.</li>
+  <li><b>What exactly counts as "replied" for the drain?</b> A thread advancing is not the same as the
+    owner answering — a third party replying to all moves the thread without discharging anything, and
+    Gmail's own thread state won't distinguish them. Getting this wrong strands items or, worse,
+    clears them silently. Story <b>O</b> owns it, and it is the reason that story is separate.</li>
 </ol>
 
 <h2>9 · Related reading</h2>
