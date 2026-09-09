@@ -4,6 +4,7 @@ import {
   buildBugUrl,
   buildBypassUrl,
   buildDevelopmentUrl,
+  buildEpicImplementationUrl,
   buildEpicRefinementUrl,
   buildImplementationUrl,
   buildRefinementUrl,
@@ -947,5 +948,123 @@ describe('the epic-spec reference in the story prompts', () => {
     expect(prompt).toContain('spec-path: docs/specs/ALF-42.html');
     expect(prompt).toContain('docs/specs/archive/ALF-42.html');
     expect(prompt).not.toContain('docs/specs/archive/ALF-12.html');
+  });
+});
+
+/** The epic the one-shot launch is offered from: one that already carries a committed spec. */
+function makeSpeccedEpic(overrides: Partial<Epic> = {}): Epic {
+  return makeEpic({ spec_path: 'docs/specs/epics/ALF-12.html', ...overrides });
+}
+
+describe('buildEpicImplementationUrl', () => {
+  it('targets claude.ai/code with the project repo as owner/name', () => {
+    const { base, repo } = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic()));
+    expect(base).toBe('https://claude.ai/code');
+    expect(repo).toBe('ac3charland/alfred');
+  });
+
+  it('leads the prompt with the epic ref and name so the browser tab is scannable', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt.split('\n', 1)[0]).toBe('ALF-12: Communication Firewall');
+  });
+
+  it('names the committed epic spec as the thing to implement', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toContain('docs/specs/epics/ALF-12.html');
+    expect(prompt).toMatch(/implement/i);
+  });
+
+  it('casts the session as an orchestrator dispatching implementer subagents', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toMatch(/subagent/i);
+    expect(prompt).toMatch(/ONE session|one session/);
+  });
+
+  it('points at the implement-epic skill dropped into each repo', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toContain('.claude/skills/implement-epic/SKILL.md');
+    // The story-level skills are a different altitude — neither is the one to name here.
+    expect(prompt).not.toContain('.claude/skills/implement-spec/SKILL.md');
+    expect(prompt).not.toContain('.claude/skills/epic-refinement/SKILL.md');
+  });
+
+  it('embeds the alfred block with the EPIC ref and the epic-implementation phase', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toContain('```alfred');
+    expect(prompt).toContain('alfred-ticket: ALF-12');
+    expect(prompt).toContain('phase: epic-implementation');
+  });
+
+  it('names no spec-path — the epic spec is recorded already and is never archived', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).not.toMatch(/spec-path:/i);
+    expect(prompt).toMatch(/do not (edit|archive|move)|never archive/i);
+    expect(prompt).not.toContain('docs/specs/archive/');
+  });
+
+  it('tells the agent it cannot create tickets, so uncovered work is a question not a new ref', () => {
+    // The session has no write access to the orchestrator: inventing a ref for work the spec
+    // implies would put a number in a PR block that names nothing.
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toMatch(/cannot create|can't create/i);
+    expect(prompt).toMatch(/ask me here/i);
+  });
+
+  it('tells Claude to ground itself in the repo and its own conventions first', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toMatch(/skim the repo/i);
+    expect(prompt).toMatch(/CONTRIBUTING|CLAUDE\.md/);
+  });
+
+  it('keeps the TDD nudge — every slice a subagent builds is pinned by a test', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toMatch(/tests\/TDD|pin each requirement with a test/i);
+  });
+
+  it('asks for ONE pull request and a verbatim-block self-check before opening it', () => {
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic())).prompt ?? '';
+    expect(prompt).toMatch(/ONE pull request/);
+    expect(prompt).toMatch(/reproduced exactly/i);
+  });
+
+  it('inlines the epic notes as context', () => {
+    const prompt =
+      parse(
+        buildEpicImplementationUrl(
+          makeProject(),
+          makeSpeccedEpic({ notes: 'Ship the router first.' }),
+        ),
+      ).prompt ?? '';
+    expect(prompt).toContain('Ship the router first.');
+    expect(prompt).toMatch(/the epic notes/i);
+  });
+
+  it('flags truncated notes so partial context is not mistaken for the whole', () => {
+    const prompt =
+      parse(buildEpicImplementationUrl(makeProject(), makeSpeccedEpic({ notes: 'Z'.repeat(2000) })))
+        .prompt ?? '';
+    expect(prompt).toMatch(/truncated/i);
+  });
+
+  it('does NOT inline a long notes body (length cap)', () => {
+    const longNotes = 'X'.repeat(20_000);
+    const url = buildEpicImplementationUrl(makeProject(), makeSpeccedEpic({ notes: longNotes }));
+    expect(url.length).toBeLessThan(14_000);
+    expect(parse(url).prompt ?? '').not.toContain(longNotes);
+  });
+
+  it('names no spec file when the epic has none, rather than pointing at one that was never written', () => {
+    // The menu only offers this launch on a specced epic, but a direct caller must not be handed
+    // a prompt telling it to read a file that does not exist (the ALF-75 lesson).
+    const prompt = parse(buildEpicImplementationUrl(makeProject(), makeEpic())).prompt ?? '';
+    expect(prompt).not.toContain('docs/specs/epics/ALF-12.html');
+    expect(prompt).toMatch(/no committed epic spec/i);
+    expect(prompt).toMatch(/ask me here/i);
+  });
+
+  it('url-encodes the prompt', () => {
+    const rawQuery =
+      buildEpicImplementationUrl(makeProject(), makeSpeccedEpic()).split('?', 2)[1] ?? '';
+    expect(rawQuery).not.toMatch(/[ \n`]/);
   });
 });
