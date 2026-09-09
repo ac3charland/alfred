@@ -128,6 +128,8 @@
           border: 1px solid; white-space: nowrap; }
   .c-vip { color: var(--a-green); border-color: color-mix(in srgb, var(--a-green) 50%, transparent); }
   .c-warn { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 50%, transparent); }
+  .c-expire { color: var(--a-red); border-color: color-mix(in srgb, var(--a-red) 50%, transparent);
+              border-style: dashed; }
   .empty { color: var(--a-muted); font-size: .78rem; padding: .35rem .1rem .1rem; font-style: italic; }
   .collapsed { color: var(--a-muted); font-size: .75rem; padding: .5rem .75rem;
                border: 1px dashed var(--a-border); border-radius: var(--a-radius); }
@@ -273,6 +275,14 @@
   engaged-with" — <b>which is false</b>. A correction is a tier fix and says nothing about how much of
   a message was read. The sweep is deliberately blanket, and <b>D27</b> records what that costs at
   <code>Whenever</code>.</p>
+  <p style="margin-bottom:0"><b>R8 turned R7's sharpest cost into a mechanism.</b> An un-drained
+  queue row inside its last 7 days is now <b>marked in the UI</b> (<b>D27</b>) — derived, not stored,
+  and applied to <code>ASAP</code> and <code>Today</code> as well as <code>Whenever</code>, since a
+  row surviving 53 days in a loud tier is the worse anomaly. Two consequences are recorded rather
+  than left implicit: <b>D4</b>'s <code>Whenever</code> now means <i>undated, not unbounded</i>, and
+  <a href="#q7">Q7</a> is partly answered — the tier gained exactly one escalation, at day 53, from a
+  retention policy rather than from design. The marker <b>mitigates and does not prevent</b>: a week
+  of not looking still loses the row, which <b>D27</b> says in those words.</p>
 </div>
 
 <h2>1 · Problem space &amp; why now</h2>
@@ -403,7 +413,7 @@ the queue, and never into a push).</p>
     <tr><th>Tier</th><th>Meaning</th><th>Badge</th></tr>
     <tr><td><b>ASAP</b></td><td>Break focus for it. Someone is blocked on the owner, it is time-critical, or the sender is important enough that delay costs something real.</td><td>Counted</td></tr>
     <tr><td><b>Today</b></td><td>Needs a reply before the owner logs off; not worth interrupting for. Most real correspondence.</td><td>Counted</td></tr>
-    <tr><td><b>Whenever</b></td><td>A reply is genuinely owed, but nothing turns on the date.</td><td>Counted</td></tr>
+    <tr><td><b>Whenever</b></td><td>A reply is genuinely owed, but nothing turns on the date — <i>until day 53</i>, when <b>D27</b>'s expiry marker gives it one. The tier means undated, not unbounded.</td><td>Counted</td></tr>
     <tr><td><b>FYI</b></td><td>Everything else. No reply owed.</td><td><b>None</b> — collapsed by default</td></tr>
   </table>
   <p class="why"><b>Why the shape diverges from Steve's:</b> for Steve, the bottom tier is largely the
@@ -994,6 +1004,12 @@ the queue, and never into a push).</p>
     message, one account, or everything older than a chosen date — still ships with the schema in
     story <b>B</b>, and unlike the sweep it <b>does</b> cascade into the example set: the deliberate
     "I want this gone" action has to actually work, or it is theatre.</p>
+  <p><b>An un-drained queue row within 7 days of its expiry is marked in the UI.</b> The marker is
+    <b>derived, not stored</b> — <code>received_at + 60d − now &lt;= 7d</code> — so it costs no schema
+    and no sweep of its own. It applies to any row still in <code>ASAP</code>, <code>Today</code> or
+    <code>Whenever</code>, not just the last: a row that has survived 53 days in one of the loud tiers
+    is a worse anomaly than one in the quiet one, and silently losing it would be worse still. In
+    practice it fires almost entirely on <code>Whenever</code>.</p>
   <p>A message deleted in Gmail, unsent in Messages, or removed from a mailbox <b>stays in alfred</b>
     until the sweep reaches it; deleting something in alfred never touches the source (<b>D18</b>).</p>
   <p class="why"><b>Why 60 days, and why the owner chose it:</b> the driver is <b>security, not
@@ -1010,14 +1026,13 @@ the queue, and never into a push).</p>
     read, and does not mark it as more personal than any other.</p>
   <p class="why"><b>What 60 days costs, stated so no story session is surprised:</b></p>
   <ul>
-    <li><b>A still-owed obligation can be deleted.</b> <code>Whenever</code> is the owed-but-undated
-      tier — <a href="#q7">Q7</a> exists because it has no aging rule, and §4 draws a row there at
-      three weeks as ordinary. The sweep is <b>blanket by decision</b>, so a <code>Whenever</code> row
-      that outlives 60 days is deleted while still owed. <b>That is failure&nbsp;1</b> (§1), caused by
-      housekeeping rather than by the classifier. Exempting rows still in the queue is a single
-      predicate on the sweep and would remove this entirely; the owner has been shown the trade and
-      chose the blanket rule. Whether <a href="#q7">Q7</a>'s escalation rule closes it instead is the
-      cleaner long-term answer.</li>
+    <li><b>A still-owed obligation can still be deleted — the warning mitigates, it does not
+      prevent.</b> The sweep is blanket by decision: nothing is exempt, so a row the owner does not
+      act on in that final week is deleted while still owed, which is <b>failure&nbsp;1</b> (§1)
+      caused by housekeeping rather than by the classifier. The 7-day marker makes that outcome
+      require a week of not looking rather than happening silently — a real reduction, and not a
+      guarantee, in a module whose premise (§1) is an owner who avoids looking. Stated plainly
+      because the mitigation is easy to mistake for a fix.</li>
     <li><b>alfred's search becomes a 60-day search.</b> Anything older is a Gmail search — a real
       narrowing of a benefit <b>D8</b>'s dumb pipe partly rested on.</li>
     <li><b>D6</b>'s shelf audit gets a horizon. A false negative is recoverable for 60 days, not
@@ -1293,12 +1308,19 @@ reconstructed.</p>
 
   <div class="tierhead">
     <span class="tiername t-when">Whenever</span>
-    <span class="count when">1</span>
+    <span class="count when">2</span>
     <span class="rule"></span>
   </div>
   <div class="row">
     <div class="row-top"><span class="who">Marcus Okonkwo</span><span class="src">· personal · Aug 19</span></div>
     <div class="ask">Asked for an intro to someone on the platform team. No deadline given.</div>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Jae-won Sohn</span><span class="src">· personal · Jul 16</span></div>
+    <div class="ask">Wants your notes on the draft before he circulates it. No date named.</div>
+    <div class="chips">
+      <span class="chip c-expire">Deleted in 5 days</span>
+    </div>
   </div>
 
   <div class="tierhead">
@@ -1325,8 +1347,9 @@ shelf — exactly the <b>D6</b> cost <a href="#q8">§8 Q8</a> is open about. The
 <b>five</b> verbs (<b>D20</b>), with the two clearing verbs separate because only one of them is a
 correction: no <i>reply</i>, no <i>archive</i> (<b>D18</b>) and <b>no keyboard hints</b>, since story
 <b>L</b> owns those. Every row leads with <i>the ask</i>, not the subject line (<b>D14</b>). The
-<code>Whenever</code> row is three weeks old and still owed — the picture <a href="#q7">§8 Q7</a>
-argues about. The shelf count is in the <b>low thousands</b> — roughly what 60 days of
+<code>Whenever</code> holds two rows the tier exists for: one three weeks old and still owed — the
+picture <a href="#q7">§8 Q7</a> argues about — and one <b>five days from deletion</b>, carrying the
+expiry marker <b>D27</b> puts on any un-drained row inside its last week. The shelf count is in the <b>low thousands</b> — roughly what 60 days of
 <code>FYI</code> accumulates before the sweep (<b>D27</b>) bounds it, which is why it stays
 unbadged rather than counted. Drawn in the app's
 tokens from <code>frontend/app/globals.css</code>.</p>
@@ -1506,7 +1529,7 @@ only grow.</p>
     <td><code>isCodePath()</code> is binary today; a third module turns module resolution into a real router. Deterministic, no data, and what every other slice renders into.</td></tr>
   <tr><td><b>B</b></td><td>The schema — seven tables, per-source identity keys and cursors (<b>D21</b>), the message unit (<a href="#q1">§8 Q1</a>), the 60-day retention sweep and the manual purge <b>with its cascade into the corrections table</b> (<b>D27</b>)</td>
     <td>The tables both ingestion homes write to, and the only place the identity keys can be fixed once — a wrong key duplicates a mailbox or swallows a message. <b>Not</b> the ingest endpoint: that is story <b>Q</b>, whose only client is the daemon. <a href="#q1">Q1</a> has a proposed default so this story is not blocked on it; confirm it in this story's refinement session before the migration is written.</td></tr>
-  <tr><td><b>C</b></td><td>The triage UI against seeded data — tiers, counts, the collapsed <code>FYI</code> shelf, message detail, the marked rows (<b>D25</b>), the module-level classifier banner (<b>D17</b>)</td>
+  <tr><td><b>C</b></td><td>The triage UI against seeded data — tiers, counts, the collapsed <code>FYI</code> shelf, message detail, the marked rows (<b>D25</b>), the expiry marker on rows inside their last week (<b>D27</b>), the module-level classifier banner (<b>D17</b>)</td>
     <td>The surface the owner will judge the epic by, buildable before a real message exists — and the only place Storybook and E2E can cover the marked and stalled states deterministically, since real data won't produce them on demand.</td></tr>
   <tr><td><b>D</b></td><td>Gmail ingestion in the Worker — OAuth for two accounts (<b>D23</b>), polling, the newsletter header filter (<b>D13</b>)</td>
     <td>First real source, no new deployment target. Carries the publishing-status trap, which fires a week after ship rather than at ship. The header filter belongs here because it is what keeps day-one volume sane.</td></tr>
@@ -1668,10 +1691,14 @@ above all of them, and is the owner's to answer.</b></p>
     G, not during it.</b></li>
   <li id="q7"><b>Does <code>Whenever</code> need an escalation rule — and if not, why doesn't the
     argument against snooze apply to it?</b> §5 rejects snooze as "a machine for deferring things while
-    feeling productive". <code>Whenever</code> is visible but <b>inert</b>: it doesn't age, escalate,
-    resurface or ever ask again. <b>Both §4 mockups draw the same three-week-old row</b> — sitting exactly
+    feeling productive". <code>Whenever</code> is <i>almost</i> inert: it doesn't age, escalate or
+    resurface — with one exception added after this question was written. <b>D27</b>'s expiry marker
+    gives it a single escalation at day 53, driven by retention rather than by design. That is a
+    partial answer: the tier now asks once, very late, and only if the owner is looking. It does not
+    settle whether <code>Whenever</code> should escalate on its own terms and earlier.
+    <b>Both §4 mockups draw the same three-week-old row</b> — sitting exactly
     as it arrived on the bad day, and still sitting there in the <i>resting</i> state, which is what
-    makes the resting state non-zero. That is the span <b>D4</b> identifies as the avoidance bucket the
+    makes the resting state non-zero; the bad-day mockup now draws the day-55 case beside it. That is the span <b>D4</b> identifies as the avoidance bucket the
     tier exists to capture. So the spec applies a stricter standard to the feature it rejects than to the one it
     keeps. <b>This is not an argument for snooze</b>, which stays settled. It is a question about the
     other half: whether an item that has been <code>Whenever</code> for N weeks should age into
