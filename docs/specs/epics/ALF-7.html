@@ -1,0 +1,747 @@
+<!-- ALF-7 — Communication Firewall Module. Epic spec: durable context for the epic. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALF-7 — Communication Firewall Module</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5c6672; --faint: #8a94a0;
+    --line: #e4e8ee; --card: #f7f9fc; --accent: #1d5fbf; --accent-bg: #e6effb;
+    --warn-bg: #fff4e0; --warn-fg: #8a5a00; --code-bg: #f0f3f7;
+    --good: #2ea36b; --bad: #d1544a; --partial: #d99b2b;
+    /* app palette — taken from frontend/app/globals.css; used only inside .app mockups */
+    --a-bg: #0a0e17; --a-surface: #0f1626; --a-border: #1e2a3f;
+    --a-text: #e8edf5; --a-muted: #8a96a8;
+    --a-teal: #4fd1e0; --a-green: #34d399; --a-blue: #60a5fa;
+    --a-amber: #f0b429; --a-red: #f87171;
+    --a-radius: 0.5rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e6eaef; --muted: #9aa5b1; --faint: #6b7682;
+      --line: #262d36; --card: #1b2129; --accent: #6ea8f5; --accent-bg: #14243d;
+      --warn-bg: #33280f; --warn-fg: #e8c27a; --code-bg: #1d242d;
+      --good: #3fbf82; --bad: #e8776a; --partial: #e0ab48;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 {
+    font-size: 1.25rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--line);
+  }
+  h3 { font-size: 1.05rem; margin: 1.7rem 0 .5rem; }
+  h4 { font-size: .93rem; margin: 1.4rem 0 .3rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .95rem; margin: 0 0 1.25rem; }
+  .pill {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--accent); background: var(--accent-bg);
+    border-radius: 999px; padding: .15rem .6rem; margin-right: .4rem;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--code-bg); padding: .1rem .35rem; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .89rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; margin: 1rem 0;
+  }
+  .callout {
+    background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+    padding: .75rem 1rem; margin: 1rem 0; font-size: .92rem;
+    border: 1px solid color-mix(in srgb, var(--warn-fg) 25%, transparent);
+  }
+  a { color: var(--accent); }
+  .small { font-size: .85rem; color: var(--muted); }
+  svg { max-width: 100%; height: auto; }
+  .diagram-cap { text-align: center; color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+  ul, ol { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  /* ── Decision blocks ─────────────────────────────────────────── */
+  .dec { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px;
+         padding: .85rem 1.1rem; margin: .9rem 0; background: var(--card); }
+  .dec h3 { margin: 0 0 .35rem; font-size: 1rem; }
+  .dec h3 .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: .85rem; margin-right: .5rem; }
+  .dec p { margin: .35rem 0; font-size: .93rem; }
+  .dec ul { font-size: .93rem; margin: .35rem 0; }
+  .dec .why { color: var(--muted); font-size: .89rem; }
+  .dec .why b { color: var(--fg); }
+  /* ── App-palette mockup ──────────────────────────────────────── */
+  .app {
+    background: var(--a-bg); border: 1px solid var(--a-border); border-radius: 12px;
+    padding: 1rem; margin: 1rem 0; color: var(--a-text); font-size: .84rem;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app code { background: rgba(255,255,255,.06); color: var(--a-text); }
+  .app-head { display: flex; align-items: center; justify-content: space-between;
+              margin-bottom: .75rem; gap: .5rem; flex-wrap: wrap; }
+  .eyebrow { font-size: .64rem; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--a-blue); font-weight: 700; }
+  .ghostbtn { border: 1px solid var(--a-border); border-radius: 6px; color: var(--a-muted);
+              padding: .15rem .55rem; font-size: .72rem; }
+  .tierhead { display: flex; align-items: center; gap: .5rem; margin: .9rem 0 .45rem; }
+  .tiername { font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+  .t-asap { color: var(--a-red); }
+  .t-today { color: var(--a-amber); }
+  .t-when { color: var(--a-blue); }
+  .t-fyi { color: var(--a-muted); }
+  .count { font-size: .68rem; font-weight: 700; border-radius: 999px; padding: .02rem .42rem;
+           border: 1px solid; }
+  .count.asap { color: var(--a-red); border-color: color-mix(in srgb, var(--a-red) 55%, transparent); }
+  .count.today { color: var(--a-amber); border-color: color-mix(in srgb, var(--a-amber) 55%, transparent); }
+  .count.when { color: var(--a-blue); border-color: color-mix(in srgb, var(--a-blue) 55%, transparent); }
+  .rule { flex: 1; height: 1px; background: var(--a-border); }
+  .row {
+    background: var(--a-surface); border: 1px solid var(--a-border); border-radius: var(--a-radius);
+    padding: .6rem .75rem; margin-bottom: .45rem;
+  }
+  .row.asap { border-color: color-mix(in srgb, var(--a-red) 50%, transparent);
+              box-shadow: 0 0 14px -6px var(--a-red); }
+  .row-top { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+  .who { font-weight: 600; }
+  .src { font-size: .68rem; color: var(--a-muted); }
+  .ask { color: var(--a-text); margin: .3rem 0 .35rem; }
+  .meta { color: var(--a-muted); font-size: .72rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .35rem; }
+  .chip { border-radius: 999px; padding: .05rem .5rem; font-size: .68rem; font-weight: 600;
+          border: 1px solid; white-space: nowrap; }
+  .c-vip { color: var(--a-green); border-color: color-mix(in srgb, var(--a-green) 50%, transparent); }
+  .c-plain { color: var(--a-muted); border-color: var(--a-border); }
+  .empty { color: var(--a-muted); font-size: .78rem; padding: .35rem .1rem .1rem; font-style: italic; }
+  .collapsed { color: var(--a-muted); font-size: .75rem; padding: .5rem .75rem;
+               border: 1px dashed var(--a-border); border-radius: var(--a-radius); }
+  .mockcap { color: var(--muted); font-size: .82rem; margin: .3rem 0 1.4rem; }
+</style>
+
+<div class="wrap">
+
+<h1>ALF-7 — Communication Firewall Module</h1>
+<p class="sub"><span class="pill">Epic spec</span> Durable context for the epic. Read this before refining any story inside it.</p>
+
+<div class="card">
+  <p style="margin-top:0"><b>The one-line shape.</b> A new <b>Comms</b> module aggregates four accounts —
+  two Gmail, one Amazon WorkMail, and iMessage — and shows the owner one question:
+  <b>what do I owe someone a reply to?</b> A small model reads each arriving message against a
+  hand-written rubric and a list of important people, and assigns it to one of four tiers.
+  Only messages that <i>ask something of the owner</i> are queued; everything else falls to an
+  unbadged <code>FYI</code> shelf. alfred never becomes the store of record — every message stays
+  where it already lives, and the module is a view over it.</p>
+</div>
+
+<h2>1 · Problem space &amp; why now</h2>
+
+<p><a href="../product/SPEC.md">SPEC.md</a> has named this module since the beginning. §13.2 describes it as
+<i>"an LLM with access to email / messaging … triages incoming messages by priority and urgency … presented
+in a dedicated triage UI"</i>, §5.1 reserves it a top-level tab, and §5.2 reserves the
+<code>(firewall)</code> route group. The accent is already assigned: <b>Firewall = blue</b>
+(<code>--color-accent-blue</code>, <code>#60a5fa</code>).</p>
+
+<h3>What the owner is actually buying</h3>
+
+<p>This is the part that shapes every decision below, and it is <b>not</b> what the SPEC's one-line
+description implies.</p>
+
+<p>The prior art for this epic is Steve Newman's "Radar", demonstrated on the Cognitive Revolution
+podcast (transcript committed at
+<a href="../../communication-firewall/cognitive-revolution-transcript.md">docs/communication-firewall/</a>).
+Steve's return on it was <b>volume-driven</b>: a few hundred messages a day across five apps, checked
+around thirty times a day. The firewall bought back hours.</p>
+
+<p>The owner's volume is roughly <b>15 texts and 30 emails on a heavy day</b> — an order of magnitude
+less. At that volume the time saved is maybe fifteen minutes, and a rubric hand-tuned exception by
+exception is a real recurring cost against it. <b>Time is not the win.</b> In the owner's words:</p>
+
+<blockquote style="margin:1rem 0; padding:.1rem 0 .1rem 1rem; border-left:3px solid var(--line); color:var(--muted)">
+What it does buy is clarity and fewer items in my working memory — it lets me abstract
+"what do I need to respond to" to the single bit of "check comms". I'm afraid of (continuing to)
+put off or miss important communications because I get overwhelmed by triaging all of it.
+<b>I'm fixing an avoidance pattern.</b>
+</blockquote>
+
+<p>Three things follow, and they are the reason this epic looks different from the SPEC's sketch:</p>
+
+<ul>
+  <li><b>The product is a response queue, not a unified inbox.</b> A message that asks nothing of the
+    owner has no business in a queue whose whole purpose is answering "do I owe anyone anything."</li>
+  <li><b>Zero is the mechanism.</b> "Check comms" only collapses to one bit if the answer is usually
+    <i>nothing</i>. The counts are the product; the list is the fallback.</li>
+  <li><b>A false negative is the only failure that matters.</b> One genuinely missed message doesn't
+    cost that message — it costs trust, and the owner resumes checking Gmail "just in case", leaving
+    two inboxes and a worse problem than before.</li>
+</ul>
+
+<h3>What this epic builds on</h3>
+
+<ul>
+  <li><b><a href="ALF-158.html">ALF-158 (LLM processing)</a></b> — the Inbox classifier established the pattern
+    this epic reuses: a cron'd Cloudflare Worker sweep, a small model, an enum'd structured verdict,
+    a service-role write, and a per-failure degradation table. The prompt and the correction loop are
+    Inbox-specific and are <i>not</i> reused (see <b>D11</b>).</li>
+  <li><b><a href="../../spikes/imessage-ingestion.md">The iMessage ingestion spike</a></b> — settles that
+    iMessage has no cloud API, that <code>chat.db</code> polling on a Mac is the only viable read
+    path, and how to do it without the reliability gremlins.</li>
+  <li><b><a href="../../spikes/notifications-spike.md">The outbound-notifications spike</a></b> — already chose
+    a private Telegram bot, sent from the existing Worker, as alfred's way of reaching the owner. It
+    explicitly anticipated this module as the consumer.</li>
+</ul>
+
+<h2>2 · Decisions</h2>
+
+<h3>What the module is</h3>
+
+<div class="dec">
+  <h3><span class="n">D1</span>Comms is its own module with its own tables. A message is never an <code>item</code>.</h3>
+  <p>New route group, new tab, new Supabase tables. Messages do not enter the generic-item core, and
+    nothing auto-converts a message into a task or a code item.</p>
+  <p class="why"><b>Why:</b> the lifecycles don't match. An item is captured, classified, filed and
+    completed; a message arrives, is answered <i>elsewhere</i>, and is never "done" in alfred's sense.
+    SPEC sizes the item core for hundreds of <i>active</i> items — email volume would drown the Inbox
+    and break every existing count and view. The owner also wants spin-off to be a deliberate act:
+    <i>"If tasks/code spring off from communications, I'll do that manually."</i></p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D2</span>alfred mirrors. It is never the store of record.</h3>
+  <p>Every message stays in Gmail or Messages.app. alfred holds a copy, a verdict, and triage state.
+    Losing alfred's database loses the interface and nothing else.</p>
+  <p class="why"><b>Why:</b> this is the load-bearing property of Steve's system and the reason he can
+    ship to production with no staging — <i>"all my messages really live where they've always been…
+    if this totally falls down, everything is still where it's always been. I just lose the nice
+    interface to it."</i> It also means retention and deletion in alfred are safe by construction.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D3</span>Only messages that ask something of the owner enter the queue.</h3>
+  <p>Obligation is the <b>entry ticket</b>, not a sort key. A message that needs no reply is never
+    queued — it lands on the <code>FYI</code> shelf (<b>D6</b>).</p>
+  <p class="why"><b>Why:</b> the premise is avoidance, not time. The bit the owner wants is "do I owe
+    anyone anything", and a queue containing no-action mail cannot answer it. Non-actionable mail is
+    already handled fine in Gmail and Messages directly.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D4</span>Four tiers: <code>ASAP</code> / <code>Today</code> / <code>Whenever</code> / <code>FYI</code>.</h3>
+  <table>
+    <tr><th>Tier</th><th>Meaning</th><th>Badge</th></tr>
+    <tr><td><b>ASAP</b></td><td>Break focus for it. Someone is blocked on the owner, it is time-critical, or the sender is important enough that delay costs something real.</td><td>Counted</td></tr>
+    <tr><td><b>Today</b></td><td>Needs a reply before the owner logs off; not worth interrupting for. Most real correspondence.</td><td>Counted</td></tr>
+    <tr><td><b>Whenever</b></td><td>A reply is genuinely owed, but nothing turns on the date.</td><td>Counted</td></tr>
+    <tr><td><b>FYI</b></td><td>Everything else. No reply owed.</td><td><b>None</b> — collapsed by default</td></tr>
+  </table>
+  <p class="why"><b>Why the shape diverges from Steve's:</b> for Steve, the bottom tier is largely the
+    junk pile. Here junk never enters the queue at all, so <code>Whenever</code> means
+    <b>owed but undated</b> — which is precisely the three-week-avoidance bucket. It has to stay
+    visible rather than being where things go to die.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D5</span>One blended priority, with obligation as a <i>floor</i>.</h3>
+  <p>The model returns a single tier, not a grid. Whether the owner owes a reply is an input to that
+    one number — but an obligation <b>never falls below <code>Whenever</code></b>.</p>
+  <p class="why"><b>Why:</b> the owner asked for one number to glance at, and a 2×2 urgency × obligation
+    grid gives four. But a pure urgency sort buries the non-urgent-but-owed message at the bottom —
+    reintroducing the exact failure the epic exists to fix. The floor rule keeps one number while
+    making that class of message structurally un-buriable.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D6</span><code>FYI</code> is a safety net, not a bin — and everything is stored.</h3>
+  <p>Every ingested message is persisted and searchable regardless of tier. <code>FYI</code> is an
+    unbadged, collapsed shelf the owner can open to spot-check the rubric.</p>
+  <p class="why"><b>Why:</b> once only obligations are queued (<b>D3</b>), a misjudged message is
+    <i>invisible</i> rather than merely buried — a strictly worse failure mode. <code>FYI</code> is
+    what keeps a false negative recoverable, and it is the surface on which the rubric's recall can
+    actually be audited. Unbadged so it reads as an archive, not a to-do.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D7</span>Recall over precision, deliberately.</h3>
+  <p>The rubric is tuned to over-surface. <b>False negatives are the only metric that counts</b> in
+    the evaluation fixtures; false positives are a rounding error.</p>
+  <p class="why"><b>Why:</b> at ~45 messages a day, three spurious <code>ASAP</code>s cost the owner
+    seconds. One missed obligation costs the module's entire reason to exist. The asymmetry is
+    extreme and the tuning should reflect it.</p>
+</div>
+
+<h3>Ingestion</h3>
+
+<div class="dec">
+  <h3><span class="n">D8</span>The Mac daemon is a dumb pipe. All triage runs in the Worker.</h3>
+  <p>The daemon polls, normalizes, and <code>POST</code>s the <b>full message</b> to an authenticated
+    alfred ingest endpoint. It contains no model call and holds no Anthropic key.</p>
+  <p class="why"><b>Why:</b> one classifier and one rubric across all four accounts. The alternative —
+    triaging locally and shipping only a verdict — means two rubrics that drift apart, a second
+    Anthropic key on a laptop when <code>wrangler.toml</code> states the Worker's is
+    <i>"the only place in the whole system that holds one"</i>, and a Comms view that can't show the
+    message it's asking about. <b>Accepted cost:</b> personal iMessage bodies, including other
+    people's words, are copied into Supabase. Single-user project, RLS on, the owner's own instance —
+    weighed and accepted.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D9</span>Two ingestion homes: the Worker for Gmail, the Mac for iMessage and WorkMail.</h3>
+  <table>
+    <tr><th>Source</th><th>Home</th><th>Mechanism</th></tr>
+    <tr><td>Gmail ×2 (personal + one RealPlay)</td><td>Cloudflare Worker</td><td>Gmail API, one OAuth refresh token each, polled on the existing cron</td></tr>
+    <tr><td>Amazon WorkMail</td><td>Mac daemon</td><td>IMAP</td></tr>
+    <tr><td>iMessage / SMS</td><td>Mac daemon</td><td><code>~/Library/Messages/chat.db</code>, read-only</td></tr>
+  </table>
+  <p class="why"><b>Why:</b> iMessage has no cloud API of any kind, so the daemon must exist regardless.
+    WorkMail is neither Gmail nor Microsoft Graph — it is Amazon's Exchange-compatible service, and
+    its practical read path is IMAP. No IMAP client is known to run in the Workers runtime
+    (Workers can open raw TCP via <code>cloudflare:sockets</code>, but nothing in this repo has tried
+    it, and most Node IMAP libraries assume <code>net</code>/<code>tls</code>). Since the daemon
+    exists anyway, WorkMail rides along at near-zero marginal cost. <b>Accepted cost:</b> the Mac is a
+    single point of failure for two of four sources.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D10</span>The daemon polls. It does not watch the filesystem.</h3>
+  <p>Poll on last-seen <code>ROWID</code>, every few seconds, with a <b>read-only</b> SQLite
+    connection. Wrapped in a <code>launchd</code> agent with a health check that fails <i>loudly</i>.</p>
+  <p class="why"><b>Why:</b> straight from the spike. macOS coalesces FSEvents for background
+    processes it considers idle, so a pure watcher silently stalls for minutes on a quiet machine —
+    exactly the condition under which a firewall must keep working. Read-only avoids contention with
+    Messages.app, which holds the write lock. The loud health check exists because Full Disk Access
+    grants have been observed to reset silently across macOS updates, and a firewall that fails
+    quietly is worse than one that fails.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D11</span>The rubric is a hand-edited document, not a learned correction loop.</h3>
+  <p>A versioned prose document, editable in alfred, injected into every prompt. When the model gets
+    something wrong, the owner adds an exception — the same way Steve accumulated
+    <i>"about a one-page rubric, gradually, exception by exception."</i></p>
+  <p class="why"><b>Why — and this is a deliberate divergence from <a href="ALF-158.html">ALF-158</a>:</b>
+    the Inbox classifier records every override and feeds corrections back as few-shot examples.
+    Urgency is <b>policy, not pattern</b>. "Anything from my wife is ASAP" should be true immediately
+    and inspectably, not something the owner hopes thirty examples eventually teach. A learned loop
+    also can't be audited when it gets something wrong, and auditability is what buys the trust this
+    module runs on.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D12</span>The people list is structured data, keyed on a <i>person</i>.</h3>
+  <p>A contacts table — a person, their priority, and their <b>many handles</b> (a phone number, three
+    email addresses). Rendered into the prompt; edited in the UI, not in prose.</p>
+  <p class="why"><b>Why:</b> "these people are important" is a lookup, not a judgment. Keeping it out
+    of the prose rubric makes it editable from a row, auditable ("flagged because it's from Dana"),
+    and immune to the drift a paragraph suffers. Keying on the person rather than the address is
+    forced by the multi-channel design: the same human is a phone number in iMessage and an email
+    address in two mailboxes.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D13</span>Newsletters never reach the classifier.</h3>
+  <p>Detected deterministically from headers — <code>List-Unsubscribe</code>, <code>List-ID</code>,
+    <code>Precedence: bulk</code> — <b>before</b> any model call, and filed straight to
+    <code>FYI</code>. They are reserved for the future Reader module (SPEC §13.1).</p>
+  <p class="why"><b>Why:</b> bulk mail is <i>always</i> non-urgent and never an obligation, so a model
+    call to decide that is pure waste. Steve runs Radar and his RSS reader as separate tools for the
+    same reason. Headers answer it for free, and keeping the whale out of the prompt keeps both the
+    counts and the bill honest.</p>
+</div>
+
+<h3>The verdict</h3>
+
+<div class="dec">
+  <h3><span class="n">D14</span>The verdict states the <i>ask</i>, not the topic.</h3>
+  <p>The per-message summary answers "what does this want from me, and by when" — not "what is this
+    about". <i>"Dana needs the invoice approved before Friday"</i>, never <i>"regarding the Q3 invoice"</i>.</p>
+  <p class="why"><b>Why:</b> what makes triage aversive is ambiguity about whether a message contains
+    an obligation. A topic summary preserves that ambiguity and forces the owner to open the message
+    to resolve it — which is the exact work the module is supposed to remove.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D15</span>Haiku 4.5 to start, chosen by evaluation rather than by price. One call per message.</h3>
+  <p>At the owner's volume the module costs about <b>$3/month</b>; Opus 5 with a cached rubric would
+    be about <b>$6</b>. Cost has stopped being an input to the model decision — the eval fixtures
+    decide it (see §6).</p>
+  <p class="why"><b>Why one call per message:</b> batching ten messages per call would save roughly
+    $1.50/month and cost <a href="ALF-158.html">ALF-158</a>'s per-item isolation, where one malformed
+    verdict damages exactly one row. At this volume that is a bad trade. <b>The Batches API's 50%
+    discount is a trap here</b> — it is asynchronous with up to 24-hour turnaround, and a firewall
+    that reports the urgent thing tomorrow is not a firewall.</p>
+</div>
+
+<div class="dec">
+  <h3><span class="n">D16</span>Notification via the existing Telegram bot, <code>ASAP</code> only.</h3>
+  <p>Reuse the channel the <a href="../../spikes/notifications-spike.md">notifications spike</a> already
+    settled: a private Telegram bot, one <code>fetch</code> from the Worker. Fires on
+    <code>ASAP</code> and nothing else.</p>
+  <p class="why"><b>Why:</b> the channel decision is inherited, not relitigated — that spike explicitly
+    named this module as its consumer. <code>ASAP</code>-only because a push for a
+    <code>Today</code> item <i>is</i> the interruption the module exists to remove. A tier that
+    notifies is a tier that costs attention; only one should.</p>
+</div>
+
+<h2>3 · Architecture</h2>
+
+<div class="scroll">
+<svg viewBox="0 0 900 316" role="img" aria-label="Data flow from four accounts through two ingestion homes into Supabase, the Worker classifier, and the Comms UI">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5" color="#8a94a0">
+    <!-- sources -->
+    <rect x="10" y="20" width="150" height="42" rx="6"/>
+    <rect x="10" y="72" width="150" height="42" rx="6"/>
+    <rect x="10" y="150" width="150" height="42" rx="6"/>
+    <rect x="10" y="202" width="150" height="42" rx="6"/>
+    <!-- homes -->
+    <rect x="230" y="34" width="160" height="66" rx="6"/>
+    <rect x="230" y="158" width="160" height="80" rx="6"/>
+    <!-- store -->
+    <rect x="450" y="86" width="150" height="80" rx="6"/>
+    <!-- classifier -->
+    <rect x="450" y="220" width="150" height="80" rx="6"/>
+    <!-- ui -->
+    <rect x="670" y="86" width="150" height="80" rx="6"/>
+    <rect x="670" y="238" width="150" height="46" rx="6"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="11" fill="currentColor">
+    <text x="85" y="38" text-anchor="middle" font-weight="600">Gmail — personal</text>
+    <text x="85" y="53" text-anchor="middle" font-size="10" opacity=".7">Gmail API</text>
+    <text x="85" y="90" text-anchor="middle" font-weight="600">Gmail — RealPlay</text>
+    <text x="85" y="105" text-anchor="middle" font-size="10" opacity=".7">Gmail API</text>
+    <text x="85" y="168" text-anchor="middle" font-weight="600">WorkMail</text>
+    <text x="85" y="183" text-anchor="middle" font-size="10" opacity=".7">IMAP</text>
+    <text x="85" y="220" text-anchor="middle" font-weight="600">iMessage / SMS</text>
+    <text x="85" y="235" text-anchor="middle" font-size="10" opacity=".7">chat.db (read-only)</text>
+
+    <text x="310" y="58" text-anchor="middle" font-weight="600">Cloudflare Worker</text>
+    <text x="310" y="74" text-anchor="middle" font-size="10" opacity=".7">cron poll · header filter</text>
+    <text x="310" y="88" text-anchor="middle" font-size="10" opacity=".7">(D9, D13)</text>
+
+    <text x="310" y="182" text-anchor="middle" font-weight="600">Mac daemon</text>
+    <text x="310" y="198" text-anchor="middle" font-size="10" opacity=".7">launchd · poll · normalize</text>
+    <text x="310" y="212" text-anchor="middle" font-size="10" opacity=".7">dumb pipe — no LLM</text>
+    <text x="310" y="228" text-anchor="middle" font-size="10" opacity=".7">(D8, D10)</text>
+
+    <text x="525" y="112" text-anchor="middle" font-weight="600">Supabase</text>
+    <text x="525" y="128" text-anchor="middle" font-size="10" opacity=".7">messages · contacts</text>
+    <text x="525" y="142" text-anchor="middle" font-size="10" opacity=".7">rubric versions</text>
+    <text x="525" y="156" text-anchor="middle" font-size="10" opacity=".7">every message kept (D6)</text>
+
+    <text x="525" y="246" text-anchor="middle" font-weight="600">Classifier sweep</text>
+    <text x="525" y="262" text-anchor="middle" font-size="10" opacity=".7">Haiku 4.5 · one call each</text>
+    <text x="525" y="276" text-anchor="middle" font-size="10" opacity=".7">rubric + people list</text>
+    <text x="525" y="290" text-anchor="middle" font-size="10" opacity=".7">(D11, D12, D15)</text>
+
+    <text x="745" y="112" text-anchor="middle" font-weight="600">Comms module</text>
+    <text x="745" y="128" text-anchor="middle" font-size="10" opacity=".7">ASAP · Today · Whenever</text>
+    <text x="745" y="142" text-anchor="middle" font-size="10" opacity=".7">FYI (unbadged)</text>
+    <text x="745" y="156" text-anchor="middle" font-size="10" opacity=".7">(D4)</text>
+
+    <text x="745" y="258" text-anchor="middle" font-weight="600">Telegram bot</text>
+    <text x="745" y="273" text-anchor="middle" font-size="10" opacity=".7">ASAP only (D16)</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.4" fill="none" color="#8a94a0" marker-end="url(#ar)">
+    <path d="M160 41 H 228"/>
+    <path d="M160 93 H 228"/>
+    <path d="M160 171 H 228"/>
+    <path d="M160 223 H 228"/>
+    <path d="M390 67 H 420 V 118 H 448"/>
+    <path d="M390 198 Q 420 198 420 150 V 132 H 448"/>
+    <path d="M600 126 H 668"/>
+    <path d="M545 220 V 172"/>
+    <path d="M560 172 V 218"/>
+    <path d="M600 260 H 668"/>
+  </g>
+</svg>
+</div>
+<p class="diagram-cap">Two ingestion homes, one classifier. The daemon carries no model call and no key.</p>
+
+<h3>3.1 Data model</h3>
+
+<p>New tables, in <code>database/migrations/&lt;next&gt;_comms.sql</code> (the implementation session
+takes whatever migration number is free — never pin one in a spec).</p>
+
+<div class="scroll">
+<table>
+  <tr><th>Table</th><th>Holds</th><th>Notes</th></tr>
+  <tr>
+    <td><code>comm_accounts</code></td>
+    <td>One row per mailbox / channel</td>
+    <td>Kind (<code>gmail</code> / <code>imap</code> / <code>imessage</code>), display label, ingestion home. Lets the UI say which account a message arrived at, and lets one account be paused without touching the others.</td>
+  </tr>
+  <tr>
+    <td><code>comm_messages</code></td>
+    <td>The mirrored message</td>
+    <td>Account, source id (Gmail message id / IMAP UID / <code>chat.db</code> ROWID), sender handle, thread key, body, received-at, plus a <b>deep link back to the source</b>. Uniqueness on (account, source id) so a re-poll is idempotent.</td>
+  </tr>
+  <tr>
+    <td><code>comm_verdicts</code></td>
+    <td>The model's judgment</td>
+    <td>Tier, whether a reply is owed, the one-line ask, the reason, the rubric version and model that produced it. Separate from the message so a re-classification is a new row, not a destroyed one.</td>
+  </tr>
+  <tr>
+    <td><code>comm_people</code> + <code>comm_handles</code></td>
+    <td>The people list (<b>D12</b>)</td>
+    <td>A person with a priority; many handles per person. The join is what resolves one human across a phone number and three addresses.</td>
+  </tr>
+  <tr>
+    <td><code>comm_rubrics</code></td>
+    <td>Versioned rubric text (<b>D11</b>)</td>
+    <td>Append-only. Every verdict names the version that produced it, so "why did it say that" is answerable after an edit.</td>
+  </tr>
+</table>
+</div>
+
+<p><b>Triage state lives on the message, not the verdict</b> — the owner marking something handled is
+a human act, and it must survive a re-classification that changes the tier.</p>
+
+<div class="callout">
+  <b>Write-back asymmetry.</b> Gmail can carry alfred's triage state back as a label — Steve's
+  "archive" <i>is</i> a Gmail label change, which is what keeps his two inboxes from diverging.
+  <b>iMessage has no labels and no archive</b>, so its triage state is alfred-local only and will
+  drift from the unread badges in Messages.app. There is no fixing that; it is a property of the
+  platform. Whether Gmail write-back is built at all is an open question (§9).
+</div>
+
+<h3>3.2 What the model is asked for</h3>
+
+<p>One call per message, structured output, every field enum'd or short. Following
+<a href="ALF-158.html">ALF-158</a>'s verdict shape:</p>
+
+<pre><code>{
+  "tier":       "asap" | "today" | "whenever" | "fyi",
+  "owes_reply": true | false,
+  "ask":        string,   // the obligation in one line — D14
+  "reason":     string    // why this tier, for auditing the rubric
+}</code></pre>
+
+<p>The prompt is assembled from three parts, in cache-friendly order (stable first): the task
+instructions and tier definitions; the rubric document (<b>D11</b>); the rendered people list
+(<b>D12</b>); then the message itself.</p>
+
+<div class="callout">
+  <b>Do not plan around prompt caching on Haiku.</b> Haiku 4.5's minimum cacheable prefix is
+  <b>4,096 tokens</b> — the highest of any current model, where Opus 5's is 512. A rubric-plus-people
+  prompt of ~1,500 tokens <b>silently will not cache</b>: no error, just
+  <code>cache_creation_input_tokens: 0</code> forever. The cost figures in §6 assume no caching
+  because none is available. This is worth re-checking if the model ever changes.
+</div>
+
+<h2>4 · What the Comms module looks like</h2>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Comms</span>
+    <span class="ghostbtn">Rubric</span>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-asap">ASAP</span>
+    <span class="count asap">1</span>
+    <span class="rule"></span>
+  </div>
+  <div class="row asap">
+    <div class="row-top"><span class="who">Dana Whitfield</span><span class="src">· RealPlay · 09:14</span></div>
+    <div class="ask">Needs the Q3 invoice approved before the 5pm billing run.</div>
+    <div class="chips">
+      <span class="chip c-vip">Priority person</span>
+      <span class="chip c-plain">Blocked on you</span>
+    </div>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-today">Today</span>
+    <span class="count today">2</span>
+    <span class="rule"></span>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Mom</span><span class="src">· iMessage · 08:02</span></div>
+    <div class="ask">Asking whether you're coming Sunday — wants a yes or no.</div>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Priya Raghavan</span><span class="src">· personal · Yesterday</span></div>
+    <div class="ask">Waiting on your availability for the Thursday walkthrough.</div>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-when">Whenever</span>
+    <span class="count when">1</span>
+    <span class="rule"></span>
+  </div>
+  <div class="row">
+    <div class="row-top"><span class="who">Marcus Okonkwo</span><span class="src">· personal · Mar 2</span></div>
+    <div class="ask">Asked for an intro to someone on the platform team. No deadline given.</div>
+  </div>
+
+  <div class="tierhead">
+    <span class="tiername t-fyi">FYI</span>
+    <span class="rule"></span>
+  </div>
+  <div class="collapsed">37 messages · no reply owed — open to review</div>
+</div>
+<p class="mockcap">The Comms view. Three counted tiers and an unbadged, collapsed <code>FYI</code>
+shelf (<b>D4</b>, <b>D6</b>). Every row leads with <i>the ask</i>, not the subject line (<b>D14</b>).
+The <code>Whenever</code> row is a message with no deadline that is still owed — visible rather than
+buried, which is the point of the floor rule (<b>D5</b>). Drawn in the app's tokens from
+<code>frontend/app/globals.css</code>; Firewall's accent is blue
+(<code>--color-accent-blue</code>).</p>
+
+<div class="app">
+  <div class="app-head">
+    <span class="eyebrow">Comms</span>
+    <span class="ghostbtn">Rubric</span>
+  </div>
+  <div class="tierhead"><span class="tiername t-asap">ASAP</span><span class="count asap">0</span><span class="rule"></span></div>
+  <div class="tierhead"><span class="tiername t-today">Today</span><span class="count today">0</span><span class="rule"></span></div>
+  <div class="tierhead"><span class="tiername t-when">Whenever</span><span class="count when">0</span><span class="rule"></span></div>
+  <div class="empty">You don't owe anyone a reply.</div>
+  <div class="tierhead"><span class="tiername t-fyi">FYI</span><span class="rule"></span></div>
+  <div class="collapsed">61 messages · no reply owed — open to review</div>
+</div>
+<p class="mockcap">The state the module exists to produce, and the one it should be in most of the
+time. This is what <i>"check comms"</i> collapses to — and note that a full <code>FYI</code> shelf
+does not disturb it.</p>
+
+<h2>5 · Constraints &amp; non-goals</h2>
+
+<ul>
+  <li><b>No calendar half.</b> Steve's Radar is half filtered-calendar with per-event shortcut buttons.
+    That is a different data source and a different UI, and it is out of this epic.</li>
+  <li><b>No automatic task or code creation.</b> Spin-off is a deliberate human act (<b>D1</b>).</li>
+  <li><b>No newsletter reading, summarizing or digesting.</b> Bulk mail is detected and shelved
+    (<b>D13</b>); making it <i>useful</i> is the Reader module's job (SPEC §13.1).</li>
+  <li><b>No WhatsApp, Slack, Signal, or Twitter.</b> Steve ingests all of them; this epic covers the
+    owner's four actual channels and nothing else.</li>
+  <li><b>No voicemail integration.</b> iOS Visual Voicemail is programmatically inaccessible. If
+    voicemail is wanted, the path is a carrier or Google Voice setting that emails the transcript —
+    at which point it is simply another email and costs this epic nothing.</li>
+  <li><b>No dylib injection into Messages.app.</b> The spike notes that read receipts, typing
+    indicators and reactions are reachable that way, at the cost of disabling SIP. Not worth it for a
+    triage tool; read-only plus AppleScript is the ceiling.</li>
+  <li><b>alfred is never the store of record</b> (<b>D2</b>) — no story may introduce state that exists
+    only in alfred and would be a real loss.</li>
+  <li><b>Ingestion freshness is bounded by the Mac.</b> While it sleeps, iMessage and WorkMail stop
+    arriving. The module should say so visibly rather than look empty and current.</li>
+</ul>
+
+<h2>6 · What it costs to run</h2>
+
+<p>Haiku 4.5 at $1.00/MTok input, $5.00/MTok output. Roughly 1,500 tokens of rubric and instructions
+per call (uncached — see the callout in §3.2), plus the message, plus ~130 tokens of verdict.</p>
+
+<table>
+  <tr><th>Per message</th><th>Heavy day (15 texts + 30 emails)</th><th>Per month</th></tr>
+  <tr><td>~$0.0022 (iMessage) / ~$0.0026 (email)</td><td>~$0.11</td><td><b>~$3.30 worst case</b></td></tr>
+</table>
+
+<p>Sanity check: <a href="ALF-158.html">ALF-158</a> estimated $1–2/month for ~10 Inbox items a day;
+the same per-call arithmetic puts that at $0.72, so these figures are in the right order of
+magnitude. Opus 5 with a cached rubric would run about $5.80/month — a $2.50 difference, which is why
+<b>D15</b> makes the model an evaluation question rather than a budget one.</p>
+
+<h2>7 · How the work splits into stories</h2>
+
+<p>A sketch of the slices and why they cut where they do — not specs. Each is refined in its own
+session. The ordering matters: <b>A–C</b> are shippable with no model call and no Mac component,
+so the risky, unfamiliar parts land against something already proven.</p>
+
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Slice</th><th>Why it's its own story</th></tr>
+  <tr><td><b>A</b></td><td>The Comms module shell — route group, third module in <code>ModuleRouter</code> / <code>ShellNav</code>, blue accent, empty state</td>
+    <td><code>isCodePath()</code> is a binary today; a third module turns module resolution into a real router. Entirely deterministic, no data, and it is the change every other slice renders into.</td></tr>
+  <tr><td><b>B</b></td><td>Schema + the authenticated ingest endpoint — <code>comm_accounts</code>, <code>comm_messages</code>, dedupe on (account, source id)</td>
+    <td>The contract both ingestion homes write to. Proving idempotency here means a re-poll or a double-delivery later is a non-event. No model, no OAuth.</td></tr>
+  <tr><td><b>C</b></td><td>The triage UI against seeded data — four tiers, counts, the collapsed <code>FYI</code> shelf, message detail</td>
+    <td>The surface the owner will actually judge the epic by, buildable before a single real message exists. Storybook and E2E cover it deterministically, which they cannot once verdicts are non-deterministic.</td></tr>
+  <tr><td><b>D</b></td><td>Gmail ingestion in the Worker — OAuth for two accounts, polling, the newsletter header filter (<b>D13</b>)</td>
+    <td>First real source, and the one with no new deployment target. Carries the OAuth-refresh-token learning on its own. The header filter belongs here because it is the thing that keeps the volume sane from day one.</td></tr>
+  <tr><td><b>E</b></td><td>The Mac daemon skeleton — <code>launchd</code>, health check, ingest client, <b>no</b> sources yet</td>
+    <td>A genuinely new deployment target for this repo: something alfred ships that runs on the owner's machine, with its own install and update story. Worth proving empty before it carries data.</td></tr>
+  <tr><td><b>F</b></td><td>iMessage in the daemon — <code>chat.db</code> polling, <code>attributedBody</code> decode, contact resolution</td>
+    <td>The spike's whole surface area. Likely wraps <code>imsg</code> rather than re-deriving the decode. Its own story because the failure modes (FDA revocation, schema drift, WAL churn) are unlike anything else in the repo.</td></tr>
+  <tr><td><b>G</b></td><td>WorkMail over IMAP in the daemon</td>
+    <td>Rides the same daemon but shares nothing with <b>F</b> except the ingest client — a different protocol, different auth, different failure modes.</td></tr>
+  <tr><td><b>H</b></td><td>The people list — <code>comm_people</code> / <code>comm_handles</code>, the editor, handle resolution across channels (<b>D12</b>)</td>
+    <td>A migration, a join, and a UI. Blocks <b>J</b>: the classifier can't weigh who a sender is until one human resolves to their phone number and three addresses.</td></tr>
+  <tr><td><b>I</b></td><td>The rubric — versioned document, editor, injection into the prompt (<b>D11</b>)</td>
+    <td>The mechanism by which the owner owns the policy. Small, but it is the difference between a system that improves and one that is argued with.</td></tr>
+  <tr><td><b>J</b></td><td>The classifier — prompt assembly, enum'd verdict, the floor rule (<b>D5</b>), the write, per-failure degradation</td>
+    <td>The actual model integration, landing behind everything above so its blast radius is one function. Needs <b>H</b> and <b>I</b> for its two prompt inputs.</td></tr>
+  <tr><td><b>K</b></td><td>Evaluation fixtures + a recall-focused accuracy run (<b>D7</b>)</td>
+    <td>What makes "should this be Opus" a measurement rather than a vibe (<b>D15</b>), and the only place the false-negative rate becomes visible. Needs real messages with expected tiers.</td></tr>
+  <tr><td><b>L</b></td><td>Actions on a row — mark handled, deep-link to the source, and the one-key bridge to an Inbox item</td>
+    <td>Where the module stops being a report. The bridge is the interesting part (see §9) and the readiness rules per source are not uniform.</td></tr>
+  <tr><td><b>M</b></td><td>Telegram push on <code>ASAP</code> (<b>D16</b>)</td>
+    <td>Small — one <code>fetch</code> from the Worker against a channel the notifications spike already designed. Independent of everything except <b>J</b> producing a tier.</td></tr>
+</table>
+</div>
+
+<p><b>A → B → C</b> ships a real, inspectable module with no LLM and no Mac component in the repo at
+all. <b>D</b> makes it real for two accounts. <b>E → F → G</b> is the Mac chapter and can be paused
+without stranding anything. <b>H → I → J</b> is the feature. <b>K</b>, <b>L</b> and <b>M</b> are
+independent of each other and can be ordered by appetite.</p>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li><b>Is there a Mac that is realistically awake most of the time?</b> It bounds freshness for two
+    of four sources (<b>D9</b>), and the answer decides whether the module needs a visible staleness
+    indicator or merely a nice-to-have one. Asked, not yet answered — <b>settle before story E</b>.</li>
+  <li><b>Does alfred write triage state back to Gmail as a label?</b> Steve's archive is a label
+    change, which is what stops his two inboxes diverging. Read-only is simpler and safer, but leaves
+    Gmail showing everything unread and the owner processing twice. Note the asymmetry either way:
+    iMessage has no equivalent, so its state is alfred-local regardless. <b>Decide in story L</b>.</li>
+  <li><b>Does alfred notice when the owner replies in Gmail?</b> If not, a handled message stays in the
+    queue until it is marked handled a second time, by hand — which is exactly the kind of
+    double-bookkeeping that makes a surface get abandoned. Gmail's thread state could answer it
+    cheaply; iMessage's <code>is_from_me</code> could too. Genuinely unresolved, and it may matter
+    more than write-back. <b>Decide in story L</b>.</li>
+  <li><b>Is the one-key bridge to an Inbox item built?</b> The owner's decision is that task spin-off
+    stays manual — <i>"I'll do that manually by popping over to the inbox."</i> The concern, which is
+    the owner's own diagnosis turned on the design: the bridge from "this needs a response" to "there
+    is now a task" is a context switch performed at the exact moment of being reminded of an unwanted
+    obligation. That is the step an avoidance pattern skips. <b>Proposed:</b> keep the decision, but
+    make it one keystroke from the Comms row so nothing is actually "popped over" to. Not confirmed.</li>
+  <li><b>Do alfred's own Telegram notifications become a fourth source?</b> The
+    <a href="../../spikes/notifications-spike.md">notifications spike</a> anticipated exactly this —
+    alfred's messages surfaced in the firewall as their own labeled stream. It is the one inbound
+    integration that is already half-built. Not confirmed, and it is additive rather than blocking.</li>
+  <li><b>What are the owner's idiosyncratic action verbs?</b> Steve's are forward-to-wife-and-archive,
+    lightweight reply, and punt-to-Gmail — and he is emphatic that these bespoke shortcuts are what
+    make the tool usable daily rather than a demo. The owner's will be different and are unknown.
+    <b>Story L</b> cannot be specced without them.</li>
+  <li><b>How is a stale rubric version handled?</b> Every verdict names the rubric that produced it
+    (<b>D11</b>), which makes a bulk re-classification after a rubric edit <i>possible</i>. Whether it
+    happens automatically, on demand, or never is open. The risk of automatic is the one
+    <a href="ALF-158.html">ALF-158</a> guards against — the machine changing an answer the human
+    already saw.</li>
+</ol>
+
+<h2>9 · Related reading</h2>
+
+<ul>
+  <li><a href="../product/SPEC.md">SPEC.md</a> §5.1–5.2 (module shell and route groups), §5.4 (the accent
+    system), §13.2 (the original Communication Firewall sketch)</li>
+  <li><a href="ALF-158.html">ALF-158 — LLM processing</a> — the classifier pattern this epic reuses, and
+    the correction loop it deliberately doesn't</li>
+  <li><a href="../../spikes/imessage-ingestion.md">Spike: building a local iMessage triage firewall on macOS</a></li>
+  <li><a href="../../spikes/notifications-spike.md">Spike: outbound notifications via Telegram</a></li>
+  <li><a href="../../communication-firewall/cognitive-revolution-transcript.md">The Cognitive Revolution transcript</a>
+    — Steve Newman's Radar, the prior art this epic adapts</li>
+</ul>
+
+</div>
