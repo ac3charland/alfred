@@ -264,6 +264,15 @@
   sharpens <a href="#q0">Q0</a> rather than answering it. The three failures in §1 are re-ranked
   accordingly: failure&nbsp;2 is a spurious <code>ASAP</code> spending the tier's credibility, not a
   spurious buzz.</p>
+  <p style="margin-bottom:0"><b>R7 replaced indefinite retention with a 60-day sweep</b>
+  (<b>D27</b>), on the owner's decision and for one reason: <b>security</b>, not cost or volume. Every
+  <code>comm_messages</code> row is deleted at 60 days, whole; the example set is exempt and keeps its
+  text. The manual purge still cascades, because the deliberate "I want this gone" action has to work.
+  Two claims went with it: the <b>non-goal</b> that said there <i>was</i> no retention policy, and an
+  R3-era argument that examples had to be cascaded because "the most-corrected messages are the most
+  engaged-with" — <b>which is false</b>. A correction is a tier fix and says nothing about how much of
+  a message was read. The sweep is deliberately blanket, and <b>D27</b> records what that costs at
+  <code>Whenever</code>.</p>
 </div>
 
 <h2>1 · Problem space &amp; why now</h2>
@@ -415,12 +424,14 @@ the queue, and never into a push).</p>
 
 <div class="dec rev">
   <h3><span class="n">D6</span>Everything is stored, and <code>FYI</code> is the shelf it lands on<span class="revtag">revised</span></h3>
-  <p>Every ingested message is persisted and searchable regardless of tier. <code>FYI</code> is an
-    unbadged, collapsed shelf the owner can open to spot-check the rubric.</p>
+  <p>Every ingested message is persisted and searchable regardless of tier, <b>for 60 days</b>
+    (<b>D27</b>). <code>FYI</code> is an unbadged, collapsed shelf the owner can open to spot-check
+    the rubric.</p>
   <p class="why"><b>Why:</b> once only obligations are queued (<b>D3</b>), a misjudged message is
     <i>invisible</i> rather than merely buried — a strictly worse failure mode. Storing everything
-    keeps the evidence of a false negative in the building, and <code>FYI</code> is the only surface
-    on which the rubric's recall can be audited. Unbadged so it reads as an archive, not a to-do.</p>
+    keeps the evidence of a false negative in the building — for a bounded window, since <b>D27</b>
+    sweeps at 60 days — and <code>FYI</code> is the only surface on which the rubric's recall can be
+    audited. Unbadged so it reads as an archive, not a to-do.</p>
   <p class="why"><b>What it does <i>not</i> buy:</b> a false negative becomes <b>recoverable</b>, not
     <b>recovered</b>. The shelf is unbadged, uncounted and always large by design, and offered to an
     owner selected by an <i>avoidance</i> pattern — so "open <code>FYI</code> and check" asks for the
@@ -976,31 +987,44 @@ the queue, and never into a push).</p>
 </div>
 
 <div class="dec rev">
-  <h3><span class="n">D27</span>Nothing expires, and a deletion at the source does not propagate. Purging is manual<span class="revtag">revised</span></h3>
-  <p>alfred's mirror keeps every message indefinitely (<b>D6</b>). A message deleted in Gmail, unsent in
-    Messages, or removed from a mailbox <b>stays in alfred</b>; deleting something in alfred never
-    touches the source (<b>D18</b>). A <b>manual purge</b> — one message, one account, or everything
-    older than a chosen date — ships with the schema in story <b>B</b>.</p>
-  <p class="why"><b>Why written down rather than left silent:</b> "no retention policy" is a policy, and
-    this module stores <i>other people's private words</i> indefinitely in a database built to make them
-    readable. <b>D2</b> only goes one way: alfred's copy is safe to <b>lose</b>, not safe to <b>keep</b>.
-    Volume never forces the question — ~16,000 rows a year — so the trigger is comfort, not cost:
-    <b>if the owner would hesitate to hand someone this database, the window stops being "forever"</b>.</p>
-  <p><b>The purge cascades into the example set. Two rules, both on story B's schema:</b></p>
-  <ol>
-    <li><b>Purging a message nulls the denormalised text on every correction citing it</b>, and those
-      rows leave the example draw.</li>
-    <li><b>The correction row itself survives</b> — its two tiers and its timestamp — because the
-      accuracy metric is a <b>rate</b> and not a corpus (§6), and <a href="#q4">§8 Q4</a>'s bookkeeping
-      needs it.</li>
-  </ol>
-  <p class="why"><b>Why the cascade is not optional:</b> without it the paragraph above is a lie. A
-    correction denormalises the message text so an example outlives its message; left there, a purge
-    would <i>relocate</i> the words rather than remove them, into an append-only table nothing purges —
-    and the most-corrected messages are the most engaged-with, so the copy left behind would be the
-    most personal text in the database. <b>The cost, accepted:</b> a purge shrinks the example set, so
-    classifier behaviour changes as a side effect of housekeeping — bounded, because <b>D11</b>'s set
-    is capped, and visible, because it is versioned.</p>
+  <h3><span class="n">D27</span>Messages expire after 60 days. Examples don't. A deletion at the source does not propagate<span class="revtag">revised</span></h3>
+  <p><b>A scheduled sweep deletes every <code>comm_messages</code> row older than 60 days</b> — the
+    whole row, body included, across every tier. The <b>example set is exempt</b>: a correction keeps
+    its denormalised text indefinitely, and examples are not swept. A <b>manual purge</b> — one
+    message, one account, or everything older than a chosen date — still ships with the schema in
+    story <b>B</b>, and unlike the sweep it <b>does</b> cascade into the example set: the deliberate
+    "I want this gone" action has to actually work, or it is theatre.</p>
+  <p>A message deleted in Gmail, unsent in Messages, or removed from a mailbox <b>stays in alfred</b>
+    until the sweep reaches it; deleting something in alfred never touches the source (<b>D18</b>).</p>
+  <p class="why"><b>Why 60 days, and why the owner chose it:</b> the driver is <b>security, not
+    cost</b>. Volume never forces the question — ~16,000 rows a year is nothing — so retention here
+    buys exactly one thing: a bounded blast radius if this database is ever exposed. <b>D2</b> only
+    goes one way, alfred's copy is safe to <b>lose</b> and not safe to <b>keep</b>, and a 60-day
+    window is the owner minimising what there is to lose. The number is a comfort judgment, not a
+    derived one, and nothing in the design depends on its exact value.</p>
+  <p class="why"><b>Why examples are exempt:</b> a bounded, versioned handful of corrections is a
+    risk the owner has weighed and accepted, and it is the artifact that makes <b>D11</b>'s set
+    improve rather than reset every two months. An earlier revision argued the opposite on the
+    grounds that "the most-corrected messages are the most engaged-with" — that is false and has been
+    removed. A correction is a <i>tier fix</i>; it says nothing about how much of a message the owner
+    read, and does not mark it as more personal than any other.</p>
+  <p class="why"><b>What 60 days costs, stated so no story session is surprised:</b></p>
+  <ul>
+    <li><b>A still-owed obligation can be deleted.</b> <code>Whenever</code> is the owed-but-undated
+      tier — <a href="#q7">Q7</a> exists because it has no aging rule, and §4 draws a row there at
+      three weeks as ordinary. The sweep is <b>blanket by decision</b>, so a <code>Whenever</code> row
+      that outlives 60 days is deleted while still owed. <b>That is failure&nbsp;1</b> (§1), caused by
+      housekeeping rather than by the classifier. Exempting rows still in the queue is a single
+      predicate on the sweep and would remove this entirely; the owner has been shown the trade and
+      chose the blanket rule. Whether <a href="#q7">Q7</a>'s escalation rule closes it instead is the
+      cleaner long-term answer.</li>
+    <li><b>alfred's search becomes a 60-day search.</b> Anything older is a Gmail search — a real
+      narrowing of a benefit <b>D8</b>'s dumb pipe partly rested on.</li>
+    <li><b>D6</b>'s shelf audit gets a horizon. A false negative is recoverable for 60 days, not
+      forever — defensible, since a miss is noticed well inside that or not at all.</li>
+    <li><b>Story K's fixtures must be snapshotted out</b> before they expire, or the eval corpus is a
+      rolling two months rather than a growing one.</li>
+  </ul>
 </div>
 
 <div class="dec">
@@ -1009,7 +1033,8 @@ the queue, and never into a push).</p>
     An edit rewrites an existing row in place and an unsend blanks or removes one — neither allocates a
     new <code>ROWID</code>, so a cursor-based poll never revisits either. So: <b>an edited message is
     triaged on its original wording, forever</b>, and <b>an unsent message persists in alfred's
-    mirror</b> (<b>D27</b>), possibly still asking for a reply to something the sender retracted.</p>
+    mirror until the 60-day sweep reaches it</b> (<b>D27</b>), possibly still asking for a reply to
+    something the sender retracted.</p>
   <p class="why"><b>Why accept rather than fix:</b> catching either needs a full-table diff on every
     poll — throwing away the cursor that makes polling cheap and safe — or dylib injection into
     Messages.app, an explicit non-goal (§5) that costs SIP. Neither is worth it for a triage tool, and
@@ -1130,7 +1155,7 @@ takes whatever migration number is free — never pin one in a spec).</p>
   <tr>
     <td><code>comm_corrections</code></td>
     <td>Every correction the owner makes (<b>D20</b>) — a tier change, or <i>Nothing to answer</i> on a queued row, which is a demotion to <code>FYI</code></td>
-    <td>The message, the tier the model chose, the tier the owner chose, when. Doubles as the <b>example set</b> (<b>D11</b>): rows feed the prompt as few-shot examples automatically, and carry a flag so one that steers badly can be pruned without losing the record that it happened. Versioned as a set, and stamped on every verdict alongside the rubric version. The denormalised message text is <b>nulled by a purge</b> (<b>D27</b>) and is subject to a length budget (§6) — an email body is not a one-line capture.</td>
+    <td>The message, the tier the model chose, the tier the owner chose, when. Doubles as the <b>example set</b> (<b>D11</b>): rows feed the prompt as few-shot examples automatically, and carry a flag so one that steers badly can be pruned without losing the record that it happened. Versioned as a set, and stamped on every verdict alongside the rubric version. The denormalised message text <b>outlives its message</b>: the 60-day sweep does not touch it, though a <b>manual</b> purge still nulls it (<b>D27</b>). Subject to a length budget (§6) — an email body is not a one-line capture.</td>
   </tr>
 </table>
 </div>
@@ -1301,8 +1326,9 @@ shelf — exactly the <b>D6</b> cost <a href="#q8">§8 Q8</a> is open about. The
 correction: no <i>reply</i>, no <i>archive</i> (<b>D18</b>) and <b>no keyboard hints</b>, since story
 <b>L</b> owns those. Every row leads with <i>the ask</i>, not the subject line (<b>D14</b>). The
 <code>Whenever</code> row is three weeks old and still owed — the picture <a href="#q7">§8 Q7</a>
-argues about. The shelf count is in the <b>thousands</b>, because nothing on it ever expires
-(<b>D27</b>): it is a growing archive, which is exactly why it stays unbadged. Drawn in the app's
+argues about. The shelf count is in the <b>low thousands</b> — roughly what 60 days of
+<code>FYI</code> accumulates before the sweep (<b>D27</b>) bounds it, which is why it stays
+unbadged rather than counted. Drawn in the app's
 tokens from <code>frontend/app/globals.css</code>.</p>
 
 <div class="app">
@@ -1368,9 +1394,9 @@ judging (<b>D17</b>).</p>
     whose ask is inside a photo is <i>flagged</i> and classified on its sender, not interpreted
     (<b>D25</b>). Routing those rows to a vision call is a later story the flag exists to make
     possible.</li>
-  <li><b>No retention policy and no deletion sync</b> (<b>D27</b>) — with a stated trigger for
-    revisiting, since silence here would have been a decision too. <b>And no historical backfill</b>:
-    each source starts from a 7-day window (<b>D21</b>).</li>
+  <li><b>No deletion sync</b> (<b>D27</b>) — a source-side delete is not mirrored; the 60-day sweep
+    is the only thing that removes a message, and alfred never writes a deletion back. <b>And no
+    historical backfill</b>: each source starts from a 7-day window (<b>D21</b>).</li>
   <li><b>alfred is never the store of record</b> (<b>D2</b>) — no story may introduce state that exists
     only in alfred and would be a real loss.</li>
   <li><b>Ingestion freshness is bounded by the Mac.</b> While it sleeps, iMessage and WorkMail stop
@@ -1478,7 +1504,7 @@ only grow.</p>
   <tr><th>#</th><th>Slice</th><th>Why it's its own story</th></tr>
   <tr><td><b>A</b></td><td>The Comms module shell — route group, third module in the router, blue accent, empty state</td>
     <td><code>isCodePath()</code> is binary today; a third module turns module resolution into a real router. Deterministic, no data, and what every other slice renders into.</td></tr>
-  <tr><td><b>B</b></td><td>The schema — seven tables, per-source identity keys and cursors (<b>D21</b>), the message unit (<a href="#q1">§8 Q1</a>), the manual purge <b>and its cascade into the corrections table</b> (<b>D27</b>)</td>
+  <tr><td><b>B</b></td><td>The schema — seven tables, per-source identity keys and cursors (<b>D21</b>), the message unit (<a href="#q1">§8 Q1</a>), the 60-day retention sweep and the manual purge <b>with its cascade into the corrections table</b> (<b>D27</b>)</td>
     <td>The tables both ingestion homes write to, and the only place the identity keys can be fixed once — a wrong key duplicates a mailbox or swallows a message. <b>Not</b> the ingest endpoint: that is story <b>Q</b>, whose only client is the daemon. <a href="#q1">Q1</a> has a proposed default so this story is not blocked on it; confirm it in this story's refinement session before the migration is written.</td></tr>
   <tr><td><b>C</b></td><td>The triage UI against seeded data — tiers, counts, the collapsed <code>FYI</code> shelf, message detail, the marked rows (<b>D25</b>), the module-level classifier banner (<b>D17</b>)</td>
     <td>The surface the owner will judge the epic by, buildable before a real message exists — and the only place Storybook and E2E can cover the marked and stalled states deterministically, since real data won't produce them on demand.</td></tr>
