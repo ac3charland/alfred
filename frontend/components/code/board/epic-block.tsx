@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Rocket,
   Sparkles,
 } from 'lucide-react';
 import * as React from 'react';
@@ -29,7 +30,7 @@ import { EpicSpecModal } from '@/components/code/epic-spec-modal';
 import { NewStoryDialog } from '@/components/code/new-story-dialog';
 import { StoryCard } from '@/components/code/story-card';
 import { Swimlane } from '@/components/code/swimlane';
-import type { LaunchPhase } from '@/lib/code/launch';
+import type { EpicLaunchPhase, LaunchPhase } from '@/lib/code/launch';
 import { useInlineEdit } from '@/lib/hooks/use-inline-edit';
 import type { BoardEpic } from '@/lib/stores/code-store';
 import { useCodeActions } from '@/lib/stores/code-store';
@@ -97,12 +98,13 @@ export function EpicBlock({
   // "View spec" only exists once a refinement PR has recorded one.
   const hasSpec = epic.spec_path !== null;
 
-  // The epic launch: build the prompt, copy it, open the tab. Unlike the story launch there is
-  // no state write to await first — an epic has no lifecycle. A rejection means the epic or its
-  // project vanished from the store; swallow it so no unhandled rejection surfaces.
-  const refineEpic = async () => {
+  // The epic launches: build the phase's prompt, copy it, open the tab. Unlike the story launch
+  // there is no state write to await first — an epic has no lifecycle, for either phase. A
+  // rejection means the epic or its project vanished from the store; swallow it so no unhandled
+  // rejection surfaces.
+  const launchEpic = async (phase: EpicLaunchPhase) => {
     try {
-      await openEpicSession(epic.id);
+      await openEpicSession(epic.id, phase);
     } catch {
       // Nothing was written, so there is nothing to undo.
     }
@@ -213,8 +215,10 @@ export function EpicBlock({
           </Button>
         )}
 
-        {/* 3-dot actions menu in the title corner: Edit title, the epic-refinement launch,
-            View spec (once one exists), then Archive/Unarchive below the separator. */}
+        {/* 3-dot actions menu in the title corner: Edit title, the epic-refinement launch, then
+            (once a spec exists) the epic one-shot launch and View spec, with Archive/Unarchive
+            below the separator. Both spec-gated items need something written down: one implements
+            the epic spec, the other renders it. */}
         {editingTitle ? null : (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -234,12 +238,22 @@ export function EpicBlock({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  void refineEpic();
+                  void launchEpic('epic-refinement');
                 }}
               >
                 <Sparkles size={13} />
                 Refine epic in Claude Code
               </DropdownMenuItem>
+              {hasSpec ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void launchEpic('epic-implementation');
+                  }}
+                >
+                  <Rocket size={13} />
+                  Implement epic in Claude Code
+                </DropdownMenuItem>
+              ) : null}
               {hasSpec ? (
                 <DropdownMenuItem
                   onSelect={() => {
