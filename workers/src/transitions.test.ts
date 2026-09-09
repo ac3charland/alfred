@@ -105,6 +105,31 @@ describe('planTransition', () => {
     });
   });
 
+  describe('epic-implementation phase', () => {
+    // The epic one-shot: one session builds the whole epic spec and opens one PR. An epic has no
+    // lifecycle state and no implementation-PR column, so there is nothing to record at either
+    // end — the phase exists so the routing stays explicit rather than PATCHing an epic ref
+    // against the story table and reporting success on a row that never matched.
+    it.each(['opened', 'closed'])('is a no-op on %s', (action) => {
+      expect(planTransition(event({ phase: 'epic-implementation', action }))).toBeUndefined();
+    });
+
+    it('is a no-op on a merged PR too — nothing about the epic changes', () => {
+      expect(
+        planTransition(event({ phase: 'epic-implementation', action: 'closed', merged: true })),
+      ).toBeUndefined();
+    });
+
+    it('never routes at a story, whatever the action', () => {
+      // The refs come from one shared per-project counter, so an epic ref can never match a
+      // `code_items` row: a story-targeted plan here would look like it worked and change nothing.
+      for (const action of ['opened', 'closed', 'edited', 'synchronize']) {
+        const plan = planTransition(event({ phase: 'epic-implementation', action, merged: true }));
+        expect(plan?.target).not.toBe('story');
+      }
+    });
+  });
+
   describe('implementation phase', () => {
     it('opened → ready_for_review, records implementation_pr_url', () => {
       const plan = planTransition(

@@ -52,6 +52,20 @@ describe('parseFrontmatter', () => {
     });
   });
 
+  it('parses an epic-implementation block as its own phase, not as implementation', () => {
+    // Same alternation trap as `epic-refinement`: `epic-implementation` CONTAINS
+    // `implementation`, so an order that tries the shorter phase first matches this value's tail
+    // and routes an epic one-shot PR at the story table, where its ref can never match.
+    const result = parseFrontmatter(
+      block(['alfred-ticket: ALF-12', 'phase: epic-implementation'].join('\n')),
+    );
+    expect(result).toEqual({
+      tickets: ['ALF-12'],
+      phase: 'epic-implementation',
+      specPath: undefined,
+    });
+  });
+
   it('parses a spike block with its findings path', () => {
     const result = parseFrontmatter(
       block(
