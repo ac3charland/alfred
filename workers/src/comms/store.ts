@@ -494,19 +494,33 @@ export async function fetchUnjudgedAtCeiling(
 /**
  * PATCH one message by id, and report how many rows matched.
  *
- * `onlyIfUnjudged` adds `tier=is.null` for the same reason the Inbox sweep's write is
- * compare-and-set: scheduled invocations are not serialized, so a slow tick can overlap the next
- * one and both can read the same unjudged row. With the filter the loser matches nothing and
- * takes the "nothing to write" branch instead of stamping a second verdict over the first.
+ * Both options narrow the filter for the same reason the Inbox sweep's write is compare-and-set:
+ * scheduled invocations are not serialized, so a slow tick can overlap the next one and both can
+ * read the same row before either has written it. Each option guards a different field the caller
+ * derived its update from, so a write that blindly PATCHes "the thing I read, changed" cannot
+ * clobber a row that moved underneath it — with the filter the loser matches nothing and takes
+ * the "nothing to write" branch instead.
+ *
+ * `onlyIfUnjudged` adds `tier=is.null`: the loser of a race to file a verdict matches nothing
+ * instead of stamping a second one over the first.
+ *
+ * `ifAttemptsEquals` adds `classify_attempts=eq.<n>`, where `<n>` is the count as it was READ at
+ * the top of the tick. A write that PATCHes "count + 1" without this filter always succeeds, even
+ * against a row an overlapping tick already advanced past `n` — silently losing that tick's
+ * attempt. With the filter, a write whose base has moved matches nothing: a benign no-op, not an
+ * error, because the count is already right, just not written by this call.
  */
 export async function patchMessage(
   env: SupabaseEnv,
   id: string,
   updates: Record<string, unknown>,
-  options: { onlyIfUnjudged?: boolean } = {},
+  options: { onlyIfUnjudged?: boolean; ifAttemptsEquals?: number } = {},
 ): Promise<number> {
   const filters: Record<string, string> = { id: `eq.${id}` };
   if (options.onlyIfUnjudged === true) filters['tier'] = 'is.null';
+  if (options.ifAttemptsEquals !== undefined) {
+    filters['classify_attempts'] = `eq.${String(options.ifAttemptsEquals)}`;
+  }
   const rows = await fetchJson<unknown[]>(
     env,
     restQueryUrl(env, 'comm_messages', filters),

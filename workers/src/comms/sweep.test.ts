@@ -196,8 +196,19 @@ function mockClassify(...outcomes: classifier.JsonOutcome[]): ClassifySpy {
 
 const patches = (calls: Call[]): Call[] => calls.filter((call) => call.method === 'PATCH');
 
-const patchOf = (calls: Call[], id: string): Call | undefined =>
-  patches(calls).find((call) => call.url.includes(`id=eq.${id}`));
+/**
+ * The patch that determined message `id`'s final row state — the LAST one it was sent, not the
+ * first. A judged-by-model write is now two patches (a freshness check, then the write itself),
+ * so the last match is what every caller actually means by "the patch"; for every other path
+ * there is only ever one match, so this is unchanged for them.
+ *
+ * Written as filter-then-index rather than `.findLast(...)`: this package's `lib` target is
+ * ES2022 (`Array.prototype.findLast` is ES2023), so that reads as `any` and fails type-checking.
+ */
+const patchOf = (calls: Call[], id: string): Call | undefined => {
+  const matching = patches(calls).filter((call) => call.url.includes(`id=eq.${id}`));
+  return matching.at(-1);
+};
 
 const verdicts = (calls: Call[]): Call[] =>
   calls.filter((call) => call.url.includes('/rest/v1/comm_verdicts'));
@@ -482,7 +493,10 @@ describe('a judged message', () => {
     expect(request?.user).toContain('[priority person]');
   });
 
-  it('counts nothing when another tick judged the message first', async () => {
+  it('counts nothing and orphans no verdict when another tick judged the message first', async () => {
+    // Every patch on this message misses, as if another tick's write had already landed. The
+    // freshness check below catches this BEFORE paying for a verdict insert, so — unlike the old
+    // insert-then-patch order — no verdict row gets written for a judgment nothing points to.
     const { calls } = mockSupabase({ unjudged: [row()], patchRows: () => [] });
     mockClassify({ ok: verdict() });
     const logged = captureErrors();
@@ -492,17 +506,48 @@ describe('a judged message', () => {
     expect(summary).toMatchObject({ eligible: 1, classified: 0, failed: 0 });
     expect(logged.join(' ')).toContain('judged by another tick first');
     expect(patchOf(calls, 'message-1')).toBeDefined();
+    expect(patches(calls)).toHaveLength(1);
+    expect(verdicts(calls)).toHaveLength(0);
+  });
+
+  it('can still orphan a verdict in the narrow window between the freshness check and the final write', async () => {
+    // The freshness check shrinks the window an overlapping tick can land in from "the whole
+    // model round-trip" down to "the gap between two Supabase calls" — it cannot close that gap
+    // entirely. Here the check passes (this tick still looked unjudged) but the final write loses
+    // the race anyway, so one verdict row is written that nothing ends up pointing to. Documented
+    // here rather than pretended away.
+    let patchCount = 0;
+    const { calls } = mockSupabase({
+      unjudged: [row()],
+      patchRows: () => (patchCount++ === 0 ? [{ id: 'message-1' }] : []),
+    });
+    mockClassify({ ok: verdict() });
+    const logged = captureErrors();
+
+    const summary = await runCommsSweep(env, NOW);
+
+    expect(summary).toMatchObject({ classified: 0, failed: 0 });
+    expect(logged.join(' ')).toContain('judged by another tick first');
+    expect(patches(calls)).toHaveLength(2);
+    expect(verdicts(calls)).toHaveLength(1);
   });
 
   it('leaves the message unjudged when the database refuses the verdict', async () => {
     // A rejected write is not a bad message: no attempt is counted, and the next tick retries.
+    // One patch happens — the freshness check, a value-preserving write — but it does not touch
+    // tier or judged_by, so the message is exactly as unjudged as before it. The insert was still
+    // attempted (and rejected with a non-2xx, so no row exists behind it) — the freshness check
+    // only prevents an insert this tick already knows is pointless, not one the database itself
+    // goes on to refuse.
     const { calls } = mockSupabase({ unjudged: [row()], verdictFails: true });
     mockClassify({ ok: verdict() });
 
     const summary = await runCommsSweep(env, NOW);
 
     expect(summary).toMatchObject({ classified: 0, failed: 1 });
-    expect(patches(calls)).toHaveLength(0);
+    expect(patches(calls)).toHaveLength(1);
+    expect(patchOf(calls, 'message-1')?.body).toEqual({ classify_attempts: 0 });
+    expect(verdicts(calls)).toHaveLength(1);
   });
 });
 
@@ -633,6 +678,9 @@ describe('the failure table', () => {
     // No re-ask: the same prompt mostly produces the same shape, so one attempt is the whole
     // response, and at five the message is parked rather than retried forever.
     expect(patchOf(calls, 'message-1')?.body).toEqual({ classify_attempts: 3 });
+    // Compare-and-set on the count as it was read: an overlapping tick that already moved this
+    // row past 2 must make this write miss rather than silently clobber a newer count.
+    expect(patchOf(calls, 'message-1')?.url).toContain('classify_attempts=eq.2');
     expect(summary).toMatchObject({ classified: 0, failed: 1, parked: 0 });
   });
 
@@ -644,6 +692,7 @@ describe('the failure table', () => {
     const summary = await runCommsSweep(env, NOW);
 
     expect(patchOf(calls, 'message-1')?.body).toEqual({ classify_attempts: 2 });
+    expect(patchOf(calls, 'message-1')?.url).toContain('classify_attempts=eq.1');
     expect(verdicts(calls)).toHaveLength(0);
     expect(summary.failed).toBe(1);
   });
@@ -674,6 +723,96 @@ describe('the failure table', () => {
     expect(health(calls)[0]?.body).toMatchObject([
       { id: 1, last_run_at: NOW.toISOString(), last_success_at: NOW.toISOString() },
     ]);
+  });
+});
+
+/**
+ * A real `comm_messages` row for ONE message, with PATCH filters actually enforced against its
+ * current state — unlike `mockSupabase`, which answers every PATCH the same way regardless of
+ * what it asks for. This is what lets the race test below exercise the race rather than merely
+ * asserting a filter string appears in a URL: a stale write really can, or really cannot, land
+ * on the row depending on what has happened to it since.
+ */
+function fakeMessageTable(initial: Record<string, unknown>): {
+  state: Record<string, unknown>;
+  patchResults: number[];
+} {
+  const state = { ...initial };
+  const patchResults: number[] = [];
+
+  function respond(input: unknown, init: RequestInit | undefined): Promise<Response> {
+    const url = input as string;
+    const method = init?.method ?? 'GET';
+
+    if (url.includes('/rest/v1/comm_messages') && method === 'PATCH') {
+      const params = new URL(url).searchParams;
+      const wantAttempts = params.get('classify_attempts'); // "eq.<n>" or absent
+      const matches =
+        wantAttempts === null || wantAttempts === `eq.${String(state['classify_attempts'])}`;
+      if (matches) Object.assign(state, JSON.parse(init?.body as string) as object);
+      patchResults.push(matches ? 1 : 0);
+      return Promise.resolve(Response.json(matches ? [{ id: state['id'] }] : []));
+    }
+    if (url.includes('classify_attempts=lt.')) return Promise.resolve(Response.json([state]));
+    if (url.includes('reclassify_requested_at=not.is.null')) {
+      return Promise.resolve(Response.json([]));
+    }
+    if (url.includes('classify_attempts=gte.')) return Promise.resolve(Response.json([]));
+    if (url.includes('/rest/v1/comm_accounts')) {
+      return Promise.resolve(Response.json([accountRow()]));
+    }
+    if (url.includes('/rest/v1/rpc/comm_example_set_version'))
+      return Promise.resolve(Response.json(7));
+    // comm_people, comm_rubrics, comm_corrections: none configured, an empty list each.
+    return Promise.resolve(Response.json([]));
+  }
+
+  spyOnFetch().mockImplementation(respond);
+  return { state, patchResults };
+}
+
+describe('an overlapping tick with a stale attempt count', () => {
+  it('does not let a late write from a slow tick roll a newer count backward', async () => {
+    // The scenario sweep.ts:~277 describes: two ticks both read classify_attempts before either
+    // has written it. Tick 2 reads it here, then is held at its model call — the long leg of a
+    // tick — while ticks 1 and 3 each run a full, real content-shaped failure to completion on
+    // the freshly-current state (2 -> 3 -> 4). Only once that has happened does tick 2 hear back
+    // and try to write the count IT read: 2 + 1 = 3. A write with no compare-and-set always
+    // lands, and would roll the row backward from 4 to 3 — silently erasing tick 3's failure, the
+    // exact loss the bug report describes ("one failure is lost"). The fix must make that write
+    // miss instead.
+    const { state, patchResults } = fakeMessageTable(row({ classify_attempts: 2 }));
+
+    const classifySpy = jest.spyOn(classifier, 'classifyJson');
+    let releaseTick2: ((outcome: classifier.JsonOutcome) => void) | undefined;
+    const tick2ReachedTheModel = new Promise<void>((resolveReached) => {
+      classifySpy.mockImplementationOnce(() => {
+        resolveReached();
+        return new Promise((resolve) => {
+          releaseTick2 = resolve;
+        });
+      });
+    });
+    const contentShapedFailure: classifier.JsonOutcome = {
+      failed: { reason: 'unparseable', detail: 'not valid JSON: hi' },
+    };
+    classifySpy.mockResolvedValue(contentShapedFailure);
+
+    // Tick 2 starts and reads classify_attempts=2, then parks at its (paused) model call.
+    const tick2 = runCommsSweep(env, NOW);
+    await tick2ReachedTheModel;
+
+    // Ticks 1 and 3 each run to completion on the row as it now stands: 2 -> 3, then 3 -> 4.
+    await runCommsSweep(env, NOW);
+    await runCommsSweep(env, NOW);
+    expect(state['classify_attempts']).toBe(4);
+
+    // Tick 2 finally hears back and tries to write the stale count it read at the start.
+    releaseTick2?.(contentShapedFailure);
+    await tick2;
+
+    expect(state['classify_attempts']).toBe(4);
+    expect(patchResults.at(-1)).toBe(0); // tick 2's own write matched nothing
   });
 });
 

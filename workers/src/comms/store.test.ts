@@ -605,6 +605,39 @@ describe('patchMessage', () => {
     expect(query(call).get('tier')).toBe('is.null');
     expect(matched).toBe(0);
   });
+
+  it('narrows to a known attempt count on request, so a stale read cannot clobber a newer count', async () => {
+    // The count a caller wants to write is derived from the value it read at the top of the tick.
+    // Without this filter the write always lands, even against a row an overlapping tick already
+    // advanced past that value — silently losing whichever tick's attempt does not land last.
+    const calls = mockSupabase(() => Response.json([]));
+
+    const matched = await patchMessage(
+      env,
+      'message-1',
+      { classify_attempts: 4 },
+      { ifAttemptsEquals: 3 },
+    );
+
+    const [call] = calls as [Call];
+    expect(query(call).get('classify_attempts')).toBe('eq.3');
+    expect(matched).toBe(0);
+  });
+
+  it('combines both filters when both are given', async () => {
+    const calls = mockSupabase(() => Response.json([{ id: 'message-1' }]));
+
+    await patchMessage(
+      env,
+      'message-1',
+      { classify_attempts: 1 },
+      { onlyIfUnjudged: true, ifAttemptsEquals: 0 },
+    );
+
+    const [call] = calls as [Call];
+    expect(query(call).get('tier')).toBe('is.null');
+    expect(query(call).get('classify_attempts')).toBe('eq.0');
+  });
 });
 
 describe('insertVerdict', () => {

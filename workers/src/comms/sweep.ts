@@ -273,10 +273,28 @@ async function parkAtCeiling(env: CommsSweepEnv, now: Date): Promise<number> {
  * Record one content-shaped failure. Costs no extra read — the sweep already selected the counter,
  * so this PATCHes `n + 1` from the value in hand. Never throws: one message's bad luck must not
  * abort the tick, and a counter that failed to increment is only ever one wasted retry.
+ *
+ * `ifAttemptsEquals` makes the increment compare-and-set on the count as it was READ at the top
+ * of the tick — for the same reason every other write in this file is conditional: scheduled
+ * invocations are not serialized, so two overlapping ticks can both read `classify_attempts: n`,
+ * both fail, and both PATCH `n + 1`. Without the filter both writes land and one real, billed
+ * failure goes uncounted — the attempt ceiling can then take up to ~2x its stated number of real
+ * model calls to actually fire. With it, a write whose base has moved matches nothing: a no-op,
+ * not an error, because the count is already right, just not written by this call.
  */
 async function countAttempt(env: CommsSweepEnv, message: CommMessage): Promise<void> {
   try {
-    await patchMessage(env, message.id, { classify_attempts: message.classify_attempts + 1 });
+    const rows = await patchMessage(
+      env,
+      message.id,
+      { classify_attempts: message.classify_attempts + 1 },
+      { ifAttemptsEquals: message.classify_attempts },
+    );
+    if (rows === 0) {
+      console.error(
+        `comms classifier: message ${message.id}'s attempt was already counted by another tick`,
+      );
+    }
   } catch (error) {
     console.error(`comms classifier: could not count an attempt for ${message.id}`, error);
   }
@@ -315,6 +333,35 @@ async function writeVerdict(
   const person = resolveSender(message.sender_handle, context.people);
 
   try {
+    // The model call above is this function's long leg — real network seconds, not
+    // milliseconds — so it is also where an overlapping tick is most likely to have already
+    // judged this same message while this one was waiting. Re-testing "still unjudged" right
+    // here, immediately before paying for a verdict insert, catches most of those races before
+    // an unreferenced verdict row gets written for them. It is a value-preserving write (the
+    // count goes back to what it already was) purely so it can reuse `onlyIfUnjudged`'s existing
+    // filter rather than adding a read path of its own; "0 rows" means exactly what it means on
+    // every other conditional write here.
+    //
+    // This cannot catch every race — one that lands in the gap between this check and the
+    // insert two lines down still slips through, and still orphans a verdict row — but the
+    // `onlyIfUnjudged` write at the end of this function is what stays correct regardless, so
+    // this is a real, honest reduction in a wasted write, not a second guarantee. (Skipped for a
+    // re-run: those overwrite an already-judged row on purpose, so "still unjudged" does not
+    // apply, and the same overlap risk for a re-run — rare enough that no two are ever in flight
+    // at once in practice — is accepted here unchanged, same as it was before this fix.)
+    if (!isRerun(message)) {
+      const stillUnjudged = await patchMessage(
+        env,
+        message.id,
+        { classify_attempts: message.classify_attempts },
+        { onlyIfUnjudged: true },
+      );
+      if (stillUnjudged === 0) {
+        console.error(`comms classifier: message ${message.id} was judged by another tick first`);
+        return 'raced';
+      }
+    }
+
     const verdictId = await insertVerdict(env, {
       message_id: message.id,
       tier,
@@ -415,6 +462,20 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
       continue;
     }
 
+    // No claim happens here before the model call — deliberately, not by oversight. Two
+    // overlapping ticks CAN both dispatch a real, billed request for the same message; the loser
+    // finds out only after paying, via the compare-and-set writes below. A row is never claimed
+    // and abandoned, so nothing here can strand a message unjudged — the worst case is a wasted
+    // Anthropic call, not a stuck row. A pre-dispatch claim was considered and rejected: the only
+    // field available to CAS on without a schema change is `classify_attempts`, and every outcome
+    // that must NOT count against the ceiling — transport, refusal, and a clean success — would
+    // have to consume-then-revert that same counter around the call. A revert is itself a write
+    // that can be lost exactly like the bug this file is fixing (a Worker evicted mid-call skips
+    // it entirely), which would silently overcount attempts on the very outages and refusals this
+    // module's docstring says must never count — trading a rare double-billed call for an
+    // intermittent early parking of a message that never actually misbehaved. A real fix needs a
+    // dedicated claim column with its own lease/timeout (so a claim a dead tick never releases is
+    // still reclaimable), which is a migration — out of scope for this file.
     const outcome: JsonOutcome = await classifyJson(
       env,
       buildCommsRequest({
