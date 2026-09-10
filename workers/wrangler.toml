@@ -7,6 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # The Worker serves two paths from its one entrypoint (routed in src/index.ts):
 #   GET  /                → health check ("alfred workers ok"), plus the classifier's config
 #   POST /github/webhook  → the GitHub PR webhook ingress (HMAC-verified)
+#   POST /comms/ingest    → the Mac daemon's Comms ingest (HMAC-verified over timestamp + body)
 # On the default *.workers.dev domain no `routes` block is needed — the path is
 # matched in code. Add a `routes`/`route` entry here only when fronting it with a
 # custom domain.
@@ -26,6 +27,19 @@ compatibility_flags = ["nodejs_compat"]
 #     frontend has no LLM code path at all), a `[vars]` entry below (vars are plaintext and
 #     committed), or a `.env` file. `npx wrangler secret list` shows the names, never the values.
 #     Rotation is the same command again, effective on the next invocation with no redeploy.
+#   COMMS_INGEST_HMAC_SECRET  — shared HMAC secret for POST /comms/ingest; the Mac daemon holds the
+#     only other copy, in the login keychain. Comms-specific and shared with nothing else, so
+#     rotating it cannot disturb the GitHub webhook. Set by hand exactly like the key above; until
+#     it is, the endpoint answers 503 rather than accepting anything, and `GET /` says
+#     "comms ingest unconfigured" so the missing step is one curl away.
+#   GMAIL_OAUTH_CLIENT_ID     — the Google OAuth client the two Gmail polls authenticate through.
+#   GMAIL_OAUTH_CLIENT_SECRET — its secret.
+#   GMAIL_PERSONAL_REFRESH_TOKEN — refresh token for the personal Gmail account.
+#   GMAIL_REALPLAY_REFRESH_TOKEN — refresh token for the RealPlay Gmail account.
+#     Both tokens must come from an OAuth client whose publishing status is "In production". A
+#     client left in "Testing" issues refresh tokens that expire after seven days with no warning,
+#     which would kill both Gmail accounts a week after they start polling — and those are the two
+#     sources that do not depend on a Mac being awake.
 
 # ── Cron triggers ─────────────────────────────────────────────────────────────
 # The Inbox classifier sweep. `wrangler deploy` registers this schedule, and the Deploy Worker
@@ -35,8 +49,19 @@ compatibility_flags = ["nodejs_compat"]
 # A tick with nothing eligible costs one database query and zero model calls.
 # Exercise it locally without waiting: `npx wrangler dev --test-scheduled`, then curl the
 # `/__scheduled` endpoint it serves.
+#
+# Two schedules now, dispatched in src/index.ts on the expression the runtime hands the handler —
+# so these strings and the constants there must stay in step.
+#   */2 * * * *  the frequent tick: the Inbox classifier sweep, then the Comms tick (poll Gmail,
+#                then judge whatever is waiting). Both ride one trigger because neither is worth
+#                its own and nobody is waiting on either.
+#   17 9 * * *   the daily Comms retention sweep, which deletes every mirrored message older than
+#                60 days. Cron triggers are UTC-only, so this lands at 03:17 in Chicago in winter
+#                and 04:17 in summer; it is housekeeping in the middle of the night either way and
+#                nothing depends on the exact minute. An odd minute rather than :00 for the usual
+#                reason — the top of the hour is where every scheduler in the world queues up.
 [triggers]
-crons = ["*/2 * * * *"]
+crons = ["*/2 * * * *", "17 9 * * *"]
 
 # ── Vars (non-secret, plaintext, committed) ──────────────────────────────────
 # CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a
