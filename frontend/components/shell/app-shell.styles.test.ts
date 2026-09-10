@@ -1,4 +1,4 @@
-import { shellRootClass } from './app-shell.styles';
+import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
 
 describe('app-shell root sizing', () => {
   it('sizes to the dynamic viewport so the landing screen fits the visible area on mobile', () => {
@@ -17,5 +17,21 @@ describe('app-shell root sizing', () => {
     expect(tokens).not.toContain('h-dvh');
     expect(tokens).not.toContain('h-screen');
     expect(tokens).not.toContain('h-full');
+  });
+});
+
+describe('sidebar "Press ⌘K" hint (ALF-207)', () => {
+  it('sticks to the viewport bottom instead of drifting down with the stretched sidebar', () => {
+    // The sidebar stretches to match a page that can grow far past one screen (see
+    // `shellRootClass`), so a plain in-flow position would let this hint scroll off past the
+    // bottom of the *page* rather than staying pinned to the bottom of the *viewport*.
+    const tokens = sidebarShortcutHintClass.split(/\s+/);
+    expect(tokens).toContain('sticky');
+    expect(tokens).toContain('bottom-0');
+  });
+
+  it('repaints opaque so stuck content behind it does not show through', () => {
+    const tokens = sidebarShortcutHintClass.split(/\s+/);
+    expect(tokens).toContain('bg-surface');
   });
 });
