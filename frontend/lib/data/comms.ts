@@ -29,22 +29,24 @@ import type {
 
 /**
  * Rows per request. PostgREST caps a response at the project's `Max rows` (1000 by default) and
- * TRUNCATES SILENTLY when it does, so the message read is paged rather than asked for in one go.
+ * TRUNCATES SILENTLY when it does, so every read in this module is paged rather than asked for
+ * in one go.
  */
 export const COMMS_PAGE_SIZE = 1000;
 
 /**
- * How many pages one message read may take before it is called a failure. At ~45 messages a day
- * the 60-day mirror holds a few thousand rows, so fifty pages is orders of magnitude of
- * headroom; exhausting it means a backend that never returns a short page, and truncating there
- * would silently shrink the queue.
+ * How many pages a single paged read may take before it is called a failure. At ~45 messages a
+ * day the 60-day mirror holds a few thousand rows — the largest of the four paged tables here —
+ * so fifty pages is orders of magnitude of headroom for all of them; exhausting it means a
+ * backend that never returns a short page, and truncating there would silently shrink whichever
+ * list it was.
  */
 export const COMMS_MAX_PAGES = 50;
 
 function pagingError(): PostgrestError {
   const error = {
     name: 'PostgrestError',
-    message: `Comms message read did not terminate within ${String(COMMS_MAX_PAGES)} pages`,
+    message: `Comms read did not terminate within ${String(COMMS_MAX_PAGES)} pages`,
     details: '',
     hint: '',
     code: 'PGRST_PAGING',
@@ -57,15 +59,38 @@ function retentionCutoff(now: Date): string {
   return new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
+/**
+ * Walk one table a page at a time and hand back every row, or a bounded-pages failure.
+ *
+ * `readMessages` needed this first, but PostgREST's row cap doesn't care whether a table is
+ * "small and edited by hand" — it truncates any unbounded `.select()` the same way regardless of
+ * why the table grew past it. So this is the one loop every paged Comms read shares: the caller
+ * supplies the query up to `.range()` (which needs the `offset` this passes in), and this owns
+ * the accumulation, the total-order-across-pages contract, and the `pagingError()` when a read
+ * never shortens.
+ */
+async function readAllPages<T>(
+  fetchPage: (offset: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+): Promise<{ rows: T[]; error: PostgrestError | null }> {
+  const rows: T[] = [];
+  for (let page = 0; page < COMMS_MAX_PAGES; page += 1) {
+    const offset = page * COMMS_PAGE_SIZE;
+    const { data, error } = await fetchPage(offset);
+    if (error) return { rows: [], error };
+    const pageRows = data ?? [];
+    rows.push(...pageRows);
+    if (pageRows.length < COMMS_PAGE_SIZE) return { rows, error: null };
+  }
+  return { rows: [], error: pagingError() };
+}
+
 /** Every inbound message inside the retention window, walked a page at a time. */
 async function readMessages(
   supabase: SupabaseClient<Database>,
   since: string,
 ): Promise<{ messages: CommMessage[]; error: PostgrestError | null }> {
-  const messages: CommMessage[] = [];
-  for (let page = 0; page < COMMS_MAX_PAGES; page += 1) {
-    const offset = page * COMMS_PAGE_SIZE;
-    const { data, error } = await supabase
+  const { rows, error } = await readAllPages<CommMessage>((offset) =>
+    supabase
       .from('comm_messages')
       .select('*')
       // Outbound rows are mirrored only as the reply-detection signal — they are never queued,
@@ -76,13 +101,9 @@ async function readMessages(
       // return the same row twice and never return another.
       .order('received_at', { ascending: false })
       .order('id', { ascending: true })
-      .range(offset, offset + COMMS_PAGE_SIZE - 1);
-
-    if (error) return { messages: [], error };
-    messages.push(...data);
-    if (data.length < COMMS_PAGE_SIZE) return { messages, error: null };
-  }
-  return { messages: [], error: pagingError() };
+      .range(offset, offset + COMMS_PAGE_SIZE - 1),
+  );
+  return { messages: rows, error };
 }
 
 /** What the queue needs: the accounts, their messages, the verdicts behind them, and health. */
@@ -154,33 +175,46 @@ export interface CommsSettingsSeed {
  * The Comms settings seed: the roster with each person's handles embedded, every rubric version
  * newest-first (so the current one is simply the head), and every correction newest-first.
  *
- * All three are small, bounded and edited by hand, so they are read whole — the rubric history
- * in particular has to be complete for a verdict's stamped version to stay resolvable.
+ * All three are edited by hand, but "edited by hand" says nothing about their row COUNT — the
+ * roster and the correction set both grow with ordinary use, and PostgREST's `Max rows` cap
+ * truncates an unbounded `.select()` on any of them exactly as silently as it would on the
+ * message queue. So all three are walked page by page through the same `readAllPages` loop
+ * `readMessages` uses, including its bounded-pages failure mode: the rubric history in
+ * particular has to stay COMPLETE for a verdict's stamped version to stay resolvable, and a
+ * truncated tail would quietly break that.
  */
 export async function getCommsSettingsSeed(
   client?: SupabaseClient<Database>,
 ): Promise<CommsSettingsSeed> {
   const supabase = client ?? (await createClient());
 
-  const { data: people } = await supabase
-    .from('comm_people')
-    .select('*,comm_handles(*)')
-    .order('name', { ascending: true })
-    .overrideTypes<CommPersonWithHandles[]>();
+  const { rows: people } = await readAllPages<CommPersonWithHandles>((offset) =>
+    supabase
+      .from('comm_people')
+      .select('*,comm_handles(*)')
+      .order('name', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + COMMS_PAGE_SIZE - 1)
+      .overrideTypes<CommPersonWithHandles[]>(),
+  );
 
-  const { data: rubrics } = await supabase
-    .from('comm_rubrics')
-    .select('*')
-    .order('version', { ascending: false });
+  const { rows: rubrics } = await readAllPages<CommRubric>((offset) =>
+    supabase
+      .from('comm_rubrics')
+      .select('*')
+      .order('version', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + COMMS_PAGE_SIZE - 1),
+  );
 
-  const { data: corrections } = await supabase
-    .from('comm_corrections')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const { rows: corrections } = await readAllPages<CommCorrection>((offset) =>
+    supabase
+      .from('comm_corrections')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + COMMS_PAGE_SIZE - 1),
+  );
 
-  return {
-    people: people ?? [],
-    rubrics: rubrics ?? [],
-    corrections: corrections ?? [],
-  };
+  return { people, rubrics, corrections };
 }

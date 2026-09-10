@@ -260,8 +260,16 @@ describe('getCommsSettingsSeed', () => {
 
     expect(calls.comm_people[0]?.select).toBe('*,comm_handles(*)');
     expect(seed.people[0]?.comm_handles).toHaveLength(1);
-    expect(calls.comm_rubrics[0]?.order).toEqual([['version', { ascending: false }]]);
-    expect(calls.comm_corrections[0]?.order).toEqual([['created_at', { ascending: false }]]);
+    // The secondary `id` order is the total-order tie-breaker paging needs — see the pitfall in
+    // the supabase skill: without one, two pages can return the same row and never return another.
+    expect(calls.comm_rubrics[0]?.order).toEqual([
+      ['version', { ascending: false }],
+      ['id', { ascending: true }],
+    ]);
+    expect(calls.comm_corrections[0]?.order).toEqual([
+      ['created_at', { ascending: false }],
+      ['id', { ascending: true }],
+    ]);
   });
 
   it('degrades to empty slices rather than blanking the shell', async () => {
@@ -273,5 +281,86 @@ describe('getCommsSettingsSeed', () => {
     mockCreateClient.mockResolvedValue(client);
 
     expect(await getCommsSettingsSeed()).toEqual({ people: [], rubrics: [], corrections: [] });
+  });
+
+  // BUG 1 (settings reads silently truncate at PostgREST's row cap): `comm_people`,
+  // `comm_rubrics` and `comm_corrections` used to be read with one unbounded `.select()` each,
+  // so a table past the project's `Max rows` cap (1000 by default) lost its tail with no error —
+  // and for rubrics specifically, a verdict stamped with a version that fell off the tail became
+  // unresolvable. These three pin that every one of the three now pages exactly like
+  // `getCommsSeed`'s message read already does.
+
+  it('pages past comm_rubrics to keep every version, even beyond one page', async () => {
+    const full = Array.from({ length: COMMS_PAGE_SIZE }, (_unused, index) =>
+      makeCommRubric('Be responsive.', { version: index + 1 }),
+    );
+    const tail = [makeCommRubric('Be responsive, v2.', { version: COMMS_PAGE_SIZE + 1 })];
+    const { client, calls } = makeClient({
+      comm_rubrics: [
+        { data: full, error: null },
+        { data: tail, error: null },
+      ],
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSettingsSeed();
+
+    expect(seed.rubrics).toHaveLength(COMMS_PAGE_SIZE + 1);
+    expect(calls.comm_rubrics).toHaveLength(2);
+    expect(calls.comm_rubrics[1]?.range).toEqual([COMMS_PAGE_SIZE, COMMS_PAGE_SIZE * 2 - 1]);
+  });
+
+  it('pages past comm_people to keep every person, even beyond one page', async () => {
+    const full = Array.from({ length: COMMS_PAGE_SIZE }, () => ({
+      ...makeCommPerson('Roster Row'),
+      comm_handles: [],
+    }));
+    const tail = [{ ...makeCommPerson('One More Person'), comm_handles: [] }];
+    const { client, calls } = makeClient({
+      comm_people: [
+        { data: full, error: null },
+        { data: tail, error: null },
+      ],
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSettingsSeed();
+
+    expect(seed.people).toHaveLength(COMMS_PAGE_SIZE + 1);
+    expect(calls.comm_people).toHaveLength(2);
+  });
+
+  it('pages past comm_corrections to keep every correction, even beyond one page', async () => {
+    const full = Array.from({ length: COMMS_PAGE_SIZE }, () => makeCommCorrection());
+    const tail = [makeCommCorrection()];
+    const { client, calls } = makeClient({
+      comm_corrections: [
+        { data: full, error: null },
+        { data: tail, error: null },
+      ],
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSettingsSeed();
+
+    expect(seed.corrections).toHaveLength(COMMS_PAGE_SIZE + 1);
+    expect(calls.comm_corrections).toHaveLength(2);
+  });
+
+  it('calls a never-terminating rubric read a failure rather than silently truncating the history', async () => {
+    const full = Array.from({ length: COMMS_PAGE_SIZE }, (_unused, index) =>
+      makeCommRubric('Be responsive.', { version: index + 1 }),
+    );
+    const { client, calls } = makeClient({
+      comm_rubrics: { data: full, error: null },
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSettingsSeed();
+
+    expect(calls.comm_rubrics).toHaveLength(COMMS_MAX_PAGES);
+    // Degrades to an empty slice rather than a silently truncated (and therefore misleading)
+    // rubric history a verdict's stamped version could stop resolving against.
+    expect(seed.rubrics).toEqual([]);
   });
 });
