@@ -25,17 +25,26 @@ import type { Logger } from './log.ts';
  * memory for the next tick — retry policy belongs to the poll loop, which already has a clock.
  *
  * A failure carries a `retryable` verdict alongside its status, because the two failure shapes
- * mean opposite things: a 4xx means the endpoint rejected THIS request outright — a rotated HMAC
- * secret, a malformed body — and sending the same bytes again will fail identically every time. A
- * 5xx, or no response at all (DNS, a dropped connection), is the ordinary transient case retrying
- * exists for. The poll loop is what actually decides what to do with that verdict (backing off,
- * escalating a persistent 4xx to something loud) — this module only classifies what happened.
+ * mean opposite things: most of the 4xx range means the endpoint rejected THIS request outright —
+ * a rotated HMAC secret, a malformed body — and sending the same bytes again will fail identically
+ * every time. A 5xx, or no response at all (DNS, a dropped connection), is the ordinary transient
+ * case retrying exists for — as are 408, 425 and 429, and any status at all when the response
+ * carries `Retry-After`: those are the server saying "wait", not "this is broken" (see
+ * `isRetryableStatus`). The poll loop is what actually decides what to do with that verdict
+ * (backing off, escalating a persistent rejection to something loud) — this module only
+ * classifies what happened.
  */
 
 export interface FetchResponseLike {
   ok: boolean;
   status: number;
   text: () => Promise<string>;
+  /**
+   * Optional: when the transport forwards response headers, a `Retry-After` value marks a
+   * response as retryable regardless of status — see `isRetryableStatus`. Absent on a transport
+   * that does not carry headers through; the status-code rules alone still apply in that case.
+   */
+  headers?: { get(name: string): string | undefined };
 }
 
 export type FetchLike = (
@@ -80,12 +89,20 @@ function describe(error: unknown): string {
 }
 
 /**
- * 4xx means the request itself was malformed or unauthorized — bad signature, bad body, an
- * unconfigured secret — and resending the same bytes will fail identically every time. Everything
- * else in the "not ok" range (5xx, and anything unconventional) reads as the endpoint or the path
- * to it having a bad moment, which is exactly the transient case retrying is for.
+ * Most of the 4xx range means the request itself was malformed or unauthorized — bad signature,
+ * bad body, an unconfigured secret — and resending the same bytes will fail identically every
+ * time. Three 4xx codes are the documented exception, because they are about *when*, not *what*:
+ * 429 (Too Many Requests), 408 (Request Timeout) and 425 (Too Early) all mean "this exact request
+ * is fine, try it again shortly" — resending the same bytes once the window clears is exactly
+ * right, not wasted. A response carrying `Retry-After` is that same signal by another name,
+ * whatever its status, so it overrides the blanket 4xx rule too. Everything else in the "not ok"
+ * range (5xx, and anything unconventional) reads as the endpoint or the path to it having a bad
+ * moment, which is also the transient case retrying is for.
  */
-function isRetryableStatus(status: number): boolean {
+const RETRYABLE_4XX_STATUSES = new Set([408, 425, 429]);
+
+function isRetryableStatus(status: number, hasRetryAfter: boolean): boolean {
+  if (hasRetryAfter || RETRYABLE_4XX_STATUSES.has(status)) return true;
   return !(status >= 400 && status < 500);
 }
 
@@ -118,7 +135,8 @@ export function createIngestClient(options: IngestClientOptions): IngestClient {
       }
 
       if (!response.ok) {
-        const retryable = isRetryableStatus(response.status);
+        const retryAfter = response.headers?.get('retry-after');
+        const retryable = isRetryableStatus(response.status, retryAfter !== undefined);
         const message = `ingest POST rejected with ${String(response.status)}`;
         options.log.warn(message, {
           url: options.ingestUrl,

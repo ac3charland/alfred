@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import type { IngestPayload, NormalizedMessage } from './contract.ts';
 import { createIngestClient, sign } from './ingest-client.ts';
-import type { FetchLike } from './ingest-client.ts';
+import type { FetchLike, FetchResponseLike } from './ingest-client.ts';
 import { createLogger } from './log.ts';
 import type { Logger } from './log.ts';
 
@@ -44,9 +44,10 @@ interface Sent {
   init: { method: string; headers: Record<string, string>; body: string };
 }
 
-function recordingFetch(
-  answer: () => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>,
-): { sent: Sent[]; fetch: FetchLike } {
+function recordingFetch(answer: () => Promise<FetchResponseLike>): {
+  sent: Sent[];
+  fetch: FetchLike;
+} {
   const sent: Sent[] = [];
   return {
     sent,
@@ -57,10 +58,19 @@ function recordingFetch(
   };
 }
 
-function ok(
-  body: string,
-): () => Promise<{ ok: boolean; status: number; text: () => Promise<string> }> {
+function ok(body: string): () => Promise<FetchResponseLike> {
   return () => Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(body) });
+}
+
+/** A rejected response carrying a `Retry-After` header, however the transport spells the value. */
+function withRetryAfter(status: number, value: string): () => Promise<FetchResponseLike> {
+  return () =>
+    Promise.resolve({
+      ok: false,
+      status,
+      text: () => Promise.resolve('slow down'),
+      headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? value : undefined) },
+    });
 }
 
 /** Logs are captured rather than printed; only the secret-leak test reads them back. */
@@ -188,6 +198,41 @@ describe('createIngestClient', () => {
     const result = await client(fetch).send(payload());
 
     expect(result).toMatchObject({ ok: false, status: 503, retryable: true });
+  });
+
+  it.each([
+    [429, 'Too Many Requests'],
+    [408, 'Request Timeout'],
+    [425, 'Too Early'],
+  ])(
+    'marks a %i (%s) retryable — this is about *when* to retry, not a rejected request',
+    async (status) => {
+      const { fetch } = recordingFetch(() =>
+        Promise.resolve({ ok: false, status, text: () => Promise.resolve('try later') }),
+      );
+
+      const result = await client(fetch).send(payload());
+
+      expect(result).toMatchObject({ ok: false, status, retryable: true });
+    },
+  );
+
+  it('marks any status retryable when the response carries Retry-After, even inside the 4xx range', async () => {
+    const { fetch } = recordingFetch(withRetryAfter(403, '30'));
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, status: 403, retryable: true });
+  });
+
+  it('still marks a plain 403 non-retryable — Retry-After is what flips it, not the status alone', async () => {
+    const { fetch } = recordingFetch(() =>
+      Promise.resolve({ ok: false, status: 403, text: () => Promise.resolve('forbidden') }),
+    );
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, status: 403, retryable: false });
   });
 
   it('reports a transport failure as a failure rather than throwing', async () => {
