@@ -6,6 +6,8 @@ import type { HabitStats } from '@/lib/habits';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { CommsSettingsProvider } from '@/lib/stores/comms-settings-store';
+import { CommsProvider } from '@/lib/stores/comms-store';
 import { DepartingItemsProvider } from '@/lib/stores/departing-items-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
@@ -17,6 +19,13 @@ import { ToastProvider } from '@/lib/stores/toast-store';
 import { WeeklyPlanProvider } from '@/lib/stores/weekly-plan-store';
 import type {
   CodeStory,
+  CommAccount,
+  CommClassifierHealth,
+  CommCorrection,
+  CommMessage,
+  CommPersonWithHandles,
+  CommRubric,
+  CommVerdict,
   Epic,
   Folder,
   Habit,
@@ -55,6 +64,19 @@ interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
     today: string;
     stats?: Record<string, HabitStats>;
   };
+  /** The Comms queue's data: the accounts, their messages, the verdicts behind them, health. */
+  comms?: {
+    accounts?: CommAccount[];
+    messages?: CommMessage[];
+    verdicts?: CommVerdict[];
+    health?: CommClassifierHealth;
+  };
+  /** The Comms settings data: the roster, the rubric versions (newest first), the example set. */
+  commsSettings?: {
+    people?: CommPersonWithHandles[];
+    rubrics?: CommRubric[];
+    corrections?: CommCorrection[];
+  };
 }
 
 export function renderWithProviders(
@@ -67,6 +89,8 @@ export function renderWithProviders(
     stories = [],
     weeklyPlans = { index: [], latest: undefined },
     habits = { habits: [], entries: [], today: '2026-07-28' },
+    comms = {},
+    commsSettings = {},
     ...options
   }: ProviderRenderOptions = {},
 ) {
@@ -98,7 +122,20 @@ export function renderWithProviders(
                               initialStats={habits.stats ?? {}}
                               serverToday={habits.today}
                             >
-                              {children}
+                              <CommsProvider
+                                initialAccounts={comms.accounts ?? []}
+                                initialMessages={comms.messages ?? []}
+                                initialVerdicts={comms.verdicts ?? []}
+                                initialHealth={comms.health}
+                              >
+                                <CommsSettingsProvider
+                                  initialPeople={commsSettings.people ?? []}
+                                  initialRubrics={commsSettings.rubrics ?? []}
+                                  initialCorrections={commsSettings.corrections ?? []}
+                                >
+                                  {children}
+                                </CommsSettingsProvider>
+                              </CommsProvider>
                             </HabitsProvider>
                           </WeeklyPlanProvider>
                         </FolderSortProvider>

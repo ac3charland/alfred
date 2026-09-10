@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BookMarked,
   CalendarRange,
   Check,
   Code2,
@@ -10,10 +11,13 @@ import {
   ListOrdered,
   ListTodo,
   type LucideIcon,
+  MessagesSquare,
   Repeat,
+  ScrollText,
   Search,
   Sun,
   UserCheck,
+  Users,
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -46,12 +50,17 @@ const ICONS: Record<DestinationIcon, LucideIcon> = {
   code: Code2,
   backlog: ListOrdered,
   'needs-human-action': UserCheck,
+  comms: MessagesSquare,
+  people: Users,
+  rubric: ScrollText,
+  examples: BookMarked,
   folder: FolderOpen,
   project: GitBranch,
 };
 
 const GROUP_LABELS = {
   go: 'Go to',
+  comms: 'Comms',
   folders: 'Folders',
   projects: 'Projects',
 } as const;
@@ -151,9 +160,10 @@ function DestinationGroup({
 
 /**
  * The ⌘K navigation palette — a centered modal combobox mounted once in the shell. It lists
- * every navigation *destination* (the two modules, the cross-cutting views, every folder, every
- * project), filterable by typing and driven entirely by the keyboard. Selecting one performs the
- * same client-side `pushState` switch the sidebar links use, then closes.
+ * every navigation *destination* (the modules, the cross-cutting views, the Comms surfaces,
+ * every folder, every project), filterable by typing and driven entirely by the keyboard.
+ * Selecting one performs the same client-side `pushState` switch the sidebar links use, then
+ * closes.
  *
  * This is the ⌘P combobox pattern re-applied to destinations in a modal shell: the pure filter/
  * rank/group layer lives in `command-destinations.ts`, this component is the thin UI over it,
@@ -274,9 +284,17 @@ export function CommandPalette() {
               onHover={setActiveIndex}
             />
             <DestinationGroup
+              label={GROUP_LABELS.comms}
+              destinations={grouped.comms}
+              baseIndex={grouped.go.length}
+              activeIndex={clampedIndex}
+              onSelect={select}
+              onHover={setActiveIndex}
+            />
+            <DestinationGroup
               label={GROUP_LABELS.folders}
               destinations={grouped.folders}
-              baseIndex={grouped.go.length}
+              baseIndex={grouped.go.length + grouped.comms.length}
               activeIndex={clampedIndex}
               onSelect={select}
               onHover={setActiveIndex}
@@ -284,7 +302,7 @@ export function CommandPalette() {
             <DestinationGroup
               label={GROUP_LABELS.projects}
               destinations={grouped.projects}
-              baseIndex={grouped.go.length + grouped.folders.length}
+              baseIndex={grouped.go.length + grouped.comms.length + grouped.folders.length}
               activeIndex={clampedIndex}
               onSelect={select}
               onHover={setActiveIndex}

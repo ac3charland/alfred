@@ -4,6 +4,7 @@ import { AppShell } from '@/components/shell/app-shell';
 import { TaskDndProvider } from '@/components/tasks/task-dnd-provider';
 import { requireUser } from '@/lib/auth/require-user';
 import { getCodeStories, getEpics, getProjects } from '@/lib/data/code';
+import { getCommsSeed, getCommsSettingsSeed } from '@/lib/data/comms';
 import { getFolders } from '@/lib/data/folders';
 import { getHabitSeed } from '@/lib/data/habits';
 import { getAllItems } from '@/lib/data/items';
@@ -13,6 +14,8 @@ import { getInstanceConfig } from '@/lib/instance';
 import { ActiveEditorProvider } from '@/lib/stores/active-editor-store';
 import { CodeFilterProvider } from '@/lib/stores/code-filter-store';
 import { CodeProvider } from '@/lib/stores/code-store';
+import { CommsSettingsProvider } from '@/lib/stores/comms-settings-store';
+import { CommsProvider } from '@/lib/stores/comms-store';
 import { DepartingItemsProvider } from '@/lib/stores/departing-items-store';
 import { ExpansionProvider } from '@/lib/stores/expansion-store';
 import { FolderSortProvider } from '@/lib/stores/folder-sort-store';
@@ -46,20 +49,34 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   // instance menu header, so keep the return rather than discarding it.
   const user = await requireUser();
 
-  const [folders, items, projects, epics, stories, weeklyPlanIndex, latestWeeklyPlan, habitSeed] =
-    await Promise.all([
-      getFolders(),
-      getAllItems(),
-      getProjects(),
-      getEpics(),
-      getCodeStories(),
-      getWeeklyPlanIndex(),
-      getLatestWeeklyPlan(),
-      // One read backs the habit definitions, the windowed entries and the all-history stats the
-      // stats rail rests on — the baseline needs full history, so windowing the entry read too
-      // would re-fetch rows it already returned.
-      getHabitSeed(),
-    ]);
+  const [
+    folders,
+    items,
+    projects,
+    epics,
+    stories,
+    weeklyPlanIndex,
+    latestWeeklyPlan,
+    habitSeed,
+    commsSeed,
+    commsSettingsSeed,
+  ] = await Promise.all([
+    getFolders(),
+    getAllItems(),
+    getProjects(),
+    getEpics(),
+    getCodeStories(),
+    getWeeklyPlanIndex(),
+    getLatestWeeklyPlan(),
+    // One read backs the habit definitions, the windowed entries and the all-history stats the
+    // stats rail rests on — the baseline needs full history, so windowing the entry read too
+    // would re-fetch rows it already returned.
+    getHabitSeed(),
+    // Two Comms reads, not one: the queue's data moves every few minutes and rides a realtime
+    // subscription, while the roster and the rubric change only when the owner edits them.
+    getCommsSeed(),
+    getCommsSettingsSeed(),
+  ]);
 
   return (
     // ToastProvider is the OUTERMOST provider so all three optimistic stores
@@ -98,9 +115,25 @@ export default async function ShellLayout({ children }: { children: React.ReactN
                                 initialStats={habitSeed.stats}
                                 serverToday={todayIn('UTC')}
                               >
-                                <AppShell email={user.email ?? null} instance={getInstanceConfig()}>
-                                  {children}
-                                </AppShell>
+                                <CommsProvider
+                                  initialAccounts={commsSeed.accounts}
+                                  initialMessages={commsSeed.messages}
+                                  initialVerdicts={commsSeed.verdicts}
+                                  initialHealth={commsSeed.health}
+                                >
+                                  <CommsSettingsProvider
+                                    initialPeople={commsSettingsSeed.people}
+                                    initialRubrics={commsSettingsSeed.rubrics}
+                                    initialCorrections={commsSettingsSeed.corrections}
+                                  >
+                                    <AppShell
+                                      email={user.email ?? null}
+                                      instance={getInstanceConfig()}
+                                    >
+                                      {children}
+                                    </AppShell>
+                                  </CommsSettingsProvider>
+                                </CommsProvider>
                               </HabitsProvider>
                             </WeeklyPlanProvider>
                           </SearchProvider>

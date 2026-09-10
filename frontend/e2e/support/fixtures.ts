@@ -35,6 +35,14 @@ export const test = base.extend<Fixtures>({
           weeklyPlans: state.weeklyPlans ?? [],
           habits: state.habits ?? [],
           habitEntries: state.habitEntries ?? [],
+          commAccounts: state.commAccounts ?? [],
+          commMessages: state.commMessages ?? [],
+          commVerdicts: state.commVerdicts ?? [],
+          commPeople: state.commPeople ?? [],
+          commHandles: state.commHandles ?? [],
+          commRubrics: state.commRubrics ?? [],
+          commCorrections: state.commCorrections ?? [],
+          commHealth: state.commHealth ?? [],
         },
       });
       expect(response.ok()).toBeTruthy();

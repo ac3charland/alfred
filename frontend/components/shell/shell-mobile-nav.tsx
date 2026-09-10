@@ -14,17 +14,18 @@ import {
 } from '@/components/atoms/dialog';
 import { IconButton } from '@/components/atoms/icon-button';
 import { ProjectNav } from '@/components/code/project-nav';
+import { CommsNav } from '@/components/comms/comms-nav';
 import { SearchBox } from '@/components/shell/search-box';
 import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { FolderNav } from '@/components/tasks/folder-nav';
-import { isCodePath } from '@/lib/modules';
+import { type ModuleId, activeModule } from '@/lib/modules';
 import { cn } from '@/lib/utils';
 
 /**
  * The shell's mobile hamburger nav — a Dialog-based slide-in drawer for narrow viewports.
- * Replaces the two per-module mobile-nav files: it carries the Tasks ⇄ Code switcher (the
- * switcher lives inside the hamburger on small screens) above the module's nav, which it
- * picks from the URL (`isCodePath`) — `ProjectNav` for Code, `FolderNav` for Tasks.
+ * Replaces the per-module mobile-nav files: it carries the module switcher (which lives inside
+ * the hamburger on small screens) above the module's nav, picked from the URL by
+ * `activeModule` — `ProjectNav` for Code, `CommsNav` for Comms, `FolderNav` for Tasks.
  *
  * The sheet closes when the user *arrives* somewhere — a module-nav destination or a search
  * result — but NOT when the switcher flips module: that's still navigating the menu, so the
@@ -70,10 +71,17 @@ export function ShellMobileNav() {
             <SearchBox placement="mobile" className="w-full" onNavigate={close} />
           </div>
           <div className="overflow-y-auto px-2">
-            {isCodePath(pathname) ? <ProjectNav onClose={close} /> : <FolderNav onClose={close} />}
+            <ModuleNav active={activeModule(pathname)} onClose={close} />
           </div>
         </DialogContent>
       </DialogPortal>
     </DialogRoot>
   );
+}
+
+/** The active module's nav, wired to the drawer's close-on-arrival callback. */
+function ModuleNav({ active, onClose }: { active: ModuleId; onClose: () => void }) {
+  if (active === 'code') return <ProjectNav onClose={onClose} />;
+  if (active === 'comms') return <CommsNav onClose={onClose} />;
+  return <FolderNav onClose={onClose} />;
 }

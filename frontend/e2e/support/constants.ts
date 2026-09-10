@@ -8,8 +8,17 @@
 import path from 'node:path';
 import process from 'node:process';
 
+import { resetCommFixtureClock } from '@/lib/comms/fixtures';
 import type {
   CodeItem,
+  CommAccount,
+  CommClassifierHealth,
+  CommCorrection,
+  CommHandle,
+  CommMessage,
+  CommPerson,
+  CommRubric,
+  CommVerdict,
   Epic,
   Folder,
   Habit,
@@ -18,6 +27,21 @@ import type {
   Project,
   WeeklyPlan,
 } from '@/lib/types';
+
+/**
+ * The comms seed builders are the SAME ones the unit tests and stories use — re-exported here
+ * rather than re-declared, so a column added to the migration is answered in one place.
+ */
+export {
+  makeCommAccount,
+  makeCommCorrection,
+  makeCommHandle,
+  makeCommHealth,
+  makeCommMessage,
+  makeCommPerson,
+  makeCommRubric,
+  makeCommVerdict,
+} from '@/lib/comms/fixtures';
 
 export const MOCK_PORT = 54_331;
 export const MOCK_URL = `http://localhost:${String(MOCK_PORT)}`;
@@ -44,6 +68,15 @@ export interface SeedState {
   weeklyPlans?: WeeklyPlan[];
   habits?: Habit[];
   habitEntries?: HabitEntry[];
+  commAccounts?: CommAccount[];
+  commMessages?: CommMessage[];
+  commVerdicts?: CommVerdict[];
+  commPeople?: CommPerson[];
+  commHandles?: CommHandle[];
+  commRubrics?: CommRubric[];
+  commCorrections?: CommCorrection[];
+  /** The singleton classifier-health row, as a list so the seed shape stays uniform. */
+  commHealth?: CommClassifierHealth[];
 }
 
 let sequence = 0;
@@ -61,10 +94,11 @@ function nextSortOrder(): number {
   return sortSequence;
 }
 
-/** Reset the timestamp + sort_order sequences — call before building a fresh seed. */
+/** Reset every fixture sequence — the local ones plus the shared comms clock. */
 export function resetSeedClock(): void {
   sequence = 0;
   sortSequence = 0;
+  resetCommFixtureClock();
 }
 
 export function makeFolder(name: string, overrides: Partial<Folder> = {}): Folder {

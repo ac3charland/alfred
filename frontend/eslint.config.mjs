@@ -254,7 +254,7 @@ export default defineConfig([
   // outright. Three selector groups overlap on component files:
   //   • dup-helpers   → **/*.{ts,tsx}                     (broadest)
   //   • supabase.from → components/** + lib/stores/**     (subset)
-  //   • raw-html      → components/{tasks,code,shell,auth}/**/*.tsx (sub-subset)
+  //   • raw-html      → components/{tasks,code,comms,shell,auth}/**/*.tsx (sub-subset)
   // They are layered broad→narrow, and each narrower block REPEATS every
   // selector that also applies to its files, so the one block that wins for a
   // given file still carries all applicable selectors. Each block likewise
@@ -324,7 +324,7 @@ export default defineConfig([
   // (atoms renders the raw elements), tests/stories/e2e, and login-form (the
   // sanctioned supabase user, also under components/auth).
   {
-    files: ['components/{tasks,code,shell,auth}/**/*.tsx'],
+    files: ['components/{tasks,code,comms,shell,auth}/**/*.tsx'],
     ignores: [
       'components/atoms/**',
       'components/auth/login-form.tsx',

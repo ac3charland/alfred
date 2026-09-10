@@ -18,7 +18,9 @@
  *     POST /auth/v1/logout                                    → 204
  *   Data (PostgREST):
  *     GET|HEAD|POST|PATCH|DELETE /rest/v1/{folders,items,projects,epics,code_items,weekly_plans,
- *                                     habits,habit_entries}
+ *                                     habits,habit_entries,comm_accounts,comm_messages,
+ *                                     comm_verdicts,comm_people,comm_handles,comm_rubrics,
+ *                                     comm_corrections,comm_classifier_health}
  *                                                             → CRUD + filters
  *     GET  /rest/v1/{task_items,v_code_stories}               → computed views
  *     POST /rest/v1/rpc/complete_subtree                      → cascade complete
@@ -27,6 +29,8 @@
  *                         move_code_priority_in_project}
  *                                                             → Software Factory RPCs
  *     POST /rest/v1/rpc/create_weekly_plan_items              → a week's plan items, in one batch
+ *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version}
+ *                                                             → Comms RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
  *
@@ -77,6 +81,23 @@ let weeklyPlans = [];
 let habits = [];
 /** @type {Record<string, unknown>[]} */
 let habitEntries = [];
+// ── Comms (migration 0034): the mirrored messages and everything hanging off them. ──
+/** @type {Record<string, unknown>[]} */
+let commAccounts = [];
+/** @type {Record<string, unknown>[]} */
+let commMessages = [];
+/** @type {Record<string, unknown>[]} */
+let commVerdicts = [];
+/** @type {Record<string, unknown>[]} */
+let commPeople = [];
+/** @type {Record<string, unknown>[]} */
+let commHandles = [];
+/** @type {Record<string, unknown>[]} */
+let commRubrics = [];
+/** @type {Record<string, unknown>[]} */
+let commCorrections = [];
+/** @type {Record<string, unknown>[]} */
+let commHealth = [];
 // The global Backlog priority sequence (migration 0005's `code_priority_seq`): a code_item
 // seeded/created without an explicit priority appends at the bottom. Recomputed after each seed.
 let nextPriority = 1;
@@ -236,6 +257,34 @@ function applySelect(rows, searchParameters) {
 }
 
 /**
+ * PostgREST resource embedding, in the ONE shape alfred asks for: `comm_people` selecting the
+ * `comm_handles` that resolve to each person. Everywhere else the app selects plain column
+ * lists, so this is a named special case rather than a general join planner — and it takes the
+ * pre-projection rows too, since a select that omits `id` leaves nothing to join on.
+ */
+function applyEmbeds(name, projected, source, searchParameters) {
+  const select = searchParameters.get('select') ?? '';
+  const embed = /comm_handles\(([^)]*)\)/.exec(select);
+  if (name !== 'comm_people' || embed === null) return projected;
+  const columns = (embed[1] ?? '')
+    .split(',')
+    .map((column) => column.trim())
+    .filter(Boolean);
+  return projected.map((row, index) => {
+    const personId = source[index]?.id;
+    const handles = commHandles.filter((handle) => String(handle.person_id) === String(personId));
+    return {
+      ...row,
+      comm_handles: handles.map((handle) =>
+        columns.length === 0 || columns.includes('*')
+          ? handle
+          : Object.fromEntries(columns.map((column) => [column, handle[column]])),
+      ),
+    };
+  });
+}
+
+/**
  * Apply PostgREST's `limit` / `offset` window. Without this a `.limit(1)` read comes back as
  * the whole table, which supabase-js's `.maybeSingle()` then rejects for returning multiple
  * rows — the mock has to narrow the same way the real server does.
@@ -290,6 +339,14 @@ function tableFor(name) {
   if (name === 'weekly_plans') return weeklyPlans;
   if (name === 'habits') return habits;
   if (name === 'habit_entries') return habitEntries;
+  if (name === 'comm_accounts') return commAccounts;
+  if (name === 'comm_messages') return commMessages;
+  if (name === 'comm_verdicts') return commVerdicts;
+  if (name === 'comm_people') return commPeople;
+  if (name === 'comm_handles') return commHandles;
+  if (name === 'comm_rubrics') return commRubrics;
+  if (name === 'comm_corrections') return commCorrections;
+  if (name === 'comm_classifier_health') return commHealth;
   return;
 }
 
@@ -397,6 +454,162 @@ function newHabitEntry(input) {
     created_at: input.created_at ?? now,
     updated_at: input.updated_at ?? now,
   };
+}
+
+// ── Comms row constructors (defaults mirror migration 0034). ──
+
+/** A mailbox / channel. `expected_interval_seconds` is what turns a quiet dot stale. */
+function newCommAccount(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    key: input.key ?? '',
+    kind: input.kind ?? 'gmail',
+    label: input.label ?? '',
+    home: input.home ?? 'worker',
+    owner_handles: input.owner_handles ?? [],
+    enabled: input.enabled ?? true,
+    expected_interval_seconds: input.expected_interval_seconds ?? 600,
+    cursor: input.cursor ?? null,
+    last_seen_at: input.last_seen_at ?? null,
+    last_error: input.last_error ?? null,
+    last_error_at: input.last_error_at ?? null,
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** A mirrored message. Unjudged by default: a tier and how it was reached arrive together. */
+function newCommMessage(input) {
+  const receivedAt = input.received_at ?? new Date().toISOString();
+  return {
+    id: input.id ?? randomUUID(),
+    account_id: input.account_id ?? null,
+    source_id: input.source_id ?? randomUUID(),
+    rfc822_message_id: input.rfc822_message_id ?? null,
+    thread_key: input.thread_key ?? randomUUID(),
+    direction: input.direction ?? 'inbound',
+    sender_handle: input.sender_handle ?? '',
+    sender_name: input.sender_name ?? null,
+    chat_name: input.chat_name ?? null,
+    participants: input.participants ?? [],
+    subject: input.subject ?? null,
+    body: input.body ?? '',
+    received_at: receivedAt,
+    body_extracted: input.body_extracted ?? true,
+    has_attachments: input.has_attachments ?? false,
+    in_reply_to: input.in_reply_to ?? null,
+    references_ids: input.references_ids ?? [],
+    filtered_reason: input.filtered_reason ?? null,
+    classify_attempts: input.classify_attempts ?? 0,
+    tier: input.tier ?? null,
+    judged_by: input.judged_by ?? null,
+    ask: input.ask ?? null,
+    verdict_id: input.verdict_id ?? null,
+    classified_at: input.classified_at ?? null,
+    reclassify_requested_at: input.reclassify_requested_at ?? null,
+    cleared_at: input.cleared_at ?? null,
+    cleared_by: input.cleared_by ?? null,
+    inbox_item_id: input.inbox_item_id ?? null,
+    created_at: input.created_at ?? receivedAt,
+  };
+}
+
+/** The model's judgment of one message, with the provenance a re-run is reconstructed from. */
+function newCommVerdict(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    message_id: input.message_id ?? null,
+    tier: input.tier ?? 'today',
+    owes_reply: input.owes_reply ?? true,
+    ask: input.ask ?? '',
+    reason: input.reason ?? '',
+    provider: input.provider ?? 'anthropic',
+    model: input.model ?? 'claude-haiku-4-5',
+    prompt_version: input.prompt_version ?? 1,
+    rubric_version: input.rubric_version ?? 1,
+    example_set_version: input.example_set_version ?? 0,
+    person_id: input.person_id ?? null,
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** A roster person; `high` is the column default. */
+function newCommPerson(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    name: input.name ?? '',
+    priority: input.priority ?? 'high',
+    notes: input.notes ?? null,
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** One handle belonging to a person — unique across the roster, so it resolves to one human. */
+function newCommHandle(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    person_id: input.person_id ?? null,
+    handle: input.handle ?? '',
+    kind: input.kind ?? 'email',
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** One append-only rubric version. The writer assigns `version` as max + 1. */
+function newCommRubric(input) {
+  let highestVersion = 0;
+  for (const row of commRubrics)
+    highestVersion = Math.max(highestVersion, Number(row.version) || 0);
+  const version = input.version ?? highestVersion + 1;
+  return {
+    id: input.id ?? randomUUID(),
+    version,
+    body: input.body ?? '',
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * A correction, doubling as one example-set row. Mirrors migration 0034's stamp trigger: an
+ * INSERT claims the next set version, so no writer can forget to bump it.
+ */
+function newCommCorrection(input) {
+  return {
+    id: input.id ?? randomUUID(),
+    message_id: input.message_id ?? null,
+    account_label: input.account_label ?? '',
+    sender_handle: input.sender_handle ?? '',
+    sender_name: input.sender_name ?? null,
+    subject: input.subject ?? null,
+    body_excerpt: input.body_excerpt ?? null,
+    model_tier: input.model_tier ?? null,
+    chosen_tier: input.chosen_tier ?? 'today',
+    kind: input.kind ?? 'tier_change',
+    created_version: input.created_version ?? commExampleSetVersion() + 1,
+    pruned_version: input.pruned_version ?? null,
+    pruned_at: input.pruned_at ?? null,
+    purged_at: input.purged_at ?? null,
+    created_at: input.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** The singleton classifier-health row (`id = 1`, enforced by a CHECK in the migration). */
+function newCommHealth(input) {
+  return {
+    id: input.id ?? 1,
+    last_run_at: input.last_run_at ?? null,
+    last_success_at: input.last_success_at ?? null,
+    last_error: input.last_error ?? null,
+    last_error_at: input.last_error_at ?? null,
+  };
+}
+
+/** The `comm_example_set_version()` SQL function: the highest version any row has claimed. */
+function commExampleSetVersion() {
+  let highest = 0;
+  for (const row of commCorrections) {
+    highest = Math.max(highest, Number(row.created_version) || 0, Number(row.pruned_version) || 0);
+  }
+  return highest;
 }
 
 // ── Software Factory row constructors (defaults mirror migration 0002). ──
@@ -521,6 +734,14 @@ function rowConstructorFor(name) {
   if (name === 'weekly_plans') return newWeeklyPlan;
   if (name === 'habits') return newHabit;
   if (name === 'habit_entries') return newHabitEntry;
+  if (name === 'comm_accounts') return newCommAccount;
+  if (name === 'comm_messages') return newCommMessage;
+  if (name === 'comm_verdicts') return newCommVerdict;
+  if (name === 'comm_people') return newCommPerson;
+  if (name === 'comm_handles') return newCommHandle;
+  if (name === 'comm_rubrics') return newCommRubric;
+  if (name === 'comm_corrections') return newCommCorrection;
+  if (name === 'comm_classifier_health') return newCommHealth;
   return;
 }
 
@@ -961,6 +1182,88 @@ function handleRpc(req, res, fn, body) {
     return;
   }
 
+  // ── Comms RPCs (migration 0034) ──
+
+  // The current example-set version: the highest any insert or prune has claimed.
+  if (fn === 'comm_example_set_version' && req.method === 'POST') {
+    sendJson(res, 200, commExampleSetVersion());
+    return;
+  }
+
+  // An outbound message drains every queued inbound row of the same account that arrived
+  // before it and shares its thread — or that the sent message names in its References chain,
+  // which is how IMAP (with no thread id) is drained. Only queued rows: fyi stays put, and a
+  // row the owner already cleared keeps the exit it left by.
+  if (fn === 'comm_record_reply' && req.method === 'POST') {
+    const references = body?.p_references ?? [];
+    const at = body?.p_at ?? new Date().toISOString();
+    let count = 0;
+    for (const message of commMessages) {
+      const queued =
+        String(message.account_id) === String(body?.p_account) &&
+        message.direction === 'inbound' &&
+        message.cleared_at == null &&
+        ['asap', 'today', 'whenever'].includes(message.tier) &&
+        String(message.received_at) < String(at);
+      const sameThread = message.thread_key === body?.p_thread_key;
+      const named =
+        message.rfc822_message_id != null && references.includes(message.rfc822_message_id);
+      if (queued && (sameThread || named)) {
+        message.cleared_at = at;
+        message.cleared_by = 'reply';
+        count += 1;
+      }
+    }
+    sendJson(res, 200, count);
+    return;
+  }
+
+  // The deliberate purge — one message, one account, or everything before a cutoff. Unlike the
+  // retention sweep it DOES cascade into the example set, stripping the denormalised text from
+  // every correction it reaches (including ones whose message an earlier sweep already took).
+  if (fn === 'comm_purge' && req.method === 'POST') {
+    const messageId = body?.p_message ?? null;
+    const accountId = body?.p_account ?? null;
+    const before = body?.p_before ?? null;
+    if (messageId === null && accountId === null && before === null) {
+      sendJson(res, 400, { message: 'comm_purge needs a message, an account, or a cutoff' });
+      return;
+    }
+
+    const matchesMessage = (message) =>
+      (messageId === null || String(message.id) === String(messageId)) &&
+      (accountId === null || String(message.account_id) === String(accountId)) &&
+      (before === null || String(message.received_at) < String(before));
+
+    const doomed = commMessages.filter((message) => matchesMessage(message));
+    const doomedIds = new Set(doomed.map((message) => String(message.id)));
+    const accountLabel = commAccounts.find(
+      (account) => String(account.id) === String(accountId),
+    )?.label;
+    const now = new Date().toISOString();
+
+    for (const correction of commCorrections) {
+      if (correction.purged_at != null) continue;
+      const viaMessage =
+        correction.message_id != null && doomedIds.has(String(correction.message_id));
+      // A correction whose message is already gone is matched through its own columns, so
+      // purging an account or a date range still reaches it.
+      const orphaned =
+        messageId === null &&
+        correction.message_id == null &&
+        (accountId === null || correction.account_label === accountLabel) &&
+        (before === null || String(correction.created_at) < String(before));
+      if (!viaMessage && !orphaned) continue;
+      correction.body_excerpt = null;
+      correction.subject = null;
+      correction.purged_at = now;
+    }
+
+    deleteRows('comm_messages', doomed);
+    sendJson(res, 200, doomed.length);
+    return;
+  }
+
   sendJson(res, 404, { message: `No rpc: ${fn}` });
 }
 
@@ -998,8 +1301,11 @@ function handleRest(req, res, url, body) {
 
   if (req.method === 'GET' || req.method === 'HEAD') {
     const matched = applyFilters(table, url.searchParams);
-    const rows = applySelect(
-      applyRange(applyOrder(matched, url.searchParams), url.searchParams),
+    const ordered = applyRange(applyOrder(matched, url.searchParams), url.searchParams);
+    const rows = applyEmbeds(
+      rest,
+      applySelect(ordered, url.searchParams),
+      ordered,
       url.searchParams,
     );
     // A single-object read has no count to report, so it keeps the plain JSON path.
@@ -1042,7 +1348,12 @@ function handleRest(req, res, url, body) {
       sendNoContent(res);
       return;
     }
-    const projected = applySelect(created, url.searchParams);
+    const projected = applyEmbeds(
+      rest,
+      applySelect(created, url.searchParams),
+      created,
+      url.searchParams,
+    );
     sendJson(res, 201, wantsObject(req) ? projected[0] : projected);
     return;
   }
@@ -1056,7 +1367,17 @@ function handleRest(req, res, url, body) {
       // can't reproduce real-Postgres trigger semantics, same call the residency and epic-hint
       // stories made; that behaviour is proven by the database package's real-Postgres
       // integration suite instead. This assignment stays a flat passthrough.
+      //
+      // Migration 0034's stamp trigger IS mirrored, because the version it writes is rendered:
+      // `newCommCorrection` already claims the next set version on insert, and this is the same
+      // trigger's other half — a row moving from unpruned to pruned claims the next one too.
+      // Read before the assignment, exactly as the trigger reads the table before its own row.
+      const prunedVersion =
+        rest === 'comm_corrections' && row.pruned_at == null && body?.pruned_at != null
+          ? commExampleSetVersion() + 1
+          : undefined;
       Object.assign(row, body);
+      if (prunedVersion !== undefined) row.pruned_version = prunedVersion;
       // code_items bumps updated_at on every write (mirrors the table trigger).
       if (rest === 'code_items') row.updated_at = now;
     }
@@ -1064,7 +1385,12 @@ function handleRest(req, res, url, body) {
       sendNoContent(res);
       return;
     }
-    const projected = applySelect(matched, url.searchParams);
+    const projected = applyEmbeds(
+      rest,
+      applySelect(matched, url.searchParams),
+      matched,
+      url.searchParams,
+    );
     sendJson(res, 200, wantsObject(req) ? (projected[0] ?? null) : projected);
     return;
   }
@@ -1139,6 +1465,60 @@ function deleteRows(rest, matched) {
   if (rest === 'habit_entries') {
     const removeRows = new Set(matched);
     habitEntries = habitEntries.filter((entry) => !removeRows.has(entry));
+    return;
+  }
+  if (rest === 'comm_accounts') {
+    // `comm_messages.account_id` cascades, and each message takes its verdicts with it.
+    const removeIds = new Set(matched.map((row) => String(row.id)));
+    const doomed = commMessages.filter((message) => removeIds.has(String(message.account_id)));
+    deleteRows('comm_messages', doomed);
+    commAccounts = commAccounts.filter((account) => !removeIds.has(String(account.id)));
+    return;
+  }
+  if (rest === 'comm_messages') {
+    const removeIds = new Set(matched.map((row) => String(row.id)));
+    // Verdicts cascade; corrections keep their denormalised text and just lose the pointer,
+    // because the example set is what makes the rubric improve rather than reset.
+    commVerdicts = commVerdicts.filter((verdict) => !removeIds.has(String(verdict.message_id)));
+    for (const correction of commCorrections) {
+      if (removeIds.has(String(correction.message_id))) correction.message_id = null;
+    }
+    commMessages = commMessages.filter((message) => !removeIds.has(String(message.id)));
+    return;
+  }
+  if (rest === 'comm_people') {
+    // Handles cascade with the person; a verdict keeps its row and loses the attribution.
+    const removeIds = new Set(matched.map((row) => String(row.id)));
+    commHandles = commHandles.filter((handle) => !removeIds.has(String(handle.person_id)));
+    for (const verdict of commVerdicts) {
+      if (removeIds.has(String(verdict.person_id))) verdict.person_id = null;
+    }
+    commPeople = commPeople.filter((person) => !removeIds.has(String(person.id)));
+    return;
+  }
+  if (rest === 'comm_handles') {
+    const removeRows = new Set(matched);
+    commHandles = commHandles.filter((handle) => !removeRows.has(handle));
+    return;
+  }
+  if (rest === 'comm_verdicts') {
+    const removeRows = new Set(matched);
+    commVerdicts = commVerdicts.filter((verdict) => !removeRows.has(verdict));
+    return;
+  }
+  if (rest === 'comm_rubrics') {
+    const removeRows = new Set(matched);
+    commRubrics = commRubrics.filter((rubric) => !removeRows.has(rubric));
+    return;
+  }
+  if (rest === 'comm_corrections') {
+    const removeRows = new Set(matched);
+    commCorrections = commCorrections.filter((correction) => !removeRows.has(correction));
+    return;
+  }
+  if (rest === 'comm_classifier_health') {
+    const removeRows = new Set(matched);
+    commHealth = commHealth.filter((row) => !removeRows.has(row));
   }
 }
 
@@ -1156,6 +1536,14 @@ function handleControl(req, res, url, body) {
     weeklyPlans = [];
     habits = [];
     habitEntries = [];
+    commAccounts = [];
+    commMessages = [];
+    commVerdicts = [];
+    commPeople = [];
+    commHandles = [];
+    commRubrics = [];
+    commCorrections = [];
+    commHealth = [];
     nextPriority = 1;
     sendJson(res, 200, { ok: true });
     return;
@@ -1174,6 +1562,35 @@ function handleControl(req, res, url, body) {
     habitEntries = Array.isArray(body?.habitEntries)
       ? body.habitEntries.map((e) => newHabitEntry(e))
       : [];
+    // Comms. Handles are built before people so the roster's embedded read has them in hand,
+    // and corrections last so the example-set version they claim counts every seeded row.
+    commAccounts = Array.isArray(body?.commAccounts)
+      ? body.commAccounts.map((a) => newCommAccount(a))
+      : [];
+    commMessages = Array.isArray(body?.commMessages)
+      ? body.commMessages.map((m) => newCommMessage(m))
+      : [];
+    commVerdicts = Array.isArray(body?.commVerdicts)
+      ? body.commVerdicts.map((v) => newCommVerdict(v))
+      : [];
+    commPeople = Array.isArray(body?.commPeople)
+      ? body.commPeople.map((x) => newCommPerson(x))
+      : [];
+    commHandles = Array.isArray(body?.commHandles)
+      ? body.commHandles.map((h) => newCommHandle(h))
+      : [];
+    // Rubrics and corrections number THEMSELVES from the rows already stored (migration 0034's
+    // `max + 1` writer and its stamp trigger), so each must be appended before the next is
+    // built — a `.map()` over the old array would hand every seeded row the same version.
+    commRubrics = [];
+    for (const rubric of body?.commRubrics ?? []) commRubrics.push(newCommRubric(rubric));
+    commCorrections = [];
+    for (const correction of body?.commCorrections ?? []) {
+      commCorrections.push(newCommCorrection(correction));
+    }
+    commHealth = Array.isArray(body?.commHealth)
+      ? body.commHealth.map((h) => newCommHealth(h))
+      : [];
     // Park the sequence above every seeded rank so gate-created stories append at the bottom.
     syncPrioritySequence();
     sendJson(res, 200, {
@@ -1185,6 +1602,14 @@ function handleControl(req, res, url, body) {
       weeklyPlans,
       habits,
       habitEntries,
+      commAccounts,
+      commMessages,
+      commVerdicts,
+      commPeople,
+      commHandles,
+      commRubrics,
+      commCorrections,
+      commHealth,
     });
     return;
   }
@@ -1198,6 +1623,14 @@ function handleControl(req, res, url, body) {
       weeklyPlans,
       habits,
       habitEntries,
+      commAccounts,
+      commMessages,
+      commVerdicts,
+      commPeople,
+      commHandles,
+      commRubrics,
+      commCorrections,
+      commHealth,
     });
     return;
   }

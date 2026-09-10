@@ -7,13 +7,13 @@ import type { Folder, Project } from '@/lib/types';
  * matching rules are exhaustively unit-testable on their own (the direct sibling of
  * `search-results.ts`). The palette component just renders whatever `buildDestinations` returns.
  *
- * Unlike ⌘P content search, ⌘K lists navigation *destinations*: the two modules, the
- * cross-cutting views, every folder, and every project. An empty query lists them all, so the
- * palette doubles as a browsable "where can I go?" menu.
+ * Unlike ⌘P content search, ⌘K lists navigation *destinations*: the modules, the cross-cutting
+ * views, the Comms surfaces, every folder, and every project. An empty query lists them all, so
+ * the palette doubles as a browsable "where can I go?" menu.
  */
 
-/** The three destination groups, in display + keyboard-traversal order. */
-export type DestinationGroup = 'go' | 'folders' | 'projects';
+/** The destination groups, in display + keyboard-traversal order. */
+export type DestinationGroup = 'go' | 'comms' | 'folders' | 'projects';
 
 /**
  * A stable icon token per destination, resolved to a concrete lucide icon by the component —
@@ -30,6 +30,10 @@ export type DestinationIcon =
   | 'code'
   | 'backlog'
   | 'needs-human-action'
+  | 'comms'
+  | 'people'
+  | 'rubric'
+  | 'examples'
   | 'folder'
   | 'project';
 
@@ -49,6 +53,7 @@ export interface Destination {
 /** The grouped output — each group's matches in ranked order. */
 export interface GroupedDestinations {
   go: Destination[];
+  comms: Destination[];
   folders: Destination[];
   projects: Destination[];
 }
@@ -76,6 +81,25 @@ const STATIC_DESTINATIONS: readonly Destination[] = [
     icon: 'needs-human-action',
   },
   { id: 'go-backlog', group: 'go', label: 'Backlog', href: '/code/backlog', icon: 'backlog' },
+];
+
+/**
+ * The Comms module's four destinations, in the sidebar's own order — the queue first (the
+ * module's default view), then the three surfaces the owner edits by hand. Their own group
+ * rather than four more rows in "Go to": the settings pages are a coherent set, and burying
+ * "Rubric" between "Backlog" and a folder name makes the module read as a stray view.
+ */
+const COMMS_DESTINATIONS: readonly Destination[] = [
+  { id: 'comms-queue', group: 'comms', label: 'Queue', href: '/comms', icon: 'comms' },
+  { id: 'comms-people', group: 'comms', label: 'People', href: '/comms/people', icon: 'people' },
+  { id: 'comms-rubric', group: 'comms', label: 'Rubric', href: '/comms/rubric', icon: 'rubric' },
+  {
+    id: 'comms-examples',
+    group: 'comms',
+    label: 'Examples',
+    href: '/comms/examples',
+    icon: 'examples',
+  },
 ];
 
 /** Trim + lowercase so matching is whitespace- and case-insensitive. */
@@ -149,6 +173,7 @@ export function buildDestinations(
   const q = normalize(query);
   return {
     go: filterGroup(q, STATIC_DESTINATIONS),
+    comms: filterGroup(q, COMMS_DESTINATIONS),
     folders: filterGroup(
       q,
       folders.map((folder) => folderDestination(folder)),
@@ -160,9 +185,9 @@ export function buildDestinations(
   };
 }
 
-/** The three groups concatenated into one ordered list for ↑/↓ keyboard navigation. */
+/** Every group concatenated into one ordered list for ↑/↓ keyboard navigation. */
 export function flattenDestinations(grouped: GroupedDestinations): Destination[] {
-  return [...grouped.go, ...grouped.folders, ...grouped.projects];
+  return [...grouped.go, ...grouped.comms, ...grouped.folders, ...grouped.projects];
 }
 
 /** A stable DOM id for a destination's `<li role="option">` (for `aria-activedescendant`). */

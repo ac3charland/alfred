@@ -65,3 +65,17 @@ export function insertAt<T>(list: T[], item: T, index: number): T[] {
   const at = Math.max(0, Math.min(index, list.length));
   return [...list.slice(0, at), item, ...list.slice(at)];
 }
+
+/**
+ * The values `row` currently holds for exactly the fields `patch` names — the capture half of a
+ * SELECTIVE-FIELD rollback (see the data-flow skill's three rollback strategies). Restoring only
+ * what a write touched is what keeps a stale failure from clobbering an unrelated change that
+ * landed on the row meanwhile, which matters most where a second writer pushes into the store.
+ */
+export function capturedFields<T extends object>(row: T, patch: Partial<T>): Partial<T> {
+  const captured: Partial<T> = {};
+  for (const key of Object.keys(patch)) {
+    Object.assign(captured, { [key]: row[key as keyof T] });
+  }
+  return captured;
+}

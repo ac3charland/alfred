@@ -22,4 +22,26 @@ describe('ViewHeading', () => {
     expect(container.querySelector('svg')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
+
+  it('wears the Tasks teal by default, so headings written before Comms are unchanged', () => {
+    const { container } = render(
+      <ViewHeading icon={ListOrdered} title="Today" description="Due now." />,
+    );
+
+    expect(container.querySelector('.text-accent-teal')).toBeInTheDocument();
+  });
+
+  it('wears the named module accent when one is given', () => {
+    const { container } = render(
+      <ViewHeading
+        icon={ListOrdered}
+        title="Comms"
+        description="What you owe a reply to."
+        accent="comms"
+      />,
+    );
+
+    expect(container.querySelector('.text-accent-blue')).toBeInTheDocument();
+    expect(container.querySelector('.text-accent-teal')).not.toBeInTheDocument();
+  });
 });

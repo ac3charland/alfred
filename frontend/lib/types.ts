@@ -97,3 +97,46 @@ export type WeeklyPlan = Database['public']['Tables']['weekly_plans']['Row'];
  * each plan is tens of KB, so only the selected one's document is ever in memory.
  */
 export type WeeklyPlanSummary = Omit<WeeklyPlan, 'html'>;
+
+// ── Comms (the communication firewall) — mirrored messages, verdicts, the roster. ──
+
+/** The four triage tiers. The first three are counted; `fyi` is the unbadged shelf. */
+export type CommTier = Database['public']['Enums']['comm_tier'];
+/** Which kind of source an account is polled from. */
+export type CommAccountKind = Database['public']['Enums']['comm_account_kind'];
+
+export type CommAccount = Database['public']['Tables']['comm_accounts']['Row'];
+export type CommAccountInsert = Database['public']['Tables']['comm_accounts']['Insert'];
+export type CommAccountUpdate = Database['public']['Tables']['comm_accounts']['Update'];
+
+export type CommMessage = Database['public']['Tables']['comm_messages']['Row'];
+export type CommMessageInsert = Database['public']['Tables']['comm_messages']['Insert'];
+export type CommMessageUpdate = Database['public']['Tables']['comm_messages']['Update'];
+
+export type CommVerdict = Database['public']['Tables']['comm_verdicts']['Row'];
+export type CommVerdictInsert = Database['public']['Tables']['comm_verdicts']['Insert'];
+
+export type CommPerson = Database['public']['Tables']['comm_people']['Row'];
+export type CommPersonInsert = Database['public']['Tables']['comm_people']['Insert'];
+export type CommPersonUpdate = Database['public']['Tables']['comm_people']['Update'];
+
+export type CommHandle = Database['public']['Tables']['comm_handles']['Row'];
+export type CommHandleInsert = Database['public']['Tables']['comm_handles']['Insert'];
+
+export type CommRubric = Database['public']['Tables']['comm_rubrics']['Row'];
+export type CommRubricInsert = Database['public']['Tables']['comm_rubrics']['Insert'];
+
+export type CommCorrection = Database['public']['Tables']['comm_corrections']['Row'];
+export type CommCorrectionInsert = Database['public']['Tables']['comm_corrections']['Insert'];
+export type CommCorrectionUpdate = Database['public']['Tables']['comm_corrections']['Update'];
+
+/** The module-level classifier state — a singleton row, absent until the sweep first runs. */
+export type CommClassifierHealth = Database['public']['Tables']['comm_classifier_health']['Row'];
+
+/**
+ * A roster person with the handles that resolve to them. The people list is keyed on the
+ * human, never the address, so the editor always reads the two together.
+ */
+export interface CommPersonWithHandles extends CommPerson {
+  comm_handles: CommHandle[];
+}

@@ -31,3 +31,13 @@ export const CodeActive: Story = {
     },
   },
 };
+
+/** Comms active — /comms route, the module that wears the blue accent. */
+export const CommsActive: Story = {
+  parameters: {
+    nextjs: {
+      appDirectory: true,
+      navigation: { pathname: '/comms' },
+    },
+  },
+};
