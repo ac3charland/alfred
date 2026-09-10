@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // The dev scripts are their own tiny project, deliberately apart from the Worker's.
+  //
+  // Three things differ from `../tsconfig.json` and each is the reason this file exists.
+  // `rootDir` reaches up so a script may import the Worker's own modules; `allowImportingTsExtensions`
+  // lets it write those imports with the `.ts` suffix Node's type stripping requires to run the
+  // file directly; and `node` joins the `types` list, because a script reads a file and an argv
+  // while the Worker deliberately has no Node types at all.
+  //
+  // It exists at all so ESLint's type-aware rules have a project to resolve these files against —
+  // `../tsconfig.json` includes only `src`, which would leave every script unlintable.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "allowImportingTsExtensions": true,
+    "types": ["node", "@cloudflare/workers-types"]
+  },
+  "include": ["."]
+}
