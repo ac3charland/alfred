@@ -1194,7 +1194,10 @@ function handleRpc(req, res, fn, body) {
   // An outbound message drains every queued inbound row of the same account that arrived
   // before it and shares its thread — or that the sent message names in its References chain,
   // which is how IMAP (with no thread id) is drained. Only queued rows: fyi stays put, and a
-  // row the owner already cleared keeps the exit it left by.
+  // row the owner already cleared keeps the exit it left by. A row that has not been judged yet
+  // (tier == null) drains too — the owner can reply before the classifier sweep has judged the
+  // original, and that reply genuinely answers it; the classifier's later write never touches
+  // cleared_at, so the row ends up cleared AND tiered instead of stuck in the queue forever.
   if (fn === 'comm_record_reply' && req.method === 'POST') {
     const references = body?.p_references ?? [];
     const at = body?.p_at ?? new Date().toISOString();
@@ -1204,7 +1207,7 @@ function handleRpc(req, res, fn, body) {
         String(message.account_id) === String(body?.p_account) &&
         message.direction === 'inbound' &&
         message.cleared_at == null &&
-        ['asap', 'today', 'whenever'].includes(message.tier) &&
+        (message.tier == null || ['asap', 'today', 'whenever'].includes(message.tier)) &&
         String(message.received_at) < String(at);
       const sameThread = message.thread_key === body?.p_thread_key;
       const named =

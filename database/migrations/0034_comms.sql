@@ -367,6 +367,15 @@ comment on column comm_classifier_health.last_error is
 -- it and shares its thread, or that the sent message names in its References chain (IMAP has
 -- no thread id, so the Sent folder is read that way). Only queued rows: fyi stays where it is,
 -- and a row the owner already cleared keeps the exit it left by.
+--
+-- A row that has not been judged yet (`tier is null`) also drains: the owner can reply from
+-- their phone before the classifier sweep has judged the original, and that reply genuinely
+-- answers it. Requiring a counted tier here would match zero rows for such a message, and
+-- nothing ever retries the drain — the classifier judges it normally later and it sits in the
+-- response queue forever, already answered. The classifier's own write is `onlyIfUnjudged`
+-- (`tier is null`), never gated on `cleared_at`, so it still lands after this clears the row —
+-- the message ends up cleared AND tiered, and `cleared_at is null` is what keeps a message out
+-- of the queue (`isQueued` in `frontend/lib/comms/queue.ts`), so it is never resurrected into it.
 create or replace function comm_record_reply(
   p_account uuid,
   p_thread_key text,
@@ -385,7 +394,7 @@ begin
   where account_id = p_account
     and direction = 'inbound'
     and cleared_at is null
-    and tier in ('asap', 'today', 'whenever')
+    and (tier is null or tier in ('asap', 'today', 'whenever'))
     and received_at < p_at
     and (
       thread_key = p_thread_key
@@ -412,6 +421,15 @@ grant execute on function comm_record_reply(uuid, text, text[], timestamptz)
 -- second, orphaned one. Inside the function the check-then-write is a single round trip with no
 -- gap for a retry to land in — the route re-implementing this check first would still leave a
 -- window between its read and this call.
+--
+-- The opening SELECT is `for update`: two genuinely concurrent calls on the same message (a
+-- double-submitted click, two retries in flight) both reach this function, and a plain SELECT
+-- lets both read `inbox_item_id is null` before either has written — both insert an item, and
+-- Postgres serializes the two final UPDATEs so the second still runs unconditionally and
+-- overwrites `inbox_item_id`, orphaning the first item with nothing referencing it. `for update`
+-- takes the row lock at the read, so the second call blocks until the first's INSERT and UPDATE
+-- have committed and then correctly re-reads `inbox_item_id is not null` and reuses it, rather
+-- than the route's own read-first check-then-write gap this comment used to describe.
 create or replace function comm_create_inbox_item(
   p_message uuid,
   p_title text,
@@ -426,7 +444,7 @@ declare
   v_message comm_messages;
   v_item    items;
 begin
-  select * into v_message from comm_messages where id = p_message;
+  select * into v_message from comm_messages where id = p_message for update;
 
   if v_message.inbox_item_id is not null then
     select * into v_item from items where id = v_message.inbox_item_id;
@@ -468,17 +486,37 @@ grant execute on function comm_create_inbox_item(uuid, text, text, text)
 -- corrections keep their denormalised text (message_id goes null), because the example set is
 -- what makes the rubric improve rather than reset every two months. The Worker calls this on
 -- its own daily cron; there is no pg_cron here and nothing runs inside the migration.
+--
+-- Deleted in batches rather than one statement: steady state is a day's worth, but once the
+-- sweep falls behind (Worker downtime, a bad deploy, or turning retention on against an existing
+-- backlog) a catch-up run can be far larger, and one unbatched DELETE holds row locks for the
+-- whole statement — if it ever exceeds a `statement_timeout` it rolls back entirely, making zero
+-- progress, and meets the same, larger backlog again the next day. Paging by id mirrors the
+-- discipline the read path already uses (`.range()` under a total order, see the supabase
+-- skill): each batch is its own DELETE, so a timeout on batch N keeps batches 1..N-1 committed
+-- and the next run resumes with a smaller backlog instead of none at all.
 create or replace function comm_sweep_expired(p_days int default 60)
 returns int
 language plpgsql
 security invoker
 as $$
 declare
-  v_count int;
+  v_count int := 0;
+  v_batch int;
+  v_cutoff timestamptz := now() - make_interval(days => p_days);
 begin
-  delete from comm_messages
-  where received_at < now() - make_interval(days => p_days);
-  get diagnostics v_count = row_count;
+  loop
+    delete from comm_messages
+    where id in (
+      select id from comm_messages
+      where received_at < v_cutoff
+      order by id
+      limit 5000
+    );
+    get diagnostics v_batch = row_count;
+    v_count := v_count + v_batch;
+    exit when v_batch = 0;
+  end loop;
   return v_count;
 end; $$;
 
