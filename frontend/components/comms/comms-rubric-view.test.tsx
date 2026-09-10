@@ -113,6 +113,35 @@ describe('CommsRubricView', () => {
     expect(screen.getByLabelText('Rubric')).toHaveValue(V2.body);
   });
 
+  it('shows an unsaved-changes indicator only while the draft has not been saved', async () => {
+    const user = userEvent.setup();
+    renderView([V2, V1]);
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+
+    const field = screen.getByLabelText('Rubric');
+    await user.type(field, ' and again');
+
+    expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument();
+  });
+
+  it('warns before a hard close/reload while the draft has not been saved', async () => {
+    const user = userEvent.setup();
+    renderView([V2, V1]);
+
+    const clean = new Event('beforeunload', { cancelable: true });
+    const cleanPreventDefault = jest.spyOn(clean, 'preventDefault');
+    globalThis.dispatchEvent(clean);
+    expect(cleanPreventDefault).not.toHaveBeenCalled();
+
+    const field = screen.getByLabelText('Rubric');
+    await user.type(field, ' and again');
+
+    const dirty = new Event('beforeunload', { cancelable: true });
+    const dirtyPreventDefault = jest.spyOn(dirty, 'preventDefault');
+    globalThis.dispatchEvent(dirty);
+    expect(dirtyPreventDefault).toHaveBeenCalled();
+  });
+
   it('ticks a single clock for the whole view, not one per child', () => {
     // `comms-format.ts` names the convention: the view owns one ticking instant and hands the
     // same one to every consumer — `useNow`'s interval is the only thing in the tree that calls

@@ -18,6 +18,17 @@ const BLANK_PLACEHOLDER = [
 ].join('\n');
 
 /**
+ * Whether `draft` differs from what's saved and isn't blank — the single definition of "dirty"
+ * for the rubric editor. Exported so the view that OWNS the draft (`CommsRubricView`) can reuse
+ * this exact notion for its unsaved-work guard rather than recomputing it — a blank field never
+ * counts as dirty, since there is nothing there worth warning about losing.
+ */
+export function isRubricDirty(draft: string, current: CommRubric | undefined): boolean {
+  const trimmed = draft.trim();
+  return trimmed !== (current?.body.trim() ?? '') && trimmed !== '';
+}
+
+/**
  * The rubric editor: the current text, open for editing, with the version it came from stated
  * underneath.
  *
@@ -45,8 +56,7 @@ export function RubricEditor({
 }) {
   const [isPending, setIsPending] = React.useState(false);
 
-  const trimmed = draft.trim();
-  const isDirty = trimmed !== (current?.body.trim() ?? '') && trimmed !== '';
+  const isDirty = isRubricDirty(draft, current);
 
   const save = async () => {
     setIsPending(true);
@@ -79,6 +89,14 @@ export function RubricEditor({
         saveLabel={isPending ? 'Saving…' : 'Save new version'}
         cancelLabel="Revert"
       />
+      {isDirty && (
+        // Nothing here warns on its own if the owner navigates away instead of hitting Save —
+        // see CommsRubricView's beforeunload guard — so this line is the one place a silent
+        // draft loss becomes a visible fact before that happens.
+        <p role="status" className="text-xs font-medium text-accent-amber">
+          Unsaved changes — Save new version or Revert before leaving.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         {current === undefined
           ? 'No version saved yet. The classifier follows the people list alone until there is one.'
