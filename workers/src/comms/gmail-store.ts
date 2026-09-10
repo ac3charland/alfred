@@ -11,6 +11,21 @@
 import { type SupabaseEnv, fetchJson, restQueryUrl } from '../supabase';
 
 /**
+ * Escape one source id for embedding inside a PostgREST quoted list-literal element
+ * (`in.("…","…")`). PostgREST's escape for a quoted element is a leading backslash, so a
+ * backslash must be doubled FIRST — otherwise a `"` from the id's own escaping step would be
+ * re-consumed by the backslash rule and come out wrong.
+ *
+ * The realistic trigger isn't an attacker: a WorkMail `Message-ID` containing a bare `"` is
+ * malformed per RFC 5322 but shows up in the wild, and without this the built filter either
+ * 400s (breaking the whole ingest batch) or splits into an extra list element that can match an
+ * unintended row.
+ */
+function escapeListLiteral(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', String.raw`\"`);
+}
+
+/**
  * Map each of `sourceIds` that exists on this account to its row id.
  *
  * The list is always short in practice — it carries only the messages the header filter shelved
@@ -28,7 +43,7 @@ export async function fetchMessageIdsBySourceIds(
   const url = restQueryUrl(env, 'comm_messages', {
     select: 'id,source_id',
     account_id: `eq.${accountId}`,
-    source_id: `in.(${sourceIds.map((id) => `"${id}"`).join(',')})`,
+    source_id: `in.(${sourceIds.map((id) => `"${escapeListLiteral(id)}"`).join(',')})`,
   });
   const rows = await fetchJson<{ id: string; source_id: string }[]>(
     env,

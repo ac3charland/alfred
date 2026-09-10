@@ -31,4 +31,32 @@ describe('fetchMessageIdsBySourceIds', () => {
     await expect(fetchMessageIdsBySourceIds(env, 'account-1', [])).resolves.toEqual(new Map());
     expect(fetchStub).not.toHaveBeenCalled();
   });
+
+  it('escapes a double quote inside a source id rather than letting it break out of the list literal', async () => {
+    const urls: string[] = [];
+    spyOnFetch().mockImplementation((input) => {
+      urls.push(input as string);
+      return Promise.resolve(Response.json([]));
+    });
+
+    await fetchMessageIdsBySourceIds(env, 'account-1', ['weird"id']);
+
+    const params = new URL(urls[0] ?? '').searchParams;
+    // PostgREST's list-literal escape is `\"` — an unescaped quote would end the element early
+    // and corrupt the filter (either a syntax error or an unintended extra list literal).
+    expect(params.get('source_id')).toBe(String.raw`in.("weird\"id")`);
+  });
+
+  it('escapes a backslash inside a source id so it is not read as the start of an escape', async () => {
+    const urls: string[] = [];
+    spyOnFetch().mockImplementation((input) => {
+      urls.push(input as string);
+      return Promise.resolve(Response.json([]));
+    });
+
+    await fetchMessageIdsBySourceIds(env, 'account-1', [String.raw`back\slash`]);
+
+    const params = new URL(urls[0] ?? '').searchParams;
+    expect(params.get('source_id')).toBe(String.raw`in.("back\\slash")`);
+  });
 });
