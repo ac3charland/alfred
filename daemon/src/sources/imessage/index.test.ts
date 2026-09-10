@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import type { LogFields, Logger } from '../../log.ts';
 import type { SourceContext } from '../types.ts';
 import type { FixtureContent, FixtureMessage } from './fixtures/chat-db-fixture.ts';
 import { writeFixtureChatDb } from './fixtures/chat-db-fixture.ts';
@@ -74,8 +75,29 @@ function context(overrides: Partial<SourceContext> = {}): SourceContext {
   };
 }
 
-function sourceFor(file: string): ReturnType<typeof createIMessageSource> {
-  return createIMessageSource(CONFIG, { databasePath: file, contacts: CONTACTS });
+function sourceFor(
+  file: string,
+  overrides: { log?: Logger } = {},
+): ReturnType<typeof createIMessageSource> {
+  return createIMessageSource(CONFIG, { databasePath: file, contacts: CONTACTS, ...overrides });
+}
+
+interface LoggedCall {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  fields?: LogFields;
+}
+
+/** Records every call by level, so a test can assert not just that a skip was reported but how
+ * loudly — the module's own rule is that a skip must be visible, not merely noted. */
+function spyLogger(): { calls: LoggedCall[]; log: Logger } {
+  const calls: LoggedCall[] = [];
+  const record =
+    (level: LoggedCall['level']) =>
+    (message: string, fields?: LogFields): void => {
+      calls.push(fields === undefined ? { level, message } : { level, message, fields });
+    };
+  return { calls, log: { info: record('info'), warn: record('warn'), error: record('error') } };
 }
 
 describe('createIMessageSource', () => {
@@ -243,6 +265,33 @@ describe('createIMessageSource', () => {
     const result = await sourceFor(file).poll(context());
 
     expect(result.cursor).toEqual({ rowid: 11 });
+  });
+
+  it('skips a row whose date is unparseable, loudly, but still delivers every other row in the batch — and advances the cursor past it, so it cannot wedge the stream', async () => {
+    const { calls, log } = spyLogger();
+    const file = fixture({
+      chats: CHATS,
+      messages: [
+        { ...INBOUND, rowid: 10, guid: 'BEFORE' },
+        // A hand-restored or iCloud-glitched chat.db is the real-world cause — see normalize.ts.
+        { ...INBOUND, rowid: 11, guid: 'POISON', date: -99_999_999_999_999n },
+        { ...INBOUND, rowid: 12, guid: 'AFTER' },
+      ],
+    });
+    // A cursor, not the anchor: this is the real path the bug report describes — the anchor query
+    // filters on date and would incidentally exclude the poison row, masking the defect. Once a
+    // cursor exists, chat.db is read forward by ROWID only, exactly like every later poll after
+    // the first.
+    const source = sourceFor(file, { log });
+
+    const result = await source.poll(context({ cursor: { rowid: 9 } }));
+
+    expect(result.messages.map((message) => message.source_id)).toEqual(['BEFORE', 'AFTER']);
+    expect(result.cursor).toEqual({ rowid: 12 });
+    const errors = calls.filter((call) => call.level === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ fields: { rowid: 11, guid: 'POISON' } });
+    expect(calls.some((call) => call.level === 'warn')).toBe(false);
   });
 
   it('resumes after the cursor it is given', async () => {

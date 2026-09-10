@@ -52,11 +52,39 @@ export function normalizeHandle(raw?: string): string | undefined {
   return digits;
 }
 
-/** The instant a raw chat.db date stands for, as the wire contract's ISO 8601 string. */
+/**
+ * Thrown by `appleDateToIso` when a raw chat.db date cannot become a valid instant at all — see
+ * that function's doc comment for why this exists as its own named error.
+ */
+export class UnparseableAppleDateError extends Error {
+  override name = 'UnparseableAppleDateError';
+}
+
+/**
+ * The instant a raw chat.db date stands for, as the wire contract's ISO 8601 string.
+ *
+ * Range-guarded: a hand-restored or iCloud-glitched chat.db can carry a `message.date` so far
+ * from 2001 that the computed instant falls outside what a JS `Date` can represent at all (±8.64e15
+ * ms from the Unix epoch). Left to `Date#toISOString`, that throws the native
+ * `RangeError: Invalid time value`, which names neither the row nor the value that caused it. We
+ * check first and throw our own named, diagnosable error instead, so a caller can catch this ONE
+ * failure mode by class and isolate just the poisoned row — see `sources/imessage/index.ts`'s
+ * per-row guard, which is where that isolation actually happens; this function stays a pure
+ * conversion and never itself decides to skip anything.
+ */
 export function appleDateToIso(raw: bigint): string {
   const milliseconds =
     raw < NANOSECOND_FLOOR ? Number(raw) * 1000 : Number(raw / NANOSECONDS_PER_MS);
-  return new Date(milliseconds + APPLE_EPOCH_MS).toISOString();
+  const instantMs = milliseconds + APPLE_EPOCH_MS;
+  const date = new Date(instantMs);
+  if (Number.isNaN(date.getTime())) {
+    throw new UnparseableAppleDateError(
+      `chat.db message.date ${raw.toString()} does not represent a valid instant ` +
+        `(${String(instantMs)}ms from the Unix epoch, which is outside what a JS Date can hold) — ` +
+        'a hand-restored or corrupted chat.db is the usual cause',
+    );
+  }
+  return date.toISOString();
 }
 
 /** An instant in the units current macOS compares `message.date` against. */

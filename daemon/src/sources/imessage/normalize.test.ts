@@ -1,4 +1,9 @@
-import { appleDateToIso, appleNanoseconds, normalizeHandle } from './normalize.ts';
+import {
+  UnparseableAppleDateError,
+  appleDateToIso,
+  appleNanoseconds,
+  normalizeHandle,
+} from './normalize.ts';
 
 describe('normalizeHandle', () => {
   it('turns a formatted US number into E.164', () => {
@@ -42,6 +47,26 @@ describe('appleDateToIso', () => {
 
   it('anchors on 2001-01-01, not the Unix epoch', () => {
     expect(appleDateToIso(0n)).toBe('2001-01-01T00:00:00.000Z');
+  });
+
+  // A hand-restored or iCloud-glitched chat.db can carry a message.date so far from 2001 that no
+  // JS Date can represent it at all. Left unguarded, `new Date(...).toISOString()` throws the
+  // native `RangeError: Invalid time value`, naming neither the row nor the value that caused it —
+  // see node -e "console.log(new Date(-99999999999999*1000 + 978307200000).toISOString())".
+  it('rejects a raw value so far out of range that no JS Date can represent it, by a named error rather than the opaque native one', () => {
+    expect(() => appleDateToIso(-99_999_999_999_999n)).toThrow(UnparseableAppleDateError);
+    expect(() => appleDateToIso(-99_999_999_999_999n)).toThrow(/-99999999999999/);
+  });
+
+  it('still accepts a huge-but-representable nanosecond value, so the guard is a real range check', () => {
+    // Comfortably inside Date's actual limit (±8.64e15 ms from the Unix epoch — about 273,790
+    // years) but still an enormous nanosecond count, to prove this isn't an accidental rejection
+    // of every large-magnitude value.
+    const millisecondsFromUnixEpoch = 8_000_000_000_000_000;
+    const millisecondsFromAppleEpoch = millisecondsFromUnixEpoch - 978_307_200_000;
+    const raw = BigInt(millisecondsFromAppleEpoch) * 1_000_000n;
+
+    expect(() => appleDateToIso(raw)).not.toThrow();
   });
 });
 
