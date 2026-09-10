@@ -66,6 +66,35 @@ describe('isNewsletter', () => {
     });
   });
 
+  // BUG 2 regression coverage: bare/short shapes of real obligation that the phrase-only cue
+  // list missed — see newsletter.ts's ASK_CUES for the false-positive tradeoff struck alongside
+  // these additions.
+  describe('bare/short obligation shapes the cue list previously missed', () => {
+    it.each([
+      ['a bare rent due-date', 'Rent due June 1'],
+      ['a bare payment due-date', 'Payment due 3/1'],
+      ['an e-sign statement', 'Signature requested on Contract.pdf'],
+      ['an e-sign waiting note', 'Awaiting your signature: Contract.pdf'],
+      ['a bare please-sign', 'Please sign the attached agreement'],
+      ['a bare please-complete', 'Please complete your onboarding'],
+      ['a bare please-submit', 'Please submit your timesheet'],
+      ['a bare please-fill', 'Please fill out the attached form'],
+      ['a bare please-update', 'Please update your billing address'],
+      ['a billing statement', 'Your February statement is ready'],
+      ['a bare renewal', 'Renew your domain before it expires'],
+      ['a bare reminder', 'Reminder: rent is due Friday'],
+    ])('is not filtered: %s', (_label, subject) => {
+      expect(isNewsletter(bulkHeaders(subject), noRoster)).toBe(false);
+    });
+  });
+
+  // BUG 2 false-positive guard: bare "update" was deliberately left OUT of the cue list — a
+  // generic-verb newsletter subject like this one must stay filtered, or the gate stops doing
+  // its job of keeping ordinary bulk mail off the classifier.
+  it('still filters an ordinary product-update newsletter — bare "update" is deliberately not a cue', () => {
+    expect(isNewsletter(bulkHeaders('Your monthly product update'), noRoster)).toBe(true);
+  });
+
   it('fails safe when no subject reached the filter at all: never shelves on the header alone', () => {
     // No `Subject` header in this message's own headers — e.g. the daemon-sourced ingest path,
     // which synthesizes a headers array from list-header names only (see ingest.ts). Absence of a

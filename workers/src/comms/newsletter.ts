@@ -47,6 +47,18 @@ export interface NewsletterContext {
  * This is a heuristic, not proof: a message engineered to avoid every cue below while still
  * carrying a list header would still be filtered. See newsletter.test.ts and the module docstring
  * for what that residual risk means in practice.
+ *
+ * Most cues below are multi-word phrases, which stay safe as plain substrings — "please approve"
+ * or "verification code" essentially never shows up in ordinary bulk mail. A few short/bare words
+ * (`due`, `awaiting`, `reminder`, `renew`) are included too, because billing and e-signature
+ * providers routinely send transactional subjects that use them WITHOUT any of the longer phrases
+ * ("Rent due June 1", "Awaiting your signature", "Renew your domain"). Each was checked against
+ * the obvious false-positive risk before being added as a bare word: none of them are common
+ * filler in ordinary marketing/newsletter subject lines the way a generic verb like "update",
+ * "complete", "submit" or "fill" is — those stay gated behind "please " (below) specifically
+ * because "product update", "complete your profile" and "fill your cart" are exactly the kind of
+ * subject a real newsletter sends. Bare "due" also swallows the existing "past due"/"overdue"/
+ * "balance due" entries; they stay for readability, not because they add coverage.
  */
 const ASK_CUES: readonly string[] = [
   'action required',
@@ -59,6 +71,11 @@ const ASK_CUES: readonly string[] = [
   'please reply',
   'please review',
   'please approve',
+  'please complete',
+  'please submit',
+  'please fill',
+  'please update',
+  'please sign',
   'verify your',
   'confirm your',
   'approval required',
@@ -91,9 +108,16 @@ const ASK_CUES: readonly string[] = [
   'payment declined',
   'past due',
   'overdue',
+  'due',
   'invoice',
   'unpaid',
   'balance due',
+  'statement is ready',
+  'signature requested',
+  'awaiting your signature',
+  'awaiting',
+  'reminder',
+  'renew',
   'urgent',
   'immediately',
   'deadline',
