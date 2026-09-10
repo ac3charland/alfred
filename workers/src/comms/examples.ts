@@ -14,6 +14,7 @@
  * through the mechanism built to improve it, and doing it silently: a wrongly-shelved message is
  * the failure nobody sees.
  */
+import { truncateAtCodePointBoundary } from './email-text';
 import type { CommExample, CommTier } from './types';
 
 /** How many worked examples one prompt carries. */
@@ -70,7 +71,10 @@ function hasText(example: CommExample): boolean {
 function trimmed(example: CommExample): CommExample {
   const excerpt = example.body_excerpt;
   if (excerpt === undefined || excerpt.length <= EXAMPLE_EXCERPT_CHARS) return example;
-  return { ...example, body_excerpt: excerpt.slice(0, EXAMPLE_EXCERPT_CHARS) };
+  return {
+    ...example,
+    body_excerpt: truncateAtCodePointBoundary(excerpt, EXAMPLE_EXCERPT_CHARS),
+  };
 }
 
 /**

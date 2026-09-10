@@ -5,6 +5,7 @@ import {
   parseAddress,
   parseAddressList,
   parseMessageIdList,
+  truncateAtCodePointBoundary,
 } from './email-text';
 import type { GmailPayload } from './gmail-api';
 
@@ -193,5 +194,39 @@ describe('extractText', () => {
   it('truncates a runaway body so one digest cannot dominate a prompt', () => {
     const body = extractText(part('text/plain', 'x'.repeat(MAX_BODY_CHARS + 500))).body;
     expect(body).toHaveLength(MAX_BODY_CHARS);
+  });
+
+  it('does not split a surrogate pair sitting at the truncation boundary', () => {
+    // The 20,000th character is an emoji — a two-code-unit surrogate pair straddling the naive
+    // `slice(0, MAX_BODY_CHARS)` cutoff. A lone high surrogate at the tail is invalid UTF-16: a
+    // `TextEncoder`/`TextDecoder` round trip (exactly what `fetch` does to a string body sent to
+    // PostgREST) silently turns it into U+FFFD.
+    const longBody = 'x'.repeat(MAX_BODY_CHARS - 1) + '😀' + 'y'.repeat(50);
+    const body = extractText(part('text/plain', longBody)).body;
+
+    const roundTripped = new TextDecoder().decode(new TextEncoder().encode(body));
+    expect(roundTripped).toBe(body);
+    expect(body).not.toContain('�');
+    expect(body.length).toBeLessThanOrEqual(MAX_BODY_CHARS);
+  });
+});
+
+describe('truncateAtCodePointBoundary', () => {
+  it('backs the cut off by one when the boundary splits a surrogate pair', () => {
+    const text = 'ab😀cd'; // the emoji occupies indices 2 and 3
+    expect(truncateAtCodePointBoundary(text, 3)).toBe('ab');
+  });
+
+  it('cuts cleanly when the boundary does not land inside a pair', () => {
+    expect(truncateAtCodePointBoundary('abcdef', 3)).toBe('abc');
+  });
+
+  it('leaves text alone when it is already within the cap', () => {
+    expect(truncateAtCodePointBoundary('short', 100)).toBe('short');
+  });
+
+  it('keeps a pair that ends exactly on the boundary', () => {
+    const text = 'ab😀'; // the emoji ends exactly at length 4
+    expect(truncateAtCodePointBoundary(text, 4)).toBe(text);
   });
 });

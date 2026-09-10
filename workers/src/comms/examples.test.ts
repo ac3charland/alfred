@@ -114,6 +114,20 @@ describe('selectCommExamples', () => {
     expect(drawn[0]?.body_excerpt).toBe(short);
   });
 
+  it('does not split a surrogate pair sitting at the truncation boundary', () => {
+    // An emoji straddles the 600-char cutoff — a two-code-unit surrogate pair the naive
+    // `slice(0, EXAMPLE_EXCERPT_CHARS)` would cut in half, leaving a lone high surrogate. A
+    // `TextEncoder`/`TextDecoder` round trip (what `fetch` does on the wire) is the strongest
+    // check: it silently turns an unpaired surrogate into U+FFFD.
+    const excerpt = 'x'.repeat(EXAMPLE_EXCERPT_CHARS - 1) + '😀' + 'y'.repeat(20);
+    const drawn = selectCommExamples([example({ body_excerpt: excerpt })]);
+    const trimmedExcerpt = drawn[0]?.body_excerpt ?? '';
+
+    const roundTripped = new TextDecoder().decode(new TextEncoder().encode(trimmedExcerpt));
+    expect(roundTripped).toBe(trimmedExcerpt);
+    expect(trimmedExcerpt).not.toContain('�');
+  });
+
   it('preserves recency inside a direction', () => {
     const newest = demotion({ id: 'newest' });
     const older = demotion({ id: 'older' });

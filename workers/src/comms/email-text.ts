@@ -59,6 +59,13 @@ const ANGLE_ADDRESS = /^(.*)<([^<>]*)>[^<>]*$/s;
 /** The highest code point `String.fromCodePoint` will accept. */
 const MAX_CODE_POINT = 0x10_ff_ff;
 
+/**
+ * The highest code point in the Basic Multilingual Plane. Anything above it came from a UTF-16
+ * surrogate pair — two code units together encoding one astral character (any emoji, many
+ * CJK-extension and other beyond-the-BMP characters). Used by `truncateAtCodePointBoundary`.
+ */
+const MAX_BMP_CODE_POINT = 0xff_ff;
+
 /** A header's value, matched case-insensitively. A present-but-empty header reads as absent. */
 export function headerValue(headers: GmailHeader[] | undefined, name: string): string | undefined {
   const wanted = name.toLowerCase();
@@ -254,5 +261,29 @@ function collapse(text: string): string {
 
 /** Bodies are stored, prompted with and shipped to the browser — one of them has to be bounded. */
 function truncate(text: string): string {
-  return text.length > MAX_BODY_CHARS ? text.slice(0, MAX_BODY_CHARS) : text;
+  return truncateAtCodePointBoundary(text, MAX_BODY_CHARS);
+}
+
+/**
+ * Slice to at most `maxChars` UTF-16 code units without splitting a surrogate pair in half.
+ *
+ * A plain `text.slice(0, maxChars)` cuts by code unit with no regard for where a pair lands. When
+ * the cutoff falls between a pair's two halves, the result keeps the high surrogate and drops the
+ * low one — a lone high surrogate is invalid UTF-16. `JSON.stringify` lets it through unnoticed,
+ * but the standard UTF-8 encoder does not: a `TextEncoder`/`TextDecoder` round trip — exactly what
+ * `fetch` does to a string body — replaces the unpaired surrogate with U+FFFD, so the character
+ * silently becomes a replacement glyph once it is on the wire (e.g. this Worker's PostgREST upsert).
+ *
+ * `Array.from(text).slice(0, maxChars).join('')` would count code points instead of code units and
+ * sidestep the whole problem, but it allocates an array holding every code point in `text` first —
+ * wasteful for a body this large when it happens once per message this CPU-bounded Worker ingests.
+ * `codePointAt` at the boundary is O(1) instead: called on the high half of a pair it returns the
+ * two code units combined (> `MAX_BMP_CODE_POINT`), which is exactly the signal that the other half
+ * is about to be cut off — so back the boundary up by one and drop the whole character.
+ */
+export function truncateAtCodePointBoundary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const boundary =
+    (text.codePointAt(maxChars - 1) ?? 0) > MAX_BMP_CODE_POINT ? maxChars - 1 : maxChars;
+  return text.slice(0, boundary);
 }
