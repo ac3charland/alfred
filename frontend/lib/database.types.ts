@@ -170,6 +170,405 @@ export type Database = {
           },
         ]
       }
+      comm_accounts: {
+        Row: {
+          created_at: string
+          cursor: Json | null
+          enabled: boolean
+          expected_interval_seconds: number
+          home: string
+          id: string
+          key: string
+          kind: Database["public"]["Enums"]["comm_account_kind"]
+          label: string
+          last_error: string | null
+          last_error_at: string | null
+          last_seen_at: string | null
+          owner_handles: string[]
+        }
+        Insert: {
+          created_at?: string
+          cursor?: Json | null
+          enabled?: boolean
+          expected_interval_seconds?: number
+          home: string
+          id?: string
+          key: string
+          kind: Database["public"]["Enums"]["comm_account_kind"]
+          label: string
+          last_error?: string | null
+          last_error_at?: string | null
+          last_seen_at?: string | null
+          owner_handles?: string[]
+        }
+        Update: {
+          created_at?: string
+          cursor?: Json | null
+          enabled?: boolean
+          expected_interval_seconds?: number
+          home?: string
+          id?: string
+          key?: string
+          kind?: Database["public"]["Enums"]["comm_account_kind"]
+          label?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          last_seen_at?: string | null
+          owner_handles?: string[]
+        }
+        Relationships: []
+      }
+      comm_classifier_health: {
+        Row: {
+          id: number
+          last_error: string | null
+          last_error_at: string | null
+          last_run_at: string | null
+          last_success_at: string | null
+        }
+        Insert: {
+          id?: number
+          last_error?: string | null
+          last_error_at?: string | null
+          last_run_at?: string | null
+          last_success_at?: string | null
+        }
+        Update: {
+          id?: number
+          last_error?: string | null
+          last_error_at?: string | null
+          last_run_at?: string | null
+          last_success_at?: string | null
+        }
+        Relationships: []
+      }
+      comm_corrections: {
+        Row: {
+          account_label: string
+          body_excerpt: string | null
+          chosen_tier: Database["public"]["Enums"]["comm_tier"]
+          created_at: string
+          created_version: number
+          id: string
+          kind: string
+          message_id: string | null
+          model_tier: Database["public"]["Enums"]["comm_tier"] | null
+          pruned_at: string | null
+          pruned_version: number | null
+          purged_at: string | null
+          sender_handle: string
+          sender_name: string | null
+          subject: string | null
+        }
+        Insert: {
+          account_label: string
+          body_excerpt?: string | null
+          chosen_tier: Database["public"]["Enums"]["comm_tier"]
+          created_at?: string
+          created_version: number
+          id?: string
+          kind: string
+          message_id?: string | null
+          model_tier?: Database["public"]["Enums"]["comm_tier"] | null
+          pruned_at?: string | null
+          pruned_version?: number | null
+          purged_at?: string | null
+          sender_handle: string
+          sender_name?: string | null
+          subject?: string | null
+        }
+        Update: {
+          account_label?: string
+          body_excerpt?: string | null
+          chosen_tier?: Database["public"]["Enums"]["comm_tier"]
+          created_at?: string
+          created_version?: number
+          id?: string
+          kind?: string
+          message_id?: string | null
+          model_tier?: Database["public"]["Enums"]["comm_tier"] | null
+          pruned_at?: string | null
+          pruned_version?: number | null
+          purged_at?: string | null
+          sender_handle?: string
+          sender_name?: string | null
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comm_corrections_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "comm_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comm_handles: {
+        Row: {
+          created_at: string
+          handle: string
+          id: string
+          kind: string
+          person_id: string
+        }
+        Insert: {
+          created_at?: string
+          handle: string
+          id?: string
+          kind: string
+          person_id: string
+        }
+        Update: {
+          created_at?: string
+          handle?: string
+          id?: string
+          kind?: string
+          person_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comm_handles_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "comm_people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comm_messages: {
+        Row: {
+          account_id: string
+          ask: string | null
+          body: string
+          body_extracted: boolean
+          chat_name: string | null
+          classified_at: string | null
+          classify_attempts: number
+          cleared_at: string | null
+          cleared_by: string | null
+          created_at: string
+          direction: string
+          filtered_reason: string | null
+          has_attachments: boolean
+          id: string
+          in_reply_to: string | null
+          inbox_item_id: string | null
+          judged_by: string | null
+          participants: string[]
+          received_at: string
+          reclassify_requested_at: string | null
+          references_ids: string[]
+          rfc822_message_id: string | null
+          sender_handle: string
+          sender_name: string | null
+          source_id: string
+          subject: string | null
+          thread_key: string
+          tier: Database["public"]["Enums"]["comm_tier"] | null
+          verdict_id: string | null
+        }
+        Insert: {
+          account_id: string
+          ask?: string | null
+          body?: string
+          body_extracted?: boolean
+          chat_name?: string | null
+          classified_at?: string | null
+          classify_attempts?: number
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          direction?: string
+          filtered_reason?: string | null
+          has_attachments?: boolean
+          id?: string
+          in_reply_to?: string | null
+          inbox_item_id?: string | null
+          judged_by?: string | null
+          participants?: string[]
+          received_at: string
+          reclassify_requested_at?: string | null
+          references_ids?: string[]
+          rfc822_message_id?: string | null
+          sender_handle: string
+          sender_name?: string | null
+          source_id: string
+          subject?: string | null
+          thread_key: string
+          tier?: Database["public"]["Enums"]["comm_tier"] | null
+          verdict_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          ask?: string | null
+          body?: string
+          body_extracted?: boolean
+          chat_name?: string | null
+          classified_at?: string | null
+          classify_attempts?: number
+          cleared_at?: string | null
+          cleared_by?: string | null
+          created_at?: string
+          direction?: string
+          filtered_reason?: string | null
+          has_attachments?: boolean
+          id?: string
+          in_reply_to?: string | null
+          inbox_item_id?: string | null
+          judged_by?: string | null
+          participants?: string[]
+          received_at?: string
+          reclassify_requested_at?: string | null
+          references_ids?: string[]
+          rfc822_message_id?: string | null
+          sender_handle?: string
+          sender_name?: string | null
+          source_id?: string
+          subject?: string | null
+          thread_key?: string
+          tier?: Database["public"]["Enums"]["comm_tier"] | null
+          verdict_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comm_messages_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "comm_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comm_messages_inbox_item_id_fkey"
+            columns: ["inbox_item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comm_messages_inbox_item_id_fkey"
+            columns: ["inbox_item_id"]
+            isOneToOne: false
+            referencedRelation: "task_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comm_messages_verdict_fk"
+            columns: ["verdict_id"]
+            isOneToOne: false
+            referencedRelation: "comm_verdicts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comm_people: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          priority: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          priority?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          priority?: string
+        }
+        Relationships: []
+      }
+      comm_rubrics: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          version: number
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          version: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      comm_verdicts: {
+        Row: {
+          ask: string
+          created_at: string
+          example_set_version: number
+          id: string
+          message_id: string
+          model: string
+          owes_reply: boolean
+          person_id: string | null
+          prompt_version: number
+          provider: string
+          reason: string
+          rubric_version: number
+          tier: Database["public"]["Enums"]["comm_tier"]
+        }
+        Insert: {
+          ask: string
+          created_at?: string
+          example_set_version: number
+          id?: string
+          message_id: string
+          model: string
+          owes_reply: boolean
+          person_id?: string | null
+          prompt_version: number
+          provider: string
+          reason: string
+          rubric_version: number
+          tier: Database["public"]["Enums"]["comm_tier"]
+        }
+        Update: {
+          ask?: string
+          created_at?: string
+          example_set_version?: number
+          id?: string
+          message_id?: string
+          model?: string
+          owes_reply?: boolean
+          person_id?: string | null
+          prompt_version?: number
+          provider?: string
+          reason?: string
+          rubric_version?: number
+          tier?: Database["public"]["Enums"]["comm_tier"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comm_verdicts_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "comm_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comm_verdicts_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "comm_people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       epics: {
         Row: {
           archived_at: string | null
@@ -717,6 +1116,21 @@ export type Database = {
       }
     }
     Functions: {
+      comm_example_set_version: { Args: never; Returns: number }
+      comm_purge: {
+        Args: { p_account?: string; p_before?: string; p_message?: string }
+        Returns: number
+      }
+      comm_record_reply: {
+        Args: {
+          p_account: string
+          p_at: string
+          p_references: string[]
+          p_thread_key: string
+        }
+        Returns: number
+      }
+      comm_sweep_expired: { Args: { p_days?: number }; Returns: number }
       complete_and_spawn: {
         Args: { next_due: string; next_index: number; root_id: string }
         Returns: Json
@@ -1021,6 +1435,8 @@ export type Database = {
         | "blocked"
         | "abandoned"
       code_lane: "human" | "local"
+      comm_account_kind: "gmail" | "imap" | "imessage"
+      comm_tier: "asap" | "today" | "whenever" | "fyi"
       habit_day_status: "met" | "partial" | "missed" | "skipped"
       item_status: "active" | "completed"
       item_type: "unclassified" | "task" | "code" | "knowledge"
@@ -1163,6 +1579,8 @@ export const Constants = {
         "abandoned",
       ],
       code_lane: ["human", "local"],
+      comm_account_kind: ["gmail", "imap", "imessage"],
+      comm_tier: ["asap", "today", "whenever", "fyi"],
       habit_day_status: ["met", "partial", "missed", "skipped"],
       item_status: ["active", "completed"],
       item_type: ["unclassified", "task", "code", "knowledge"],
