@@ -226,17 +226,50 @@ describe('messageStreamAction', () => {
 });
 
 describe('accountStreamAction', () => {
-  it('upserts a self-registering account, patches an update, removes a delete', () => {
+  it('upserts a self-registering account', () => {
     const account = makeCommAccount('personal');
     expect(accountStreamAction(payload<CommAccount>('INSERT', account))).toEqual({
       type: 'upsert',
       items: [account],
     });
+  });
+
+  it('patches only the columns an UPDATE can actually touch, on an update', () => {
+    const account = makeCommAccount('personal');
     expect(accountStreamAction(payload<CommAccount>('UPDATE', account))).toEqual({
       type: 'patch',
       ids: [account.id],
-      patch: account,
+      patch: {
+        key: account.key,
+        kind: account.kind,
+        label: account.label,
+        home: account.home,
+        owner_handles: account.owner_handles,
+        expected_interval_seconds: account.expected_interval_seconds,
+        cursor: account.cursor,
+        last_seen_at: account.last_seen_at,
+        last_error: account.last_error,
+        last_error_at: account.last_error_at,
+      },
     });
+  });
+
+  // BUG 2 (the same latent trap as messageStreamAction's, applied for consistency): no writer
+  // ever touches `enabled` or `created_at` (see AccountUpdateColumns), so spreading the whole
+  // payload risks carrying an unreliable replicated value onto the store the moment a future
+  // writer changes that. Not exploitable today — `comm_accounts` has no TOASTed column — but the
+  // whitelist keeps the two sibling stream handlers deriving from the same rule.
+  it('never carries enabled or created_at onto the patch, even though the wire payload has them', () => {
+    const account = makeCommAccount('personal');
+    const action = accountStreamAction(payload<CommAccount>('UPDATE', account));
+    expect(action?.type).toBe('patch');
+    const patch = action && 'patch' in action ? action.patch : undefined;
+    expect(patch).not.toHaveProperty('enabled');
+    expect(patch).not.toHaveProperty('created_at');
+  });
+
+  it('removes on a delete', () => {
+    const account = makeCommAccount('personal');
     expect(accountStreamAction(payload<CommAccount>('DELETE', { id: account.id }))).toEqual({
       type: 'remove',
       ids: [account.id],

@@ -204,6 +204,53 @@ function messageUpdatePatch(row: CommMessage): MessageUpdateColumns {
 }
 
 /**
+ * Every column an UPDATE actually writes to `comm_accounts` — the account analogue of
+ * {@link MessageUpdateColumns}. Checked against every writer in `workers/src/comms/store.ts`:
+ * `upsertAccount` (self-registration, which merges via `on_conflict: 'key'` and so counts as an
+ * UPDATE on every re-register — `key`/`kind`/`label`/`home`, plus `owner_handles` and
+ * `expected_interval_seconds` when the caller sends them) and `patchAccount`'s two callers,
+ * `recordPollSuccess` (`last_seen_at`, and `cursor` when the poll produced one) and
+ * `recordPollError` (`last_error`/`last_error_at`). None of them ever touches `enabled` or
+ * `created_at` — see {@link accountUpdatePatch}.
+ *
+ * `comm_accounts` carries no column large enough to be TOASTed today, so unlike
+ * {@link messageUpdatePatch} this whitelist isn't fixing a currently-exploitable bug. It exists
+ * so the two sibling stream handlers derive from the SAME rule instead of disagreeing with each
+ * other in this file — which is exactly how the `comm_messages` gap went unnoticed for as long as
+ * it did. The same TRADEOFF applies: a column a future writer adds to `comm_accounts` (an
+ * `enabled` toggle, say) won't stream into an open tab until this list is updated too.
+ */
+type AccountUpdateColumns = Pick<
+  CommAccount,
+  | 'key'
+  | 'kind'
+  | 'label'
+  | 'home'
+  | 'owner_handles'
+  | 'expected_interval_seconds'
+  | 'cursor'
+  | 'last_seen_at'
+  | 'last_error'
+  | 'last_error_at'
+>;
+
+/** Narrow a `comm_accounts` UPDATE's new row to the columns an UPDATE can actually touch. */
+function accountUpdatePatch(row: CommAccount): AccountUpdateColumns {
+  return {
+    key: row.key,
+    kind: row.kind,
+    label: row.label,
+    home: row.home,
+    owner_handles: row.owner_handles,
+    expected_interval_seconds: row.expected_interval_seconds,
+    cursor: row.cursor,
+    last_seen_at: row.last_seen_at,
+    last_error: row.last_error,
+    last_error_at: row.last_error_at,
+  };
+}
+
+/**
  * Which store move an incoming `comm_messages` change is — `null` to ignore it.
  *
  * The stream carries every write to the table, so the "may this payload touch the store?" rule
@@ -233,7 +280,11 @@ export function messageStreamAction(
   }
 }
 
-/** The account analogue of {@link messageStreamAction} — accounts self-register, so INSERT counts. */
+/**
+ * The account analogue of {@link messageStreamAction} — accounts self-register, so INSERT
+ * counts. An UPDATE patches only the columns an UPDATE can touch (see {@link accountUpdatePatch}),
+ * mirroring {@link messageStreamAction}'s own UPDATE case.
+ */
 export function accountStreamAction(
   payload: RealtimePostgresChangesPayload<CommAccount>,
 ): SimpleAction<CommAccount> | null {
@@ -242,7 +293,7 @@ export function accountStreamAction(
       return { type: 'upsert', items: [payload.new] };
     }
     case 'UPDATE': {
-      return { type: 'patch', ids: [payload.new.id], patch: payload.new };
+      return { type: 'patch', ids: [payload.new.id], patch: accountUpdatePatch(payload.new) };
     }
     case 'DELETE': {
       const { id } = payload.old;
