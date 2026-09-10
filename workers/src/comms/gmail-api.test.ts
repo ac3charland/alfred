@@ -64,7 +64,33 @@ describe('gmailClient', () => {
       value: {
         ids: ids.slice(0, MAX_MESSAGE_IDS).map((message) => message.id),
         truncated: true,
+        // Gmail's own `nextPageToken` is forwarded whether or not our own cap was also the
+        // reason for truncation — a caller resuming it does not need to know which applied.
+        pageToken: 'more',
       },
+    });
+  });
+
+  it('seeds a listing from a caller-supplied page token, picking up where a previous truncated call left off', async () => {
+    const calls = mockGmail((call) =>
+      query(call.url).get('pageToken') === 'resume-here'
+        ? Response.json({ messages: [{ id: 'c' }] })
+        : Response.json({ messages: [{ id: 'wrong-page' }] }),
+    );
+
+    const listed = await gmailClient('t').listMessageIds({
+      q: 'after:100 before:200',
+      pageToken: 'resume-here',
+    });
+
+    // The very first request already carries the caller's token — resuming a truncated listing
+    // must not re-fetch its first page.
+    expect(calls).toHaveLength(1);
+    expect(query(calls[0]?.url ?? '').get('pageToken')).toBe('resume-here');
+    expect(query(calls[0]?.url ?? '').get('q')).toBe('after:100 before:200');
+    expect(listed).toEqual({
+      ok: true,
+      value: { ids: ['c'], truncated: false, pageToken: undefined },
     });
   });
 

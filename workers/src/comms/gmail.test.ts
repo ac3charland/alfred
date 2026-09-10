@@ -1,5 +1,12 @@
 import { spyOnFetch } from '../fetch-stub';
-import { FIRST_RUN_QUERY, type GmailEnv, NOT_CONFIGURED, REJECTED_TOKEN, pollGmail } from './gmail';
+import {
+  FIRST_RUN_QUERY,
+  type GmailEnv,
+  LISTING_STALLED,
+  NOT_CONFIGURED,
+  REJECTED_TOKEN,
+  pollGmail,
+} from './gmail';
 import { MAX_MESSAGE_IDS } from './gmail-api';
 import type { GmailHeader, GmailMessage } from './gmail-api';
 
@@ -417,8 +424,12 @@ describe('pollGmail', () => {
         Math.floor(new Date(frozenBefore).getTime() / 1000),
       )}`,
     );
+    // `resumeAnchor` (the catch-up's own window start) rides along with the promoted historyId
+    // until that id has proven itself — see the "reseeds an expired resume id from its own
+    // catch-up window" test below for why that matters.
     expect(payload(restCalls(calls, 'comm_accounts', 'PATCH')[0])['cursor']).toEqual({
       historyId: 'frozen-at-catchup-start',
+      resumeAnchor: frozenAfter,
     });
   });
 
@@ -462,6 +473,47 @@ describe('pollGmail', () => {
     expect(gmailCalls(calls, 'messages')[0]?.get('q')).toBe(
       `after:${String(Math.floor(DAY_7.getTime() / 1000))}`,
     );
+  });
+
+  it('re-seeds an expired catch-up resumeHistoryId from its own window start, not from last_seen_at (BUG 2)', async () => {
+    // The regression: `last_seen_at` is bumped on every successful tick, including every
+    // still-truncated one, so by the time a long catch-up's frozen historyId finally expires and
+    // gets tried, `last_seen_at` means "last tick" (here: yesterday) rather than "when the
+    // catch-up began" (here: three weeks ago). Reseeding from `last_seen_at` would silently
+    // discard everything in between — exactly what `resumeAnchor` exists to prevent.
+    const catchupStart = new Date(DAY_17.getTime() - 21 * DAY_MS);
+    const yesterday = new Date(DAY_17.getTime() - DAY_MS);
+    const calls = harness({
+      account: {
+        cursor: { historyId: 'expired-resume-id', resumeAnchor: catchupStart.toISOString() },
+        last_seen_at: yesterday.toISOString(),
+      },
+      mailbox: { historyExpired: true, listIds: [] },
+    });
+
+    await pollGmail(personalOnly, DAY_17);
+
+    expect(gmailCalls(calls, 'messages')[0]?.get('q')).toBe(
+      `after:${String(Math.floor(catchupStart.getTime() / 1000))}`,
+    );
+  });
+
+  it('drops resumeAnchor once its historyId has been used successfully, so it stops overriding last_seen_at', async () => {
+    const calls = harness({
+      account: {
+        cursor: { historyId: 'good-id', resumeAnchor: '2026-08-01T00:00:00.000Z' },
+      },
+      mailbox: {
+        profile: { emailAddress: 'owner@example.com', historyId: 'new-head' },
+        history: { ids: [] },
+      },
+    });
+
+    await pollGmail(personalOnly, DAY_17);
+
+    expect(payload(restCalls(calls, 'comm_accounts', 'PATCH')[0])['cursor']).toEqual({
+      historyId: 'new-head',
+    });
   });
 
   it('re-seeds from the seven-day window when the account has never polled successfully', async () => {
@@ -741,5 +793,223 @@ describe('pollGmail', () => {
       accepted: 0,
       error: 'supabase unreachable',
     });
+  });
+});
+
+/**
+ * BUG 1: a truncated listing catch-up livelocks when `MAX_MESSAGE_IDS` or more not-yet-read
+ * messages share Gmail's whole-SECOND, INCLUSIVE `before:` boundary — narrowing `listBefore` to
+ * the oldest message read can never exclude any of them, so the next tick's query, cursor, and
+ * returned ids become identical forever with no error and no log.
+ *
+ * The shared `harness()` above answers `messages.list` with one canned, unpaginated response and
+ * never inspects `q` — every existing truncated-listing test therefore already avoids the one
+ * thing a tie depends on: what the SAME query returns on a LATER tick. Reproducing this bug needs
+ * a mock that actually behaves like Gmail — `after:`/`before:` filtering at whole-second,
+ * inclusive granularity, and real `maxResults`/`pageToken` pagination — carried across multiple
+ * chained `pollGmail` calls the way multiple cron ticks would be. `describe`d separately from
+ * `pollGmail` above because it needs that different, purpose-built harness.
+ */
+
+/** One synthetic Gmail message pinned to an exact millisecond, for `normalize()` to accept. */
+function tieMessage(id: string, internalDateMs: number): GmailMessage {
+  return gmailMessage(id, { internalDate: String(internalDateMs) });
+}
+
+/** `q`'s `newer_than:Nd` / `after:S` / `before:S` forms, as the bounds they express in seconds. */
+function parseQuery(q: string | null, now: Date): { afterSecs?: number; beforeSecs?: number } {
+  if (q === null) return {};
+  const bounds: { afterSecs?: number; beforeSecs?: number } = {};
+  const newerThan = /newer_than:(\d+)d/.exec(q);
+  const after = /(?:^|\s)after:(\d+)/.exec(q);
+  const before = /(?:^|\s)before:(\d+)/.exec(q);
+  if (newerThan) {
+    bounds.afterSecs = Math.floor((now.getTime() - Number(newerThan[1]) * DAY_MS) / 1000);
+  }
+  if (after) bounds.afterSecs = Number(after[1]);
+  if (before) bounds.beforeSecs = Number(before[1]);
+  return bounds;
+}
+
+/**
+ * A Gmail-semantics-faithful `messages.list` (inclusive, whole-second filtering; real
+ * `maxResults`/`pageToken` pagination) plus `messages.get` and `profile`, backed by a mutable fake
+ * `comm_accounts` row and a dedupe-aware fake `comm_messages` insert — so consecutive `pollGmail`
+ * calls see exactly what the previous call actually wrote, the way consecutive cron ticks would.
+ */
+function faithfulHarness(
+  pool: { id: string; internalDateMs: number }[],
+  now: Date,
+): { calls: Call[]; storedCount: () => number } {
+  // Newest first, exactly like Gmail's own listing order. `unicorn/no-array-sort` forbids
+  // `.sort()` and this package's ES2022 lib target has no `.toSorted()` — see the eslint skill's
+  // "circular constraint" note — so this builds a new array via insertion instead of mutating one.
+  const sorted: { id: string; internalDateMs: number }[] = [];
+  for (const entry of pool) {
+    const insertAt = sorted.findIndex((existing) => existing.internalDateMs < entry.internalDateMs);
+    if (insertAt === -1) sorted.push(entry);
+    else sorted.splice(insertAt, 0, entry);
+  }
+  const byId = new Map(
+    sorted.map((entry) => [entry.id, tieMessage(entry.id, entry.internalDateMs)]),
+  );
+  const stored = new Set<string>();
+  let account = accountRow();
+
+  const calls: Call[] = [];
+  spyOnFetch().mockImplementation((input, init) => {
+    const url = input as string;
+    const raw = init?.body;
+    const call: Call = {
+      url,
+      method: init?.method ?? 'GET',
+      body: typeof raw === 'string' ? raw : undefined,
+    };
+    calls.push(call);
+
+    if (url.startsWith(OAUTH_ENDPOINT)) {
+      return Promise.resolve(Response.json({ access_token: 'ya29.access' }));
+    }
+
+    if (url.startsWith(GMAIL_PREFIX)) {
+      const parsed = new URL(url);
+      const path = parsed.pathname.slice('/gmail/v1/users/me/'.length);
+      const params = parsed.searchParams;
+
+      if (path === 'profile') {
+        return Promise.resolve(
+          Response.json({ emailAddress: 'owner@example.com', historyId: 'catchup-head' }),
+        );
+      }
+
+      if (path === 'messages') {
+        const { afterSecs, beforeSecs } = parseQuery(params.get('q'), now);
+        const matching = sorted.filter((entry) => {
+          const secs = Math.floor(entry.internalDateMs / 1000);
+          if (afterSecs !== undefined && secs < afterSecs) return false;
+          if (beforeSecs !== undefined && secs > beforeSecs) return false;
+          return true;
+        });
+        const offset = params.get('pageToken') === null ? 0 : Number(params.get('pageToken'));
+        const maxResults = Number(params.get('maxResults') ?? String(MAX_MESSAGE_IDS));
+        const page = matching.slice(offset, offset + maxResults);
+        const nextOffset = offset + page.length;
+        const body: { messages: { id: string }[]; nextPageToken?: string } = {
+          messages: page.map((entry) => ({ id: entry.id })),
+        };
+        if (nextOffset < matching.length) body.nextPageToken = String(nextOffset);
+        return Promise.resolve(Response.json(body));
+      }
+
+      const id = path.slice('messages/'.length);
+      const message = byId.get(id);
+      return Promise.resolve(
+        message === undefined ? new Response('gone', { status: 404 }) : Response.json(message),
+      );
+    }
+
+    if (url.includes('/rpc/')) return Promise.resolve(Response.json(0));
+    if (url.includes('/comm_accounts')) {
+      if (call.method === 'PATCH') {
+        account = { ...account, ...(JSON.parse(call.body ?? '{}') as Record<string, unknown>) };
+      }
+      return Promise.resolve(Response.json([account]));
+    }
+    if (url.includes('/comm_people')) return Promise.resolve(Response.json([]));
+    if (url.includes('/comm_messages') && call.method === 'POST') {
+      const rows = JSON.parse(call.body ?? '[]') as { source_id: string }[];
+      const fresh = rows.filter((row) => !stored.has(row.source_id));
+      for (const row of rows) stored.add(row.source_id);
+      return Promise.resolve(Response.json(fresh.map((row) => ({ id: `row-${row.source_id}` }))));
+    }
+    return Promise.resolve(Response.json([]));
+  });
+
+  return { calls, storedCount: () => stored.size };
+}
+
+describe('pollGmail — truncated listing catch-up on a boundary-second tie', () => {
+  it('drains all 700 messages across ticks even though 600 of them share one exact search-second', async () => {
+    // The reproduction: a first-run catch-up over a busy week, where most of the backlog shares
+    // one whole second (all-hours digests firing at once is a realistic version of this). Before
+    // the fix, tick 2 onward re-lists the SAME 500-and-under ids forever and the 100 beyond the
+    // cap are never read — see the module doc on `finalizeListingCursor` for why.
+    const SPREAD = 100;
+    const TIED = 600;
+    const base = DAY_17.getTime() - 2 * DAY_MS;
+    // Its own whole second, comfortably older than the spread batch and still inside 7 days.
+    const tiedMs = base - 200_000;
+    const pool = [
+      ...Array.from({ length: SPREAD }, (_value, index) => ({
+        id: `s${String(index)}`,
+        internalDateMs: base - index * 1000,
+      })),
+      ...Array.from({ length: TIED }, (_value, index) => ({
+        id: `t${String(index)}`,
+        internalDateMs: tiedMs,
+      })),
+    ];
+    const { calls, storedCount } = faithfulHarness(pool, DAY_17);
+
+    const tick1 = await pollGmail(personalOnly, DAY_17);
+    const tick2 = await pollGmail(personalOnly, DAY_17);
+
+    expect(tick1.accounts[0]).toEqual({ key: 'gmail-personal', polled: true, accepted: 500 });
+    // The tie: every one of tick 1's 100 remaining candidates for `before:` narrowing shares the
+    // identical trailing second — date narrowing alone would read the same 500 again. The fix
+    // (Gmail's own page token) instead picks up exactly where tick 1 left off.
+    expect(tick2.accounts[0]).toEqual({ key: 'gmail-personal', polled: true, accepted: 200 });
+    expect(storedCount()).toBe(SPREAD + TIED);
+    // No third tick, and no retry, was needed — a livelocked account would still be sitting here
+    // ingesting nothing, tick after tick, with `polled: true` and no error to notice.
+    const messageGets = calls.filter(
+      (call) => call.method === 'GET' && /\/messages\/[^/?]+\?/.exec(call.url) !== null,
+    );
+    expect(messageGets).toHaveLength(700); // every message read exactly once — no re-fetch churn
+  });
+
+  it('surfaces a visible error rather than repeating forever when a tie leaves no native page token to resume from', async () => {
+    // The defensive fallback: even without Gmail's own page token (the shared, unpaginated
+    // `harness()` below never provides one — realistic only for the case where a single response
+    // page already exceeded the cap, see `MAX_MESSAGE_IDS`), the fix must not loop on an
+    // unchanged cursor silently. It must stamp the account visibly erroring instead.
+    const overflow = MAX_MESSAGE_IDS + 5;
+    const tiedMs = 1_700_000_000_000;
+    const tiedIso = new Date(tiedMs).toISOString();
+    const ids = Array.from({ length: overflow }, (_value, index) => `m${String(index)}`);
+    const messages = ids.map((id) => gmailMessage(id, { internalDate: String(tiedMs) }));
+    const calls = harness({
+      account: {
+        cursor: {
+          listAfter: '2026-08-01T00:00:00.000Z',
+          // Already narrowed to the tied second by an earlier tick — the next narrowing attempt
+          // cannot move past it, which is exactly what a real repeat of this scenario looks like.
+          listBefore: tiedIso,
+          resumeHistoryId: 'frozen-at-catchup-start',
+        },
+      },
+      mailbox: {
+        profile: { emailAddress: 'owner@example.com', historyId: 'head-at-tick' },
+        listIds: ids,
+        messages,
+      },
+      stored: ids.slice(0, MAX_MESSAGE_IDS).map((id) => ({ id: `row-${id}` })),
+    });
+
+    const summary = await pollGmail(personalOnly, DAY_17);
+
+    expect(summary.accounts[0]).toEqual({
+      key: 'gmail-personal',
+      polled: false,
+      accepted: MAX_MESSAGE_IDS,
+      error: LISTING_STALLED,
+    });
+    const [stamped] = restCalls(calls, 'comm_accounts', 'PATCH');
+    expect(payload(stamped)).toEqual({
+      last_error: LISTING_STALLED,
+      last_error_at: DAY_17.toISOString(),
+    });
+    // Never touched — the same window is there for the very next retry to try again.
+    expect(payload(stamped)['cursor']).toBeUndefined();
   });
 });

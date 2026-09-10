@@ -32,15 +32,45 @@
  * week) must not stamp the cursor at the mailbox's current head: that head is "now", and a history
  * walk only ever sees changes AFTER the historyId it starts from, so anything still unlisted below
  * the cap would never be looked at again. `planFetch` instead freezes the search window it used
- * (`listAfter`/`listBefore` on the stored cursor) and repeats it, tick after tick, narrowing
- * `listBefore` to the oldest message actually ingested each time — safe because both edges of a
- * frozen window are already in the past, so narrowing it can never skip a message that arrives
- * later. Once a pass comes back un-truncated the whole window is drained, and the cursor promotes
- * to `resumeHistoryId` — the mailbox's historyId from the moment the catch-up BEGAN, not this
- * tick's own — so the history walk that follows still covers everything that arrived while the
- * catch-up was in progress. A truncated history walk (the steady-state path, not a catch-up) needs
- * none of this: `listHistory` in `gmail-api.ts` already reports the last history record it safely
+ * (`listAfter`/`listBefore` on the stored cursor) and repeats it, tick after tick. Once a pass
+ * comes back un-truncated the whole window is drained, and the cursor promotes to
+ * `resumeHistoryId` — the mailbox's historyId from the moment the catch-up BEGAN, not this tick's
+ * own — so the history walk that follows still covers everything that arrived while the catch-up
+ * was in progress. A truncated history walk (the steady-state path, not a catch-up) needs none of
+ * this: `listHistory` in `gmail-api.ts` already reports the last history record it safely
  * consumed, and that IS a valid `startHistoryId` to resume from.
+ *
+ * Narrowing `listBefore` to the oldest message actually read each tick used to be the ONLY way a
+ * catch-up made progress — safe-looking because both edges of a frozen window are already in the
+ * past, so narrowing can never skip a message that arrives later. It is not, on its own, enough:
+ * Gmail's `before:`/`after:` operators resolve only to whole SECONDS and are INCLUSIVE, so once
+ * `MAX_MESSAGE_IDS` or more unread messages share one exact trailing second, no amount of further
+ * narrowing can ever exclude them — the identical query returns the identical set forever, and a
+ * livelock that stamps no error looks, from the outside, exactly like a healthy quiet mailbox.
+ * `finalizeListingCursor` therefore prefers Gmail's OWN resumption token for the listing (see
+ * `GmailMessageList.pageToken` in `gmail-api.ts`) whenever Gmail hands one back: pagination is
+ * independent of the search's date granularity, so it pages straight through a tied second the
+ * same as it would any other page boundary. Date narrowing survives only as the fallback for the
+ * pathological case where Gmail did not provide a token (a single response page already past the
+ * cap, which a real `maxResults`-respecting response should not produce) — and even there,
+ * `finalizeListingCursor` now detects a narrowing that made no real progress and reports it so
+ * `pollAccount` can surface the account as erroring rather than loop on it silently.
+ *
+ * `resumeHistoryId` is itself not risk-free across a long catch-up: it is frozen once, at the tick
+ * the catch-up began, and only used once the window fully drains — which can be many ticks later
+ * if the mailbox is busy. Gmail's own historyId is good for roughly a week; if the catch-up
+ * outlives that, the frozen id has expired by the time anything tries to use it, and `planFetch`
+ * falls back to `reseedFrom`. That fallback normally anchors on the account's `last_seen_at` — a
+ * fine anchor for an ordinary steady-state history walk, since `last_seen_at` there really does
+ * mean "the last time this account made progress". But `recordPollSuccess` stamps `last_seen_at`
+ * on EVERY successful tick, including every still-truncated one — so by the time a long catch-up's
+ * `resumeHistoryId` finally gets tried, `last_seen_at` means "last tick", not "when the catch-up
+ * began", and reseeding from it would silently discard everything the frozen id existed to
+ * protect. The stored cursor therefore carries the catch-up's own `resumeAnchor` — a copy of the
+ * window's original `listAfter` — alongside the promoted `resumeHistoryId`, and drops it again the
+ * first time that historyId is used successfully. `reseedFrom` prefers this anchor over
+ * `last_seen_at` whenever one is present, so a reseed after an expired catch-up id lands back at
+ * the true start of the backlog it was protecting, not at "roughly whenever the last tick ran".
  */
 import { type SupabaseEnv } from '../supabase';
 import {
@@ -123,6 +153,16 @@ export const NOT_CONFIGURED = 'not configured';
 
 /** What a dead refresh token reports. Only a human can fix it, so it says so. */
 export const REJECTED_TOKEN = 'refresh token rejected — re-authorize';
+
+/**
+ * What a truncated listing catch-up reports when it can no longer tell whether it is making
+ * progress. This is the fallback safety net, not the normal outcome — see the module doc's
+ * discussion of `finalizeListingCursor`'s page-token vs. date-narrowing paths. A silent stall is
+ * the one failure this module least affords: the account must go visibly red rather than
+ * plateau forever with no symptom at all.
+ */
+export const LISTING_STALLED =
+  'gmail listing catch-up made no forward progress — too many messages share one search-boundary second to narrow past; needs a person to look';
 
 /** Labels that mean the message never arrived in any sense the owner would recognise. */
 const SKIPPED_LABELS = new Set(['SPAM', 'TRASH', 'DRAFT']);
@@ -232,8 +272,9 @@ function missingOAuthBinding(env: GmailEnv): string | undefined {
 
 /**
  * The frozen window of a listing catch-up still in progress — see the module doc's fourth rule.
- * `listAfter` and `resumeHistoryId` never change once set; `listBefore` narrows on every
- * subsequent truncated tick to the oldest message that tick actually read.
+ * `listAfter` and `resumeHistoryId` never change once set. `listBefore` and `pageToken` are this
+ * TICK's own values (as read from the stored cursor before this fetch ran), which
+ * `finalizeListingCursor` needs to decide how to advance them for next time.
  */
 interface TruncatedListingWindow {
   /** ISO — the search window's lower bound, fixed the moment a listing first overflows the cap. */
@@ -241,6 +282,13 @@ interface TruncatedListingWindow {
   /** The mailbox's historyId as of the tick the catch-up began — promoted to the real cursor once
    *  the window is fully drained. */
   resumeHistoryId: string;
+  /** This tick's own upper bound (undefined on the very first truncated tick), i.e. what this
+   *  tick's query actually used — needed to tell whether narrowing it further made any progress. */
+  listBefore: string | undefined;
+  /** Gmail's own resumption point for this exact listing, when this tick's fetch got one back.
+   *  Once set, it — not date narrowing — is what carries the catch-up forward; see the module
+   *  doc and `finalizeListingCursor` below. */
+  pageToken: string | undefined;
 }
 
 /**
@@ -355,9 +403,19 @@ async function pollAccount(
     return failed(env, account.id, spec, now, stalled, result.accepted);
   }
 
-  const cursor =
-    'cursor' in plan ? plan.cursor : finalizeListingCursor(plan.truncatedListing, readAt);
-  await recordPollSuccess(env, account.id, { at: now, cursor });
+  if ('cursor' in plan) {
+    await recordPollSuccess(env, account.id, { at: now, cursor: plan.cursor });
+    return { key: spec.key, polled: true, accepted: result.accepted };
+  }
+
+  const finalized = finalizeListingCursor(plan.truncatedListing, readAt);
+  if (finalized.stalled) {
+    // The cursor is deliberately left untouched (`failed` never writes one) — the tied messages
+    // are still there and still unread, so the next external retry gets exactly this same window
+    // to try again, rather than this tick inventing a worse guess.
+    return failed(env, account.id, spec, now, LISTING_STALLED, result.accepted);
+  }
+  await recordPollSuccess(env, account.id, { at: now, cursor: finalized.cursor });
   return { key: spec.key, polled: true, accepted: result.accepted };
 }
 
@@ -367,6 +425,13 @@ interface StoredCursor {
   listAfter?: string | undefined;
   listBefore?: string | undefined;
   resumeHistoryId?: string | undefined;
+  /** Gmail's own resumption point for the listing still in progress — see `TruncatedListingWindow`
+   *  and `finalizeListingCursor`. */
+  pageToken?: string | undefined;
+  /** The catch-up's original `listAfter`, carried alongside a promoted `resumeHistoryId` until
+   *  that id has been used at least once successfully — see the module doc's discussion of
+   *  `reseedFrom` and the "wrong anchor" bug it exists to close. */
+  resumeAnchor?: string | undefined;
 }
 
 /** A cursor field as a non-empty string, or absent — anything else reads as "not set". */
@@ -382,6 +447,8 @@ function readCursor(cursor: unknown): StoredCursor {
         listAfter?: unknown;
         listBefore?: unknown;
         resumeHistoryId?: unknown;
+        pageToken?: unknown;
+        resumeAnchor?: unknown;
       }
     | undefined;
   return {
@@ -389,6 +456,8 @@ function readCursor(cursor: unknown): StoredCursor {
     listAfter: asStoredString(raw?.listAfter),
     listBefore: asStoredString(raw?.listBefore),
     resumeHistoryId: asStoredString(raw?.resumeHistoryId),
+    pageToken: asStoredString(raw?.pageToken),
+    resumeAnchor: asStoredString(raw?.resumeAnchor),
   };
 }
 
@@ -428,10 +497,14 @@ async function planFetch(
           historyId: history.value.truncated
             ? (history.value.historyId ?? cursor.historyId)
             : (history.value.historyId ?? profile.historyId),
+          // `resumeAnchor` deliberately dropped here even if `cursor` carried one in: this
+          // historyId has just been proven good, so whatever catch-up minted it no longer needs
+          // its original window remembered (see the module doc and `reseedFrom` below).
         },
       };
     }
-    // Expired: fall through to a fresh listing pass, exactly like a first run.
+    // Expired: fall through to a fresh listing pass, exactly like a first run — but see
+    // `reseedFrom` below for why the date it anchors on is not simply `lastSeenAt`.
   }
 
   // `cursor.listAfter`, when set, is the frozen lower bound of a listing catch-up already in
@@ -441,11 +514,17 @@ async function planFetch(
     cursor.listAfter === undefined
       ? cursor.historyId === undefined
         ? undefined // a genuine first run — FIRST_RUN_QUERY already expresses the 7-day window
-        : reseedFrom(lastSeenAt, now)
+        : reseedFrom(cursor.resumeAnchor ?? lastSeenAt, now)
       : new Date(cursor.listAfter);
   const before = cursor.listAfter === undefined ? undefined : parseIsoDate(cursor.listBefore);
 
-  const listed = await client.listMessageIds({ q: buildListQuery(after, before) });
+  const listed = await client.listMessageIds({
+    q: buildListQuery(after, before),
+    // Resumes the EXACT listing this tick already had a token for — see `GmailMessageList.pageToken`
+    // and the module doc. `undefined` on any tick that never got one is simply "start this query
+    // from the top", identical to today's behaviour.
+    pageToken: cursor.pageToken,
+  });
   if (!listed.ok) return { error: apiError(listed) };
 
   // The same expression either way: the historyId frozen when a catch-up began, or — when there
@@ -455,7 +534,11 @@ async function planFetch(
   if (!listed.value.truncated) {
     // The window — whichever one this pass covered — is now fully drained. Safe to start walking
     // history from here.
-    return { sourceIds: listed.value.ids, cursor: { historyId: resumeHistoryId } };
+    const promoted: Record<string, string> = { historyId: resumeHistoryId };
+    // Only a genuine catch-up (one that had a frozen `listAfter`) needs its window remembered —
+    // a small first run that never truncated has nothing to protect.
+    if (cursor.listAfter !== undefined) promoted['resumeAnchor'] = cursor.listAfter;
+    return { sourceIds: listed.value.ids, cursor: promoted };
   }
 
   return {
@@ -463,6 +546,8 @@ async function planFetch(
     truncatedListing: {
       listAfter: (after ?? new Date(now.getTime() - LOOKBACK_DAYS * DAY_MS)).toISOString(),
       resumeHistoryId,
+      listBefore: cursor.listBefore,
+      pageToken: listed.value.pageToken,
     },
   };
 }
@@ -478,47 +563,97 @@ function parseIsoDate(value: string | undefined): Date | undefined {
 }
 
 /**
- * The cursor to store once a truncated listing's fetch loop has run: the frozen window, narrowed
- * to the oldest message actually read this tick (regardless of whether it was later skipped as
- * spam or a draft — anything Gmail handed back has been looked at and need not be re-listed).
+ * The cursor to store once a truncated listing's fetch loop has run, and whether the window made
+ * any real forward progress this tick.
  *
- * Narrowing this way can never skip a message: `listAfter` and the window's upper edge are both
- * already in the past, so nothing new can ever arrive "inside" a range that is entirely history —
- * whatever has not yet been read is, by definition, still inside (`listAfter`, the new bound).
+ * PRIMARY mechanism: Gmail's own resumption token for this exact listing (`window.pageToken`,
+ * threaded through from `GmailMessageList.pageToken` — see `gmail-api.ts`). When Gmail handed one
+ * back, it — not any date bound — is what carries the catch-up forward next tick: Gmail's own
+ * pagination has no dependency on the search's date granularity, so it pages straight through a
+ * tied second exactly as it would any other boundary. `listAfter`/`listBefore` are frozen verbatim
+ * alongside it (never renarrowed) because a token only resumes the IDENTICAL query it came from —
+ * changing the query out from under it would invalidate it.
+ *
+ * FALLBACK: only when Gmail did not hand back a token (the pathological case of a single response
+ * page already past `MAX_MESSAGE_IDS` — a real `maxResults`-respecting response should not produce
+ * this) does the window narrow by date instead, to the oldest message actually read this tick
+ * (regardless of whether it was later skipped as spam or a draft — anything Gmail handed back has
+ * been looked at and need not be re-listed). Narrowing this way can never SKIP a message:
+ * `listAfter` and the window's upper edge are both already in the past, so nothing new can ever
+ * arrive "inside" a range that is entirely history. It can, however, fail to ADVANCE: Gmail's
+ * `before:`/`after:` operators resolve only to whole SECONDS and are INCLUSIVE, so once
+ * `MAX_MESSAGE_IDS` or more still-unread messages share the exact trailing second `listBefore` is
+ * already sitting at, no amount of further narrowing can ever exclude them — the identical query
+ * returns the identical set forever. `stalled` reports exactly that: this tick's own narrowed
+ * bound, floored to the second Gmail's query actually operates at, came out identical to the bound
+ * this tick's own query already used. `pollAccount` turns that into a visible error rather than a
+ * silent repeat.
  *
  * If nothing in this batch could be read at all (every id 404'd — gone before the read reached
- * it), there is no new timestamp to narrow with; the window is left exactly as it was; Gmail's own
- * index no longer lists what is already confirmed gone, so the next identical query still makes
- * progress.
+ * it), there is no new timestamp to narrow with, so the PRIOR bound is kept rather than dropped —
+ * Gmail's own index no longer lists what is already confirmed gone, so the window need not widen
+ * for the next identical query to still make progress elsewhere in it. That reasoning is specific
+ * to messages that are actually GONE; it does not extend to the tied-second case above, where the
+ * messages are very much still there and simply indistinguishable from already-read ones at
+ * second granularity.
  */
-function finalizeListingCursor(window: TruncatedListingWindow, readAt: string[]): unknown {
-  // ISO 8601 timestamps sort lexicographically the same as chronologically, so a plain string
-  // comparison is enough — no need to parse back into `Date`s to find the earliest one.
-  let oldest: string | undefined;
-  for (const at of readAt) {
-    if (oldest === undefined || at < oldest) oldest = at;
-  }
-
+function finalizeListingCursor(
+  window: TruncatedListingWindow,
+  readAt: string[],
+): { cursor: unknown; stalled: boolean } {
   const cursor: Record<string, string> = {
     listAfter: window.listAfter,
     resumeHistoryId: window.resumeHistoryId,
   };
-  if (oldest !== undefined) cursor['listBefore'] = oldest;
-  return cursor;
+
+  if (window.pageToken !== undefined) {
+    if (window.listBefore !== undefined) cursor['listBefore'] = window.listBefore;
+    cursor['pageToken'] = window.pageToken;
+    return { cursor, stalled: false };
+  }
+
+  // ISO 8601 timestamps sort lexicographically the same as chronologically, so a plain string
+  // comparison is enough to find the earliest one — no need to parse back into `Date`s.
+  let oldest: string | undefined;
+  for (const at of readAt) {
+    if (oldest === undefined || at < oldest) oldest = at;
+  }
+  const narrowed = oldest ?? window.listBefore;
+  if (narrowed !== undefined) cursor['listBefore'] = narrowed;
+
+  // Compared at whole-SECOND granularity, not as raw ISO strings: two messages a few milliseconds
+  // apart within the same tied second would still make the stored `listBefore` string change tick
+  // to tick even though the actual `before:` bound Gmail's query sees — and therefore the query
+  // itself — has not, which is the condition that actually defines "no progress" here.
+  const stalled =
+    oldest !== undefined &&
+    window.listBefore !== undefined &&
+    unixSeconds(new Date(oldest)) === unixSeconds(new Date(window.listBefore));
+  return { cursor, stalled };
 }
 
 /**
- * Where a re-seed resumes from: the account's own last successful poll, falling back to a
- * seven-day window only when it has never had one.
+ * Where a re-seed resumes from: the best anchor `planFetch` has for "the last point this account
+ * is known to have covered", falling back to a seven-day window only when it has none at all.
  *
  * A FALLBACK and not a maximum, and the difference is the whole rule. Take a refresh token that
- * died on day 7 and was noticed on day 17. `last_seen_at` is day 7, so the search runs from day 7
+ * died on day 7 and was noticed on day 17. The anchor is day 7, so the search runs from day 7
  * and the ten missing days are ingested. Taking the LATER of the two instead would pick day 10
  * (`now − 7d`) and days 7 through 10 would never be ingested at all — the window silently
  * swallowing every outage longer than itself, which is exactly the case it exists to survive.
+ *
+ * The caller passes `cursor.resumeAnchor ?? lastSeenAt`, and the two are NOT interchangeable.
+ * `lastSeenAt` is right for an ordinary steady-state historyId, where it genuinely does mean "the
+ * last time this account made progress". It is wrong for a `resumeHistoryId` that a still-running
+ * catch-up minted: `recordPollSuccess` stamps `last_seen_at` on every successful tick, truncated
+ * ones included, so by the time a long catch-up's frozen id finally gets tried and turns out to
+ * have expired, `last_seen_at` reads as "last tick" rather than "when the catch-up began" — a
+ * reseed anchored there would silently discard everything between the two. `resumeAnchor`, carried
+ * on the cursor alongside that frozen id until it is used successfully at least once (see
+ * `planFetch`), is what preserves the true anchor for exactly that window.
  */
-function reseedFrom(lastSeenAt: string | undefined, now: Date): Date {
-  const seen = lastSeenAt === undefined ? undefined : new Date(lastSeenAt);
+function reseedFrom(anchor: string | undefined, now: Date): Date {
+  const seen = anchor === undefined ? undefined : new Date(anchor);
   if (seen !== undefined && !Number.isNaN(seen.getTime())) return seen;
   return new Date(now.getTime() - LOOKBACK_DAYS * DAY_MS);
 }

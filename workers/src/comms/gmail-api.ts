@@ -116,6 +116,19 @@ export interface GmailMessageList {
   ids: string[];
   /** True when more ids existed beyond `MAX_MESSAGE_IDS` and had to be left for next time. */
   truncated: boolean;
+  /**
+   * Gmail's own resumption point for this EXACT listing (same `q`), forwarded whenever Gmail
+   * itself said there was another page. `undefined` when nothing more exists, and also when the
+   * only reason `truncated` is true is our own client-side cap slicing a single oversized
+   * response (a pathological case a real Gmail response respecting `maxResults` should not
+   * produce — see `MAX_MESSAGE_IDS`).
+   *
+   * This is what lets a caller resume the identical listing precisely, independent of the search
+   * date's whole-SECOND granularity — see `gmail.ts`'s `finalizeListingCursor` for why that
+   * independence is load-bearing: date narrowing alone cannot escape a tie where more matches
+   * share one trailing second than fit under the cap.
+   */
+  pageToken?: string | undefined;
 }
 
 /** The four calls the poller makes, bound to one access token. */
@@ -230,7 +243,9 @@ export function gmailClient(token: string): GmailClient {
       // below drops the tail. Either way the caller must not treat this as "everything since the
       // cursor" — see `planFetch` in gmail.ts for how it holds its ground instead.
       const truncated = pageToken !== undefined || ids.length > MAX_MESSAGE_IDS;
-      return { ok: true, value: { ids: ids.slice(0, MAX_MESSAGE_IDS), truncated } };
+      // `pageToken` here is exactly Gmail's own answer for "what's next" — forwarded as-is so a
+      // caller resuming this listing can skip straight past everything already read.
+      return { ok: true, value: { ids: ids.slice(0, MAX_MESSAGE_IDS), truncated, pageToken } };
     },
 
     async listHistory(options) {
