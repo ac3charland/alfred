@@ -617,4 +617,63 @@ export const FIXTURES: CommFixture[] = [
     minutesAgo: 3 * 24 * 60,
     tier: 'today',
   }),
+
+  // The asap tier was the thinnest slice of the set (5 of 48) despite being the one the whole
+  // recall-bias design is balanced against — an unearned asap is the credibility cost the module
+  // exists to avoid. These five are new, independent scenarios (not derived from watching the
+  // model's current answers): a real emergency that outruns the rubric's own same-day floor, a
+  // second and differently-shaped Priya case, content severity pulling a normal-priority sender
+  // up rather than a named-priority person, and a hard, short deadline rather than an end-of-day
+  // one.
+  fixture({
+    id: 'school-nurse-emergency',
+    about:
+      "A genuine emergency from the child's school — sharper than the rubric's same-day floor.",
+    account: PERSONAL,
+    from: 'nurse@brookfield-school.example',
+    name: 'Brookfield School Nurse',
+    subject: 'Please call the office',
+    body: 'This is the school nurse — Jamie has a fever of 103 and is waiting in the office. We need someone to pick them up as soon as possible.',
+    tier: 'asap',
+  }),
+  fixture({
+    id: 'spouse-home-emergency',
+    about:
+      'A second, differently-shaped Priya case: a live problem at home, not an errand or chit-chat.',
+    account: IMESSAGE,
+    from: '+15125550111',
+    body: "The smoke alarm won't stop going off and I can't find the reset. Can you call the alarm company right now?",
+    tier: 'asap',
+  }),
+  fixture({
+    id: 'prod-outage-bridge',
+    about:
+      'A normal-priority colleague, but the content — a live outage — is what earns asap here.',
+    account: WORK,
+    from: 'marcus@northwind.example',
+    name: 'Marcus Feld',
+    subject: 'Payments down',
+    body: 'We have a full outage on the payments service and customers are failing at checkout. Need you on the incident bridge right now.',
+    tier: 'asap',
+  }),
+  fixture({
+    id: 'neighbour-fall',
+    about: 'A low-stakes sender in every other fixture, but a real injury changes that.',
+    account: IMESSAGE,
+    from: '+13125550188',
+    name: 'Sam Okafor',
+    body: "I just fell off the ladder cleaning gutters and my ankle doesn't feel right. Can you come over or call someone now?",
+    tier: 'asap',
+  }),
+  fixture({
+    id: 'closing-wire-deadline',
+    about:
+      'A hard deadline measured in minutes, not the end of the day like the other signature fixtures.',
+    account: PERSONAL,
+    from: 'j.marsh@fieldstonetitle.example',
+    name: 'Jordan Marsh',
+    subject: 'Closing in 20 minutes',
+    body: "We're still on for the 2pm closing but need your signature on the wire instructions in the next 20 minutes or we lose today's rate lock.",
+    tier: 'asap',
+  }),
 ];

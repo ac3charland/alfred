@@ -30,6 +30,16 @@ describe('the evaluation set', () => {
     expect(tiers).toEqual(new Set(['asap', 'today', 'whenever', 'fyi']));
   });
 
+  it('gives asap enough fixtures that one flipped case does not swing the precision number 20 points', () => {
+    // asap started at n=5 (one case worth ±20 points) despite being the tier the whole
+    // recall-bias design is balanced against — an unearned asap spends the tier's credibility.
+    // n=10 halves that swing; still small, but the eval report's Wilson interval is what carries
+    // the rest of the honesty.
+    const asapFixtures = FIXTURES.filter((fixture) => fixture.expected.tier === 'asap');
+
+    expect(asapFixtures.length).toBeGreaterThanOrEqual(10);
+  });
+
   it('keeps queued and the tier in step, so recall cannot be scored against itself', () => {
     for (const fixture of FIXTURES) {
       expect(fixture.expected.queued).toBe(fixture.expected.tier !== 'fyi');

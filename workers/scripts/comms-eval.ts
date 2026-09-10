@@ -26,7 +26,12 @@ import {
   FIXTURE_RUBRIC,
   FIXTURE_TIME_ZONE,
 } from '../src/comms/eval/fixtures.ts';
-import { type ScoredResult, renderConfusion, scoreRun } from '../src/comms/eval/score.ts';
+import {
+  type RateStat,
+  type ScoredResult,
+  renderConfusion,
+  scoreRun,
+} from '../src/comms/eval/score.ts';
 import { buildCommsRequest } from '../src/comms/prompt.ts';
 import type { CommTier } from '../src/comms/types.ts';
 import { applyFloor, capForBacklog, parseCommVerdict } from '../src/comms/verdict.ts';
@@ -71,6 +76,17 @@ function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/**
+ * A headline rate line, with the count that produced it and its 95% confidence interval
+ * impossible to miss beside the percentage — this eval set's tiers run as small as n=5, where a
+ * single flipped case swings the number 20 points and a bare percentage reads far more settled
+ * than it is.
+ */
+function formatRate(label: string, stat: RateStat): string {
+  const ci = `95% CI [${percent(stat.interval.low)}, ${percent(stat.interval.high)}]`;
+  return `${label.padEnd(16)} ${percent(stat.rate).padStart(6)} (${String(stat.hits)}/${String(stat.total)})   ${ci}`;
+}
+
 interface FixtureOutcome {
   id: string;
   about: string;
@@ -90,7 +106,12 @@ if (apiKey === undefined || apiKey === '') {
 } else {
   const model = chosenModel();
   const env = { ANTHROPIC_API_KEY: apiKey, CLASSIFIER_MODEL: model };
-  console.log(`Running ${String(FIXTURES.length)} fixtures against ${model}\n`);
+  console.log(`Running ${String(FIXTURES.length)} fixtures against ${model}`);
+  console.log(
+    'WARNING: this is the SAME fixture set the prompt was tuned against — there is no held-out\n' +
+      '         split yet. Read every number below as a fit-to-tuning-set metric, not a measure of\n' +
+      '         generalization to unseen mail.\n',
+  );
 
   const outcomes: FixtureOutcome[] = [];
   const scored: ScoredResult[] = [];
@@ -162,11 +183,16 @@ if (apiKey === undefined || apiKey === '') {
     process.exitCode = 1;
   }
 
-  console.log(`\nqueue recall     ${percent(score.queueRecall)}   (the number that decides)`);
-  console.log(`asap precision   ${percent(score.asapPrecision)}   (the tier that claims "now")`);
-  console.log(`queue precision  ${percent(score.queuePrecision)}`);
-  console.log(`asap recall      ${percent(score.asapRecall)}`);
-  console.log(`tier accuracy    ${percent(score.tierAccuracy)}`);
+  console.log(
+    '\nWARNING: reusing the tuning fixtures — these numbers measure fit, not generalization.\n',
+  );
+  console.log(`${formatRate('queue recall', score.queueRecall)}   (the number that decides)`);
+  console.log(
+    `${formatRate('asap precision', score.asapPrecision)}   (the tier that claims "now")`,
+  );
+  console.log(formatRate('queue precision', score.queuePrecision));
+  console.log(formatRate('asap recall', score.asapRecall));
+  console.log(formatRate('tier accuracy', score.tierAccuracy));
   if (unscored > 0) console.log(`unscored         ${String(unscored)} (no usable verdict)`);
   console.log(`\n${renderConfusion(score.confusion)}`);
 

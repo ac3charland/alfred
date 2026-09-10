@@ -31,17 +31,39 @@ export interface ScoredResult {
 /** How often each expected tier was answered with each actual one. Rows expected, columns actual. */
 export type Confusion = Record<CommTier, Record<CommTier, number>>;
 
+/** The lower and upper bound of a 95% confidence interval around a rate. */
+export interface WilsonInterval {
+  low: number;
+  high: number;
+}
+
+/**
+ * A rate that carries its own sample size and confidence interval, rather than a bare number a
+ * caller could print without noticing how few fixtures it rests on. `hits`/`total` are the
+ * numbers a reader needs beside the percentage: with the eval set's tier sizes (as few as 2 for
+ * `whenever`, 5 for `asap`), the percentage alone reads far more settled than the count behind it
+ * actually supports.
+ */
+export interface RateStat {
+  hits: number;
+  total: number;
+  /** `hits / total`, or 1 when `total` is 0 — see `rate` below. */
+  rate: number;
+  /** The 95% Wilson interval around `rate` — see `wilsonInterval` below. */
+  interval: WilsonInterval;
+}
+
 export interface RunScore {
   /** Of everything that should have been queued, how much was. The number that decides. */
-  queueRecall: number;
+  queueRecall: RateStat;
   /** Of everything queued, how much belonged there. What the recall bias costs. */
-  queuePrecision: number;
+  queuePrecision: RateStat;
   /** Of everything called asap, how much belonged there. The credibility of the loud tier. */
-  asapPrecision: number;
+  asapPrecision: RateStat;
   /** Of everything that was asap, how much was called that. Deliberately the softest number. */
-  asapRecall: number;
+  asapRecall: RateStat;
   /** Exact-tier agreement. Useful, but never the headline. */
-  tierAccuracy: number;
+  tierAccuracy: RateStat;
   confusion: Confusion;
 }
 
@@ -55,6 +77,37 @@ export interface RunScore {
  */
 function rate(hits: number, total: number): number {
   return total === 0 ? 1 : hits / total;
+}
+
+/**
+ * The 95% Wilson score interval for a binomial proportion `hits/total` — the interval a small
+ * evaluation sample actually needs, not the naive `p̂ ± 1.96·√(p̂(1-p̂)/n)` interval, which can run
+ * outside [0, 1] and is badly miscalibrated at exactly the sample sizes this harness reports
+ * (single digits for two of the four tiers). Closed form, so it needs no dependency:
+ * https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Wilson_score_interval
+ *
+ * `total === 0` has no defined proportion to bound, so this reports the widest possible interval
+ * (`[0, 1]`, total uncertainty) rather than dividing by zero — deliberately not the same
+ * convention as `rate`'s vacuous 1, which answers a different question ("nothing to be wrong
+ * about" vs. "nothing is known").
+ */
+export function wilsonInterval(hits: number, total: number, z = 1.959963984540054): WilsonInterval {
+  if (total === 0) return { low: 0, high: 1 };
+
+  const p = hits / total;
+  const z2 = z * z;
+  const denominator = 1 + z2 / total;
+  const center = p + z2 / (2 * total);
+  const margin = z * Math.sqrt((p * (1 - p)) / total + z2 / (4 * total * total));
+
+  return {
+    low: Math.max(0, (center - margin) / denominator),
+    high: Math.min(1, (center + margin) / denominator),
+  };
+}
+
+function rateStat(hits: number, total: number): RateStat {
+  return { hits, total, rate: rate(hits, total), interval: wilsonInterval(hits, total) };
 }
 
 function emptyConfusion(): Confusion {
@@ -92,11 +145,11 @@ export function scoreRun(results: readonly ScoredResult[]): RunScore {
   }
 
   return {
-    queueRecall: rate(queuedBoth, queuedExpected),
-    queuePrecision: rate(queuedBoth, queuedActual),
-    asapPrecision: rate(asapBoth, asapActual),
-    asapRecall: rate(asapBoth, asapExpected),
-    tierAccuracy: rate(exact, results.length),
+    queueRecall: rateStat(queuedBoth, queuedExpected),
+    queuePrecision: rateStat(queuedBoth, queuedActual),
+    asapPrecision: rateStat(asapBoth, asapActual),
+    asapRecall: rateStat(asapBoth, asapExpected),
+    tierAccuracy: rateStat(exact, results.length),
     confusion,
   };
 }
