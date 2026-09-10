@@ -7,13 +7,20 @@ import {
   makeCommMessage,
   makeCommPerson,
   makeCommRubric,
+  makeCommVerdict,
   resetCommFixtureClock,
 } from '@/lib/comms/fixtures';
 import { RETENTION_DAYS } from '@/lib/comms/markers';
 import { pinClock } from '@/lib/pin-clock';
 import * as supabaseServer from '@/lib/supabase/server';
 
-import { COMMS_MAX_PAGES, COMMS_PAGE_SIZE, getCommsSeed, getCommsSettingsSeed } from './comms';
+import {
+  COMMS_MAX_PAGES,
+  COMMS_PAGE_SIZE,
+  COMMS_VERDICT_CHUNK_SIZE,
+  getCommsSeed,
+  getCommsSettingsSeed,
+} from './comms';
 
 // `import 'server-only'` throws outside a Server Component context; neutralise it under Jest.
 jest.mock('server-only', () => ({}));
@@ -241,6 +248,131 @@ describe('getCommsSeed', () => {
     const seed = await getCommsSeed(client);
 
     expect(mockCreateClient).not.toHaveBeenCalled();
+    expect(seed.accounts).toEqual([ACCOUNT]);
+  });
+
+  // BUG 1 (getCommsSeed's own three reads — accounts, verdicts, health — got neither the paging
+  // nor the error-checking `readMessages` already has): `verdictIds` is one id per judged message
+  // in the 60-day window, which this file's own sizing note says routinely runs to a few thousand
+  // — an `in.(…)` list that size builds a request URL a typical PostgREST-fronting proxy rejects
+  // outright, and even a request that got through would still be subject to PostgREST's row cap.
+  // These pin the fix: the verdict read is chunked (so no single request's `in.()` list can grow
+  // unbounded) and every one of the three reads is paged/checked exactly like `readMessages`.
+
+  it('chunks the verdict read so a large verdict id list never builds one oversized request', async () => {
+    const verdictIds = Array.from({ length: COMMS_VERDICT_CHUNK_SIZE * 2 + 1 }, () =>
+      crypto.randomUUID(),
+    );
+    const messages = verdictIds.map((id) =>
+      makeCommMessage(ACCOUNT.id, { tier: 'today', judged_by: 'model', verdict_id: id }),
+    );
+    const idChunks: string[][] = [];
+    for (let start = 0; start < verdictIds.length; start += COMMS_VERDICT_CHUNK_SIZE) {
+      idChunks.push(verdictIds.slice(start, start + COMMS_VERDICT_CHUNK_SIZE));
+    }
+    const verdictPages: Result[] = idChunks.map((ids) => ({
+      data: ids.map((id) => makeCommVerdict(messages[0]?.id ?? '', { id })),
+      error: null,
+    }));
+    const { client, calls } = makeClient({
+      comm_messages: { data: messages, error: null },
+      comm_verdicts: verdictPages,
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSeed();
+
+    expect(calls.comm_verdicts).toHaveLength(idChunks.length);
+    for (const call of calls.comm_verdicts) {
+      expect((call.in?.[1] as string[] | undefined)?.length).toBeLessThanOrEqual(
+        COMMS_VERDICT_CHUNK_SIZE,
+      );
+      // The total order paging needs, applied per chunk exactly like every other paged read here.
+      expect(call.order).toEqual([['id', { ascending: true }]]);
+    }
+    expect(seed.verdicts).toHaveLength(verdictIds.length);
+  });
+
+  it('pages past a capped verdict response so nothing behind the row cap is lost', async () => {
+    const judged = makeCommMessage(ACCOUNT.id, {
+      tier: 'today',
+      judged_by: 'model',
+      verdict_id: '00000000-0000-4000-8000-0000000000ab',
+    });
+    const full = Array.from({ length: COMMS_PAGE_SIZE }, (_unused, index) =>
+      makeCommVerdict(judged.id, {
+        id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      }),
+    );
+    const tail = [makeCommVerdict(judged.id, { id: judged.verdict_id ?? '' })];
+    const { client, calls } = makeClient({
+      comm_messages: { data: [judged], error: null },
+      comm_verdicts: [
+        { data: full, error: null },
+        { data: tail, error: null },
+      ],
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSeed();
+
+    expect(seed.verdicts).toHaveLength(COMMS_PAGE_SIZE + 1);
+    expect(calls.comm_verdicts).toHaveLength(2);
+    expect(calls.comm_verdicts[1]?.range).toEqual([COMMS_PAGE_SIZE, COMMS_PAGE_SIZE * 2 - 1]);
+  });
+
+  it('returns nothing at all when the account read errors, rather than continuing with an empty roster', async () => {
+    const { client, calls } = makeClient({
+      comm_accounts: { data: null, error: { message: 'nope' } },
+      comm_messages: { data: [makeCommMessage(ACCOUNT.id)], error: null },
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSeed();
+
+    expect(seed).toEqual({ accounts: [], messages: [], verdicts: [], health: undefined });
+    // The account read failing stops the seed there — it never goes on to read messages off a
+    // roster it doesn't actually have.
+    expect(calls.comm_messages).toHaveLength(0);
+  });
+
+  it('surfaces a verdict read error instead of shipping a seed with silently zero verdicts', async () => {
+    const judged = makeCommMessage(ACCOUNT.id, {
+      tier: 'today',
+      judged_by: 'model',
+      verdict_id: '00000000-0000-4000-8000-0000000000ab',
+    });
+    const { client, calls } = makeClient({
+      comm_accounts: { data: [ACCOUNT], error: null },
+      comm_messages: { data: [judged], error: null },
+      comm_verdicts: { data: null, error: { message: 'nope' } },
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSeed();
+
+    // Degrades in layers: what already succeeded (accounts, messages) survives; the read that
+    // failed comes back empty and nothing after it (health) is attempted at all.
+    expect(seed).toEqual({
+      accounts: [ACCOUNT],
+      messages: [judged],
+      verdicts: [],
+      health: undefined,
+    });
+    expect(calls.comm_classifier_health).toHaveLength(0);
+  });
+
+  it('reports no health rather than a stale one when the health read errors', async () => {
+    const { client } = makeClient({
+      comm_accounts: { data: [ACCOUNT], error: null },
+      comm_classifier_health: { data: null, error: { message: 'nope' } },
+    });
+    mockCreateClient.mockResolvedValue(client);
+
+    const seed = await getCommsSeed();
+
+    expect(seed.health).toBeUndefined();
+    // What already succeeded (accounts) is not thrown away by a later read's failure.
     expect(seed.accounts).toEqual([ACCOUNT]);
   });
 });

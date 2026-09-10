@@ -43,6 +43,18 @@ export const COMMS_PAGE_SIZE = 1000;
  */
 export const COMMS_MAX_PAGES = 50;
 
+/**
+ * How many verdict ids one `in.()` request may carry.
+ *
+ * `getCommsSeed` asks for the CURRENT verdict behind every judged message in the retention
+ * window — this file's own sizing note above says that's routinely a few thousand ids. An
+ * `in.(…)` list that size builds a request URL of ~100KB, which a typical PostgREST-fronting
+ * proxy rejects outright, well before the row cap above would even come into play. 200 ids at a
+ * 36-character UUID apiece keeps one chunk's `in.()` clause under ~8KB — comfortably inside the
+ * request-line/header limits common proxies enforce.
+ */
+export const COMMS_VERDICT_CHUNK_SIZE = 200;
+
 function pagingError(): PostgrestError {
   const error = {
     name: 'PostgrestError',
@@ -106,6 +118,40 @@ async function readMessages(
   return { messages: rows, error };
 }
 
+/**
+ * The current verdict behind every id in `verdictIds`, walked a chunk at a time.
+ *
+ * Two independent limits are in play, and chunking only handles the first: an `in.(…)` list of a
+ * few thousand ids builds a request URL too large for a typical PostgREST-fronting proxy to
+ * accept at all, so this splits the ask into requests of at most `COMMS_VERDICT_CHUNK_SIZE` ids.
+ * A chunk that small is never going to bump PostgREST's row cap on its own, but each chunk still
+ * runs through `readAllPages` (with `.order('id')` for the total order paging needs) rather than
+ * a bare `.in()` — the same paging guarantee every other read in this file carries, applied
+ * uniformly instead of assumed safe because "this one's requests are small."
+ *
+ * An empty `verdictIds` makes no request at all — a query with no answer worth asking for.
+ */
+async function readVerdicts(
+  supabase: SupabaseClient<Database>,
+  verdictIds: string[],
+): Promise<{ verdicts: CommVerdict[]; error: PostgrestError | null }> {
+  const verdicts: CommVerdict[] = [];
+  for (let start = 0; start < verdictIds.length; start += COMMS_VERDICT_CHUNK_SIZE) {
+    const chunk = verdictIds.slice(start, start + COMMS_VERDICT_CHUNK_SIZE);
+    const { rows, error } = await readAllPages<CommVerdict>((offset) =>
+      supabase
+        .from('comm_verdicts')
+        .select('*')
+        .in('id', chunk)
+        .order('id', { ascending: true })
+        .range(offset, offset + COMMS_PAGE_SIZE - 1),
+    );
+    if (error) return { verdicts: [], error };
+    verdicts.push(...rows);
+  }
+  return { verdicts, error: null };
+}
+
 /** What the queue needs: the accounts, their messages, the verdicts behind them, and health. */
 export interface CommsSeed {
   accounts: CommAccount[];
@@ -124,6 +170,12 @@ export interface CommsSeed {
  * the message's pointer, so the superseded rows are history the queue never renders; fetching
  * them all would grow without bound while showing nothing extra.
  *
+ * The four reads are sequenced, each one checked for `error` before the next runs, and a failure
+ * returns whatever already succeeded plus empty defaults for the rest — never a fallback (`??
+ * []`) that would let a failed read masquerade as "there's nothing here." An account read that
+ * fails, for instance, stops the seed cold rather than going on to read messages against a roster
+ * it doesn't actually have.
+ *
  * The client takes it from here: the queue, the shelf and the badge count are all derived from
  * this one list (the app's fetch-all, filter-client-side default).
  */
@@ -131,35 +183,32 @@ export async function getCommsSeed(client?: SupabaseClient<Database>): Promise<C
   const supabase = client ?? (await createClient());
   const empty: CommsSeed = { accounts: [], messages: [], verdicts: [], health: undefined };
 
-  const { data: accounts } = await supabase
+  const { data: accounts, error: accountsError } = await supabase
     .from('comm_accounts')
     .select('*')
     .order('created_at', { ascending: true });
+  if (accountsError) return empty;
 
-  const { messages, error } = await readMessages(supabase, retentionCutoff(new Date()));
-  if (error) return { ...empty, accounts: accounts ?? [] };
+  const { messages, error: messagesError } = await readMessages(
+    supabase,
+    retentionCutoff(new Date()),
+  );
+  if (messagesError) return { ...empty, accounts };
 
   const verdictIds = [
     ...new Set(messages.flatMap((m) => (m.verdict_id === null ? [] : [m.verdict_id]))),
   ];
-  // An empty `in.()` is a query with no answer worth asking for.
-  const { data: verdicts } =
-    verdictIds.length === 0
-      ? { data: [] as CommVerdict[] }
-      : await supabase.from('comm_verdicts').select('*').in('id', verdictIds);
+  const { verdicts, error: verdictsError } = await readVerdicts(supabase, verdictIds);
+  if (verdictsError) return { ...empty, accounts, messages };
 
-  const { data: health } = await supabase
+  const { data: healthData, error: healthError } = await supabase
     .from('comm_classifier_health')
     .select('*')
     .eq('id', 1)
     .maybeSingle();
+  if (healthError) return { accounts, messages, verdicts, health: undefined };
 
-  return {
-    accounts: accounts ?? [],
-    messages,
-    verdicts: verdicts ?? [],
-    health: health ?? undefined,
-  };
+  return { accounts, messages, verdicts, health: healthData ?? undefined };
 }
 
 /** What the settings pages need: the roster, every rubric version, and the example set. */
