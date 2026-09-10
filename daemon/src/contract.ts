@@ -96,5 +96,13 @@ export interface IngestResponse {
   duplicates: number;
   drained: number;
   cursor?: unknown;
-  last_seen_at?: string;
+  /**
+   * A JSON `null` here is a real, deliberate value — not merely an absent key. The Worker sends it
+   * whenever a heartbeat reports `ok: false` on an account that has never had a successful poll
+   * (`workers/src/comms/ingest.ts`), because there is no timestamp to report yet. It is typed as
+   * such on purpose: `new Date(null)` is a VALID Date (the epoch), so a call site that narrows this
+   * to `string | undefined` and forwards it straight into `new Date(...)` silently anchors on 1970
+   * instead of falling back to the first-run lookback window. See `runner.ts`'s `parseStamp`.
+   */
+  last_seen_at?: string | null;
 }

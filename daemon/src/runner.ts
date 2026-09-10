@@ -51,8 +51,18 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function parseStamp(value: string | undefined): Date | undefined {
-  if (value === undefined) return undefined;
+/**
+ * The endpoint's `last_seen_at` (and this process's own cached copy of it, `SourceState.lastSeenAt`)
+ * can carry a real JSON `null` — not merely an absent key — whenever the account has never had a
+ * successful poll (see `contract.ts`). The `typeof` check below folds `null` and `undefined` into
+ * the same "absent" branch on purpose, so a future third falsy-but-not-a-string case fails the same
+ * safe way: `new Date(null)` is a VALID Date at the epoch, so a guard that checks only `undefined`
+ * (as this one used to) lets `null` slip through and silently anchors the next poll at 1970 instead
+ * of the seven-day first-run fallback — see runner.test.ts's regression test and the `mac-daemon`
+ * skill.
+ */
+function parseStamp(value: string | null | undefined): Date | undefined {
+  if (typeof value !== 'string') return undefined;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }

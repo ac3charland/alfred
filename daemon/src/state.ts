@@ -13,7 +13,15 @@ import path from 'node:path';
 
 export interface SourceState {
   cursor?: unknown;
-  lastSeenAt?: string;
+  /**
+   * Admits `null` even though this process only ever writes a string here (see `runner.ts`): the
+   * ingest endpoint's own `last_seen_at` admits a real JSON `null` (`contract.ts`), and this cache
+   * is read back with no schema validation beyond "is it an object" (`readState` below). Typing it
+   * `string` only would just move the lie here instead of fixing it — a hand-edited or
+   * differently-versioned state.json can carry `null`, and the type should say so rather than let
+   * a caller assume a string it never checked for.
+   */
+  lastSeenAt?: string | null;
 }
 
 export type DaemonState = Record<string, SourceState>;

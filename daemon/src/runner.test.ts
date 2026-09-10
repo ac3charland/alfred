@@ -519,6 +519,37 @@ describe('createSourceRunner', () => {
     expect(contexts[1]?.anchor).toEqual(new Date('2026-09-02T12:00:00.000Z'));
   });
 
+  it('falls back to the seven-day anchor, never epoch, when the endpoint reports a null last-seen stamp', async () => {
+    // The Worker sends a real JSON `null` for `last_seen_at` — not an absent field — whenever a
+    // heartbeat reports `ok: false` on an account that has never had a successful poll (see
+    // workers/src/comms/ingest.ts). `new Date(null)` is a VALID Date at the epoch, so treating this
+    // like any other defined stamp would anchor the next poll at 1970 and trigger a full-history
+    // backfill instead of falling back to the seven-day first-run window.
+    //
+    // Parsed out of a JSON string, exactly as ingest-client.ts's real response parsing would
+    // produce it, rather than written as a `null` literal here (unicorn/no-null) — this way the
+    // fixture is unimpeachably the real wire value, not a stand-in for it.
+    const wireResponse = JSON.parse('{"cursor":{"rowid":19},"last_seen_at":null}') as Record<
+      string,
+      unknown
+    >;
+    const { source, contexts } = scriptedSource([
+      () => Promise.reject(new Error('IMAP login failed')),
+      () => Promise.resolve(empty({ rowid: 20 })),
+    ]);
+    const { deps } = harness(source, {
+      send: () => Promise.resolve(accepted(wireResponse)),
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW, 0);
+    const secondTick = later(60_000);
+    await runner.tick(secondTick, 60_000);
+
+    expect(contexts[1]?.anchor).toEqual(new Date(secondTick.getTime() - 7 * DAY_MS));
+    expect(contexts[1]?.anchor).not.toEqual(new Date(0));
+  });
+
   it('caches the cursor and last-seen stamp for a fast restart', async () => {
     const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
     const { persisted, deps } = harness(source, {
