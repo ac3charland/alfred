@@ -5,6 +5,7 @@ import { mapSupabaseError } from '@/lib/api/supabase-errors';
 import { askLine } from '@/lib/comms/ask';
 import { messageDeepLink } from '@/lib/comms/deep-link';
 import { readCommAccount, readCommMessage } from '@/lib/data/comms-messages';
+import type { CommMessage, Item } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // POST /api/comms/messages/[id]/inbox-item — the third way out of the queue
@@ -16,10 +17,42 @@ import { readCommAccount, readCommMessage } from '@/lib/data/comms-messages';
 //
 // The message itself is untouched: alfred mirrors and never writes back. It is the ROW that
 // clears, and the new item carries the link back through `source_url`.
+//
+// The write itself is a single `comm_create_inbox_item` RPC (0034_comms.sql): the INSERT into
+// `items` and the UPDATE of `comm_messages` commit together, and the idempotency guard — reuse
+// the linked item on a retry rather than minting a second, orphaned one — lives INSIDE that
+// function, where the check-then-write is one round trip with no gap for a retry to land in.
+// This route only computes what the RPC needs (title, notes, the deep link — plain TypeScript,
+// not SQL) and reports the shape the RPC hands back.
 // ---------------------------------------------------------------------------
 
 /** How much of a body travels into the item's notes before it stops being a summary. */
 const NOTES_BODY_LENGTH = 2000;
+
+/** What `comm_create_inbox_item` returns, beyond the item and message the response carries. */
+interface InboxItemRpcResult {
+  item: Item;
+  message: CommMessage;
+  /** true = a fresh item was minted this call; false = an already-linked item was reused. */
+  created: boolean;
+}
+
+/**
+ * Narrow the RPC's `json` return (typed `Json` — a union too wide to index) to the shape this
+ * route relies on. The function's own contract guarantees the fields; this is the one place
+ * that trusts it, the same trust boundary every other route places in the generated `Database`
+ * types for an ordinary table read.
+ */
+function isInboxItemRpcResult(value: unknown): value is InboxItemRpcResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'item' in value &&
+    'message' in value &&
+    'created' in value &&
+    typeof value.created === 'boolean'
+  );
+}
 
 export const POST = withSession(
   async (session, _request, context: { params: Promise<{ id: string }> }) => {
@@ -51,43 +84,29 @@ export const POST = withSession(
     // row would have. A row with nothing to open carries no URL rather than a broken one.
     const { href } = messageDeepLink(message, account ?? undefined);
 
-    const { data: item, error: itemError } = await supabase
-      .from('items')
-      .insert({
-        // The ask is the title, because the ask is what the obligation IS — a subject line
-        // would import the ambiguity the module exists to resolve.
-        title: askLine(message),
-        notes: `From ${sender} via ${accountLabel}\n\n${body}`,
-        source_url: href ?? null,
-        // Untriaged, exactly like a capture: where it belongs is the Inbox's question, not this
-        // route's.
-        item_type: 'unclassified',
-        status: 'active',
-      })
-      .select()
-      .single();
+    // `p_source_url` is LEFT OFF when there is nothing to open, rather than sent as null: the
+    // generated arg type has no `| null` (Postgres gives the route no way to say "the caller
+    // deliberately passed nothing" versus "not provided"), so an omitted key is how "no link"
+    // reaches the default-NULL parameter — the same convention `/api/comms/purge` uses.
+    const args: { p_message: string; p_title: string; p_notes: string; p_source_url?: string } = {
+      p_message: id,
+      // The ask is the title, because the ask is what the obligation IS — a subject line would
+      // import the ambiguity the module exists to resolve.
+      p_title: askLine(message),
+      p_notes: `From ${sender} via ${accountLabel}\n\n${body}`,
+    };
+    if (href !== undefined) args.p_source_url = href;
 
-    if (itemError) {
-      const { status, message: text } = mapSupabaseError(itemError);
-      return jsonError(status, text);
-    }
-
-    const { data: updated, error } = await supabase
-      .from('comm_messages')
-      .update({
-        inbox_item_id: item.id,
-        cleared_at: new Date().toISOString(),
-        cleared_by: 'inbox_item',
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('comm_create_inbox_item', args);
 
     if (error) {
       const { status, message: text } = mapSupabaseError(error);
       return jsonError(status, text);
     }
+    if (!isInboxItemRpcResult(data)) {
+      return jsonError(500, 'comm_create_inbox_item returned an unexpected shape');
+    }
 
-    return jsonOk({ message: updated, item }, 201);
+    return jsonOk({ message: data.message, item: data.item }, data.created ? 201 : 200);
   },
 );

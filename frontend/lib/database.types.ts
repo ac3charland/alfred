@@ -1116,6 +1116,15 @@ export type Database = {
       }
     }
     Functions: {
+      comm_create_inbox_item: {
+        Args: {
+          p_message: string
+          p_notes: string
+          p_source_url?: string
+          p_title: string
+        }
+        Returns: Json
+      }
       comm_example_set_version: { Args: never; Returns: number }
       comm_purge: {
         Args: { p_account?: string; p_before?: string; p_message?: string }

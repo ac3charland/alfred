@@ -2909,6 +2909,92 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  const commsInboxItemAtomicResult = await attempt(
+    'comm_create_inbox_item: the items insert and the comm_messages update commit together — a ' +
+      'message vanishing before the update rolls the insert back too, and a retry on an ' +
+      'already-linked message reuses the same item instead of minting a second one (ALF-7)',
+    async () => {
+      // The failure case: no message exists at this id, so the UPDATE inside the function can
+      // never match a row. The old two-write route would have left the INSERT committed with
+      // nothing pointing back at it — the duplication bug this function exists to close. One
+      // statement failing must abort the whole function, so the item must not survive either.
+      const missing = 'cccccccc-0000-4000-8000-0000000000ff';
+      let raised = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`select comm_create_inbox_item($1, $2, $3, $4)`, [
+            missing,
+            'orphan check',
+            'notes',
+            undefined,
+          ]),
+        );
+      } catch {
+        raised = true;
+      }
+      if (!raised) throw new Error('a message that does not exist did not raise');
+      const { rows: orphaned } = await client.query<{ n: string }>(
+        `select count(*)::text as n from items where title = 'orphan check'`,
+      );
+      if (orphaned[0]?.n !== '0')
+        throw new Error(
+          `the insert survived the update's failure: ${String(orphaned[0]?.n)} row(s)`,
+        );
+
+      // The success path, for contrast: a real message gets both writes in one call, and a
+      // second call on the now-linked message reuses that item rather than duplicating it.
+      const account = 'cccccccc-0000-4000-8000-000000000004';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-inbox-item-test', 'gmail', 'Inbox Item Test', 'worker')`,
+        [account],
+      );
+      const { rows: seeded } = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'inbox-item-1', 't', 'a@example.com', now()) returning id`,
+        [account],
+      );
+      const messageId = seeded[0]?.id;
+      if (messageId === undefined) throw new Error('could not seed a message');
+
+      const { rows: first } = await asRole(client, 'authenticated', () =>
+        client.query<{ result: { item: { id: string }; created: boolean } }>(
+          `select comm_create_inbox_item($1, $2, $3, $4) as result`,
+          [messageId, 'Approve the invoice', 'notes', undefined],
+        ),
+      );
+      const firstResult = first[0]?.result;
+      if (firstResult?.created !== true) throw new Error('the first call did not create an item');
+
+      const { rows: linked } = await client.query<{ inbox_item_id: string | null }>(
+        `select inbox_item_id from comm_messages where id = $1`,
+        [messageId],
+      );
+      if (linked[0]?.inbox_item_id !== firstResult.item.id)
+        throw new Error('comm_messages was not stamped with the new item in the same call');
+
+      const { rows: second } = await asRole(client, 'authenticated', () =>
+        client.query<{ result: { item: { id: string }; created: boolean } }>(
+          `select comm_create_inbox_item($1, $2, $3, $4) as result`,
+          [messageId, 'Approve the invoice', 'notes', undefined],
+        ),
+      );
+      const secondResult = second[0]?.result;
+      if (secondResult?.created !== false)
+        throw new Error('a retry on an already-linked message minted a second item');
+      if (secondResult.item.id !== firstResult.item.id)
+        throw new Error('a retry returned a different item than the first call created');
+
+      const { rows: itemCount } = await client.query<{ n: string }>(
+        `select count(*)::text as n from items where title = 'Approve the invoice'`,
+      );
+      if (itemCount[0]?.n !== '1')
+        throw new Error(`expected exactly one item, found ${String(itemCount[0]?.n)}`);
+
+      return 'a vanished message rolls the insert back; a real message writes both rows once and a retry reuses the same item';
+    },
+  );
+
   const commsRealtimeResult = await attempt(
     'comms: comm_messages, comm_accounts, comm_classifier_health and comm_verdicts are published to supabase_realtime (ALF-7)',
     async () => {
@@ -2980,6 +3066,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     commsReplyDrainResult,
     commsExampleVersionResult,
     commsRetentionResult,
+    commsInboxItemAtomicResult,
     commsRealtimeResult,
   ];
 }

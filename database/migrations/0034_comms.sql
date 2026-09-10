@@ -398,7 +398,71 @@ end; $$;
 grant execute on function comm_record_reply(uuid, text, text[], timestamptz)
   to anon, authenticated, service_role;
 
--- ── 9. Retention and purge ───────────────────────────────────────────────────
+-- ── 9. comm_create_inbox_item — the third way out of the queue ──────────────
+-- Spinning a message into a task stays a human act, but it is ONE action from the row, and it
+-- clears the row at that moment: an INSERT into `items` and an UPDATE of `comm_messages`,
+-- committed together so a failure between them can never leave the item orphaned and the row
+-- still sitting in the queue (a retry could not tell "both writes landed" from "only the first
+-- did", and minted a second item on top of the first). Title, notes and the deep link stay
+-- computed in TypeScript (askLine() / messageDeepLink() are plain functions, not SQL) and
+-- arrive as arguments — this function does only the part that has to be one transaction.
+--
+-- Idempotent by design, and the guard lives HERE rather than in the route: a message that
+-- already carries an inbox_item_id resolving to a real item reuses it instead of minting a
+-- second, orphaned one. Inside the function the check-then-write is a single round trip with no
+-- gap for a retry to land in — the route re-implementing this check first would still leave a
+-- window between its read and this call.
+create or replace function comm_create_inbox_item(
+  p_message uuid,
+  p_title text,
+  p_notes text,
+  p_source_url text default null
+)
+returns json
+language plpgsql
+security invoker
+as $$
+declare
+  v_message comm_messages;
+  v_item    items;
+begin
+  select * into v_message from comm_messages where id = p_message;
+
+  if v_message.inbox_item_id is not null then
+    select * into v_item from items where id = v_message.inbox_item_id;
+    if found then
+      return json_build_object('item', to_json(v_item), 'message', to_json(v_message), 'created', false);
+    end if;
+    -- The link points at a row that's gone — fall through and mint a fresh item, exactly as if
+    -- this message had never been cleared.
+  end if;
+
+  insert into items (title, notes, source_url, item_type, status)
+  values (p_title, p_notes, p_source_url, 'unclassified', 'active')
+  returning * into v_item;
+
+  update comm_messages
+  set inbox_item_id = v_item.id, cleared_at = now(), cleared_by = 'inbox_item'
+  where id = p_message
+  returning * into v_message;
+
+  -- The route's own read moments ago confirmed the message exists, but nothing holds that
+  -- guarantee across THIS function's execution — the retention sweep or a manual purge could
+  -- delete it first. Raising here, rather than silently leaving `items` with an orphaned row,
+  -- is what makes the INSERT above roll back too: one statement's failure aborts the whole
+  -- function's implicit transaction, so a genuinely failed second write can never strand the
+  -- first.
+  if not found then
+    raise exception 'comm_create_inbox_item: message % not found', p_message;
+  end if;
+
+  return json_build_object('item', to_json(v_item), 'message', to_json(v_message), 'created', true);
+end; $$;
+
+grant execute on function comm_create_inbox_item(uuid, text, text, text)
+  to anon, authenticated, service_role;
+
+-- ── 10. Retention and purge ──────────────────────────────────────────────────
 -- Every message row is deleted at 60 days, whole, across every tier — the driver is security,
 -- not volume: a bounded blast radius if this database is ever exposed. Verdicts cascade;
 -- corrections keep their denormalised text (message_id goes null), because the example set is
@@ -471,7 +535,7 @@ end; $$;
 grant execute on function comm_purge(uuid, uuid, timestamptz)
   to anon, authenticated, service_role;
 
--- ── 10. RLS + privileges ─────────────────────────────────────────────────────
+-- ── 11. RLS + privileges ─────────────────────────────────────────────────────
 -- Single-user: the authenticated owner gets full access; anon is denied (no policy). The
 -- service role bypasses RLS by design — that is the Worker's write path.
 alter table comm_accounts          enable row level security;
@@ -512,7 +576,7 @@ grant select, insert, update, delete on comm_verdicts          to anon, authenti
 grant select, insert, update, delete on comm_corrections       to anon, authenticated, service_role;
 grant select, insert, update, delete on comm_classifier_health to anon, authenticated, service_role;
 
--- ── 11. Realtime ─────────────────────────────────────────────────────────────
+-- ── 12. Realtime ─────────────────────────────────────────────────────────────
 -- The Worker and the daemon write out of band; the browser has to see a row arrive, a verdict
 -- land and a dot change colour without a reload. RLS still governs the stream.
 alter publication supabase_realtime add table comm_messages;
