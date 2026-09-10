@@ -243,7 +243,10 @@ describe('handleIngest — the happy path', () => {
       last_seen_at: '2026-09-15T00:00:00.000Z',
     });
 
-    const [upsert, heartbeat, insert, drain] = calls as [Call, Call, Call, Call];
+    // Storage first, health second: the batch is inserted (and its reply drained) BEFORE the
+    // heartbeat is stamped, so a storage failure never gets the chance to stamp a health record
+    // for a batch that didn't actually land.
+    const [upsert, insert, drain, heartbeat] = calls as [Call, Call, Call, Call];
     expect(upsert.url).toContain('/rest/v1/comm_accounts');
     expect(upsert.body).toEqual([
       {
@@ -256,16 +259,17 @@ describe('handleIngest — the happy path', () => {
         expected_interval_seconds: 300,
       },
     ]);
-    expect(heartbeat.method).toBe('PATCH');
-    expect(heartbeat.body).toEqual({
-      last_seen_at: '2026-09-15T00:00:00.000Z',
-      cursor: { rowid: 812 },
-    });
     expect(insert.url).toContain('/rest/v1/comm_messages');
     expect(drain.url).toContain('/rpc/comm_record_reply');
     expect(drain.body).toEqual(
       expect.objectContaining({ p_thread_key: 'chat-7', p_at: '2026-09-14T23:30:00.000Z' }),
     );
+    expect(heartbeat.method).toBe('PATCH');
+    expect(heartbeat.url).toContain('/rest/v1/comm_accounts');
+    expect(heartbeat.body).toEqual({
+      last_seen_at: '2026-09-15T00:00:00.000Z',
+      cursor: { rowid: 812 },
+    });
   });
 
   it('accepts a heartbeat carrying no messages at all', async () => {
@@ -360,9 +364,10 @@ describe('handleIngest — a failed poll', () => {
     );
   });
 
-  it('still stores the messages a failed poll managed to collect', async () => {
+  it('still stores the messages a failed poll managed to collect, and still reports the failure', async () => {
     // A poll that read some messages and then broke has both a failure to report and rows worth
-    // keeping. Dropping them would be a false negative caused by the error handling.
+    // keeping. Dropping either would be a false negative caused by the error handling — the rows
+    // by never storing them, the failure by letting a later storage step's exception swallow it.
     const calls = mockSupabase();
     const request = await signedRequest(
       payload({ heartbeat: { ok: false, cursor: WIRE_NULL, error: 'IMAP connection reset' } }),
@@ -372,6 +377,13 @@ describe('handleIngest — a failed poll', () => {
 
     expect(response.status).toBe(200);
     expect(calls.filter((call) => call.url.includes('/rest/v1/comm_messages'))).toHaveLength(1);
+    const heartbeatCall = calls.find(
+      (call) => call.method === 'PATCH' && call.url.includes('/rest/v1/comm_accounts'),
+    );
+    expect(heartbeatCall?.body).toEqual({
+      last_error: 'IMAP connection reset',
+      last_error_at: NOW.toISOString(),
+    });
   });
 });
 
@@ -647,5 +659,48 @@ describe('handleIngest — a database failure', () => {
     // The detail belongs in the Worker's log, not in the reply — but it has to exist somewhere.
     expect(logged).toHaveLength(1);
     expect(logged[0]).toContain('comms ingest failed');
+  });
+});
+
+describe('handleIngest — a storage failure must never stamp health', () => {
+  it('leaves comm_accounts unstamped when storing the batch throws', async () => {
+    // The exact reviewer repro: the account upsert (and, if it were reached, the heartbeat PATCH)
+    // both succeed — only the message insert breaks, the way one bad row in the batch does, since
+    // `ingestMessages` is a single atomic upsert for the whole request. A green health dot with a
+    // dropped batch is the bug this test exists to catch: `last_seen_at` must not move when the
+    // storage it is supposed to vouch for never landed.
+    const calls: Call[] = [];
+    const logged: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    spyOnFetch().mockImplementation((input, init) => {
+      const url = input as string;
+      const method = init?.method ?? 'GET';
+      const rawBody = init?.body;
+      calls.push({
+        url,
+        method,
+        body: typeof rawBody === 'string' ? JSON.parse(rawBody) : undefined,
+      });
+      if (url.includes('/rest/v1/comm_accounts')) {
+        return Promise.resolve(Response.json([accountRow()]));
+      }
+      if (url.includes('/rest/v1/comm_messages') && method === 'POST') {
+        return Promise.resolve(new Response('storage exploded', { status: 500 }));
+      }
+      return Promise.resolve(Response.json([]));
+    });
+    const request = await signedRequest(payload());
+
+    const response = await handleIngest(request, env, NOW);
+
+    expect(response.status).toBe(503);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain('comms ingest failed');
+    const accountWrites = calls.filter((call) => call.url.includes('/rest/v1/comm_accounts'));
+    // Only the self-registering upsert — never the heartbeat PATCH that would stamp a fresh
+    // `last_seen_at` over a batch that was actually dropped.
+    expect(accountWrites).toEqual([expect.objectContaining({ method: 'POST' })]);
   });
 });

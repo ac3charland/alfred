@@ -155,12 +155,20 @@ export async function handleIngest(request: Request, env: IngestEnv, now: Date):
       expected_interval_seconds: account.expected_interval_seconds,
     });
 
-    await recordHeartbeat(env, stored.id, heartbeat, now);
-
-    // Independent of the heartbeat on purpose: a poll that read some messages and then broke has
-    // both a failure to report and rows worth keeping.
+    // Storage first, heartbeat second — never the other way round. `ingestMessages` and
+    // `shelveBulkMail` run unconditionally, independent of `heartbeat.ok`: a poll that read some
+    // messages and then broke still has both a failure to report and rows worth keeping, so
+    // neither storage call waits on what the daemon said about its own poll. But the ORDER is not
+    // symmetric: `ingestMessages` is one atomic upsert for the whole batch, so a single bad row
+    // throws for the lot, and if the heartbeat had already been stamped — success OR failure —
+    // that write would already be committed against a batch that never actually landed. A crashed
+    // storage call must leave `comm_accounts` exactly where it was, so the account correctly ages
+    // into `stale`/`erroring` instead of reading as live. Only once storage has actually
+    // succeeded is it safe to record how the poll went. Mirrors the order `pollAccount` in
+    // gmail.ts already keeps (store, then `recordPollSuccess`).
     const result = await ingestMessages(env, stored, messages, now);
     await shelveBulkMail(env, stored.id, bulk, now);
+    await recordHeartbeat(env, stored.id, heartbeat, now);
 
     return json(200, {
       accepted: result.accepted,
