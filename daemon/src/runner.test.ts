@@ -3,6 +3,7 @@ import { createHeartbeatSchedule } from './heartbeat.ts';
 import type { SendResult } from './ingest-client.ts';
 import { createLogger } from './log.ts';
 import type { LogFields, Logger } from './log.ts';
+import { createPendingBuffer } from './pending.ts';
 import { createSourceRunner } from './runner.ts';
 import type { SourceRunnerDeps } from './runner.ts';
 import type { PollResult, Source, SourceContext } from './sources/types.ts';
@@ -149,7 +150,7 @@ describe('createSourceRunner', () => {
     const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
     const { sent, deps } = harness(source);
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(sent).toEqual([
       {
@@ -175,8 +176,8 @@ describe('createSourceRunner', () => {
     const { sent, deps } = harness(source);
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(5000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(5000), 5000);
 
     expect(sent).toHaveLength(1);
   });
@@ -187,7 +188,7 @@ describe('createSourceRunner', () => {
     ]);
     const { sent, deps } = harness(source);
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(sent[0]?.heartbeat).toEqual({
       ok: false,
@@ -210,11 +211,110 @@ describe('createSourceRunner', () => {
     });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(5000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(5000), 5000);
 
     expect(sent).toHaveLength(2);
     expect(sent[1]?.messages).toEqual([message('m1')]);
+  });
+
+  it('never discards a read message across a multi-tick outage, even with a bounded pending buffer', async () => {
+    // Reproduces the regression directly: an IMAP-shaped backlog three batches deep, and a send
+    // that keeps failing retryably for several ticks — the shape of any ordinary outage. Bug: the
+    // poll loop kept calling source.poll() every tick regardless of whether the previous batch had
+    // ever been sent, so the cursor advanced past messages `pending` then had to evict to stay
+    // under its cap — permanently, since a source cursor never rewinds. Fix: poll again only once
+    // `pending` is empty.
+    const BATCH = 100;
+    const backlog = [0, 1, 2].map((batchIndex) =>
+      Array.from({ length: BATCH }, (_unused, index) =>
+        message(`uid-${String(batchIndex * BATCH + index)}`),
+      ),
+    );
+    let pollCount = 0;
+    const source: Source = {
+      key: 'workmail',
+      kind: 'imap',
+      label: 'WorkMail',
+      check: () => Promise.resolve({ ok: true }),
+      poll: () => {
+        const batch = backlog[pollCount] ?? [];
+        const cursor = (pollCount + 1) * BATCH;
+        pollCount += 1;
+        return Promise.resolve({ messages: batch, cursor, ownerHandles: [] });
+      },
+    };
+
+    // A cap far too small to hold more than one batch at a time — under the old, unfixed poll
+    // loop this would have overflowed and silently evicted the oldest, already-read messages.
+    const overflowed: { size: number; limit: number }[] = [];
+    const pending = createPendingBuffer({
+      limit: 150,
+      onOverflow: (size, limit) => overflowed.push({ size, limit }),
+    });
+
+    let attempts = 0;
+    const { sent, deps } = harness(source, {
+      send: () => {
+        attempts += 1;
+        // The outage lasts three attempts; the fourth is the daemon clearing.
+        return Promise.resolve(attempts <= 3 ? retryableFailure() : accepted());
+      },
+    });
+    deps.pending = pending;
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW, 0); // reads batch 0; send fails
+    await runner.tick(later(5000), 5000); // outage continues — must NOT read further into the backlog
+    await runner.tick(later(15_000), 15_000); // still down
+    await runner.tick(later(35_000), 35_000); // clears — batch 0 finally goes out, intact
+
+    expect(overflowed).toEqual([]);
+    expect(pollCount).toBe(1);
+    expect(sent.at(-1)?.messages).toEqual(backlog[0]);
+
+    // Once the outage clears, polling resumes forward from exactly where it left off.
+    await runner.tick(later(40_000), 40_000);
+
+    expect(pollCount).toBe(2);
+    expect(sent.at(-1)?.messages).toEqual(backlog[1]);
+  });
+
+  it('does not read further into the backlog while pending still holds an unsent batch', async () => {
+    let pollCount = 0;
+    const source: Source = {
+      key: 'imessage',
+      kind: 'imessage',
+      label: 'iMessage',
+      check: () => Promise.resolve({ ok: true }),
+      poll: () => {
+        pollCount += 1;
+        return Promise.resolve({ messages: [message('m1')], cursor: pollCount, ownerHandles: [] });
+      },
+    };
+    const { deps } = harness(source, { send: () => Promise.resolve(retryableFailure()) });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW, 0);
+    await runner.tick(later(5000), 5000);
+    await runner.tick(later(15_000), 15_000);
+
+    expect(pollCount).toBe(1);
+  });
+
+  it('escalates the heartbeat when the pending buffer is ever forced over its limit', async () => {
+    // Defensive path: pending.ts never evicts (see pending.test.ts), so an over-limit buffer can
+    // only happen if the "only re-poll once empty" invariant is bypassed — modeled here directly
+    // against the buffer rather than by breaking the runner's own gate.
+    const { source } = scriptedSource([polled([message('m1'), message('m2')], { rowid: 7 })]);
+    const pending = createPendingBuffer({ limit: 1 });
+    const { sent, deps } = harness(source);
+    deps.pending = pending;
+
+    await createSourceRunner(deps).tick(NOW, 0);
+
+    expect(sent[0]?.heartbeat.ok).toBe(false);
+    expect(sent[0]?.heartbeat.error).toContain('over its 1 limit');
   });
 
   it('does not retry a rejected batch before its backoff delay has elapsed', async () => {
@@ -228,10 +328,10 @@ describe('createSourceRunner', () => {
     });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
+    await runner.tick(NOW, 0);
     // Well under the backoff delay a first failure schedules — a still-failing endpoint must not
     // be hammered at full ~5s poll cadence.
-    await runner.tick(later(1000));
+    await runner.tick(later(1000), 1000);
 
     expect(attempts).toBe(1);
     expect(sent).toHaveLength(1);
@@ -251,8 +351,8 @@ describe('createSourceRunner', () => {
     });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(5000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(5000), 5000);
 
     expect(attempts).toBe(2);
     expect(sent).toHaveLength(2);
@@ -263,10 +363,10 @@ describe('createSourceRunner', () => {
     const { sent, deps } = harness(source, { send: () => Promise.resolve(retryableFailure()) });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW); // attempt 1 fails — schedules a short backoff
-    await runner.tick(later(5000)); // attempt 2 fails — backoff grows
+    await runner.tick(NOW, 0); // attempt 1 fails — schedules a short backoff
+    await runner.tick(later(5000), 5000); // attempt 2 fails — backoff grows
     // Short enough to have cleared attempt 1's delay but not attempt 2's larger one.
-    await runner.tick(later(7000));
+    await runner.tick(later(7000), 7000);
 
     expect(sent).toHaveLength(2);
   });
@@ -276,7 +376,7 @@ describe('createSourceRunner', () => {
     const { calls, log } = spyLogger();
     const { deps } = harness(source, { send: () => Promise.resolve(retryableFailure()), log });
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(calls.some((call) => call.level === 'error')).toBe(false);
     expect(calls.some((call) => call.level === 'warn')).toBe(true);
@@ -290,7 +390,7 @@ describe('createSourceRunner', () => {
       log,
     });
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     const errors = calls.filter((call) => call.level === 'error');
     expect(errors).toHaveLength(1);
@@ -308,8 +408,8 @@ describe('createSourceRunner', () => {
     });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(1000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(1000), 1000);
 
     expect(attempts).toBe(1);
     expect(sent).toHaveLength(1);
@@ -331,12 +431,12 @@ describe('createSourceRunner', () => {
     });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW); // attempt 1 fails
-    await runner.tick(later(5000)); // attempt 2 succeeds — resets the streak
-    await runner.tick(later(5001)); // attempt 3 fails — a fresh streak, so a SHORT backoff again
+    await runner.tick(NOW, 0); // attempt 1 fails
+    await runner.tick(later(5000), 5000); // attempt 2 succeeds — resets the streak
+    await runner.tick(later(5001), 5001); // attempt 3 fails — a fresh streak, so a SHORT backoff again
     // Long enough to clear a fresh, short backoff, but well short of what a SECOND consecutive
     // failure in an un-reset streak would have required — this is what distinguishes the two.
-    await runner.tick(later(5001 + 6000));
+    await runner.tick(later(5001 + 6000), 5001 + 6000);
 
     expect(attempts).toBe(4);
     expect(sent).toHaveLength(4);
@@ -347,9 +447,9 @@ describe('createSourceRunner', () => {
     const { sent, deps } = harness(source);
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(5000));
-    await runner.tick(later(10_000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(5000), 5000);
+    await runner.tick(later(10_000), 10_000);
 
     expect(sent).toHaveLength(1);
   });
@@ -359,8 +459,8 @@ describe('createSourceRunner', () => {
     const { sent, deps } = harness(source);
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(60_000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(60_000), 60_000);
 
     expect(sent).toHaveLength(2);
   });
@@ -369,7 +469,7 @@ describe('createSourceRunner', () => {
     const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
     const { sent, printed, deps } = harness(source, { dryRun: true });
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(sent).toEqual([]);
     expect(printed).toEqual([JSON.stringify(message('m1'))]);
@@ -379,7 +479,7 @@ describe('createSourceRunner', () => {
     const { source, contexts } = scriptedSource([() => Promise.resolve(empty({ rowid: 8 }))]);
     const { deps } = harness(source, { initial: { cursor: { rowid: 3 } } });
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(contexts[0]?.cursor).toEqual({ rowid: 3 });
     expect(contexts[0]?.anchor).toEqual(new Date(NOW.getTime() - 7 * DAY_MS));
@@ -393,8 +493,8 @@ describe('createSourceRunner', () => {
     const { deps } = harness(source);
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(60_000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(60_000), 60_000);
 
     expect(contexts[1]?.cursor).toEqual({ rowid: 8 });
   });
@@ -412,8 +512,8 @@ describe('createSourceRunner', () => {
     });
     const runner = createSourceRunner(deps);
 
-    await runner.tick(NOW);
-    await runner.tick(later(60_000));
+    await runner.tick(NOW, 0);
+    await runner.tick(later(60_000), 60_000);
 
     expect(contexts[1]?.cursor).toEqual({ rowid: 19 });
     expect(contexts[1]?.anchor).toEqual(new Date('2026-09-02T12:00:00.000Z'));
@@ -428,9 +528,33 @@ describe('createSourceRunner', () => {
         ),
     });
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(persisted).toEqual([{ cursor: { rowid: 7 }, lastSeenAt: '2026-09-09T12:00:00.000Z' }]);
+  });
+
+  it('gates the retry backoff on real elapsed time, not a wall-clock diff that can run backward', async () => {
+    let attempts = 0;
+    const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
+    const { sent, deps } = harness(source, {
+      send: () => {
+        attempts += 1;
+        return Promise.resolve(attempts === 1 ? retryableFailure() : accepted());
+      },
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW, 0); // attempt 1 fails, schedules a 5s backoff (monotonic 0 -> 5000)
+
+    // An NTP correction or a sleep/wake cycle on the Mac this runs on can jump the wall clock
+    // backward at any time — 6s of monotonic (real) elapsed time is enough to clear a 5s
+    // backoff, but a wall clock that fell an hour behind must not be allowed to silently extend
+    // it: `now` is wildly backward here while `monotonicNowMs` advances normally.
+    const jumpedBack = new Date(NOW.getTime() - 60 * 60 * 1000);
+    await runner.tick(jumpedBack, 6000);
+
+    expect(attempts).toBe(2);
+    expect(sent).toHaveLength(2);
   });
 
   it('does not cache anything when the batch was never accepted', async () => {
@@ -439,7 +563,7 @@ describe('createSourceRunner', () => {
       send: () => Promise.resolve(retryableFailure()),
     });
 
-    await createSourceRunner(deps).tick(NOW);
+    await createSourceRunner(deps).tick(NOW, 0);
 
     expect(persisted).toEqual([]);
   });

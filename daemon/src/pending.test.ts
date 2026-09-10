@@ -39,33 +39,43 @@ describe('createPendingBuffer', () => {
     expect(buffer.all()).toEqual([]);
   });
 
-  it('caps at five hundred messages, dropping the oldest first', () => {
-    const buffer = createPendingBuffer();
-
-    buffer.add(messages(MAX_PENDING_MESSAGES));
-    buffer.add(messages(2, MAX_PENDING_MESSAGES));
-
-    expect(buffer.size()).toBe(MAX_PENDING_MESSAGES);
-    expect(buffer.all()[0]?.source_id).toBe('m2');
-    expect(buffer.all().at(-1)?.source_id).toBe(`m${String(MAX_PENDING_MESSAGES + 1)}`);
+  it('exposes its configured limit, defaulting to MAX_PENDING_MESSAGES', () => {
+    expect(createPendingBuffer().limit()).toBe(MAX_PENDING_MESSAGES);
+    expect(createPendingBuffer({ limit: 3 }).limit()).toBe(3);
   });
 
-  it('reports every drop loudly — a lost message is never silent', () => {
-    const dropped: number[] = [];
-    const buffer = createPendingBuffer({ limit: 3, onOverflow: (count) => dropped.push(count) });
+  it('never evicts a held message past its limit — a message only gets here because its source cursor already moved past it, so dropping it would be permanent, unrecoverable loss', () => {
+    const buffer = createPendingBuffer({ limit: 3 });
+
+    buffer.add(messages(3));
+    buffer.add(messages(2, 3));
+
+    expect(buffer.size()).toBe(5);
+    expect(buffer.all().map((m) => m.source_id)).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
+  });
+
+  it('reports an overflow loudly instead of silently absorbing it', () => {
+    const overflows: { size: number; limit: number }[] = [];
+    const buffer = createPendingBuffer({
+      limit: 3,
+      onOverflow: (size, limit) => overflows.push({ size, limit }),
+    });
 
     buffer.add(messages(5));
 
-    expect(dropped).toEqual([2]);
-    expect(buffer.size()).toBe(3);
+    expect(overflows).toEqual([{ size: 5, limit: 3 }]);
+    expect(buffer.size()).toBe(5);
   });
 
-  it('does not report a drop when the batch fits', () => {
-    const dropped: number[] = [];
-    const buffer = createPendingBuffer({ limit: 3, onOverflow: (count) => dropped.push(count) });
+  it('does not report an overflow when the batch fits', () => {
+    const overflows: unknown[] = [];
+    const buffer = createPendingBuffer({
+      limit: 3,
+      onOverflow: (size, limit) => overflows.push({ size, limit }),
+    });
 
     buffer.add(messages(3));
 
-    expect(dropped).toEqual([]);
+    expect(overflows).toEqual([]);
   });
 });
