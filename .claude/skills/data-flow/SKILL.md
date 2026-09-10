@@ -301,6 +301,11 @@ action closures can fire it without it becoming a memo dep.
 
 ## Common Pitfalls (the anti-patterns this design removes)
 
+- **Never let the database default a calendar-date column the user experiences as "today".**
+  Postgres `current_date` (and the E2E mock's `toISOString().slice(0, 10)`) is the UTC day, which
+  after 7pm Central is tomorrow — so a habit created in the evening reconciled to one that "starts
+  tomorrow" and counted nothing today. The store already knows the browser's day (`todayIn(zone)`);
+  send it in the create payload, as `addHabit` does with `started_on`.
 - **Never create a supabase client in a component** (except auth in `login-form.tsx`).
 - **Never inline `supabase.from('…')` in a Server Component** — add/clarify a `lib/data/*`
   reader.
