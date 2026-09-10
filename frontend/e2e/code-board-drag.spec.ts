@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { makeCodeStory, makeEpic, makeItem, makeProject } from './support/constants';
-import { boxOf, pickUp } from './support/drag';
+import { boxOf, clickAfterDrop, pickUp } from './support/drag';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -196,8 +196,8 @@ test('unblocks a blocked story into the lane it is dragged to', async ({ page, s
   await expect(page.getByText('1 blocked')).toBeHidden();
 
   // The cleared reason round-tripped: the detail modal offers Block afresh rather than Unblock.
-  await readyForReview.getByRole('button', { name: /^open alf-5/i }).click();
   const modal = page.getByRole('dialog');
+  await clickAfterDrop(readyForReview.getByRole('button', { name: /^open alf-5/i }), modal);
   await expect(modal.getByRole('button', { name: 'Block', exact: true })).toBeVisible();
   await expect(modal.getByRole('button', { name: /unblock/i })).toBeHidden();
 });
