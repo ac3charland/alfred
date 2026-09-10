@@ -115,6 +115,7 @@ function message(overrides: Partial<NormalizedMessage> = {}): NormalizedMessage 
     body_extracted: true,
     has_attachments: false,
     references_ids: [],
+    has_list_header: false,
     ...overrides,
   };
 }
@@ -299,6 +300,7 @@ describe('ingestMessages', () => {
           references_ids: ['<root@mail>'],
           body_extracted: false,
           has_attachments: true,
+          has_list_header: true,
         }),
       ],
       NOW,
@@ -321,6 +323,7 @@ describe('ingestMessages', () => {
         received_at: '2026-09-09T11:00:00.000Z',
         body_extracted: false,
         has_attachments: true,
+        has_list_header: true,
         in_reply_to: '<prior@mail>',
         references_ids: ['<root@mail>'],
       },
@@ -460,7 +463,7 @@ describe('ingestMessages', () => {
 });
 
 describe('fetchUnjudgedMessages', () => {
-  it('reads inbound, unjudged rows under the attempt ceiling, oldest first', async () => {
+  it('reads inbound, unjudged, not-yet-cleared rows under the attempt ceiling, oldest first', async () => {
     const calls = mockSupabase(() => Response.json([]));
 
     await fetchUnjudgedMessages(env, { limit: 10, attemptCeiling: 5 });
@@ -469,6 +472,10 @@ describe('fetchUnjudgedMessages', () => {
     expect(call.url).toContain('/rest/v1/comm_messages');
     expect(query(call).get('direction')).toBe('eq.inbound');
     expect(query(call).get('tier')).toBe('is.null');
+    // A reply can drain a row before the classifier ever judges it (comm_record_reply drains an
+    // unjudged row too). Without this filter such a row stays on the worklist forever, costing a
+    // real, billed model call for a verdict nothing downstream needs — see the migration.
+    expect(query(call).get('cleared_at')).toBe('is.null');
     expect(query(call).get('classify_attempts')).toBe('lt.5');
     expect(query(call).get('order')).toBe('received_at.asc');
     expect(query(call).get('limit')).toBe('10');
@@ -493,6 +500,7 @@ describe('fetchUnjudgedMessages', () => {
           received_at: '2026-09-09T11:00:00.000Z',
           body_extracted: true,
           has_attachments: false,
+          has_list_header: true,
           in_reply_to: WIRE_NULL,
           references_ids: [],
           filtered_reason: WIRE_NULL,
@@ -529,6 +537,7 @@ describe('fetchUnjudgedMessages', () => {
       received_at: '2026-09-09T11:00:00.000Z',
       body_extracted: true,
       has_attachments: false,
+      has_list_header: true,
       in_reply_to: undefined,
       references_ids: [],
       filtered_reason: undefined,
@@ -559,6 +568,19 @@ describe('fetchReclassifyRequests', () => {
     expect(query(call).get('order')).toBe('reclassify_requested_at.asc');
     expect(query(call).get('limit')).toBe('4');
   });
+
+  it('does NOT exclude an already-cleared row — an explicit, owner-named re-run still runs', async () => {
+    // Deliberately different from fetchUnjudgedMessages/fetchUnjudgedAtCeiling: this worklist is
+    // one row the owner explicitly asked for, not an automatic sweep of a whole backlog, so the
+    // same "don't re-bill a cleared row" guard does not apply the same way here — see store.ts's
+    // own comment on this function for the reasoning.
+    const calls = mockSupabase(() => Response.json([]));
+
+    await fetchReclassifyRequests(env, { limit: 4 });
+
+    const [call] = calls as [Call];
+    expect(query(call).has('cleared_at')).toBe(false);
+  });
 });
 
 describe('fetchUnjudgedAtCeiling', () => {
@@ -570,6 +592,7 @@ describe('fetchUnjudgedAtCeiling', () => {
     const [call] = calls as [Call];
     expect(query(call).get('tier')).toBe('is.null');
     expect(query(call).get('direction')).toBe('eq.inbound');
+    expect(query(call).get('cleared_at')).toBe('is.null');
     expect(query(call).get('classify_attempts')).toBe('gte.5');
   });
 });

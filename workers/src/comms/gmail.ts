@@ -89,7 +89,7 @@ import {
 } from './gmail-api';
 import { fetchAccessToken } from './gmail-oauth';
 import { fetchMessageIdsBySourceIds } from './gmail-store';
-import { isNewsletter } from './newsletter';
+import { hasListHeaderSignal, isNewsletter } from './newsletter';
 import {
   fetchPeople,
   ingestMessages,
@@ -724,6 +724,10 @@ function normalize(message: GmailMessage, now: Date): NormalizedMessage {
     has_attachments: extracted.hasAttachments,
     in_reply_to: parseMessageIdList(headerValue(headers, 'In-Reply-To'))[0],
     references_ids: parseMessageIdList(headerValue(headers, 'References')),
+    // Computed here, while `headers` is still in scope — `pollGmail`'s own loop reads
+    // `message.payload?.headers` again for `isNewsletter`, but discards it once that call
+    // returns, so this is the only place the raw signal survives onto the stored row.
+    has_list_header: hasListHeaderSignal(headers),
   };
 }
 

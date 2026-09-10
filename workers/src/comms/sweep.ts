@@ -517,6 +517,9 @@ export async function runCommsSweep(env: CommsSweepEnv, now: Date): Promise<Comm
         people: context.people,
         timeZone: env.CLASSIFIER_TIMEZONE,
         now,
+        // Both producers (`gmail.ts`, `ingest.ts`) write the raw header signal onto the row;
+        // this is the one place it is read back off and handed to the prompt as evidence.
+        carriesListHeader: message.has_list_header,
       }),
     );
 

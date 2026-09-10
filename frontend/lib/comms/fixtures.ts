@@ -92,6 +92,7 @@ export function makeCommMessage(
     received_at: receivedAt,
     body_extracted: overrides.body_extracted ?? true,
     has_attachments: overrides.has_attachments ?? false,
+    has_list_header: overrides.has_list_header ?? false,
     in_reply_to: overrides.in_reply_to ?? null,
     references_ids: overrides.references_ids ?? [],
     filtered_reason: overrides.filtered_reason ?? null,

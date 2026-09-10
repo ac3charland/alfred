@@ -87,6 +87,7 @@ create table comm_messages (
   received_at             timestamptz not null,
   body_extracted          boolean not null default true,
   has_attachments         boolean not null default false,
+  has_list_header         boolean not null default false,
   in_reply_to             text,
   references_ids          text[] not null default '{}',
   filtered_reason         text,
@@ -141,6 +142,13 @@ comment on column comm_messages.body_extracted is
    still written — a skipped message is a false negative that leaves no trace — and it takes
    the can''t-judge path into Today, marked, without a model call.';
 
+comment on column comm_messages.has_list_header is
+  'The raw RFC 2369/2919 header signal (List-Unsubscribe / List-ID), kept regardless of what
+   filtered_reason decided — a genuine newsletter and an ordinary transactional sender can both
+   set it. Handed to the classifier as one weak, unauthenticated piece of evidence toward fyi,
+   never a verdict on its own. Written by both producers (the Gmail poller and the daemon''s
+   ingest payload) at insert time; nothing ever revises it.';
+
 comment on column comm_messages.filtered_reason is
   'Set when the deterministic header filter, not the model, shelved the message (a genuine
    List-Unsubscribe / List-ID header). Such a row has no verdict and must be distinguishable
@@ -165,9 +173,15 @@ comment on column comm_messages.cleared_at is
    The three exits: reply (detected), nothing_to_answer / not_replying (the owner), or
    inbox_item (the obligation moved into the Inbox and the row cleared at that moment).';
 
--- The sweep''s one query: inbound, unjudged (or re-run requested), oldest first.
+-- The sweep's worklist queries (fetchUnjudgedMessages, fetchUnjudgedAtCeiling): inbound,
+-- unjudged, oldest first. `cleared_at is null` joins the partial predicate rather than becoming
+-- a query-only filter: a reply can drain a row before the classifier ever judges it (see
+-- comm_record_reply above), and without this such a row stayed in the index — and so on the
+-- worklist — forever after, costing a real, billed model call whose only effect is stamping a
+-- tier onto a row the owner already answered. The query always names this exact literal, so it
+-- belongs in the predicate, not as a leading column.
 create index comm_messages_unjudged_idx on comm_messages (received_at)
-  where tier is null and direction = 'inbound';
+  where tier is null and direction = 'inbound' and cleared_at is null;
 -- The retention sweep, the queue and the shelf all read by arrival.
 create index comm_messages_received_idx on comm_messages (received_at desc);
 -- Reply detection: the queued rows of one thread.

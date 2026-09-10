@@ -497,6 +497,7 @@ function newCommMessage(input) {
     received_at: receivedAt,
     body_extracted: input.body_extracted ?? true,
     has_attachments: input.has_attachments ?? false,
+    has_list_header: input.has_list_header ?? false,
     in_reply_to: input.in_reply_to ?? null,
     references_ids: input.references_ids ?? [],
     filtered_reason: input.filtered_reason ?? null,

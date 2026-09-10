@@ -83,6 +83,14 @@ export interface NormalizedMessage {
   has_attachments: boolean;
   in_reply_to?: string | undefined;
   references_ids: string[];
+  /**
+   * Whether this message's own headers carried an RFC 2369/2919 list header (`List-Unsubscribe` /
+   * `List-ID`) — the raw signal, unauthenticated, kept regardless of what `isNewsletter` decided.
+   * Required rather than optional so every producer states it deliberately: `list_headers` used to
+   * ride beside the message (in `ingest.ts`'s `BulkCandidate`) rather than on it, which is exactly
+   * how it never reached `sweep.ts`'s prompt — see `newsletter.ts`'s `hasListHeaderSignal`.
+   */
+  has_list_header: boolean;
 }
 
 /** One mailbox or channel, with the health and cursor state its poller keeps on it. */
@@ -122,6 +130,13 @@ export interface CommMessage {
   received_at: string;
   body_extracted: boolean;
   has_attachments: boolean;
+  /**
+   * Optional (unlike {@link NormalizedMessage}'s required field of the same name) so a fixture
+   * built before this column existed — `prompt.test.ts`'s `message()`, in particular, which this
+   * module does not own — still type-checks. Every real row carries a concrete `true`/`false`
+   * (the column is `not null default false`); `undefined` only ever appears in a test double.
+   */
+  has_list_header?: boolean | undefined;
   in_reply_to?: string | undefined;
   references_ids: string[];
   filtered_reason?: FilteredReason | undefined;

@@ -615,6 +615,7 @@ describe('pollGmail', () => {
       received_at: new Date(1_789_000_000_000).toISOString(),
       body_extracted: true,
       has_attachments: false,
+      has_list_header: false,
       in_reply_to: '<earlier@mail.example>',
       references_ids: ['<first@mail.example>', '<earlier@mail.example>'],
     });
@@ -642,6 +643,8 @@ describe('pollGmail', () => {
 
     // Stored like anything else — the filter shelves, it never drops.
     expect(insertedRows(calls)[0]?.['source_id']).toBe('m1');
+    // The raw header signal is written onto the row itself, not only used to decide the shelve.
+    expect(insertedRows(calls)[0]?.['has_list_header']).toBe(true);
     const [patch] = restCalls(calls, 'comm_messages', 'PATCH');
     expect(payload(patch)).toEqual({
       tier: 'fyi',
@@ -682,6 +685,30 @@ describe('pollGmail', () => {
     await pollGmail(personalOnly, DAY_17);
 
     expect(restCalls(calls, 'comm_messages', 'PATCH')).toHaveLength(0);
+    // Unfiltered (a roster sender), but the raw signal is still persisted — the roster override
+    // is about shelving, not about whether the header existed.
+    expect(insertedRows(calls)[0]?.['has_list_header']).toBe(true);
+  });
+
+  it('writes has_list_header true from a List-ID header alone, with no List-Unsubscribe', async () => {
+    const calls = harness({
+      mailbox: {
+        listIds: ['m1'],
+        messages: [
+          gmailMessage('m1', {
+            headers: [
+              { name: 'From', value: 'alerts@service.example' },
+              { name: 'List-ID', value: '<updates.service.example>' },
+              { name: 'Subject', value: 'please confirm your subscription' },
+            ],
+          }),
+        ],
+      },
+    });
+
+    await pollGmail(personalOnly, DAY_17);
+
+    expect(insertedRows(calls)[0]?.['has_list_header']).toBe(true);
   });
 
   it('leaves the cursor alone when a message read fails on transport', async () => {

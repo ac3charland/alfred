@@ -351,6 +351,7 @@ export type Database = {
           direction: string
           filtered_reason: string | null
           has_attachments: boolean
+          has_list_header: boolean
           id: string
           in_reply_to: string | null
           inbox_item_id: string | null
@@ -382,6 +383,7 @@ export type Database = {
           direction?: string
           filtered_reason?: string | null
           has_attachments?: boolean
+          has_list_header?: boolean
           id?: string
           in_reply_to?: string | null
           inbox_item_id?: string | null
@@ -413,6 +415,7 @@ export type Database = {
           direction?: string
           filtered_reason?: string | null
           has_attachments?: boolean
+          has_list_header?: boolean
           id?: string
           in_reply_to?: string | null
           inbox_item_id?: string | null

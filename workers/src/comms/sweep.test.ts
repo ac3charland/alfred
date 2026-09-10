@@ -57,6 +57,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     received_at: '2026-09-09T14:00:00.000Z',
     body_extracted: true,
     has_attachments: false,
+    has_list_header: false,
     in_reply_to: WIRE_NULL,
     references_ids: [],
     filtered_reason: WIRE_NULL,
@@ -419,7 +420,7 @@ describe('a judged message', () => {
       reason: 'A named deadline today from a colleague who is blocked.',
       provider: 'anthropic',
       model: 'claude-haiku-4-5',
-      prompt_version: 2,
+      prompt_version: 3,
       rubric_version: 4,
       example_set_version: 7,
       // Stamped because the sender resolved to someone on the roster — "flagged because it's
@@ -491,6 +492,29 @@ describe('a judged message', () => {
     const request = classify.mock.calls[0]?.[1];
     expect(request?.user).toContain(IMAGE_PLACEHOLDER);
     expect(request?.user).toContain('[priority person]');
+  });
+
+  it('tells the model this message carries a list header when the row says so', async () => {
+    // The raw signal both producers (gmail.ts, ingest.ts) now write onto the row has to actually
+    // reach the prompt — this is the one place `has_list_header` is read back off the message and
+    // handed to `buildCommsRequest` as `carriesListHeader`.
+    mockSupabase({ unjudged: [row({ has_list_header: true })] });
+    const classify = mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    const request = classify.mock.calls[0]?.[1];
+    expect(request?.user).toContain('list header');
+  });
+
+  it('says nothing about a list header when the row carries none', async () => {
+    mockSupabase({ unjudged: [row({ has_list_header: false })] });
+    const classify = mockClassify({ ok: verdict() });
+
+    await runCommsSweep(env, NOW);
+
+    const request = classify.mock.calls[0]?.[1];
+    expect(request?.user).not.toContain('list header');
   });
 
   it('still lands on raced when the row was genuinely already judged, now via an extra insert', async () => {

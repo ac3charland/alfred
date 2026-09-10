@@ -266,6 +266,7 @@ interface WireMessage {
   received_at: string;
   body_extracted: boolean;
   has_attachments: boolean;
+  has_list_header: boolean;
   in_reply_to: string | null;
   references_ids: string[];
   filtered_reason: FilteredReason | null;
@@ -299,6 +300,7 @@ function toMessage(row: WireMessage): CommMessage {
     received_at: row.received_at,
     body_extracted: row.body_extracted,
     has_attachments: row.has_attachments,
+    has_list_header: row.has_list_header,
     in_reply_to: row.in_reply_to ?? undefined,
     references_ids: row.references_ids,
     filtered_reason: row.filtered_reason ?? undefined,
@@ -366,6 +368,7 @@ export async function ingestMessages(
     received_at: message.received_at,
     body_extracted: message.body_extracted,
     has_attachments: message.has_attachments,
+    has_list_header: message.has_list_header,
     in_reply_to: message.in_reply_to,
     references_ids: message.references_ids,
   }));
@@ -434,6 +437,12 @@ async function recordReply(
  * The classifier's worklist: inbound messages nothing has judged yet, oldest first, under the
  * attempt ceiling. A row that has exhausted its attempts drops out of this query entirely — it
  * is handled by `fetchUnjudgedAtCeiling` instead, which parks it rather than retrying it.
+ *
+ * `cleared_at is null` excludes a row a reply has already drained (`comm_record_reply` drains an
+ * unjudged row too — see the migration). Without it such a row stayed on this worklist forever:
+ * `patchMessage`'s `onlyIfUnjudged` write can file a tier onto it (it never un-clears anything),
+ * but the row is already answered, so every tick paid a real, billed model call for a verdict
+ * nothing downstream needed. Matches `comm_messages_unjudged_idx`'s partial predicate.
  */
 export async function fetchUnjudgedMessages(
   env: SupabaseEnv,
@@ -443,6 +452,7 @@ export async function fetchUnjudgedMessages(
     select: '*',
     direction: 'eq.inbound',
     tier: 'is.null',
+    cleared_at: 'is.null',
     classify_attempts: `lt.${String(options.attemptCeiling)}`,
     order: 'received_at.asc',
     limit: String(options.limit),
@@ -455,6 +465,14 @@ export async function fetchUnjudgedMessages(
  * The rows the owner explicitly asked to have re-judged, longest-waiting first. Nothing is ever
  * re-judged silently — editing the rubric, the roster or the example set sweeps nothing — so this
  * is the only path back to the classifier for a message that already has a tier.
+ *
+ * Deliberately NOT filtered on `cleared_at`, unlike the two worklists below: a re-run here is an
+ * explicit, one-row, owner-initiated act (the reclassify route), not an automatic sweep of
+ * whatever is unjudged — a message the owner named still gets its re-run even if a reply drained
+ * it in the meantime, and `writeVerdict` already leaves `cleared_at` untouched for a re-run for
+ * exactly this reason (the row is re-judged without being un-cleared). The waste this guards
+ * against elsewhere is a standing backlog silently re-billing every tick; a single named row is a
+ * bounded, deliberate cost the owner asked for.
  */
 export async function fetchReclassifyRequests(
   env: SupabaseEnv,
@@ -474,6 +492,9 @@ export async function fetchReclassifyRequests(
 /**
  * The rows that have spent every attempt and still have no tier. Nothing is silently shelved, so
  * these are parked on a counted tier and marked as unjudged rather than left invisible.
+ *
+ * `cleared_at is null` for the same reason as `fetchUnjudgedMessages`: a row a reply already
+ * drained needs no further attempt spent parking it either.
  */
 export async function fetchUnjudgedAtCeiling(
   env: SupabaseEnv,
@@ -483,6 +504,7 @@ export async function fetchUnjudgedAtCeiling(
     select: '*',
     direction: 'eq.inbound',
     tier: 'is.null',
+    cleared_at: 'is.null',
     classify_attempts: `gte.${String(options.attemptCeiling)}`,
     order: 'received_at.asc',
     limit: String(options.limit),
