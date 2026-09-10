@@ -102,6 +102,29 @@ describe('checkChatDb', () => {
   });
 });
 
+describe('busy_timeout', () => {
+  it('waits out a transient lock instead of failing immediately', () => {
+    const file = fixture({ chats: CHATS, messages: [ONE_TO_ONE] });
+    // Messages.app itself, or a WAL checkpoint, can hold a lock for a moment; sqlite's own
+    // default busy_timeout is 0, which fails a racing read instantly rather than waiting a
+    // transient lock out. BEGIN EXCLUSIVE blocks every other connection — reader or writer —
+    // for as long as this transaction is open, standing in for that race.
+    const locker = new DatabaseSync(file);
+    locker.exec('BEGIN EXCLUSIVE');
+    try {
+      const start = Date.now();
+      expect(() => read(file)).toThrow();
+      const elapsed = Date.now() - start;
+      // Without a busy_timeout, sqlite fails within a few ms. The lock is held for the whole
+      // test, so a failure only after waiting out most of a 2s busy_timeout proves the pragma
+      // is actually in effect, not merely present in the source.
+      expect(elapsed).toBeGreaterThan(1000);
+    } finally {
+      locker.exec('COMMIT');
+    }
+  }, 10_000);
+});
+
 describe('openChatDb().readMessages', () => {
   it('reads everything after the cursor and nothing at or before it', () => {
     const file = fixture({

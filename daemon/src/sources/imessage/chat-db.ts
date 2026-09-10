@@ -183,7 +183,13 @@ function open(path: string): DatabaseSync {
     );
   }
   try {
-    return new DatabaseSync(path, { readOnly: true });
+    const database = new DatabaseSync(path, { readOnly: true });
+    // sqlite's own default busy_timeout is 0: a read racing a WAL checkpoint (or Messages.app
+    // itself) throws `database is locked` immediately instead of waiting the transient lock out.
+    // This does not weaken the read-only guarantee above — it only lets a read wait briefly for
+    // one before giving up, exactly as it would with no pragma at all, just less eagerly.
+    database.exec('pragma busy_timeout = 2000');
+    return database;
   } catch (error) {
     throw openFailure(path, error);
   }

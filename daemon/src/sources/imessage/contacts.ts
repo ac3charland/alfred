@@ -79,6 +79,12 @@ function readStore(store: string, into: Map<string, string>): void {
   let database: DatabaseSync;
   try {
     database = new DatabaseSync(store, { readOnly: true });
+    // Same reasoning as chat-db.ts's open(): sqlite's default busy_timeout is 0, so a read racing
+    // a writer's lock fails instantly rather than waiting briefly. That matters more here — the
+    // address book is read once and cached for the life of the process (see
+    // createContactDirectory below), so an unlucky transient lock at that one moment would
+    // otherwise cost every sender name until the daemon restarts, not just one poll.
+    database.exec('pragma busy_timeout = 2000');
   } catch {
     return;
   }

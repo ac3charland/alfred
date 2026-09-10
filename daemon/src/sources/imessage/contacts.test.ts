@@ -168,4 +168,25 @@ describe('createContactDirectory', () => {
 
     expect(createContactDirectory({ root: base }).nameFor('+13125550100')).toBeUndefined();
   });
+
+  it('waits out a transient lock instead of failing immediately', () => {
+    const base = root();
+    const file = path.join(base, 'AddressBook-v22.abcddb');
+    writeAddressBook(file, [{ first: 'Dana', phones: ['+13125550100'] }]);
+    // Same reasoning as chat-db.test.ts's equivalent case: a lookup that fails within a few ms
+    // (sqlite's default busy_timeout is 0) means the pragma is missing; one that waits out most
+    // of a 2s busy_timeout before this always-swallowed failure resolves means it is honoured.
+    // This matters more here than in chat.db: the address book is read once and cached forever
+    // (see createContactDirectory's own doc comment), so an unlucky transient lock at that one
+    // moment would otherwise cost every sender name for the rest of the process's life.
+    const locker = new DatabaseSync(file);
+    locker.exec('BEGIN EXCLUSIVE');
+    try {
+      const start = Date.now();
+      expect(createContactDirectory({ root: base }).nameFor('+13125550100')).toBeUndefined();
+      expect(Date.now() - start).toBeGreaterThan(1000);
+    } finally {
+      locker.exec('COMMIT');
+    }
+  }, 10_000);
 });
