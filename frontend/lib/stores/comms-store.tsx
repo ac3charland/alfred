@@ -140,14 +140,79 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
 }
 
 /**
+ * Every column an UPDATE actually writes to `comm_messages` — the whole of what
+ * {@link messageStreamAction} may patch onto a row from a live UPDATE. Checked against every
+ * writer: the owner's three row-verb routes (tier / clear / reclassify), the
+ * `comm_create_inbox_item` RPC, and the ingestion Worker's newsletter filter and classifier
+ * sweep (`gmail.ts`/`ingest.ts`'s `shelveNewsletters`, `sweep.ts`'s `file`/`countAttempt`/
+ * `writeVerdict`, `sweep-store.ts`'s `clearReclassifyRequest`). None of them ever touches `body`,
+ * `subject`, `participants`, or any other ingest-only column — see {@link messageUpdatePatch}.
+ */
+type MessageUpdateColumns = Pick<
+  CommMessage,
+  | 'tier'
+  | 'judged_by'
+  | 'ask'
+  | 'verdict_id'
+  | 'classified_at'
+  | 'cleared_at'
+  | 'cleared_by'
+  | 'inbox_item_id'
+  | 'filtered_reason'
+  | 'classify_attempts'
+  | 'reclassify_requested_at'
+>;
+
+/**
+ * Narrow a `comm_messages` UPDATE's new row to the columns an UPDATE can actually touch.
+ *
+ * `comm_messages` carries no `REPLICA IDENTITY FULL`, and `body` — a full email body — is a
+ * TOASTed column every write here leaves untouched. Postgres logical replication does not
+ * reliably carry an unchanged TOASTed column's true value in an UPDATE's new row, so Realtime's
+ * decoder can (and does) substitute `null` for it — while the column's TypeScript type still
+ * claims `string`. Spreading the whole payload would carry that lie straight onto the stored
+ * row, and the next render would crash: `message-detail.tsx` and `markers.ts` both call
+ * `message.body.trim()` unconditionally. Whitelisting the columns an UPDATE can actually write
+ * (verified against every writer above) sidesteps the trap entirely rather than special-casing
+ * `body` — the same pattern `classifierVerdictPatch` (`lib/tasks/classification.ts`) uses for
+ * the `items` stream.
+ *
+ * TRADEOFF: a column a future writer adds to one of those UPDATEs won't stream into an open tab
+ * until this list is updated too — a silently-stale field rather than a crash. That is the
+ * right default for this store: every column above is metadata the row already shows optimistically
+ * to the tab that wrote it, so a missed addition here degrades to "reload to see it," while the
+ * status quo (spread the whole row) is a null crash on `body` on effectively every UPDATE this
+ * module issues. The alternative — `REPLICA IDENTITY FULL` on `comm_messages` — would let the
+ * store go back to spreading the row safely (the decoder would carry `body`'s real value), but
+ * that is a migration and this module does not own the schema; flagging it here for whoever
+ * does, not applying it.
+ */
+function messageUpdatePatch(row: CommMessage): MessageUpdateColumns {
+  return {
+    tier: row.tier,
+    judged_by: row.judged_by,
+    ask: row.ask,
+    verdict_id: row.verdict_id,
+    classified_at: row.classified_at,
+    cleared_at: row.cleared_at,
+    cleared_by: row.cleared_by,
+    inbox_item_id: row.inbox_item_id,
+    filtered_reason: row.filtered_reason,
+    classify_attempts: row.classify_attempts,
+    reclassify_requested_at: row.reclassify_requested_at,
+  };
+}
+
+/**
  * Which store move an incoming `comm_messages` change is — `null` to ignore it.
  *
  * The stream carries every write to the table, so the "may this payload touch the store?" rule
  * lives here as a pure function rather than in branches inside the subscription callback. An
  * INSERT upserts (an echo of a row already held re-applies identical values, so it is
- * idempotent); an UPDATE patches, which the flat-list reducer skips for an id it no longer
- * holds; a DELETE removes. Outbound rows are dropped on arrival — they are mirrored only as
- * the reply-detection signal and are never rendered.
+ * idempotent); an UPDATE patches ONLY the columns an UPDATE can touch (see
+ * {@link messageUpdatePatch}), which the flat-list reducer skips for an id it no longer holds; a
+ * DELETE removes. Outbound rows are dropped on arrival — they are mirrored only as the
+ * reply-detection signal and are never rendered.
  */
 export function messageStreamAction(
   payload: RealtimePostgresChangesPayload<CommMessage>,
@@ -157,7 +222,7 @@ export function messageStreamAction(
       return payload.new.direction === 'inbound' ? { type: 'upsert', items: [payload.new] } : null;
     }
     case 'UPDATE': {
-      return { type: 'patch', ids: [payload.new.id], patch: payload.new };
+      return { type: 'patch', ids: [payload.new.id], patch: messageUpdatePatch(payload.new) };
     }
     case 'DELETE': {
       const { id } = payload.old;
@@ -475,20 +540,20 @@ export function useCommsMessages(): CommMessage[] {
 
 /** The response queue, split into its three counted tiers, each newest first. */
 export function useQueuedByTier(): QueueByTier {
-  const state = useStateValue('useQueuedByTier');
-  return React.useMemo(() => groupByTier(state.messages), [state]);
+  const { messages } = useStateValue('useQueuedByTier');
+  return React.useMemo(() => groupByTier(messages), [messages]);
 }
 
 /** How many messages are waiting for an answer — the sidebar badge's number. */
 export function useQueueCount(): number {
-  const state = useStateValue('useQueueCount');
-  return React.useMemo(() => queueCount(state.messages), [state]);
+  const { messages } = useStateValue('useQueueCount');
+  return React.useMemo(() => queueCount(messages), [messages]);
 }
 
 /** The FYI shelf: everything judged that owes no reply, newest first. Deliberately uncounted. */
 export function useShelf(): CommMessage[] {
-  const state = useStateValue('useShelf');
-  return React.useMemo(() => shelved(state.messages), [state]);
+  const { messages } = useStateValue('useShelf');
+  return React.useMemo(() => shelved(messages), [messages]);
 }
 
 /** The current verdict behind each judged message, keyed by verdict id. */

@@ -183,8 +183,37 @@ describe('messageStreamAction', () => {
     expect(messageStreamAction(payload<CommMessage>('UPDATE', judged))).toEqual({
       type: 'patch',
       ids: [judged.id],
-      patch: judged,
+      patch: {
+        tier: judged.tier,
+        judged_by: judged.judged_by,
+        ask: judged.ask,
+        verdict_id: judged.verdict_id,
+        classified_at: judged.classified_at,
+        cleared_at: judged.cleared_at,
+        cleared_by: judged.cleared_by,
+        inbox_item_id: judged.inbox_item_id,
+        filtered_reason: judged.filtered_reason,
+        classify_attempts: judged.classify_attempts,
+        reclassify_requested_at: judged.reclassify_requested_at,
+      },
     });
+  });
+
+  // BUG 3 (the realtime UPDATE handler spreading the whole row): `comm_messages` has no
+  // REPLICA IDENTITY FULL, so an UPDATE that leaves `body` untouched can arrive over the wire
+  // with `body: null` — Realtime's decoder substituting null for an unchanged TOASTed column it
+  // cannot otherwise recover. Spreading `payload.new` would carry that straight onto the patch;
+  // whitelisting the columns an UPDATE can touch must leave `body` out of the patch entirely.
+  it('never carries body onto the patch, even when the wire payload carries a null one', () => {
+    const wireRow = {
+      ...makeCommMessage(ACCOUNT, { tier: 'today', judged_by: 'model' }),
+      body: null,
+    } as unknown as CommMessage;
+
+    const action = messageStreamAction(payload<CommMessage>('UPDATE', wireRow));
+
+    expect(action?.type).toBe('patch');
+    expect(action && 'patch' in action ? action.patch : undefined).not.toHaveProperty('body');
   });
 
   it('removes on a delete, and ignores a delete payload carrying no id', () => {
@@ -346,6 +375,33 @@ describe('comm_verdicts realtime subscription', () => {
     });
 
     expect(result.current.verdicts[SEEDED_VERDICT.id]).toBeUndefined();
+  });
+});
+
+describe('comm_messages realtime UPDATE', () => {
+  it('never lets a TOASTed-away, null-substituted body clobber the stored one', () => {
+    const withBody = { ...QUEUED, body: 'the real email body' };
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper([withBody, SHELVED]) });
+
+    // What Realtime actually delivers for an UPDATE that leaves `body` untouched: the decoder
+    // cannot recover a TOASTed column's real value without REPLICA IDENTITY FULL, so it
+    // substitutes null — while CommMessage's type still claims body is a string.
+    const wireRow = {
+      ...withBody,
+      tier: 'asap',
+      judged_by: 'owner',
+      body: null,
+    } as unknown as CommMessage;
+    act(() => {
+      mockRealtimeHandlers.get('comm_messages')?.(payload<CommMessage>('UPDATE', wireRow) as never);
+    });
+
+    const row = result.current.messages.find((m) => m.id === withBody.id);
+    // The columns an UPDATE really writes DID apply...
+    expect(row?.tier).toBe('asap');
+    expect(row?.judged_by).toBe('owner');
+    // ...but the body Realtime lied about did not.
+    expect(row?.body).toBe('the real email body');
   });
 });
 
