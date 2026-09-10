@@ -33,10 +33,44 @@ import { normalizeMessage } from './normalize.ts';
  */
 export const MAX_MESSAGES_PER_MAILBOX = 200;
 
+/**
+ * How many consecutive polls a mailbox may hold at the same blocked point — a uid that stays
+ * SEARCH-visible but is never returned by FETCH — before the daemon stops treating it as the
+ * ordinary transient case and escalates instead. Mirrors the role `COMMS_ATTEMPT_CEILING` plays
+ * bounding retries elsewhere in this system, though the outcome here is different — see
+ * `WORKMAIL_UID_STALLED`.
+ */
+export const WORKMAIL_STALL_CEILING = 5;
+
+/**
+ * What a mailbox reports once a uid has stayed stuck past `WORKMAIL_STALL_CEILING` consecutive
+ * polls. Holding the cursor at the gap (see `readMailbox`) is correct for the ordinary transient
+ * case — a concurrent expunge, a flaky response — because that uid stops being SEARCH-visible on
+ * the very next poll and the mailbox heals in one round trip. This is the fallback for the case
+ * that never heals: a message the server can never fully serve. Left unchecked, `highest` would
+ * never advance again and every later message would queue up behind it forever, with nothing loud
+ * to show for it — the exact silent-staleness failure mode `LISTING_STALLED` exists to rule out on
+ * the sibling Gmail source (`workers/src/comms/gmail.ts`). The cursor is deliberately left
+ * untouched rather than skipped past: the tied message is still there and still unread, so the
+ * next attempt (once a person has looked) gets the same chance to make progress rather than this
+ * tick inventing a worse guess.
+ */
+export const WORKMAIL_UID_STALLED =
+  'a uid stayed search-visible but was never returned by fetch, past the retry ceiling — needs a person to look';
+
 /** Where the daemon has read up to, per mailbox. */
 export interface MailboxCursor {
   uidvalidity: number;
   uid: number;
+  /**
+   * Consecutive polls that could not advance past `uid` despite mail waiting to be read — see
+   * `readMailbox` and `WORKMAIL_UID_STALLED`. Absent or 0 means nothing is currently stuck.
+   * Tracked by position, not by uid identity: the cursor cannot move while stalled, so a fresh
+   * poll re-derives the exact same blocked point every time — counting "no progress this round"
+   * is equivalent to "stalled on the same uid" in practice, and resets the moment real progress is
+   * made, so an earlier, resolved stall never lends its attempts to a later, unrelated one.
+   */
+  stalledAttempts?: number;
 }
 
 /**
@@ -68,6 +102,15 @@ class SecretUnavailable extends Error {
   override name = 'SecretUnavailable';
 }
 
+/**
+ * Thrown when a mailbox gives up on a uid stuck past `WORKMAIL_STALL_CEILING` — see
+ * `WORKMAIL_UID_STALLED`. Carried out of the session as itself, like `SecretUnavailable`, so `fail`
+ * reports it verbatim rather than dressing it up as an IMAP transport failure it is not.
+ */
+class MailboxStalled extends Error {
+  override name = 'MailboxStalled';
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -77,12 +120,15 @@ const NO_SENT_FOLDER =
 
 function isMailboxCursor(value: unknown): value is MailboxCursor {
   if (!(value instanceof Object)) return false;
-  return (
-    'uidvalidity' in value &&
-    typeof value.uidvalidity === 'number' &&
-    'uid' in value &&
-    typeof value.uid === 'number'
-  );
+  if (
+    !('uidvalidity' in value) ||
+    typeof value.uidvalidity !== 'number' ||
+    !('uid' in value) ||
+    typeof value.uid !== 'number'
+  ) {
+    return false;
+  }
+  return !('stalledAttempts' in value) || typeof value.stalledAttempts === 'number';
 }
 
 /** The cursor comes back from the ingest endpoint as plain JSON, so nothing about it is assumed. */
@@ -131,7 +177,7 @@ export function createWorkmailSource(
   const secrets = deps.secrets ?? keychainSecrets(config.user);
   const log = deps.log ?? createLogger();
   const fail = (error: unknown): string =>
-    error instanceof SecretUnavailable
+    error instanceof SecretUnavailable || error instanceof MailboxStalled
       ? error.message
       : describeImapFailure(error, config.host, config.port);
 
@@ -227,6 +273,28 @@ export function createWorkmailSource(
       highest = uid;
     }
     const unchanged = resume?.uid ?? Math.max(status.uidnext - 1, 0);
+
+    // The gap above self-heals in one poll for the transient case (a concurrent expunge, a flaky
+    // response): that uid simply stops being SEARCH-visible next time. Nothing distinguishes that
+    // from a uid the server can never fully serve — left alone, `highest` would never advance
+    // again and every later message queues up behind it, forever, with no symptom to show for it.
+    // Only a RESUMED poll counts: a re-seed has no prior position to be stuck at.
+    const blockedUid = requested.find((uid) => !fetchedUids.has(uid));
+    if (resume !== undefined && blockedUid !== undefined && highest === 0) {
+      const attempts = (resume.stalledAttempts ?? 0) + 1;
+      if (attempts >= WORKMAIL_STALL_CEILING) {
+        log.error(
+          'workmail: a uid stayed search-visible but unfetchable past the retry ceiling — the ' +
+            'source has stopped reading further until a person looks',
+          { path, uid: blockedUid, attempts },
+        );
+        throw new MailboxStalled(WORKMAIL_UID_STALLED);
+      }
+      return {
+        messages,
+        cursor: { uidvalidity: status.uidvalidity, uid: unchanged, stalledAttempts: attempts },
+      };
+    }
 
     return {
       messages,

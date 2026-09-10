@@ -14,7 +14,12 @@ import {
   createFakeSession,
 } from './fixtures.ts';
 import type { FakeMailbox, FakeMessage } from './fixtures.ts';
-import { MAX_MESSAGES_PER_MAILBOX, createWorkmailSource } from './index.ts';
+import {
+  MAX_MESSAGES_PER_MAILBOX,
+  WORKMAIL_STALL_CEILING,
+  WORKMAIL_UID_STALLED,
+  createWorkmailSource,
+} from './index.ts';
 import { parseMime } from './mime.ts';
 
 const CONFIG: WorkmailSourceConfig = {
@@ -315,7 +320,89 @@ describe('WorkMail poll', () => {
       '<html-1@example.com>',
       '<news-1@list.example.com>',
     ]);
-    expect(second.cursor).toMatchObject({ inbox: { uidvalidity: INBOX_UIDVALIDITY, uid: 12 } });
+    // Full equality, not just toMatchObject: this also proves the stall counter the ceiling below
+    // relies on does not linger once real progress is made — a later, unrelated stall must not
+    // inherit attempts it never made.
+    expect(second.cursor).toEqual({
+      inbox: { uidvalidity: INBOX_UIDVALIDITY, uid: 12 },
+      sent: { uidvalidity: SENT_UIDVALIDITY, uid: 0 },
+    });
+  });
+
+  it('keeps quietly holding at the gap through repeated polls, short of the stall ceiling', async () => {
+    // uid 11 is never fetchable, on every single poll — nothing transient about it, unlike the
+    // "retries a uid..." case above. Short of the ceiling this must still read exactly like an
+    // ordinary transient gap: no error, no escalation, just held at 10.
+    const fake = createFakeSession([
+      inbox([at(10, PLAIN_REPLY), at(11, HTML_ONLY), at(12, NEWSLETTER)]),
+      sent([]),
+    ]);
+    const source = createWorkmailSource(CONFIG, {
+      secrets,
+      connect: async (options) => {
+        const session = await fake.connect(options);
+        return {
+          ...session,
+          fetchUids: async (uids) => {
+            const messages = await session.fetchUids(uids);
+            return messages.filter((message) => message.uid !== 11);
+          },
+        };
+      },
+    });
+
+    let cursor: unknown;
+    for (let i = 0; i < WORKMAIL_STALL_CEILING; i += 1) {
+      const result = await source.poll(context({ cursor }));
+      cursor = result.cursor;
+    }
+
+    expect(cursor).toEqual({
+      inbox: {
+        uidvalidity: INBOX_UIDVALIDITY,
+        uid: 10,
+        stalledAttempts: WORKMAIL_STALL_CEILING - 1,
+      },
+      sent: { uidvalidity: SENT_UIDVALIDITY, uid: 0 },
+    });
+  });
+
+  it('escalates loudly once a uid stays stuck past the stall ceiling, rather than wedging silently', async () => {
+    const fake = createFakeSession([
+      inbox([at(10, PLAIN_REPLY), at(11, HTML_ONLY), at(12, NEWSLETTER)]),
+      sent([]),
+    ]);
+    const { log, calls } = spyLogger();
+    const source = createWorkmailSource(CONFIG, {
+      secrets,
+      log,
+      connect: async (options) => {
+        const session = await fake.connect(options);
+        return {
+          ...session,
+          fetchUids: async (uids) => {
+            const messages = await session.fetchUids(uids);
+            return messages.filter((message) => message.uid !== 11);
+          },
+        };
+      },
+    });
+
+    let cursor: unknown;
+    for (let i = 0; i < WORKMAIL_STALL_CEILING; i += 1) {
+      const result = await source.poll(context({ cursor }));
+      cursor = result.cursor;
+    }
+
+    // The ceiling'th consecutive stalled poll gives up rather than holding forever, and says so
+    // with a distinct, matchable error — mirroring the sibling Gmail LISTING_STALLED escalation.
+    await expect(source.poll(context({ cursor }))).rejects.toThrow(WORKMAIL_UID_STALLED);
+
+    const loudly = calls.some(
+      (call) =>
+        call.level === 'error' && call.fields?.['uid'] === 11 && call.fields['path'] === 'INBOX',
+    );
+    expect(loudly).toBe(true);
   });
 });
 
