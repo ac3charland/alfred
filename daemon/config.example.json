@@ -1,0 +1,13 @@
+{
+  "ingestUrl": "https://alfred-worker.example.workers.dev/comms/ingest",
+  "sources": {
+    "imessage": { "enabled": true },
+    "workmail": {
+      "enabled": true,
+      "host": "imap.mail.us-east-1.awsapps.com",
+      "port": 993,
+      "user": "support@realplayapp.com",
+      "label": "WorkMail"
+    }
+  }
+}

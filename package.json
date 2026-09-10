@@ -6,6 +6,7 @@
   "workspaces": [
     "frontend",
     "workers",
+    "daemon",
     "database",
     "tools/*"
   ],
