@@ -1,6 +1,8 @@
 import { execFile as execFileCallback } from 'node:child_process';
 import { homedir } from 'node:os';
+import { performance } from 'node:perf_hooks';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import { HELP, UsageError, parseArgs } from './cli.ts';
@@ -11,7 +13,7 @@ import { runLoop, runOnce } from './daemon.ts';
 import { fatalFailures, reportHealth, runHealthChecks } from './health.ts';
 import { createHeartbeatSchedule } from './heartbeat.ts';
 import { createIngestClient } from './ingest-client.ts';
-import type { FetchLike } from './ingest-client.ts';
+import type { FetchLike, FetchResponseLike } from './ingest-client.ts';
 import { createKeychain, createSecretResolver } from './keychain.ts';
 import { createLogger } from './log.ts';
 import { createSourceRunner } from './runner.ts';
@@ -33,10 +35,32 @@ import { readState, writeState } from './state.ts';
 const execFile = promisify(execFileCallback);
 const log = createLogger();
 
+/**
+ * Adapts a platform `fetch` `Response` into the shape `ingest-client.ts`'s `FetchResponseLike`
+ * expects — in particular, forwarding response headers so its Retry-After branch can actually
+ * fire against the real transport. Exported (and tested from `main.test.ts`) because `main.ts`
+ * itself is a thin composition root with no test file of its own; this is the one piece of real
+ * behavior inside it.
+ *
+ * `Headers.get()` returns `string | null` for a missing header; `FetchResponseLike` models
+ * "missing" as `undefined`. Mapping `null` to `undefined` here is load-bearing, not cosmetic:
+ * `ingest-client.ts`'s check is `retryAfter !== undefined`, and `null !== undefined` is `true` in
+ * JS — passing a raw `Headers.get()` result straight through (or casting it) would mark every
+ * response retryable via the Retry-After branch, header present or not.
+ */
+export function toFetchResponseLike(response: Response): FetchResponseLike {
+  return {
+    ok: response.ok,
+    status: response.status,
+    text: () => response.text(),
+    headers: { get: (name) => response.headers.get(name) ?? undefined },
+  };
+}
+
 /** `globalThis.fetch`, narrowed to the two things the ingest client uses. */
 const httpFetch: FetchLike = async (url, init) => {
   const response = await fetch(url, init);
-  return { ok: response.ok, status: response.status, text: () => response.text() };
+  return toFetchResponseLike(response);
 };
 
 function buildRunners(
@@ -114,7 +138,7 @@ async function main(argv: readonly string[]): Promise<number> {
   });
 
   if (options.mode === 'once') {
-    await runOnce(runners, new Date(), log);
+    await runOnce(runners, new Date(), performance.now(), log);
     return 0;
   }
 
@@ -134,14 +158,25 @@ async function main(argv: readonly string[]): Promise<number> {
   return 0;
 }
 
-try {
-  process.exitCode = await main(process.argv.slice(2));
-} catch (error) {
-  if (error instanceof UsageError) {
-    process.stderr.write(`daemon: ${error.message}\n`);
-    process.exitCode = 2;
-  } else {
-    log.error('fatal', { error: error instanceof Error ? error.message : String(error) });
-    process.exitCode = 1;
+/**
+ * True only when this file was launched directly (`node src/main.ts`, or `--start`/launchd),
+ * never when another module merely imports it — `main.test.ts` imports `toFetchResponseLike`
+ * above, and without this guard that import alone would run the whole CLI against the real
+ * process argv, config path and keychain as an import-time side effect.
+ */
+const isMainModule =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  try {
+    process.exitCode = await main(process.argv.slice(2));
+  } catch (error) {
+    if (error instanceof UsageError) {
+      process.stderr.write(`daemon: ${error.message}\n`);
+      process.exitCode = 2;
+    } else {
+      log.error('fatal', { error: error instanceof Error ? error.message : String(error) });
+      process.exitCode = 1;
+    }
   }
 }
