@@ -499,6 +499,17 @@ describe('handleIngest — body validation', () => {
     });
   });
 
+  it('rejects a sender_handle that is present but not a string', async () => {
+    // The fix below only widens what's ACCEPTED (absent or empty) — a wrong type is still a
+    // wrong type.
+    await expect(
+      reject(payload({ messages: [wireMessage({ sender_handle: 42 })] })),
+    ).resolves.toEqual({
+      status: 400,
+      error: 'messages[0].sender_handle must be a string when present',
+    });
+  });
+
   it('accepts an empty body, which is what a message that would not decode leaves behind', async () => {
     // A failed decode is stored, never skipped — so an empty body is a legal row, and rejecting
     // it here would turn the daemon's honest report into a dropped message.
@@ -510,6 +521,33 @@ describe('handleIngest — body validation', () => {
     const response = await handleIngest(request, env, NOW);
 
     expect(response.status).toBe(200);
+  });
+
+  it('accepts a sender_handle the source could not read, and stores the row as inbound', async () => {
+    // `normalizeMessage` in the daemon (daemon/src/sources/workmail/normalize.ts) deliberately
+    // emits '' here — a MIME parse failure, a DSN/bounce, `From: undisclosed-recipients:;`, a
+    // Sent-folder draft — rather than skip the row entirely. Rejecting it as a required field
+    // 400s the WHOLE batch, and the daemon's client treats 400 as non-retryable: `pending` is
+    // never cleared and the next poll's `pending.size() === 0` gate blocks forever, wedging
+    // WorkMail permanently with nothing but a headless stderr line to say why.
+    const calls = mockSupabase({ inserted: [{ id: 'message-1' }] });
+    const request = await signedRequest(
+      payload({ messages: [wireMessage({ sender_handle: '', direction: 'inbound' })] }),
+    );
+
+    const response = await handleIngest(request, env, NOW);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({ accepted: 1, duplicates: 0 }));
+    const insert = calls.find(
+      (call) => call.method === 'POST' && call.url.includes('/rest/v1/comm_messages'),
+    );
+    // The empty handle can never match a real owner address, so the store's direction check
+    // (ownerHandles.has(sender_handle.toLowerCase())) falls through to what the source reported
+    // — it does not accidentally read as outbound and drain a thread.
+    expect(insert?.body).toEqual([
+      expect.objectContaining({ sender_handle: '', direction: 'inbound' }),
+    ]);
   });
 
   it('accepts absent optional fields and JSON nulls alike', async () => {
@@ -658,6 +696,38 @@ describe('handleIngest — bulk mail the daemon flagged', () => {
     expect(await response.json()).toEqual({
       error: 'messages[0].list_headers must be an array of strings when present',
     });
+  });
+
+  it('writes has_list_header true onto the row even when the ask cue keeps it off the shelf', async () => {
+    // The raw signal is persisted independent of the filter's own verdict — it has to survive to
+    // reach `sweep.ts`'s prompt as evidence, which is exactly what it never did before this fix.
+    const calls = mockSupabase();
+
+    await handleIngest(
+      await signedRequest(
+        payload({ messages: [bulkMessage({ subject: 'urgent: please respond' })] }),
+      ),
+      env,
+      NOW,
+    );
+
+    // Not filtered: the ask cue overrides the header signal for shelving purposes.
+    expect(filterPatch(calls)).toBeUndefined();
+    const insert = calls.find(
+      (call) => call.method === 'POST' && call.url.includes('/rest/v1/comm_messages'),
+    );
+    expect(insert?.body).toEqual([expect.objectContaining({ has_list_header: true })]);
+  });
+
+  it('writes has_list_header false onto an ordinary message with no list headers', async () => {
+    const calls = mockSupabase();
+
+    await handleIngest(await signedRequest(payload({ messages: [wireMessage()] })), env, NOW);
+
+    const insert = calls.find(
+      (call) => call.method === 'POST' && call.url.includes('/rest/v1/comm_messages'),
+    );
+    expect(insert?.body).toEqual([expect.objectContaining({ has_list_header: false })]);
   });
 });
 

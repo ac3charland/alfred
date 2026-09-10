@@ -465,6 +465,15 @@ function parsePayload(body: unknown): Parsed<IngestPayload> {
  * One message. `body` may legitimately be empty — a message whose body would not decode is stored
  * anyway, with whatever came out, so that a failure to read something leaves a visible row rather
  * than no trace at all.
+ *
+ * `sender_handle` gets the same treatment as `body`, for the same reason: `normalizeMessage` in
+ * the daemon deliberately emits `''` when a message's MIME could not be parsed at all (a
+ * DSN/bounce, `From: undisclosed-recipients:;`, a Sent-folder draft) rather than skip the row —
+ * skipping would be a false negative that leaves no trace. Validating it as a REQUIRED non-empty
+ * string would reject the whole payload with a 400 for exactly the message this endpoint exists
+ * to still store, and the daemon's retry client treats 400 as non-retryable: the batch is dropped,
+ * `pending` is never cleared, and the next poll's `pending.size() === 0` gate blocks forever —
+ * WorkMail reads nothing again, silently, because the heartbeat rides the same rejected send.
  */
 function parseMessage(
   raw: unknown,
@@ -474,12 +483,16 @@ function parseMessage(
   if (record === undefined) return { error: `${path.slice(0, -1)} must be an object` };
 
   const read = readerFor(record, path);
+  // Not a column: the names of the bulk-mail headers the daemon saw, lower-cased. Kept beside
+  // the message for `BulkCandidate` (the newsletter filter needs the names themselves), while
+  // `has_list_header` below folds the same read down to the one bit the row actually stores.
+  const listHeaders = read.optionalStringArray('list_headers') ?? [];
   const message: NormalizedMessage = {
     source_id: read.string('source_id'),
     rfc822_message_id: read.optionalString('rfc822_message_id'),
     thread_key: read.string('thread_key'),
     direction: read.oneOf('direction', DIRECTIONS),
-    sender_handle: read.string('sender_handle'),
+    sender_handle: read.optionalString('sender_handle') ?? '',
     sender_name: read.optionalString('sender_name'),
     chat_name: read.optionalString('chat_name'),
     participants: read.stringArray('participants'),
@@ -490,10 +503,8 @@ function parseMessage(
     has_attachments: read.boolean('has_attachments'),
     in_reply_to: read.optionalString('in_reply_to'),
     references_ids: read.stringArray('references_ids'),
+    has_list_header: listHeaders.length > 0,
   };
-  // Not a column: the names of the bulk-mail headers the daemon saw, lower-cased. Kept beside
-  // the message rather than on it so the store never tries to write a field the table lacks.
-  const listHeaders = read.optionalStringArray('list_headers') ?? [];
 
   return read.error === undefined ? { payload: { message, listHeaders } } : { error: read.error };
 }
