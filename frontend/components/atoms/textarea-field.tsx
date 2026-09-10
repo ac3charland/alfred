@@ -24,6 +24,12 @@ interface TextareaFieldProperties {
   maxLength?: number;
   /** Disables both action buttons while a save is in flight. */
   isPending?: boolean;
+  /**
+   * Gate the Save button (and the ⌘↵ chord) on the draft being worth saving — e.g. unchanged
+   * from what is already stored. Distinct from `isPending`, which is about a write in flight and
+   * also disables Cancel: an unsavable draft is still one the user may want to abandon.
+   */
+  canSave?: boolean;
   /** Save button text (default "Save"). */
   saveLabel?: string;
   /** Cancel button text (default "Cancel"). */
@@ -54,6 +60,7 @@ export function TextareaField({
   rows = 2,
   maxLength,
   isPending = false,
+  canSave = true,
   saveLabel = 'Save',
   cancelLabel = 'Cancel',
   variant = 'default',
@@ -75,7 +82,7 @@ export function TextareaField({
         // ⌘↵ / Ctrl+↵ commits without reaching for the Save button; preventDefault stops the
         // newline the chord would otherwise insert. A save already in flight swallows it, exactly
         // as the disabled buttons do.
-        if (isSaveShortcut(event_) && !isPending) {
+        if (isSaveShortcut(event_) && !isPending && canSave) {
           event_.preventDefault();
           void onSave();
         }
@@ -112,7 +119,7 @@ export function TextareaField({
           {cancelButton}
           <Button
             size="sm"
-            disabled={isPending}
+            disabled={isPending || !canSave}
             onClick={() => {
               void onSave();
             }}
@@ -137,7 +144,7 @@ export function TextareaField({
         <Button
           variant="ghostAccent"
           size="sm"
-          disabled={isPending}
+          disabled={isPending || !canSave}
           onClick={() => {
             void onSave();
           }}

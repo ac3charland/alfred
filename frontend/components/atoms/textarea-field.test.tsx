@@ -97,6 +97,20 @@ describe('TextareaField', () => {
     expect(screen.getByLabelText('Edit notes')).not.toHaveAttribute('maxLength');
   });
 
+  it('disables Save — but not Cancel — when the draft is not worth saving', async () => {
+    const user = userEvent.setup();
+    const { onSave, onCancel } = setup({ canSave: false });
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    // An unsavable draft is still one the user may want to abandon.
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByLabelText('Edit notes'));
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('renders the warning variant with an amber confirm and a caption label', () => {
     setup({
       variant: 'warning',
