@@ -493,10 +493,15 @@ describe('a judged message', () => {
     expect(request?.user).toContain('[priority person]');
   });
 
-  it('counts nothing and orphans no verdict when another tick judged the message first', async () => {
+  it('still lands on raced when the row was genuinely already judged, now via an extra insert', async () => {
     // Every patch on this message misses, as if another tick's write had already landed. The
-    // freshness check below catches this BEFORE paying for a verdict insert, so — unlike the old
-    // insert-then-patch order — no verdict row gets written for a judgment nothing points to.
+    // freshness check used to catch this BEFORE paying for a verdict insert — but it now also
+    // guards the attempt count (so a concurrent CAS-incremented count can't fool it into
+    // clobbering that count back down; see writeVerdict's comment), and a miss is ambiguous
+    // between "already judged" and "just the attempt count moved elsewhere." The two need
+    // opposite responses, so a miss no longer bails early: this tick pays for the insert
+    // regardless, and it is the FINAL write's own (attempts-blind) filter that actually lands on
+    // 'raced' once it, too, misses.
     const { calls } = mockSupabase({ unjudged: [row()], patchRows: () => [] });
     mockClassify({ ok: verdict() });
     const logged = captureErrors();
@@ -506,8 +511,8 @@ describe('a judged message', () => {
     expect(summary).toMatchObject({ eligible: 1, classified: 0, failed: 0 });
     expect(logged.join(' ')).toContain('judged by another tick first');
     expect(patchOf(calls, 'message-1')).toBeDefined();
-    expect(patches(calls)).toHaveLength(1);
-    expect(verdicts(calls)).toHaveLength(0);
+    expect(patches(calls)).toHaveLength(2);
+    expect(verdicts(calls)).toHaveLength(1);
   });
 
   it('can still orphan a verdict in the narrow window between the freshness check and the final write', async () => {
@@ -729,9 +734,14 @@ describe('the failure table', () => {
 /**
  * A real `comm_messages` row for ONE message, with PATCH filters actually enforced against its
  * current state — unlike `mockSupabase`, which answers every PATCH the same way regardless of
- * what it asks for. This is what lets the race test below exercise the race rather than merely
+ * what it asks for. This is what lets the race tests below exercise the race rather than merely
  * asserting a filter string appears in a URL: a stale write really can, or really cannot, land
  * on the row depending on what has happened to it since.
+ *
+ * Both of `patchMessage`'s filters are enforced — `classify_attempts=eq.<n>` (present or absent)
+ * and `tier=is.null` (present or absent) — combined with AND, exactly as PostgREST would. A
+ * verdict insert is also answered, so a test can drive a tick all the way through a real SUCCESS
+ * and inspect what actually landed in `state` afterward, not just how many calls were made.
  */
 function fakeMessageTable(initial: Record<string, unknown>): {
   state: Record<string, unknown>;
@@ -747,11 +757,17 @@ function fakeMessageTable(initial: Record<string, unknown>): {
     if (url.includes('/rest/v1/comm_messages') && method === 'PATCH') {
       const params = new URL(url).searchParams;
       const wantAttempts = params.get('classify_attempts'); // "eq.<n>" or absent
-      const matches =
+      const wantTier = params.get('tier'); // "is.null" or absent
+      const attemptsMatch =
         wantAttempts === null || wantAttempts === `eq.${String(state['classify_attempts'])}`;
+      const tierMatch = wantTier === null || (wantTier === 'is.null' && state['tier'] === null);
+      const matches = attemptsMatch && tierMatch;
       if (matches) Object.assign(state, JSON.parse(init?.body as string) as object);
       patchResults.push(matches ? 1 : 0);
       return Promise.resolve(Response.json(matches ? [{ id: state['id'] }] : []));
+    }
+    if (url.includes('/rest/v1/comm_verdicts') && method === 'POST') {
+      return Promise.resolve(Response.json([{ id: 'verdict-fake' }]));
     }
     if (url.includes('classify_attempts=lt.')) return Promise.resolve(Response.json([state]));
     if (url.includes('reclassify_requested_at=not.is.null')) {
@@ -813,6 +829,65 @@ describe('an overlapping tick with a stale attempt count', () => {
 
     expect(state['classify_attempts']).toBe(4);
     expect(patchResults.at(-1)).toBe(0); // tick 2's own write matched nothing
+  });
+});
+
+describe('a verdict landing after a sibling tick moved the attempt count', () => {
+  it('writes the paid-for verdict without rolling the attempt count backward', async () => {
+    // The scenario the bug report reproduces: tick A reads classify_attempts=2, tier=null, then
+    // parks at its (paused) model call — the long leg of a tick. While it is held there, tick B
+    // reads the SAME row, runs a real content-shaped failure to completion, and correctly
+    // CAS-increments the count to 3 (tier is untouched by that path — a content-shaped failure
+    // never judges anything). Only once that has happened is tick A released, with a genuine
+    // SUCCESS verdict it already paid a model call for.
+    //
+    // Tick A's freshness check now filters on BOTH the count it read (2) and the tier (still
+    // null) — so it misses, because the count has moved even though the row is still exactly as
+    // unjudged as when tick A read it. The bug this guards against: a check filtered on tier
+    // alone would still MATCH here (tier really is still null) and blindly write back the STALE
+    // count of 2 anyway, silently erasing tick B's real, billed attempt. The fix: a miss on the
+    // combined filter must not roll the count back — and must not discard tick A's verdict either
+    // — so the count stays at 3 (tick B's attempt intact) and the tier still lands at "today"
+    // (tick A's verdict intact), via the final write two lines down, which never touches
+    // `classify_attempts` at all.
+    const { state, patchResults } = fakeMessageTable(row({ classify_attempts: 2 }));
+
+    const classifySpy = jest.spyOn(classifier, 'classifyJson');
+    let releaseTickA: ((outcome: classifier.JsonOutcome) => void) | undefined;
+    const tickAReachedTheModel = new Promise<void>((resolveReached) => {
+      classifySpy.mockImplementationOnce(() => {
+        resolveReached();
+        return new Promise((resolve) => {
+          releaseTickA = resolve;
+        });
+      });
+    });
+    classifySpy.mockResolvedValueOnce({
+      failed: { reason: 'unparseable', detail: 'not valid JSON: hi' },
+    });
+
+    // Tick A starts, reads classify_attempts=2, and parks at its (paused) model call.
+    const tickA = runCommsSweep(env, NOW);
+    await tickAReachedTheModel;
+
+    // Tick B reads the same row fresh, fails, and CAS-increments the count: 2 -> 3. Tier is
+    // still null — a content-shaped failure never judges the message.
+    const summaryB = await runCommsSweep(env, NOW);
+    expect(summaryB).toMatchObject({ classified: 0, failed: 1 });
+    expect(state['classify_attempts']).toBe(3);
+    expect(state['tier']).toBeNull();
+
+    // Tick A finally hears back with the SUCCESS it already paid for.
+    releaseTickA?.({ ok: verdict() });
+    const summaryA = await tickA;
+
+    // The verdict is written — not discarded — and the count tick B earned is not rolled back.
+    expect(summaryA).toMatchObject({ classified: 1, failed: 0 });
+    expect(state['tier']).toBe('today');
+    expect(state['classify_attempts']).toBe(3);
+    // Tick A's freshness check (patch 2) misses — the count moved — and falls through rather
+    // than bailing; the final write (patch 3) is what actually lands the verdict.
+    expect(patchResults).toEqual([1, 0, 1]);
   });
 });
 

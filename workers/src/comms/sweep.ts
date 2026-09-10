@@ -342,23 +342,54 @@ async function writeVerdict(
     // filter rather than adding a read path of its own; "0 rows" means exactly what it means on
     // every other conditional write here.
     //
+    // `ifAttemptsEquals` is combined in here for the reason `countAttempt` has it: this write's
+    // own payload carries `classify_attempts`, set to the value read at the TOP of this tick —
+    // filtered on `tier` alone, that write still MATCHES (and executes) whenever a concurrent
+    // tick's `countAttempt` has legitimately CAS-incremented the counter in the meantime, and it
+    // stamps that stale, lower count straight back over the real one, silently erasing the other
+    // tick's billed attempt. Adding the filter here closes exactly that: a base that has moved —
+    // tier OR attempts — now makes this write match nothing, so it can no longer clobber.
+    //
+    // That combination has a real cost: a miss here is now ambiguous between the two different
+    // things it can mean — tier moved (this message really was already judged elsewhere; the
+    // verdict this tick is about to insert would be orphaned) or only the attempt count moved (a
+    // sibling tick's unrelated content-shaped failure, CAS-incremented via `countAttempt`; this
+    // message is still unjudged and the verdict in hand is the only one anyone has for it) — and
+    // one PostgREST row count cannot say which. Treating every miss as certainly "raced," as a
+    // bare `return 'raced'` here would, is right for the first cause and wrong for the second: it
+    // would throw away a verdict this tick already paid a real, billed model call for, and leave
+    // the message for a later tick to judge all over again at a further, unnecessary cost — the
+    // opposite of what the attempt ceiling is for, which is bounding spend on a message that
+    // keeps FAILING, not discarding one that just succeeded while a sibling's unrelated failure
+    // happened to touch the same counter. So a miss here no longer bails: it falls through to the
+    // write two lines down, whose own filter is `onlyIfUnjudged` alone and never touches
+    // `classify_attempts`, so it cannot regress the counter either way — that write is, and was
+    // always documented as, the real arbiter (see below). The price of falling through is the one
+    // thing this check could do that the final write can't: skip a wasted verdict INSERT when the
+    // miss really was a genuine tier race. That insert now happens on every miss, ambiguous or
+    // not — an occasional orphaned row is a far cheaper mistake than a discarded, already-paid-for
+    // verdict, so that is the trade made here.
+    //
     // This cannot catch every race — one that lands in the gap between this check and the
     // insert two lines down still slips through, and still orphans a verdict row — but the
     // `onlyIfUnjudged` write at the end of this function is what stays correct regardless, so
-    // this is a real, honest reduction in a wasted write, not a second guarantee. (Skipped for a
-    // re-run: those overwrite an already-judged row on purpose, so "still unjudged" does not
-    // apply, and the same overlap risk for a re-run — rare enough that no two are ever in flight
-    // at once in practice — is accepted here unchanged, same as it was before this fix.)
+    // this is a real, honest reduction in a wasted write for the plain, unraced case, not a
+    // guarantee. (Skipped for a re-run: those overwrite an already-judged row on purpose, so
+    // "still unjudged" does not apply, and the same overlap risk for a re-run — rare enough that
+    // no two are ever in flight at once in practice — is accepted here unchanged, same as it was
+    // before this fix.)
     if (!isRerun(message)) {
       const stillUnjudged = await patchMessage(
         env,
         message.id,
         { classify_attempts: message.classify_attempts },
-        { onlyIfUnjudged: true },
+        { onlyIfUnjudged: true, ifAttemptsEquals: message.classify_attempts },
       );
       if (stillUnjudged === 0) {
-        console.error(`comms classifier: message ${message.id} was judged by another tick first`);
-        return 'raced';
+        console.error(
+          `comms classifier: message ${message.id}'s freshness check missed — judged elsewhere ` +
+            'or just its attempt count moved; writing the verdict below regardless',
+        );
       }
     }
 
