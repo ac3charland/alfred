@@ -29,7 +29,8 @@
  *                         move_code_priority_in_project}
  *                                                             → Software Factory RPCs
  *     POST /rest/v1/rpc/create_weekly_plan_items              → a week's plan items, in one batch
- *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version}
+ *     POST /rest/v1/rpc/{comm_purge,comm_record_reply,comm_example_set_version,
+ *                        comm_create_inbox_item}
  *                                                             → Comms RPCs
  *   Test control (not part of Supabase):
  *     GET  /__mock__/health   POST /__mock__/reset   POST /__mock__/seed
@@ -1215,6 +1216,42 @@ function handleRpc(req, res, fn, body) {
       }
     }
     sendJson(res, 200, count);
+    return;
+  }
+
+  // Turning a message into an Inbox item is ONE write, not two: the item insert and the
+  // message's clear land together, so a failed second half can never strand an orphaned item
+  // for a retry to duplicate. A message already linked to a live item reuses it; a link whose
+  // item is gone mints a fresh one, exactly as the function does.
+  if (fn === 'comm_create_inbox_item' && req.method === 'POST') {
+    const message = commMessages.find((row) => String(row.id) === String(body?.p_message));
+    if (message === undefined) {
+      sendJson(res, 400, {
+        message: `comm_create_inbox_item: message ${body?.p_message} not found`,
+      });
+      return;
+    }
+
+    if (message.inbox_item_id != null) {
+      const linked = items.find((row) => String(row.id) === String(message.inbox_item_id));
+      if (linked !== undefined) {
+        sendJson(res, 200, { item: linked, message, created: false });
+        return;
+      }
+    }
+
+    const item = newItem({
+      title: body?.p_title ?? '',
+      notes: body?.p_notes ?? null,
+      source_url: body?.p_source_url ?? null,
+    });
+    items.push(item);
+
+    message.inbox_item_id = item.id;
+    message.cleared_at = new Date().toISOString();
+    message.cleared_by = 'inbox_item';
+
+    sendJson(res, 200, { item, message, created: true });
     return;
   }
 
