@@ -179,6 +179,18 @@ export function healthStreamValue(
   return payload.eventType === 'DELETE' ? undefined : payload.new;
 }
 
+/**
+ * The verdict(s) an incoming `comm_verdicts` change adds to the store — `null` to ignore it.
+ * `comm_verdicts` is an append-only audit log (a re-classification writes a new row rather than
+ * revising an old one, per the 0034 migration), so only an INSERT ever carries a verdict to add;
+ * an UPDATE or DELETE is not a shape the table produces and is ignored.
+ */
+export function verdictStreamAction(
+  payload: RealtimePostgresChangesPayload<CommVerdict>,
+): CommVerdict[] | null {
+  return payload.eventType === 'INSERT' ? [payload.new] : null;
+}
+
 const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
   CommsState,
   CommsActions
@@ -217,9 +229,11 @@ export function CommsProvider({
     showToastRef.current = showToast;
   }, [showToast]);
 
-  // The push channel. All three tables are written out of band — the poller inserts messages
-  // and stamps account health, the sweep fills in a tier — so a browser that only ever read its
-  // seed would show a stale queue and a green dot over a dead account.
+  // The push channel. All four tables are written out of band — the poller inserts messages
+  // and stamps account health, the classifier sweep writes a verdict and (via a separate write
+  // to comm_messages) fills in the message's tier — so a browser that only ever read its seed
+  // would show a stale queue, a green dot over a dead account, and no "Why:" explanation until
+  // a hard reload.
   React.useEffect(() => {
     const supabase = createClient();
 
@@ -258,10 +272,23 @@ export function CommsProvider({
       )
       .subscribe();
 
+    const verdictsChannel = supabase
+      .channel('comm_verdicts')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comm_verdicts' },
+        (payload: RealtimePostgresChangesPayload<CommVerdict>) => {
+          const verdicts = verdictStreamAction(payload);
+          if (verdicts !== null) dispatch({ type: 'verdicts', verdicts });
+        },
+      )
+      .subscribe();
+
     return () => {
       void supabase.removeChannel(channel);
       void supabase.removeChannel(accountsChannel);
       void supabase.removeChannel(healthChannel);
+      void supabase.removeChannel(verdictsChannel);
     };
   }, []);
 

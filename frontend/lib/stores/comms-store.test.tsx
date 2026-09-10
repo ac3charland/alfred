@@ -10,7 +10,13 @@ import {
   makeCommVerdict,
   resetCommFixtureClock,
 } from '@/lib/comms/fixtures';
-import type { CommAccount, CommClassifierHealth, CommMessage, Item } from '@/lib/types';
+import type {
+  CommAccount,
+  CommClassifierHealth,
+  CommMessage,
+  CommVerdict,
+  Item,
+} from '@/lib/types';
 
 import {
   CommsProvider,
@@ -26,14 +32,29 @@ import {
   useQueueCount,
   useQueuedByTier,
   useShelf,
+  verdictStreamAction,
 } from './comms-store';
 
 // The store opens a realtime channel on mount; stub the browser client so the subscription is
-// inert and the tests drive the reducer directly.
+// inert and the tests drive the reducer directly. The provider subscribes one channel PER TABLE
+// (comm_messages, comm_accounts, comm_classifier_health, comm_verdicts), so the stub keys each
+// captured handler by the filter's table — capturing a single handler would let a later
+// subscription silently overwrite an earlier one (see the supabase skill).
+const mockRealtimeHandlers = new Map<string, (payload: never) => void>();
+const mockRemoveChannel = jest.fn();
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    channel: () => ({ on: jest.fn().mockReturnThis(), subscribe: jest.fn().mockReturnThis() }),
-    removeChannel: jest.fn(),
+    channel: () => {
+      const chan = {
+        on: (_event: string, filter: { table?: string }, handler: (payload: never) => void) => {
+          if (filter.table !== undefined) mockRealtimeHandlers.set(filter.table, handler);
+          return chan;
+        },
+        subscribe: () => chan,
+      };
+      return chan;
+    },
+    removeChannel: mockRemoveChannel,
   }),
 }));
 
@@ -55,6 +76,7 @@ const ACCOUNT = '00000000-0000-4000-8000-00000000000a';
 beforeEach(() => {
   resetCommFixtureClock();
   jest.clearAllMocks();
+  mockRealtimeHandlers.clear();
 });
 
 describe('commsReducer', () => {
@@ -185,6 +207,19 @@ describe('healthStreamValue', () => {
   });
 });
 
+describe('verdictStreamAction', () => {
+  it('adds an arriving verdict', () => {
+    const verdict = makeCommVerdict('m1');
+    expect(verdictStreamAction(payload<CommVerdict>('INSERT', verdict))).toEqual([verdict]);
+  });
+
+  it('ignores an update or a delete — verdicts are an append-only audit log, never revised in place', () => {
+    const verdict = makeCommVerdict('m1');
+    expect(verdictStreamAction(payload<CommVerdict>('UPDATE', verdict))).toBeNull();
+    expect(verdictStreamAction(payload<CommVerdict>('DELETE', { id: verdict.id }))).toBeNull();
+  });
+});
+
 // ── selectors + actions, through a real provider ────────────────────────────
 
 const QUEUED = makeCommMessage(ACCOUNT, {
@@ -243,6 +278,31 @@ describe('CommsProvider selectors', () => {
     expect(() => renderHook(() => useCommsMessages())).toThrow(
       'useCommsMessages must be used within a CommsProvider',
     );
+  });
+});
+
+describe('comm_verdicts realtime subscription', () => {
+  it('a verdict landing out of band reaches verdictsById without a reload', () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    expect(Object.keys(result.current.verdicts)).toHaveLength(1);
+
+    const arriving = makeCommVerdict(QUEUED.id, { id: 'v-arriving' });
+    act(() => {
+      mockRealtimeHandlers.get('comm_verdicts')?.(
+        payload<CommVerdict>('INSERT', arriving) as never,
+      );
+    });
+
+    expect(result.current.verdicts['v-arriving']).toEqual(arriving);
+  });
+
+  it('subscribes exactly one comm_verdicts channel and tears down all four on unmount', () => {
+    const { unmount } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    expect(mockRealtimeHandlers.get('comm_verdicts')).toBeDefined();
+
+    unmount();
+
+    expect(mockRemoveChannel).toHaveBeenCalledTimes(4);
   });
 });
 

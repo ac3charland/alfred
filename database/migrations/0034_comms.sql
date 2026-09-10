@@ -175,6 +175,14 @@ create index comm_messages_thread_idx on comm_messages (account_id, thread_key);
 -- Reply detection over IMAP: a sent message names the queued Message-ID in References.
 create index comm_messages_rfc822_idx on comm_messages (rfc822_message_id)
   where rfc822_message_id is not null;
+-- fetchReclassifyRequests's one query, called on every classifier tick: inbound rows with a
+-- pending re-run request, oldest first. `direction = 'inbound'` joins the partial predicate
+-- (mirroring comm_messages_unjudged_idx above) rather than becoming a leading column, because
+-- the query always names that exact literal — an outbound row can never carry a request. Without
+-- this the query sequentially scans the full 60-day mirror on every tick, almost always to find
+-- zero rows.
+create index comm_messages_reclassify_idx on comm_messages (reclassify_requested_at)
+  where reclassify_requested_at is not null and direction = 'inbound';
 
 -- ── 3. comm_people + comm_handles — the people list ──────────────────────────
 -- A person with a priority and many handles: the same human is a phone number in iMessage
@@ -310,12 +318,20 @@ grant execute on function comm_example_set_version() to anon, authenticated, ser
 -- Stamp the version on insert, and again when a row is pruned. A trigger rather than the
 -- route: the browser inserts a correction and the database numbers the set, so no writer can
 -- forget to bump it and no two writers can disagree about the count.
+--
+-- comm_example_set_version() is a read-then-write (SELECT MAX(...) + 1) under READ COMMITTED,
+-- so two concurrent stampers can compute the same "next version" and both commit it — silently,
+-- since (unlike comm_rubrics.version, which gets a `unique` backstop) there is no column here
+-- that a collision could violate. An xact-scoped advisory lock on a fixed key serializes every
+-- writer through this trigger for the rest of the transaction, so the read and the write it
+-- guards can no longer interleave; it's released automatically at commit or rollback.
 create or replace function comm_corrections_stamp_version()
 returns trigger
 language plpgsql
 security invoker
 as $$
 begin
+  perform pg_advisory_xact_lock(hashtext('comm_corrections_stamp_version'));
   if tg_op = 'INSERT' then
     new.created_version := comm_example_set_version() + 1;
   elsif new.pruned_at is not null and old.pruned_at is null then
@@ -502,6 +518,7 @@ grant select, insert, update, delete on comm_classifier_health to anon, authenti
 alter publication supabase_realtime add table comm_messages;
 alter publication supabase_realtime add table comm_accounts;
 alter publication supabase_realtime add table comm_classifier_health;
+alter publication supabase_realtime add table comm_verdicts;
 
 -- PostgREST caches the schema; the new tables and functions are invisible until it reloads.
 notify pgrst, 'reload schema';

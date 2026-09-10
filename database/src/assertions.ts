@@ -2910,16 +2910,17 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
   );
 
   const commsRealtimeResult = await attempt(
-    'comms: comm_messages, comm_accounts and comm_classifier_health are published to supabase_realtime (ALF-7)',
+    'comms: comm_messages, comm_accounts, comm_classifier_health and comm_verdicts are published to supabase_realtime (ALF-7)',
     async () => {
       const { rows } = await client.query<{ tablename: string }>(
         `select tablename from pg_publication_tables
           where pubname = 'supabase_realtime'
-            and tablename in ('comm_messages', 'comm_accounts', 'comm_classifier_health')`,
+            and tablename in
+              ('comm_messages', 'comm_accounts', 'comm_classifier_health', 'comm_verdicts')`,
       );
-      if (rows.length !== 3)
-        throw new Error(`only ${String(rows.length)} of 3 comms tables are published`);
-      return 'all three published';
+      if (rows.length !== 4)
+        throw new Error(`only ${String(rows.length)} of 4 comms tables are published`);
+      return 'all four published';
     },
   );
 
