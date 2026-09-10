@@ -629,6 +629,7 @@ describe('pollGmail', () => {
             headers: [
               { name: 'From', value: 'news@sender.example' },
               { name: 'List-Unsubscribe', value: '<https://sender.example/u>' },
+              { name: 'Subject', value: 'Your November digest is here' },
             ],
           }),
         ],

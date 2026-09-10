@@ -89,6 +89,13 @@ interface BulkCandidate {
   senderHandle: string;
   direction: CommDirection;
   listHeaders: string[];
+  /**
+   * The message's own Subject, when the daemon reported one. `isNewsletter` fails safe on
+   * `undefined` — see `newsletter.ts` — so this has to ride along for the ask-cue check to see
+   * anything at all; without it every bulk candidate here reads as "no subject available" and the
+   * filter never fires.
+   */
+  subject?: string | undefined;
 }
 
 interface IngestPayload {
@@ -221,8 +228,11 @@ async function shelveBulkMail(
 ): Promise<void> {
   // Strong signals first, with an empty roster: that decides whether the roster is worth reading
   // at all, since a batch with only weak headers (a lone Precedence) never touches the database.
-  const headersOf = (entry: BulkCandidate): { name: string; value: string }[] =>
-    entry.listHeaders.map((name) => ({ name, value: 'present' }));
+  const headersOf = (entry: BulkCandidate): { name: string; value: string }[] => {
+    const headers = entry.listHeaders.map((name) => ({ name, value: 'present' }));
+    if (entry.subject !== undefined) headers.push({ name: 'Subject', value: entry.subject });
+    return headers;
+  };
   const candidates = bulk.filter(
     (entry) =>
       entry.direction === 'inbound' &&
@@ -443,6 +453,7 @@ function parsePayload(body: unknown): Parsed<IngestPayload> {
         senderHandle: parsed.payload.message.sender_handle,
         direction: parsed.payload.message.direction,
         listHeaders: parsed.payload.listHeaders,
+        subject: parsed.payload.message.subject,
       });
     }
   }

@@ -559,7 +559,9 @@ describe('handleIngest — bulk mail the daemon flagged', () => {
     });
 
     const response = await handleIngest(
-      await signedRequest(payload({ messages: [bulkMessage()] })),
+      await signedRequest(
+        payload({ messages: [bulkMessage({ subject: 'Your November digest is here' })] }),
+      ),
       env,
       NOW,
     );
@@ -579,6 +581,24 @@ describe('handleIngest — bulk mail the daemon flagged', () => {
       (call) => call.method === 'POST' && call.url.includes('/rest/v1/comm_messages'),
     );
     expect(JSON.stringify(insert?.body)).not.toContain('list_headers');
+  });
+
+  it('never shelves a bulk candidate when the daemon reported no subject at all', async () => {
+    // The fail-safe in `isNewsletter`: absence of a checkable subject is never treated as evidence
+    // the message is safe to shelve. A real obligation with no subject line — or a source that
+    // simply cannot decode one — must still reach the classifier, not vanish onto the shelf.
+    const calls = mockSupabase({
+      stored: [{ id: 'message-9', source_id: '<digest-1@lists.example.com>' }],
+    });
+
+    const response = await handleIngest(
+      await signedRequest(payload({ messages: [bulkMessage()] })),
+      env,
+      NOW,
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterPatch(calls)).toBeUndefined();
   });
 
   it('never filters a sender on the roster, whatever the headers say', async () => {
