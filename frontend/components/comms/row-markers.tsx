@@ -3,7 +3,14 @@
 import * as React from 'react';
 
 import { Badge } from '@/components/atoms/badge';
-import { attachmentNotRead, expiresSoon, isFiltered, isRefused, isUnjudged } from '@/lib/comms';
+import {
+  attachmentNotRead,
+  decodeFailed,
+  expiresSoon,
+  isFiltered,
+  isRefused,
+  isUnjudged,
+} from '@/lib/comms';
 import { resolvePerson } from '@/lib/comms/people';
 import type { CommMessage, CommPersonWithHandles } from '@/lib/types';
 
@@ -57,6 +64,16 @@ export function RowMarkers({ message, people, now, shelved = false }: RowMarkers
     chips.push(
       <Badge key="attachment" variant="alert" className="font-medium">
         Attachment · not read
+      </Badge>,
+    );
+  }
+
+  // A skipped message is a false negative that leaves no trace, so the row that hid it from the
+  // classifier says so on its own face — same treatment as the attachment it couldn't read.
+  if (decodeFailed(message)) {
+    chips.push(
+      <Badge key="decode-failed" variant="alert" className="font-medium">
+        Body · not decoded
       </Badge>,
     );
   }

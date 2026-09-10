@@ -148,6 +148,12 @@ describe('MessageRow — what a collapsed row says', () => {
     expect(screen.getByText('Attachment · not read')).toBeInTheDocument();
   });
 
+  it('marks a row whose body failed to decode', () => {
+    renderRow({ message: makeRow({ body_extracted: false }), people: [] });
+
+    expect(screen.getByText('Body · not decoded')).toBeInTheDocument();
+  });
+
   it('marks a row inside its last week', () => {
     const received = new Date(NOW.getTime() - 55 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000);
     renderRow({ message: makeRow({ received_at: received.toISOString() }), people: [] });
@@ -330,6 +336,32 @@ describe('MessageRow — the verbs', () => {
       '00000000-0000-4000-8000-0000000000b1',
       'today',
     );
+  });
+
+  it('ignores a second verb pressed inside the first one’s exit window', async () => {
+    const user = userEvent.setup();
+    renderRow({ selected: true });
+
+    await user.click(screen.getByRole('button', { name: /Change tier/ }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'ASAP' })).toHaveAttribute(
+      'data-current',
+      'true',
+    );
+    // Picking Today starts the exit; the collapse hasn't ended yet, so the row is still
+    // `selected` and its hotkey listener is still live.
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+
+    // A second verb pressed before the first's 300ms exit finishes must be dropped, not
+    // silently retarget the pending commit.
+    fireEvent.keyDown(document, { key: 'n' });
+    endExit();
+
+    expect(mockApi.changeCommTier).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-0000000000b1',
+      'today',
+    );
+    expect(mockApi.clearCommMessage).not.toHaveBeenCalled();
   });
 });
 

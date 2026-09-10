@@ -93,10 +93,15 @@ export function MessageRow({
 
   const runExit = React.useCallback(
     (mutation: () => Promise<unknown>) => {
+      // A second verb pressed inside the first one's 300ms exit window must be dropped, not
+      // silently retarget the pending commit — `begin()` is a no-op once already exiting, so
+      // without this guard `commitRef` would be overwritten while the original animation kept
+      // playing and the first mutation would never run.
+      if (exit.isExiting) return;
       commitRef.current = mutation;
       begin();
     },
-    [begin],
+    [begin, exit.isExiting],
   );
 
   const link = messageDeepLink(message, account);
