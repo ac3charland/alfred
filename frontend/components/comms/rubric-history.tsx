@@ -8,7 +8,6 @@ import { Button } from '@/components/atoms/button';
 import { DisclosureToggle } from '@/components/atoms/disclosure-toggle';
 import { formatSavedAt, rubricFirstLine } from '@/components/comms/settings-format';
 import { VERSION_STAMP } from '@/components/comms/settings.styles';
-import { useNow } from '@/lib/hooks/use-now';
 import type { CommRubric } from '@/lib/types';
 
 /**
@@ -25,14 +24,16 @@ import type { CommRubric } from '@/lib/types';
 export function RubricHistory({
   versions,
   onRestore,
+  now,
 }: {
   /** The versions BEHIND the current one, newest first. */
   versions: CommRubric[];
   onRestore: (rubric: CommRubric) => void;
+  /** The one instant the view ticks, handed down rather than read here — see `useNow`. */
+  now: Date;
 }) {
   const [open, setOpen] = React.useState(false);
   const regionId = React.useId();
-  const now = useNow();
 
   if (versions.length === 0) return null;
 

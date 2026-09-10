@@ -112,4 +112,14 @@ describe('CommsRubricView', () => {
 
     expect(screen.getByLabelText('Rubric')).toHaveValue(V2.body);
   });
+
+  it('ticks a single clock for the whole view, not one per child', () => {
+    // `comms-format.ts` names the convention: the view owns one ticking instant and hands the
+    // same one to every consumer — `useNow`'s interval is the only thing in the tree that calls
+    // `setInterval`, so one subscription per mount is the signature of that being followed.
+    const setIntervalSpy = jest.spyOn(globalThis, 'setInterval');
+    renderView([V2, V1]);
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+  });
 });

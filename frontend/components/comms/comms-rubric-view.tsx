@@ -6,6 +6,7 @@ import * as React from 'react';
 import { ViewHeading } from '@/components/atoms/view-heading';
 import { RubricEditor } from '@/components/comms/rubric-editor';
 import { RubricHistory } from '@/components/comms/rubric-history';
+import { useNow } from '@/lib/hooks/use-now';
 import {
   useCommsRubrics,
   useCommsSettingsActions,
@@ -27,6 +28,10 @@ export function CommsRubricView() {
   const { saveRubric } = useCommsSettingsActions();
   const [draft, setDraft] = React.useState(current?.body ?? '');
 
+  // One ticking instant for the whole view — see `comms-format.ts`'s "one now" convention —
+  // rather than each child starting its own interval subscription for the same job.
+  const now = useNow();
+
   // Everything behind the head. A saved version lands at the head, so the version it followed
   // joins this list on the same render.
   const previous = rubrics.slice(1);
@@ -46,12 +51,14 @@ export function CommsRubricView() {
         onSave={async () => {
           await saveRubric(draft.trim());
         }}
+        now={now}
       />
       <RubricHistory
         versions={previous}
         onRestore={(rubric) => {
           setDraft(rubric.body);
         }}
+        now={now}
       />
     </div>
   );

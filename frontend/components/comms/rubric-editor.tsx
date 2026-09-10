@@ -4,7 +4,6 @@ import * as React from 'react';
 
 import { TextareaField } from '@/components/atoms/textarea-field';
 import { formatSavedAt } from '@/components/comms/settings-format';
-import { useNow } from '@/lib/hooks/use-now';
 import type { CommRubric } from '@/lib/types';
 
 /**
@@ -34,14 +33,16 @@ export function RubricEditor({
   draft,
   onDraftChange,
   onSave,
+  now,
 }: {
   /** The version in force, or `undefined` before one has ever been written. */
   current: CommRubric | undefined;
   draft: string;
   onDraftChange: (next: string) => void;
   onSave: () => Promise<void>;
+  /** The one instant the view ticks, handed down rather than read here — see `useNow`. */
+  now: Date;
 }) {
-  const now = useNow();
   const [isPending, setIsPending] = React.useState(false);
 
   const trimmed = draft.trim();
