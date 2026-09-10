@@ -419,7 +419,7 @@ describe('a judged message', () => {
       reason: 'A named deadline today from a colleague who is blocked.',
       provider: 'anthropic',
       model: 'claude-haiku-4-5',
-      prompt_version: 1,
+      prompt_version: 2,
       rubric_version: 4,
       example_set_version: 7,
       // Stamped because the sender resolved to someone on the roster — "flagged because it's
