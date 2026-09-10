@@ -1,5 +1,6 @@
 import { spyOnFetch } from '../fetch-stub';
 import { FIRST_RUN_QUERY, type GmailEnv, NOT_CONFIGURED, REJECTED_TOKEN, pollGmail } from './gmail';
+import { MAX_MESSAGE_IDS } from './gmail-api';
 import type { GmailHeader, GmailMessage } from './gmail-api';
 
 const SUPABASE_URL = 'https://proj.supabase.co';
@@ -40,7 +41,13 @@ interface Mailbox {
   /** Ids `messages.list` returns — the first-run and re-seed path. */
   listIds?: string[];
   /** Ids the history walk reports as added, and where the mailbox then stands. */
-  history?: { ids: string[]; historyId?: string };
+  history?: {
+    ids: string[];
+    historyId?: string;
+    /** Explicit per-record control, for exercising truncation. Overrides `ids` when set — each
+     *  entry becomes one history record, carrying its own resumable `id`. */
+    records?: { id?: string; ids: string[] }[];
+  };
   /** Answer the history walk with a 404, the way an aged-out cursor is reported. */
   historyExpired?: boolean;
   /** Answer the profile read with this status, the way a wrong scope is reported. */
@@ -100,10 +107,13 @@ function gmailResponse(mailbox: Mailbox, path: string): Response {
   if (path === 'history') {
     if (mailbox.historyExpired === true) return new Response('history id expired', { status: 404 });
     const walk = mailbox.history ?? { ids: [] };
-    return Response.json({
-      history: walk.ids.map((id) => ({ messagesAdded: [{ message: { id } }] })),
-      historyId: walk.historyId,
-    });
+    const history = walk.records
+      ? walk.records.map((record) => ({
+          id: record.id,
+          messagesAdded: record.ids.map((id) => ({ message: { id } })),
+        }))
+      : walk.ids.map((id) => ({ messagesAdded: [{ message: { id } }] }));
+    return Response.json({ history, historyId: walk.historyId });
   }
 
   const id = path.slice('messages/'.length);
@@ -339,6 +349,103 @@ describe('pollGmail', () => {
 
     expect(payload(restCalls(calls, 'comm_accounts', 'PATCH')[0])['cursor']).toEqual({
       historyId: '4900',
+    });
+  });
+
+  it('holds the cursor short of the mailbox head when a first-run listing is truncated, so the overflow is not skipped forever', async () => {
+    // The bug this guards: a naive fix advances the cursor to the mailbox's head the moment a
+    // listing is truncated. That head is "now" — everything past the first 500 ids that a busy
+    // week produced would never be looked at again, because a history walk only ever sees
+    // changes AFTER the historyId it starts from.
+    const overflow = MAX_MESSAGE_IDS + 5;
+    const baseMs = 1_700_000_000_000;
+    const ids = Array.from({ length: overflow }, (_value, index) => `m${String(index)}`);
+    // Newest first, one second apart — the shape Gmail's own search results take.
+    const messages = ids.map((id, index) =>
+      gmailMessage(id, { internalDate: String(baseMs - index * 1000) }),
+    );
+    const calls = harness({
+      mailbox: {
+        profile: { emailAddress: 'owner@example.com', historyId: 'head-at-tick-1' },
+        listIds: ids,
+        messages,
+      },
+    });
+
+    const summary = await pollGmail(personalOnly, DAY_17);
+
+    expect(summary.accounts[0]?.polled).toBe(true);
+    const cursor = payload(restCalls(calls, 'comm_accounts', 'PATCH')[0])['cursor'];
+    expect(cursor).not.toEqual({ historyId: 'head-at-tick-1' });
+    expect(cursor).toEqual({
+      // The window's lower bound, frozen rather than left to drift with `now` on a later tick.
+      listAfter: new Date(DAY_17.getTime() - 7 * DAY_MS).toISOString(),
+      // The oldest message actually ingested this tick — where the next tick resumes.
+      listBefore: new Date(baseMs - (MAX_MESSAGE_IDS - 1) * 1000).toISOString(),
+      // The mailbox's historyId as of THIS tick — not "now", so the eventual history walk still
+      // covers everything that arrives while the catch-up is still draining the backlog.
+      resumeHistoryId: 'head-at-tick-1',
+    });
+  });
+
+  it('resumes a truncated listing catch-up from its frozen window, and hands off to the historyId frozen when the catch-up began — not this tick’s own', async () => {
+    const frozenAfter = '2026-08-20T00:00:00.000Z';
+    const frozenBefore = '2026-08-25T00:00:00.000Z';
+    const calls = harness({
+      account: {
+        cursor: {
+          listAfter: frozenAfter,
+          listBefore: frozenBefore,
+          resumeHistoryId: 'frozen-at-catchup-start',
+        },
+      },
+      mailbox: {
+        // If the poller used THIS tick's own head instead of the frozen one, the cursor would
+        // wrongly land here — the gap the frozen `resumeHistoryId` exists to close.
+        profile: { emailAddress: 'owner@example.com', historyId: 'head-at-this-later-tick' },
+        listIds: ['m1'],
+        messages: [gmailMessage('m1')],
+      },
+    });
+
+    await pollGmail(personalOnly, DAY_17);
+
+    // The frozen window is reused verbatim — not recomputed from `lastSeenAt`/`now` — so a
+    // multi-tick catch-up keeps making progress on the same range instead of restarting it.
+    expect(gmailCalls(calls, 'messages')[0]?.get('q')).toBe(
+      `after:${String(Math.floor(new Date(frozenAfter).getTime() / 1000))} before:${String(
+        Math.floor(new Date(frozenBefore).getTime() / 1000),
+      )}`,
+    );
+    expect(payload(restCalls(calls, 'comm_accounts', 'PATCH')[0])['cursor']).toEqual({
+      historyId: 'frozen-at-catchup-start',
+    });
+  });
+
+  it('advances a truncated history walk to the last record it consumed, never to the mailbox’s current head', async () => {
+    const safeIds = Array.from(
+      { length: MAX_MESSAGE_IDS - 2 },
+      (_value, index) => `m${String(index)}`,
+    );
+    const calls = harness({
+      account: { cursor: { historyId: '4000' } },
+      mailbox: {
+        profile: { emailAddress: 'owner@example.com', historyId: 'current-mailbox-head' },
+        history: {
+          ids: [],
+          records: [
+            { id: 'rec-safe', ids: safeIds },
+            { id: 'rec-overflow', ids: ['x1', 'x2', 'x3'] },
+          ],
+        },
+        messages: safeIds.map((id) => gmailMessage(id)),
+      },
+    });
+
+    await pollGmail(personalOnly, DAY_17);
+
+    expect(payload(restCalls(calls, 'comm_accounts', 'PATCH')[0])['cursor']).toEqual({
+      historyId: 'rec-safe',
     });
   });
 

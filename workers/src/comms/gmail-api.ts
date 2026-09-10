@@ -26,13 +26,24 @@ export const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 /**
  * The most message ids one poll will collect. A first run over a busy week, or a re-seed after a
  * long outage, is otherwise unbounded — and every id past this one becomes a message fetch and a
- * model call. The overflow is not lost: the cursor only advances past what was ingested, so the
- * next tick picks up where this one stopped.
+ * model call.
+ *
+ * The overflow is NOT lost, but the cursor must never simply advance to the mailbox's current
+ * head when this cap is hit — that head is "now", and everything still unlisted below it would
+ * never be looked at again. Both listers below report `truncated: true` when they stopped early
+ * so `planFetch` in `gmail.ts` can hold the cursor at a position that still covers the unread
+ * remainder instead. See that module's doc comment for how each caller resumes.
  */
 export const MAX_MESSAGE_IDS = 500;
 
 /** How much of a failing response body is kept. Enough to identify it, not enough to fill a log. */
 const MAX_DETAIL_CHARS = 300;
+
+/** Bounds one Gmail call, mirroring `classifier.ts`'s `REQUEST_TIMEOUT_MS` and for the same
+ *  reason: a hung connection must not be able to run a cron tick past its cadence. A timeout
+ *  aborts the `fetch`, which throws — the same `catch` that handles a dropped connection turns
+ *  that into a `transport` failure, never a content one, so the poller retries it next tick. */
+export const GMAIL_REQUEST_TIMEOUT_MS = 10_000;
 
 /** One RFC822 header as Gmail hands it over. */
 export interface GmailHeader {
@@ -71,14 +82,23 @@ export interface GmailProfile {
 /**
  * A history walk's outcome. `expired: true` is not an error: a historyId is good for about a week,
  * and an account that was not polled for longer gets a re-seed rather than a red dot.
+ *
+ * `historyId` means two different things depending on `truncated`, and callers must not confuse
+ * them: when the walk was NOT truncated it is Gmail's own top-level field — the mailbox's current
+ * head, safe to resume from because there is nothing left unread below it. When it WAS truncated
+ * it is instead the `id` of the last history record this walk fully consumed before it had to
+ * stop — the one position that is actually safe to resume from, since the mailbox's current head
+ * would skip every record still sitting between that point and here.
  */
 export type GmailHistory =
   | { expired: true }
   | {
       expired: false;
       messageIds: string[];
-      /** Where the mailbox stands after this walk — the cursor the next poll resumes from. */
+      /** Where the next walk should resume from — see the field-level doc above. */
       historyId?: string | undefined;
+      /** True when more history existed beyond the id cap and had to be left for next time. */
+      truncated: boolean;
     };
 
 /** Why a call did not produce a value, and whether a human has to do something about it. */
@@ -91,6 +111,13 @@ export interface GmailFailure {
 /** Either the value, or the reason there isn't one. Nothing in this module throws. */
 export type GmailResult<T> = { ok: true; value: T } | ({ ok: false } & GmailFailure);
 
+/** Message ids matching a search, and whether the id cap cut the listing short. */
+export interface GmailMessageList {
+  ids: string[];
+  /** True when more ids existed beyond `MAX_MESSAGE_IDS` and had to be left for next time. */
+  truncated: boolean;
+}
+
 /** The four calls the poller makes, bound to one access token. */
 export interface GmailClient {
   /** Whose mailbox this is, and its current historyId — the first-run cursor seed. */
@@ -99,7 +126,7 @@ export interface GmailClient {
   listMessageIds(options?: {
     q?: string | undefined;
     pageToken?: string | undefined;
-  }): Promise<GmailResult<string[]>>;
+  }): Promise<GmailResult<GmailMessageList>>;
   /** What arrived since `startHistoryId`, or word that the cursor aged out. */
   listHistory(options: {
     startHistoryId: string;
@@ -115,9 +142,17 @@ interface ListResponse {
   nextPageToken?: string | undefined;
 }
 
-/** `history.list` as Gmail returns it. `messagesAdded` is the only record type asked for. */
+/**
+ * `history.list` as Gmail returns it. `messagesAdded` is the only record type asked for.
+ *
+ * Each record's own `id` is the historyId of that specific change — distinct from the response's
+ * top-level `historyId`, which names the mailbox's current head regardless of how far the walk
+ * actually got. A truncated walk resumes from a record's `id`, never from the top-level one.
+ */
 interface HistoryResponse {
-  history?: { messagesAdded?: { message: { id: string } }[] | undefined }[] | undefined;
+  history?:
+    | { id?: string | undefined; messagesAdded?: { message: { id: string } }[] | undefined }[]
+    | undefined;
   historyId?: string | undefined;
   nextPageToken?: string | undefined;
 }
@@ -149,6 +184,7 @@ export function gmailClient(token: string): GmailClient {
     try {
       response = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(GMAIL_REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
       return { ok: false, reason: 'transport', detail: describe(error) };
@@ -189,13 +225,23 @@ export function gmailClient(token: string): GmailClient {
         pageToken = page.value.nextPageToken;
       } while (pageToken !== undefined && ids.length < MAX_MESSAGE_IDS);
 
-      return { ok: true, value: ids.slice(0, MAX_MESSAGE_IDS) };
+      // Truncated whenever there is more we did not keep — either Gmail still had another page
+      // (`pageToken` survived the loop) or this page alone pushed us past the cap and the slice
+      // below drops the tail. Either way the caller must not treat this as "everything since the
+      // cursor" — see `planFetch` in gmail.ts for how it holds its ground instead.
+      const truncated = pageToken !== undefined || ids.length > MAX_MESSAGE_IDS;
+      return { ok: true, value: { ids: ids.slice(0, MAX_MESSAGE_IDS), truncated } };
     },
 
     async listHistory(options) {
-      const ids: string[] = [];
+      const ids = new Set<string>();
       let pageToken = options.pageToken;
-      let historyId: string | undefined;
+      let mailboxHistoryId: string | undefined;
+      // The last record fully folded into `ids` — the only position a truncated walk can safely
+      // resume from. Gmail's own `id` on that record IS the historyId a follow-up `startHistoryId`
+      // takes, so no extra bookkeeping (a page token, a timestamp) is needed to resume it.
+      let lastRecordId: string | undefined;
+      let truncated = false;
 
       do {
         const params: Record<string, string> = {
@@ -213,22 +259,40 @@ export function gmailClient(token: string): GmailClient {
           return page;
         }
 
+        // Whole records only: a record's ids are never split across "kept" and "left for next
+        // time", because splitting one would mean resuming from a position (mid-record) Gmail
+        // has no `startHistoryId` for, silently dropping the un-kept half forever.
         for (const record of page.value.history ?? []) {
-          for (const added of record.messagesAdded ?? []) ids.push(added.message.id);
+          const merged = new Set(ids);
+          for (const added of record.messagesAdded ?? []) merged.add(added.message.id);
+          if (merged.size > MAX_MESSAGE_IDS) {
+            truncated = true;
+            break;
+          }
+          for (const id of merged) ids.add(id);
+          if (record.id !== undefined) lastRecordId = record.id;
         }
-        historyId = page.value.historyId ?? historyId;
-        pageToken = page.value.nextPageToken;
-      } while (pageToken !== undefined && ids.length < MAX_MESSAGE_IDS);
+        if (truncated) break;
 
-      // One message can be added, labelled and moved inside a single walk, arriving once per
-      // record. The cursor is a position and the ids are an identity set, so dedupe here rather
-      // than fetching the same message three times.
+        mailboxHistoryId = page.value.historyId ?? mailboxHistoryId;
+        pageToken = page.value.nextPageToken;
+      } while (pageToken !== undefined && ids.size < MAX_MESSAGE_IDS);
+
+      // Reaching the cap exactly at a page boundary, with more still waiting on the next page,
+      // is truncation too even though no record above had to be rejected.
+      if (!truncated && pageToken !== undefined) truncated = true;
+
       return {
         ok: true,
         value: {
           expired: false,
-          messageIds: [...new Set(ids)].slice(0, MAX_MESSAGE_IDS),
-          historyId,
+          messageIds: [...ids],
+          // Gmail's top-level `historyId` is the mailbox's head, safe only when nothing was left
+          // behind. A truncated walk instead reports the last record it actually consumed —
+          // `undefined` only in the pathological case of a single record alone exceeding the cap,
+          // where no safe resume point exists at all and the caller holds its cursor unchanged.
+          historyId: truncated ? lastRecordId : mailboxHistoryId,
+          truncated,
         },
       };
     },
