@@ -289,7 +289,10 @@ export function HabitsProvider({
           optimistic: () => {
             dispatch({ type: 'insertHabit', habit: optimistic });
           },
-          apiCall: () => createHabit(input),
+          // The start date travels with the request: left to the server, it defaults to the
+          // database's calendar day (UTC), which after the evening rollover is tomorrow here —
+          // and a habit that starts tomorrow counts nothing today.
+          apiCall: () => createHabit({ ...input, started_on: optimistic.started_on }),
           reconcile: (saved) => {
             dispatch({ type: 'replaceHabit', id: optimistic.id, habit: saved });
           },

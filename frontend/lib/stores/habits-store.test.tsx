@@ -256,6 +256,23 @@ describe('addHabit', () => {
     expect(result.current.habits).toStrictEqual([saved]);
   });
 
+  it("sends the browser's calendar day as started_on, so an evening habit does not start tomorrow", async () => {
+    mockCreateHabit.mockResolvedValue({ ...MORNING, id: 'server-1' });
+    const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([]) });
+
+    await act(async () => {
+      await result.current.actions.addHabit({ name: 'Morning routine', criteria: [] });
+    });
+
+    const localToday = todayIn(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      new Date(FIXED_NOW),
+    );
+    expect(mockCreateHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Morning routine', started_on: localToday }),
+    );
+  });
+
   it('rolls the habit back and toasts when the write fails', async () => {
     mockCreateHabit.mockRejectedValue(new Error('nope'));
     const { result } = renderHook(useStoreTest, { wrapper: makeWrapper([]) });
