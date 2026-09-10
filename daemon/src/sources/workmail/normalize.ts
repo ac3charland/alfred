@@ -26,11 +26,45 @@ function mailboxIdentity(uidvalidity: number, uid: number): string {
   return `${String(uidvalidity)}:${String(uid)}`;
 }
 
+/** The furthest either direction a JavaScript `Date` will go before it refuses to be one. */
+const MAX_TIMESTAMP_MS = 8_640_000_000_000_000;
+
+/**
+ * A candidate is trustworthy only if it parsed at all and does not claim to be from the future —
+ * `now` is the poll's own instant, so nothing this source emits should ever be later than that.
+ */
+function isSane(date: Date, now: Date): boolean {
+  const ms = date.getTime();
+  return !Number.isNaN(ms) && Math.abs(ms) <= MAX_TIMESTAMP_MS && ms <= now.getTime();
+}
+
+/**
+ * When the message arrived. The IMAP server's own INTERNALDATE — not sender-controlled — is
+ * preferred over the RFC822 `Date:` header, which the sender writes and can set to anything: a
+ * `Date: Thu, 01 Jan 2099` header would otherwise store a `received_at` the retention sweep
+ * (`where received_at < now() - 60 days`) can never reach. This matches the Gmail source's
+ * `receivedAt()` (`workers/src/comms/gmail.ts`), which prefers Gmail's own receipt timestamp over
+ * any header for the same reason.
+ *
+ * The header is used only when INTERNALDATE is unavailable, and either candidate is clamped to
+ * "not later than now" — a skewed server clock is as untrusted as a forged header once it claims
+ * a future the poll hasn't reached yet. The final fallback, `now`, is always sane.
+ */
+function receivedAt(
+  extracted: ExtractedMessage | undefined,
+  internalDate: Date | undefined,
+  now: Date,
+): Date {
+  if (internalDate !== undefined && isSane(internalDate, now)) return internalDate;
+  const headerDate = extracted?.date;
+  if (headerDate !== undefined && isSane(headerDate, now)) return headerDate;
+  return now;
+}
+
 export function normalizeMessage(input: NormalizeInput): NormalizedMessage {
   const { extracted } = input;
   const fallback = mailboxIdentity(input.uidvalidity, input.uid);
   const messageId = extracted?.messageId;
-  const receivedAt = extracted?.date ?? input.internalDate ?? input.now;
 
   return {
     source_id: messageId ?? fallback,
@@ -47,7 +81,7 @@ export function normalizeMessage(input: NormalizeInput): NormalizedMessage {
     participants: extracted?.participants ?? [],
     ...(extracted?.subject === undefined ? {} : { subject: extracted.subject }),
     body: extracted?.body ?? '',
-    received_at: receivedAt.toISOString(),
+    received_at: receivedAt(extracted, input.internalDate, input.now).toISOString(),
     body_extracted: extracted !== undefined,
     has_attachments: extracted?.hasAttachments ?? false,
     ...(extracted?.inReplyTo === undefined ? {} : { in_reply_to: extracted.inReplyTo }),

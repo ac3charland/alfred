@@ -1,5 +1,6 @@
 import type { WorkmailSourceConfig } from '../../config.ts';
 import type { NormalizedMessage } from '../../contract.ts';
+import type { LogFields, Logger } from '../../log.ts';
 import type { SourceContext } from '../types.ts';
 import {
   BROKEN_MIME,
@@ -92,6 +93,23 @@ async function only(mailboxes: FakeMailbox[], parse = parseMime): Promise<Normal
   const [message] = result.messages;
   if (message === undefined) throw new Error('expected exactly one message');
   return message;
+}
+
+interface LoggedCall {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  fields?: LogFields;
+}
+
+/** Records every call by level, so a test can assert a swallowed failure was still reported. */
+function spyLogger(): { calls: LoggedCall[]; log: Logger } {
+  const calls: LoggedCall[] = [];
+  const record =
+    (level: LoggedCall['level']) =>
+    (message: string, fields?: LogFields): void => {
+      calls.push(fields === undefined ? { level, message } : { level, message, fields });
+    };
+  return { calls, log: { info: record('info'), warn: record('warn'), error: record('error') } };
 }
 
 describe('createWorkmailSource', () => {
@@ -234,6 +252,71 @@ describe('WorkMail poll', () => {
       sent: { uidvalidity: SENT_UIDVALIDITY, uid: 9 },
     });
   });
+
+  it('never advances the cursor past a uid the server failed to return mid-batch', async () => {
+    // SEARCH reports 10, 11, 12; FETCH comes back missing 11 (a concurrent expunge, a flaky
+    // server) but still returns the later uid 12 in the same batch.
+    const fake = createFakeSession([
+      inbox([at(10, PLAIN_REPLY), at(11, HTML_ONLY), at(12, NEWSLETTER)]),
+      sent([]),
+    ]);
+    const source = createWorkmailSource(CONFIG, {
+      secrets,
+      connect: async (options) => {
+        const session = await fake.connect(options);
+        return {
+          ...session,
+          fetchUids: async (uids) => {
+            const messages = await session.fetchUids(uids);
+            return messages.filter((message) => message.uid !== 11);
+          },
+        };
+      },
+    });
+
+    const result = await source.poll(context());
+
+    // 10 and 12 still go out — they were fetched successfully — but the cursor must not jump
+    // past the missing 11, or the next poll would never ask for it again.
+    expect(result.messages.map((message) => message.source_id)).toEqual([
+      '<reply-1@example.com>',
+      '<news-1@list.example.com>',
+    ]);
+    expect(result.cursor).toMatchObject({ inbox: { uidvalidity: INBOX_UIDVALIDITY, uid: 10 } });
+  });
+
+  it('retries a uid that was missing mid-batch once the cursor holds it back', async () => {
+    const fake = createFakeSession([
+      inbox([at(10, PLAIN_REPLY), at(11, HTML_ONLY), at(12, NEWSLETTER)]),
+      sent([]),
+    ]);
+    let calls = 0;
+    const source = createWorkmailSource(CONFIG, {
+      secrets,
+      connect: async (options) => {
+        const session = await fake.connect(options);
+        return {
+          ...session,
+          fetchUids: async (uids) => {
+            calls += 1;
+            const messages = await session.fetchUids(uids);
+            // Only the first fetch drops uid 11 — the second, standing in for a retry against a
+            // server that is no longer flaky, returns everything it was asked for.
+            return calls === 1 ? messages.filter((message) => message.uid !== 11) : messages;
+          },
+        };
+      },
+    });
+
+    const first = await source.poll(context());
+    const second = await source.poll(context({ cursor: first.cursor }));
+
+    expect(second.messages.map((message) => message.source_id)).toEqual([
+      '<html-1@example.com>',
+      '<news-1@list.example.com>',
+    ]);
+    expect(second.cursor).toMatchObject({ inbox: { uidvalidity: INBOX_UIDVALIDITY, uid: 12 } });
+  });
 });
 
 describe('WorkMail normalization', () => {
@@ -250,7 +333,9 @@ describe('WorkMail normalization', () => {
       participants: ['support@realplayapp.com', 'bob@example.com', 'carol@example.com'],
       subject: 'Re: Invoice 42',
       body: 'Could you re-send the invoice?',
-      received_at: '2025-09-08T10:00:00.000Z',
+      // The IMAP server's own INTERNALDATE (`at()`'s default), not the header — a sender-written
+      // `Date:` must never be able to steer this. See normalize.test.ts.
+      received_at: '2025-09-05T10:00:00.000Z',
       body_extracted: true,
       has_attachments: false,
       in_reply_to: '<queued-1@example.com>',
@@ -489,5 +574,38 @@ describe('WorkMail poll failures', () => {
 
     await expect(source.poll(context())).rejects.toThrow('IMAP request failed — mailbox gone');
     expect(fake.logouts).toBe(1);
+  });
+
+  it('propagates the original failure even when logout() also throws on the dead connection', async () => {
+    const fake = createFakeSession([inbox([]), sent([])]);
+    let logoutAttempted = false;
+    const { log, calls } = spyLogger();
+    const source = createWorkmailSource(CONFIG, {
+      secrets,
+      log,
+      connect: async (options) => {
+        const session = await fake.connect(options);
+        return {
+          ...session,
+          list: () => Promise.reject(new Error('malformed SEARCH response')),
+          logout: () => {
+            logoutAttempted = true;
+            return Promise.reject(new Error('connection already closed'));
+          },
+        };
+      },
+    });
+
+    const thrown: unknown = await source.poll(context()).catch((error: unknown) => error);
+    const detail = thrown instanceof Error ? thrown.message : String(thrown);
+
+    expect(detail).toContain('malformed SEARCH response');
+    expect(detail).not.toContain('connection already closed');
+    expect(logoutAttempted).toBe(true);
+    // The teardown failure is not silent, just not allowed to replace the real error.
+    const warnedAboutLogout = calls.some(
+      (call) => call.level === 'warn' && call.message.includes('logout'),
+    );
+    expect(warnedAboutLogout).toBe(true);
   });
 });

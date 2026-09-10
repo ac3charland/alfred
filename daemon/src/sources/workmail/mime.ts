@@ -76,9 +76,23 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * `String.slice` cuts by UTF-16 code unit, not by character. When the cap lands inside a
+ * surrogate pair (an emoji, most non-BMP characters), a plain `slice(0, max)` leaves a lone high
+ * surrogate dangling at the end. `TextEncoder` — what `fetch` does to a string body — turns that
+ * into `U+FFFD` on the wire, silently corrupting the last character. `codePointAt(max - 1)`
+ * reads the full character starting there: a value past the BMP (`> 0xffff`) means a pair spans
+ * the boundary, so backing off one more code unit keeps the cut on a real character boundary.
+ */
+function truncateAtCodePointBoundary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const boundarySplitsAPair = maxChars > 0 && (text.codePointAt(maxChars - 1) ?? 0) > 0xff_ff;
+  return text.slice(0, boundarySplitsAPair ? maxChars - 1 : maxChars);
+}
+
 function bodyOf(mail: ParsedMail): string {
   const text = mail.text ?? (typeof mail.html === 'string' ? htmlToText(mail.html) : '');
-  return text.trim().slice(0, MAX_BODY_CHARS);
+  return truncateAtCodePointBoundary(text.trim(), MAX_BODY_CHARS);
 }
 
 function listHeadersOf(mail: ParsedMail): string[] {

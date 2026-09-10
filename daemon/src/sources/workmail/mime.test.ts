@@ -79,6 +79,36 @@ describe('extractMessage', () => {
     expect(extracted?.body).toHaveLength(MAX_BODY_CHARS);
   });
 
+  it('backs off one code unit rather than splitting a surrogate pair at the cap', async () => {
+    // An emoji is two UTF-16 code units; placed to straddle the cap, a naive `slice(0,
+    // MAX_BODY_CHARS)` cuts between them and leaves a lone high surrogate dangling at the end —
+    // which `TextEncoder` (what `fetch` does to a string body) turns into U+FFFD.
+    const emoji = '😀';
+    const long = 'x'.repeat(MAX_BODY_CHARS - 1) + emoji + 'y'.repeat(50);
+    const extracted = await extractMessage('ignored', () =>
+      Promise.resolve({
+        attachments: [],
+        headers: new Map(),
+        headerLines: [],
+        html: false,
+        text: long,
+      }),
+    );
+
+    const body = extracted?.body ?? '';
+    expect(body).toHaveLength(MAX_BODY_CHARS - 1);
+    expect(body.endsWith('x')).toBe(true);
+    const lastCode = body.codePointAt(body.length - 1) ?? 0;
+    expect(lastCode >= 0xd8_00 && lastCode <= 0xdb_ff).toBe(false);
+    // No lone surrogate reaches the wire as a replacement character.
+    const encoded = [...new TextEncoder().encode(body)];
+    const replacementBytes = [0xef, 0xbf, 0xbd];
+    const hasReplacementChar = encoded.some((_, index) =>
+      replacementBytes.every((byte, offset) => encoded[index + offset] === byte),
+    );
+    expect(hasReplacementChar).toBe(false);
+  });
+
   it('gives back nothing when the parser cannot make sense of the message', async () => {
     const extracted = await extractMessage('anything', () => Promise.reject(new Error('bad MIME')));
 

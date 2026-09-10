@@ -4,6 +4,8 @@ import { promisify } from 'node:util';
 import type { WorkmailSourceConfig } from '../../config.ts';
 import type { NormalizedMessage } from '../../contract.ts';
 import { WORKMAIL_PASSWORD_SECRET, createKeychain } from '../../keychain.ts';
+import { createLogger } from '../../log.ts';
+import type { Logger } from '../../log.ts';
 import type { PollResult, Source, SourceContext } from '../types.ts';
 import { connectImap, describeImapFailure } from './imap-client.ts';
 import type { ImapConnect, ImapMailboxListing, ImapSession } from './imap-client.ts';
@@ -51,6 +53,8 @@ export interface WorkmailSourceDeps {
   /** Resolves a secret by name. Defaults to the keychain, which is where the password lives. */
   secrets?: (name: string) => Promise<string>;
   parse?: MimeParser;
+  /** Where a swallowed teardown failure gets reported. Defaults to the real logger (stderr). */
+  log?: Logger;
 }
 
 /** The names a sent folder goes by when the server advertises no `\Sent` special-use flag. */
@@ -125,6 +129,7 @@ export function createWorkmailSource(
   const connect = deps.connect ?? connectImap;
   const parse = deps.parse ?? parseMime;
   const secrets = deps.secrets ?? keychainSecrets(config.user);
+  const log = deps.log ?? createLogger();
   const fail = (error: unknown): string =>
     error instanceof SecretUnavailable
       ? error.message
@@ -144,7 +149,18 @@ export function createWorkmailSource(
     try {
       return await run(session);
     } finally {
-      await session.logout();
+      // A connection `run()` failed on is often already dead, and imapflow's own `logout()`
+      // rejects on a dead connection (`NoConnection`). An unguarded await here would let that
+      // teardown failure REPLACE whatever `run()` threw, per plain JS `finally` semantics — so
+      // the health surface reports "connection already closed" while the real cause (a malformed
+      // SEARCH response, say) is lost. Log it and swallow it instead: teardown failing is still
+      // visible, but never at the cost of the error that actually explains what went wrong.
+      await session.logout().catch((error: unknown) => {
+        log.warn('IMAP logout failed — the connection was likely already gone', {
+          source: 'workmail',
+          error: describe(error),
+        });
+      });
     }
   }
 
@@ -173,7 +189,8 @@ export function createWorkmailSource(
 
     const ascending = [...found];
     ascending.sort((a, b) => a - b);
-    const fetched = await session.fetchUids(ascending.slice(0, MAX_MESSAGES_PER_MAILBOX));
+    const requested = ascending.slice(0, MAX_MESSAGES_PER_MAILBOX);
+    const fetched = await session.fetchUids(requested);
 
     const messages = await Promise.all(
       fetched.map(async (message) =>
@@ -194,8 +211,21 @@ export function createWorkmailSource(
     // Never past what was emitted: a capped poll continues from the last message it sent. With
     // nothing to send, a resumed mailbox holds still and a re-seeded one starts at what exists
     // now — anything older than the anchor is deliberately never ingested.
+    //
+    // The walk is over `requested` — the uids SEARCH said exist — not over `fetched`: a FETCH
+    // response can come back missing a uid mid-batch (a concurrent expunge, a flaky server) while
+    // still returning a LATER one in the same batch. Taking the max of what was merely returned
+    // would let the cursor jump past the gap, and the next poll's `searchFrom(cursor + 1)` would
+    // never ask for the missing uid again — a silent, permanent loss. Stopping at the first gap
+    // instead means the next poll re-requests everything from there on, so a missing uid is
+    // retried rather than skipped; a uid fetched past the gap (like 12 above) simply gets asked
+    // for again, which is a harmless no-op at the ingest endpoint.
+    const fetchedUids = new Set(fetched.map((message) => message.uid));
     let highest = 0;
-    for (const message of fetched) highest = Math.max(highest, message.uid);
+    for (const uid of requested) {
+      if (!fetchedUids.has(uid)) break;
+      highest = uid;
+    }
     const unchanged = resume?.uid ?? Math.max(status.uidnext - 1, 0);
 
     return {
