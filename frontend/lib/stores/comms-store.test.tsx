@@ -122,8 +122,24 @@ describe('commsReducer', () => {
 
   it('merges verdicts into the by-id map', () => {
     const verdict = makeCommVerdict('m1');
-    const state = commsReducer(empty, { type: 'verdicts', verdicts: [verdict] });
+    const state = commsReducer(empty, {
+      type: 'verdicts',
+      action: { type: 'upsert', verdicts: [verdict] },
+    });
     expect(state.verdictsById[verdict.id]).toBe(verdict);
+  });
+
+  it('evicts a verdict from the by-id map on a remove action', () => {
+    const verdict = makeCommVerdict('m1');
+    const withVerdict = commsReducer(empty, {
+      type: 'verdicts',
+      action: { type: 'upsert', verdicts: [verdict] },
+    });
+    const state = commsReducer(withVerdict, {
+      type: 'verdicts',
+      action: { type: 'remove', ids: [verdict.id] },
+    });
+    expect(state.verdictsById[verdict.id]).toBeUndefined();
   });
 
   it('replaces the classifier health row wholesale', () => {
@@ -208,15 +224,26 @@ describe('healthStreamValue', () => {
 });
 
 describe('verdictStreamAction', () => {
-  it('adds an arriving verdict', () => {
+  it('upserts an arriving verdict', () => {
     const verdict = makeCommVerdict('m1');
-    expect(verdictStreamAction(payload<CommVerdict>('INSERT', verdict))).toEqual([verdict]);
+    expect(verdictStreamAction(payload<CommVerdict>('INSERT', verdict))).toEqual({
+      type: 'upsert',
+      verdicts: [verdict],
+    });
   });
 
-  it('ignores an update or a delete — verdicts are an append-only audit log, never revised in place', () => {
+  it('ignores an update — the classifier never revises a verdict in place', () => {
     const verdict = makeCommVerdict('m1');
     expect(verdictStreamAction(payload<CommVerdict>('UPDATE', verdict))).toBeNull();
-    expect(verdictStreamAction(payload<CommVerdict>('DELETE', { id: verdict.id }))).toBeNull();
+  });
+
+  it('removes on a cascade delete, and ignores a delete payload carrying no id', () => {
+    const verdict = makeCommVerdict('m1');
+    expect(verdictStreamAction(payload<CommVerdict>('DELETE', { id: verdict.id }))).toEqual({
+      type: 'remove',
+      ids: [verdict.id],
+    });
+    expect(verdictStreamAction(payload<CommVerdict>('DELETE', {}))).toBeNull();
   });
 });
 
@@ -232,6 +259,9 @@ const SHELVED = makeCommMessage(ACCOUNT, {
   tier: 'fyi',
   judged_by: 'model',
 });
+// A fixed id (rather than makeCommVerdict's random default) so a test can name it directly
+// instead of reading it back out of the store.
+const SEEDED_VERDICT = makeCommVerdict(QUEUED.id, { id: 'v-seeded' });
 
 function useStore() {
   return {
@@ -252,7 +282,7 @@ function makeWrapper(messages: CommMessage[] = [QUEUED, SHELVED]) {
       <CommsProvider
         initialAccounts={[makeCommAccount('personal')]}
         initialMessages={messages}
-        initialVerdicts={[makeCommVerdict(QUEUED.id)]}
+        initialVerdicts={[SEEDED_VERDICT]}
         initialHealth={makeCommHealth()}
       >
         {children}
@@ -303,6 +333,19 @@ describe('comm_verdicts realtime subscription', () => {
     unmount();
 
     expect(mockRemoveChannel).toHaveBeenCalledTimes(4);
+  });
+
+  it('evicts a verdict from verdictsById on a cascade DELETE — the message it judged was purged', () => {
+    const { result } = renderHook(() => useStore(), { wrapper: makeWrapper() });
+    expect(result.current.verdicts[SEEDED_VERDICT.id]).toBeDefined();
+
+    act(() => {
+      mockRealtimeHandlers.get('comm_verdicts')?.(
+        payload<CommVerdict>('DELETE', { id: SEEDED_VERDICT.id }) as never,
+      );
+    });
+
+    expect(result.current.verdicts[SEEDED_VERDICT.id]).toBeUndefined();
   });
 });
 

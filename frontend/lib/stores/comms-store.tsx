@@ -90,10 +90,18 @@ export interface CommsActions {
   purge: (input: PurgeInput) => Promise<{ purged: number }>;
 }
 
+/**
+ * The verdict-store move an incoming `comm_verdicts` change makes: `upsert` adds/replaces
+ * entries by verdict id, `remove` evicts them.
+ */
+type VerdictStreamAction =
+  | { type: 'upsert'; verdicts: CommVerdict[] }
+  | { type: 'remove'; ids: string[] };
+
 type CommsAction =
   | { type: 'messages'; action: SimpleAction<CommMessage> }
   | { type: 'accounts'; action: SimpleAction<CommAccount> }
-  | { type: 'verdicts'; verdicts: CommVerdict[] }
+  | { type: 'verdicts'; action: VerdictStreamAction }
   | { type: 'health'; health: CommClassifierHealth | undefined };
 
 /**
@@ -109,8 +117,17 @@ export function commsReducer(state: CommsState, action: CommsAction): CommsState
       return { ...state, accounts: simpleReducer(state.accounts, action.action, 'comms account') };
     }
     case 'verdicts': {
-      const verdictsById = { ...state.verdictsById };
-      for (const verdict of action.verdicts) verdictsById[verdict.id] = verdict;
+      if (action.action.type === 'upsert') {
+        const verdictsById = { ...state.verdictsById };
+        for (const verdict of action.action.verdicts) verdictsById[verdict.id] = verdict;
+        return { ...state, verdictsById };
+      }
+      // Object.fromEntries + filter, not `delete`, so this stays clear of
+      // @typescript-eslint/no-dynamic-delete.
+      const removed = new Set(action.action.ids);
+      const verdictsById = Object.fromEntries(
+        Object.entries(state.verdictsById).filter(([id]) => !removed.has(id)),
+      );
       return { ...state, verdictsById };
     }
     case 'health': {
@@ -180,15 +197,32 @@ export function healthStreamValue(
 }
 
 /**
- * The verdict(s) an incoming `comm_verdicts` change adds to the store — `null` to ignore it.
- * `comm_verdicts` is an append-only audit log (a re-classification writes a new row rather than
- * revising an old one, per the 0034 migration), so only an INSERT ever carries a verdict to add;
- * an UPDATE or DELETE is not a shape the table produces and is ignored.
+ * The verdict-store move an incoming `comm_verdicts` change makes — `null` to ignore it.
+ *
+ * `comm_verdicts` is append-only from the classifier's side (a re-classification writes a new
+ * row rather than revising an old one, per the 0034 migration), so an UPDATE never lands and is
+ * ignored. But the table is NOT append-only end to end: `comm_verdicts.message_id references
+ * comm_messages (id) on delete cascade` (0034_comms.sql), and both the 60-day retention sweep
+ * and a manual purge delete `comm_messages` rows — each cascading a DELETE onto every verdict
+ * that judged them. Miss that and `verdictsById` leaks forever: an entry pointing at a message
+ * that no longer exists. Mirrors {@link messageStreamAction}: a DELETE payload carries only the
+ * replica identity, so a payload with no id removes nothing rather than guessing.
  */
 export function verdictStreamAction(
   payload: RealtimePostgresChangesPayload<CommVerdict>,
-): CommVerdict[] | null {
-  return payload.eventType === 'INSERT' ? [payload.new] : null;
+): VerdictStreamAction | null {
+  switch (payload.eventType) {
+    case 'INSERT': {
+      return { type: 'upsert', verdicts: [payload.new] };
+    }
+    case 'UPDATE': {
+      return null;
+    }
+    case 'DELETE': {
+      const { id } = payload.old;
+      return id === undefined ? null : { type: 'remove', ids: [id] };
+    }
+  }
 }
 
 const { StateContext, ActionsContext, useStateValue, useActions } = createContextPair<
@@ -278,8 +312,8 @@ export function CommsProvider({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'comm_verdicts' },
         (payload: RealtimePostgresChangesPayload<CommVerdict>) => {
-          const verdicts = verdictStreamAction(payload);
-          if (verdicts !== null) dispatch({ type: 'verdicts', verdicts });
+          const action = verdictStreamAction(payload);
+          if (action !== null) dispatch({ type: 'verdicts', action });
         },
       )
       .subscribe();
