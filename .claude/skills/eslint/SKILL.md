@@ -224,6 +224,18 @@ peers.map(priorityRank);            // error
 peers.map((peer) => priorityRank(peer));  // fine
 ```
 
+**`unicorn/no-useless-undefined` autofixes a no-op callback into an empty-function error**
+
+`--fix` rewrites `() => undefined` to `() => {}`, which `@typescript-eslint/no-empty-function`
+then reports — so `npm run lint` fails on code it just rewrote, and re-running never converges.
+Give the callback a real body rather than a shorter no-op (in tests, capture into an array
+nothing asserts on):
+
+```ts
+const captured: string[] = [];
+const log = createLogger({ out: (line) => captured.push(line), err: (line) => captured.push(line) });
+```
+
 **`unicorn/consistent-function-scoping` forbids a helper defined inside a `describe`**
 
 A test helper that closes over nothing (a fixture builder, a date-offset formatter) errors with *"Move function 'x' to the outer scope"* when it sits inside a `describe` block — the natural place to put a helper only that block uses. Define it at module scope alongside the file's other fixtures. Only a helper that genuinely closes over a `describe`-local binding may stay nested.

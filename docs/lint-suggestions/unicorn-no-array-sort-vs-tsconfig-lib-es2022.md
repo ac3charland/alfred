@@ -2,8 +2,9 @@
 
 **Rule(s):** `unicorn/no-array-sort` (autofixes to `Array#toSorted()`) + tsconfig
 `compilerOptions.lib` not including `es2023`
-**Package / scope:** frontend
-**Date / branch:** 2026-07-01 · claude/refetch-ticket-statuses-31flil
+**Package / scope:** frontend, workers
+**Date / branch:** 2026-07-01 · claude/refetch-ticket-statuses-31flil (hit again
+2026-09-09 · oneshot-comms-module, in `workers`, so the `lib` bump is wanted in both packages)
 
 ## What happened
 Sorting the keys of an object in a unit test:
@@ -55,3 +56,12 @@ step.
       `[1..7]` list to put a habit's weekday set in calendar order, because
       `activeDays.toSorted((a, b) => a - b)` doesn't type-check. The filter also dedupes, so
       it may be worth keeping; if it isn't, the clean form is a plain sorted copy.
+- [ ] `workers/src/comms/eval/fixtures.test.ts` — "covers all four tiers" compares a `Set` against
+      a `Set` to avoid sorting the tiers into a stable order; with `toSorted` the direct form is
+      `expect([...tiers].toSorted()).toEqual([...])`.
+- [ ] `workers/src/comms/prompt.test.ts` — the section-order test walks the index array with
+      `every((at, index) => index === 0 || at > order[index - 1])` instead of comparing it against
+      its own sorted copy, which is what it actually means.
+- [ ] `frontend/components/comms/comms-people-view.tsx` — the roster's alphabetical order goes
+      through `stableSorted(people, …)` because `[...people].toSorted(…)` doesn't type-check; the
+      shared helper is fine to keep, but `toSorted` says it directly.

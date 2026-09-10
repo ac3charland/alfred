@@ -439,7 +439,9 @@ roles + the `supabase_realtime` publication 0003 needs), applies **every** migra
 and asserts each RPC as the real `authenticated` / `anon` roles via `SET ROLE` — so a missing
 grant, an RLS gap, or a non-deferrable-unique 409 (the `0007` swap bug) is a red gate, not a
 shipped 500. Add a regression there for any new DB-semantics bug. See the `migration-lint` and
-`backpressure` skills.
+`backpressure` skills. When an assertion reads a `timestamptz` as text to check a date, render it
+in UTC (`(col at time zone 'utc')::text`): `::text` alone uses the session zone, so a check that
+passes on CI (UTC) fails on a laptop in another zone with no other symptom.
 
 ### `supabase db dump` and restoring the dump
 

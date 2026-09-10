@@ -321,10 +321,14 @@ Chromium), not unit tests:
 - **The `DragOverlay` clones the dragged item's text**, so `getByText(title)` matches **two**
   nodes mid-drag (the row + the floating clone). Capture any bounding boxes you need *before*
   pressing, or scope past the overlay.
-- **A re-parent's optimistic→reconcile re-render can swallow a click** that lands in the same
-  tick under load. Wrap a post-drop interaction (e.g. expanding the new parent) in
-  `expect(async () => …).toPass()`, clicking only while still collapsed so it never toggles
-  back shut.
+- **dnd-kit swallows the click that follows a drop, for 50ms.** On activation its pointer sensor
+  adds a capture-phase `click` → `stopPropagation` listener on `document`, and `detach()` only
+  removes it 50ms after `mouseup`. Two or three web-first assertions on the dropped row resolve
+  well inside that window on a fast machine, so the next click is eaten — the target takes focus
+  and nothing else happens, which reads as "the modal never opened" (and passes on slower CI).
+  Use `clickAfterDrop` (`e2e/support/drag.ts`), which retries the click until what it should open
+  is visible, clicking only while that's still absent so an open dialog is never clicked shut. A
+  sleep would also "work"; the retry is what keeps it honest.
 - Capture the working interaction as a **demo doc** (showboat skill) once green — for this visual
   change the evidence is screenshots (inbox handle → mid-drag overlay+highlight → filed), driven
   through the Playwright mock backend; never test-suite output.
