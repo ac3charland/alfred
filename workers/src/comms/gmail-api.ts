@@ -117,11 +117,11 @@ export interface GmailMessageList {
   /** True when more ids existed beyond `MAX_MESSAGE_IDS` and had to be left for next time. */
   truncated: boolean;
   /**
-   * Gmail's own resumption point for this EXACT listing (same `q`), forwarded whenever Gmail
-   * itself said there was another page. `undefined` when nothing more exists, and also when the
-   * only reason `truncated` is true is our own client-side cap slicing a single oversized
-   * response (a pathological case a real Gmail response respecting `maxResults` should not
-   * produce — see `MAX_MESSAGE_IDS`).
+   * Gmail's own resumption point for this EXACT listing (same `q`), forwarded whenever the LAST
+   * page fetched carried one — i.e. whenever Gmail itself said there was another page, whether or
+   * not our own cap was also why `truncated` is true. `undefined` only when the last page fetched
+   * had no `nextPageToken` at all (nothing more exists, or the pathological case of a single
+   * response handing back more ids than the `maxResults` we sent — see `MAX_MESSAGE_IDS`).
    *
    * This is what lets a caller resume the identical listing precisely, independent of the search
    * date's whole-SECOND granularity — see `gmail.ts`'s `finalizeListingCursor` for why that
@@ -227,7 +227,19 @@ export function gmailClient(token: string): GmailClient {
 
       // Sequential by necessity: each page's token is only known once the previous one lands.
       do {
-        const params: Record<string, string> = { maxResults: String(MAX_MESSAGE_IDS) };
+        // Request only what's still missing from the cap, NEVER a fixed `MAX_MESSAGE_IDS` on
+        // every page. Gmail's own docs: messages.list MAY return a page shorter than `maxResults`
+        // even when more results exist (documented, and common under load) — so a fixed request
+        // size lets `ids.length` overshoot the cap mid-loop (page 1 comes back short, page 2 comes
+        // back full), and the slice below would silently drop the overshoot tail while forwarding
+        // a `pageToken` that points PAST it, losing those ids for good. Clamping the request to
+        // the remaining budget makes that overshoot structurally impossible: no page can ever hand
+        // back more than we still have room to keep, so `pageToken` always lands exactly on the
+        // next unread id. The loop only re-enters with `ids.length < MAX_MESSAGE_IDS` (the `while`
+        // below), so this is always requesting between 1 and `MAX_MESSAGE_IDS` — never 0.
+        const params: Record<string, string> = {
+          maxResults: String(MAX_MESSAGE_IDS - ids.length),
+        };
         if (options.q !== undefined) params['q'] = options.q;
         if (pageToken !== undefined) params['pageToken'] = pageToken;
 
@@ -238,10 +250,15 @@ export function gmailClient(token: string): GmailClient {
         pageToken = page.value.nextPageToken;
       } while (pageToken !== undefined && ids.length < MAX_MESSAGE_IDS);
 
-      // Truncated whenever there is more we did not keep — either Gmail still had another page
-      // (`pageToken` survived the loop) or this page alone pushed us past the cap and the slice
-      // below drops the tail. Either way the caller must not treat this as "everything since the
-      // cursor" — see `planFetch` in gmail.ts for how it holds its ground instead.
+      // Truncated whenever there is more we did not keep. Normally that's `pageToken` surviving
+      // the loop — Gmail itself said there was another page. `ids.length > MAX_MESSAGE_IDS` is
+      // now a defensive fallback rather than a real path: with the per-page request above capped
+      // to the remaining budget, no single page we asked for should ever be able to push the
+      // running total past the cap on its own — the one way it still could is a single response
+      // handing back MORE ids than the `maxResults` we sent, which would itself be Gmail violating
+      // the contract `maxResults` documents (see `MAX_MESSAGE_IDS`). Either way the caller must
+      // not treat this as "everything since the cursor" — see `planFetch` in gmail.ts for how it
+      // holds its ground instead.
       const truncated = pageToken !== undefined || ids.length > MAX_MESSAGE_IDS;
       // `pageToken` here is exactly Gmail's own answer for "what's next" — forwarded as-is so a
       // caller resuming this listing can skip straight past everything already read.

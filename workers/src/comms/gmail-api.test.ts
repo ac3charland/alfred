@@ -71,6 +71,49 @@ describe('gmailClient', () => {
     });
   });
 
+  it('never drops ids when a short first page is followed by a full one (regression)', async () => {
+    // Gmail's own docs: messages.list MAY return a page shorter than `maxResults` even when more
+    // results exist (documented, and common under load). Requesting the SAME `maxResults` on
+    // every page regardless of how many ids are already collected lets the running total overshoot
+    // `MAX_MESSAGE_IDS` mid-loop — the slice back down to the cap then silently drops the
+    // overshoot tail, and the page token forwarded from that page points PAST the dropped ids, so
+    // they are never listed again. A fixed-size mailbox pool, paged by an offset token and honoring
+    // whatever `maxResults` was actually requested, reproduces the exact shape from production:
+    // page 1 comes back short (300, not the 500 asked for) though 600 more ids are waiting.
+    const total = MAX_MESSAGE_IDS + 400; // 900 — comfortably more than one page's worth twice over
+    const pool = Array.from({ length: total }, (_value, index) => `m${String(index)}`);
+    mockGmail((call) => {
+      const params = query(call.url);
+      const requested = Number(params.get('maxResults'));
+      const offset = params.get('pageToken') === null ? 0 : Number(params.get('pageToken'));
+      // Gmail's documented "may return fewer" quirk, forced on the very first page only — later
+      // pages return exactly what was asked for, which is what lets a buggy fixed `maxResults`
+      // push the running total past the cap.
+      const size = offset === 0 ? Math.min(300, requested) : requested;
+      const page = pool.slice(offset, offset + size);
+      const nextOffset = offset + page.length;
+      const body: { messages: { id: string }[]; nextPageToken?: string } = {
+        messages: page.map((id) => ({ id })),
+      };
+      if (nextOffset < pool.length) body.nextPageToken = String(nextOffset);
+      return Response.json(body);
+    });
+
+    const first = await gmailClient('t').listMessageIds({});
+    if (!first.ok) throw new Error('expected the first listing to succeed');
+    expect(first.value.ids).toHaveLength(MAX_MESSAGE_IDS);
+    expect(first.value.truncated).toBe(true);
+
+    // The whole point: resuming from the token this call handed back must pick up exactly where
+    // the returned ids left off (id 500) — never skip forward to wherever an overshooting page's
+    // own cursor happened to land (id 800), which is what silently drops ids 500-799 forever.
+    const resumed = await gmailClient('t').listMessageIds({ pageToken: first.value.pageToken });
+    if (!resumed.ok) throw new Error('expected the resumed listing to succeed');
+
+    const seen = new Set([...first.value.ids, ...resumed.value.ids]);
+    for (const id of pool) expect(seen.has(id)).toBe(true);
+  });
+
   it('seeds a listing from a caller-supplied page token, picking up where a previous truncated call left off', async () => {
     const calls = mockGmail((call) =>
       query(call.url).get('pageToken') === 'resume-here'
