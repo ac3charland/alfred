@@ -160,6 +160,36 @@ describe('createIngestClient', () => {
     expect(result.ok ? '' : result.error).toContain('401');
   });
 
+  it('surfaces the status and marks a 401 non-retryable — a rotated secret needs a fix, not a faster retry', async () => {
+    const { fetch } = recordingFetch(() =>
+      Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve('bad signature') }),
+    );
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, status: 401, retryable: false });
+  });
+
+  it('marks every 4xx non-retryable, not only 401', async () => {
+    const { fetch } = recordingFetch(() =>
+      Promise.resolve({ ok: false, status: 400, text: () => Promise.resolve('bad body') }),
+    );
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, status: 400, retryable: false });
+  });
+
+  it('marks a 5xx retryable — this is exactly the transient case retrying exists for', async () => {
+    const { fetch } = recordingFetch(() =>
+      Promise.resolve({ ok: false, status: 503, text: () => Promise.resolve('unconfigured') }),
+    );
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, status: 503, retryable: true });
+  });
+
   it('reports a transport failure as a failure rather than throwing', async () => {
     const { fetch } = recordingFetch(() => Promise.reject(new Error('ECONNREFUSED')));
 
@@ -169,12 +199,29 @@ describe('createIngestClient', () => {
     expect(result.ok ? '' : result.error).toContain('ECONNREFUSED');
   });
 
+  it('marks a transport failure retryable — a network blip is transient by nature, and carries no status at all', async () => {
+    const { fetch } = recordingFetch(() => Promise.reject(new Error('ECONNREFUSED')));
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, retryable: true });
+    expect(result.ok ? undefined : result.status).toBeUndefined();
+  });
+
   it('reports an unparseable 200 body as a failure', async () => {
     const { fetch } = recordingFetch(ok('<html>proxy error</html>'));
 
     const result = await client(fetch).send(payload());
 
     expect(result.ok).toBe(false);
+  });
+
+  it('marks an unparseable 200 body retryable — it reads as a proxy hiccup, not a rejection', async () => {
+    const { fetch } = recordingFetch(ok('<html>proxy error</html>'));
+
+    const result = await client(fetch).send(payload());
+
+    expect(result).toMatchObject({ ok: false, retryable: true, status: 200 });
   });
 
   it('never logs the secret', async () => {

@@ -2,6 +2,7 @@ import type { IngestPayload, NormalizedMessage } from './contract.ts';
 import { createHeartbeatSchedule } from './heartbeat.ts';
 import type { SendResult } from './ingest-client.ts';
 import { createLogger } from './log.ts';
+import type { LogFields, Logger } from './log.ts';
 import { createSourceRunner } from './runner.ts';
 import type { SourceRunnerDeps } from './runner.ts';
 import type { PollResult, Source, SourceContext } from './sources/types.ts';
@@ -71,6 +72,34 @@ function accepted(overrides: Record<string, unknown> = {}): SendResult {
   };
 }
 
+/** A transient rejection — the ordinary case backoff exists to slow down, not stop. */
+function retryableFailure(error = 'ingest POST rejected with 503'): SendResult {
+  return { ok: false, error, status: 503, retryable: true };
+}
+
+/** A rejection that will not resolve itself by trying again — a rotated secret, say. */
+function nonRetryableFailure(error = 'ingest POST rejected with 401'): SendResult {
+  return { ok: false, error, status: 401, retryable: false };
+}
+
+interface LoggedCall {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  fields?: LogFields;
+}
+
+/** Records every call by level, so a test can assert not just THAT something was logged but how
+ * loudly — the whole point of distinguishing a transient failure from a config one. */
+function spyLogger(): { calls: LoggedCall[]; log: Logger } {
+  const calls: LoggedCall[] = [];
+  const record =
+    (level: LoggedCall['level']) =>
+    (message: string, fields?: LogFields): void => {
+      calls.push(fields === undefined ? { level, message } : { level, message, fields });
+    };
+  return { calls, log: { info: record('info'), warn: record('warn'), error: record('error') } };
+}
+
 interface Harness {
   sent: IngestPayload[];
   printed: string[];
@@ -84,6 +113,7 @@ function harness(
     send?: (payload: IngestPayload) => Promise<SendResult>;
     dryRun?: boolean;
     initial?: SourceState;
+    log?: Logger;
   } = {},
 ): Harness {
   const sent: IngestPayload[] = [];
@@ -103,7 +133,9 @@ function harness(
         return send(payload);
       },
       heartbeats: createHeartbeatSchedule(),
-      log: createLogger({ out: (line) => captured.push(line), err: (line) => captured.push(line) }),
+      log:
+        options.log ??
+        createLogger({ out: (line) => captured.push(line), err: (line) => captured.push(line) }),
       print: (line) => printed.push(line),
       dryRun: options.dryRun ?? false,
       ...(options.initial === undefined ? {} : { initial: options.initial }),
@@ -173,9 +205,7 @@ describe('createSourceRunner', () => {
     const { sent, deps } = harness(source, {
       send: () => {
         attempt += 1;
-        return Promise.resolve(
-          attempt === 1 ? { ok: false, error: 'ingest POST rejected with 503' } : accepted(),
-        );
+        return Promise.resolve(attempt === 1 ? retryableFailure() : accepted());
       },
     });
     const runner = createSourceRunner(deps);
@@ -185,6 +215,131 @@ describe('createSourceRunner', () => {
 
     expect(sent).toHaveLength(2);
     expect(sent[1]?.messages).toEqual([message('m1')]);
+  });
+
+  it('does not retry a rejected batch before its backoff delay has elapsed', async () => {
+    let attempts = 0;
+    const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
+    const { sent, deps } = harness(source, {
+      send: () => {
+        attempts += 1;
+        return Promise.resolve(retryableFailure());
+      },
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW);
+    // Well under the backoff delay a first failure schedules — a still-failing endpoint must not
+    // be hammered at full ~5s poll cadence.
+    await runner.tick(later(1000));
+
+    expect(attempts).toBe(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('retries again once the backoff delay elapses', async () => {
+    let attempts = 0;
+    const { source } = scriptedSource([
+      polled([message('m1')], { rowid: 7 }),
+      () => Promise.resolve(empty({ rowid: 7 })),
+    ]);
+    const { sent, deps } = harness(source, {
+      send: () => {
+        attempts += 1;
+        return Promise.resolve(attempts === 1 ? retryableFailure() : accepted());
+      },
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW);
+    await runner.tick(later(5000));
+
+    expect(attempts).toBe(2);
+    expect(sent).toHaveLength(2);
+  });
+
+  it('grows the backoff delay across consecutive failures instead of retrying at a fixed cadence', async () => {
+    const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
+    const { sent, deps } = harness(source, { send: () => Promise.resolve(retryableFailure()) });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW); // attempt 1 fails — schedules a short backoff
+    await runner.tick(later(5000)); // attempt 2 fails — backoff grows
+    // Short enough to have cleared attempt 1's delay but not attempt 2's larger one.
+    await runner.tick(later(7000));
+
+    expect(sent).toHaveLength(2);
+  });
+
+  it('logs a retryable rejection as a warning, not an error — this is the ordinary transient case', async () => {
+    const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
+    const { calls, log } = spyLogger();
+    const { deps } = harness(source, { send: () => Promise.resolve(retryableFailure()), log });
+
+    await createSourceRunner(deps).tick(NOW);
+
+    expect(calls.some((call) => call.level === 'error')).toBe(false);
+    expect(calls.some((call) => call.level === 'warn')).toBe(true);
+  });
+
+  it('escalates a non-retryable rejection to an error, loudly, instead of a warning every tick', async () => {
+    const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
+    const { calls, log } = spyLogger();
+    const { deps } = harness(source, {
+      send: () => Promise.resolve(nonRetryableFailure()),
+      log,
+    });
+
+    await createSourceRunner(deps).tick(NOW);
+
+    const errors = calls.filter((call) => call.level === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.fields).toMatchObject({ status: 401, retryable: false });
+  });
+
+  it('backs off a non-retryable rejection too, rather than hammering a config problem every tick', async () => {
+    let attempts = 0;
+    const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
+    const { sent, deps } = harness(source, {
+      send: () => {
+        attempts += 1;
+        return Promise.resolve(nonRetryableFailure());
+      },
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW);
+    await runner.tick(later(1000));
+
+    expect(attempts).toBe(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('resets the backoff once a send succeeds, so a later failure is not throttled by an old streak', async () => {
+    let attempts = 0;
+    const { source } = scriptedSource([
+      polled([message('m1')], { rowid: 7 }), // tick1: fails
+      polled([message('m2')], { rowid: 8 }), // tick2: succeeds — resets the streak
+      polled([message('m3')], { rowid: 9 }), // tick3: fails again — a FRESH streak
+      () => Promise.resolve(empty({ rowid: 9 })), // tick4: nothing new; m3 is still pending
+    ]);
+    const { sent, deps } = harness(source, {
+      send: () => {
+        attempts += 1;
+        return Promise.resolve(attempts === 2 ? accepted() : retryableFailure());
+      },
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW); // attempt 1 fails
+    await runner.tick(later(5000)); // attempt 2 succeeds — resets the streak
+    await runner.tick(later(5001)); // attempt 3 fails — a fresh streak, so a SHORT backoff again
+    // Long enough to clear a fresh, short backoff, but well short of what a SECOND consecutive
+    // failure in an un-reset streak would have required — this is what distinguishes the two.
+    await runner.tick(later(5001 + 6000));
+
+    expect(attempts).toBe(4);
+    expect(sent).toHaveLength(4);
   });
 
   it('stays quiet between beats when there is nothing to send', async () => {
@@ -281,7 +436,7 @@ describe('createSourceRunner', () => {
   it('does not cache anything when the batch was never accepted', async () => {
     const { source } = scriptedSource([polled([message('m1')], { rowid: 7 })]);
     const { persisted, deps } = harness(source, {
-      send: () => Promise.resolve({ ok: false, error: 'ingest POST rejected with 503' }),
+      send: () => Promise.resolve(retryableFailure()),
     });
 
     await createSourceRunner(deps).tick(NOW);

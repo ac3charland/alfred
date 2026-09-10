@@ -50,6 +50,28 @@ function parseStamp(value: string | undefined): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+/**
+ * Retry backoff after a rejected send. Doubles with each consecutive failure so a dead or
+ * misconfigured endpoint is checked on periodically rather than hammered at the full ~5s poll
+ * cadence forever — the exact failure mode a rotated HMAC secret produced (see runner.test.ts and
+ * the `mac-daemon` skill). Capped, on both curves, so a still-broken endpoint is still checked
+ * eventually rather than abandoned.
+ *
+ * A non-retryable (4xx) failure gets a longer cap than a retryable (5xx/network) one: nothing
+ * about waiting fixes a rejected secret, so there is no point checking it as often as a plain
+ * outage that might clear on its own — it still gets retried (stopping entirely would mean the
+ * pending buffer overflows with nobody told why), just less eagerly.
+ */
+const INITIAL_RETRY_DELAY_MS = 5000;
+const RETRYABLE_MAX_DELAY_MS = 5 * 60_000;
+const NON_RETRYABLE_MAX_DELAY_MS = 15 * 60_000;
+
+function backoffDelayMs(consecutiveFailures: number, retryable: boolean): number {
+  const cap = retryable ? RETRYABLE_MAX_DELAY_MS : NON_RETRYABLE_MAX_DELAY_MS;
+  const delay = INITIAL_RETRY_DELAY_MS * 2 ** Math.max(0, consecutiveFailures - 1);
+  return Math.min(delay, cap);
+}
+
 export function createSourceRunner(deps: SourceRunnerDeps): SourceRunner {
   const { source, log } = deps;
   const pending =
@@ -71,6 +93,10 @@ export function createSourceRunner(deps: SourceRunnerDeps): SourceRunner {
   let serverCursor: unknown;
   let lastSeenAt = parseStamp(deps.initial?.lastSeenAt);
   let ownerHandles: string[] = [];
+  /** Consecutive rejected sends. Reset to 0 on the next accepted send — see `backoffDelayMs`. */
+  let consecutiveSendFailures = 0;
+  /** Epoch ms before which a send is not attempted again. `undefined` means "no backoff owed". */
+  let nextSendAttemptAtMs: number | undefined;
 
   async function tick(now: Date): Promise<void> {
     const resume = resumeFrom({
@@ -115,6 +141,11 @@ export function createSourceRunner(deps: SourceRunnerDeps): SourceRunner {
     // Liveness coalesces: with nothing to send, at most one POST a minute per source.
     if (messages.length === 0 && !deps.heartbeats.due(source.key, now)) return;
 
+    // Back off after a rejected send instead of retrying at full poll cadence: polling above still
+    // ran (chat.db/IMAP are local and cheap to check), only the network attempt is throttled. A
+    // batch withheld here is not lost — it just waits in `pending` for the next attempt.
+    if (nextSendAttemptAtMs !== undefined && now.getTime() < nextSendAttemptAtMs) return;
+
     const payload: IngestPayload = {
       version: INGEST_PAYLOAD_VERSION,
       account: {
@@ -130,15 +161,41 @@ export function createSourceRunner(deps: SourceRunnerDeps): SourceRunner {
 
     const result = await deps.send(payload);
     if (!result.ok) {
-      // Nothing is dropped and no beat is recorded: the next tick tries again with the same batch.
-      log.warn('batch not accepted — keeping it for the next tick', {
+      // Nothing is dropped and no beat is recorded: the next tick tries again with the same batch,
+      // no sooner than the backoff below allows.
+      consecutiveSendFailures += 1;
+      const delay = backoffDelayMs(consecutiveSendFailures, result.retryable);
+      nextSendAttemptAtMs = now.getTime() + delay;
+
+      const fields = {
         source: source.key,
         messages: messages.length,
         error: result.error,
-      });
+        status: result.status,
+        retryable: result.retryable,
+        consecutiveFailures: consecutiveSendFailures,
+        retryInMs: delay,
+      };
+      if (result.retryable) {
+        log.warn('batch not accepted — keeping it for the next tick', fields);
+      } else {
+        // A 4xx means the endpoint rejected the request itself — a rotated HMAC secret is the
+        // headline case — not a transient outage, and no amount of retrying fixes that on its
+        // own. This has to be LOUD and stay loud for as long as it persists: `pending` keeps
+        // growing while this fails, and it drops its OLDEST messages once it hits its cap, so
+        // every extra minute this goes unnoticed is messages permanently and silently lost.
+        log.error(
+          'ingest rejected the batch outright — this looks like a configuration problem (e.g. a ' +
+            'rotated HMAC secret), not an outage; messages are queuing and will be DROPPED once ' +
+            'the pending buffer fills',
+          fields,
+        );
+      }
       return;
     }
 
+    consecutiveSendFailures = 0;
+    nextSendAttemptAtMs = undefined;
     pending.clear();
     deps.heartbeats.record(source.key, now);
     serverCursor = result.response.cursor;
