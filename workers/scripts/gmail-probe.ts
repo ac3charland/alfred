@@ -79,7 +79,9 @@ async function accessToken(
   if (!response.ok) {
     throw new Error(`token exchange failed: ${String(response.status)} ${await response.text()}`);
   }
-  const payload = (await response.json()) as { access_token?: string };
+  // `text()` then `JSON.parse`: under the scripts tsconfig `Response.json()` resolves to an
+  // error type (two `Response` declarations in scope), and the lint refuses the assignment.
+  const payload = JSON.parse(await response.text()) as { access_token?: string };
   const token = payload.access_token ?? '';
   if (token === '') throw new Error('token response carried no access_token');
   return token;
@@ -96,7 +98,7 @@ async function api<T>(token: string, path: string, params: [string, string][]): 
   if (!response.ok) {
     throw new Error(`GET ${path} failed: ${String(response.status)} ${await response.text()}`);
   }
-  return (await response.json()) as T;
+  return JSON.parse(await response.text()) as T;
 }
 
 /** Probe one account and print what it found. */
