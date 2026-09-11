@@ -284,6 +284,40 @@ describe('ingestMessages', () => {
     expect(result).toEqual({ accepted: 1, duplicates: 1, drained: 0 });
   });
 
+  it('sends every row with an identical key set, whatever optional fields each message has', async () => {
+    // PostgREST rejects a bulk insert whose objects differ in shape at all — `PGRST102: All object
+    // keys must match` — and it rejects the WHOLE batch, so one odd row loses every message beside
+    // it. `JSON.stringify` drops an `undefined` value's key entirely, so a batch that mixes a group
+    // chat (`chat_name`) with a 1:1 (none) is exactly such a batch. Real iMessage traffic mixes them
+    // constantly: 214 messages went nowhere, retried forever, while a 2-message IMAP batch that
+    // happened to be uniform sailed through. Absent optionals must therefore serialize as explicit
+    // JSON nulls, not vanish.
+    const calls = mockSupabase(() => Response.json([{ id: 'message-1' }]));
+
+    await ingestMessages(
+      env,
+      account(),
+      [
+        message({ source_id: 'guid-1', chat_name: 'Invoices', subject: 'Q3 invoice' }),
+        message({ source_id: 'guid-2' }),
+      ],
+      NOW,
+    );
+
+    const [call] = calls as [Call];
+    const rows = call.body as Record<string, unknown>[];
+    expect(rows).toHaveLength(2);
+    const [first, second] = rows as [Record<string, unknown>, Record<string, unknown>];
+    // A set, because "identical key set" is literally what PostgREST checks (and order is not).
+    expect(new Set(Object.keys(second))).toEqual(new Set(Object.keys(first)));
+    // And the absent ones are present-as-null rather than simply missing.
+    expect(second['chat_name']).toBe(WIRE_NULL);
+    expect(second['subject']).toBe(WIRE_NULL);
+    expect(second['rfc822_message_id']).toBe(WIRE_NULL);
+    expect(second['sender_name']).toBe(WIRE_NULL);
+    expect(second['in_reply_to']).toBe(WIRE_NULL);
+  });
+
   it('maps a normalized message onto the message columns', async () => {
     const calls = mockSupabase(() => Response.json([{ id: 'message-1' }]));
 

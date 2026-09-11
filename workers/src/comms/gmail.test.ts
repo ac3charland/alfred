@@ -609,6 +609,9 @@ describe('pollGmail', () => {
       direction: 'inbound',
       sender_handle: 'dana@example.com',
       sender_name: 'Dana Whitfield',
+      // Mail has no chat name, but the key still ships — as an explicit null, so every row in a
+      // batch has the same shape and PostgREST accepts the bulk insert (PGRST102).
+      chat_name: WIRE_NULL,
       participants: ['owner@example.com', 'sam@example.com', 'cc@example.com'],
       subject: 'the invoice',
       body: 'can you look at this',
