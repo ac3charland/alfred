@@ -36,6 +36,11 @@ export interface PendingBuffer {
   /** The configured bound `size()` is expected to stay under. Exposed so a caller can tell, on
    * its own, whether the buffer is currently over it — see runner.ts's heartbeat escalation. */
   limit(): number;
+  /** Forget the first `count` held messages — the ones a send just got accepted. The runner sends
+   * one bounded chunk per tick, so acceptance is partial by design and `clear()` would throw away
+   * the untried remainder, whose source cursors have already moved past them. Clamped at both
+   * ends, so a miscounted call can never drop more than is held. */
+  drop(count: number): void;
   clear(): void;
 }
 
@@ -53,6 +58,10 @@ export function createPendingBuffer(options: PendingBufferOptions = {}): Pending
     all: () => [...held],
     size: () => held.length,
     limit: () => limit,
+    drop(count) {
+      if (count <= 0) return;
+      held = held.slice(count);
+    },
     clear() {
       held = [];
     },
