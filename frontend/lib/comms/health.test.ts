@@ -119,4 +119,54 @@ describe('classifierStalled', () => {
 
     expect(classifierStalled(health, [waiting], NOW).since).toBe(minutesAgo(95));
   });
+
+  it('ignores an unjudged row a reply already drained — the sweep never judges one either', () => {
+    // The backfill's own outbound messages clear the threads behind them, so a week of history
+    // arrives already answered and permanently unjudged. `fetchUnjudgedMessages` filters these
+    // out; counting them here reported a stall dated before the classifier existed.
+    const cleared = makeCommMessage(ACCOUNT, {
+      received_at: minutesAgo(10_000),
+      cleared_at: minutesAgo(9000),
+      cleared_by: 'reply',
+    });
+    const health = makeCommHealth({ last_success_at: minutesAgo(1) });
+
+    expect(classifierStalled(health, [cleared], NOW)).toEqual({ stalled: false, since: null });
+  });
+
+  it('stays quiet while judgment is visibly draining a backlog', () => {
+    // The sweep judges a capped batch per tick, so a first run over a week of history leaves
+    // rows waiting far longer than the cadence while working exactly as designed.
+    const waiting = makeCommMessage(ACCOUNT, { received_at: minutesAgo(4000) });
+    const judged = makeCommMessage(ACCOUNT, {
+      tier: 'today',
+      judged_by: 'model',
+      classified_at: minutesAgo(2),
+    });
+
+    const health = makeCommHealth({ last_success_at: minutesAgo(1) });
+
+    expect(classifierStalled(health, [waiting, judged], NOW)).toEqual({
+      stalled: false,
+      since: null,
+    });
+  });
+
+  it('dates a stall from the last verdict it managed, not from when the message arrived', () => {
+    // An old message ingested into a dead classifier must not backdate the outage to its own
+    // arrival: judgment demonstrably worked until the last verdict it wrote.
+    const waiting = makeCommMessage(ACCOUNT, { received_at: minutesAgo(10_000) });
+    const judged = makeCommMessage(ACCOUNT, {
+      tier: 'fyi',
+      judged_by: 'model',
+      classified_at: minutesAgo(120),
+    });
+
+    const health = makeCommHealth({ last_success_at: minutesAgo(1) });
+
+    expect(classifierStalled(health, [waiting, judged], NOW)).toEqual({
+      stalled: true,
+      since: minutesAgo(120),
+    });
+  });
 });

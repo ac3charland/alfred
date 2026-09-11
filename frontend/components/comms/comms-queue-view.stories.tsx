@@ -261,6 +261,21 @@ function shelfRows(count: number): CommMessage[] {
   );
 }
 
+/**
+ * A week of iMessage history the owner had already answered before alfred ever saw it: inbound,
+ * never judged, and cleared by the outbound reply that arrived in the same backfill.
+ */
+const ANSWERED_BACKFILL: CommMessage[] = Array.from({ length: 6 }, (_, index) =>
+  makeCommMessage('acct-imessage', {
+    id: `backfilled-${String(index)}`,
+    sender_handle: '+15551230000',
+    body: 'Answered days before alfred saw it.',
+    received_at: ago((index + 1) * DAY),
+    cleared_at: ago((index + 1) * DAY - HOUR),
+    cleared_by: 'reply',
+  }),
+);
+
 /** A fixed-width frame so the snapshot is a tight, deterministic crop of the module. */
 const withFrame: Decorator = (Story) => (
   <div data-testid="comms-frame" className="w-[760px] bg-background">
@@ -316,6 +331,31 @@ export const Resting: Story = {
       comms: {
         accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
         messages: [MARCUS, ...shelfRows(2441)],
+        verdicts: VERDICTS,
+        health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
+      },
+      commsSettings: { people: ROSTER },
+    },
+    visualTest: { target: '[data-testid="comms-frame"]' },
+  },
+};
+
+/**
+ * A backfill of threads the owner answered days ago, which is what the FIRST hour after the
+ * classifier is switched on actually looks like. The daemon brings in a week of iMessage history,
+ * the owner's own replies in it drain their threads on arrival, and those inbound rows are left
+ * permanently unjudged — correctly, since the sweep never judges a row a reply already cleared.
+ *
+ * Every dot is green, judgment is working, and there must be NO classifier banner: reading those
+ * rows as a queue nothing is judging reported an outage dated a week before the classifier had
+ * been switched on at all.
+ */
+export const FreshlyActivated: Story = {
+  parameters: {
+    store: {
+      comms: {
+        accounts: [PERSONAL, REALPLAY_LIVE, WORKMAIL_LIVE, IMESSAGE_LIVE],
+        messages: [MARCUS, ...ANSWERED_BACKFILL, ...shelfRows(2441)],
         verdicts: VERDICTS,
         health: makeCommHealth({ last_run_at: ago(MINUTE), last_success_at: ago(MINUTE) }),
       },
