@@ -739,3 +739,14 @@ export const habitsQuerySchema = z
   });
 
 export type HabitsQuery = z.infer<typeof habitsQuerySchema>;
+
+// ---------------------------------------------------------------------------
+// Comms (the communication firewall)
+//
+// Defined in `lib/api/comms-schemas` and re-exported here so every route handler and client
+// wrapper keeps ONE import path for request shapes. The Comms schemas live in their own file
+// because the queue and the settings surfaces are built independently and would otherwise
+// collide on one block of this one.
+// ---------------------------------------------------------------------------
+
+export * from '@/lib/api/comms-schemas';

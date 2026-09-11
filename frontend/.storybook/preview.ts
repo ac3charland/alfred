@@ -4,6 +4,8 @@ import React from 'react';
 import '../app/globals.css';
 import { ActiveEditorProvider } from '../lib/stores/active-editor-store';
 import { CodeFilterProvider } from '../lib/stores/code-filter-store';
+import { CommsSettingsProvider } from '../lib/stores/comms-settings-store';
+import { CommsProvider } from '../lib/stores/comms-store';
 import { DepartingItemsProvider } from '../lib/stores/departing-items-store';
 import { ExpansionProvider } from '../lib/stores/expansion-store';
 import { FoldersProvider } from '../lib/stores/folders-store';
@@ -12,7 +14,21 @@ import { InboxSelectionProvider } from '../lib/stores/inbox-selection-store';
 import { TasksProvider } from '../lib/stores/tasks-store';
 import { ToastProvider } from '../lib/stores/toast-store';
 import { WeeklyPlanProvider } from '../lib/stores/weekly-plan-store';
-import type { Folder, Habit, HabitEntry, Item, WeeklyPlan, WeeklyPlanSummary } from '../lib/types';
+import type {
+  CommAccount,
+  CommClassifierHealth,
+  CommCorrection,
+  CommMessage,
+  CommPersonWithHandles,
+  CommRubric,
+  CommVerdict,
+  Folder,
+  Habit,
+  HabitEntry,
+  Item,
+  WeeklyPlan,
+  WeeklyPlanSummary,
+} from '../lib/types';
 
 /** Per-story seeds for the data providers, set via `parameters.store`. */
 interface StoreSeed {
@@ -22,6 +38,19 @@ interface StoreSeed {
   weeklyPlans?: { index: WeeklyPlanSummary[]; latest?: WeeklyPlan };
   /** The habit definitions, their logged days, and the date the store treats as today. */
   habits?: { habits?: Habit[]; entries?: HabitEntry[]; today?: string };
+  /** The Comms queue's data: the accounts, their messages, the verdicts behind them, health. */
+  comms?: {
+    accounts?: CommAccount[];
+    messages?: CommMessage[];
+    verdicts?: CommVerdict[];
+    health?: CommClassifierHealth;
+  };
+  /** The Comms settings data: the roster, the rubric versions (newest first), the example set. */
+  commsSettings?: {
+    people?: CommPersonWithHandles[];
+    rubrics?: CommRubric[];
+    corrections?: CommCorrection[];
+  };
 }
 
 const preview: Preview = {
@@ -74,9 +103,28 @@ const preview: Preview = {
                             serverToday: seed.habits?.today ?? '2026-07-30',
                           },
                           React.createElement(
-                            'div',
-                            { className: 'dark min-h-screen bg-background text-foreground p-8' },
-                            React.createElement(Story),
+                            CommsProvider,
+                            {
+                              initialAccounts: seed.comms?.accounts ?? [],
+                              initialMessages: seed.comms?.messages ?? [],
+                              initialVerdicts: seed.comms?.verdicts ?? [],
+                              initialHealth: seed.comms?.health,
+                            },
+                            React.createElement(
+                              CommsSettingsProvider,
+                              {
+                                initialPeople: seed.commsSettings?.people ?? [],
+                                initialRubrics: seed.commsSettings?.rubrics ?? [],
+                                initialCorrections: seed.commsSettings?.corrections ?? [],
+                              },
+                              React.createElement(
+                                'div',
+                                {
+                                  className: 'dark min-h-screen bg-background text-foreground p-8',
+                                },
+                                React.createElement(Story),
+                              ),
+                            ),
                           ),
                         ),
                       ),

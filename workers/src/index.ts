@@ -7,9 +7,20 @@
  *   verify HMAC → it's a pull_request → parse the `alfred` block → plan the transition →
  *   PATCH the ticket(s) → (on refinement- or spike-merge) snapshot the document in the background.
  *
- * `scheduled` is the Inbox classifier, fired by the cron trigger in wrangler.toml. Both handlers
- * stay thin and delegate — the webhook to `handleWebhook`, the cron to `runSweep`.
+ * `fetch` also serves the Mac daemon's comms ingest endpoint — a second, unrelated POST route,
+ * signed with its own secret and its own scheme, delegating to `handleIngest`.
+ *
+ * `scheduled` is fired by the cron triggers in wrangler.toml, and dispatches on WHICH schedule
+ * fired: the frequent one runs the Inbox classifier and then the comms tick, the daily one runs
+ * the comms retention sweep. Every handler stays thin and delegates.
  */
+import { handleIngest } from './comms/ingest';
+import {
+  type CommsRetentionSummary,
+  type CommsTickSummary,
+  runCommsRetention,
+  runCommsTick,
+} from './comms/scheduled';
 import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
 import { verifySignature } from './hmac';
@@ -40,6 +51,18 @@ export interface Env {
   /** The IANA zone "friday" resolves against, e.g. `America/Chicago`. Also a `[vars]` entry. */
   CLASSIFIER_TIMEZONE: string;
   /**
+   * The secret the Mac daemon signs its ingest requests with, shared with nothing else. Optional
+   * for the same reason as the key above: it is set by hand, once, and until it is the endpoint
+   * has nothing to verify against and says so rather than accepting anything.
+   */
+  COMMS_INGEST_HMAC_SECRET?: string;
+  /** The Google OAuth client the two Gmail polls authenticate through. */
+  GMAIL_OAUTH_CLIENT_ID?: string;
+  GMAIL_OAUTH_CLIENT_SECRET?: string;
+  /** One refresh token per Gmail account. A client left in Testing issues 7-day tokens. */
+  GMAIL_PERSONAL_REFRESH_TOKEN?: string;
+  GMAIL_REALPLAY_REFRESH_TOKEN?: string;
+  /**
    * The commit this Worker was built from — a plain `[vars]` binding, NOT a secret, injected by
    * the deploy workflow (`--var WORKER_VERSION:<sha>`). Optional because a hand-run
    * `wrangler deploy` passes none.
@@ -52,6 +75,19 @@ export interface Env {
  * the useful reading: no CI run vouches for which commit is live.
  */
 const UNSTAMPED = 'unstamped';
+
+/**
+ * The frequent schedule: the Inbox classifier and the comms tick. Both live on it because neither
+ * is worth its own trigger and nobody is waiting on either.
+ */
+export const TICK_CRON = '*/2 * * * *';
+
+/**
+ * The daily retention sweep. Housekeeping rather than triage, so it runs alone, overnight, and
+ * never drags a model call along with it. These two strings must match wrangler.toml's `crons`:
+ * the runtime hands the handler the expression it fired, and that is all it has to dispatch on.
+ */
+export const RETENTION_CRON = '17 9 * * *';
 
 /** The `pull_request` payload fields we read (a tiny subset of GitHub's event). */
 interface PullRequestPayload {
@@ -91,7 +127,8 @@ export default {
     if (request.method === 'GET' && url.pathname === '/') {
       return new Response(
         `alfred workers ok (build ${env.WORKER_VERSION ?? UNSTAMPED}; ` +
-          `classifier ${env.CLASSIFIER_MODEL} @ ${env.CLASSIFIER_TIMEZONE})`,
+          `classifier ${env.CLASSIFIER_MODEL} @ ${env.CLASSIFIER_TIMEZONE}; ` +
+          `comms ingest ${env.COMMS_INGEST_HMAC_SECRET === undefined ? 'unconfigured' : 'configured'})`,
       );
     }
 
@@ -99,26 +136,86 @@ export default {
       return handleWebhook(request, env, ctx);
     }
 
+    // The daemon's ingest endpoint. `now` is passed in rather than read inside, so the replay
+    // window, the heartbeat stamp and the reply drain all read one instant.
+    if (request.method === 'POST' && url.pathname === '/comms/ingest') {
+      return handleIngest(request, env, new Date());
+    }
+
     return new Response('not found', { status: 404 });
   },
 
   /**
-   * The cron trigger's entrypoint. Thin by design — it delegates to `runSweep` exactly as
-   * `fetch` delegates to `handleWebhook`.
+   * The cron triggers' entrypoint, shared by both schedules — the runtime hands over which one
+   * fired and nothing else, so `event.cron` is the whole dispatch. An unrecognised expression
+   * takes the frequent path: a schedule that was renamed in wrangler.toml and not here should
+   * keep triaging rather than silently do nothing.
    *
-   * The promise is AWAITED rather than handed to `ctx.waitUntil` or fired and forgotten: a
+   * Everything is AWAITED rather than handed to `ctx.waitUntil` or fired and forgotten: a
    * scheduled invocation is torn down when the promise it returns settles, so unawaited work is
-   * silently killed part-way through the sweep.
+   * silently killed part-way through.
    */
-  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const summary = await runSweep(env, new Date());
+  async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const now = new Date();
+
+    if (event.cron === RETENTION_CRON) {
+      logRetention(await runCommsRetention(env, now));
+      return;
+    }
+
+    const summary = await runSweep(env, now);
     console.log(
       `classifier sweep: ${String(summary.eligible)} eligible, ` +
         `${String(summary.classified)} classified, ${String(summary.failed)} failed` +
         (summary.aborted ? ' (aborted)' : ''),
     );
+
+    logCommsTick(await runCommsTick(env, now));
   },
 };
+
+/**
+ * One line per unit of the comms tick, because `wrangler tail` is the only window into a cron and
+ * a tick that half-ran has to be able to say which half. A unit that threw is named rather than
+ * omitted — "did not run" is a reading; a missing line is not.
+ */
+function logCommsTick(summary: CommsTickSummary): void {
+  const gmail = summary.gmail;
+  if (gmail === undefined) {
+    console.log('comms gmail poll: did not run');
+  } else {
+    const accepted = gmail.accounts.reduce((total, account) => total + account.accepted, 0);
+    const plural = gmail.accounts.length === 1 ? 'account' : 'accounts';
+    console.log(
+      `comms gmail poll: ${String(gmail.accounts.length)} ${plural}, ${String(accepted)} accepted`,
+    );
+  }
+
+  const sweep = summary.sweep;
+  console.log(
+    sweep === undefined
+      ? 'comms classifier sweep: did not run'
+      : `comms classifier sweep: ${String(sweep.eligible)} eligible, ` +
+          `${String(sweep.classified)} classified, ${String(sweep.failed)} failed` +
+          (sweep.aborted ? ' (aborted)' : ''),
+  );
+
+  logFailures(summary.failures);
+}
+
+/** The same, for the daily sweep — one line, plus whatever went wrong. */
+function logRetention(summary: CommsRetentionSummary): void {
+  console.log(
+    summary.deleted === undefined
+      ? 'comms retention: did not run'
+      : `comms retention: ${String(summary.deleted)} messages deleted`,
+  );
+  logFailures(summary.failures);
+}
+
+function logFailures(failures: string[]): void {
+  for (const failure of failures) console.error(`comms: ${failure}`);
+}
 
 async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   // 1. Verify GitHub's HMAC over the RAW body before anything else — reject forgeries.

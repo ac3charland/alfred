@@ -1848,6 +1848,8 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
         if (id === undefined) throw new Error('insert returned no id');
         return id;
       };
+      // Rendered in UTC: `::text` on a timestamptz uses the session zone, and the date prefix
+      // this assertion checks would differ on a machine outside UTC.
       const provenanceOf = async (
         id: string,
       ): Promise<{ classified_at: string | null; classified_provider: string | null }> => {
@@ -1855,7 +1857,7 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
           classified_at: string | null;
           classified_provider: string | null;
         }>(
-          `select classified_at::text as classified_at, classified_provider
+          `select (classified_at at time zone 'utc')::text as classified_at, classified_provider
              from items where id = $1`,
           [id],
         );
@@ -2709,6 +2711,463 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     },
   );
 
+  // ── Comms (ALF-7) ───────────────────────────────────────────────────────────
+
+  const commsGrantsResult = await attempt(
+    'comms: the authenticated role can write and read every comm_* table, and anon is denied (ALF-7)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000001';
+      await asRole(client, 'authenticated', async () => {
+        await client.query(
+          `insert into comm_accounts (id, key, kind, label, home)
+             values ($1, 'gmail-test', 'gmail', 'Test', 'worker')`,
+          [account],
+        );
+        await client.query(
+          `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+             values ($1, 'm1', 't1', 'a@example.com', now())`,
+          [account],
+        );
+        await client.query(`insert into comm_people (name) values ('Dana')`);
+        await client.query(
+          `insert into comm_handles (person_id, handle, kind)
+             select id, 'dana@example.com', 'email' from comm_people where name = 'Dana'`,
+        );
+        await client.query(
+          `insert into comm_rubrics (version, body) values (1, 'Anything from Dana is asap.')`,
+        );
+        await client.query(`insert into comm_classifier_health (id) values (1)`);
+        const { rows } = await client.query<{ n: string }>(
+          `select count(*)::text as n from comm_messages where account_id = $1`,
+          [account],
+        );
+        if (rows[0]?.n !== '1') throw new Error('authenticated could not read its own write');
+      });
+      await asRole(client, 'anon', async () => {
+        const { rows } = await client.query<{ n: string }>(
+          `select count(*)::text as n from comm_messages`,
+        );
+        if (rows[0]?.n !== '0') throw new Error('anon can read comm_messages');
+      });
+      return 'authenticated wrote six tables and read back; anon sees nothing';
+    },
+  );
+
+  const commsIdentityResult = await attempt(
+    'comms: a message is unique on (account, source_id), so a re-seed after a lost cursor is a no-op (ALF-7)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000001';
+      const { rows } = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'm1', 't1', 'a@example.com', now())
+           on conflict (account_id, source_id) do nothing
+           returning id`,
+        [account],
+      );
+      if (rows.length > 0) throw new Error('a duplicate source_id inserted a second row');
+      return 'the duplicate was ignored';
+    },
+  );
+
+  const commsReplyDrainResult = await attempt(
+    'comms: an outbound message drains the queued rows of its thread and of the ids it references, and nothing else (ALF-7)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000002';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'imap-test', 'imap', 'Mail', 'daemon')`,
+        [account],
+      );
+      // `undefined` binds as SQL NULL, which is how an unjudged row (no tier) is written.
+      const insert = async (source: string, thread: string, tier?: string, rfc?: string) =>
+        client.query(
+          `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at,
+                                      tier, judged_by, rfc822_message_id)
+             values ($1, $2, $3, 'x@example.com', now() - interval '1 hour', $4::comm_tier,
+                     case when $4 is null then null else 'model' end, $5)`,
+          [account, source, thread, tier, rfc],
+        );
+      await insert('q-thread', 'thread-a', 'today');
+      await insert('q-ref', 'thread-b', 'whenever', '<ref@example.com>');
+      await insert('shelf', 'thread-a', 'fyi');
+      await insert('other', 'thread-c', 'asap');
+      // Unjudged, but in a thread the reply below never names — must stay untouched. An unjudged
+      // row IN the replied-to thread is covered separately (drains too, by design): see
+      // commsReplyDrainUnjudgedResult.
+      await insert('unjudged-elsewhere', 'thread-d');
+      const { rows } = await client.query<{ n: number }>(
+        `select comm_record_reply($1, 'thread-a', array['<ref@example.com>'], now()) as n`,
+        [account],
+      );
+      if (rows[0]?.n !== 2) throw new Error(`drained ${String(rows[0]?.n)} rows, expected 2`);
+      const { rows: left } = await client.query<{ source_id: string; cleared_by: string | null }>(
+        `select source_id, cleared_by from comm_messages where account_id = $1 order by source_id`,
+        [account],
+      );
+      const cleared = left.filter((r) => r.cleared_by === 'reply').map((r) => r.source_id);
+      if (cleared.join(',') !== 'q-ref,q-thread')
+        throw new Error(`cleared the wrong rows: ${cleared.join(',')}`);
+      return 'thread match and References match drained; fyi, other threads and an unjudged row in an unrelated thread untouched';
+    },
+  );
+
+  const commsReplyDrainUnjudgedResult = await attempt(
+    'comms: a reply also drains a row the classifier has not judged yet, and the classifier' +
+      ' later stamping a tier lands on top instead of resurrecting it into the queue (ALF-7)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000005';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-unjudged-drain-test', 'gmail', 'Unjudged Drain Test', 'worker')`,
+        [account],
+      );
+      const { rows: seeded } = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'unjudged-reply', 'thread-unjudged', 'a@example.com', now() - interval '1 hour')
+           returning id`,
+        [account],
+      );
+      const messageId = seeded[0]?.id;
+      if (messageId === undefined) throw new Error('could not seed a message');
+
+      // The reply arrives while the row is still unjudged (tier is null) — the scenario the
+      // classifier sweep hasn't reached yet.
+      const { rows: drained } = await client.query<{ n: number }>(
+        `select comm_record_reply($1, 'thread-unjudged', array[]::text[], now()) as n`,
+        [account],
+      );
+      if (drained[0]?.n !== 1)
+        throw new Error(`an unjudged row drained ${String(drained[0]?.n)} rows, expected 1`);
+      const { rows: afterDrain } = await client.query<{
+        tier: string | null;
+        cleared_at: string | null;
+        cleared_by: string | null;
+      }>(`select tier, cleared_at, cleared_by from comm_messages where id = $1`, [messageId]);
+      if (afterDrain[0]?.cleared_by !== 'reply' || afterDrain[0].cleared_at === null)
+        throw new Error('the unjudged row was not cleared by the reply');
+      if (afterDrain[0].tier !== null) throw new Error('the drain itself must not stamp a tier');
+
+      // The classifier's write is gated on `tier is null` alone (onlyIfUnjudged), never on
+      // `cleared_at` — mirror that exact filter here to prove it still lands after the drain.
+      const { rowCount: judged } = await client.query(
+        `update comm_messages set tier = 'today', judged_by = 'model', classified_at = now()
+           where id = $1 and tier is null`,
+        [messageId],
+      );
+      if (judged !== 1)
+        throw new Error('the classifier-shaped write did not land on the already-cleared row');
+
+      const { rows: final } = await client.query<{
+        tier: string | null;
+        cleared_at: string | null;
+        cleared_by: string | null;
+      }>(`select tier, cleared_at, cleared_by from comm_messages where id = $1`, [messageId]);
+      if (final[0]?.tier !== 'today')
+        throw new Error('the row was never tiered after the classifier caught up');
+      if (final[0].cleared_at === null || final[0].cleared_by !== 'reply')
+        throw new Error(
+          'the row lost its cleared state once tiered — isQueued would resurrect it into the queue',
+        );
+      return 'reply drained the unjudged row; the classifier tiered it afterward without clearing cleared_at — cleared AND tiered, never resurrected';
+    },
+  );
+
+  const commsExampleVersionResult = await attempt(
+    'comms: every correction insert and every prune bumps the example-set version, so a stamped verdict is reconstructable (ALF-7)',
+    async () => {
+      const version = async () => {
+        const { rows } = await client.query<{ v: number }>(
+          `select comm_example_set_version() as v`,
+        );
+        return rows[0]?.v;
+      };
+      if ((await version()) !== 0) throw new Error('the empty set is not version 0');
+      const { rows } = await client.query<{ id: string; created_version: number }>(
+        `insert into comm_corrections (account_label, sender_handle, body_excerpt, chosen_tier, kind, created_version)
+           values ('Test', 'a@example.com', 'hello', 'fyi', 'nothing_to_answer', 0)
+           returning id, created_version`,
+      );
+      const first = rows[0];
+      if (first?.created_version !== 1)
+        throw new Error('the first insert was not stamped version 1');
+      await client.query(
+        `insert into comm_corrections (account_label, sender_handle, body_excerpt, chosen_tier, kind, created_version)
+           values ('Test', 'b@example.com', 'hi', 'today', 'tier_change', 0)`,
+      );
+      if ((await version()) !== 2) throw new Error('the second insert did not bump the version');
+      await client.query(`update comm_corrections set pruned_at = now() where id = $1`, [first.id]);
+      const { rows: pruned } = await client.query<{ pruned_version: number }>(
+        `select pruned_version from comm_corrections where id = $1`,
+        [first.id],
+      );
+      if (pruned[0]?.pruned_version !== 3) throw new Error('the prune was not stamped version 3');
+      if ((await version()) !== 3) throw new Error('the prune did not bump the version');
+      return 'insert → v1, insert → v2, prune → v3';
+    },
+  );
+
+  const commsRetentionResult = await attempt(
+    'comms: the 60-day sweep deletes messages and cascades verdicts but keeps example text; a purge nulls it (ALF-7)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000003';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-old', 'gmail', 'Old', 'worker')`,
+        [account],
+      );
+      const { rows: inserted } = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at, body)
+           values ($1, 'old-1', 't', 'a@example.com', now() - interval '61 days', 'old body'),
+                  ($1, 'old-2', 't', 'a@example.com', now() - interval '61 days', 'purge me'),
+                  ($1, 'new-1', 't', 'a@example.com', now() - interval '1 day', 'fresh')
+           returning id`,
+        [account],
+      );
+      const [old1, old2] = inserted.map((r) => r.id);
+      for (const id of [old1, old2]) {
+        await client.query(
+          `insert into comm_verdicts (message_id, tier, owes_reply, ask, reason, provider, model,
+                                      prompt_version, rubric_version, example_set_version)
+             values ($1, 'today', true, 'ask', 'why', 'anthropic', 'haiku', 1, 1, 0)`,
+          [id],
+        );
+        await client.query(
+          `insert into comm_corrections (message_id, account_label, sender_handle, body_excerpt,
+                                         chosen_tier, kind, created_version)
+             values ($1, 'Old', 'a@example.com', 'kept text', 'fyi', 'nothing_to_answer', 0)`,
+          [id],
+        );
+      }
+      const { rows: purged } = await client.query<{ n: number }>(
+        `select comm_purge(p_message => $1) as n`,
+        [old2],
+      );
+      if (purged[0]?.n !== 1) throw new Error('the purge did not delete exactly one message');
+      const { rows: swept } = await client.query<{ n: number }>(
+        `select comm_sweep_expired(60) as n`,
+      );
+      if (swept[0]?.n !== 1)
+        throw new Error(`the sweep deleted ${String(swept[0]?.n)} rows, expected 1`);
+      const { rows: verdicts } = await client.query<{ n: string }>(
+        `select count(*)::text as n from comm_verdicts`,
+      );
+      if (verdicts[0]?.n !== '0') throw new Error('verdicts of deleted messages survived');
+      const { rows: examples } = await client.query<{
+        body_excerpt: string | null;
+        purged: boolean;
+      }>(
+        `select body_excerpt, purged_at is not null as purged from comm_corrections
+          where account_label = 'Old' order by purged`,
+      );
+      if (examples.length !== 2) throw new Error('an example row was lost');
+      if (examples[0]?.body_excerpt !== 'kept text' || examples[0].purged)
+        throw new Error('the sweep touched the example text');
+      if (examples[1]?.body_excerpt !== null || !examples[1].purged)
+        throw new Error('the purge did not null the example text');
+      const { rows: remaining } = await client.query<{ n: string }>(
+        `select count(*)::text as n from comm_messages where account_id = $1`,
+        [account],
+      );
+      if (remaining[0]?.n !== '1') throw new Error('the fresh message did not survive');
+      return 'sweep: 1 deleted, verdicts cascaded, example kept; purge: example text nulled';
+    },
+  );
+
+  const commsInboxItemAtomicResult = await attempt(
+    'comm_create_inbox_item: the items insert and the comm_messages update commit together — a ' +
+      'message vanishing before the update rolls the insert back too, and a retry on an ' +
+      'already-linked message reuses the same item instead of minting a second one (ALF-7)',
+    async () => {
+      // The failure case: no message exists at this id, so the UPDATE inside the function can
+      // never match a row. The old two-write route would have left the INSERT committed with
+      // nothing pointing back at it — the duplication bug this function exists to close. One
+      // statement failing must abort the whole function, so the item must not survive either.
+      const missing = 'cccccccc-0000-4000-8000-0000000000ff';
+      let raised = false;
+      try {
+        await asRole(client, 'authenticated', () =>
+          client.query(`select comm_create_inbox_item($1, $2, $3, $4)`, [
+            missing,
+            'orphan check',
+            'notes',
+            undefined,
+          ]),
+        );
+      } catch {
+        raised = true;
+      }
+      if (!raised) throw new Error('a message that does not exist did not raise');
+      const { rows: orphaned } = await client.query<{ n: string }>(
+        `select count(*)::text as n from items where title = 'orphan check'`,
+      );
+      if (orphaned[0]?.n !== '0')
+        throw new Error(
+          `the insert survived the update's failure: ${String(orphaned[0]?.n)} row(s)`,
+        );
+
+      // The success path, for contrast: a real message gets both writes in one call, and a
+      // second call on the now-linked message reuses that item rather than duplicating it.
+      const account = 'cccccccc-0000-4000-8000-000000000004';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-inbox-item-test', 'gmail', 'Inbox Item Test', 'worker')`,
+        [account],
+      );
+      const { rows: seeded } = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'inbox-item-1', 't', 'a@example.com', now()) returning id`,
+        [account],
+      );
+      const messageId = seeded[0]?.id;
+      if (messageId === undefined) throw new Error('could not seed a message');
+
+      const { rows: first } = await asRole(client, 'authenticated', () =>
+        client.query<{ result: { item: { id: string }; created: boolean } }>(
+          `select comm_create_inbox_item($1, $2, $3, $4) as result`,
+          [messageId, 'Approve the invoice', 'notes', undefined],
+        ),
+      );
+      const firstResult = first[0]?.result;
+      if (firstResult?.created !== true) throw new Error('the first call did not create an item');
+
+      const { rows: linked } = await client.query<{ inbox_item_id: string | null }>(
+        `select inbox_item_id from comm_messages where id = $1`,
+        [messageId],
+      );
+      if (linked[0]?.inbox_item_id !== firstResult.item.id)
+        throw new Error('comm_messages was not stamped with the new item in the same call');
+
+      const { rows: second } = await asRole(client, 'authenticated', () =>
+        client.query<{ result: { item: { id: string }; created: boolean } }>(
+          `select comm_create_inbox_item($1, $2, $3, $4) as result`,
+          [messageId, 'Approve the invoice', 'notes', undefined],
+        ),
+      );
+      const secondResult = second[0]?.result;
+      if (secondResult?.created !== false)
+        throw new Error('a retry on an already-linked message minted a second item');
+      if (secondResult.item.id !== firstResult.item.id)
+        throw new Error('a retry returned a different item than the first call created');
+
+      const { rows: itemCount } = await client.query<{ n: string }>(
+        `select count(*)::text as n from items where title = 'Approve the invoice'`,
+      );
+      if (itemCount[0]?.n !== '1')
+        throw new Error(`expected exactly one item, found ${String(itemCount[0]?.n)}`);
+
+      return 'a vanished message rolls the insert back; a real message writes both rows once and a retry reuses the same item';
+    },
+  );
+
+  const commsInboxItemConcurrencyResult = await attempt(
+    'comm_create_inbox_item: the opening SELECT locks the row, so a second, genuinely ' +
+      'concurrent call on the same message blocks and reuses the first item instead of ' +
+      'racing it and orphaning one (ALF-7)',
+    async () => {
+      const account = 'cccccccc-0000-4000-8000-000000000006';
+      await client.query(
+        `insert into comm_accounts (id, key, kind, label, home)
+           values ($1, 'gmail-concurrency-test', 'gmail', 'Concurrency Test', 'worker')`,
+        [account],
+      );
+      const { rows: seeded } = await client.query<{ id: string }>(
+        `insert into comm_messages (account_id, source_id, thread_key, sender_handle, received_at)
+           values ($1, 'concurrency-1', 't', 'a@example.com', now()) returning id`,
+        [account],
+      );
+      const messageId = seeded[0]?.id;
+      if (messageId === undefined) throw new Error('could not seed a message');
+
+      // Two real connections, so the two calls can genuinely overlap rather than merely being
+      // issued back-to-back on one. `first` holds its transaction open across the whole function
+      // call — including the INSERT and UPDATE the function does internally — so the row lock the
+      // opening `for update` takes is still held when `second` fires.
+      const connectionConfig = {
+        host: client.host,
+        port: client.port,
+        user: client.user,
+        database: client.database,
+      };
+      const first = new pg.Client(connectionConfig);
+      const second = new pg.Client(connectionConfig);
+      await first.connect();
+      await second.connect();
+      try {
+        await first.query('begin');
+        const { rows: firstRows } = await first.query<{
+          result: { item: { id: string }; created: boolean };
+        }>(`select comm_create_inbox_item($1, $2, $3, $4) as result`, [
+          messageId,
+          'Concurrent invoice',
+          'notes',
+          undefined,
+        ]);
+        const firstResult = firstRows[0]?.result;
+        if (firstResult?.created !== true) throw new Error('the first call did not create an item');
+
+        // Fire the second call now, while `first` still holds the row lock uncommitted, and race
+        // it against a short timeout to prove it is genuinely blocked rather than just slow —
+        // without the fix's `for update` this call returns almost immediately instead.
+        const secondPromise = second.query<{
+          result: { item: { id: string }; created: boolean };
+        }>(`select comm_create_inbox_item($1, $2, $3, $4) as result`, [
+          messageId,
+          'Concurrent invoice',
+          'notes',
+          undefined,
+        ]);
+        const blocked = Symbol('blocked');
+        const raced = await Promise.race([
+          secondPromise,
+          new Promise((resolve) =>
+            setTimeout(() => {
+              resolve(blocked);
+            }, 300),
+          ),
+        ]);
+        if (raced !== blocked) throw new Error('the second call did not block on the row lock');
+
+        await first.query('commit');
+        const { rows: secondRows } = await secondPromise;
+        const secondResult = secondRows[0]?.result;
+        if (secondResult?.created !== false)
+          throw new Error(
+            'the second, concurrent call minted a second item instead of blocking and reusing',
+          );
+        if (secondResult.item.id !== firstResult.item.id)
+          throw new Error('the second call returned a different item than the first created');
+
+        const { rows: itemCount } = await client.query<{ n: string }>(
+          `select count(*)::text as n from items where title = 'Concurrent invoice'`,
+        );
+        if (itemCount[0]?.n !== '1')
+          throw new Error(
+            `expected exactly one item from the two concurrent calls, found ${String(itemCount[0]?.n)}`,
+          );
+
+        return 'the second concurrent call blocked on the row lock, then reused the item the first created — no orphan';
+      } finally {
+        await first.end();
+        await second.end();
+      }
+    },
+  );
+
+  const commsRealtimeResult = await attempt(
+    'comms: comm_messages, comm_accounts, comm_classifier_health and comm_verdicts are published to supabase_realtime (ALF-7)',
+    async () => {
+      const { rows } = await client.query<{ tablename: string }>(
+        `select tablename from pg_publication_tables
+          where pubname = 'supabase_realtime'
+            and tablename in
+              ('comm_messages', 'comm_accounts', 'comm_classifier_health', 'comm_verdicts')`,
+      );
+      if (rows.length !== 4)
+        throw new Error(`only ${String(rows.length)} of 4 comms tables are published`);
+      return 'all four published';
+    },
+  );
+
   return [
     createStoryResult,
     enterModuleResult,
@@ -2760,5 +3219,14 @@ export async function runAssertions(client: Client): Promise<AssertionResult[]> 
     codeDoneAtResult,
     backupDriftResult,
     backupVerifierShapeResult,
+    commsGrantsResult,
+    commsIdentityResult,
+    commsReplyDrainResult,
+    commsReplyDrainUnjudgedResult,
+    commsExampleVersionResult,
+    commsRetentionResult,
+    commsInboxItemAtomicResult,
+    commsInboxItemConcurrencyResult,
+    commsRealtimeResult,
   ];
 }

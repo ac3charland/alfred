@@ -1,0 +1,4 @@
+# Output from the manual Comms evaluation run (`npm run eval:comms`). One JSON report per run,
+# holding synthetic fixtures and the model's verdicts on them — a measurement, not a source of
+# truth, and it changes on every run. Never committed.
+eval-results/

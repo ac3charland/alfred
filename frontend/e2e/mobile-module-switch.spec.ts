@@ -1,4 +1,4 @@
-import { makeFolder, makeProject } from './support/constants';
+import { makeCommAccount, makeFolder, makeProject } from './support/constants';
 import { expect, test } from './support/fixtures';
 
 /**
@@ -13,6 +13,7 @@ import { expect, test } from './support/fixtures';
 
 const FOLDER = makeFolder('Errands', { id: '55555555-5555-4555-8555-555555555555' });
 const PROJECT = makeProject('Alfred', { id: '11111111-1111-4111-8111-111111111111', key: 'ALF' });
+const ACCOUNT = makeCommAccount('personal', { id: '22222222-2222-4222-8222-222222222222' });
 
 test.describe('at a phone width', () => {
   test.use({ viewport: { width: 390, height: 844 } });
@@ -21,12 +22,21 @@ test.describe('at a phone width', () => {
     page,
     seed,
   }) => {
-    await seed({ folders: [FOLDER], projects: [PROJECT] });
+    await seed({ folders: [FOLDER], projects: [PROJECT], commAccounts: [ACCOUNT] });
     await page.goto('/priority');
 
     await page.getByRole('button', { name: 'Open navigation' }).click();
     const drawer = page.getByRole('dialog');
     await expect(drawer.getByRole('navigation', { name: 'Navigation' })).toBeVisible();
+
+    // All three modules are reachable from inside the drawer.
+    const switcher = drawer.getByRole('group', { name: 'Switch module' });
+    await expect(switcher.getByRole('link')).toHaveCount(3);
+
+    // Comms swaps in without closing the drawer, exactly as Code does.
+    await switcher.getByRole('link', { name: 'Comms' }).click();
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole('navigation', { name: 'Comms' })).toBeVisible();
 
     await drawer.getByRole('link', { name: 'Code' }).click();
 

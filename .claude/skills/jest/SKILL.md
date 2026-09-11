@@ -181,6 +181,14 @@ transform: {
 
 ## Common Pitfalls
 
+**Give time fixtures headroom past the boundary they must read as.** A clock floored to a tick (`useNow` rounds to 30 s) plus elapsed formatting that floors again means a fixture at exactly `now − 2h` renders as "1h ago". Put fixtures ~10 minutes past the boundary (`now − 2h − 10min`) so both floors land on the same side.
+
+**A `Response` can be read once, so never `mockResolvedValue(Response.json(…))` for a fetch the
+code calls more than once.** Every call gets the same object, and the second `.json()` fails on a
+consumed body — an error about the stream, nothing to do with the code under test. Use
+`mockImplementation(() => Response.json(…))` (or a routing implementation keyed on the URL, as
+`workers/src/comms/store.test.ts` does) so each call gets a fresh response.
+
 **Pin the clock instead of deriving a fixture from it.** A fixture that reads `new Date()`,
 `Date.now()`, or calls `todayIn(...)` with no `now` argument is only as stable as the moment the
 suite happens to run — a "hasn't started yet" habit dated tomorrow, or a day-of-week check,

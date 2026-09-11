@@ -49,8 +49,24 @@ describe('buildDestinations', () => {
       'Needs human action',
       'Backlog',
     ]);
+    expect(grouped.comms.map((d) => d.label)).toEqual(['Queue', 'People', 'Rubric', 'Examples']);
     expect(grouped.folders.map((d) => d.label)).toEqual(['Software']);
     expect(grouped.projects.map((d) => d.label)).toEqual(['Alfred']);
+  });
+
+  it('emits the four Comms destinations with their hrefs and icon tokens', () => {
+    const grouped = buildDestinations('', [], []);
+    expect(grouped.comms.map((d) => [d.href, d.icon])).toEqual([
+      ['/comms', 'comms'],
+      ['/comms/people', 'people'],
+      ['/comms/rubric', 'rubric'],
+      ['/comms/examples', 'examples'],
+    ]);
+  });
+
+  it('filters the Comms group like any other', () => {
+    expect(buildDestinations('rubr', [], []).comms.map((d) => d.label)).toEqual(['Rubric']);
+    expect(buildDestinations('zzz', [], []).comms).toHaveLength(0);
   });
 
   it('emits correct hrefs for the static go-to destinations', () => {
@@ -89,6 +105,7 @@ describe('buildDestinations', () => {
     const grouped = buildDestinations('SOFT', folders, projects);
 
     expect(grouped.go).toHaveLength(0);
+    expect(grouped.comms).toHaveLength(0);
     expect(grouped.folders.map((d) => d.label)).toEqual(['Software']);
     expect(grouped.projects.map((d) => d.label)).toEqual(['Software Factory']);
   });
@@ -128,13 +145,14 @@ describe('buildDestinations', () => {
   it('keeps a group header only for groups with at least one match', () => {
     const grouped = buildDestinations('priority', [makeFolder()], [makeProject()]);
     expect(grouped.go.map((d) => d.label)).toEqual(['Priority']);
+    expect(grouped.comms).toHaveLength(0);
     expect(grouped.folders).toHaveLength(0);
     expect(grouped.projects).toHaveLength(0);
   });
 });
 
 describe('flattenDestinations', () => {
-  it('concatenates go → folders → projects in order', () => {
+  it('concatenates go → comms → folders → projects in order', () => {
     const grouped = buildDestinations(
       '',
       [makeFolder({ id: 'fa', name: 'Software' })],
@@ -143,6 +161,7 @@ describe('flattenDestinations', () => {
     const flat = flattenDestinations(grouped);
     expect(flat.map((d) => d.group)).toEqual([
       ...Array.from({ length: 10 }, () => 'go'),
+      ...Array.from({ length: 4 }, () => 'comms'),
       'folders',
       'projects',
     ]);

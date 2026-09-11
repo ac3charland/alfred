@@ -9,14 +9,22 @@
 // (derived from the Zod schemas via z.infer); re-export them so existing importers of
 // `@/lib/api-client` keep working without re-declaring the shapes here.
 import type {
+  AddHandleInput,
+  ChangeTierInput,
+  ClearMessageInput,
+  CommMessagesQuery,
   CreateHabitInput,
   CreateItemInput,
+  CreatePersonInput,
   CreateProjectInput,
+  CreateRubricVersionInput,
   ListItemsQuery,
+  PurgeInput,
   UpdateEpicInput,
   UpdateFolderInput,
   UpdateHabitInput,
   UpdateItemInput,
+  UpdatePersonInput,
   UpdateProjectInput,
   UpsertHabitEntryInput,
 } from '@/lib/api/schemas';
@@ -24,6 +32,11 @@ import type {
   CodeFactoryState,
   CodeItem,
   CodeStory,
+  CommCorrection,
+  CommHandle,
+  CommMessage,
+  CommPersonWithHandles,
+  CommRubric,
   Epic,
   Folder,
   Habit,
@@ -504,14 +517,170 @@ export function fetchWeeklyPlan(id: string): Promise<WeeklyPlan> {
   return apiRequest<WeeklyPlan>(`/api/weekly-plans/${id}`);
 }
 
+// ---------------------------------------------------------------------------
+// Comms — the communication firewall
+//
+// Every route returns the row(s) it changed, so a store action reconciles with the
+// server-canonical message/person/rubric rather than re-reading the module.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read one side of the module: the response queue, or the FYI shelf. The shell seeds the
+ * store, so this is for the shelf's on-demand paging and for reconciling a long-lived tab —
+ * the queue is never fetched to render it.
+ */
+export function fetchCommMessages(query: CommMessagesQuery): Promise<CommMessage[]> {
+  const search = new URLSearchParams({ scope: query.scope });
+  if (query.limit !== undefined) search.set('limit', String(query.limit));
+  return apiRequest<CommMessage[]>(`/api/comms/messages?${search.toString()}`);
+}
+
+/**
+ * Clear a queued message by one of the owner's two clearing verbs. They are separate because
+ * only `nothing_to_answer` is a correction — it says the row should never have been queued and
+ * is recorded as an example; `not_replying` says the model was right and the owner is declining.
+ */
+export function clearCommMessage(
+  id: string,
+  exit: ClearMessageInput['exit'],
+): Promise<CommMessage> {
+  return apiRequest<CommMessage>(`/api/comms/messages/${id}/clear`, {
+    method: 'POST',
+    body: JSON.stringify({ exit }),
+  });
+}
+
+/**
+ * Override the tier a message landed in. Recorded as a correction, so the example set learns
+ * from it — which is why this is its own endpoint rather than a generic message PATCH.
+ */
+export function changeCommTier(id: string, tier: ChangeTierInput['tier']): Promise<CommMessage> {
+  return apiRequest<CommMessage>(`/api/comms/messages/${id}/tier`, {
+    method: 'POST',
+    body: JSON.stringify({ tier }),
+  });
+}
+
+/**
+ * Spin the obligation off into an Inbox item, which clears the message at that moment — the
+ * third way out of the queue. Both rows come back: the item so the tasks store can hold it, and
+ * the message so the queue drops it.
+ */
+export function makeInboxItemFromMessage(
+  id: string,
+): Promise<{ message: CommMessage; item: Item }> {
+  return apiRequest<{ message: CommMessage; item: Item }>(`/api/comms/messages/${id}/inbox-item`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Ask for one message to be judged again. Nothing is ever re-judged silently — editing the
+ * rubric, the roster or the example set sweeps nothing — so a re-run is always an explicit act
+ * on an explicit row. The response is the message carrying its pending request; the new verdict
+ * arrives later over the realtime stream.
+ */
+export function requestReclassify(id: string): Promise<CommMessage> {
+  return apiRequest<CommMessage>(`/api/comms/messages/${id}/reclassify`, { method: 'POST' });
+}
+
+/**
+ * The deliberate "I want this gone": destroy one message, one account's messages, or everything
+ * before a date. Unlike the 60-day retention sweep this DOES cascade into the example set,
+ * stripping the denormalised text from the corrections it reaches. Returns how many messages
+ * were destroyed.
+ */
+export function purgeComms(input: PurgeInput): Promise<{ purged: number }> {
+  return apiRequest<{ purged: number }>('/api/comms/purge', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Add someone to the roster, with however many handles are known so far. */
+export function createCommPerson(input: CreatePersonInput): Promise<CommPersonWithHandles> {
+  return apiRequest<CommPersonWithHandles>('/api/comms/people', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Rename someone, change their priority, or edit the note. Handles are never touched here —
+ * they are added and removed one at a time, so a rename can't silently drop an address.
+ */
+export function updateCommPerson(
+  id: string,
+  input: UpdatePersonInput,
+): Promise<CommPersonWithHandles> {
+  return apiRequest<CommPersonWithHandles>(`/api/comms/people/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Remove someone from the roster; their handles cascade with them. */
+export function deleteCommPerson(id: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/api/comms/people/${id}`, { method: 'DELETE' });
+}
+
+/** Give a person one more address or number. The server stores it normalised. */
+export function addCommHandle(personId: string, input: AddHandleInput): Promise<CommHandle> {
+  return apiRequest<CommHandle>(`/api/comms/people/${personId}/handles`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Drop one handle. Addressed by the HANDLE's id, not the person's — a handle is unique across
+ * the whole roster, so the person is implied.
+ */
+export function deleteCommHandle(id: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/api/comms/handles/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Save the rubric. The table is append-only, so this writes a NEW version and returns it —
+ * every verdict names the version that produced it, so an edit must not destroy the old text.
+ * Saving sweeps nothing: existing verdicts keep the judgment they were given.
+ */
+export function createCommRubricVersion(input: CreateRubricVersionInput): Promise<CommRubric> {
+  return apiRequest<CommRubric>('/api/comms/rubric', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Take a correction out of the prompt's example set, or put it back. The row itself is history
+ * and is never destroyed; both directions bump the example-set version, so a verdict stamped
+ * with an older version stays reconstructable.
+ */
+export function pruneCommExample(id: string, pruned: boolean): Promise<CommCorrection> {
+  return apiRequest<CommCorrection>(`/api/comms/examples/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ pruned }),
+  });
+}
+
 export {
+  type AddHandleInput,
+  type ChangeTierInput,
+  type ClearMessageInput,
+  type CommMessagesQuery,
   type CreateHabitInput,
   type CreateItemInput,
+  type CreatePersonInput,
   type CreateProjectInput,
+  type CreateRubricVersionInput,
   type ListItemsQuery,
+  type PruneExampleInput,
+  type PurgeInput,
   type UpdateEpicInput,
   type UpdateHabitInput,
   type UpdateItemInput,
+  type UpdatePersonInput,
   type UpdateProjectInput,
   type UpsertHabitEntryInput,
 } from '@/lib/api/schemas';

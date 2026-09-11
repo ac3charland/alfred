@@ -40,3 +40,22 @@ export async function pickUp(page: Page, source: Locator): Promise<void> {
     await expect(page.locator('.opacity-40')).toBeVisible({ timeout: 750 });
   }).toPass({ timeout: 10_000 });
 }
+
+/**
+ * Click `target` after a drop and wait for `opened` to appear, retrying until the click lands.
+ *
+ * dnd-kit deliberately swallows the click that ends a drag: on activation its pointer sensor
+ * adds a capture-phase `click` listener on `document` that calls `stopPropagation`, and
+ * `detach()` only removes it 50ms AFTER `mouseup`. A couple of web-first assertions on the
+ * dropped card can resolve well inside that window on a fast machine, so the next click is
+ * silently eaten — the button takes focus and nothing opens. Retrying (clicking only while
+ * `opened` is still absent, so an open dialog is never clicked shut) waits the window out
+ * without a fixed sleep.
+ */
+export async function clickAfterDrop(target: Locator, opened: Locator): Promise<void> {
+  await expect(async () => {
+    const alreadyOpen = await opened.isVisible();
+    if (!alreadyOpen) await target.click();
+    await expect(opened).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
+}

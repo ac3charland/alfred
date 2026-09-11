@@ -1,14 +1,17 @@
 /**
  * The Worker's one narrow window onto the Anthropic API — the only module allowed to import
- * `@anthropic-ai/sdk`, so swapping providers later touches this file and nothing else. `classify`
- * sends one item's already-built prompt and returns either a parsed `Verdict` or a typed
- * `ClassifyFailure`; it never throws, because the sweep calls this once per eligible item and an
- * unhandled rejection would abort every item still queued behind it in the same tick.
+ * `@anthropic-ai/sdk`, so swapping providers later touches this file and nothing else.
+ *
+ * Two exports, one call. `classifyJson` sends an already-built prompt and hands back whatever
+ * JSON came back or a typed `ClassifyFailure` — it knows nothing about what is being judged, so
+ * both classifiers in this Worker share one retry policy and one error taxonomy. `classify` is
+ * the Inbox's reading of that answer as a `Verdict`. Neither ever throws: a sweep calls this once
+ * per eligible row, and an unhandled rejection would abort every row queued behind it.
  */
 import Anthropic from '@anthropic-ai/sdk';
 
 import type { ClassifyRequest } from './prompt';
-import { type ClassifyOutcome, parseVerdict } from './verdict';
+import { type ClassifyFailure, type ClassifyOutcome, parseVerdict } from './verdict';
 
 /** The bindings this module reads. The key is a Cloudflare SECRET and lives only here. */
 export interface ClassifierEnv {
@@ -47,46 +50,46 @@ function textBlock(message: Anthropic.Message): Anthropic.TextBlock | undefined 
 }
 
 /**
- * Turn a successful response into an outcome. Called only once `stop_reason` has already ruled
- * out `refusal` and `max_tokens`, so everything that can still go wrong here — no text block, a
- * body that isn't JSON, a body that doesn't shape-check — is folded into one `unparseable` reason;
- * none of them is worth a retry on its own.
+ * Turn a successful response into JSON, or into the one failure reason that covers every way it
+ * can fail to be JSON — no text block, or a body that doesn't parse. Called only once
+ * `stop_reason` has ruled out `refusal` and `max_tokens`, and neither case here is worth a retry.
  */
-function readVerdict(message: Anthropic.Message): ClassifyOutcome {
+function readJson(message: Anthropic.Message): JsonOutcome {
   const block = textBlock(message);
   if (block === undefined) {
     return { failed: { reason: 'unparseable', detail: 'response has no text block' } };
   }
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(block.text);
+    return { ok: JSON.parse(block.text) as unknown };
   } catch {
     return {
       failed: { reason: 'unparseable', detail: `not valid JSON: ${block.text.slice(0, 200)}` },
     };
   }
-
-  const verdict = parseVerdict(parsed);
-  if (verdict === undefined) {
-    return {
-      failed: { reason: 'unparseable', detail: `not a JSON object: ${block.text.slice(0, 200)}` },
-    };
-  }
-  return { ok: verdict };
 }
 
+/** One call's parsed JSON body, or one typed reason there isn't one. */
+export type JsonOutcome = { ok: unknown } | { failed: ClassifyFailure };
+
 /**
- * Send one item's request and return a parsed verdict or a typed failure. Never throws.
+ * Send one request and return whatever JSON came back, or a typed failure. Never throws.
+ *
+ * The provider-agnostic half of this module, and the one both classifiers share: the SDK call,
+ * the error taxonomy and the `stop_reason` guards are identical whatever is being judged, while
+ * the SHAPE of a verdict is not — the Inbox answers with six nullable fields, Comms with a tier
+ * and an ask. Rather than fork the call per shape, the caller supplies the schema and reads its
+ * own answer out of the JSON, which is what keeps the retry policy and the failure reasons in
+ * exactly one place.
  *
  * The client is built fresh on every call rather than hoisted to module scope: a Worker isolate
  * is reused across invocations, and a module-scope singleton would carry state — and a stale
  * `env` — between them.
  */
-export async function classify(
+export async function classifyJson(
   env: ClassifierEnv,
   request: ClassifyRequest,
-): Promise<ClassifyOutcome> {
+): Promise<JsonOutcome> {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined) {
     return { failed: { reason: 'credentials', detail: 'ANTHROPIC_API_KEY is not set' } };
@@ -136,5 +139,30 @@ export async function classify(
     return { failed: { reason: 'truncated' } };
   }
 
-  return readVerdict(message);
+  return readJson(message);
+}
+
+/**
+ * The Inbox classifier's call: one item's request in, a shape-checked `Verdict` out. A body that
+ * parsed as JSON but isn't a verdict object joins the other unparseable answers — the schema
+ * makes every key required, so a response that doesn't shape-check is a structured-output
+ * failure, and re-sending the identical prompt is not the fix.
+ */
+export async function classify(
+  env: ClassifierEnv,
+  request: ClassifyRequest,
+): Promise<ClassifyOutcome> {
+  const outcome = await classifyJson(env, request);
+  if ('failed' in outcome) return outcome;
+
+  const verdict = parseVerdict(outcome.ok);
+  if (verdict === undefined) {
+    return {
+      failed: {
+        reason: 'unparseable',
+        detail: `not a JSON object: ${JSON.stringify(outcome.ok).slice(0, 200)}`,
+      },
+    };
+  }
+  return { ok: verdict };
 }

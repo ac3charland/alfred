@@ -1,5 +1,7 @@
+import * as commsScheduled from './comms/scheduled';
 import { spyOnFetch } from './fetch-stub';
-import worker, { type Env } from './index';
+import { hmacSha256Hex } from './hmac';
+import worker, { type Env, RETENTION_CRON, TICK_CRON } from './index';
 
 const env: Env = {
   GITHUB_WEBHOOK_SECRET: 'webhook-secret',
@@ -136,7 +138,7 @@ describe('worker.fetch', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago)',
+      'alfred workers ok (build abc1234; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured)',
     );
   });
 
@@ -146,7 +148,7 @@ describe('worker.fetch', () => {
     const { response } = await invoke(new Request('https://worker.dev/'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago)',
+      'alfred workers ok (build unstamped; classifier claude-haiku-4-5 @ America/Chicago; comms ingest unconfigured)',
     );
   });
 
@@ -161,7 +163,7 @@ describe('worker.fetch', () => {
       CLASSIFIER_TIMEZONE: 'Europe/London',
     });
     expect(await response.text()).toBe(
-      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London)',
+      'alfred workers ok (build unstamped; classifier claude-sonnet-5 @ Europe/London; comms ingest unconfigured)',
     );
   });
 
@@ -520,8 +522,14 @@ describe('worker.fetch', () => {
 });
 
 describe('worker.scheduled', () => {
-  /** A cron invocation carries no request; only `env` and the execution context matter here. */
-  const controller = {} as unknown as Parameters<typeof worker.scheduled>[0];
+  /**
+   * A cron invocation carries no request — only which schedule fired, plus `env` and the
+   * execution context. The Worker runs two schedules from one handler, so the cron expression is
+   * the only thing that says which units this invocation owes.
+   */
+  const controllerFor = (cron: string): Parameters<typeof worker.scheduled>[0] =>
+    ({ cron }) as unknown as Parameters<typeof worker.scheduled>[0];
+  const controller = controllerFor(TICK_CRON);
   const background: Promise<unknown>[] = [];
   const ctx = {
     waitUntil: (promise: Promise<unknown>) => background.push(promise),
@@ -540,23 +548,193 @@ describe('worker.scheduled', () => {
     await worker.scheduled(controller, env, ctx);
 
     expect(settled).toBe(true);
-    // Nothing eligible means exactly one database query and zero model calls — a steady state
-    // where everything is triaged is a steady state where the model is never invoked.
-    expect(spy).toHaveBeenCalledTimes(1);
-    const [url] = spy.mock.calls[0] as [string];
-    expect(url).toContain('/rest/v1/items?');
-    expect(url).toContain('classified_at=is.null');
+    // The Inbox sweep goes first and asks its one question. Nothing eligible means zero model
+    // calls — for either classifier — because a steady state where everything is triaged is a
+    // steady state where nothing is judged.
+    // Cast, like every other URL assertion in this file: the Worker only ever fetches strings.
+    const urls = spy.mock.calls.map(([called]) => called as string);
+    expect(urls[0]).toContain('/rest/v1/items?');
+    expect(urls[0]).toContain('classified_at=is.null');
+    expect(urls.filter((url) => url.includes('api.anthropic.com'))).toEqual([]);
   });
 
-  it('makes no request at all when the API key binding has never been set', async () => {
+  it('spends nothing on the model when the API key binding has never been set', async () => {
     // Until someone runs `wrangler secret put` the binding is genuinely absent. Treating that as
-    // an outage would burn an attempt on every eligible item every two minutes, so the tick
-    // stops before it costs anything — and fixing the key later loses nothing.
-    const spy = spyOnFetch();
+    // an outage would burn an attempt on every eligible row every two minutes, so both sweeps
+    // stop before they cost anything — and fixing the key later loses nothing.
+    const spy = spyOnFetch().mockImplementation(() => Promise.resolve(Response.json([])));
     const { ANTHROPIC_API_KEY: _unset, ...withoutKey } = env;
 
     await worker.scheduled(controller, withoutKey, ctx);
 
+    // The Inbox sweep writes nothing at all. The comms sweep writes exactly one row, because a
+    // stalled classifier is a state the module has to report rather than a silence.
+    // Cast, like every other URL assertion in this file: the Worker only ever fetches strings.
+    const urls = spy.mock.calls.map(([called]) => called as string);
+    expect(urls).toEqual([expect.stringContaining('comm_classifier_health')]);
+  });
+
+  it('runs the comms tick on the frequent cron, after the Inbox sweep', async () => {
+    // One Worker, one handler, two schedules — so the cron expression is what says which units
+    // this invocation owes. The frequent one carries both sweeps.
+    spyOnFetch().mockResolvedValue(Response.json([]));
+    const tick = jest
+      .spyOn(commsScheduled, 'runCommsTick')
+      .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+    const retention = jest.spyOn(commsScheduled, 'runCommsRetention');
+
+    await worker.scheduled(controllerFor(TICK_CRON), env, ctx);
+
+    expect(tick).toHaveBeenCalledTimes(1);
+    expect(retention).not.toHaveBeenCalled();
+  });
+
+  it('runs only the retention sweep on the daily cron', async () => {
+    // Housekeeping is not triage: the daily schedule must not drag a model call along with it.
+    const fetchSpy = spyOnFetch().mockResolvedValue(Response.json([]));
+    const tick = jest.spyOn(commsScheduled, 'runCommsTick');
+    const retention = jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 12, failures: [] });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(retention).toHaveBeenCalledTimes(1);
+    expect(tick).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs a line per unit, including the ones that failed', async () => {
+    // `wrangler tail` is the only window into a cron, so a tick that half-ran has to say so.
+    spyOnFetch().mockResolvedValue(Response.json([]));
+    jest.spyOn(commsScheduled, 'runCommsTick').mockResolvedValue({
+      gmail: { accounts: [{ key: 'gmail-personal', polled: true, accepted: 4 }] },
+      sweep: undefined,
+      failures: ['comms sweep: Supabase GET comm_messages failed: 500'],
+    });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    const errors: string[] = [];
+    jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(TICK_CRON), env, ctx);
+
+    expect(logged).toEqual([
+      'classifier sweep: 0 eligible, 0 classified, 0 failed',
+      'comms gmail poll: 1 account, 4 accepted',
+      'comms classifier sweep: did not run',
+    ]);
+    expect(errors).toEqual(['comms: comms sweep: Supabase GET comm_messages failed: 500']);
+  });
+
+  it('logs what the retention sweep deleted', async () => {
+    jest
+      .spyOn(commsScheduled, 'runCommsRetention')
+      .mockResolvedValue({ deleted: 12, failures: [] });
+    const logged: string[] = [];
+    jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
+
+    expect(logged).toEqual(['comms retention: 12 messages deleted']);
+  });
+});
+
+describe('worker.fetch — the comms ingest route', () => {
+  const ingestEnv: Env = { ...env, COMMS_INGEST_HMAC_SECRET: 'daemon-secret' };
+
+  /** Sign a body the way the Mac daemon does: over `${unix seconds}.${raw body}`. */
+  async function ingestRequest(body: unknown): Promise<Request> {
+    const raw = JSON.stringify(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    return new Request('https://worker.dev/comms/ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Alfred-Timestamp': timestamp,
+        'X-Alfred-Signature': `sha256=${await hmacSha256Hex('daemon-secret', `${timestamp}.${raw}`)}`,
+      },
+      body: raw,
+    });
+  }
+
+  const heartbeatBody = {
+    version: 1,
+    account: {
+      key: 'imessage',
+      kind: 'imessage',
+      label: 'iMessage',
+      owner_handles: ['+15125550123'],
+      expected_interval_seconds: 300,
+    },
+    heartbeat: { ok: true, cursor: { rowid: 4 }, error: JSON.parse('null') as unknown },
+    messages: [],
+  };
+
+  it('routes a signed POST to the ingest handler', async () => {
+    // A fresh Response per call: a body can only be read once, so one shared instance would make
+    // the second call fail on an already-consumed stream rather than on anything real.
+    spyOnFetch().mockImplementation(() =>
+      Promise.resolve(
+        Response.json([
+          {
+            id: 'account-1',
+            key: 'imessage',
+            kind: 'imessage',
+            label: 'iMessage',
+            home: 'daemon',
+            owner_handles: ['+15125550123'],
+            enabled: true,
+            expected_interval_seconds: 300,
+            cursor: JSON.parse('null') as unknown,
+            last_seen_at: JSON.parse('null') as unknown,
+            last_error: JSON.parse('null') as unknown,
+            last_error_at: JSON.parse('null') as unknown,
+          },
+        ]),
+      ),
+    );
+
+    const { response } = await invoke(await ingestRequest(heartbeatBody), ingestEnv);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({ accepted: 0, duplicates: 0, drained: 0 }),
+    );
+  });
+
+  it('rejects an unsigned POST at the same route', async () => {
+    const spy = spyOnFetch();
+    const request = new Request('https://worker.dev/comms/ingest', {
+      method: 'POST',
+      body: JSON.stringify(heartbeatBody),
+    });
+
+    const { response } = await invoke(request, ingestEnv);
+
+    expect(response.status).toBe(401);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('404s a GET to the ingest path (method must be POST)', async () => {
+    const { response } = await invoke(
+      new Request('https://worker.dev/comms/ingest', { method: 'GET' }),
+      ingestEnv,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('reports the ingest endpoint as configured on the health line', async () => {
+    // Never the value — a health check names what is wired up, not what it is wired up with.
+    const { response } = await invoke(new Request('https://worker.dev/'), ingestEnv);
+    const text = await response.text();
+    expect(text).toContain('comms ingest configured');
+    expect(text).not.toContain('daemon-secret');
   });
 });

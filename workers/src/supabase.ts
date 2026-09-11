@@ -26,7 +26,7 @@ function restUrl(env: SupabaseEnv, table: string, ref: string): string {
   return `${env.SUPABASE_URL}/rest/v1/${table}?ref=eq.${encodeURIComponent(ref)}`;
 }
 
-function headers(env: SupabaseEnv): Record<string, string> {
+export function headers(env: SupabaseEnv): Record<string, string> {
   return {
     apikey: env.SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
@@ -93,7 +93,11 @@ export function patchEpic(
 // but they share its fetch/throw-on-non-2xx shape via the two helpers below.
 
 /** Build a `${SUPABASE_URL}/rest/v1/<table>?<query>` GET URL from a flat param object. */
-function restQueryUrl(env: SupabaseEnv, table: string, params: Record<string, string>): string {
+export function restQueryUrl(
+  env: SupabaseEnv,
+  table: string,
+  params: Record<string, string>,
+): string {
   const url = new URL(`${env.SUPABASE_URL}/rest/v1/${table}`);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
@@ -107,7 +111,7 @@ function restQueryUrl(env: SupabaseEnv, table: string, params: Record<string, st
  * PATCH, so a rejected write (a CHECK-constraint violation, say) is a readable log line rather
  * than a swallowed exception.
  */
-async function fetchJson<T>(
+export async function fetchJson<T>(
   env: SupabaseEnv,
   url: string,
   init: RequestInit,

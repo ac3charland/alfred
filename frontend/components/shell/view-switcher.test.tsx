@@ -17,18 +17,20 @@ describe('ViewSwitcher', () => {
     jest.spyOn(globalThis.history, 'pushState').mockImplementation(() => {});
   });
 
-  it('renders Tasks and Code segments as links', () => {
+  it('renders a segment per module as a link', () => {
     render(<ViewSwitcher />);
 
     expect(screen.getByRole('link', { name: 'Tasks' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Code' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Comms' })).toBeInTheDocument();
   });
 
-  it('points Tasks at the By-Priority default view and Code at /code', () => {
+  it('points each segment at its module default view', () => {
     render(<ViewSwitcher />);
 
     expect(screen.getByRole('link', { name: 'Tasks' })).toHaveAttribute('href', '/priority');
     expect(screen.getByRole('link', { name: 'Code' })).toHaveAttribute('href', '/code');
+    expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('href', '/comms');
   });
 
   it('marks Tasks active on the inbox/landing route', () => {
@@ -69,12 +71,28 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveAttribute('aria-current');
   });
 
-  it('applies the active accent class to the active segment', () => {
-    mockPathname.mockReturnValue('/code');
-    render(<ViewSwitcher />);
+  it('marks Comms active on its landing route and on a settings route beneath it', () => {
+    mockPathname.mockReturnValue('/comms');
+    const { rerender } = render(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveAttribute('aria-current');
 
+    mockPathname.mockReturnValue('/comms/people');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Comms' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('gives the active segment its OWN module accent, not one shared colour', () => {
+    mockPathname.mockReturnValue('/code');
+    const { rerender } = render(<ViewSwitcher />);
     expect(screen.getByRole('link', { name: 'Code' })).toHaveClass('text-accent-teal');
     expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveClass('text-accent-teal');
+
+    // Comms is the blue module, so its active segment must not borrow the app's teal.
+    mockPathname.mockReturnValue('/comms');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Comms' })).toHaveClass('text-accent-blue');
+    expect(screen.getByRole('link', { name: 'Comms' })).not.toHaveClass('text-accent-teal');
   });
 
   it('exposes a labelled group for the switcher', () => {

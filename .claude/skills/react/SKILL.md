@@ -137,6 +137,9 @@ Does a deep subtree need shared data without prop drilling?
 
 ## Common Pitfalls
 
+**Event ordering**
+- A row that selects itself on `onFocus` **and** toggles on `onClick` cancels itself out: a mouse click fires `focus` first, so by the time `click` runs `selected` is already true and the toggle deselects it. Select on click only (or on focus only); never both.
+
 **Effects**
 - Never put logic in an effect that belongs in an event handler. If the code answers "what did the user just do?", it is an event handler. If it answers "what must stay in sync while this component is displayed?", it is an effect.
 - Never use an effect to derive state from other state or props. Calculate the derived value during render instead. The classic violation: `useEffect(() => setFullName(first + ' ' + last), [first, last])`.

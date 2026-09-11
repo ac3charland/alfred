@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. `npm run install:launchd -w daemon` substitutes every doubled-brace placeholder below and writes the
+  result to ~/Library/LaunchAgents/com.alfred.comms-daemon.plist. Never install this file as-is.
+
+  ProcessType Interactive: macOS throttles processes it considers background, which is exactly
+  the condition under which a message firewall must keep polling.
+  KeepAlive/SuccessfulExit false: restart after a crash, but respect a clean exit (a health check
+  that failed fatally is telling the owner to fix something, not asking to be retried forever).
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.alfred.comms-daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>{{NODE_BIN}}</string>
+      <string>{{MAIN_TS}}</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/daemon.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/daemon.error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>{{PATH}}</string>
+    </dict>
+  </dict>
+</plist>
