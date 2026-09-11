@@ -78,6 +78,9 @@ interface Scenario extends Database {
   mailbox?: Mailbox;
   /** Answer the token exchange with this instead of a fresh access token. */
   oauth?: () => Response;
+  /** Make any request whose URL contains this REJECT rather than answer — how the runtime
+   *  reports an exhausted subrequest budget, and the one failure shape no typed result covers. */
+  rejectMatching?: string;
 }
 
 function accountRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -159,6 +162,10 @@ function harness(scenario: Scenario = {}): Call[] {
       body: typeof raw === 'string' ? raw : undefined,
     };
     calls.push(call);
+
+    if (scenario.rejectMatching !== undefined && url.includes(scenario.rejectMatching)) {
+      return Promise.reject(new Error('Too many subrequests by single Worker invocation'));
+    }
 
     if (url.startsWith(OAUTH_ENDPOINT)) {
       const respond = scenario.oauth ?? (() => Response.json({ access_token: 'ya29.access' }));
@@ -281,6 +288,32 @@ describe('pollGmail', () => {
     const [stamped] = restCalls(calls, 'comm_accounts', 'PATCH');
     expect(payload(stamped)).toEqual({
       last_error: 'GMAIL_OAUTH_CLIENT_SECRET is not set',
+      last_error_at: DAY_17.toISOString(),
+    });
+  });
+
+  it('stamps an account whose poll THREW, so it goes red instead of reading as never polled', async () => {
+    // Learned in production. The Gmail client and the token exchange catch their own transport
+    // failures, but the Supabase helpers do not — so a budget exhausted part-way through a poll
+    // threw out of `pollAccount` entirely, into the catch ABOVE it that has no account id to
+    // stamp with. The row kept both timestamps null, which reads as "has never synced" and is
+    // indistinguishable from a poll that was never scheduled. The real fault went unreported.
+    const calls = harness({
+      mailbox: {
+        profile: { emailAddress: 'owner@example.com', historyId: '5000' },
+        listIds: ['m1'],
+        messages: [gmailMessage('m1')],
+      },
+      rejectMatching: '/comm_messages',
+    });
+
+    const summary = await pollGmail(personalOnly, DAY_17);
+
+    expect(summary.accounts[0]?.polled).toBe(false);
+    expect(summary.accounts[0]?.error).toContain('Too many subrequests');
+    const [stamped] = restCalls(calls, 'comm_accounts', 'PATCH');
+    expect(payload(stamped)).toEqual({
+      last_error: 'Too many subrequests by single Worker invocation',
       last_error_at: DAY_17.toISOString(),
     });
   });
