@@ -18,8 +18,9 @@ import { handleIngest } from './comms/ingest';
 import {
   type CommsRetentionSummary,
   type CommsTickSummary,
+  runCommsJudge,
+  runCommsPoll,
   runCommsRetention,
-  runCommsTick,
 } from './comms/scheduled';
 import { parseFrontmatter } from './frontmatter';
 import { fetchSpec } from './github';
@@ -77,10 +78,21 @@ export interface Env {
 const UNSTAMPED = 'unstamped';
 
 /**
- * The frequent schedule: the Inbox classifier and the comms tick. Both live on it because neither
- * is worth its own trigger and nobody is waiting on either.
+ * The frequent schedule: the Inbox classifier and the comms JUDGE pass (not the Gmail poll — see
+ * `POLL_CRON`). Both live on it because neither is worth its own trigger and nobody is waiting on
+ * either.
  */
 export const TICK_CRON = '*/2 * * * *';
+
+/**
+ * The Gmail poll, on its own two-minute tick at the odd minutes — interleaved with `TICK_CRON`
+ * rather than sharing it. The two are separated because they compete for one budget: the Workers
+ * runtime allows 50 outbound fetches per INVOCATION on the Free plan, and polling and judging both
+ * scale with how much mail is waiting, so together they exhausted it and the whole tick threw. Apart,
+ * each gets the full 50. The minute of offset keeps the pipeline flowing one way — mail polled at
+ * :01 is judged at :02.
+ */
+export const POLL_CRON = '1-59/2 * * * *';
 
 /**
  * The daily retention sweep. Housekeeping rather than triage, so it runs alone, overnight, and
@@ -146,8 +158,8 @@ export default {
   },
 
   /**
-   * The cron triggers' entrypoint, shared by both schedules — the runtime hands over which one
-   * fired and nothing else, so `event.cron` is the whole dispatch. An unrecognised expression
+   * The cron triggers' entrypoint, shared by all three schedules — the runtime hands over which
+   * one fired and nothing else, so `event.cron` is the whole dispatch. An unrecognised expression
    * takes the frequent path: a schedule that was renamed in wrangler.toml and not here should
    * keep triaging rather than silently do nothing.
    *
@@ -163,6 +175,11 @@ export default {
       return;
     }
 
+    if (event.cron === POLL_CRON) {
+      logCommsTick(await runCommsPoll(env, now));
+      return;
+    }
+
     const summary = await runSweep(env, now);
     console.log(
       `classifier sweep: ${String(summary.eligible)} eligible, ` +
@@ -170,7 +187,7 @@ export default {
         (summary.aborted ? ' (aborted)' : ''),
     );
 
-    logCommsTick(await runCommsTick(env, now));
+    logCommsTick(await runCommsJudge(env, now));
   },
 };
 

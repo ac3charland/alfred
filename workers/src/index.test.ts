@@ -1,7 +1,7 @@
 import * as commsScheduled from './comms/scheduled';
 import { spyOnFetch } from './fetch-stub';
 import { hmacSha256Hex } from './hmac';
-import worker, { type Env, RETENTION_CRON, TICK_CRON } from './index';
+import worker, { type Env, POLL_CRON, RETENTION_CRON, TICK_CRON } from './index';
 
 const env: Env = {
   GITHUB_WEBHOOK_SECRET: 'webhook-secret',
@@ -574,25 +574,46 @@ describe('worker.scheduled', () => {
     expect(urls).toEqual([expect.stringContaining('comm_classifier_health')]);
   });
 
-  it('runs the comms tick on the frequent cron, after the Inbox sweep', async () => {
-    // One Worker, one handler, two schedules — so the cron expression is what says which units
-    // this invocation owes. The frequent one carries both sweeps.
+  it('runs the Inbox sweep and the comms JUDGE pass on the frequent cron — never the poll', async () => {
+    // One Worker, one handler, three schedules — so the cron expression is what says which units
+    // this invocation owes. Keeping the poll off this tick is the whole point of splitting them:
+    // together they exhausted one invocation's 50-subrequest budget.
     spyOnFetch().mockResolvedValue(Response.json([]));
-    const tick = jest
-      .spyOn(commsScheduled, 'runCommsTick')
+    const judge = jest
+      .spyOn(commsScheduled, 'runCommsJudge')
       .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+    const poll = jest.spyOn(commsScheduled, 'runCommsPoll');
     const retention = jest.spyOn(commsScheduled, 'runCommsRetention');
 
     await worker.scheduled(controllerFor(TICK_CRON), env, ctx);
 
-    expect(tick).toHaveBeenCalledTimes(1);
+    expect(judge).toHaveBeenCalledTimes(1);
+    expect(poll).not.toHaveBeenCalled();
+    expect(retention).not.toHaveBeenCalled();
+  });
+
+  it('runs only the Gmail poll on the poll cron, so it gets the invocation to itself', async () => {
+    spyOnFetch().mockResolvedValue(Response.json([]));
+    const poll = jest
+      .spyOn(commsScheduled, 'runCommsPoll')
+      .mockResolvedValue({ gmail: undefined, sweep: undefined, failures: [] });
+    const judge = jest.spyOn(commsScheduled, 'runCommsJudge');
+    const retention = jest.spyOn(commsScheduled, 'runCommsRetention');
+
+    await worker.scheduled(controllerFor(POLL_CRON), env, ctx);
+
+    expect(poll).toHaveBeenCalledTimes(1);
+    // Not even the Inbox classifier sweep, which the frequent tick also carries: this invocation
+    // exists so the poll has all 50 subrequests to itself.
+    expect(judge).not.toHaveBeenCalled();
     expect(retention).not.toHaveBeenCalled();
   });
 
   it('runs only the retention sweep on the daily cron', async () => {
     // Housekeeping is not triage: the daily schedule must not drag a model call along with it.
     const fetchSpy = spyOnFetch().mockResolvedValue(Response.json([]));
-    const tick = jest.spyOn(commsScheduled, 'runCommsTick');
+    const judge = jest.spyOn(commsScheduled, 'runCommsJudge');
+    const poll = jest.spyOn(commsScheduled, 'runCommsPoll');
     const retention = jest
       .spyOn(commsScheduled, 'runCommsRetention')
       .mockResolvedValue({ deleted: 12, failures: [] });
@@ -600,15 +621,16 @@ describe('worker.scheduled', () => {
     await worker.scheduled(controllerFor(RETENTION_CRON), env, ctx);
 
     expect(retention).toHaveBeenCalledTimes(1);
-    expect(tick).not.toHaveBeenCalled();
+    expect(judge).not.toHaveBeenCalled();
+    expect(poll).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('logs a line per unit, including the ones that failed', async () => {
     // `wrangler tail` is the only window into a cron, so a tick that half-ran has to say so.
     spyOnFetch().mockResolvedValue(Response.json([]));
-    jest.spyOn(commsScheduled, 'runCommsTick').mockResolvedValue({
-      gmail: { accounts: [{ key: 'gmail-personal', polled: true, accepted: 4 }] },
+    jest.spyOn(commsScheduled, 'runCommsJudge').mockResolvedValue({
+      gmail: undefined,
       sweep: undefined,
       failures: ['comms sweep: Supabase GET comm_messages failed: 500'],
     });
@@ -625,7 +647,7 @@ describe('worker.scheduled', () => {
 
     expect(logged).toEqual([
       'classifier sweep: 0 eligible, 0 classified, 0 failed',
-      'comms gmail poll: 1 account, 4 accepted',
+      'comms gmail poll: did not run',
       'comms classifier sweep: did not run',
     ]);
     expect(errors).toEqual(['comms: comms sweep: Supabase GET comm_messages failed: 500']);
