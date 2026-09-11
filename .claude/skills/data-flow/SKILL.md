@@ -117,6 +117,21 @@ writer and stay pure seed-once.
 The shape generalizes: put the "may this payload touch the store?" rule in a **pure function** the
 suite gates, not in branches inside the subscription callback.
 
+## A derived status must mirror the query that does the work
+
+Wherever the browser derives "is the Worker keeping up?" from rows it already holds, it is
+re-implementing that Worker's worklist — and the two drift in silence, because nothing fails when
+they disagree. `classifierStalled` (`lib/comms/health.ts`) counted every unjudged inbound message
+while the sweep's `fetchUnjudgedMessages` also filters `cleared_at is null`, so a backfill of
+threads the owner had already answered read as a week-long judgment outage. Copy the server
+predicate exactly, and say in a comment that it is a copy.
+
+Such an alarm needs a second rule: a queue that is merely long is not a stall. Per-tick caps mean a
+real backlog sits past any cadence while the Worker is working perfectly, so gate the alarm on
+evidence of **progress** (a completion timestamp inside the window) and date it from the last work
+completed — never from when the oldest item arrived, which for anything backfilled is a much older
+and unrelated moment.
+
 ## Priority: the code module's one global ordering column (ALF-35)
 
 The Backlog, the project board's epic order, and within-lane order all derive from **one**
