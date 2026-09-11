@@ -10,7 +10,7 @@ import { ViewSwitcher } from '@/components/shell/view-switcher';
 import { AlfredLink } from '@/components/tasks/alfred-link';
 import type { InstanceConfig } from '@/lib/instance';
 
-import { shellRootClass } from './app-shell.styles';
+import { shellRootClass, sidebarShortcutHintClass } from './app-shell.styles';
 
 /**
  * Shared application shell (Server Component) mounted once by the `(shell)` layout that
@@ -56,8 +56,10 @@ export function AppShell({
           <div className="flex-1 overflow-y-auto px-2">
             <ShellNav />
           </div>
-          {/* A quiet ⌘K affordance so the navigation palette is discoverable without a mouse. */}
-          <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground/70">
+          {/* A quiet ⌘K affordance so the navigation palette is discoverable without a mouse.
+              Sticky (see app-shell.styles.ts) so it stays pinned to the viewport bottom rather
+              than drifting off past the bottom of a long, scrolled page (ALF-207). */}
+          <div data-testid="sidebar-shortcut-hint" className={sidebarShortcutHintClass}>
             <span className="inline-flex items-center gap-1.5">
               Press
               <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-muted-foreground">
