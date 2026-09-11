@@ -3910,6 +3910,45 @@ describe('TaskRow — dismissing the add-subtask entry on an outside click (ALF-
 
     expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
   });
+
+  it('closes on an outside press even after the field already lost focus without dismissing', async () => {
+    // CaptureBox stays open and un-focused after a touch submit (ALF-98): the tap blurs the
+    // input with a null relatedTarget before the pointer-press guard lets the submit land, so
+    // nothing in the field holds focus afterward — yet the entry is still open, ready for the
+    // next subtask. A dismiss that only listens for blur can never fire again from here; this
+    // pins that a plain outside press still closes it regardless.
+    mockReducedMotion(true);
+    mockCreateItem.mockResolvedValue({ id: 'new-subtask', title: 'Subtask' } as Awaited<
+      ReturnType<typeof apiClient.createItem>
+    >);
+    const user = userEvent.setup();
+    renderTasks([BASE_ITEM]);
+
+    await user.click(screen.getByRole('button', { name: /add subtask/i }));
+    const field = screen.getByPlaceholderText(/add subtask/i);
+    await user.type(field, 'Subtask');
+
+    const addButton = screen.getByRole('button', { name: /^add$/i });
+    const form = addButton.closest('form');
+    if (!form) throw new Error('compact capture form not found');
+    fireEvent.pointerDown(addButton);
+    // A real .blur() (not a bare fireEvent.blur) so jsdom's own activeElement tracking moves
+    // off the field too — the pointer-press guard skips the dismiss regardless of where focus
+    // lands, matching the touch tap that never gives the Add button focus either.
+    field.blur();
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(mockCreateItem).toHaveBeenCalled();
+    });
+    // Still open, and focus has landed nowhere inside it.
+    expect(screen.getByPlaceholderText(/add subtask/i)).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(screen.getByPlaceholderText(/add subtask/i));
+
+    await user.click(document.body);
+
+    expect(screen.queryByPlaceholderText(/add subtask/i)).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
