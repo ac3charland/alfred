@@ -65,7 +65,7 @@ compatibility_flags = ["nodejs_compat"]
 #                nothing depends on the exact minute. An odd minute rather than :00 for the usual
 #                reason — the top of the hour is where every scheduler in the world queues up.
 [triggers]
-crons = ["*/2 * * * *", "1-59/2 * * * *", "17 9 * * *"]
+crons = ["*/2 * * * *", "*/3 * * * *", "17 9 * * *"]
 
 # ── Vars (non-secret, plaintext, committed) ──────────────────────────────────
 # CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a

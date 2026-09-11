@@ -85,14 +85,22 @@ const UNSTAMPED = 'unstamped';
 export const TICK_CRON = '*/2 * * * *';
 
 /**
- * The Gmail poll, on its own two-minute tick at the odd minutes — interleaved with `TICK_CRON`
- * rather than sharing it. The two are separated because they compete for one budget: the Workers
- * runtime allows 50 outbound fetches per INVOCATION on the Free plan, and polling and judging both
- * scale with how much mail is waiting, so together they exhausted it and the whole tick threw. Apart,
- * each gets the full 50. The minute of offset keeps the pipeline flowing one way — mail polled at
- * :01 is judged at :02.
+ * The Gmail poll, on its own three-minute tick rather than sharing `TICK_CRON`. The two are
+ * separated because they compete for one budget: the Workers runtime allows 50 outbound fetches
+ * per INVOCATION on the Free plan, and polling and judging both scale with how much mail is
+ * waiting, so together they exhausted it and the whole tick threw. Apart, each gets the full 50.
+ *
+ * Three minutes rather than an offset two. This was a stepped range starting at 1, to interleave
+ * the poll with the judge pass on the odd minutes. Cloudflare accepted it, and its API echoed it
+ * back verbatim, but the SCHEDULER ran the offset-free form: the trigger fired on the EVEN minute
+ * alongside `TICK_CRON` and reported itself as `TICK_CRON`'s own expression. Since `event.cron` is
+ * the whole dispatch, the poll became unreachable — `pollGmail` was never called once, and both
+ * Gmail accounts sat dark while every tick silently took the fall-through branch. A stepped range
+ * with a NONZERO start is the trap; an offset-free expression cannot collapse onto another
+ * schedule. The two now coincide every sixth minute, which costs nothing: separate invocations
+ * carry separate budgets.
  */
-export const POLL_CRON = '1-59/2 * * * *';
+export const POLL_CRON = '*/3 * * * *';
 
 /**
  * The daily retention sweep. Housekeeping rather than triage, so it runs alone, overnight, and
@@ -178,6 +186,13 @@ export default {
     if (event.cron === POLL_CRON) {
       logCommsTick(await runCommsPoll(env, now));
       return;
+    }
+
+    // Named rather than swallowed. The fall-through below is deliberate, but it is also how a
+    // dispatch that matches nothing hides: a schedule whose expression the runtime reports
+    // differently from the constant here keeps triaging and never says its own unit stopped.
+    if (event.cron !== TICK_CRON) {
+      console.warn(`comms: unrecognised cron ${event.cron} — taking the frequent path`);
     }
 
     const summary = await runSweep(env, now);

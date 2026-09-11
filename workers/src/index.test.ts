@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import * as commsScheduled from './comms/scheduled';
 import { spyOnFetch } from './fetch-stub';
 import { hmacSha256Hex } from './hmac';
@@ -607,6 +610,50 @@ describe('worker.scheduled', () => {
     // exists so the poll has all 50 subrequests to itself.
     expect(judge).not.toHaveBeenCalled();
     expect(retention).not.toHaveBeenCalled();
+  });
+
+  it('never schedules on an offset stepped range, which Cloudflare normalizes away', () => {
+    // Learned in production. Cloudflare accepts `1-59/2 * * * *`, and its API echoes that string
+    // back, but the scheduler runs the OFFSET-FREE form: the trigger fired on the even minute
+    // alongside `*/2 * * * *` and reported ITSELF as `*/2 * * * *`. Dispatch is on the cron
+    // string, so the Gmail poll became unreachable and every tick silently took the fall-through
+    // branch. Any `<nonzero>-<end>/<step>` field can collapse onto another schedule the same way.
+    const offsetStep = /(?:^|\s)([1-9]\d*)-\d+\/\d+(?=\s|$)/;
+    for (const cron of [TICK_CRON, POLL_CRON, RETENTION_CRON]) {
+      expect(cron).not.toMatch(offsetStep);
+    }
+  });
+
+  it('dispatches on expressions that are all distinct, so no two schedules collide', () => {
+    const crons = [TICK_CRON, POLL_CRON, RETENTION_CRON];
+    expect(new Set(crons).size).toBe(crons.length);
+  });
+
+  it('dispatches on exactly the expressions wrangler.toml registers', () => {
+    // The constants and the config are two copies of the same three strings; a schedule renamed
+    // in one and not the other deploys a cron nothing handles.
+    const toml = readFileSync(path.join(__dirname, '..', 'wrangler.toml'), 'utf8');
+    const declared = /^crons = \[(.+)\]$/m.exec(toml)?.[1] ?? '';
+    const registered = [...declared.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? '');
+
+    // Compared as sets: which three schedules exist is the contract, their order in the file
+    // is not.
+    expect(new Set(registered)).toEqual(new Set([TICK_CRON, POLL_CRON, RETENTION_CRON]));
+  });
+
+  it('names an unrecognised cron in the log rather than taking the tick path in silence', async () => {
+    // The fall-through is deliberate — a renamed schedule should keep triaging — but it is also
+    // how an unreachable dispatch hides. `wrangler tail` has to be able to say the string arrived
+    // and matched nothing.
+    spyOnFetch().mockResolvedValue(Response.json([]));
+    const warned: string[] = [];
+    jest.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warned.push(args.map(String).join(' '));
+    });
+
+    await worker.scheduled(controllerFor('7 * * * *'), env, ctx);
+
+    expect(warned.join('\n')).toContain('7 * * * *');
   });
 
   it('runs only the retention sweep on the daily cron', async () => {

@@ -52,11 +52,26 @@ export interface ClassifierStall {
  *
  * - the sweep recorded a systemic failure more recently than a success (a missing binding, a
  *   rejected credential), which it knows about; and
- * - an inbound message has been sitting unjudged for longer than the sweep's cadence, which
- *   catches an outage the sweep never got far enough to record.
+ * - a message the sweep SHOULD have judged has been waiting longer than its cadence while
+ *   judgment produced nothing, which catches an outage the sweep never got far enough to record.
  *
  * `since` is the EARLIER of the two, so the banner names when judgment actually stopped rather
  * than when the failure was noticed.
+ *
+ * Two rules keep the second signal from crying wolf, and both were learned the hard way:
+ *
+ * What counts as waiting must mirror `fetchUnjudgedMessages` in the Worker, which excludes a row
+ * a reply has already drained (`cleared_at`). A backfill arrives with a week of threads the owner
+ * answered long ago, and the sweep will never judge one of those — correctly. Counting them here
+ * reported an outage dated before the classifier had even been switched on.
+ *
+ * And a waiting row only means judgment stopped if judgment is ALSO producing nothing. The sweep
+ * judges a capped batch per tick, so a first run over a backlog leaves rows waiting far past the
+ * cadence while working exactly as designed. `classified_at` is the proof of life: a verdict
+ * inside the window means the classifier is draining, not stalled — and when there is no such
+ * verdict, the LAST one it managed is when judgment actually stopped. A message's own
+ * `received_at` says when it arrived, which for anything backfilled is a different and much older
+ * moment, so it is only the fallback for a classifier that has never judged anything at all.
  */
 export function classifierStalled(
   health: CommClassifierHealth | undefined,
@@ -73,10 +88,24 @@ export function classifierStalled(
   }
 
   const cutoff = now.getTime() - CLASSIFIER_STALL_MINUTES * MS_PER_MINUTE;
+  let waitingSince: string | undefined;
+  let lastVerdict: string | undefined;
   for (const message of messages) {
-    if (message.direction !== 'inbound' || message.tier !== null) continue;
-    if (Date.parse(message.received_at) <= cutoff) signals.push(message.received_at);
+    if (
+      message.classified_at !== null &&
+      (lastVerdict === undefined || Date.parse(message.classified_at) > Date.parse(lastVerdict))
+    )
+      lastVerdict = message.classified_at;
+    // Exactly the Worker worklist's predicate: inbound, unjudged, and not already drained.
+    if (message.direction !== 'inbound' || message.tier !== null || message.cleared_at !== null)
+      continue;
+    if (Date.parse(message.received_at) > cutoff) continue;
+    if (waitingSince === undefined || Date.parse(message.received_at) < Date.parse(waitingSince))
+      waitingSince = message.received_at;
   }
+
+  const judgingStill = lastVerdict !== undefined && Date.parse(lastVerdict) > cutoff;
+  if (waitingSince !== undefined && !judgingStill) signals.push(lastVerdict ?? waitingSince);
 
   // The earliest signal wins, walked rather than sorted: ISO timestamps only compare correctly
   // as strings when they share an offset, so each candidate is parsed to an instant.

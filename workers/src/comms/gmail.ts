@@ -98,7 +98,7 @@ import {
   recordPollSuccess,
   upsertAccount,
 } from './store';
-import type { AccountUpsert, NormalizedMessage } from './types';
+import type { AccountUpsert, CommAccount, NormalizedMessage } from './types';
 
 /** The database, plus the OAuth client and one refresh token per Gmail account. */
 export interface GmailEnv extends SupabaseEnv {
@@ -304,7 +304,18 @@ type FetchPlan =
   | { sourceIds: string[]; cursor: unknown }
   | { sourceIds: string[]; truncatedListing: TruncatedListingWindow };
 
-/** Poll one account, from registration through to the health stamp. */
+/**
+ * Poll one account, from registration through to the health stamp.
+ *
+ * Registration happens first, so an account that cannot be polled at all still shows up wearing
+ * whatever error stopped it — and everything after it runs inside a catch that stamps the account
+ * with whatever THREW. The typed failure paths below all route through `failed`, but the Supabase
+ * helpers throw rather than return, so an exhausted subrequest budget or a refused write used to
+ * escape past this function into `pollGmail`'s catch, which has no account id and stamps nothing.
+ * A row with neither a success nor an error on it reads as "has never synced", which is exactly
+ * what a poll that was never scheduled looks like — so the one genuinely broken account in the
+ * strip was reporting itself as merely quiet.
+ */
 async function pollAccount(
   env: GmailEnv,
   spec: AccountSpec,
@@ -312,10 +323,31 @@ async function pollAccount(
   rosterHandles: Set<string>,
   now: Date,
 ): Promise<GmailAccountPoll> {
-  // Registered before anything can fail, so an account that cannot be polled at all still shows
-  // up wearing whatever error stopped it.
   const registered = await upsertAccount(env, registration(spec));
 
+  try {
+    return await pollRegistered(env, spec, registered, refreshToken, rosterHandles, now);
+  } catch (error) {
+    const reason = describe(error);
+    try {
+      return await failed(env, registered.id, spec, now, reason);
+    } catch {
+      // The stamp was refused too — almost always the same fault answering twice. Report the
+      // ORIGINAL reason rather than the one raised trying to record it.
+      return { ...emptyPoll(spec), error: reason };
+    }
+  }
+}
+
+/** Everything a registered account's poll does, with an id to stamp whatever goes wrong. */
+async function pollRegistered(
+  env: GmailEnv,
+  spec: AccountSpec,
+  registered: CommAccount,
+  refreshToken: string,
+  rosterHandles: Set<string>,
+  now: Date,
+): Promise<GmailAccountPoll> {
   const missingBinding = missingOAuthBinding(env);
   if (missingBinding !== undefined) {
     return failed(env, registered.id, spec, now, `${missingBinding} is not set`);
