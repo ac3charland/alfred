@@ -960,10 +960,10 @@ function faithfulHarness(
 }
 
 describe('pollGmail — truncated listing catch-up on a boundary-second tie', () => {
-  it('drains all 700 messages across ticks even though 600 of them share one exact search-second', async () => {
+  it('drains the whole backlog across ticks even though 600 messages share one exact search-second', async () => {
     // The reproduction: a first-run catch-up over a busy week, where most of the backlog shares
     // one whole second (all-hours digests firing at once is a realistic version of this). Before
-    // the fix, tick 2 onward re-lists the SAME 500-and-under ids forever and the 100 beyond the
+    // the fix, tick 2 onward re-lists the SAME capped window forever and everything beyond the
     // cap are never read — see the module doc on `finalizeListingCursor` for why.
     const SPREAD = 100;
     const TIED = 600;
@@ -982,21 +982,28 @@ describe('pollGmail — truncated listing catch-up on a boundary-second tie', ()
     ];
     const { calls, storedCount } = faithfulHarness(pool, DAY_17);
 
-    const tick1 = await pollGmail(personalOnly, DAY_17);
-    const tick2 = await pollGmail(personalOnly, DAY_17);
+    // Driven to exhaustion rather than for a fixed two ticks: how many ticks a backlog takes is a
+    // subrequest-budget decision (see `MAX_MESSAGE_IDS`), while what this regression guards is
+    // that the catch-up always TERMINATES. The bound is what makes it a test — a livelocked
+    // account re-reads the same window forever and runs out of ticks with messages still unstored.
+    const total = SPREAD + TIED;
+    const maxTicks = Math.ceil(total / MAX_MESSAGE_IDS) + 1;
+    let ticks = 0;
+    while (storedCount() < total && ticks < maxTicks) {
+      const tick = await pollGmail(personalOnly, DAY_17);
+      expect(tick.accounts[0]).toMatchObject({ key: 'gmail-personal', polled: true });
+      ticks += 1;
+    }
 
-    expect(tick1.accounts[0]).toEqual({ key: 'gmail-personal', polled: true, accepted: 500 });
-    // The tie: every one of tick 1's 100 remaining candidates for `before:` narrowing shares the
-    // identical trailing second — date narrowing alone would read the same 500 again. The fix
-    // (Gmail's own page token) instead picks up exactly where tick 1 left off.
-    expect(tick2.accounts[0]).toEqual({ key: 'gmail-personal', polled: true, accepted: 200 });
-    expect(storedCount()).toBe(SPREAD + TIED);
-    // No third tick, and no retry, was needed — a livelocked account would still be sitting here
-    // ingesting nothing, tick after tick, with `polled: true` and no error to notice.
+    expect(storedCount()).toBe(total);
+    // The tie: every one of the tied candidates for `before:` narrowing shares the identical
+    // trailing second, so date narrowing alone would re-read the same window every tick. Gmail's
+    // own page token is what makes each tick pick up exactly where the last one stopped — and
+    // reading each message EXACTLY once is the observable proof there was no re-fetch churn.
     const messageGets = calls.filter(
       (call) => call.method === 'GET' && /\/messages\/[^/?]+\?/.exec(call.url) !== null,
     );
-    expect(messageGets).toHaveLength(700); // every message read exactly once — no re-fetch churn
+    expect(messageGets).toHaveLength(total);
   });
 
   it('surfaces a visible error rather than repeating forever when a tie leaves no native page token to resume from', async () => {

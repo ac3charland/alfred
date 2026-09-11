@@ -80,7 +80,7 @@ describe('gmailClient', () => {
     // they are never listed again. A fixed-size mailbox pool, paged by an offset token and honoring
     // whatever `maxResults` was actually requested, reproduces the exact shape from production:
     // page 1 comes back short (300, not the 500 asked for) though 600 more ids are waiting.
-    const total = MAX_MESSAGE_IDS + 400; // 900 — comfortably more than one page's worth twice over
+    const total = MAX_MESSAGE_IDS * 3; // comfortably more than the two listings below can hold
     const pool = Array.from({ length: total }, (_value, index) => `m${String(index)}`);
     mockGmail((call) => {
       const params = query(call.url);
@@ -89,7 +89,8 @@ describe('gmailClient', () => {
       // Gmail's documented "may return fewer" quirk, forced on the very first page only — later
       // pages return exactly what was asked for, which is what lets a buggy fixed `maxResults`
       // push the running total past the cap.
-      const size = offset === 0 ? Math.min(300, requested) : requested;
+      const short = Math.ceil(MAX_MESSAGE_IDS / 2);
+      const size = offset === 0 ? Math.min(short, requested) : requested;
       const page = pool.slice(offset, offset + size);
       const nextOffset = offset + page.length;
       const body: { messages: { id: string }[]; nextPageToken?: string } = {
@@ -105,13 +106,17 @@ describe('gmailClient', () => {
     expect(first.value.truncated).toBe(true);
 
     // The whole point: resuming from the token this call handed back must pick up exactly where
-    // the returned ids left off (id 500) — never skip forward to wherever an overshooting page's
-    // own cursor happened to land (id 800), which is what silently drops ids 500-799 forever.
+    // the returned ids left off — never skip forward to wherever an overshooting page's own cursor
+    // happened to land, which silently drops the ids in between forever.
     const resumed = await gmailClient('t').listMessageIds({ pageToken: first.value.pageToken });
     if (!resumed.ok) throw new Error('expected the resumed listing to succeed');
 
-    const seen = new Set([...first.value.ids, ...resumed.value.ids]);
-    for (const id of pool) expect(seen.has(id)).toBe(true);
+    // Contiguity, not mere coverage: the two listings must join into an unbroken prefix of the
+    // mailbox. A gap of even one id is the bug, and asserting the prefix catches it whatever the
+    // cap is — where a set-membership check over the whole pool only worked while two listings
+    // happened to span it.
+    const joined = [...first.value.ids, ...resumed.value.ids];
+    expect(joined).toEqual(pool.slice(0, joined.length));
   });
 
   it('seeds a listing from a caller-supplied page token, picking up where a previous truncated call left off', async () => {
