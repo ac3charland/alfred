@@ -52,16 +52,20 @@ compatibility_flags = ["nodejs_compat"]
 #
 # Two schedules now, dispatched in src/index.ts on the expression the runtime hands the handler —
 # so these strings and the constants there must stay in step.
-#   */2 * * * *  the frequent tick: the Inbox classifier sweep, then the Comms tick (poll Gmail,
-#                then judge whatever is waiting). Both ride one trigger because neither is worth
-#                its own and nobody is waiting on either.
+#   */2 * * * *  the frequent tick: the Inbox classifier sweep, then the Comms JUDGE pass.
+#   1-59/2 * * * *  the Gmail poll, on the odd minutes. It has its own trigger for one reason: the
+#                Workers runtime allows 50 outbound fetches per INVOCATION (Free plan), and polling
+#                and judging both scale with how much mail is waiting — sharing a tick, each was
+#                the reason the other ran out, and the whole tick threw with "Too many subrequests".
+#                Apart, each gets the full 50. Offset by a minute rather than run together so the
+#                pipeline still flows one way: mail polled at :01 is judged at :02.
 #   17 9 * * *   the daily Comms retention sweep, which deletes every mirrored message older than
 #                60 days. Cron triggers are UTC-only, so this lands at 03:17 in Chicago in winter
 #                and 04:17 in summer; it is housekeeping in the middle of the night either way and
 #                nothing depends on the exact minute. An odd minute rather than :00 for the usual
 #                reason — the top of the hour is where every scheduler in the world queues up.
 [triggers]
-crons = ["*/2 * * * *", "17 9 * * *"]
+crons = ["*/2 * * * *", "1-59/2 * * * *", "17 9 * * *"]
 
 # ── Vars (non-secret, plaintext, committed) ──────────────────────────────────
 # CLASSIFIER_MODEL — which model judges an Inbox item. A var rather than a constant so trying a

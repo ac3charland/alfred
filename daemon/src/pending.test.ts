@@ -39,6 +39,30 @@ describe('createPendingBuffer', () => {
     expect(buffer.all()).toEqual([]);
   });
 
+  it('drops only the messages that were actually accepted, keeping the rest for the next tick', () => {
+    // The runner sends one bounded chunk per tick (see MAX_INGEST_BATCH_MESSAGES), so acceptance
+    // is partial by design: clearing the whole buffer on a chunk's success would discard messages
+    // that were never sent, and their source cursor has already moved past them for good.
+    const buffer = createPendingBuffer();
+    buffer.add(messages(5));
+
+    buffer.drop(2);
+
+    expect(buffer.all().map((m) => m.source_id)).toEqual(['m2', 'm3', 'm4']);
+    expect(buffer.size()).toBe(3);
+  });
+
+  it('drops nothing on a non-positive count and never drops past what it holds', () => {
+    const buffer = createPendingBuffer();
+    buffer.add(messages(2));
+
+    buffer.drop(0);
+    expect(buffer.size()).toBe(2);
+
+    buffer.drop(9);
+    expect(buffer.size()).toBe(0);
+  });
+
   it('exposes its configured limit, defaulting to MAX_PENDING_MESSAGES', () => {
     expect(createPendingBuffer().limit()).toBe(MAX_PENDING_MESSAGES);
     expect(createPendingBuffer({ limit: 3 }).limit()).toBe(3);

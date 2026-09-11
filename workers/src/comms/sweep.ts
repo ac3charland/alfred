@@ -68,8 +68,16 @@ import {
  * How many messages one tick will judge. Messages over the cap are simply still unjudged next
  * tick, so deferring them is free — and the cap is what keeps a tick's wall time bounded against
  * a schedule that does not serialize its invocations.
+ *
+ * It also keeps the tick inside the Workers **subrequest budget** — 50 outbound fetches per
+ * invocation on the Free plan. A sweep spends ~11 before it judges anything (the Inbox
+ * classifier that shares this tick, the at-ceiling park, the two eligibility queries, the five
+ * context reads, the closing health stamp) and ~5 per message (the model call, the verdict
+ * insert, the message patches, a rerun's clear). Six lands at ~41. Raise it only alongside that
+ * arithmetic: over the budget the tick throws part-way, and a half-swept tick bills model calls
+ * for verdicts it never managed to store.
  */
-export const COMMS_SWEEP_LIMIT = 10;
+export const COMMS_SWEEP_LIMIT = 6;
 
 /**
  * How many content-shaped failures a message gets before it is parked rather than retried. Five

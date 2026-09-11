@@ -54,6 +54,19 @@ export interface IngestResult {
   drained: number;
 }
 
+/**
+ * A JSON `null`, produced rather than written because this package bans the `null` literal. It is
+ * how an absent column has to reach PostgREST: `JSON.stringify` omits an `undefined` value's key
+ * altogether, and a bulk insert whose rows differ in shape is refused outright (`PGRST102: All
+ * object keys must match`) — the whole batch, not the odd row.
+ */
+const JSON_NULL: unknown = JSON.parse('null');
+
+/** An optional value as the wire wants it: the value, or an explicit null when it is absent. */
+function orNull(value: string | undefined): unknown {
+  return value ?? JSON_NULL;
+}
+
 /** `${SUPABASE_URL}/rest/v1/rpc/<name>` — the POST endpoint for a database function. */
 function rpcUrl(env: SupabaseEnv, name: string): string {
   return restQueryUrl(env, `rpc/${name}`, {});
@@ -356,20 +369,20 @@ export async function ingestMessages(
   const rows = directed.map(({ message, direction }) => ({
     account_id: account.id,
     source_id: message.source_id,
-    rfc822_message_id: message.rfc822_message_id,
+    rfc822_message_id: orNull(message.rfc822_message_id),
     thread_key: message.thread_key,
     direction,
     sender_handle: message.sender_handle,
-    sender_name: message.sender_name,
-    chat_name: message.chat_name,
+    sender_name: orNull(message.sender_name),
+    chat_name: orNull(message.chat_name),
     participants: message.participants,
-    subject: message.subject,
+    subject: orNull(message.subject),
     body: message.body,
     received_at: message.received_at,
     body_extracted: message.body_extracted,
     has_attachments: message.has_attachments,
     has_list_header: message.has_list_header,
-    in_reply_to: message.in_reply_to,
+    in_reply_to: orNull(message.in_reply_to),
     references_ids: message.references_ids,
   }));
 

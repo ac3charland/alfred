@@ -33,8 +33,16 @@ export const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
  * never be looked at again. Both listers below report `truncated: true` when they stopped early
  * so `planFetch` in `gmail.ts` can hold the cursor at a position that still covers the unread
  * remainder instead. See that module's doc comment for how each caller resumes.
+ *
+ * The value is set by the Workers **subrequest budget**, not by Gmail: the runtime allows 50
+ * outbound fetches per invocation on the Free plan, and one poll spends roughly `7 + 2N` across
+ * both accounts (token, profile, account upsert, the listing, N message reads, the batch insert,
+ * the newsletter shelve and the poll stamp). At 15 that is ~44 — inside 50 with room to spare,
+ * and a backlog simply drains over consecutive ticks, which is the whole point of the cap. Raise
+ * it only alongside that arithmetic; exceeding the budget throws mid-poll, which stores nothing
+ * and leaves the cursor unmoved, so the next tick repeats the same doomed read forever.
  */
-export const MAX_MESSAGE_IDS = 500;
+export const MAX_MESSAGE_IDS = 15;
 
 /** How much of a failing response body is kept. Enough to identify it, not enough to fill a log. */
 const MAX_DETAIL_CHARS = 300;

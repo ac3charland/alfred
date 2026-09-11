@@ -87,6 +87,21 @@ function parseStamp(value: string | null | undefined): Date | undefined {
  * see the `mac-daemon` skill.
  */
 const INITIAL_RETRY_DELAY_MS = 5000;
+/**
+ * The most messages one POST to `/comms/ingest` carries. The ceiling is the WORKER's, not the
+ * daemon's: the ingest spends one Cloudflare subrequest per OUTBOUND message in the batch (it
+ * drains that message's thread), plus the account upsert, the batch insert, the newsletter shelve
+ * and the heartbeat — and the Workers runtime allows 50 outbound fetches per invocation on the
+ * Free plan. A first run over an existing mailbox hands this runner hundreds of messages at once,
+ * which as a single POST exceeds that budget and is 503'd in full, forever. At 25 the worst case
+ * (every message outbound) is ~29 — comfortably inside 50.
+ *
+ * A backlog is transient: once a source is caught up, a tick's poll returns a handful of messages
+ * and this cap is never reached, so draining the initial burst over a few consecutive ticks costs
+ * nothing anyone is waiting for.
+ */
+export const MAX_INGEST_BATCH_MESSAGES = 25;
+
 const RETRYABLE_MAX_DELAY_MS = 5 * 60_000;
 const NON_RETRYABLE_MAX_DELAY_MS = Math.floor((EXPECTED_INTERVAL_SECONDS * 1000) / 2);
 
@@ -195,10 +210,14 @@ export function createSourceRunner(deps: SourceRunnerDeps): SourceRunner {
       heartbeat.error = `pending buffer holding ${String(pending.size())} messages, over its ${String(pending.limit())} limit`;
     }
 
-    const messages = pending.all();
+    // One bounded chunk per tick — the rest stays held and goes out on the ticks that follow.
+    const held = pending.all();
+    const messages = held.slice(0, MAX_INGEST_BATCH_MESSAGES);
 
     if (deps.dryRun === true) {
-      for (const message of messages) deps.print?.(JSON.stringify(message));
+      // Everything held, not just this tick's chunk: nothing is being POSTed, so there is no
+      // budget to respect and a dry run should show the whole backlog it would have sent.
+      for (const message of held) deps.print?.(JSON.stringify(message));
       pending.clear();
       return;
     }
@@ -264,7 +283,9 @@ export function createSourceRunner(deps: SourceRunnerDeps): SourceRunner {
 
     consecutiveSendFailures = 0;
     nextSendAttemptAtMonotonicMs = undefined;
-    pending.clear();
+    // Only the chunk that was actually accepted — `clear()` here would silently discard the
+    // untried remainder, which no source cursor can re-read.
+    pending.drop(messages.length);
     deps.heartbeats.record(source.key, now);
     serverCursor = result.response.cursor;
     lastSeenAt = parseStamp(result.response.last_seen_at) ?? lastSeenAt;

@@ -1,9 +1,13 @@
 /**
  * What the cron actually runs for Comms, and in what order.
  *
- * Two schedules, two units of work. The frequent one polls Gmail and then judges whatever has
- * arrived — ingestion first, so a message captured this tick can be judged in the same one rather
- * than waiting two minutes for the next. The daily one deletes what has aged out.
+ * Three schedules, three units of work. Polling Gmail and judging what has arrived each get their
+ * own two-minute tick, offset by a minute, because they compete for the same budget: the Workers
+ * runtime allows 50 outbound fetches per invocation on the Free plan, and both units scale with
+ * how much mail is waiting. Sharing one invocation made each of them the reason the other ran out.
+ * Offset rather than simultaneous so the pipeline still flows in one direction — mail polled at
+ * :01 is judged at :02 — which costs a minute of latency on a system whose whole premise is
+ * capture-now-refine-later. The daily one deletes what has aged out.
  *
  * Every unit runs inside its own try/catch, and that is the point of this module. Ingestion and
  * judgment are independent failures with different fixes: a revoked Gmail token must not stop the
@@ -16,10 +20,12 @@ import { type GmailEnv, type GmailPollSummary, pollGmail } from './gmail';
 import { type RetentionSummary, runRetention } from './retention';
 import { type CommsSweepEnv, type CommsSweepSummary, runCommsSweep } from './sweep';
 
-/** Everything the frequent tick reads from the environment. */
+/** Everything the two frequent ticks read from the environment, between them. */
 export type CommsTickEnv = GmailEnv & CommsSweepEnv;
 
-/** What one frequent tick did. A unit that threw is `undefined` and named in `failures`. */
+/** What one frequent tick did. The unit this tick does not run stays `undefined`, as does one
+ *  that threw — which is instead named in `failures`, so "did not run" and "broke" stay
+ *  distinguishable in the log. */
 export interface CommsTickSummary {
   gmail: GmailPollSummary | undefined;
   sweep: CommsSweepSummary | undefined;
@@ -38,11 +44,10 @@ function describe(unit: string, error: unknown): string {
 }
 
 /**
- * Poll Gmail, then judge what is waiting. Sequential and both awaited: a scheduled invocation is
- * torn down the moment the promise it returns settles, so anything left running is killed
- * part-way through.
+ * Poll Gmail. Awaited: a scheduled invocation is torn down the moment the promise it returns
+ * settles, so anything left running is killed part-way through.
  */
-export async function runCommsTick(env: CommsTickEnv, now: Date): Promise<CommsTickSummary> {
+export async function runCommsPoll(env: GmailEnv, now: Date): Promise<CommsTickSummary> {
   const failures: string[] = [];
 
   let gmail: GmailPollSummary | undefined;
@@ -52,6 +57,13 @@ export async function runCommsTick(env: CommsTickEnv, now: Date): Promise<CommsT
     failures.push(describe('gmail poll', error));
   }
 
+  return { gmail, sweep: undefined, failures };
+}
+
+/** Judge whatever is waiting, on its own tick and so against its own subrequest budget. */
+export async function runCommsJudge(env: CommsSweepEnv, now: Date): Promise<CommsTickSummary> {
+  const failures: string[] = [];
+
   let sweep: CommsSweepSummary | undefined;
   try {
     sweep = await runCommsSweep(env, now);
@@ -59,7 +71,7 @@ export async function runCommsTick(env: CommsTickEnv, now: Date): Promise<CommsT
     failures.push(describe('comms sweep', error));
   }
 
-  return { gmail, sweep, failures };
+  return { gmail: undefined, sweep, failures };
 }
 
 /** Run the retention sweep. Its own schedule, because it is housekeeping and not triage. */

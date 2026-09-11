@@ -4,7 +4,7 @@ import type { SendResult } from './ingest-client.ts';
 import { createLogger } from './log.ts';
 import type { LogFields, Logger } from './log.ts';
 import { createPendingBuffer } from './pending.ts';
-import { createSourceRunner } from './runner.ts';
+import { MAX_INGEST_BATCH_MESSAGES, createSourceRunner } from './runner.ts';
 import type { SourceRunnerDeps } from './runner.ts';
 import type { PollResult, Source, SourceContext } from './sources/types.ts';
 import type { SourceState } from './state.ts';
@@ -182,6 +182,68 @@ describe('createSourceRunner', () => {
     expect(sent).toHaveLength(1);
   });
 
+  it('sends a big backlog in bounded chunks across ticks, losing nothing', async () => {
+    // The Worker spends one Cloudflare subrequest per outbound message in a batch (it drains that
+    // message's thread), on top of the account upsert, the insert, the shelve and the heartbeat.
+    // The Free plan allows 50 per invocation, so a single 214-message POST blows the budget and
+    // the endpoint 503s the whole batch, forever. Chunking is what keeps each POST affordable —
+    // and the backlog is transient anyway, so draining it over a few ticks costs nothing.
+    const backlog = Array.from({ length: MAX_INGEST_BATCH_MESSAGES * 2 + 3 }, (_unused, index) =>
+      message(`m${String(index)}`),
+    );
+    const { source } = scriptedSource([
+      polled(backlog, { rowid: 7 }),
+      () => Promise.resolve(empty({ rowid: 7 })),
+      () => Promise.resolve(empty({ rowid: 7 })),
+      () => Promise.resolve(empty({ rowid: 7 })),
+    ]);
+    const { sent, deps } = harness(source);
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW, 0);
+    await runner.tick(later(5000), 5000);
+    await runner.tick(later(10_000), 10_000);
+
+    // No POST is ever larger than the cap...
+    for (const payload of sent) {
+      expect(payload.messages.length).toBeLessThanOrEqual(MAX_INGEST_BATCH_MESSAGES);
+    }
+    // ...and across the ticks every message is sent exactly once, in order.
+    const delivered = sent.flatMap((payload) => payload.messages.map((m) => m.source_id));
+    expect(delivered).toEqual(backlog.map((m) => m.source_id));
+  });
+
+  it('keeps the whole remaining backlog when a chunk is rejected', async () => {
+    // A rejected chunk must not advance past itself: nothing was stored, and the messages behind
+    // it have no cursor left to be re-read from.
+    const backlog = Array.from({ length: MAX_INGEST_BATCH_MESSAGES + 2 }, (_unused, index) =>
+      message(`m${String(index)}`),
+    );
+    const { source } = scriptedSource([
+      polled(backlog, { rowid: 7 }),
+      () => Promise.resolve(empty({ rowid: 7 })),
+    ]);
+    const { sent, deps } = harness(source, {
+      send: () =>
+        Promise.resolve({
+          ok: false,
+          error: 'ingest POST rejected with 503',
+          status: 503,
+          retryable: true,
+        }),
+    });
+    const runner = createSourceRunner(deps);
+
+    await runner.tick(NOW, 0);
+    await runner.tick(later(600_000), 600_000);
+
+    expect(sent).toHaveLength(2);
+    // The same first chunk both times — the rejection dropped nothing.
+    expect(sent[0]?.messages.map((m) => m.source_id)).toEqual(
+      sent[1]?.messages.map((m) => m.source_id),
+    );
+  });
+
   it('reports a failed poll as an erroring heartbeat instead of crashing the loop', async () => {
     const { source } = scriptedSource([
       () => Promise.reject(new Error('chat.db: operation not permitted')),
@@ -267,17 +329,31 @@ describe('createSourceRunner', () => {
     await runner.tick(NOW, 0); // reads batch 0; send fails
     await runner.tick(later(5000), 5000); // outage continues — must NOT read further into the backlog
     await runner.tick(later(15_000), 15_000); // still down
-    await runner.tick(later(35_000), 35_000); // clears — batch 0 finally goes out, intact
+
+    // Clears — and batch 0 now goes out as bounded chunks, one per tick, until the buffer is
+    // empty. It is still one poll's worth of messages: the point is that none of them is lost
+    // between the outage and the drain.
+    const chunks = Math.ceil(BATCH / MAX_INGEST_BATCH_MESSAGES);
+    let at = 35_000;
+    for (let index = 0; index < chunks; index += 1) {
+      await runner.tick(later(at), at);
+      at += 5000;
+    }
 
     expect(overflowed).toEqual([]);
     expect(pollCount).toBe(1);
-    expect(sent.at(-1)?.messages).toEqual(backlog[0]);
+    // No POST exceeded the cap, and batch 0 arrived in full across them.
+    for (const payload of sent) {
+      expect(payload.messages.length).toBeLessThanOrEqual(MAX_INGEST_BATCH_MESSAGES);
+    }
+    const delivered = new Set(sent.flatMap((payload) => payload.messages.map((m) => m.source_id)));
+    for (const held of backlog[0] ?? []) expect(delivered.has(held.source_id)).toBe(true);
 
-    // Once the outage clears, polling resumes forward from exactly where it left off.
-    await runner.tick(later(40_000), 40_000);
+    // Once the backlog is drained, polling resumes forward from exactly where it left off.
+    await runner.tick(later(at), at);
 
     expect(pollCount).toBe(2);
-    expect(sent.at(-1)?.messages).toEqual(backlog[1]);
+    expect(sent.at(-1)?.messages).toEqual(backlog[1]?.slice(0, MAX_INGEST_BATCH_MESSAGES));
   });
 
   it('does not read further into the backlog while pending still holds an unsent batch', async () => {

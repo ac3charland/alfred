@@ -45,8 +45,28 @@ jobs:
       # `curl <worker-url>/` can be diffed against `git rev-parse origin/main` to prove what is
       # live. Secrets set with `wrangler secret put` persist across deploys and are NOT re-uploaded
       # here.
+      # Retried because the failure mode this workflow exists to prevent — a commit on main that
+      # never reached production — can also arrive as a transport blip. A `wrangler deploy` that
+      # cannot reach api.cloudflare.com dies in under a second with `✘ [ERROR] fetch failed` and a
+      # "check your network connection" warning, long before it bundles or uploads anything; the
+      # run goes red, main is live-looking but stale, and the message blames the network rather
+      # than the deploy. Three attempts with a widening pause turns that into a non-event. A
+      # genuine bad deploy (auth, config, oversized script) fails the same way all three times and
+      # still ends the run red.
       - name: Deploy to Cloudflare
-        run: npx wrangler deploy --var WORKER_VERSION:"$GITHUB_SHA"
+        run: |
+          attempts=3
+          for attempt in $(seq 1 $attempts); do
+            if npx wrangler deploy --var WORKER_VERSION:"$GITHUB_SHA"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt "$attempts" ]; then
+              echo "::warning::wrangler deploy attempt $attempt/$attempts failed - retrying in $((attempt * 15))s"
+              sleep $((attempt * 15))
+            fi
+          done
+          echo "::error::wrangler deploy failed after $attempts attempts - main is NOT deployed"
+          exit 1
         working-directory: workers
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
