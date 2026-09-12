@@ -107,28 +107,28 @@ test('lists only the human-review stories, ranked by priority, with no filter co
   await expect(rows.nth(2)).toContainText('ALF-5');
 });
 
-test('is the default Code view at the bare /code, listed above the Backlog (ALF-174)', async ({
+test('sits between the Dashboard and the Backlog in the sidebar, on its own route', async ({
   page,
   seed,
 }) => {
   await seed({ projects: [project], epics: [epic], items, codeItems });
-  await page.goto('/code');
+  await page.goto('/code/needs-human-action');
 
-  // Entering the module lands on the human-review queue, not the full ranked Backlog.
+  // The queue no longer claims the bare `/code` — the Dashboard does, and digests this queue.
   await expect(page.getByRole('heading', { name: 'Needs human action' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /software factory/i })).toHaveCount(0);
   await expect(page.getByRole('listitem')).toHaveCount(3);
 
-  // The sidebar puts it above the Backlog and highlights it for the bare `/code`.
   const projectNav = page.getByRole('navigation', { name: 'Projects' });
   const navLinks = projectNav.getByRole('link');
-  await expect(navLinks.nth(0)).toHaveText('Needs human action');
-  await expect(navLinks.nth(1)).toHaveText('Backlog');
+  await expect(navLinks.nth(0)).toHaveText('Dashboard');
+  await expect(navLinks.nth(1)).toHaveText('Needs human action');
+  await expect(navLinks.nth(2)).toHaveText('Backlog');
 
-  // The Backlog is still one click away, on its own explicit route.
+  // The Backlog is one click away, on its own explicit route, named plainly now.
   await projectNav.getByRole('link', { name: 'Backlog' }).click();
   await expect(page).toHaveURL('/code/backlog');
-  await expect(page.getByRole('heading', { name: /software factory/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Backlog' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /software factory/i })).toHaveCount(0);
 });
 
 test('navigates to the view from the sidebar link', async ({ page, seed }) => {
