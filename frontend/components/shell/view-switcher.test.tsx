@@ -95,18 +95,49 @@ describe('ViewSwitcher', () => {
     expect(screen.getByRole('link', { name: 'Comms' })).not.toHaveClass('text-accent-teal');
   });
 
+  it('highlights active Tasks in amber, so it is not mistaken for Code (ALF-219)', () => {
+    mockPathname.mockReturnValue('/priority');
+    const { rerender } = render(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Tasks' })).toHaveClass('text-accent-amber');
+    expect(screen.getByRole('link', { name: 'Tasks' })).not.toHaveClass('text-accent-teal');
+
+    // ...and Code keeps the teal, so the two highlights read as different modules.
+    mockPathname.mockReturnValue('/code');
+    rerender(<ViewSwitcher />);
+    expect(screen.getByRole('link', { name: 'Code' })).not.toHaveClass('text-accent-amber');
+  });
+
   it('exposes a labelled group for the switcher', () => {
     render(<ViewSwitcher />);
 
     expect(screen.getByRole('group', { name: /switch module/i })).toBeInTheDocument();
   });
 
-  it('hugs its content instead of spanning the full sidebar width', () => {
+  it('fills its container rather than sizing to its text, so it cannot overflow (ALF-219)', () => {
     render(<ViewSwitcher />);
 
     const group = screen.getByRole('group', { name: /switch module/i });
-    expect(group).toHaveClass('w-fit');
-    expect(group).toHaveClass('gap-1');
+    expect(group).toHaveClass('w-full');
+    expect(group).toHaveClass('gap-0.5');
+    // `w-fit` is what let a third segment push the control past the 224px sidebar.
+    expect(group).not.toHaveClass('w-fit');
     expect(group).not.toHaveClass('justify-between');
+  });
+
+  it('grows each segment from its own label and shares out only the leftover width', () => {
+    render(<ViewSwitcher />);
+
+    for (const label of ['Tasks', 'Code', 'Comms']) {
+      const segment = screen.getByRole('link', { name: label });
+      // `flex-auto` keeps each segment's own label as its starting width; `flex-1` would
+      // give all three equal thirds and clip the longest label ("Comms") in the sidebar.
+      expect(segment).toHaveClass('flex-auto');
+      expect(segment).not.toHaveClass('flex-1');
+      // Without `min-w-0` a flex item refuses to shrink below its text width, which is
+      // exactly how the control burst its container in the first place.
+      expect(segment).toHaveClass('min-w-0');
+      expect(segment).toHaveClass('truncate');
+      expect(segment).toHaveClass('text-center');
+    }
   });
 });

@@ -50,6 +50,7 @@ export function Dashboard() {
         icon={GitBranch}
         title="The Software Factory"
         description="Your code module at a glance — what you're shipping, and what's waiting on you."
+        accent="code"
       />
 
       <LocVelocity />

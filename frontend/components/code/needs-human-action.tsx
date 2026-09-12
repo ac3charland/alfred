@@ -33,6 +33,7 @@ export function NeedsHumanAction() {
         icon={UserCheck}
         title="Needs human action"
         description="Stories waiting on your review — a spec to approve or a gate to clear."
+        accent="code"
       />
 
       <BacklogList

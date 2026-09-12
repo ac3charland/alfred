@@ -43,10 +43,26 @@ describe('isCodePath / isCommsPath', () => {
 });
 
 describe('MODULE_ACCENT', () => {
-  it('gives Comms the blue accent and leaves Tasks and Code on teal', () => {
-    expect(MODULE_ACCENT.comms.text).toBe('text-accent-blue');
-    expect(MODULE_ACCENT.tasks.text).toBe('text-accent-teal');
+  it('gives each module its own hue — Tasks amber, Code teal, Comms blue', () => {
+    expect(MODULE_ACCENT.tasks.text).toBe('text-accent-amber');
     expect(MODULE_ACCENT.code.text).toBe('text-accent-teal');
+    expect(MODULE_ACCENT.comms.text).toBe('text-accent-blue');
+  });
+
+  it('never lets two modules share a hue — the switcher must be readable at a glance', () => {
+    const hues = Object.values(MODULE_ACCENT).map((accent) => accent.text);
+
+    expect(new Set(hues).size).toBe(hues.length);
+  });
+
+  it("keeps every field of a module accent on that module's one hue", () => {
+    expect(MODULE_ACCENT.tasks).toEqual({
+      text: 'text-accent-amber',
+      ring: 'ring-accent-amber',
+      dot: 'bg-accent-amber',
+      border: 'border-accent-amber',
+      glow: 'glow-amber',
+    });
   });
 
   it('spells every class out in full so the Tailwind scanner can see it', () => {
